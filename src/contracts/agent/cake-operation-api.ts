@@ -83,15 +83,18 @@ export type ProjectCakeOperations = (bridge: {
   publishSnapshot(): Promise<void>;
 }) => CakeOperationDefinition[];
 
-export type CoordinatorCakeOperations = (bridge: {
-  sessionId: string;
-  resolveModel(
-    selection: CakeModelSelection | undefined,
-    launch?: CakeModelLaunch,
-  ): ExplicitCakeModelSelection;
-  info(): Promise<JsonValue>;
-  usage(): Promise<JsonValue>;
-  contextStatus(): Promise<JsonValue>;
-  compact(): Promise<JsonValue>;
-  setModel(model: ExplicitCakeModelSelection): Promise<void>;
-}) => CakeOperationDefinition[];
+export type CoordinatorCakeOperations = (
+  bridge: {
+    sessionId: string;
+    resolveModel(
+      selection: CakeModelSelection | undefined,
+      launch?: CakeModelLaunch,
+    ): ExplicitCakeModelSelection;
+    info(): Promise<JsonValue>;
+    usage(): Promise<JsonValue>;
+    contextStatus(): Promise<JsonValue>;
+    compact(): Promise<JsonValue>;
+    setModel(model: ExplicitCakeModelSelection): Promise<void>;
+  },
+  access?: { readonly fullControl: true },
+) => CakeOperationDefinition[];

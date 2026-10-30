@@ -9,10 +9,11 @@ import {
   makeCakeSessionRuntimesLayer,
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import type { CakeOperationInvocation } from "../../../src/contracts/agent/cake-operation";
 import { acquireOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { cakeChatControlTools } from "../../../src/contracts/application/window-control-definitions";
-import { createGlobalControlOperations } from "../../../src/domain/application/cake-global-control-operations";
-import { createProjectTodoOperations } from "../../../src/domain/projects/project-todo-operations";
+import { coordinatorCakeOperations } from "../../../src/layers/CakeOperations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { projectTodoLayer } from "./projectTodoHarness";
 import { familyStorageHarness } from "./familyStorageHarness";
@@ -24,7 +25,7 @@ import type { JsonObject, JsonValue } from "../../../src/contracts/serialization
 
 export const localMcpTarget = "00000000-0000-4000-8000-000000000022";
 
-/** Real Project Chat controls, registry, admission, runtime leases and to-do domain.
+/** Real global/Project Chat controls, registry, admission, runtime leases and to-do domain.
  * Only Pi execution and filesystem/persistence mechanisms are replaced.
  */
 export const localMcpFixture = Effect.fn("LocalMcpTest.fixture")(function* (
@@ -57,19 +58,44 @@ export const localMcpFixture = Effect.fn("LocalMcpTest.fixture")(function* (
       Effect.sync(() => {
         const id = setup.sessionId ?? localMcpTarget;
         ids.add(id);
-        const registry = new CakeOperationRegistry([
-          ...(setup.globalControl
-            ? createGlobalControlOperations(setup.globalControl, () => ({
-                provider: "test",
-                modelId: "test-model",
-                thinkingLevel: "off",
-                fastMode: false,
-              }))
-            : []),
-          ...(setup.projectTodos ? createProjectTodoOperations(setup.projectTodos) : []),
-        ]);
+        const makeRegistry = (access?: { readonly fullControl: true }) =>
+          new CakeOperationRegistry(
+            setup.globalControl
+              ? coordinatorCakeOperations(setup)(
+                  {
+                    sessionId: id,
+                    resolveModel: () => ({
+                      provider: "test",
+                      modelId: "test-model",
+                      thinkingLevel: "off",
+                      fastMode: false,
+                    }),
+                    info: async () => ({}),
+                    usage: async () => ({}),
+                    contextStatus: async () => ({}),
+                    compact: async () => ({}),
+                    setModel: async () => {},
+                  },
+                  access,
+                )
+              : [],
+          );
+        const registry = makeRegistry();
+        const fullControlRegistry = makeRegistry({ fullControl: true });
+        const callCakeTool = async (
+          name: string,
+          input: JsonObject,
+          signal: AbortSignal,
+        ): Promise<CakeOperationInvocation> => {
+          calls.push({ name, input });
+          return fullControlRegistry.invoke(
+            { command: name, input },
+            { signal, toolCallId: "test", runtime: {} },
+          );
+        };
         return {
           ...fakeRuntime(setup, () => undefined),
+          callCakeTool,
           sessionId: id,
           snapshot: async () => ({ ...snapshot, sessionId: id }),
           inspectSession: async () => ({ entries: [{ text: "Original history" }] }),
@@ -78,7 +104,6 @@ export const localMcpFixture = Effect.fn("LocalMcpTest.fixture")(function* (
             setup.onInitialTranscriptPersisted?.();
           },
           callCakeOperation: async (name, input, signal): Promise<JsonValue> => {
-            calls.push({ name, input });
             return (
               await registry.invoke(
                 { command: name, input },
@@ -117,14 +142,16 @@ export const localMcpFixture = Effect.fn("LocalMcpTest.fixture")(function* (
       releaseSession: () => Effect.void,
     }),
   );
-  const chat = yield* acquireOptions({
-    configuration: {
-      location: { workingDirectory: "/project", sessionDirectory: "/cake/global" },
-      agentDirectory: "/cake",
-    },
-    target: { sessionId: projectChatSessionId("/project"), tools: cakeChatControlTools() },
-    newSession: false,
-  }).pipe(Effect.provide(context));
-  yield* Context.get(context, CakeSessionRuntimes).acquire(chat);
+  for (const sessionId of [CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")]) {
+    const chat = yield* acquireOptions({
+      configuration: {
+        location: { workingDirectory: "/project", sessionDirectory: "/cake/global" },
+        agentDirectory: "/cake",
+      },
+      target: { sessionId, tools: cakeChatControlTools() },
+      newSession: false,
+    }).pipe(Effect.provide(context));
+    yield* Context.get(context, CakeSessionRuntimes).acquire(chat);
+  }
   return { context, calls, prompts, state: Context.get(context, ApplicationState) };
 });

@@ -14,7 +14,10 @@ import {
   coordinatorCakeOperations,
 } from "../../../src/layers/CakeOperations";
 import type { InterviewRecord } from "../../../src/contracts/interviews/interview";
-import type { ProjectCakeOperations } from "../../../src/contracts/agent/cake-operation-api";
+import type {
+  ProjectCakeOperations,
+  CoordinatorCakeOperations,
+} from "../../../src/contracts/agent/cake-operation-api";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 
 const directories: string[] = [];
@@ -336,6 +339,41 @@ describe("Backend-owned Cake operation composition", () => {
         .definitions()
         .every((operation) => !operation.command.startsWith("settings.cake-chat.")),
     ).toBe(true);
+  });
+
+  it("offers full control without changing the model-facing catalog", async () => {
+    const get = vi.fn(async (input: { projectPath: string }) => ({
+      ...input,
+      instructions: "Existing guidance.",
+    }));
+    const operations = coordinatorCakeOperations({
+      cwd: "/workspace",
+      globalControl: { tools: [], invoke: vi.fn() },
+      allowedCakeOperations: ["session.info"],
+      projectChatInstructions: { get, update: vi.fn() },
+    });
+    const host: Parameters<CoordinatorCakeOperations>[0] = {
+      sessionId: "coordinator",
+      resolveModel: () => ({ provider: "p", modelId: "m", thinkingLevel: "off", fastMode: false }),
+      setModel: async () => {},
+      info: async () => ({}),
+      usage: async () => ({}),
+      contextStatus: async () => ({}),
+      compact: async () => ({}),
+    };
+    const model = new CakeOperationRegistry(operations(host));
+    const full = new CakeOperationRegistry(operations(host, { fullControl: true }));
+    expect(model.definitions().map((operation) => operation.command)).toEqual(["session.info"]);
+    expect(full.operationHelp("artifacts.create")).toContain("artifacts.create");
+    expect(
+      (
+        await full.invoke(
+          { command: "settings.project-chat.get", input: { projectPath: "/project" } },
+          context,
+        )
+      ).details,
+    ).toMatchObject({ result: { instructions: "Existing guidance." } });
+    expect(get).toHaveBeenCalledWith({ projectPath: "/project" }, context.signal);
   });
 
   it("validates explicit Project Chat targets and reports only successful committed writes", async () => {

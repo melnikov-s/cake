@@ -1,48 +1,53 @@
-import { isAbsolute } from "node:path";
 import { randomBytes } from "node:crypto";
 import { Effect, Schema, type Scope } from "effect";
 import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
+import { cakeToolDescription, cakeToolEnvelopeSchema } from "../../contracts/agent/cake-operation";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import {
   LocalMcpConfiguration,
-  LocalMcpCall,
   LocalMcpError,
   type LocalMcpSnapshot,
 } from "../../contracts/mcp/local-mcp";
 import { LocalMcpServer, type LocalMcpEndpoint } from "../../services/local-mcp/LocalMcpServer";
 import { LocalMcpSettings, type LocalMcpDocument } from "../../services/storage/LocalMcpSettings";
-import { ApplicationState } from "../../services/storage/ApplicationState";
-import { call, commandsForGrant } from "./localMcpControl";
+import * as chatTargets from "../cake-chats/cakeChatTargets";
 
-const endpoint = Effect.fn("LocalMcp.endpoint")(function* (grant: LocalMcpConfiguration) {
+/** MCP invokes the canonical Cake definitions with full control, not a second API. */
+const call = Effect.fn("LocalMcp.call")(function* (
+  input: Schema.Schema.Type<typeof jsonObjectSchema>,
+) {
+  const request = yield* Schema.decodeUnknownEffect(cakeToolEnvelopeSchema)(input, {
+    onExcessProperty: "error",
+  }).pipe(
+    Effect.mapError(
+      (cause) => new LocalMcpError({ code: "invalid_input", message: cause.message }),
+    ),
+  );
+  const handle = yield* chatTargets.acquireAvailable(CAKE_CHAT_SESSION_ID);
+  return yield* handle.callCakeTool(request.command ?? "help", request.input ?? {});
+});
+
+const endpoint = Effect.fn("LocalMcp.endpoint")(function* () {
   const context =
     yield* Effect.context<Exclude<Effect.Services<ReturnType<typeof call>>, Scope.Scope>>();
-  const commands = commandsForGrant(grant);
-  const executes = commands.some(
-    (command) => command.scope === "launch" || command.scope === "send",
-  );
   return {
     tools: [
       {
         name: "cake",
-        description:
-          "Control allowed Cake Projects. Call without command to discover available subcommands; use <command>.help for input schemas. Launch/send return admission, not completion.",
+        description: cakeToolDescription,
         inputSchema: Schema.decodeUnknownSync(jsonObjectSchema)(
-          Schema.toStandardJSONSchemaV1(LocalMcpCall)["~standard"].jsonSchema.input({
+          Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)["~standard"].jsonSchema.input({
             target: "draft-07",
           }),
         ),
-        annotations: {
-          readOnlyHint: commands.every((command) => command.scope === "read"),
-          destructiveHint: executes,
-          openWorldHint: executes,
-        },
+        annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
       },
     ],
     call: async (_name, input, signal) => {
-      // External MCP callback enters the existing backend Context, never a second runtime.
+      // Enter the existing backend Context and its canonical Cake operation implementations.
       // eslint-disable-next-line no-restricted-syntax
       const result = await Effect.runPromiseWith(context)(
-        Effect.scoped(call(grant, input)).pipe(Effect.result),
+        Effect.scoped(call(input)).pipe(Effect.result),
         { signal },
       );
       if (result._tag === "Failure") throw result.failure;
@@ -58,7 +63,7 @@ const apply = Effect.fn("LocalMcp.apply")(function* (document: LocalMcpDocument)
       ? {
           port: document.configuration.port,
           token: document.token,
-          endpoint: yield* endpoint(document.configuration),
+          endpoint: yield* endpoint(),
         }
       : undefined,
   );
@@ -71,14 +76,11 @@ export const initialize = Effect.fn("LocalMcp.initialize")(function* () {
 export const get = Effect.fn("LocalMcp.get")(function* (): Effect.fn.Return<
   LocalMcpSnapshot,
   LocalMcpError,
-  LocalMcpSettings | LocalMcpServer | ApplicationState
+  LocalMcpSettings | LocalMcpServer
 > {
   const document = yield* (yield* LocalMcpSettings).load();
   const runtime = yield* (yield* LocalMcpServer).get();
-  const projects = (yield* ApplicationState)
-    .snapshot()
-    .projects.map(({ path, name }) => ({ path, name }));
-  const snapshot = { configuration: document.configuration, runtime, projects };
+  const snapshot = { configuration: document.configuration, runtime };
   if (!runtime.url) return snapshot;
   return {
     ...snapshot,
@@ -106,18 +108,6 @@ export const configure = Effect.fn("LocalMcp.configure")(function* (input: Local
       (cause) => new LocalMcpError({ code: "invalid_input", message: cause.message }),
     ),
   );
-  const projects = (yield* ApplicationState).snapshot().projects;
-  if (
-    configuration.enabled &&
-    (!configuration.projects.every(
-      (path) => isAbsolute(path) && projects.some((project) => project.path === path),
-    ) ||
-      configuration.projects.length === 0)
-  )
-    return yield* new LocalMcpError({
-      code: "invalid_input",
-      message: "Select at least one registered Project before enabling the MCP server.",
-    });
   const storage = yield* LocalMcpSettings;
   const document = { ...(yield* storage.load()), configuration };
   yield* storage.save(document);

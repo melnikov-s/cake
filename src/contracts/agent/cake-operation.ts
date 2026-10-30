@@ -1,7 +1,23 @@
-import type { Schema } from "effect";
+import { Schema } from "effect";
+import { jsonObjectSchema } from "../serialization/json-contract";
 import type { CakeOperationRuntime } from "./cake-operation-context";
 import type { CakeOperationOptions } from "./cake-operation-options";
 import type { JsonObject, JsonValue } from "../serialization/json-contract";
+
+export const cakeToolDescription =
+  'Use Cake controls when helpful. {} lists enabled topics; {"command":"<topic>"} lists operations; {"command":"<operation>.help"} gives the exact contract. Known operations need no prior discovery. Invoke with {"command":"<operation>","input":{...}}. Full result schemas: <operation>.output-schema. In codemode, typed operations resolve to {command,result}; help and untyped operations resolve to text. Artifact content is not preloaded: discover, resolve, then read it. For static HTML/CSS mockups, call html.present with {id,title,html,height?}: one inline presentation, no files or specialist. For a loaded skill widget template, use its complete widgets.instantiate call with template and initialState directly; no prior artifact/editor lookup or code generation. Use widgets.present for other complex interactive experiences. Use artifacts.present to show an existing artifact.';
+
+const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
+  description: "Exact topic or operation command. Omit for the help index.",
+});
+export const cakeToolEnvelopeSchema = Schema.Struct({
+  command: Schema.optionalKey(commandSchema),
+  input: Schema.optionalKey(
+    jsonObjectSchema.annotate({
+      description: "Operation arguments only. Omit for help and topic protocol discovery.",
+    }),
+  ),
+});
 
 export const MAX_CAKE_OPERATION_IMAGE_BYTES = 8_000_000;
 
@@ -31,9 +47,16 @@ export interface CakeOperationImageResult {
 }
 
 export type CakeOperationResult = JsonValue | CakeOperationImageResult;
-export type CakeOperationContent =
+type CakeOperationContent =
   | { readonly type: "text"; readonly text: string }
   | CakeOperationImageContent;
+
+export interface CakeOperationInvocation {
+  readonly text: string;
+  readonly content: CakeOperationContent[];
+  readonly details: JsonValue;
+  readonly structuredContent: JsonValue;
+}
 
 export function cakeOperationImageResult(
   metadata: JsonValue,

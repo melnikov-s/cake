@@ -20,13 +20,12 @@ import type { JsonObject, JsonValue } from "../../../contracts/serialization/jso
 import { createMessageBoardExtension } from "./message-board-extension";
 import { createSessionReferenceExtension } from "./session-reference-extension";
 import { createCakeArtifactExtension } from "./artifact-extension";
+import { CakeOperationRegistry, cakeToolOutputSchema } from "./cake-operation-registry";
 import {
-  CakeOperationRegistry,
   cakeToolDescription,
   cakeToolEnvelopeSchema,
-  cakeToolOutputSchema,
-} from "./cake-operation-registry";
-import type { CakeOperationDefinition } from "../../../contracts/agent/cake-operation";
+  type CakeOperationDefinition,
+} from "../../../contracts/agent/cake-operation";
 import type { RuntimeOperationApi } from "../../../contracts/agent/cake-operation-api";
 import { loadCakeSessionRuntimeResourceLoader } from "./cake-session-runtime-resources";
 import { detectGitWorktree, worktreeSystemPrompt } from "./worktree-system-prompt";

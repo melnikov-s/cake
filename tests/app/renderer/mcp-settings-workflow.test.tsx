@@ -49,7 +49,6 @@ async function setup(project = false, trusted = true) {
         serverGet: async () => ({
           configuration: defaultLocalMcpConfiguration(),
           runtime: { status: "disabled" },
-          projects: [],
         }),
         get: (input, options) => {
           if (input.projectPath && !trusted)

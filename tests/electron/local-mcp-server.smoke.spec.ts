@@ -38,10 +38,7 @@ test("configures Cake's built-in MCP server through Settings and connects withou
     await port.pressSequentially("0");
     await expect(port).toBeFocused();
     await expect(port).toHaveValue("0");
-    await section
-      .getByRole("switch", { name: "Allow Project visual-capture-project", exact: true })
-      .click();
-    await section.getByRole("switch", { name: "Allow external assistants", exact: true }).click();
+    await section.getByRole("switch", { name: "Allow full control of Cake", exact: true }).click();
     await expect(section.getByText("Running", { exact: true })).toBeVisible();
     await section
       .getByRole("button", { name: "Copy MCP client configuration", exact: true })
@@ -64,17 +61,32 @@ test("configures Cake's built-in MCP server through Settings and connects withou
       expect((await client.listTools()).map((tool) => tool.name)).toEqual(["cake"]);
       const result = await client.callTool("cake", { command: "projects.list" });
       expect(JSON.stringify(result.content)).toContain(paths.project);
+      const help = await client.callTool("cake", { command: "sessions.cake.help" });
+      expect(JSON.stringify(help.content)).toContain("sessions.cake");
+      await client.callTool("cake", {
+        command: "projects.rename",
+        input: { path: paths.project, name: "Renamed over MCP" },
+      });
+      expect(
+        JSON.stringify(
+          (
+            await client.callTool("cake", {
+              command: "projects.info",
+              input: { path: paths.project },
+            })
+          ).content,
+        ),
+      ).toContain("Renamed over MCP");
     } finally {
       await client.close();
     }
-    await section.getByRole("switch", { name: "Launch sessions", exact: true }).click();
     await section.getByRole("button", { name: "Apply", exact: true }).click();
     await expect(section.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
     expect(
       JSON.parse(await readFile(join(paths.cakeHome, "state", "mcp-server.json"), "utf8"))
-        .configuration.scopes,
-    ).toEqual(["read", "launch"]);
-    await section.getByRole("switch", { name: "Allow external assistants", exact: true }).click();
+        .configuration,
+    ).toEqual({ enabled: true, port: 0 });
+    await section.getByRole("switch", { name: "Allow full control of Cake", exact: true }).click();
     await expect(section.getByText("Off", { exact: true })).toBeVisible();
     expect(
       await application.evaluate(({ BrowserWindow }) =>

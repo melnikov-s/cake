@@ -587,11 +587,15 @@ whole listener with Google sign-in and a server-enforced account allowlist; appr
 clients still have full backend authority. Listeners without this option, including
 standalone hosting, require private access or an independently authenticated proxy.
 Host/Origin validation alone is not authentication. Opt-in external local MCP is
-separate: a loopback-only Effect Streamable HTTP server exposes an allowlisted
-subset of Project Chat operations. Backend-owned settings select Projects and
-scopes, with a private persisted bearer token required on every request. Calls
-recheck Project/scope grants and live trust; configuration changes restart the
-MCP listener without restarting agent execution. It is not the full-authority remote RPC endpoint. See
+a full-control authenticated client: a loopback-only Effect Streamable HTTP server
+exposes the canonical Cake operation definitions through one `cake` tool in
+global Cake Chat's context, including its ordinary session gateway. Full-control
+invocation bypasses model-facing catalog curation, not domain validation;
+ordinary agent catalogs keep their existing curation. There are no MCP-specific Project or command
+allowlists. A private persisted bearer token is required on every request;
+existing domain trust, approval and host-capability checks remain authoritative.
+Configuration changes restart the MCP listener, not agent execution. This uses
+Cake's command contracts rather than exposing the renderer RPC protocol. See
 [local MCP setup and limitations](../../README.md#local-mcp-access) and the remote
 [host guide](../development/headless-backend.md#security-and-data-isolation).
 

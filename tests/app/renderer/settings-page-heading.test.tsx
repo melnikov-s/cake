@@ -54,7 +54,6 @@ describe("Settings section navigation", () => {
           serverGet: async () => ({
             configuration: defaultLocalMcpConfiguration(),
             runtime: { status: "disabled" },
-            projects: [],
           }),
         },
       },

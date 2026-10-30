@@ -84,6 +84,7 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): CakeSessi
   reload: () => Effect.void,
   publishSessionChanged: () => Effect.void,
   callCakeOperation: () => Effect.succeed(null),
+  callCakeTool: () => Effect.die("Unexpected Cake tool invocation"),
   dispatchExtensionCompanionAction: () => Effect.void,
 });
 

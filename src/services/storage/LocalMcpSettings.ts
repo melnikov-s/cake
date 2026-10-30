@@ -8,11 +8,15 @@ import {
 import { atomicWriteFile } from "./internal/atomicFile";
 
 const Document = Schema.Struct({
-  version: Schema.Literal(1),
+  version: Schema.Literal(2),
   configuration: LocalMcpConfiguration,
   token: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
 });
 export interface LocalMcpDocument extends Schema.Schema.Type<typeof Document> {}
+const StoredDocument = Schema.Union([
+  Document,
+  Schema.Struct({ ...Document.fields, version: Schema.Literal(1) }),
+]);
 const storageError = (cause: { readonly message: string }) =>
   new LocalMcpError({
     code: "operation_failed",
@@ -53,7 +57,7 @@ export const makeLocalMcpSettingsLive = (directory: string) =>
       const load = Effect.fn("LocalMcpSettings.load")(function* () {
         if (!(yield* fs.exists(target).pipe(Effect.mapError(storageError)))) {
           const document: LocalMcpDocument = {
-            version: 1,
+            version: 2,
             configuration: defaultLocalMcpConfiguration(),
             token: randomBytes(32).toString("hex"),
           };
@@ -61,9 +65,18 @@ export const makeLocalMcpSettingsLive = (directory: string) =>
           return document;
         }
         const text = yield* fs.readFileString(target).pipe(Effect.mapError(storageError));
-        return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Document))(text).pipe(
-          Effect.mapError(storageError),
-        );
+        const document = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(StoredDocument))(
+          text,
+        ).pipe(Effect.mapError(storageError));
+        if (document.version === 2) return document;
+        // An old read-only/scoped grant must not silently become full control.
+        const migrated: LocalMcpDocument = {
+          version: 2,
+          configuration: { enabled: false, port: document.configuration.port },
+          token: document.token,
+        };
+        yield* save(migrated);
+        return migrated;
       });
       return LocalMcpSettings.of({ load, save });
     }),

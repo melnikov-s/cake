@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from "vitest";
 import { Context, Effect, Layer, Schema } from "effect";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
-import { mkdtemp, rm, lstat, readFile } from "node:fs/promises";
+import { mkdtemp, rm, lstat, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request } from "node:http";
@@ -12,8 +12,12 @@ import {
   LocalMcpSettings,
   makeLocalMcpSettingsLive,
 } from "../../src/services/storage/LocalMcpSettings";
+import { CakeSessionRuntimes } from "../../src/services/pi/CakeSessionRuntimes";
+import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
+import { projectChatSessionId } from "../../src/domain/cake-chats/cakeChatLocations";
 import { localMcpFixture, localMcpTarget } from "../app/helpers/localMcpHarness";
 import type { LocalMcpConfiguration } from "../../src/contracts/mcp/local-mcp";
+import type { CakeOperationInvocation } from "../../src/contracts/agent/cake-operation";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -50,24 +54,37 @@ function client(url: string, token: string) {
 }
 const call = (client: McpClient, command: string, input: Record<string, unknown> = {}) =>
   client.callTool("cake", { command, input });
-const content = (value: { content: readonly unknown[] }) => {
-  const block = Schema.decodeUnknownSync(
-    Schema.Struct({ type: Schema.Literal("text"), text: Schema.String }),
-  )(value.content[0]);
-  return JSON.parse(block.text);
-};
-const configuration: LocalMcpConfiguration = {
-  enabled: true,
-  port: 0,
-  projects: ["/project"],
-  scopes: ["read", "launch", "send", "todos.write"],
-};
+const content = (value: { content: readonly unknown[] }) =>
+  Schema.decodeUnknownSync(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String }))(
+    value.content[0],
+  ).text;
+const configuration: LocalMcpConfiguration = { enabled: true, port: 0 };
+const emptyResult = (): CakeOperationInvocation => ({
+  text: "{}",
+  content: [{ type: "text", text: "{}" }],
+  details: {},
+  structuredContent: {},
+});
 
-it("serves real Cake operations directly over authenticated Effect HTTP MCP", async () => {
+it("exposes the existing Cake Chat registry unchanged through one authenticated cake tool", async () => {
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
         const f = yield* fixture();
+        yield* f.state.transact((state) =>
+          Effect.succeed({
+            ...state,
+            projects: [
+              ...state.projects,
+              {
+                path: "/other",
+                name: "Other",
+                addedAt: "2026-01-01T00:00:00.000Z",
+                lastOpenedAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          }),
+        );
         const snapshot = yield* mcp.configure(configuration).pipe(Effect.provide(f.context));
         const document = yield* Context.get(f.context, LocalMcpSettings).load();
         const url = Schema.decodeUnknownSync(Schema.String)(snapshot.runtime.url);
@@ -78,6 +95,11 @@ it("serves real Cake operations directly over authenticated Effect HTTP MCP", as
             cake: { type: "http", url, headers: { Authorization: `Bearer ${document.token}` } },
           },
         });
+        const root = yield* Context.get(f.context, CakeSessionRuntimes).acquireSession(
+          CAKE_CHAT_SESSION_ID,
+        );
+        const help = yield* root.callCakeTool("help", {});
+        const nestedHelp = yield* root.callCakeTool("sessions.cake.help", {});
         yield* Effect.promise(async () => {
           const c = client(url, document.token);
           try {
@@ -85,85 +107,66 @@ it("serves real Cake operations directly over authenticated Effect HTTP MCP", as
             await c.client.ping();
             const tools = await c.client.listTools();
             expect(tools.map((tool) => tool.name)).toEqual(["cake"]);
-            expect(content(await c.client.callTool("cake", {})).commands).toEqual(
-              expect.arrayContaining([expect.objectContaining({ command: "sessions.create" })]),
-            );
-            expect(content(await call(c.client, "sessions.create.help")).inputSchema).toMatchObject(
-              {
-                type: "object",
-                required: expect.arrayContaining(["projectPath", "initialPrompt", "name"]),
-              },
-            );
-            await expect(c.client.callTool("sessions.list", {})).rejects.toThrow("not found");
-            expect(content(await call(c.client, "projects.list"))).toMatchObject({
-              projects: [{ path: "/project" }],
+            expect(tools[0]?.annotations).toMatchObject({
+              readOnlyHint: false,
+              destructiveHint: true,
+              openWorldHint: true,
             });
+            expect((await c.client.callTool("cake", {})).content).toEqual(help.content);
+            expect((await call(c.client, "sessions.cake.help")).content).toEqual(
+              nestedHelp.content,
+            );
+            expect(content(await call(c.client, "projects.rename.help"))).toContain(
+              "projects.rename —",
+            );
+            expect(content(await call(c.client, "projects.list"))).toContain("/other");
+            expect(
+              content(
+                await call(c.client, "projects.rename", {
+                  path: "/other",
+                  name: "Renamed over MCP",
+                }),
+              ),
+            ).toContain("Renamed over MCP");
+            expect(
+              f.state.snapshot().projects.find((project) => project.path === "/other")?.name,
+            ).toBe("Renamed over MCP");
             expect(
               content(
                 await call(c.client, "sessions.create", {
-                  projectPath: "/project",
+                  workspacePath: "/project",
                   name: "Task",
                   initialPrompt: "Work",
                 }),
               ),
-            ).toMatchObject({ status: "started", sessionId: expect.any(String) });
+            ).toContain('"started"');
             expect(f.prompts.some((text) => text.includes("Work"))).toBe(true);
             expect(
               content(
                 await call(c.client, "sessions.send", {
-                  projectPath: "/project",
                   sessionId: localMcpTarget,
                   text: "Continue",
                 }),
               ),
-            ).toMatchObject({ command: "sessions.send" });
-            const created = content(
-              await call(c.client, "todos.create", {
-                projectPath: "/project",
-                title: "Task",
-                description: "Work started",
-              }),
-            );
-            const { id, revision } = created.result;
-            expect(
-              content(await call(c.client, "todos.read", { projectPath: "/project", id })),
-            ).toMatchObject({ result: { title: "Task", state: "open" } });
+            ).toContain("sessions.send");
             expect(
               content(
-                await call(c.client, "todos.update", {
-                  projectPath: "/project",
-                  id,
-                  expectedRevision: revision,
-                  state: "done",
+                await call(c.client, "sessions.cake", {
+                  sessionId: projectChatSessionId("/project"),
+                  command: "todos.create",
+                  input: {
+                    title: "Full registry",
+                    description: "Created through the normal session gateway",
+                  },
                 }),
               ),
-            ).toMatchObject({ result: { revision: revision + 1, committed: true } });
+            ).toContain("committed");
             expect(
-              (
-                await call(c.client, "todos.update", {
-                  projectPath: "/project",
-                  id,
-                  expectedRevision: revision,
-                  title: "Stale",
-                })
-              ).isError,
+              f.state
+                .snapshot()
+                .projects.find((project) => project.path === "/project")
+                ?.todos?.items.some((todo) => todo.title === "Full registry"),
             ).toBe(true);
-            expect(
-              (
-                await call(c.client, "sessions.create", {
-                  projectPath: "/project",
-                  name: "Task",
-                  initialPrompt: "Work",
-                  approved: true,
-                })
-              ).isError,
-            ).toBe(true);
-            expect(
-              content(await call(c.client, "projects.info", { projectPath: "/other" })),
-            ).toMatchObject({ code: "denied" });
-            expect(content(await call(c.client, "sessions.cake", {}))).toMatchObject({
-              code: "unsupported",
-            });
           } finally {
             await c.client.close();
           }
@@ -178,14 +181,9 @@ it("defaults off and persists private settings and token across server restarts"
     Effect.scoped(
       Effect.gen(function* () {
         const f = yield* fixture();
-        const initial = yield* mcp.get().pipe(Effect.provide(f.context));
-        expect(initial.configuration).toMatchObject({
-          enabled: false,
-          projects: [],
-          scopes: ["read"],
+        expect((yield* mcp.get().pipe(Effect.provide(f.context))).runtime).toEqual({
+          status: "disabled",
         });
-        expect(initial.runtime).toEqual({ status: "disabled" });
-        expect(initial.clientConfiguration).toBeUndefined();
         const stored = yield* Context.get(f.context, LocalMcpSettings).load();
         expect(
           (yield* Effect.promise(() => lstat(join(f.path, "mcp-server.json")))).mode & 0o777,
@@ -200,12 +198,46 @@ it("defaults off and persists private settings and token across server restarts"
           JSON.parse(
             yield* Effect.promise(() => readFile(join(f.path, "mcp-server.json"), "utf8")),
           ),
-        ).toMatchObject({ configuration });
+        ).toMatchObject({ version: 2, configuration });
         const url = Schema.decodeUnknownSync(Schema.String)(restarted.runtime.url);
         yield* mcp.configure({ ...configuration, enabled: false }).pipe(Effect.provide(f.context));
         yield* mcp.initialize().pipe(Effect.provide(f.context));
         expect((yield* mcp.get().pipe(Effect.provide(f.context))).runtime.status).toBe("disabled");
         yield* Effect.promise(() => expect(fetch(url)).rejects.toThrow());
+      }),
+    ),
+  );
+});
+
+it("migrates saved scoped access without silently promoting it to full control", async () => {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        const stored = yield* Context.get(f.context, LocalMcpSettings).load();
+        yield* Effect.promise(() =>
+          writeFile(
+            join(f.path, "mcp-server.json"),
+            JSON.stringify({
+              version: 1,
+              token: stored.token,
+              configuration: {
+                enabled: true,
+                port: 4318,
+                projects: ["/project"],
+                scopes: ["read"],
+              },
+            }),
+          ),
+        );
+        yield* mcp.initialize().pipe(Effect.provide(f.context));
+        const migrated = yield* Context.get(f.context, LocalMcpSettings).load();
+        expect(migrated).toEqual({
+          version: 2,
+          token: stored.token,
+          configuration: { enabled: false, port: 4318 },
+        });
+        expect((yield* mcp.get().pipe(Effect.provide(f.context))).runtime.status).toBe("disabled");
       }),
     ),
   );
@@ -245,9 +277,6 @@ it("rejects unauthenticated, wrong-token, foreign Host and browser-origin access
               (await fetch(url, { headers: { Origin: origin, Authorization: `Bearer ${token}` } }))
                 .status,
             ).toBe(403);
-          expect((await fetch(url, { headers: { Authorization: `Bearer ${token}` } })).status).toBe(
-            405,
-          );
         });
         const rotated = yield* mcp.rotateToken().pipe(Effect.provide(f.context));
         const newUrl = Schema.decodeUnknownSync(Schema.String)(rotated.runtime.url);
@@ -270,55 +299,42 @@ it("rejects unauthenticated, wrong-token, foreign Host and browser-origin access
   );
 });
 
-it("enforces read-only scopes on direct calls and applies permission changes live", async () => {
+it("preserves native image content and structured results", async () => {
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        const f = yield* fixture();
-        for (const scopes of [["read"] as const, [] as const]) {
-          const snapshot = yield* mcp
-            .configure({ ...configuration, scopes })
-            .pipe(Effect.provide(f.context));
-          const { token } = yield* Context.get(f.context, LocalMcpSettings).load();
-          const url = Schema.decodeUnknownSync(Schema.String)(snapshot.runtime.url);
-          yield* Effect.promise(async () => {
-            const c = client(url, token);
-            try {
-              await c.client.connect(c.transport);
-              expect(
-                (await c.client.listTools()).every((tool) => tool.annotations?.readOnlyHint),
-              ).toBe(true);
-              expect(
-                content(
-                  await call(c.client, "sessions.create", {
-                    projectPath: "/project",
-                    name: "Task",
-                    initialPrompt: "Work",
-                  }),
-                ),
-              ).toMatchObject({ code: "denied" });
-              expect(content(await call(c.client, "sessions.create.help"))).toMatchObject({
-                code: "denied",
-              });
-              const discovery = content(await c.client.callTool("cake", {}));
-              if (scopes.length === 0) expect(discovery.commands).toEqual([]);
-              else
-                expect(
-                  discovery.commands.every(
-                    (command: { command: string }) =>
-                      ![
-                        "sessions.create",
-                        "sessions.send",
-                        "todos.create",
-                        "todos.update",
-                      ].includes(command.command),
-                  ),
-                ).toBe(true);
-            } finally {
-              await c.client.close();
-            }
-          });
-        }
+        const runtime = yield* open(0, "test-token", {
+          tools: [
+            {
+              name: "cake",
+              description: "Image transport test",
+              inputSchema: { type: "object" },
+              annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+            },
+          ],
+          call: async () => ({
+            ...emptyResult(),
+            content: [
+              { type: "text", text: "Screenshot" },
+              { type: "image", mimeType: "image/png", data: "aW1hZ2U=" },
+            ],
+            structuredContent: { result: "metadata" },
+          }),
+        });
+        yield* Effect.promise(async () => {
+          const c = client(runtime, "test-token");
+          try {
+            await c.client.connect(c.transport);
+            const result = await c.client.callTool("cake", {});
+            expect(result.content).toEqual([
+              { type: "text", text: "Screenshot" },
+              { type: "image", mimeType: "image/png", data: "aW1hZ2U=" },
+            ]);
+            expect(result.structuredContent).toEqual({ result: "metadata" });
+          } finally {
+            await c.client.close();
+          }
+        });
       }),
     ),
   );
@@ -341,7 +357,7 @@ it("interrupts unfinished tool work when the server is disabled", async () => {
                 name: "cake",
                 description: "Test shutdown",
                 inputSchema: { type: "object" },
-                annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+                annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
               },
             ],
             call: async (_name, _input, signal) => {
@@ -356,7 +372,7 @@ it("interrupts unfinished tool work when the server is disabled", async () => {
                   { once: true },
                 ),
               );
-              return {};
+              return emptyResult();
             },
           },
         });
@@ -375,22 +391,17 @@ it("interrupts unfinished tool work when the server is disabled", async () => {
   );
 });
 
-it("rejects invalid grants and reports an occupied port without crashing Cake", async () => {
+it("reports an occupied port without crashing Cake", async () => {
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
         const f = yield* fixture();
-        for (const projects of [[], ["relative"], ["/other"]]) {
-          expect(
-            yield* mcp
-              .configure({ ...configuration, projects })
-              .pipe(Effect.result, Effect.provide(f.context)),
-          ).toMatchObject({ _tag: "Failure", failure: { code: "invalid_input" } });
-        }
-        const occupied = yield* open(0, "test-token", { tools: [], call: async () => ({}) });
-        const port = Number(new URL(occupied).port);
+        const occupied = yield* open(0, "test-token", {
+          tools: [],
+          call: async () => emptyResult(),
+        });
         const snapshot = yield* mcp
-          .configure({ ...configuration, port })
+          .configure({ ...configuration, port: Number(new URL(occupied).port) })
           .pipe(Effect.provide(f.context));
         expect(snapshot.runtime).toMatchObject({ status: "error", error: expect.any(String) });
         yield* mcp.configure({ ...configuration, enabled: false }).pipe(Effect.provide(f.context));

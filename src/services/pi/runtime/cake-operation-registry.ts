@@ -3,7 +3,8 @@ import { cakeToolCallKey } from "./cake-tool-timing";
 import { discoveryResultText } from "../../../contracts/agent/discovery-result-text";
 import {
   MAX_CAKE_OPERATION_IMAGE_BYTES,
-  type CakeOperationContent,
+  cakeToolEnvelopeSchema,
+  type CakeOperationInvocation,
   type CakeOperationDefinition,
   type CakeOperationExample,
   type CakeOperationExecutionContext,
@@ -27,21 +28,6 @@ const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
 const MAX_CAKE_OPERATION_RESULT_BYTES = 1_048_576;
 const MAX_CAKE_OPERATION_IMAGES = 4;
 const MAX_CAKE_OPERATION_IMAGE_BASE64_LENGTH = Math.ceil(MAX_CAKE_OPERATION_IMAGE_BYTES / 3) * 4;
-
-export const cakeToolDescription =
-  'Use Cake controls when helpful. {} lists enabled topics; {"command":"<topic>"} lists operations; {"command":"<operation>.help"} gives the exact contract. Known operations need no prior discovery. Invoke with {"command":"<operation>","input":{...}}. Full result schemas: <operation>.output-schema. In codemode, typed operations resolve to {command,result}; help and untyped operations resolve to text. Artifact content is not preloaded: discover, resolve, then read it. For static HTML/CSS mockups, call html.present with {id,title,html,height?}: one inline presentation, no files or specialist. For a loaded skill widget template, use its complete widgets.instantiate call with template and initialState directly; no prior artifact/editor lookup or code generation. Use widgets.present for other complex interactive experiences. Use artifacts.present to show an existing artifact.';
-
-const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
-  description: "Exact topic or operation command. Omit for the help index.",
-});
-export const cakeToolEnvelopeSchema = Schema.Struct({
-  command: Schema.optionalKey(commandSchema),
-  input: Schema.optionalKey(
-    jsonObjectSchema.annotate({
-      description: "Operation arguments only. Omit for help and topic protocol discovery.",
-    }),
-  ),
-});
 
 /** Model-facing envelope only; exact result schemas are validated in invoke and disclosed by help. */
 export const cakeToolOutputSchema = Schema.Union([
@@ -287,12 +273,7 @@ export class CakeOperationRegistry {
   async invoke(
     envelopeInput: unknown,
     context: CakeOperationExecutionContext,
-  ): Promise<{
-    text: string;
-    content: CakeOperationContent[];
-    details: JsonValue;
-    structuredContent: JsonValue;
-  }> {
+  ): Promise<CakeOperationInvocation> {
     const envelope = Schema.decodeUnknownSync(cakeToolEnvelopeSchema)(envelopeInput);
     const command = envelope.command ?? "help";
     if (command === "help") return helpResult(command, this.help());

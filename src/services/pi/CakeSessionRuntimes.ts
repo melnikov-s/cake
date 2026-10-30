@@ -8,6 +8,7 @@ import {
 } from "../storage/RuntimeRecoveryStorage";
 import { stat } from "node:fs/promises";
 import type { CakeOperationOptions } from "../../contracts/agent/cake-operation-options";
+import type { CakeOperationInvocation } from "../../contracts/agent/cake-operation";
 import {
   Context,
   Clock,
@@ -289,6 +290,10 @@ export interface CakeSessionHandle {
     command: string,
     input: JsonObject,
   ) => Effect.Effect<JsonValue, PiSessionError>;
+  readonly callCakeTool: (
+    command: string,
+    input: JsonObject,
+  ) => Effect.Effect<CakeOperationInvocation, PiSessionError>;
   readonly dispatchExtensionCompanionAction: (
     id: string,
     action: string,
@@ -1563,6 +1568,20 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                   new PiSessionError({
                     operation: "callCakeOperation",
                     message: "Cake operations are unavailable",
+                  }),
+                ),
+          callCakeTool: (command, input) =>
+            shared.runtime.callCakeTool
+              ? cancellableRuntimeOperation(
+                  "callCakeTool",
+                  (signal) =>
+                    shared.runtime.callCakeTool?.(command, input, signal) ??
+                    Promise.reject(new Error("Cake tool is unavailable")),
+                )
+              : Effect.fail(
+                  new PiSessionError({
+                    operation: "callCakeTool",
+                    message: "Cake tool is unavailable",
                   }),
                 ),
           dispatchExtensionCompanionAction: (id, action, value) =>

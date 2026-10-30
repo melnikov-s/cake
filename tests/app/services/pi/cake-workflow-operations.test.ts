@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  CakeOperationRegistry,
-  cakeToolDescription,
-} from "../../../../src/services/pi/runtime/cake-operation-registry";
+import { CakeOperationRegistry } from "../../../../src/services/pi/runtime/cake-operation-registry";
+import { cakeToolDescription } from "../../../../src/contracts/agent/cake-operation";
 import { createCakeWorkflowOperations } from "../../../../src/domain/workflows/cake-workflow-operations";
 import { type WorkflowControl } from "../../../../src/contracts/workflows/workflow-agent-control";
 

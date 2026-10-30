@@ -177,7 +177,7 @@ export function coordinatorCakeOperations(
 ): CoordinatorCakeOperations {
   const control = options.globalControl;
   if (!control) throw new Error("The coordinator control is unavailable");
-  return (bridge) => {
+  return (bridge, access) => {
     return [
       ...withChatContextLimit(
         createGlobalControlOperations(control, bridge.resolveModel),
@@ -206,15 +206,17 @@ export function coordinatorCakeOperations(
           (async () => {
             throw new Error("Artifact publication is unavailable in Cake Chat");
           }),
-      }).filter((operation) =>
-        [
-          "html.present",
-          "artifacts.link",
-          "artifacts.present",
-          "artifacts.state.read",
-          "artifacts.selection.capture",
-          "artifacts.source",
-        ].includes(operation.command),
+      }).filter(
+        (operation) =>
+          access?.fullControl === true ||
+          [
+            "html.present",
+            "artifacts.link",
+            "artifacts.present",
+            "artifacts.state.read",
+            "artifacts.selection.capture",
+            "artifacts.source",
+          ].includes(operation.command),
       ),
       ...(options.browserControl ? createCakeBrowserOperations(options.browserControl) : []),
       ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
@@ -233,7 +235,9 @@ export function coordinatorCakeOperations(
         : []),
     ].filter(
       (operation) =>
-        !options.allowedCakeOperations || options.allowedCakeOperations.includes(operation.command),
+        access?.fullControl === true ||
+        !options.allowedCakeOperations ||
+        options.allowedCakeOperations.includes(operation.command),
     );
   };
 }

@@ -1,12 +1,10 @@
 import { Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
-import {
-  CakeOperationRegistry,
-  cakeToolDescription,
-  cakeToolEnvelopeSchema,
-} from "../../../src/services/pi/runtime/cake-operation-registry";
+import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import {
   MAX_CAKE_OPERATION_IMAGE_BYTES,
+  cakeToolDescription,
+  cakeToolEnvelopeSchema,
   cakeOperationImageResult,
   type CakeOperationDefinition,
   type CakeOperationImageContent,

@@ -36,11 +36,8 @@ import type {
   ExplicitCakeModelSelection,
   CakeModelLaunch,
 } from "../../contracts/model-presets/cake-model-selection";
-import {
-  CakeOperationRegistry,
-  cakeToolDescription,
-  cakeToolEnvelopeSchema,
-} from "../pi/runtime/cake-operation-registry";
+import { CakeOperationRegistry } from "../pi/runtime/cake-operation-registry";
+import { cakeToolDescription, cakeToolEnvelopeSchema } from "../../contracts/agent/cake-operation";
 import { applyPiSetting, projectPiSettings } from "../pi/runtime/settings-translation";
 import { projectSessionEntries } from "../pi/runtime/session-projection";
 import { projectModelCatalog } from "../pi/live/PiModelsLive";
@@ -225,35 +222,42 @@ export async function createDurableCakeChatRuntime(
       throw new Error("Model preset resolution is unavailable in this runtime");
     return { ...(selection ?? caller) };
   };
+  const operationBridge = {
+    sessionId,
+    resolveModel,
+    info: async () => ({ sessionId, kind: "cake-chat", sessionFile, streaming }),
+    usage: async () =>
+      Schema.decodeUnknownSync(Schema.Json)((await runtime.snapshot()).usage ?? {}),
+    contextStatus: async () => {
+      const context = await engine.root.context(BACKGROUND_CONTEXT);
+      const { tokens } = estimateContextTokens(context.messages);
+      return {
+        tokens,
+        contextWindow: selected.contextWindow,
+        percent: (tokens / selected.contextWindow) * 100,
+      };
+    },
+    compact: async () => {
+      await runtime.compact();
+      return { compacted: true };
+    },
+    setModel: async (model: ExplicitCakeModelSelection) => {
+      await runtime.applyConfiguration(model);
+    },
+  };
+  const attributionOperations = taskAttributionOperations({
+    conversation: () => engine.root,
+    todos: () => options.cakeChatTodos?.() ?? [],
+  });
   const operations = new CakeOperationRegistry(
+    [...options.coordinator.operations(operationBridge), ...attributionOperations],
+    options.sessionReferences?.project,
+  );
+  // Full-control clients use the same definitions without model-facing catalog curation.
+  const fullControlOperations = new CakeOperationRegistry(
     [
-      ...options.coordinator.operations({
-        sessionId,
-        resolveModel,
-        info: async () => ({ sessionId, kind: "cake-chat", sessionFile, streaming }),
-        usage: async () =>
-          Schema.decodeUnknownSync(Schema.Json)((await runtime.snapshot()).usage ?? {}),
-        contextStatus: async () => {
-          const context = await engine.root.context(BACKGROUND_CONTEXT);
-          const { tokens } = estimateContextTokens(context.messages);
-          return {
-            tokens,
-            contextWindow: selected.contextWindow,
-            percent: (tokens / selected.contextWindow) * 100,
-          };
-        },
-        compact: async () => {
-          await runtime.compact();
-          return { compacted: true };
-        },
-        setModel: async (model) => {
-          await runtime.applyConfiguration(model);
-        },
-      }),
-      ...taskAttributionOperations({
-        conversation: () => engine.root,
-        todos: () => options.cakeChatTodos?.() ?? [],
-      }),
+      ...options.coordinator.operations(operationBridge, { fullControl: true }),
+      ...attributionOperations,
     ],
     options.sessionReferences?.project,
   );
@@ -866,6 +870,12 @@ export async function createDurableCakeChatRuntime(
     async setPiSetting(update: PiSettingUpdate) {
       applyPiSetting(settings, update);
       publish();
+    },
+    async callCakeTool(command, input, signal) {
+      return fullControlOperations.invoke(
+        { command, input },
+        { signal, toolCallId: randomUUID(), runtime },
+      );
     },
     async callCakeOperation(
       command: string,

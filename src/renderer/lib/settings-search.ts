@@ -116,7 +116,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
           {
             label: "Cake MCP server",
             targetId: "local-mcp-settings-title",
-            keywords: "external assistant access HTTP port permissions token projects",
+            keywords: "external assistant access HTTP port token full control",
           },
           {
             label: "MCP configuration",

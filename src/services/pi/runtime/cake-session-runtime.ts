@@ -114,7 +114,10 @@ import type {
   CoordinatorCakeOperations,
 } from "../../../contracts/agent/cake-operation-api";
 import type { CakeOperationHost } from "../../../contracts/agent/cake-operation-context";
-import type { CakeOperationDefinition } from "../../../contracts/agent/cake-operation";
+import type {
+  CakeOperationDefinition,
+  CakeOperationInvocation,
+} from "../../../contracts/agent/cake-operation";
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
 import { projectCakeOperationRuntime } from "./cake-operation-context";
 import {
@@ -300,6 +303,11 @@ export interface CakeSessionRuntime {
   setPiSetting(update: PiSettingUpdate): Promise<void>;
   reload?(): Promise<void>;
   callCakeOperation?(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
+  callCakeTool?(
+    command: string,
+    input: JsonObject,
+    signal: AbortSignal,
+  ): Promise<CakeOperationInvocation>;
   dispatchExtensionCompanionAction?(id: string, action: string, value: JsonValue): Promise<void>;
   refreshModels?(): Promise<void>;
   rename(name: string, onlyIfUnnamed?: boolean): Promise<void>;
@@ -878,7 +886,26 @@ export async function createCakeSessionRuntime(
     setModel: configuration.setOperationModel,
   };
 
+  const callCakeTool = async (
+    command: string,
+    input: JsonObject,
+    signal: AbortSignal,
+  ): Promise<CakeOperationInvocation> => {
+    if (disposed) throw new Error("The Cake runtime has been disposed");
+    const registry = capabilities.operationRegistry.current;
+    if (!registry) throw new Error("Cake operations are unavailable");
+    return registry.invoke(
+      { command, input },
+      {
+        signal,
+        toolCallId: `cake-tool:${crypto.randomUUID()}`,
+        runtime: projectCakeOperationRuntime(session, `cake-operation-${command}`),
+      },
+    );
+  };
+
   return {
+    callCakeTool,
     sessionId: cakeSessionId,
     get sessionFile() {
       return session.sessionFile ?? "";
@@ -1118,17 +1145,7 @@ export async function createCakeSessionRuntime(
     setPiSetting: configuration.setPiSetting,
     reload: resources.requestReload,
     async callCakeOperation(command, input, signal) {
-      if (disposed) throw new Error("The Cake runtime has been disposed");
-      const registry = capabilities.operationRegistry.current;
-      if (!registry) throw new Error("Cake operations are unavailable");
-      const result = await registry.invoke(
-        { command, input },
-        {
-          signal,
-          toolCallId: `session-plugin:${crypto.randomUUID()}`,
-          runtime: projectCakeOperationRuntime(session, `cake-operation-${command}`),
-        },
-      );
+      const result = await callCakeTool(command, input, signal);
       if (
         typeof result.details === "object" &&
         result.details !== null &&

@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { observer } from "r-state-tree/react";
-import type { LocalMcpScope } from "../../contracts/mcp/local-mcp";
 import type { LocalMcpSettingsStore } from "../stores/LocalMcpSettingsStore";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -8,13 +7,6 @@ import { Switch } from "./ui/switch";
 import { Badge } from "./ui/badge";
 import { Callout } from "./ui/callout";
 import { CopyButton } from "./ui/copy-button";
-
-const permissions: readonly { scope: LocalMcpScope; label: string }[] = [
-  { scope: "read", label: "Read sessions and to-dos" },
-  { scope: "launch", label: "Launch sessions" },
-  { scope: "send", label: "Send messages" },
-  { scope: "todos.write", label: "Edit to-dos" },
-];
 
 export const SettingsLocalMcpSection = observer(function SettingsLocalMcpSection({
   settings,
@@ -45,47 +37,14 @@ export const SettingsLocalMcpSection = observer(function SettingsLocalMcpSection
       </header>
       <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
         <label className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-xs">
-          <span>Allow external assistants</span>
+          <span>Full control of Cake</span>
           <Switch
-            aria-label="Allow external assistants"
+            aria-label="Allow full control of Cake"
             checked={enabled}
-            disabled={settings.busy || !snapshot || (!enabled && settings.projects.length === 0)}
+            disabled={settings.busy || !snapshot}
             onCheckedChange={(value) => void settings.save(value)}
           />
         </label>
-        <div className="grid gap-2 px-3.5 py-2.5">
-          <h3 className="text-xs font-medium">Projects</h3>
-          {snapshot?.projects.length === 0 && (
-            <p className="text-xs text-muted-foreground">No registered Projects.</p>
-          )}
-          {snapshot?.projects.map((project) => (
-            <label key={project.path} className="flex items-center justify-between gap-4 text-xs">
-              <span className="min-w-0 truncate" title={project.path}>
-                {project.name}
-              </span>
-              <Switch
-                aria-label={`Allow Project ${project.name}`}
-                checked={settings.projects.includes(project.path)}
-                disabled={settings.busy}
-                onCheckedChange={(value) => settings.selectProject(project.path, value)}
-              />
-            </label>
-          ))}
-        </div>
-        <div className="grid gap-2 px-3.5 py-2.5">
-          <h3 className="text-xs font-medium">Permissions</h3>
-          {permissions.map(({ scope, label }) => (
-            <label key={scope} className="flex items-center justify-between gap-4 text-xs">
-              <span>{label}</span>
-              <Switch
-                aria-label={label}
-                checked={settings.scopes.includes(scope)}
-                disabled={settings.busy}
-                onCheckedChange={(value) => settings.selectScope(scope, value)}
-              />
-            </label>
-          ))}
-        </div>
         <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5">
           <label className="flex items-center gap-3 text-xs">
             Port
