@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
@@ -9,7 +9,9 @@ import {
   projectTodoBaseline,
   type ProjectTodo,
   type ProjectTodos,
+  type ProjectTodoUserMutation,
 } from "../../../src/contracts/projects/project-todos";
+import { localSnoozeDateTime } from "../../../src/renderer/lib/project-todo-snooze";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
 import { SideChatLayout } from "../../../src/renderer/components/side-chat-layout";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
@@ -52,6 +54,7 @@ function renderTodos(
       },
     ],
   };
+  const mutations: ProjectTodoUserMutation[] = [];
   const project = () => ({ ...projectRecord({ path: "/cake" }), todos });
   const sessions =
     initial?.sessions ??
@@ -70,16 +73,33 @@ function renderTodos(
     client: {
       projectTodos: {
         mutateUser: async ({ mutation }) => {
+          mutations.push(mutation);
           if (mutation._tag === "Select") todos = { ...todos, selectedId: mutation.selectedId };
           if (mutation._tag === "SetState")
             todos = {
               ...todos,
               selectedId: todos.selectedId === mutation.id ? null : todos.selectedId,
-              items: todos.items.map((item) =>
-                item.id === mutation.id
-                  ? { ...item, state: mutation.state, revision: item.revision + 1 }
-                  : item,
-              ),
+              items: todos.items.map((item) => {
+                if (item.id !== mutation.id) return item;
+                const active = { ...item };
+                delete active.snoozedUntil;
+                return { ...active, state: mutation.state, revision: item.revision + 1 };
+              }),
+            };
+          if (mutation._tag === "Snooze" || mutation._tag === "Unsnooze")
+            todos = {
+              ...todos,
+              selectedId: todos.selectedId === mutation.id ? null : todos.selectedId,
+              items: todos.items.map((item) => {
+                if (item.id !== mutation.id) return item;
+                const active = { ...item };
+                delete active.snoozedUntil;
+                return {
+                  ...active,
+                  ...(mutation._tag === "Snooze" ? { snoozedUntil: mutation.until } : {}),
+                  revision: item.revision + 1,
+                };
+              }),
             };
           applySnapshot(fixture.models.projects, { projects: [project()] });
           return todos;
@@ -137,6 +157,7 @@ function renderTodos(
     root,
     store,
     todos: () => todos,
+    mutations,
     async updateSessions(next: ReturnType<typeof sessionSummary>[]) {
       await act(async () =>
         applySnapshot(fixture.models.sessionCatalog, {
@@ -198,7 +219,7 @@ function todo(id: number, modifiedAt?: string, sessionIds: string[] = []): Proje
 const activityTime = (day: number) => `2026-02-${String(day).padStart(2, "0")}T00:00:00.000Z`;
 const openOrder = () =>
   Array.from(
-    screen.getByRole("list", { name: "Open to-dos" }).querySelectorAll("[data-todo-id]"),
+    screen.getByRole("list", { name: "Active to-dos" }).querySelectorAll("[data-todo-id]"),
     (row) => row.getAttribute("data-todo-id"),
   );
 
@@ -466,7 +487,7 @@ it("keeps matching done items grouped and preserves disclosure and done/reopen a
   const search = screen.getByRole("searchbox", { name: "Search to-dos" });
   await fixture.user.click(screen.getByRole("button", { name: "Mark done: Follow up" }));
   await fixture.user.type(search, "STEP");
-  expect(screen.getByRole("status").textContent).toBe("No matching open to-dos.");
+  expect(screen.getByRole("status").textContent).toBe("No matching active to-dos.");
   const done = screen.getByRole("button", { name: "Done (1)" });
   expect(done.getAttribute("aria-expanded")).toBe("false");
   await fixture.user.click(done);
@@ -477,7 +498,7 @@ it("keeps matching done items grouped and preserves disclosure and done/reopen a
   ).toBeDefined();
   await fixture.user.click(screen.getByRole("button", { name: "Reopen: Follow up" }));
   expect(
-    within(screen.getByRole("list", { name: "Open to-dos" })).getByRole("button", {
+    within(screen.getByRole("list", { name: "Active to-dos" })).getByRole("button", {
       name: "Follow up",
     }),
   ).toBeDefined();
@@ -490,7 +511,7 @@ it("keeps matching done items grouped and preserves disclosure and done/reopen a
   expect(screen.getByRole("status").textContent).toContain("No matching to-dos");
   await fixture.user.click(screen.getByRole("button", { name: "Clear search to-dos" }));
   expect(screen.getByRole("list", { name: "Done to-dos" })).toBeDefined();
-  expect(screen.getByRole("list", { name: "Open to-dos" })).toBeDefined();
+  expect(screen.getByRole("list", { name: "Active to-dos" })).toBeDefined();
 });
 
 it("selects the latest description while done/reopen remain independent controls", async () => {
@@ -512,7 +533,7 @@ it("selects the latest description while done/reopen remain independent controls
   expect(screen.getAllByRole("img", { name: "Ready for review" })).toHaveLength(2);
   await fixture.user.click(screen.getByRole("button", { name: "Reopen: Investigate startup" }));
   expect(
-    within(screen.getByRole("list", { name: "Open to-dos" }))
+    within(screen.getByRole("list", { name: "Active to-dos" }))
       .getByRole("button", { name: "Investigate startup" })
       .getAttribute("aria-pressed"),
   ).toBe("false");
@@ -625,4 +646,113 @@ it("hides the sidebar cue while another conversation is focused and restores it 
   expect(fixture.todos().selectedId).toBe("00000000-0000-4000-8000-000000000011");
   act(() => fixture.root.navigationStore.selectCakeChat(projectChat));
   expect(fixture.associated()).toEqual(["first", "second"]);
+});
+
+it("snoozes selected work with a preset, keeps links, excludes selection and unsnoozes early", async () => {
+  using fixture = renderTodos();
+  const title = "Investigate startup";
+  const row = () => screen.getByRole("button", { name: title });
+  await fixture.user.click(row());
+  const before = Date.now();
+  await fixture.user.pointer({ target: row(), keys: "[MouseRight]" });
+  await fixture.user.click(screen.getByRole("menuitem", { name: "Snooze" }));
+  await fixture.user.click(screen.getByRole("menuitem", { name: "15 minutes" }));
+  const mutation = fixture.mutations.at(-1)!;
+  expect(mutation).toMatchObject({
+    _tag: "Snooze",
+    id: fixture.todos().items[0]!.id,
+    expectedRevision: 0,
+  });
+  if (mutation._tag !== "Snooze") throw new Error("Expected snooze mutation");
+  expect(new Date(mutation.until).getTime()).toBeGreaterThanOrEqual(before + 15 * 60_000);
+  expect(mutation.until).toBe(new Date(mutation.until).toISOString());
+  expect(fixture.todos().selectedId).toBeNull();
+  const snoozed = screen.getByRole("list", { name: "Snoozed to-dos" });
+  expect(within(snoozed).getByRole("button", { name: title }).getAttribute("aria-disabled")).toBe(
+    "true",
+  );
+  expect(within(snoozed).getByRole("link", { name: "Report" })).toBeDefined();
+  expect(
+    within(screen.getByRole("list", { name: "Active to-dos" })).queryByRole("button", {
+      name: title,
+    }),
+  ).toBeNull();
+  const count = fixture.mutations.length;
+  await fixture.user.click(row());
+  expect(fixture.mutations).toHaveLength(count);
+  await fixture.user.pointer({ target: row(), keys: "[MouseRight]" });
+  await fixture.user.click(screen.getByRole("menuitem", { name: "Unsnooze" }));
+  expect(fixture.mutations.at(-1)).toMatchObject({ _tag: "Unsnooze", expectedRevision: 1 });
+  expect(
+    within(screen.getByRole("list", { name: "Active to-dos" })).getByRole("button", {
+      name: title,
+    }),
+  ).toBeDefined();
+  expect(fixture.todos().items[0]!.snoozedUntil).toBeUndefined();
+});
+
+it("validates custom local time, changes an existing deadline, searches snoozed work and completes it", async () => {
+  using fixture = renderTodos();
+  const title = "Investigate startup";
+  const openCustom = async (change = false) => {
+    await fixture.user.pointer({
+      target: screen.getByRole("button", { name: title }),
+      keys: "[MouseRight]",
+    });
+    await fixture.user.click(
+      screen.getByRole("menuitem", { name: change ? "Change snooze" : "Snooze" }),
+    );
+    await fixture.user.click(screen.getByRole("menuitem", { name: "Custom…" }));
+    return screen.getByLabelText(/^Until \(/) as HTMLInputElement;
+  };
+  const input = await openCustom();
+  fireEvent.change(input, { target: { value: "2000-01-01T10:00" } });
+  await fixture.user.click(screen.getByRole("button", { name: "Snooze" }));
+  expect(screen.getByRole("alert").textContent).toBe("Choose a future date and time.");
+  expect(fixture.mutations).toHaveLength(0);
+  const future = localSnoozeDateTime(new Date(Date.now() + 2 * 86400_000).toISOString());
+  fireEvent.change(input, { target: { value: future } });
+  await fixture.user.click(screen.getByRole("button", { name: "Snooze" }));
+  expect(fixture.mutations.at(-1)).toMatchObject({
+    _tag: "Snooze",
+    until: new Date(future).toISOString(),
+  });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(fixture.container.querySelector("time")?.dateTime).toBe(new Date(future).toISOString());
+  const editing = await openCustom(true);
+  expect(editing.value).toBe(future);
+  const later = localSnoozeDateTime(new Date(Date.now() + 3 * 86400_000).toISOString());
+  fireEvent.change(editing, { target: { value: later } });
+  await fixture.user.click(screen.getByRole("button", { name: "Save" }));
+  expect(fixture.mutations.at(-1)).toMatchObject({
+    _tag: "Snooze",
+    expectedRevision: 1,
+    until: new Date(later).toISOString(),
+  });
+  await fixture.user.type(screen.getByRole("searchbox", { name: "Search to-dos" }), "bottleneck");
+  expect(
+    screen.getByRole("list", { name: "Snoozed to-dos" }).querySelectorAll("[data-todo-id]"),
+  ).toHaveLength(1);
+  expect(
+    fixture.container.querySelectorAll(`[data-todo-id="${fixture.todos().items[0]!.id}"]`),
+  ).toHaveLength(1);
+  await fixture.user.click(screen.getByRole("button", { name: `Mark done: ${title}` }));
+  await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
+  expect(
+    within(screen.getByRole("list", { name: "Done to-dos" })).getByRole("button", {
+      name: title,
+    }),
+  ).toBeDefined();
+  await fixture.user.pointer({
+    target: screen.getByRole("button", { name: title }),
+    keys: "[MouseRight]",
+  });
+  expect(screen.queryByRole("menu")).toBeNull();
+  await fixture.user.click(screen.getByRole("button", { name: `Reopen: ${title}` }));
+  expect(
+    within(screen.getByRole("list", { name: "Active to-dos" })).getByRole("button", {
+      name: title,
+    }),
+  ).toBeDefined();
+  expect(fixture.todos().items[0]!.snoozedUntil).toBeUndefined();
 });

@@ -48,7 +48,7 @@ describe("application-owned to-do link guidance", () => {
     );
     expect(baseline).toContain("Restore never reopens a to-do");
     expect(baseline).toContain("Open items never authorize polling or wakes");
-    expect(baseline.length).toBeLessThan(3_200);
+    expect(baseline.length).toBeLessThan(3_600);
   });
 
   it("prioritizes relevant review and outcome links, including no-PR local work", () => {

@@ -113,6 +113,11 @@ export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
     value.items.filter(
       (item) =>
         (!input.state || item.state === input.state) &&
+        (!input.category ||
+          (input.category === "done"
+            ? item.state === "done"
+            : item.state === "open" &&
+              Boolean(item.snoozedUntil) === (input.category === "snoozed"))) &&
         (!query || item.title.toLowerCase().includes(query)),
     ),
     input,
@@ -121,6 +126,7 @@ export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
     id: item.id,
     title: item.title,
     state: item.state,
+    ...(item.snoozedUntil ? { snoozedUntil: item.snoozedUntil } : null),
     revision: item.revision,
   });
   if (input.view !== "reconciliation") return { ...page, items: page.items.map(summary) };
@@ -156,7 +162,9 @@ export const updateMany = Effect.fn("ProjectTodos.updateManyWithAssociations")(f
   const current = changesWork.length ? (yield* todos.list(scope)).items : [];
   const candidates = changesWork.flatMap((input) => {
     const item = current.find((item) => item.id === input.id);
-    return item?.state === "open" ? [{ ...item, ...input }] : [];
+    return item?.state === "open"
+      ? [{ ...item, associations: input.associations ?? item.associations }]
+      : [];
   });
   const joined = yield* join(scope, candidates);
   const resolved = new Set(

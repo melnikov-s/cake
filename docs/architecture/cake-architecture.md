@@ -417,8 +417,19 @@ is a refactoring signal, not precedent.
   reports, execution completion, abort and resource release do not close a subagent-only item;
   explicitly mark it done after review. Mixed items retain the all-Project-Sessions-resolved rule.
   Session restore never reopens items,
-  and to-do completion never resolves, stops, deletes or merges sessions. ApplicationStorage
-  publication drives the pane and Open count without loading/waking Project Chat.
+  and to-do completion never resolves, stops, deletes or merges sessions. Each open item may
+  persist one explicit UTC `snoozedUntil` deadline. Active (open without a deadline), Done,
+  and Snoozed (open with a deadline) are exclusive projections of that same list. A single
+  backend-scoped worker repairs overdue deadlines at startup and checks wall time every second,
+  without requiring a renderer, open pane or chat runtime; idle passes do not write. Expiry
+  clears only the deadline through the serialized ApplicationState transaction and publishes
+  visibility, never a reminder, input, session wake, execution pause or model schedule.
+  Transactions recheck deadlines so extension, manual unsnooze and completion cannot be
+  overwritten by an old expiry snapshot. Any completion clears the deadline; reopening starts
+  Active. The worker reconciles affected lists after expiry so a racing resolution join cannot
+  lose completion to the expiry revision. UI custom times are local, tools take validated future
+  UTC timestamps, and snooze/unsnooze mutations preserve revision checks and chat scope grants.
+  ApplicationStorage publication drives the pane and Active count without loading/waking Project Chat.
   Existing passive notifications, explicit result reports, final Project Session turns and worker completion
   enqueue best-effort description refreshes before normal notification delivery.
   A scoped backend consumer uses the configured utility model with only the task title,
@@ -438,11 +449,11 @@ is a refactoring signal, not precedent.
   `modifiedAt` or linked session `modifiedAt`. Item creation and revision changes
   record the timestamp in ApplicationStorage; selection/read acknowledgement does not.
   Older saved items without timestamps use linked activity where available.
-  Equal or missing timestamps break ties by ascending item ID. Open and Done
+  Equal or missing timestamps break ties by ascending item ID. Active, Done and Snoozed
   sections and search preserve this order, reacting immediately to metadata changes.
   One metadata-index snapshot and family snapshot join a bounded page, with filename-only
   identity enumeration per directory, never per item.
-  Tools default to title/id/state/revision rows and compact mutation receipts; content is
+  Tools default to title/id/state/revision rows (plus snoozedUntil when set) and compact mutation receipts; content is
   disclosed by exact detail or opt-in detail only. Each item records its latest completion
   (revision and user/agent/sessions source). Requesting `done` on a done item is a no-op
   for state; a stale `done` edit whose only intervening change was that completion
@@ -450,7 +461,7 @@ is a refactoring signal, not precedent.
   conflict. Selection is removable next-message
   context, never a send action, and exists only while that Project Chat's To-do panel is open:
   closing the panel clears it (a recorded user change), and app startup clears any persisted
-  selection because no panel is open then. Completion also clears selection atomically. A faint
+  selection because no panel is open then. Completion and snoozing also clear selection atomically. A faint
   shared association cue on the selected to-do and its linked session/worker rows shows only while
   that Project Chat is the focused conversation with its panel open; it is distinct from actual
   navigation selection and never navigates or wakes work.

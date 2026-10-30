@@ -453,7 +453,7 @@ it("toggles Project Chat to-dos in the existing side pane, selects/deselects, co
     await f.user.click(toggle);
     const panel = screen.getByRole("complementary", { name: "To-do" });
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    expect(within(panel).getByText("Report delivered; awaiting your review")).toBeTruthy();
+    expect(within(panel).getByText(item.description)).toBeTruthy();
     expect(within(panel).queryByText("Earlier question")).toBeNull();
     const select = within(panel).getByRole("button", { name: item.title });
     await f.user.click(select);
@@ -465,18 +465,12 @@ it("toggles Project Chat to-dos in the existing side pane, selects/deselects, co
     await f.user.click(select);
     await waitFor(() => expect(select.getAttribute("aria-pressed")).toBe("true"));
     await f.user.click(within(panel).getByRole("button", { name: `Mark done: ${item.title}` }));
-    await waitFor(() =>
-      expect(
-        within(panel).getByText(
-          "No open to-dos. Your agent can add a thread when taking on a commitment.",
-        ),
-      ).toBeTruthy(),
-    );
+    await waitFor(() => expect(within(panel).getByText("No active to-dos.")).toBeTruthy());
     expect(toggle.textContent).toBe("0");
     await f.user.click(within(panel).getByRole("button", { name: "Done (2)" }));
     await f.user.click(within(panel).getByRole("button", { name: `Reopen: ${item.title}` }));
     await waitFor(() =>
-      expect(within(panel).getByRole("list", { name: "Open to-dos" })).toBeTruthy(),
+      expect(within(panel).getByRole("list", { name: "Active to-dos" })).toBeTruthy(),
     );
     expect(toggle.textContent).toBe("1");
     expect(

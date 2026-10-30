@@ -427,7 +427,7 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await expect(toggle).toHaveText("3");
     await expect(
       panel
-        .getByRole("list", { name: "Open to-dos" })
+        .getByRole("list", { name: "Active to-dos" })
         .getByText("Review conversations", { exact: true }),
     ).toBeVisible();
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");

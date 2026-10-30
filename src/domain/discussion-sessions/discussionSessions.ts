@@ -276,6 +276,8 @@ const sideChatConfiguration = Effect.fn("DiscussionSessions.sideChatConfiguratio
           "todos.create",
           "todos.update",
           "todos.update-many",
+          "todos.snooze",
+          "todos.unsnooze",
         ]
       : undefined,
   };

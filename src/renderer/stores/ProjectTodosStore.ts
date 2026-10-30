@@ -44,6 +44,8 @@ export class ProjectTodosStore extends Store<{
 }> {
   query = "";
   doneExpanded = false;
+  snoozedExpanded = true;
+  snoozingItemId: string | undefined;
   inspectedItemId: string | undefined;
   busy = false;
   error: string | undefined;
@@ -83,7 +85,7 @@ export class ProjectTodosStore extends Store<{
     return this.visible ? this.source?.owner.selectedTodo : undefined;
   }
   get openItems() {
-    return this.value?.items.filter((item) => item.state === "open") ?? [];
+    return this.value?.items.filter((item) => item.state === "open" && !item.snoozedUntil) ?? [];
   }
   get doneItems() {
     return this.value?.items.filter((item) => item.state === "done") ?? [];
@@ -98,7 +100,10 @@ export class ProjectTodosStore extends Store<{
     );
   }
   get filteredOpenItems() {
-    return this.filteredItems.filter((item) => item.state === "open");
+    return this.filteredItems.filter((item) => item.state === "open" && !item.snoozedUntil);
+  }
+  get filteredSnoozedItems() {
+    return this.filteredItems.filter((item) => item.state === "open" && item.snoozedUntil);
   }
   get filteredDoneItems() {
     return this.filteredItems.filter((item) => item.state === "done");
@@ -189,13 +194,47 @@ export class ProjectTodosStore extends Store<{
     this.query = "";
     this.inspectedItemId = item.id;
     if (item.state === "done") this.doneExpanded = true;
+    else if (item.snoozedUntil) this.snoozedExpanded = true;
     this.open();
   }
   toggleDone() {
     this.doneExpanded = !this.doneExpanded;
   }
-  select(item: ProjectTodo) {
+  toggleSnoozed() {
+    this.snoozedExpanded = !this.snoozedExpanded;
+  }
+  get snoozingItem() {
+    return this.value?.items.find(
+      (item) => item.id === this.snoozingItemId && item.state === "open",
+    );
+  }
+  editSnooze(item: ProjectTodo) {
+    if (item.state === "open" && !this.busy) this.snoozingItemId = item.id;
+  }
+  closeSnooze() {
+    this.snoozingItemId = undefined;
+  }
+  async snooze(item: ProjectTodo, until: string) {
     if (item.state !== "open") return;
+    const timestamp = new Date(until);
+    if (!Number.isFinite(timestamp.getTime()) || timestamp.getTime() <= Date.now()) {
+      this.error = "Choose a future date and time.";
+      return;
+    }
+    const applied = await this.mutate({
+      _tag: "Snooze",
+      id: item.id,
+      expectedRevision: item.revision,
+      until: timestamp.toISOString(),
+    });
+    if (applied) this.closeSnooze();
+  }
+  unsnooze(item: ProjectTodo) {
+    if (item.state !== "open" || !item.snoozedUntil) return;
+    return this.mutate({ _tag: "Unsnooze", id: item.id, expectedRevision: item.revision });
+  }
+  select(item: ProjectTodo) {
+    if (item.state !== "open" || item.snoozedUntil) return;
     return this.mutate({
       _tag: "Select",
       selectedId: this.value?.selectedId === item.id ? null : item.id,
@@ -221,6 +260,7 @@ export class ProjectTodosStore extends Store<{
         { scope, mutation },
         { signal: this.signal },
       );
+      return true;
     } catch (error) {
       if (!this.signal.aborted) this.error = describeError(error).message;
     } finally {

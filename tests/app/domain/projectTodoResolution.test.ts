@@ -12,6 +12,8 @@ import type {
   SubagentHistory,
 } from "../../../src/services/storage/SubagentStorage";
 import { it } from "@effect/vitest";
+import { TestClock } from "effect/testing";
+import * as snoozes from "../../../src/domain/projects/projectTodoSnoozes";
 import { expect } from "vitest";
 import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
@@ -547,6 +549,101 @@ it.effect(
       ]);
       yield* completeLinked(project);
       expect((yield* todos.read(project, item.id)).state).toBe("open");
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
+  "resolved sessions complete snoozed items in %s and expiry never resurrects them",
+  (scope) => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const item = yield* todos.create(scope, {
+        title: "Work",
+        description: "Work.",
+        associations: [link(a)],
+      });
+      const snoozed = yield* controls.update(scope, {
+        id: item.id,
+        expectedRevision: 0,
+        snoozedUntil: "1970-01-01T00:15:00.000Z",
+      });
+      expect(snoozed.state).toBe("open");
+      f.resolved.add(a);
+      yield* completeLinked(scope);
+      const done = yield* todos.read(scope, item.id);
+      expect(done).toMatchObject({ state: "done", completion: { by: "sessions" } });
+      expect(done).not.toHaveProperty("snoozedUntil");
+      yield* TestClock.setTime(1_800_000);
+      yield* snoozes.initialize();
+      expect(yield* todos.read(scope, item.id)).toEqual(done);
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect("expiry repairs a linked resolution join racing the deadline revision", () => {
+  const f = fixture();
+  return Effect.gen(function* () {
+    yield* upsertProject(project, "Project");
+    const item = yield* todos.create(project, {
+      title: "Work",
+      description: "Work.",
+      associations: [link(a)],
+    });
+    yield* todos.update(project, {
+      id: item.id,
+      expectedRevision: 0,
+      snoozedUntil: "1970-01-01T00:15:00.000Z",
+    });
+    f.resolved.add(a);
+    const entered = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    const archive = yield* SessionArchiveStorage;
+    const reconciliation = yield* completeLinked(project).pipe(
+      Effect.provideService(SessionArchiveStorage, {
+        ...archive,
+        resolutionSnapshot: () =>
+          archive.resolutionSnapshot().pipe(
+            Effect.tap(() => Deferred.succeed(entered, undefined)),
+            Effect.tap(() => Deferred.await(release)),
+          ),
+      }),
+      Effect.forkChild,
+    );
+    yield* Deferred.await(entered);
+    yield* TestClock.setTime(900_000);
+    yield* snoozes.initialize();
+    expect(yield* todos.read(project, item.id)).toMatchObject({
+      state: "done",
+      completion: { by: "sessions" },
+    });
+    yield* Deferred.succeed(release, undefined);
+    yield* Fiber.join(reconciliation);
+    expect(yield* todos.read(project, item.id)).not.toHaveProperty("snoozedUntil");
+    expect((yield* todos.read(project, item.id)).state).toBe("done");
+  }).pipe(Effect.provide(f.layer));
+});
+
+it.effect(
+  "snoozing work whose session is already resolved returns completion, not a new deadline",
+  () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const item = yield* todos.create(project, {
+        title: "Work",
+        description: "Work.",
+        associations: [link(a)],
+      });
+      f.resolved.add(a);
+      const updated = yield* controls.update(project, {
+        id: item.id,
+        expectedRevision: 0,
+        snoozedUntil: "1970-01-01T00:15:00.000Z",
+      });
+      expect(updated).toMatchObject({ state: "done", completion: { by: "sessions" } });
+      expect(updated).not.toHaveProperty("snoozedUntil");
     }).pipe(Effect.provide(f.layer));
   },
 );

@@ -110,6 +110,8 @@ describe("Backend-owned Cake operation composition", () => {
           "todos.create",
           "todos.update",
           "todos.update-many",
+          "todos.snooze",
+          "todos.unsnooze",
         ],
         projectTodos: {
           list,
@@ -130,6 +132,8 @@ describe("Backend-owned Cake operation composition", () => {
       "todos.create",
       "todos.list",
       "todos.read",
+      "todos.snooze",
+      "todos.unsnooze",
       "todos.update",
       "todos.update-many",
     ]);

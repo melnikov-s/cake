@@ -113,7 +113,9 @@ export function PopoverIconTrigger({
 
 export interface PopoverContentProps extends HTMLAttributes<HTMLDivElement> {
   align?: PopoverAlign;
-  anchorRef?: RefObject<HTMLButtonElement | null>;
+  anchorRef?: RefObject<HTMLElement | null>;
+  /** Pointer location for a context menu; keyboard menus remain anchored to their trigger. */
+  anchorPoint?: { x: number; y: number };
   /** Constrain the surface to the nearest ancestor marked as a popover boundary. */
   boundary?: "viewport" | "nearest-ancestor";
   offset?: number;
@@ -124,6 +126,7 @@ export interface PopoverContentProps extends HTMLAttributes<HTMLDivElement> {
 export function PopoverContent({
   align = "center",
   anchorRef,
+  anchorPoint,
   boundary = "viewport",
   children,
   className,
@@ -155,7 +158,16 @@ export function PopoverContent({
         ? anchor.closest<HTMLElement>("[data-popover-boundary]")
         : null;
     const next = calculatePopoverPosition(
-      anchor.getBoundingClientRect(),
+      anchorPoint
+        ? {
+            left: anchorPoint.x,
+            right: anchorPoint.x,
+            top: anchorPoint.y,
+            bottom: anchorPoint.y,
+            width: 0,
+            height: 0,
+          }
+        : anchor.getBoundingClientRect(),
       { width: content.offsetWidth, height: content.offsetHeight },
       boundaryElement?.getBoundingClientRect() ?? {
         left: 0,
@@ -180,7 +192,7 @@ export function PopoverContent({
       ),
       ready: true,
     });
-  }, [align, boundary, effectiveAnchorRef, offset, side]);
+  }, [align, anchorPoint, boundary, effectiveAnchorRef, offset, side]);
 
   useLayoutEffect(() => {
     if (!open) return;

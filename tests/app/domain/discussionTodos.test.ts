@@ -7,6 +7,8 @@ import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-cha
 import { CAKE_CHAT_TODO_SCOPE } from "../../../src/contracts/projects/project-todos";
 import * as todos from "../../../src/domain/projects/projectTodos";
 import { completeLinked } from "../../../src/domain/projects/projectTodoResolution";
+import { createProjectTodoOperations } from "../../../src/domain/projects/project-todo-operations";
+import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
@@ -107,6 +109,31 @@ it.effect.each([false, true])(
         ),
       );
       expect((yield* todos.read(scope, linked.id)).state).toBe("open");
+      const registry = new CakeOperationRegistry(createProjectTodoOperations(side.projectTodos));
+      const execution = { signal, toolCallId: "side-chat-snooze", runtime: {} };
+      const until = "2030-01-01T12:00:00.000Z";
+      yield* call(() =>
+        registry.invoke(
+          { command: "todos.snooze", input: { id: linked.id, expectedRevision: 1, until } },
+          execution,
+        ),
+      );
+      expect((yield* call(() => sibling.projectTodos.read(linked.id, signal))).snoozedUntil).toBe(
+        until,
+      );
+      yield* call(() =>
+        registry.invoke(
+          { command: "todos.unsnooze", input: { id: linked.id, expectedRevision: 2 } },
+          execution,
+        ),
+      );
+      expect(yield* todos.read(scope, linked.id)).not.toHaveProperty("snoozedUntil");
+      yield* call(() =>
+        registry.invoke(
+          { command: "todos.snooze", input: { id: linked.id, expectedRevision: 3, until } },
+          execution,
+        ),
+      );
       const after = yield* todos.list(scope);
       expect(after.selectedId).toBe(original.id);
       expect(after.pending).toEqual(before.pending);
@@ -116,6 +143,7 @@ it.effect.each([false, true])(
       expect((yield* call(() => side.projectTodos.read(linked.id, signal))).completion?.by).toBe(
         "sessions",
       );
+      expect(yield* todos.read(scope, linked.id)).not.toHaveProperty("snoozedUntil");
       expect((yield* todos.list(scope)).pending).toEqual(
         expect.arrayContaining([...before.pending]),
       );

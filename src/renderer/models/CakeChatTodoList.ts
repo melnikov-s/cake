@@ -7,7 +7,7 @@ export class CakeChatTodoList extends Model {
   todos: ProjectTodos = emptyProjectTodos();
   get selectedTodo() {
     return this.todos.items.find(
-      (item) => item.id === this.todos.selectedId && item.state === "open",
+      (item) => item.id === this.todos.selectedId && item.state === "open" && !item.snoozedUntil,
     );
   }
 

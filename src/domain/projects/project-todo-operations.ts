@@ -9,6 +9,8 @@ import {
   ProjectTodoUpdate,
   ProjectTodoUpdates,
   ProjectTodoReceipt,
+  ProjectTodoSnooze,
+  ProjectTodoUnsnooze,
   PROJECT_TODO_AUTO_COMPLETION_RULE,
   PROJECT_TODO_CLOSING_RULE,
   PROJECT_TODO_CREATION_RULE,
@@ -24,7 +26,7 @@ export function createProjectTodoOperations(
   const guidance = [
     `${PROJECT_TODO_AUTO_COMPLETION_RULE} Run sessions.resolve, then edit only title/description/status if needed.`,
     `${PROJECT_TODO_CREATION_RULE} No polling/wakes merely for open items.`,
-    "Default list is title/id/state/revision only. For reconciliation use ONE todos.list with state=open, view=reconciliation (max 50), then ONE todos.update-many with expectedRevision per item. Page with nextOffset. No transcript reads or per-session inspection needed.",
+    "Default list is title/id/state/revision plus snoozedUntil when snoozed. Filter category=active|done|snoozed; state=open includes both Active and Snoozed. For reconciliation use ONE todos.list with state=open, view=reconciliation (max 50), then ONE todos.update-many with expectedRevision per item. Page with nextOffset. No transcript reads or per-session inspection needed.",
     "Reconciliation sessions contain canonical required session IDs and authoritative effective resolved (null means unknown), not execution done/stopped. All actual session associations must resolve before automatic closure, including historical items and late associations. Source/report links are context: they never veto completion and source-only discussion items remain open. Reports/run completion never close items.",
     `${PROJECT_TODO_CLOSING_RULE} Restore never reopens items. Explicit user done is preserved. To-do edits never resolve/restore, stop, delete or merge sessions. Cake reconciles linked Open items automatically; no assistant update, report acknowledgment, polling or wake is required.`,
     "Read details by ID only when needed. Pass expectedRevision; on revision conflict reread; preserve explicit user closure/reopen. state=done on an already-done item is a no-op for state: alone it commits nothing; other edits still apply, including when the only change since your revision was that completion (for example by sessions.resolve). The receipt note says why it was already done; any other intervening change is a conflict. Association updates replace the complete merged list. Mutations return compact committed receipts; detail=true opts into content.",
@@ -42,9 +44,13 @@ export function createProjectTodoOperations(
     if (item.completion?.by === "agent" && item.completion.revision === input.expectedRevision + 1)
       return undefined;
     const why = projectTodoCompletionSummary(item);
-    const edits = [input.title, input.description, input.status, input.associations].some(
-      (value) => value !== undefined,
-    );
+    const edits = [
+      input.title,
+      input.description,
+      input.status,
+      input.associations,
+      input.snoozedUntil,
+    ].some((value) => value !== undefined);
     return {
       note: edits
         ? `Already done (${why}); state unchanged and your other edits were applied.`
@@ -61,9 +67,10 @@ export function createProjectTodoOperations(
     ...(created ? { id: item.id } : null),
     revision: item.revision,
     committed: true as const,
+    ...(input.snoozedUntil !== undefined ? { snoozedUntil: item.snoozedUntil ?? null } : null),
     ...(input.state === undefined &&
     item.state === "done" &&
-    (created || input.associations !== undefined)
+    (created || input.associations !== undefined || input.snoozedUntil !== undefined)
       ? { state: item.state }
       : null),
     ...(input.associations &&
@@ -174,6 +181,54 @@ export function createProjectTodoOperations(
           parsed.detail,
           context.signal,
         );
+      },
+    },
+    {
+      command: "todos.snooze",
+      topic: "todos",
+      summary: "Hide an open to-do until a future UTC timestamp, or change its deadline.",
+      guidance: [
+        "Pass id, expectedRevision and until as a valid future UTC ISO timestamp (YYYY-MM-DDTHH:mm:ss.sssZ). Read the current revision first. Calling again replaces the deadline. Only open items can be snoozed; this never reopens done items.",
+        "Snoozed items leave Active and appear in Snoozed. Backend expiry returns them to Active across renderer reload/app restart/downtime, without reminder messages or session wakeups. Resolving linked sessions still completes them. This only controls to-do visibility: it never pauses execution, snoozes sessions or schedules model work.",
+      ],
+      inputSchema: ProjectTodoSnooze,
+      outputSchema: ProjectTodoReceipt,
+      examples: [
+        {
+          input: {
+            id: "00000000-0000-4000-8000-000000000001",
+            expectedRevision: 0,
+            until: "2030-01-01T12:00:00.000Z",
+          },
+        },
+      ],
+      result:
+        "Committed revision and canonical snoozedUntil, or null if linked resolution completed the item.",
+      async execute(input, context) {
+        const parsed = await Schema.decodeUnknownPromise(ProjectTodoSnooze)(input);
+        const update = {
+          id: parsed.id,
+          expectedRevision: parsed.expectedRevision,
+          snoozedUntil: parsed.until,
+        };
+        return receipt(await control.update(update, context.signal), update, false, context.signal);
+      },
+    },
+    {
+      command: "todos.unsnooze",
+      topic: "todos",
+      summary: "Return a snoozed to-do to Active early without changing completion or sessions.",
+      guidance: [
+        "Pass id and current expectedRevision. Clears the deadline, including before it expires. Done items remain done; this never reopens them or starts any work. No reminder or session wakeup is sent.",
+      ],
+      inputSchema: ProjectTodoUnsnooze,
+      outputSchema: ProjectTodoReceipt,
+      examples: [{ input: { id: "00000000-0000-4000-8000-000000000001", expectedRevision: 1 } }],
+      result: "Committed revision with snoozedUntil=null; completion state is preserved.",
+      async execute(input, context) {
+        const parsed = await Schema.decodeUnknownPromise(ProjectTodoUnsnooze)(input);
+        const update = { ...parsed, snoozedUntil: null };
+        return receipt(await control.update(update, context.signal), update, false, context.signal);
       },
     },
     {

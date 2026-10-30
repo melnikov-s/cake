@@ -128,6 +128,8 @@ const CAKE_CHAT_OPERATIONS = [
   "todos.create",
   "todos.update",
   "todos.update-many",
+  "todos.snooze",
+  "todos.unsnooze",
   "models.list",
   "models.info",
   "session.info",

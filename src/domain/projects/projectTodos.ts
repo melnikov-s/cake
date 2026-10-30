@@ -42,10 +42,12 @@ function commit(
     Pick<ProjectTodo, "title" | "description" | "status" | "state" | "associations">
   >,
   by: ProjectTodoCompletion["by"],
+  deadline: string | null | undefined = undefined,
 ): ProjectTodo {
-  const { completion, ...rest } = item;
+  const { completion, snoozedUntil, ...rest } = item;
   const next = { ...rest, ...changes, revision: item.revision + 1 };
-  if (next.state !== "done") return next;
+  const until = deadline === undefined ? snoozedUntil : deadline;
+  if (next.state !== "done") return until ? { ...next, snoozedUntil: until } : next;
   if (item.state === "done") return completion ? { ...next, completion } : next;
   return { ...next, completion: { revision: next.revision, by } };
 }
@@ -115,6 +117,37 @@ const change = Effect.fn("ProjectTodos.change")(function* (
     )
     .pipe(mapError);
   return stored(next, scope) ?? emptyProjectTodos();
+});
+
+/** Backend-only deadline transition. Recheck inside the serialized transaction: a later
+ * deadline, manual unsnooze or completion wins over an earlier expiry snapshot. No reminder
+ * or input is enqueued; publication alone returns the item to Active in every window. */
+export const expireOverdue = Effect.fn("ProjectTodos.expireOverdue")(function* () {
+  const application = yield* ApplicationState;
+  const state = application.snapshot();
+  const now = DateTime.toEpochMillis(yield* DateTime.now);
+  const scopes = [...state.projects.map((project) => project.path), CAKE_CHAT_TODO_SCOPE];
+  const due = (item: ProjectTodo, at: number) =>
+    item.state === "open" &&
+    item.snoozedUntil !== undefined &&
+    DateTime.toEpochMillis(DateTime.makeUnsafe(item.snoozedUntil)) <= at;
+  const expiredScopes: string[] = [];
+  for (const scope of scopes) {
+    if (!stored(state, scope)?.items.some((item) => due(item, now))) continue;
+    yield* change(scope, (value) =>
+      Effect.gen(function* () {
+        const at = DateTime.toEpochMillis(yield* DateTime.now);
+        return {
+          ...value,
+          items: value.items.map((item) =>
+            due(item, at) ? commit(item, {}, "agent", null) : item,
+          ),
+        };
+      }),
+    );
+    expiredScopes.push(scope);
+  }
+  return expiredScopes;
 });
 
 /** Advisory background results never overwrite a newer item edit. */
@@ -206,7 +239,8 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
           input.title !== undefined ||
           input.description !== undefined ||
           input.status !== undefined ||
-          input.associations !== undefined;
+          input.associations !== undefined ||
+          input.snoozedUntil !== undefined;
         // Already done and nothing else changes: idempotent, no new revision.
         if (alreadyDone && !edits) continue;
         // A completion changes only state. A stale "done" edit that raced exactly that completion
@@ -216,6 +250,16 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
           !(alreadyDone && onlyCompletedSince(item, input.expectedRevision))
         )
           return yield* conflict(item, input);
+        const deadline =
+          input.snoozedUntil == null
+            ? input.snoozedUntil
+            : DateTime.formatIso(DateTime.makeUnsafe(input.snoozedUntil));
+        if (deadline != null) {
+          if (item.state === "done" || input.state === "done")
+            return yield* error("Only open to-dos can be snoozed; reopen the item first");
+          if (deadline <= DateTime.formatIso(yield* DateTime.now))
+            return yield* error("Snooze deadline must be in the future");
+        }
         const automatic = input.state === undefined && resolved.has(item.id);
         const updated = commit(
           item,
@@ -227,6 +271,7 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
             associations: input.associations ?? item.associations,
           },
           automatic ? "sessions" : user ? "user" : "agent",
+          deadline,
         );
         result = {
           ...result,
@@ -296,6 +341,18 @@ export const mutateUser = Effect.fn("ProjectTodos.mutateUser")(function* (
   request: ProjectTodoUserMutation,
 ) {
   const input = yield* Schema.decodeUnknownEffect(ProjectTodoUserMutation)(request).pipe(mapError);
+  if (input._tag === "Snooze" || input._tag === "Unsnooze") {
+    yield* update(
+      scope,
+      {
+        id: input.id,
+        expectedRevision: input.expectedRevision,
+        snoozedUntil: input._tag === "Snooze" ? input.until : null,
+      },
+      true,
+    );
+    return yield* list(scope);
+  }
   if (input._tag === "SetState") {
     yield* update(
       scope,
@@ -307,9 +364,11 @@ export const mutateUser = Effect.fn("ProjectTodos.mutateUser")(function* (
   return yield* change(scope, (value) => {
     if (
       input.selectedId !== null &&
-      !value.items.some((item) => item.id === input.selectedId && item.state === "open")
+      !value.items.some(
+        (item) => item.id === input.selectedId && item.state === "open" && !item.snoozedUntil,
+      )
     )
-      return Effect.fail(error("Select an open to-do in this list"));
+      return Effect.fail(error("Select an active to-do in this list"));
     return Effect.succeed(
       value.selectedId === input.selectedId
         ? value

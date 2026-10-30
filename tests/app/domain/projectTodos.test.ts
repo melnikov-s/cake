@@ -428,7 +428,7 @@ describe("Project Chat to-do authority", () => {
           yield* todos.acknowledge(project, receipt(prepared.text));
           const baseline = projectTodoBaseline(yield* todos.list(project));
           expect(baseline).toContain(item.id);
-          expect(baseline).toContain('"openCount":1');
+          expect(baseline).toContain('"activeCount":1');
           expect((yield* todos.prepareForChat("cake-chat", "Global")).text).toBe("Global");
           expect(yield* todos.prepareForChat("ordinary-session", "Coding")).toEqual({
             text: "Coding",
@@ -668,6 +668,8 @@ it("exposes exact Project Chat controls and conflict-safe lifecycle help", () =>
     "todos.read",
     "todos.create",
     "todos.update",
+    "todos.snooze",
+    "todos.unsnooze",
     "todos.update-many",
   ]);
   expect(operations.find((item) => item.command === "todos.update")?.guidance?.join(" ")).toContain(
@@ -697,10 +699,10 @@ describe("session-linked auto-completion", () => {
       const baseline = projectTodoBaseline(yield* todos.list(project));
       expect(baseline).toContain(PROJECT_TODO_AUTO_COMPLETION_RULE);
       const data = JSON.parse(baseline.slice(baseline.indexOf("{"))) as {
-        open: { id: string; sessions?: string[] }[];
+        active: { id: string; sessions?: string[] }[];
       };
-      expect(data.open.find((item) => item.id === session.id)?.sessions).toEqual(["d857f23c"]);
-      expect(data.open.find((item) => item.id === plain.id)).not.toHaveProperty("sessions");
+      expect(data.active.find((item) => item.id === session.id)?.sessions).toEqual(["d857f23c"]);
+      expect(data.active.find((item) => item.id === plain.id)).not.toHaveProperty("sessions");
     }).pipe(Effect.provide(f.layer));
   });
 

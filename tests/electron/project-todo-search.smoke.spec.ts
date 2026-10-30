@@ -46,7 +46,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect
         .poll(() =>
           panel
-            .getByRole("list", { name: "Open to-dos" })
+            .getByRole("list", { name: "Active to-dos" })
             .locator(":scope > li")
             .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-todo-id"))),
         )
@@ -96,7 +96,7 @@ for (const theme of ["light", "dark"] as const) {
         await expect(selected).toHaveAttribute("aria-pressed", "true");
 
         await search.pressSequentially("PRIORITIES");
-        await expect(panel.getByRole("status")).toHaveText("No matching open to-dos.");
+        await expect(panel.getByRole("status")).toHaveText("No matching active to-dos.");
         const done = panel.getByRole("button", { name: "Done (1)" });
         await expect(done).toBeVisible();
         if ((await done.getAttribute("aria-expanded")) !== "true") await done.click();

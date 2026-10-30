@@ -19,12 +19,14 @@ export function clearProjectTodoSelection(
   };
 }
 
-/** A completed to-do can no longer be selected. */
+/** Only Active to-dos can supply a selection. Completion and snoozing clear it. */
 export function clearCompletedProjectTodoSelection(
   value: ProjectTodos,
   newDeliveryToken: () => string,
 ): ProjectTodos {
-  return value.items.some((item) => item.id === value.selectedId && item.state === "open")
+  return value.items.some(
+    (item) => item.id === value.selectedId && item.state === "open" && !item.snoozedUntil,
+  )
     ? value
     : clearProjectTodoSelection(value, newDeliveryToken);
 }

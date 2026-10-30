@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import * as projectTodoUpdates from "../domain/projects/projectTodoUpdates";
 import { ProjectTodoReports } from "../services/projects/ProjectTodoReports";
 import * as projectTodoResolution from "../domain/projects/projectTodoResolution";
+import * as projectTodoSnoozes from "../domain/projects/projectTodoSnoozes";
 import { join } from "node:path";
 import { makeVsCodeServerLive } from "../services/vscode/VsCodeServerLive";
 import { companionAssets } from "../services/vscode/companion-assets";
@@ -298,6 +299,7 @@ export const makeBackendLive = <HostServices, HostError>(
   );
   const BackgroundWorkersLive = Layer.mergeAll(
     Layer.effectDiscard(projectTodoResolution.initialize()),
+    Layer.effectDiscard(projectTodoSnoozes.initialize()),
     Layer.effectDiscard(projectTodoUpdates.initialize()),
     Layer.effectDiscard(
       Effect.gen(function* () {
