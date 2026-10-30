@@ -38,8 +38,10 @@ export class LocalMcpSettingsStore extends Store {
     this.busy = true;
     this.error = undefined;
     try {
-      const validPort = /^\d+$/.test(this.port) && Number(this.port) <= 65535;
-      if (enabled && !validPort) throw new Error("Port must be an integer from 0 to 65535.");
+      const validPort =
+        /^\d+$/.test(this.port) && Number(this.port) >= 1 && Number(this.port) <= 65535;
+      if (!validPort && (enabled || enabled === this.snapshot?.configuration.enabled))
+        throw new Error("Port must be an integer from 1 to 65535.");
       const configuration = {
         enabled,
         port: validPort

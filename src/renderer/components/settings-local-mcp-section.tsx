@@ -37,9 +37,9 @@ export const SettingsLocalMcpSection = observer(function SettingsLocalMcpSection
       </header>
       <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
         <label className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-xs">
-          <span>Full control of Cake</span>
+          <span>Enable MCP server</span>
           <Switch
-            aria-label="Allow full control of Cake"
+            aria-label="Enable MCP server"
             checked={enabled}
             disabled={settings.busy || !snapshot}
             onCheckedChange={(value) => void settings.save(value)}

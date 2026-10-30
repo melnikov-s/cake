@@ -13,10 +13,14 @@ const Document = Schema.Struct({
   token: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
 });
 export interface LocalMcpDocument extends Schema.Schema.Type<typeof Document> {}
-const StoredDocument = Schema.Union([
-  Document,
-  Schema.Struct({ ...Document.fields, version: Schema.Literal(1) }),
-]);
+const StoredDocument = Schema.Struct({
+  ...Document.fields,
+  version: Schema.Literals([1, 2]),
+  configuration: Schema.Struct({
+    ...LocalMcpConfiguration.fields,
+    port: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 65535 })),
+  }),
+});
 const storageError = (cause: { readonly message: string }) =>
   new LocalMcpError({
     code: "operation_failed",
@@ -68,11 +72,15 @@ export const makeLocalMcpSettingsLive = (directory: string) =>
         const document = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(StoredDocument))(
           text,
         ).pipe(Effect.mapError(storageError));
-        if (document.version === 2) return document;
+        if (document.version === 2 && document.configuration.port !== 0)
+          return { ...document, version: 2 } satisfies LocalMcpDocument;
         // An old read-only/scoped grant must not silently become full control.
         const migrated: LocalMcpDocument = {
           version: 2,
-          configuration: { enabled: false, port: document.configuration.port },
+          configuration: {
+            enabled: document.version === 2 && document.configuration.enabled,
+            port: document.configuration.port || defaultLocalMcpConfiguration().port,
+          },
           token: document.token,
         };
         yield* save(migrated);

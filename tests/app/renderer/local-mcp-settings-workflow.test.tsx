@@ -61,7 +61,7 @@ async function setup(failure = false) {
   const section = within(screen.getByRole("region", { name: "Cake MCP server" }));
   await waitFor(() =>
     expect(
-      section.getByRole("switch", { name: "Allow full control of Cake" }).hasAttribute("disabled"),
+      section.getByRole("switch", { name: "Enable MCP server" }).hasAttribute("disabled"),
     ).toBe(false),
   );
   return {
@@ -75,10 +75,10 @@ async function setup(failure = false) {
   };
 }
 
-it("enables full-control access, copies client config, changes port, rotates and disables", async () => {
+it("enables the server, copies client config, changes port, rotates and disables", async () => {
   using f = await setup();
   expect(f.section.getByText("Off")).toBeDefined();
-  await f.user.click(f.section.getByRole("switch", { name: "Allow full control of Cake" }));
+  await f.user.click(f.section.getByRole("switch", { name: "Enable MCP server" }));
   await f.section.findByText("Running");
   expect(f.changes[0]).toEqual({ enabled: true, port: 4318 });
   expect(f.section.getByText("http://127.0.0.1:4318/mcp")).toBeDefined();
@@ -103,18 +103,33 @@ it("enables full-control access, copies client config, changes port, rotates and
     expect(copy).toHaveBeenLastCalledWith(expect.stringContaining("Bearer token-2")),
   );
   await f.user.clear(f.section.getByRole("textbox", { name: "MCP server port" }));
-  await f.user.click(f.section.getByRole("switch", { name: "Allow full control of Cake" }));
+  await f.user.click(f.section.getByRole("switch", { name: "Enable MCP server" }));
   await f.section.findByText("Off");
   expect(f.changes.at(-1)).toEqual({ enabled: false, port: 4319 });
   copy.mockRestore();
 });
 
-it("shows bind failures and still lets the user turn access off", async () => {
+it("rejects automatic and invalid ports before enabling or applying settings", async () => {
+  using f = await setup();
+  const port = f.section.getByRole("textbox", { name: "MCP server port" });
+  expect(port.getAttribute("value")).toBe("4318");
+  for (const value of ["0", "65536", "-1", "1.5"]) {
+    await f.user.clear(port);
+    await f.user.type(port, value);
+    await f.user.click(f.section.getByRole("switch", { name: "Enable MCP server" }));
+    await f.section.findByText("Port must be an integer from 1 to 65535.");
+    expect(f.changes).toHaveLength(0);
+    await f.user.click(f.section.getByRole("button", { name: "Apply" }));
+    expect(f.changes).toHaveLength(0);
+  }
+});
+
+it("shows bind failures and still lets the user turn the server off", async () => {
   using f = await setup(true);
-  await f.user.click(f.section.getByRole("switch", { name: "Allow full control of Cake" }));
+  await f.user.click(f.section.getByRole("switch", { name: "Enable MCP server" }));
   await f.section.findByText("Port is already in use.");
   expect(f.section.getByText("Failed")).toBeDefined();
-  await f.user.click(f.section.getByRole("switch", { name: "Allow full control of Cake" }));
+  await f.user.click(f.section.getByRole("switch", { name: "Enable MCP server" }));
   await f.section.findByText("Off");
   expect(f.changes.at(-1)?.enabled).toBe(false);
 });

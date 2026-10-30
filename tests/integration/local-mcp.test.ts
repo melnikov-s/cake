@@ -16,7 +16,7 @@ import { CakeSessionRuntimes } from "../../src/services/pi/CakeSessionRuntimes";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
 import { projectChatSessionId } from "../../src/domain/cake-chats/cakeChatLocations";
 import { localMcpFixture, localMcpTarget } from "../app/helpers/localMcpHarness";
-import type { LocalMcpConfiguration } from "../../src/contracts/mcp/local-mcp";
+import { LocalMcpConfiguration } from "../../src/contracts/mcp/local-mcp";
 import type { CakeOperationInvocation } from "../../src/contracts/agent/cake-operation";
 
 const directories: string[] = [];
@@ -39,7 +39,15 @@ const fixture = Effect.fn("LocalMcp.test.fixture")(function* () {
   );
   const context = Context.merge(f.context, services);
   yield* mcp.initialize().pipe(Effect.provide(context));
-  return { ...f, path, context };
+  // Ask the OS for a free test port without persisting automatic-port configuration.
+  const url = yield* Effect.scoped(
+    open(0, "test-token", {
+      tools: [],
+      call: async () => emptyResult(),
+    }),
+  );
+  const configuration: LocalMcpConfiguration = { enabled: true, port: Number(new URL(url).port) };
+  return { ...f, path, context, configuration };
 });
 function client(url: string, token: string) {
   const transport = new StreamableHttpTransport({
@@ -58,7 +66,6 @@ const content = (value: { content: readonly unknown[] }) =>
   Schema.decodeUnknownSync(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String }))(
     value.content[0],
   ).text;
-const configuration: LocalMcpConfiguration = { enabled: true, port: 0 };
 const emptyResult = (): CakeOperationInvocation => ({
   text: "{}",
   content: [{ type: "text", text: "{}" }],
@@ -85,7 +92,7 @@ it("exposes the existing Cake Chat registry unchanged through one authenticated 
             ],
           }),
         );
-        const snapshot = yield* mcp.configure(configuration).pipe(Effect.provide(f.context));
+        const snapshot = yield* mcp.configure(f.configuration).pipe(Effect.provide(f.context));
         const document = yield* Context.get(f.context, LocalMcpSettings).load();
         const url = Schema.decodeUnknownSync(Schema.String)(snapshot.runtime.url);
         expect(
@@ -188,7 +195,7 @@ it("defaults off and persists private settings and token across server restarts"
         expect(
           (yield* Effect.promise(() => lstat(join(f.path, "mcp-server.json")))).mode & 0o777,
         ).toBe(0o600);
-        yield* mcp.configure(configuration).pipe(Effect.provide(f.context));
+        yield* mcp.configure(f.configuration).pipe(Effect.provide(f.context));
         yield* Context.get(f.context, LocalMcpServer).configure(undefined);
         yield* mcp.initialize().pipe(Effect.provide(f.context));
         const restarted = yield* mcp.get().pipe(Effect.provide(f.context));
@@ -198,12 +205,53 @@ it("defaults off and persists private settings and token across server restarts"
           JSON.parse(
             yield* Effect.promise(() => readFile(join(f.path, "mcp-server.json"), "utf8")),
           ),
-        ).toMatchObject({ version: 2, configuration });
+        ).toMatchObject({ version: 2, configuration: f.configuration });
         const url = Schema.decodeUnknownSync(Schema.String)(restarted.runtime.url);
-        yield* mcp.configure({ ...configuration, enabled: false }).pipe(Effect.provide(f.context));
+        yield* mcp
+          .configure({ ...f.configuration, enabled: false })
+          .pipe(Effect.provide(f.context));
         yield* mcp.initialize().pipe(Effect.provide(f.context));
         expect((yield* mcp.get().pipe(Effect.provide(f.context))).runtime.status).toBe("disabled");
         yield* Effect.promise(() => expect(fetch(url)).rejects.toThrow());
+      }),
+    ),
+  );
+});
+
+it("accepts only explicit ports in the configuration contract", () => {
+  for (const port of [0, -1, 65536, 1.5])
+    expect(Schema.is(LocalMcpConfiguration)({ enabled: true, port })).toBe(false);
+  for (const port of [1, 4318, 65535])
+    expect(Schema.is(LocalMcpConfiguration)({ enabled: true, port })).toBe(true);
+});
+
+it("migrates saved automatic ports to the default without changing the token or enablement", async () => {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        const storage = Context.get(f.context, LocalMcpSettings);
+        const stored = yield* storage.load();
+        for (const enabled of [false, true]) {
+          yield* Effect.promise(() =>
+            writeFile(
+              join(f.path, "mcp-server.json"),
+              JSON.stringify({
+                ...stored,
+                configuration: { enabled, port: 0 },
+              }),
+            ),
+          );
+          expect(yield* storage.load()).toEqual({
+            ...stored,
+            configuration: { enabled, port: 4318 },
+          });
+          expect(
+            JSON.parse(
+              yield* Effect.promise(() => readFile(join(f.path, "mcp-server.json"), "utf8")),
+            ).configuration,
+          ).toEqual({ enabled, port: 4318 });
+        }
       }),
     ),
   );
@@ -248,7 +296,7 @@ it("rejects unauthenticated, wrong-token, foreign Host and browser-origin access
     Effect.scoped(
       Effect.gen(function* () {
         const f = yield* fixture();
-        const snapshot = yield* mcp.configure(configuration).pipe(Effect.provide(f.context));
+        const snapshot = yield* mcp.configure(f.configuration).pipe(Effect.provide(f.context));
         const url = Schema.decodeUnknownSync(Schema.String)(snapshot.runtime.url);
         const { token } = yield* Context.get(f.context, LocalMcpSettings).load();
         yield* Effect.promise(async () => {
@@ -401,10 +449,12 @@ it("reports an occupied port without crashing Cake", async () => {
           call: async () => emptyResult(),
         });
         const snapshot = yield* mcp
-          .configure({ ...configuration, port: Number(new URL(occupied).port) })
+          .configure({ ...f.configuration, port: Number(new URL(occupied).port) })
           .pipe(Effect.provide(f.context));
         expect(snapshot.runtime).toMatchObject({ status: "error", error: expect.any(String) });
-        yield* mcp.configure({ ...configuration, enabled: false }).pipe(Effect.provide(f.context));
+        yield* mcp
+          .configure({ ...f.configuration, enabled: false })
+          .pipe(Effect.provide(f.context));
         expect((yield* mcp.get().pipe(Effect.provide(f.context))).runtime.status).toBe("disabled");
       }),
     ),

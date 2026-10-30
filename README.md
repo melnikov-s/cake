@@ -78,7 +78,7 @@ app or standalone backend. Clients need no checkout, separate Node installation,
 or bridge process.
 
 1. Open **Settings → MCP servers → Cake MCP server**.
-2. Enable **Full control of Cake**.
+2. Turn on **Enable MCP server**.
 3. Copy the **MCP client configuration** into your assistant's MCP settings.
 
 **This grants full control of Cake, not sandboxed access.** Clients can use the
@@ -105,18 +105,23 @@ session-specific operations. Text, structured results and native image blocks
 are preserved as returned by the registry. Launch/send receipts mean admission,
 not completion; observe results through normal Cake operations or the app.
 
-The copied configuration contains a bearer token: treat it as a password.
+Cake generates an access token automatically: it is the server\'s password.
+The copied client configuration includes it in the `Authorization: Bearer …`
+header so the client can authenticate. Anyone with that token can control Cake
+while the server is enabled; keep the configuration private.
 **Reset access token** invalidates old configurations. Port, token and enablement
 are saved on the backend and restored on restart. Existing scoped settings are
 migrated to off rather than silently turning an old read-only grant into full
 control; re-enable access explicitly after upgrading.
 
-The listener binds only to `127.0.0.1` (default port `4318`; use `0` for a free
-port). Every HTTP request requires the bearer token. Foreign Hosts and browser
+The listener binds only to `127.0.0.1`, at `http://127.0.0.1:4318/mcp` by
+default. You can choose another port from `1` to `65535`; `0` is not accepted.
+Previously saved automatic ports (`0`) are changed to `4318`. Every HTTP request requires the bearer token. Foreign Hosts and browser
 Origin headers are rejected. Do not publish or tunnel this local listener.
 Remote-desktop settings control the backend's listener, not the viewing device.
 
-Apply port changes without restarting Cake. Turning access off closes MCP
+Apply port changes without restarting Cake. There is no restricted MCP mode:
+turning the server off removes all MCP access. It closes MCP
 sessions and interrupts unfinished calls, not already-admitted agent execution.
 Cake must remain running. Calls are never automatically retried. Per-request
 cancellation is not reliable for numeric request IDs in the pinned Effect MCP

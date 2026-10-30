@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 export const LocalMcpConfiguration = Schema.Struct({
   enabled: Schema.Boolean,
-  port: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 65535 })),
+  port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
 });
 export interface LocalMcpConfiguration extends Schema.Schema.Type<typeof LocalMcpConfiguration> {}
 export const LocalMcpRuntime = Schema.Struct({

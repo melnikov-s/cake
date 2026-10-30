@@ -1,5 +1,6 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { McpClient, StreamableHttpTransport } from "@earendil-works/pi-mcp";
@@ -16,6 +17,17 @@ test("configures Cake's built-in MCP server through Settings and connects withou
   const scenario = findVisualCaptureScenario("local-mcp-server");
   if (!scenario) throw new Error("Missing local MCP capture scenario");
   await scenario.seed(paths, "dark");
+  const reservation = createServer();
+  await new Promise<void>((resolve, reject) => {
+    reservation.on("error", reject);
+    reservation.listen(0, "127.0.0.1", resolve);
+  });
+  const address = reservation.address();
+  if (!address || typeof address === "string") throw new Error("Missing test port");
+  const testPort = address.port;
+  await new Promise<void>((resolve, reject) =>
+    reservation.close((error) => (error ? reject(error) : resolve())),
+  );
   const application = await electron.launch({
     args: ["--force-device-scale-factor=1", repositoryRoot],
     cwd: repositoryRoot,
@@ -33,12 +45,19 @@ test("configures Cake's built-in MCP server through Settings and connects withou
     await scenario.prepare(page, "default", application);
     const section = page.getByRole("region", { name: "Cake MCP server", exact: true });
     const port = section.getByRole("textbox", { name: "MCP server port" });
+    await expect(port).toHaveValue("4318");
     await port.focus();
     await port.press("ControlOrMeta+A");
     await port.pressSequentially("0");
     await expect(port).toBeFocused();
     await expect(port).toHaveValue("0");
-    await section.getByRole("switch", { name: "Allow full control of Cake", exact: true }).click();
+    await section.getByRole("switch", { name: "Enable MCP server", exact: true }).click();
+    await expect(
+      section.getByText("Port must be an integer from 1 to 65535.", { exact: true }),
+    ).toBeVisible();
+    await expect(section.getByText("Off", { exact: true })).toBeVisible();
+    await port.fill(String(testPort));
+    await section.getByRole("switch", { name: "Enable MCP server", exact: true }).click();
     await expect(section.getByText("Running", { exact: true })).toBeVisible();
     await section
       .getByRole("button", { name: "Copy MCP client configuration", exact: true })
@@ -85,9 +104,12 @@ test("configures Cake's built-in MCP server through Settings and connects withou
     expect(
       JSON.parse(await readFile(join(paths.cakeHome, "state", "mcp-server.json"), "utf8"))
         .configuration,
-    ).toEqual({ enabled: true, port: 0 });
-    await section.getByRole("switch", { name: "Allow full control of Cake", exact: true }).click();
+    ).toEqual({ enabled: true, port: testPort });
+    await section.getByRole("switch", { name: "Enable MCP server", exact: true }).click();
     await expect(section.getByText("Off", { exact: true })).toBeVisible();
+    await expect(async () => {
+      await expect(fetch(config.url, { headers: config.headers })).rejects.toThrow();
+    }).toPass();
     expect(
       await application.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows().every((window) => !window.isVisible() && !window.isFocused()),

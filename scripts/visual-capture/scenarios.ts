@@ -1999,13 +1999,10 @@ const localMcpSettingsScenario: VisualCaptureScenario = {
     await page.getByRole("button", { name: /^MCP servers/ }).click();
     const section = page.getByRole("region", { name: "Cake MCP server", exact: true });
     await expect(
-      section.getByRole("switch", { name: "Allow full control of Cake", exact: true }),
+      section.getByRole("switch", { name: "Enable MCP server", exact: true }),
     ).toBeEnabled();
     if (state === "running") {
-      await section.getByRole("textbox", { name: "MCP server port" }).fill("0");
-      await section
-        .getByRole("switch", { name: "Allow full control of Cake", exact: true })
-        .click();
+      await section.getByRole("switch", { name: "Enable MCP server", exact: true }).click();
       await expect(section.getByText("Running", { exact: true })).toBeVisible();
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
