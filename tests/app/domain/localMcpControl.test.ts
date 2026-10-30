@@ -1,7 +1,7 @@
 import { it } from "@effect/vitest";
 import { expect } from "vitest";
 import { Context, Effect, Schema } from "effect";
-import { invoke, toolsForGrant } from "../../../src/domain/mcp/localMcpControl";
+import { invoke, commandsForGrant } from "../../../src/domain/mcp/localMcpControl";
 import { type LocalMcpConfiguration } from "../../../src/contracts/mcp/local-mcp";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
@@ -9,13 +9,13 @@ import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLoc
 import { localMcpFixture as fixture, localMcpTarget as target } from "../helpers/localMcpHarness";
 import type { JsonObject } from "../../../src/contracts/serialization/json-contract";
 
-const grant: LocalMcpConfiguration = { directory: "/private/mcp", projects: ["/project"] };
+const grant: LocalMcpConfiguration = { enabled: true, port: 0, projects: ["/project"] };
 const writable = { ...grant, scopes: ["read", "launch", "send", "todos.write"] as const };
 
 it.effect("defaults to read-only and authorizes direct calls, not only discovery", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
-    expect(toolsForGrant(grant).map((tool) => tool.name)).not.toContain("sessions.create");
+    expect(commandsForGrant(grant).map((tool) => tool.name)).not.toContain("sessions.create");
     const result = yield* invoke(grant, "sessions.create", {
       projectPath: "/project",
       name: "Task",
@@ -27,7 +27,7 @@ it.effect("defaults to read-only and authorizes direct calls, not only discovery
         yield* invoke(grant, name, {}).pipe(Effect.result, Effect.provide(f.context)),
       ).toMatchObject({ _tag: "Failure", failure: { code: "denied" } });
     }
-    expect(toolsForGrant({ ...grant, scopes: [] })).toEqual([]);
+    expect(commandsForGrant({ ...grant, scopes: [] })).toEqual([]);
     expect(
       yield* invoke({ ...grant, scopes: [] }, "projects.list", {}).pipe(
         Effect.result,

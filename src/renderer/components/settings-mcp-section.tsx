@@ -25,7 +25,7 @@ export const SettingsMcpSection = observer(function SettingsMcpSection({
       aria-label="MCP configuration"
     >
       <header className="flex flex-wrap items-center justify-between gap-2 px-0.5">
-        <h2 className="text-xs font-semibold text-foreground">MCP servers</h2>
+        <h2 className="text-xs font-semibold text-foreground">Connected servers</h2>
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <Button
             variant="outline"

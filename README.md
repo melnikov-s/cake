@@ -73,60 +73,29 @@ single-user trust limitations, see the [host guide](./docs/development/headless-
 
 ## Local MCP access
 
-Other assistants can control a **running local backend** through a tools-only MCP
-stdio bridge (macOS/Linux). It is off by default and opens no TCP/HTTP listener.
-The build includes a dependency-free Node bridge; Effect's MCP server handles the
-protocol in the running backend. No separate MCP server installation is needed.
+Cake includes an authenticated **Streamable HTTP MCP server**. It runs inside the
+installed desktop app or standalone backend; no checkout, Node installation,
+bridge process or environment variable is required by clients.
 
-1. Register the desired Projects in Cake. Trust them in Cake before using
-   runtime-backed operations; MCP cannot grant trust or approve requests.
-2. Fully quit Cake, then start the updated app with a host-owned grant. Replace
-   these example paths with your private directory and exact registered Project
-   roots (not managed worktree paths):
+1. Open **Settings → MCP servers → Cake MCP server**.
+2. Select the registered Projects external assistants may access. Read access is
+   selected by default; separately enable session launch, messaging or to-do edits.
+3. Turn on **Allow external assistants**. Cake shows the live URL.
+4. Copy the **MCP client configuration** into your assistant's MCP settings.
 
-   ```sh
-   export CAKE_LOCAL_MCP='{"directory":"/Users/you/.cake-mcp","projects":["/absolute/project"]}'
-   pnpm dev
-   ```
+The configuration contains a bearer token: treat it as a password. **Reset access
+token** invalidates old configurations; copy the new configuration afterward.
+Projects, permissions, port, token and enablement are saved on the backend and
+restored when Cake restarts. Apply edits without restarting Cake. Turning access
+off closes the listener and invalidates its MCP sessions. Cake must remain running.
 
-   Cake creates the endpoint directory with mode `0700`. An existing directory
-   must already be private, owned by you and not a symlink. Choose a short path
-   (the complete socket path must fit within 100 bytes). Invalid configuration or
-   an occupied endpoint fails startup rather than widening access. After a crash,
-   remove a stale `cake.sock` **only after confirming no Cake backend is using it**.
-
-3. Add this server to your external assistant's MCP configuration:
-
-   ```json
-   {
-     "mcpServers": {
-       "cake": {
-         "command": "node",
-         "args": ["/absolute/cake/out/main/mcp-bridge.js", "/Users/you/.cake-mcp"]
-       }
-     }
-   }
-   ```
-
-Use the `out/main/mcp-bridge.js` emitted by the desktop build (`pnpm build:slim`),
-or `out/server/mcp-bridge.mjs` from `pnpm build:server`. The bridge can be copied
-elsewhere: it needs Node, not Cake's source tree or `node_modules`. The package's
-`cake-mcp` executable points to the desktop bridge when installed/linked as a CLI.
-
-The assistant starts a small stdio proxy, not another Cake instance. Cake must
-remain running. The proxy's stdout is exclusively MCP. For a standalone Node
-backend, set the same environment on that backend host; a remote Electron client
-does not acquire a second endpoint.
+The server binds only to `127.0.0.1` (default port `4318`; use `0` to choose a
+free port). Every HTTP request requires the bearer token. Foreign Hosts and
+browser Origin headers are rejected. This is local access, not remote hosting;
+do not publish or tunnel this listener. Browser/remote-desktop settings control
+the backend's listener, not a second listener on the viewing device.
 
 ### Permissions and supported operations
-
-Omitting `scopes` grants only `read`. Explicitly opt into additional scopes in
-`CAKE_LOCAL_MCP`, then restart Cake, for example:
-`"scopes":["read","launch","send","todos.write"]`. An empty array grants nothing.
-All local clients of this endpoint share that startup grant; it is not per-client
-authentication. Other OS users are excluded by the private directory. Programs
-running as your OS user must be trusted. Unset `CAKE_LOCAL_MCP` and restart to
-remove access, or remove individual scopes/Projects and restart to narrow it.
 
 - **read:** `projects.list/info`, `sessions.list/info/history`,
   `sessions.reports`, `sessions.reports.read`, `todos.list/read`.
@@ -135,35 +104,39 @@ remove access, or remove individual scopes/Projects and restart to narrow it.
 - **send:** `sessions.send` to a canonical Project Session ID in the selected
   Project. Text only; no attachment, file, message-reference or thread forwarding.
 - **todos.write:** `todos.create/update`; updates require `expectedRevision`.
-  Work associations are preserved, not externally replaced. Done/reopen never
-  resolves/restores sessions.
+  Work associations are preserved. Done/reopen never resolves/restores sessions.
 
-Use MCP `tools/list` for exact input schemas. Every call except `projects.list`
-requires `projectPath`; Project restrictions and scopes are enforced on calls,
-not just tool discovery. Session targets must belong to that Project; its own
-Project Chat is readable, but global Cake Chat and other Projects are not.
-Registry metadata can be read before trust; other calls require live Project
-trust. Read access includes potentially sensitive conversation/to-do content.
+The server exposes one MCP tool, **`cake`**, with subcommands:
+
+```json
+{ "command": "sessions.list", "input": { "projectPath": "/my/project" } }
+```
+
+Call `cake` with `{}` to discover permitted commands, or pass
+`{"command":"sessions.list.help"}` for the exact input schema. Topic commands such
+as `{"command":"sessions"}` narrow discovery. Every subcommand except
+`projects.list` requires `projectPath`. Project restrictions and permissions are
+checked on calls, not just discovery. Session targets must belong to that Project; its own
+Project Chat is readable, but global Cake Chat is not. Registry metadata can be
+read before trust; other calls require live Project trust. Read access includes
+potentially sensitive conversation and to-do content.
 
 Runtime operations delegate through the selected **Project Chat's existing Cake
-operations**, so sends/launches are attributed to that chat and use its ordinary
-notifications and task-input protections. Reports are that chat's **pending
-report inbox**, not an archive of every result. Canonical results are returned
-as MCP text (some operations contain JSON); a launch/send receipt means admission,
-not completed work. Unregistered or ungranted tools return an MCP protocol error;
-registered tool scope/schema failures set MCP `isError`. Canonical operation
-responses, including `ok: false`, are preserved, so inspect the returned status. Observe completion through session status/history or Cake.
-Disconnecting the proxy does not stop already-admitted work; unfinished calls
-are interrupted, never automatically retried. Per-request cancellation is not
-supported: the pinned Effect MCP implementation does not reliably cancel numeric
-request IDs. Subscriptions are not implemented.
+operations**, preserving attribution, notifications and task-input protections.
+Reports are that chat's pending report inbox, not an archive of every result.
+Launch/send receipts mean admission, not completion. Inspect canonical operation
+status, including `ok: false`; observe completion through session status/history
+or Cake. Subcommand errors set MCP `isError`; canonical operation results are
+preserved unchanged. Changing permissions or resetting the token restarts MCP sessions,
+not already-admitted agent work. Calls are never automatically retried.
+
+Per-request cancellation is not supported reliably by the pinned Effect MCP
+implementation for numeric request IDs. Subscriptions are not implemented.
 
 Launch/send authorize normal agent execution and provider costs, **not** a new
-filesystem sandbox. Existing Cake/Pi tool permissions and approvals still apply.
-There is no generic operation forwarding, settings/credentials access, shell,
-trust/approval grant, merge, delete, stop or resolve tool. To-do association edits,
-global chat access, remote authentication and tunneling are outside this version.
-Do not publish or forward the socket over a network.
+filesystem sandbox. Existing Cake/Pi permissions and approvals still apply.
+There is no generic forwarding, settings/credentials access, shell, trust or
+approval grant, merge, delete, stop or resolve tool.
 
 Live provider tests are intentionally opt-in: signing in or sending a real
 model request can open external authentication and incur provider cost.

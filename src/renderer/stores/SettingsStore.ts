@@ -19,6 +19,7 @@ import { ProviderSettingsStore } from "./ProviderSettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { ProjectSessionStore } from "./ProjectSessionStore";
 import { McpSettingsStore } from "./McpSettingsStore";
+import { LocalMcpSettingsStore } from "./LocalMcpSettingsStore";
 import { WidgetPackageSettingsStore } from "./WidgetPackageSettingsStore";
 import type { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { UtilityModelSettingsStore } from "./UtilityModelSettingsStore";
@@ -77,6 +78,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
       projectSession: () =>
         this.activeSession instanceof ProjectSessionStore ? this.activeSession : undefined,
     });
+  }
+  @child get localMcp(): LocalMcpSettingsStore {
+    return createStore(LocalMcpSettingsStore);
   }
   @child get widgetPackages(): WidgetPackageSettingsStore {
     return createStore(WidgetPackageSettingsStore);

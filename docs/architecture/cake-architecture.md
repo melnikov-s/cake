@@ -587,9 +587,11 @@ whole listener with Google sign-in and a server-enforced account allowlist; appr
 clients still have full backend authority. Listeners without this option, including
 standalone hosting, require private access or an independently authenticated proxy.
 Host/Origin validation alone is not authentication. Opt-in external local MCP is
-separate: a private Unix socket and stdio bridge expose an allowlisted subset of
-Project Chat operations with startup-only Project/scope grants checked on each
-call. It is not the full-authority remote RPC endpoint. See
+separate: a loopback-only Effect Streamable HTTP server exposes an allowlisted
+subset of Project Chat operations. Backend-owned settings select Projects and
+scopes, with a private persisted bearer token required on every request. Calls
+recheck Project/scope grants and live trust; configuration changes restart the
+MCP listener without restarting agent execution. It is not the full-authority remote RPC endpoint. See
 [local MCP setup and limitations](../../README.md#local-mcp-access) and the remote
 [host guide](../development/headless-backend.md#security-and-data-isolation).
 

@@ -112,8 +112,12 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
       {
         page: "mcp",
         label: "MCP servers",
-        description: "Native server configuration",
         settings: [
+          {
+            label: "Cake MCP server",
+            targetId: "local-mcp-settings-title",
+            keywords: "external assistant access HTTP port permissions token projects",
+          },
           {
             label: "MCP configuration",
             targetId: "mcp-settings-title",

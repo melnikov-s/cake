@@ -2,7 +2,8 @@ import { Effect, Schema } from "effect";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import {
   LocalMcpError,
-  localMcpTools,
+  LocalMcpCall,
+  localMcpCommands,
   type LocalMcpConfiguration,
 } from "../../contracts/mcp/local-mcp";
 import { AgentListInput } from "../../contracts/agent/agent-list-data";
@@ -13,8 +14,50 @@ import * as metadata from "../project-sessions/projectSessionMetadata";
 import * as projects from "../projects/projects";
 import { toJsonValue } from "../../utils/to-json-value";
 
-export const toolsForGrant = (grant: LocalMcpConfiguration) =>
-  localMcpTools.filter((tool) => (grant.scopes ?? ["read"]).includes(tool.scope));
+export const commandsForGrant = (grant: LocalMcpConfiguration) =>
+  localMcpCommands.filter((tool) => (grant.scopes ?? ["read"]).includes(tool.scope));
+
+/** One MCP tool, with permission-filtered discovery and schema help. */
+export const call = Effect.fn("LocalMcpControl.call")(function* (
+  grant: LocalMcpConfiguration,
+  input: JsonObject,
+) {
+  const request = yield* Schema.decodeUnknownEffect(LocalMcpCall)(input, {
+    onExcessProperty: "error",
+  }).pipe(
+    Effect.mapError(
+      (cause) => new LocalMcpError({ code: "invalid_input", message: cause.message }),
+    ),
+  );
+  const allowed = commandsForGrant(grant);
+  const command = request.command;
+  if (command === undefined || ["projects", "sessions", "todos"].includes(command)) {
+    return toJsonValue({
+      commands: allowed
+        .filter((tool) => command === undefined || tool.name.startsWith(`${command}.`))
+        .map((tool) => ({ command: tool.name, description: tool.description })),
+      usage:
+        'cake({ command: "sessions.list", input: { projectPath: "/project" } }). Use <command>.help for the input schema. Launch/send receipts mean admission, not completion.',
+    });
+  }
+  if (command.endsWith(".help")) {
+    const name = command.slice(0, -5);
+    const tool = allowed.find((candidate) => candidate.name === name);
+    if (!tool)
+      return yield* new LocalMcpError({
+        code: "denied",
+        message: "Command is unavailable in this MCP grant.",
+      });
+    return toJsonValue({
+      command: name,
+      description: tool.description,
+      inputSchema: Schema.toStandardJSONSchemaV1(tool.inputSchema)["~standard"].jsonSchema.input({
+        target: "draft-07",
+      }),
+    });
+  }
+  return yield* invoke(grant, command, request.input ?? {});
+});
 
 /** An external caller delegates a bounded operation to the selected Project Chat.
  * Its registry retains model resolution, task-input protection and admission policy.
@@ -22,13 +65,13 @@ export const toolsForGrant = (grant: LocalMcpConfiguration) =>
  */
 export const invoke = Effect.fn("LocalMcpControl.invoke")(
   function* (grant: LocalMcpConfiguration, name: string, input: JsonObject) {
-    const tool = localMcpTools.find((candidate) => candidate.name === name);
+    const tool = localMcpCommands.find((candidate) => candidate.name === name);
     if (!tool)
       return yield* new LocalMcpError({
         code: "unsupported",
         message: "Operation is not exposed by local MCP.",
       });
-    if (!toolsForGrant(grant).includes(tool))
+    if (!commandsForGrant(grant).includes(tool))
       return yield* new LocalMcpError({
         code: "denied",
         message: `This connection does not have the ${tool.scope} scope.`,

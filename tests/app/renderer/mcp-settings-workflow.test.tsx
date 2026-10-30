@@ -5,6 +5,7 @@ import { Effect, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 import { McpSettings, makeMcpSettingsLayer } from "../../../src/services/pi/McpSettings";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";
+import { defaultLocalMcpConfiguration } from "../../../src/contracts/mcp/local-mcp";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { projectRecord } from "./fixtures/catalog-fixtures";
 
@@ -45,6 +46,11 @@ async function setup(project = false, trusted = true) {
     projects: [projectRecord({ path: "/project", name: "Project" })],
     client: {
       mcpSettings: {
+        serverGet: async () => ({
+          configuration: defaultLocalMcpConfiguration(),
+          runtime: { status: "disabled" },
+          projects: [],
+        }),
         get: (input, options) => {
           if (input.projectPath && !trusted)
             return Promise.reject(

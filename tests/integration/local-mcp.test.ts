@@ -1,15 +1,19 @@
-import { afterEach, beforeAll, afterAll, expect, it } from "vitest";
-import { build } from "esbuild";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { ConfigProvider, Effect, Schema } from "effect";
-import { mkdtemp, rm, chmod, lstat, symlink } from "node:fs/promises";
+import { afterEach, expect, it } from "vitest";
+import { Context, Effect, Layer, Schema } from "effect";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { mkdtemp, rm, lstat, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { McpClient, StdioTransport } from "@earendil-works/pi-mcp";
-import { initialize } from "../../src/domain/mcp/localMcp";
-import { serve } from "../../src/services/local-mcp/LocalMcpServer";
+import { join } from "node:path";
+import { request } from "node:http";
+import { McpClient, StreamableHttpTransport } from "@earendil-works/pi-mcp";
+import * as mcp from "../../src/domain/mcp/localMcp";
+import { LocalMcpServer, open } from "../../src/services/local-mcp/LocalMcpServer";
+import {
+  LocalMcpSettings,
+  makeLocalMcpSettingsLive,
+} from "../../src/services/storage/LocalMcpSettings";
 import { localMcpFixture, localMcpTarget } from "../app/helpers/localMcpHarness";
+import type { LocalMcpConfiguration } from "../../src/contracts/mcp/local-mcp";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -17,94 +21,96 @@ afterEach(async () => {
     directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
 });
-async function directory() {
-  // macOS's long TMPDIR plus the Unix socket length limit needs a short root.
-  const path = await mkdtemp(join(process.platform === "darwin" ? "/tmp" : tmpdir(), "cake-mcp-"));
+const fixture = Effect.fn("LocalMcp.test.fixture")(function* () {
+  const path = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "cake-mcp-")));
   directories.push(path);
-  return path;
-}
-let bridge: string;
-let buildDirectory: string;
-beforeAll(async () => {
-  buildDirectory = await mkdtemp(join(tmpdir(), "cake-mcp-build-"));
-  bridge = join(buildDirectory, "mcp-bridge.mjs");
-  await build({
-    entryPoints: [resolve("src/cli/mcp-bridge.ts")],
-    outfile: bridge,
-    bundle: true,
-    platform: "node",
-    format: "esm",
-  });
+  const f = yield* localMcpFixture();
+  const services = yield* Layer.build(
+    Layer.merge(
+      LocalMcpServer.layer,
+      makeLocalMcpSettingsLive(path).pipe(
+        Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
+      ),
+    ),
+  );
+  const context = Context.merge(f.context, services);
+  yield* mcp.initialize().pipe(Effect.provide(context));
+  return { ...f, path, context };
 });
-afterAll(async () => {
-  await rm(buildDirectory, { recursive: true, force: true });
-});
-function client(path: string) {
-  const transport = new StdioTransport({
-    command: process.execPath,
-    args: [bridge, path],
-    stderr: "pipe",
+function client(url: string, token: string) {
+  const transport = new StreamableHttpTransport({
+    url,
+    headers: { Authorization: `Bearer ${token}` },
+    openGetStream: false,
   });
   return {
     transport,
     client: new McpClient({ name: "cake-test", version: "1", requestTimeoutMs: 5000 }),
   };
 }
+const call = (client: McpClient, command: string, input: Record<string, unknown> = {}) =>
+  client.callTool("cake", { command, input });
 const content = (value: { content: readonly unknown[] }) => {
   const block = Schema.decodeUnknownSync(
     Schema.Struct({ type: Schema.Literal("text"), text: Schema.String }),
   )(value.content[0]);
   return JSON.parse(block.text);
 };
+const configuration: LocalMcpConfiguration = {
+  enabled: true,
+  port: 0,
+  projects: ["/project"],
+  scopes: ["read", "launch", "send", "todos.write"],
+};
 
-it("starts the real opt-in endpoint and stdio bridge with an actual MCP client", async () => {
-  const path = await directory();
-  const configuration = {
-    directory: path,
-    projects: ["/project"],
-    scopes: ["read", "launch", "send", "todos.write"],
-  };
+it("serves real Cake operations directly over authenticated Effect HTTP MCP", async () => {
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        const f = yield* localMcpFixture();
-        yield* initialize().pipe(
-          Effect.provide(f.context),
-          Effect.provide(
-            ConfigProvider.layer(
-              ConfigProvider.fromUnknown({ CAKE_LOCAL_MCP: JSON.stringify(configuration) }),
-            ),
-          ),
-        );
+        const f = yield* fixture();
+        const snapshot = yield* mcp.configure(configuration).pipe(Effect.provide(f.context));
+        const document = yield* Context.get(f.context, LocalMcpSettings).load();
+        const url = Schema.decodeUnknownSync(Schema.String)(snapshot.runtime.url);
+        expect(
+          JSON.parse(Schema.decodeUnknownSync(Schema.String)(snapshot.clientConfiguration)),
+        ).toMatchObject({
+          mcpServers: {
+            cake: { type: "http", url, headers: { Authorization: `Bearer ${document.token}` } },
+          },
+        });
         yield* Effect.promise(async () => {
-          const c = client(path);
+          const c = client(url, document.token);
           try {
-            const initialized = await c.client.connect(c.transport);
-            expect(initialized.serverInfo.name).toBe("cake-local");
+            expect((await c.client.connect(c.transport)).serverInfo.name).toBe("cake-local");
             await c.client.ping();
             const tools = await c.client.listTools();
-            expect(
-              tools.find((tool) => tool.name === "sessions.create")?.inputSchema,
-            ).toMatchObject({
-              type: "object",
-              required: expect.arrayContaining(["projectPath", "initialPrompt", "name"]),
-            });
-            expect(tools.some((tool) => tool.name === "sessions.cake")).toBe(false);
-            expect(content(await c.client.callTool("projects.list"))).toMatchObject({
+            expect(tools.map((tool) => tool.name)).toEqual(["cake"]);
+            expect(content(await c.client.callTool("cake", {})).commands).toEqual(
+              expect.arrayContaining([expect.objectContaining({ command: "sessions.create" })]),
+            );
+            expect(content(await call(c.client, "sessions.create.help")).inputSchema).toMatchObject(
+              {
+                type: "object",
+                required: expect.arrayContaining(["projectPath", "initialPrompt", "name"]),
+              },
+            );
+            await expect(c.client.callTool("sessions.list", {})).rejects.toThrow("not found");
+            expect(content(await call(c.client, "projects.list"))).toMatchObject({
               projects: [{ path: "/project" }],
             });
-            const launched = content(
-              await c.client.callTool("sessions.create", {
-                projectPath: "/project",
-                name: "Task",
-                initialPrompt: "Work",
-              }),
-            );
-            expect(launched).toMatchObject({ status: "started", sessionId: expect.any(String) });
+            expect(
+              content(
+                await call(c.client, "sessions.create", {
+                  projectPath: "/project",
+                  name: "Task",
+                  initialPrompt: "Work",
+                }),
+              ),
+            ).toMatchObject({ status: "started", sessionId: expect.any(String) });
             expect(f.prompts.some((text) => text.includes("Work"))).toBe(true);
             expect(
               content(
-                await c.client.callTool("sessions.send", {
+                await call(c.client, "sessions.send", {
                   projectPath: "/project",
                   sessionId: localMcpTarget,
                   text: "Continue",
@@ -112,24 +118,19 @@ it("starts the real opt-in endpoint and stdio bridge with an actual MCP client",
               ),
             ).toMatchObject({ command: "sessions.send" });
             const created = content(
-              await c.client.callTool("todos.create", {
+              await call(c.client, "todos.create", {
                 projectPath: "/project",
                 title: "Task",
                 description: "Work started",
               }),
             );
-            expect(created).toMatchObject({
-              command: "todos.create",
-              result: { id: expect.any(String), committed: true },
-            });
-            const id = created.result.id;
-            const revision = created.result.revision;
+            const { id, revision } = created.result;
             expect(
-              content(await c.client.callTool("todos.read", { projectPath: "/project", id })),
+              content(await call(c.client, "todos.read", { projectPath: "/project", id })),
             ).toMatchObject({ result: { title: "Task", state: "open" } });
             expect(
               content(
-                await c.client.callTool("todos.update", {
+                await call(c.client, "todos.update", {
                   projectPath: "/project",
                   id,
                   expectedRevision: revision,
@@ -139,7 +140,7 @@ it("starts the real opt-in endpoint and stdio bridge with an actual MCP client",
             ).toMatchObject({ result: { revision: revision + 1, committed: true } });
             expect(
               (
-                await c.client.callTool("todos.update", {
+                await call(c.client, "todos.update", {
                   projectPath: "/project",
                   id,
                   expectedRevision: revision,
@@ -149,7 +150,7 @@ it("starts the real opt-in endpoint and stdio bridge with an actual MCP client",
             ).toBe(true);
             expect(
               (
-                await c.client.callTool("sessions.create", {
+                await call(c.client, "sessions.create", {
                   projectPath: "/project",
                   name: "Task",
                   initialPrompt: "Work",
@@ -158,179 +159,242 @@ it("starts the real opt-in endpoint and stdio bridge with an actual MCP client",
               ).isError,
             ).toBe(true);
             expect(
-              content(await c.client.callTool("projects.info", { projectPath: "/other" })),
+              content(await call(c.client, "projects.info", { projectPath: "/other" })),
             ).toMatchObject({ code: "denied" });
-            await expect(c.client.callTool("sessions.cake", {})).rejects.toThrow("not found");
-            await expect(c.client.request("tools/call", {})).rejects.toThrow();
-            expect(c.transport.stderr).toBe("");
+            expect(content(await call(c.client, "sessions.cake", {}))).toMatchObject({
+              code: "unsupported",
+            });
           } finally {
             await c.client.close();
-          }
-          // A proxy disconnect does not take down Cake or another integration.
-          const second = client(path);
-          try {
-            await second.client.connect(second.transport);
-            await second.client.ping();
-          } finally {
-            await second.client.close();
           }
         });
       }),
     ),
   );
-  await expect(lstat(join(path, "cake.sock"))).rejects.toMatchObject({ code: "ENOENT" });
 });
 
-it("runs the standalone built bridge without Cake dependencies and keeps failures off stdout", async () => {
-  const run = promisify(execFile);
-  await expect(run(process.execPath, [bridge])).rejects.toMatchObject({
-    code: 1,
-    stdout: "",
-    stderr: expect.stringContaining("Usage: cake-mcp"),
-  });
-  const path = await directory();
-  await expect(run(process.execPath, [bridge, path])).rejects.toMatchObject({
-    code: 1,
-    stdout: "",
-    stderr: expect.stringContaining("Start Cake with CAKE_LOCAL_MCP configured"),
-  });
-});
-
-it("is disabled without opt-in and rejects malformed host grants", async () => {
-  const path = await directory();
+it("defaults off and persists private settings and token across server restarts", async () => {
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        const f = yield* localMcpFixture();
-        yield* initialize().pipe(
-          Effect.provide(f.context),
-          Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({}))),
-        );
-        for (const value of [
-          "{",
-          JSON.stringify({ directory: path, projects: ["/project"], scopes: ["admin"] }),
-          JSON.stringify({ directory: path, projects: ["relative"] }),
-        ]) {
-          const result = yield* initialize().pipe(
-            Effect.result,
-            Effect.provide(f.context),
-            Effect.provide(
-              ConfigProvider.layer(ConfigProvider.fromUnknown({ CAKE_LOCAL_MCP: value })),
-            ),
+        const f = yield* fixture();
+        const initial = yield* mcp.get().pipe(Effect.provide(f.context));
+        expect(initial.configuration).toMatchObject({
+          enabled: false,
+          projects: [],
+          scopes: ["read"],
+        });
+        expect(initial.runtime).toEqual({ status: "disabled" });
+        expect(initial.clientConfiguration).toBeUndefined();
+        const stored = yield* Context.get(f.context, LocalMcpSettings).load();
+        expect(
+          (yield* Effect.promise(() => lstat(join(f.path, "mcp-server.json")))).mode & 0o777,
+        ).toBe(0o600);
+        yield* mcp.configure(configuration).pipe(Effect.provide(f.context));
+        yield* Context.get(f.context, LocalMcpServer).configure(undefined);
+        yield* mcp.initialize().pipe(Effect.provide(f.context));
+        const restarted = yield* mcp.get().pipe(Effect.provide(f.context));
+        expect(restarted.runtime.status).toBe("serving");
+        expect((yield* Context.get(f.context, LocalMcpSettings).load()).token).toBe(stored.token);
+        expect(
+          JSON.parse(
+            yield* Effect.promise(() => readFile(join(f.path, "mcp-server.json"), "utf8")),
+          ),
+        ).toMatchObject({ configuration });
+        const url = Schema.decodeUnknownSync(Schema.String)(restarted.runtime.url);
+        yield* mcp.configure({ ...configuration, enabled: false }).pipe(Effect.provide(f.context));
+        yield* mcp.initialize().pipe(Effect.provide(f.context));
+        expect((yield* mcp.get().pipe(Effect.provide(f.context))).runtime.status).toBe("disabled");
+        yield* Effect.promise(() => expect(fetch(url)).rejects.toThrow());
+      }),
+    ),
+  );
+});
+
+it("rejects unauthenticated, wrong-token, foreign Host and browser-origin access", async () => {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        const snapshot = yield* mcp.configure(configuration).pipe(Effect.provide(f.context));
+        const url = Schema.decodeUnknownSync(Schema.String)(snapshot.runtime.url);
+        const { token } = yield* Context.get(f.context, LocalMcpSettings).load();
+        yield* Effect.promise(async () => {
+          const unauthorized: Record<string, string>[] = [
+            {},
+            { Authorization: "Bearer incorrect" },
+          ];
+          for (const headers of unauthorized)
+            expect((await fetch(url, { headers })).status).toBe(401);
+          expect(
+            await new Promise<number | undefined>((resolve, reject) => {
+              const req = request(
+                url,
+                { headers: { Host: "evil.example", Authorization: `Bearer ${token}` } },
+                (response) => {
+                  response.resume();
+                  resolve(response.statusCode);
+                },
+              );
+              req.on("error", reject);
+              req.end();
+            }),
+          ).toBe(403);
+          for (const origin of ["http://evil.example", new URL(url).origin])
+            expect(
+              (await fetch(url, { headers: { Origin: origin, Authorization: `Bearer ${token}` } }))
+                .status,
+            ).toBe(403);
+          expect((await fetch(url, { headers: { Authorization: `Bearer ${token}` } })).status).toBe(
+            405,
           );
-          expect(result._tag).toBe("Failure");
+        });
+        const rotated = yield* mcp.rotateToken().pipe(Effect.provide(f.context));
+        const newUrl = Schema.decodeUnknownSync(Schema.String)(rotated.runtime.url);
+        const updated = yield* Context.get(f.context, LocalMcpSettings).load();
+        expect(updated.token).not.toBe(token);
+        yield* Effect.promise(async () => {
+          expect(
+            (await fetch(newUrl, { headers: { Authorization: `Bearer ${token}` } })).status,
+          ).toBe(401);
+          const c = client(newUrl, updated.token);
+          try {
+            await c.client.connect(c.transport);
+            await c.client.ping();
+          } finally {
+            await c.client.close();
+          }
+        });
+      }),
+    ),
+  );
+});
+
+it("enforces read-only scopes on direct calls and applies permission changes live", async () => {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        for (const scopes of [["read"] as const, [] as const]) {
+          const snapshot = yield* mcp
+            .configure({ ...configuration, scopes })
+            .pipe(Effect.provide(f.context));
+          const { token } = yield* Context.get(f.context, LocalMcpSettings).load();
+          const url = Schema.decodeUnknownSync(Schema.String)(snapshot.runtime.url);
+          yield* Effect.promise(async () => {
+            const c = client(url, token);
+            try {
+              await c.client.connect(c.transport);
+              expect(
+                (await c.client.listTools()).every((tool) => tool.annotations?.readOnlyHint),
+              ).toBe(true);
+              expect(
+                content(
+                  await call(c.client, "sessions.create", {
+                    projectPath: "/project",
+                    name: "Task",
+                    initialPrompt: "Work",
+                  }),
+                ),
+              ).toMatchObject({ code: "denied" });
+              expect(content(await call(c.client, "sessions.create.help"))).toMatchObject({
+                code: "denied",
+              });
+              const discovery = content(await c.client.callTool("cake", {}));
+              if (scopes.length === 0) expect(discovery.commands).toEqual([]);
+              else
+                expect(
+                  discovery.commands.every(
+                    (command: { command: string }) =>
+                      ![
+                        "sessions.create",
+                        "sessions.send",
+                        "todos.create",
+                        "todos.update",
+                      ].includes(command.command),
+                  ),
+                ).toBe(true);
+            } finally {
+              await c.client.close();
+            }
+          });
         }
       }),
     ),
   );
-  await expect(lstat(join(path, "cake.sock"))).rejects.toMatchObject({ code: "ENOENT" });
 });
 
-it("defaults to read-only and denies hidden tools even when called by name", async () => {
-  const path = await directory();
+it("interrupts unfinished tool work when the server is disabled", async () => {
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        const f = yield* localMcpFixture();
-        yield* initialize().pipe(
-          Effect.provide(f.context),
-          Effect.provide(
-            ConfigProvider.layer(
-              ConfigProvider.fromUnknown({
-                CAKE_LOCAL_MCP: JSON.stringify({ directory: path, projects: ["/project"] }),
-              }),
-            ),
-          ),
-        );
-        yield* Effect.promise(async () => {
-          const c = client(path);
-          try {
-            await c.client.connect(c.transport);
-            expect(
-              (await c.client.listTools()).every((tool) => tool.annotations?.readOnlyHint),
-            ).toBe(true);
-            await expect(
-              c.client.callTool("sessions.create", {
-                projectPath: "/project",
-                name: "Task",
-                initialPrompt: "Work",
-              }),
-            ).rejects.toThrow("not found");
-          } finally {
-            await c.client.close();
-          }
-        });
-      }),
-    ),
-  );
-});
-
-it("rejects unsafe directories and never replaces an existing socket", async () => {
-  const path = await directory();
-  const endpoint = { tools: [], call: async () => ({}) };
-  await chmod(path, 0o755);
-  await expect(Effect.runPromise(Effect.scoped(serve(path, endpoint)))).rejects.toThrow("0700");
-  await chmod(path, 0o700);
-  const linked = `${path}-link`;
-  directories.push(linked);
-  await symlink(path, linked);
-  await expect(Effect.runPromise(Effect.scoped(serve(linked, endpoint)))).rejects.toThrow("0700");
-  await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        yield* serve(path, endpoint);
-        const duplicate = yield* serve(path, endpoint).pipe(Effect.result);
-        expect(duplicate._tag).toBe("Failure");
-        expect(yield* Effect.promise(() => lstat(join(path, "cake.sock")))).toBeDefined();
-      }),
-    ),
-  );
-});
-
-it("cancels pending tool work when the stdio bridge disconnects", async () => {
-  const path = await directory();
-  const { promise: entered, resolve: called } = Promise.withResolvers<void>();
-  const { promise: cancelled, resolve: aborted } = Promise.withResolvers<void>();
-  await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        yield* serve(path, {
-          tools: [
-            {
-              name: "pending",
-              description: "Test connection cancellation",
-              inputSchema: { type: "object" },
-              annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+        const f = yield* fixture();
+        const { promise: entered, resolve: called } = Promise.withResolvers<void>();
+        const { promise: cancelled, resolve: aborted } = Promise.withResolvers<void>();
+        const server = Context.get(f.context, LocalMcpServer);
+        const runtime = yield* server.configure({
+          port: 0,
+          token: "test-token",
+          endpoint: {
+            tools: [
+              {
+                name: "cake",
+                description: "Test shutdown",
+                inputSchema: { type: "object" },
+                annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+              },
+            ],
+            call: async (_name, _input, signal) => {
+              called();
+              await new Promise<void>((resolve) =>
+                signal.addEventListener(
+                  "abort",
+                  () => {
+                    aborted();
+                    resolve();
+                  },
+                  { once: true },
+                ),
+              );
+              return {};
             },
-          ],
-          call: async (_name, _input, signal) => {
-            called();
-            await new Promise<void>((resolve) =>
-              signal.addEventListener(
-                "abort",
-                () => {
-                  aborted();
-                  resolve();
-                },
-                { once: true },
-              ),
-            );
-            return { accepted: false };
           },
         });
+        const c = client(Schema.decodeUnknownSync(Schema.String)(runtime.url), "test-token");
+        yield* Effect.promise(() => c.client.connect(c.transport));
+        const pending = c.client.callTool("cake", {}).catch(() => undefined);
+        yield* Effect.promise(() => entered);
+        yield* server.configure(undefined);
         yield* Effect.promise(async () => {
-          const c = client(path);
-          await c.client.connect(c.transport);
-          try {
-            const pending = c.client.callTool("pending", {}).catch(() => undefined);
-            await entered;
-            await c.client.close();
-            await cancelled;
-            await pending;
-          } finally {
-            await c.client.close();
-          }
+          await cancelled;
+          await pending;
+          await c.client.close();
         });
+      }),
+    ),
+  );
+});
+
+it("rejects invalid grants and reports an occupied port without crashing Cake", async () => {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        for (const projects of [[], ["relative"], ["/other"]]) {
+          expect(
+            yield* mcp
+              .configure({ ...configuration, projects })
+              .pipe(Effect.result, Effect.provide(f.context)),
+          ).toMatchObject({ _tag: "Failure", failure: { code: "invalid_input" } });
+        }
+        const occupied = yield* open(0, "test-token", { tools: [], call: async () => ({}) });
+        const port = Number(new URL(occupied).port);
+        const snapshot = yield* mcp
+          .configure({ ...configuration, port })
+          .pipe(Effect.provide(f.context));
+        expect(snapshot.runtime).toMatchObject({ status: "error", error: expect.any(String) });
+        yield* mcp.configure({ ...configuration, enabled: false }).pipe(Effect.provide(f.context));
+        expect((yield* mcp.get().pipe(Effect.provide(f.context))).runtime.status).toBe("disabled");
       }),
     ),
   );

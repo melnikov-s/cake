@@ -2,6 +2,7 @@ import { usePhoneLayout } from "../lib/phone-layout";
 import { SettingsCakeChatSection } from "./settings-cake-chat-section";
 import { SettingsCakeChatOverlaySection } from "./settings-cake-chat-overlay-section";
 import { SettingsMcpSection } from "./settings-mcp-section";
+import { SettingsLocalMcpSection } from "./settings-local-mcp-section";
 import { SettingsWidgetPackagesSection } from "./settings-widget-packages-section";
 import { SettingsDictationSection } from "./settings-dictation-section";
 import { SettingsSpeechSection } from "./settings-speech-section";
@@ -266,10 +267,12 @@ export const SettingsPage = observer(function SettingsPage({
         <div className="mx-auto max-w-4xl px-8 py-8 pb-16 max-[620px]:px-4 max-[620px]:py-4">
           <div className="mb-6">
             <h2 className="text-xl font-semibold text-foreground">{pageMetadata.label}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {pageMetadata.introduction ??
-                "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects."}
-            </p>
+            {activePage !== "mcp" && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {pageMetadata.introduction ??
+                  "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects."}
+              </p>
+            )}
           </div>
           {globalError && (
             <Callout
@@ -323,7 +326,12 @@ export const SettingsPage = observer(function SettingsPage({
             </Callout>
           )}
 
-          {activePage === "mcp" && <SettingsMcpSection settings={settings.mcp} />}
+          {activePage === "mcp" && (
+            <div className="grid gap-6">
+              <SettingsLocalMcpSection settings={settings.localMcp} />
+              <SettingsMcpSection settings={settings.mcp} />
+            </div>
+          )}
           {activePage === "widget-packages" && (
             <SettingsWidgetPackagesSection settings={settings.widgetPackages} />
           )}

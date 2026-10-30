@@ -1989,12 +1989,39 @@ const mcpSettingsScenario: VisualCaptureScenario = {
   region: cakePromptsSettingsScenario.region,
 };
 
+const localMcpSettingsScenario: VisualCaptureScenario = {
+  name: "local-mcp-server",
+  description: "Cake's built-in HTTP MCP server permissions and client configuration",
+  states: ["default", "running"],
+  seed: cakePromptsSettingsScenario.seed,
+  async prepare(page, state) {
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /^MCP servers/ }).click();
+    const section = page.getByRole("region", { name: "Cake MCP server", exact: true });
+    await expect(
+      section.getByRole("switch", { name: "Allow Project visual-capture-project", exact: true }),
+    ).toBeEnabled();
+    if (state === "running") {
+      await section
+        .getByRole("switch", { name: "Allow Project visual-capture-project", exact: true })
+        .click();
+      await section.getByRole("textbox", { name: "MCP server port" }).fill("0");
+      await section.getByRole("switch", { name: "Allow external assistants", exact: true }).click();
+      await expect(section.getByText("Running", { exact: true })).toBeVisible();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.getByRole("region", { name: "Cake MCP server", exact: true }),
+};
+
 const mcpSettingsLayoutScenario: VisualCaptureScenario = {
   name: "mcp-settings-layout",
   description: "Long MCP descriptions and six actions in a resizable settings pane",
   states: ["default"],
   async seed(paths, theme) {
-    await mcpSettingsScenario.seed(paths, theme);
+    await cakePromptsSettingsScenario.seed(paths, theme);
+    await mkdir(join(paths.cakeHome, "pi"), { recursive: true });
     await writeFile(
       join(paths.cakeHome, "pi", "mcp.json"),
       JSON.stringify({
@@ -2016,7 +2043,6 @@ const mcpSettingsLayoutScenario: VisualCaptureScenario = {
     );
   },
   async prepare(page) {
-    await assistantMarkdownCode.prepare(page, "default");
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await page.getByRole("button", { name: /^MCP servers/ }).click();
     await page.getByRole("button", { name: "Edit godot-ai", exact: true }).waitFor();
@@ -5920,6 +5946,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   widgetThemeScenario("html"),
   cakePromptsSettingsScenario,
   mcpSettingsScenario,
+  localMcpSettingsScenario,
   mcpSettingsLayoutScenario,
   appearanceSettingsScenario,
   browserSharingScenario,

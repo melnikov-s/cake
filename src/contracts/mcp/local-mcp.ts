@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { jsonObjectSchema } from "../serialization/json-contract";
 import { AgentListInput } from "../agent/agent-list-data";
 import { SessionHistoryQuery } from "../conversations/session-query-data";
 import { PendingReportRead } from "../conversations/pending-report";
@@ -10,11 +11,38 @@ const path = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)
 export const LocalMcpScope = Schema.Literals(["read", "launch", "send", "todos.write"]);
 export type LocalMcpScope = typeof LocalMcpScope.Type;
 export const LocalMcpConfiguration = Schema.Struct({
-  directory: path,
-  projects: Schema.Array(path).check(Schema.isMinLength(1), Schema.isUnique()),
+  enabled: Schema.Boolean,
+  port: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 65535 })),
+  projects: Schema.Array(path).check(Schema.isUnique()),
   scopes: Schema.optionalKey(Schema.Array(LocalMcpScope).check(Schema.isUnique())),
 });
 export interface LocalMcpConfiguration extends Schema.Schema.Type<typeof LocalMcpConfiguration> {}
+
+export const LocalMcpRuntime = Schema.Struct({
+  status: Schema.Literals(["disabled", "serving", "error"]),
+  url: Schema.optionalKey(Schema.String),
+  error: Schema.optionalKey(Schema.String),
+});
+export interface LocalMcpRuntime extends Schema.Schema.Type<typeof LocalMcpRuntime> {}
+export const LocalMcpSnapshot = Schema.Struct({
+  configuration: LocalMcpConfiguration,
+  runtime: LocalMcpRuntime,
+  projects: Schema.Array(Schema.Struct({ path, name: Schema.String })),
+  clientConfiguration: Schema.optionalKey(Schema.String),
+});
+export interface LocalMcpSnapshot extends Schema.Schema.Type<typeof LocalMcpSnapshot> {}
+export const defaultLocalMcpConfiguration = (): LocalMcpConfiguration => ({
+  enabled: false,
+  port: 4318,
+  projects: [],
+  scopes: ["read"],
+});
+
+export const LocalMcpCall = Schema.Struct({
+  command: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
+  input: Schema.optionalKey(jsonObjectSchema),
+});
+export interface LocalMcpCall extends Schema.Schema.Type<typeof LocalMcpCall> {}
 
 const project = { projectPath: path };
 const session = {
@@ -29,7 +57,7 @@ const tool = (
 ) => ({ name, scope, description, inputSchema });
 
 /** Deliberate external subset, not the internal operation registry or a forwarding escape hatch. */
-export const localMcpTools = [
+export const localMcpCommands = [
   tool(
     "projects.list",
     "read",

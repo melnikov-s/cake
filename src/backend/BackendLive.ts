@@ -86,6 +86,8 @@ import { loadReviewSessionProjection } from "../services/pi/runtime/sidecar-runt
 import { BootstrapLive } from "../main/BootstrapLive";
 import { initializeBackend } from "./initializeBackend";
 import * as localMcp from "../domain/mcp/localMcp";
+import { LocalMcpServer } from "../services/local-mcp/LocalMcpServer";
+import { makeLocalMcpSettingsLive } from "../services/storage/LocalMcpSettings";
 import { WorkflowSandboxLive } from "../services/pi/live/WorkflowSandboxLive";
 import { makeWorkflowScriptsLive } from "../services/pi/live/WorkflowScriptsLive";
 import { WorkflowWorkersLive } from "../services/pi/live/WorkflowWorkersLive";
@@ -123,6 +125,8 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
   const scheduledMessageStorage = makeScheduledMessageStorageLive(paths.state);
   const StorageLive = Layer.mergeAll(
     applicationStorage,
+    makeLocalMcpSettingsLive(paths.state),
+    LocalMcpServer.layer,
     ProjectTodoReports.layer,
     ApplicationState.layer.pipe(Layer.provide(applicationStorage)),
     scheduledMessageStorage,

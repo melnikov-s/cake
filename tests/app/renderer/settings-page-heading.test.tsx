@@ -3,6 +3,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";
+import { defaultLocalMcpConfiguration } from "../../../src/contracts/mcp/local-mcp";
 import type { SettingsPageId } from "../../../src/renderer/stores/SettingsStore";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -48,7 +49,14 @@ describe("Settings section navigation", () => {
     using fixture = createRendererStoreFixture({
       client: {
         modelPresets: { list: async () => ({ presets: [] }) },
-        mcpSettings: { get: async () => ({ scope: {}, revision: "initial", entries: [] }) },
+        mcpSettings: {
+          get: async () => ({ scope: {}, revision: "initial", entries: [] }),
+          serverGet: async () => ({
+            configuration: defaultLocalMcpConfiguration(),
+            runtime: { status: "disabled" },
+            projects: [],
+          }),
+        },
       },
     });
     const user = userEvent.setup();
@@ -60,13 +68,14 @@ describe("Settings section navigation", () => {
           navigation.getByRole("button", { name: new RegExp(`^${title}(?:\\s|$)`) }),
         );
         expect(screen.getAllByRole("heading", { level: 2 })[0]?.textContent).toBe(title);
-        expect(
-          screen.getByText(
-            introduction ??
-              "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects.",
-            { exact: true },
-          ),
-        ).toBeDefined();
+        if (page !== "mcp")
+          expect(
+            screen.getByText(
+              introduction ??
+                "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects.",
+              { exact: true },
+            ),
+          ).toBeDefined();
         if (page === "mcp") await screen.findByText("No MCP servers configured.");
       }
     } finally {

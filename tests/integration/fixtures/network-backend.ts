@@ -29,6 +29,8 @@ import {
 import type { PiModel } from "../../../src/contracts/pi/model-data";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { McpSettings } from "../../../src/services/pi/McpSettings";
+import { LocalMcpServer } from "../../../src/services/local-mcp/LocalMcpServer";
+import { LocalMcpSettings } from "../../../src/services/storage/LocalMcpSettings";
 import { PiSettings } from "../../../src/services/pi/PiSettings";
 import { WidgetPackages } from "../../../src/services/widgets/WidgetPackages";
 import { makeInlineWidgetsLive } from "../../../src/services/widgets/InlineWidgetsLive";
@@ -387,6 +389,8 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       load: () => Effect.succeed(projectPiSettings(SettingsManager.inMemory())),
     }),
     Layer.mock(McpSettings, {}),
+    Layer.mock(LocalMcpServer, {}),
+    Layer.mock(LocalMcpSettings, {}),
     Layer.mock(PiAgentResources, {}),
     Layer.mock(ScheduledMessages, {
       snapshot: () => ({ revision: 0, messages: [] }),
