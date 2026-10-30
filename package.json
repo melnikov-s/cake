@@ -2,6 +2,9 @@
   "name": "cake",
   "version": "0.0.0",
   "private": true,
+  "bin": {
+    "cake-mcp": "out/main/mcp-bridge.js"
+  },
   "type": "module",
   "main": "out/main/main.js",
   "scripts": {

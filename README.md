@@ -75,7 +75,8 @@ single-user trust limitations, see the [host guide](./docs/development/headless-
 
 Other assistants can control a **running local backend** through a tools-only MCP
 stdio bridge (macOS/Linux). It is off by default and opens no TCP/HTTP listener.
-This first version is available from a source checkout; it is not a packaged CLI.
+The build includes a dependency-free Node bridge; Effect's MCP server handles the
+protocol in the running backend. No separate MCP server installation is needed.
 
 1. Register the desired Projects in Cake. Trust them in Cake before using
    runtime-backed operations; MCP cannot grant trust or approve requests.
@@ -101,11 +102,16 @@ This first version is available from a source checkout; it is not a packaged CLI
      "mcpServers": {
        "cake": {
          "command": "node",
-         "args": ["/absolute/cake/scripts/cake-mcp.mjs", "/Users/you/.cake-mcp"]
+         "args": ["/absolute/cake/out/main/mcp-bridge.js", "/Users/you/.cake-mcp"]
        }
      }
    }
    ```
+
+Use the `out/main/mcp-bridge.js` emitted by the desktop build (`pnpm build:slim`),
+or `out/server/mcp-bridge.mjs` from `pnpm build:server`. The bridge can be copied
+elsewhere: it needs Node, not Cake's source tree or `node_modules`. The package's
+`cake-mcp` executable points to the desktop bridge when installed/linked as a CLI.
 
 The assistant starts a small stdio proxy, not another Cake instance. Cake must
 remain running. The proxy's stdout is exclusively MCP. For a standalone Node
@@ -144,11 +150,13 @@ operations**, so sends/launches are attributed to that chat and use its ordinary
 notifications and task-input protections. Reports are that chat's **pending
 report inbox**, not an archive of every result. Canonical results are returned
 as MCP text (some operations contain JSON); a launch/send receipt means admission,
-not completed work. Scope/schema failures set MCP `isError`; canonical operation
+not completed work. Unregistered or ungranted tools return an MCP protocol error;
+registered tool scope/schema failures set MCP `isError`. Canonical operation
 responses, including `ok: false`, are preserved, so inspect the returned status. Observe completion through session status/history or Cake.
 Disconnecting the proxy does not stop already-admitted work; unfinished calls
-are interrupted, never automatically retried. Per-request cancellation and
-subscriptions are not implemented.
+are interrupted, never automatically retried. Per-request cancellation is not
+supported: the pinned Effect MCP implementation does not reliably cancel numeric
+request IDs. Subscriptions are not implemented.
 
 Launch/send authorize normal agent execution and provider costs, **not** a new
 filesystem sandbox. Existing Cake/Pi tool permissions and approvals still apply.

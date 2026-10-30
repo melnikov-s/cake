@@ -37,8 +37,9 @@ export const serverBuildOptions = {
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   await build({
     ...serverBuildOptions,
-    entryPoints: ["src/server/main.ts"],
-    outfile: "out/server/main.mjs",
+    entryPoints: { main: "src/server/main.ts", "mcp-bridge": "src/cli/mcp-bridge.ts" },
+    outdir: "out/server",
+    outExtension: { ".js": ".mjs" },
     sourcemap: true,
   });
 }

@@ -1,10 +1,11 @@
-import { afterEach, expect, it } from "vitest";
+import { afterEach, beforeAll, afterAll, expect, it } from "vitest";
+import { build } from "esbuild";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { ConfigProvider, Effect, Schema } from "effect";
 import { mkdtemp, rm, chmod, lstat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { connect } from "node:net";
-import { once } from "node:events";
 import { McpClient, StdioTransport } from "@earendil-works/pi-mcp";
 import { initialize } from "../../src/domain/mcp/localMcp";
 import { serve } from "../../src/services/local-mcp/LocalMcpServer";
@@ -22,10 +23,26 @@ async function directory() {
   directories.push(path);
   return path;
 }
+let bridge: string;
+let buildDirectory: string;
+beforeAll(async () => {
+  buildDirectory = await mkdtemp(join(tmpdir(), "cake-mcp-build-"));
+  bridge = join(buildDirectory, "mcp-bridge.mjs");
+  await build({
+    entryPoints: [resolve("src/cli/mcp-bridge.ts")],
+    outfile: bridge,
+    bundle: true,
+    platform: "node",
+    format: "esm",
+  });
+});
+afterAll(async () => {
+  await rm(buildDirectory, { recursive: true, force: true });
+});
 function client(path: string) {
   const transport = new StdioTransport({
     command: process.execPath,
-    args: [resolve("scripts/cake-mcp.mjs"), path],
+    args: [bridge, path],
     stderr: "pipe",
   });
   return {
@@ -143,11 +160,8 @@ it("starts the real opt-in endpoint and stdio bridge with an actual MCP client",
             expect(
               content(await c.client.callTool("projects.info", { projectPath: "/other" })),
             ).toMatchObject({ code: "denied" });
-            expect(content(await c.client.callTool("sessions.cake", {}))).toMatchObject({
-              code: "unsupported",
-            });
-            await expect(c.client.request("resources/list")).rejects.toThrow("not supported");
-            await expect(c.client.request("tools/call", {})).rejects.toThrow("Expected tools/call");
+            await expect(c.client.callTool("sessions.cake", {})).rejects.toThrow("not found");
+            await expect(c.client.request("tools/call", {})).rejects.toThrow();
             expect(c.transport.stderr).toBe("");
           } finally {
             await c.client.close();
@@ -165,6 +179,21 @@ it("starts the real opt-in endpoint and stdio bridge with an actual MCP client",
     ),
   );
   await expect(lstat(join(path, "cake.sock"))).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+it("runs the standalone built bridge without Cake dependencies and keeps failures off stdout", async () => {
+  const run = promisify(execFile);
+  await expect(run(process.execPath, [bridge])).rejects.toMatchObject({
+    code: 1,
+    stdout: "",
+    stderr: expect.stringContaining("Usage: cake-mcp"),
+  });
+  const path = await directory();
+  await expect(run(process.execPath, [bridge, path])).rejects.toMatchObject({
+    code: 1,
+    stdout: "",
+    stderr: expect.stringContaining("Start Cake with CAKE_LOCAL_MCP configured"),
+  });
 });
 
 it("is disabled without opt-in and rejects malformed host grants", async () => {
@@ -220,15 +249,13 @@ it("defaults to read-only and denies hidden tools even when called by name", asy
             expect(
               (await c.client.listTools()).every((tool) => tool.annotations?.readOnlyHint),
             ).toBe(true);
-            expect(
-              content(
-                await c.client.callTool("sessions.create", {
-                  projectPath: "/project",
-                  name: "Task",
-                  initialPrompt: "Work",
-                }),
-              ),
-            ).toMatchObject({ code: "denied" });
+            await expect(
+              c.client.callTool("sessions.create", {
+                projectPath: "/project",
+                name: "Task",
+                initialPrompt: "Work",
+              }),
+            ).rejects.toThrow("not found");
           } finally {
             await c.client.close();
           }
@@ -260,7 +287,7 @@ it("rejects unsafe directories and never replaces an existing socket", async () 
   );
 });
 
-it("handles malformed protocol frames, initialization order and disconnect cancellation", async () => {
+it("cancels pending tool work when the stdio bridge disconnects", async () => {
   const path = await directory();
   const { promise: entered, resolve: called } = Promise.withResolvers<void>();
   const { promise: cancelled, resolve: aborted } = Promise.withResolvers<void>();
@@ -268,7 +295,14 @@ it("handles malformed protocol frames, initialization order and disconnect cance
     Effect.scoped(
       Effect.gen(function* () {
         yield* serve(path, {
-          tools: [],
+          tools: [
+            {
+              name: "pending",
+              description: "Test connection cancellation",
+              inputSchema: { type: "object" },
+              annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+            },
+          ],
           call: async (_name, _input, signal) => {
             called();
             await new Promise<void>((resolve) =>
@@ -285,39 +319,17 @@ it("handles malformed protocol frames, initialization order and disconnect cance
           },
         });
         yield* Effect.promise(async () => {
-          const socket = connect(join(path, "cake.sock"));
-          await once(socket, "connect");
-          const exchange = async (line: string) => {
-            const response = once(socket, "data");
-            socket.write(`${line}\n`);
-            const [data] = await response;
-            return JSON.parse(String(data));
-          };
-          expect(await exchange("{")).toMatchObject({ error: { code: -32700 } });
-          expect(await exchange("[]")).toMatchObject({ error: { code: -32600 } });
-          expect(
-            await exchange(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" })),
-          ).toMatchObject({ error: { code: -32000 } });
-          expect(
-            await exchange(
-              JSON.stringify({
-                jsonrpc: "2.0",
-                id: 2,
-                method: "initialize",
-                params: {
-                  protocolVersion: "2024-11-05",
-                  capabilities: {},
-                  clientInfo: { name: "test", version: "1" },
-                },
-              }),
-            ),
-          ).toMatchObject({ result: { protocolVersion: "2024-11-05" } });
-          socket.write(
-            `${JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "pending", arguments: {} } })}\n`,
-          );
-          await entered;
-          socket.destroy();
-          await cancelled;
+          const c = client(path);
+          await c.client.connect(c.transport);
+          try {
+            const pending = c.client.callTool("pending", {}).catch(() => undefined);
+            await entered;
+            await c.client.close();
+            await cancelled;
+            await pending;
+          } finally {
+            await c.client.close();
+          }
         });
       }),
     ),

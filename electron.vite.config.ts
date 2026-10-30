@@ -46,6 +46,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           main: resolve(import.meta.dirname, "src/main/main.ts"),
+          "mcp-bridge": resolve(import.meta.dirname, "src/cli/mcp-bridge.ts"),
         },
         output: { entryFileNames: "[name].js" },
       },

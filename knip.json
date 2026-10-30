@@ -6,7 +6,6 @@
     "src/renderer/index.html",
     "src/assets/vscode-companion/extension.js",
     "src/server/main.ts",
-    "scripts/cake-mcp.mjs",
     "scripts/visual-capture/cli.ts",
     "scripts/performance/session-references.ts",
     "scripts/performance/session-list.mjs",

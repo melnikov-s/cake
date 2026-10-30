@@ -1,5 +1,4 @@
 import { Schema } from "effect";
-import { jsonObjectSchema } from "../serialization/json-contract";
 import { AgentListInput } from "../agent/agent-list-data";
 import { SessionHistoryQuery } from "../conversations/session-query-data";
 import { PendingReportRead } from "../conversations/pending-report";
@@ -137,19 +136,3 @@ export class LocalMcpError extends Schema.TaggedError<LocalMcpError>()("LocalMcp
   code: Schema.Literals(["denied", "unsupported", "invalid_input", "operation_failed"]),
   message: Schema.String,
 }) {}
-
-export const McpRequest = Schema.Struct({
-  jsonrpc: Schema.Literal("2.0"),
-  id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number])),
-  method: Schema.String,
-  params: Schema.optionalKey(Schema.Unknown),
-});
-export const McpToolCall = Schema.Struct({
-  name: Schema.String,
-  arguments: Schema.optionalKey(jsonObjectSchema),
-});
-export const McpInitialize = Schema.Struct({
-  protocolVersion: Schema.String,
-  capabilities: jsonObjectSchema,
-  clientInfo: Schema.Struct({ name: Schema.String, version: Schema.String }),
-});

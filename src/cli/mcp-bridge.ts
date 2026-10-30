@@ -7,7 +7,7 @@ import { isAbsolute, join } from "node:path";
 
 const directory = process.argv[2];
 if (process.argv.length !== 3 || !directory || !isAbsolute(directory)) {
-  console.error("Usage: node scripts/cake-mcp.mjs /absolute/private/mcp-directory");
+  console.error("Usage: cake-mcp /absolute/private/mcp-directory");
   process.exit(1);
 }
 const socket = connect(join(directory, "cake.sock"));
