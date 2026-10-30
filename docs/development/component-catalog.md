@@ -24,7 +24,9 @@ See `AGENTS.md` for renderer implementation rules.
 | [Link](../../src/renderer/components/ui/link.tsx)                                                                                                                       | Shared anchors, source references and Cake links with destination tooltips.                                           |
 | [LoadingState](../../src/renderer/components/ui/loading-state.tsx)                                                                                                      | Shared loading treatments.                                                                                            |
 
-[`ContextMenu`](../../src/renderer/components/ui/context-menu.tsx) composes `Popover` and `Button` for pointer/keyboard context actions and expandable submenus.
+[`ContextMenu`](../../src/renderer/components/ui/context-menu.tsx) composes `Popover` and `Button` for pointer/keyboard context actions, expandable submenus and in-place interactive panels.
+
+[`Calendar`](../../src/renderer/components/ui/calendar.tsx) wraps React DayPicker with Cake buttons and theme tokens, following shadcn’s calendar approach. [`DateTimePicker`](../../src/renderer/components/ui/date-time-picker.tsx) combines it with separate local date/time inputs; callers own validation and conversion to an instant.
 
 [`SearchInput`](../../src/renderer/components/ui/search-input.tsx) composes `Input` with a search icon, accessible clear action and Escape-to-clear. Callers own the query and filtering.
 

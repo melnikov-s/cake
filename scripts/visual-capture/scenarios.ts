@@ -2288,6 +2288,9 @@ const projectChatTodos: VisualCaptureScenario = {
     "links-focus",
     "search",
     "search-empty",
+    "snooze-menu",
+    "snooze-custom",
+    "snoozed",
   ],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
@@ -2424,7 +2427,7 @@ const projectChatTodos: VisualCaptureScenario = {
     );
   },
   async prepare(page, state) {
-    await assistantMarkdownCode.prepare(page, "default");
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
     await page
       .getByRole("button", { name: /^Open Project Chat for / })
       .first()
@@ -2467,6 +2470,29 @@ const projectChatTodos: VisualCaptureScenario = {
       await expect(page.getByRole("tooltip")).toHaveText(
         "cake://session/visual-assistant-markdown-code?message=assistant-1",
       );
+    if (state === "snooze-menu" || state === "snooze-custom" || state === "snoozed") {
+      const row = page.locator('[data-todo-id="00000000-0000-4000-8000-000000000012"]');
+      await row.click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Snooze", exact: true }).click();
+      if (state === "snooze-custom") {
+        await page.getByRole("menuitem", { name: "Custom", exact: true }).click();
+        await expect(page.getByRole("dialog", { name: "Custom", exact: true })).toBeVisible();
+      } else if (state === "snoozed") {
+        await page.getByRole("menuitem", { name: "1 day", exact: true }).click();
+        await expect(row.locator("time")).toBeVisible();
+        await page.mouse.move(1, 1);
+      } else {
+        await expect(page.getByRole("menuitem", { name: "Custom", exact: true })).toBeVisible();
+      }
+      await page.evaluate(async () => {
+        await Promise.all(
+          document.getAnimations().map((animation) => animation.finished.catch(() => undefined)),
+        );
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+      });
+    }
     if (state === "hover") {
       const row = page.locator('[data-todo-id="00000000-0000-4000-8000-000000000012"]');
       await row.hover();
@@ -2474,7 +2500,12 @@ const projectChatTodos: VisualCaptureScenario = {
       await expect(page.getByRole("img", { name: "Ready for review", exact: true })).toBeVisible();
     }
   },
-  region: (page) => page.locator('[data-slot="side-chat-layout"]'),
+  region: (page, state) =>
+    state === "snooze-custom"
+      ? page.getByRole("dialog", { name: "Custom", exact: true })
+      : state === "snooze-menu"
+        ? page.getByRole("menu", { name: "Actions for Improve project navigation", exact: true })
+        : page.locator('[data-slot="side-chat-layout"]'),
 };
 
 const projectChatTaskRails: VisualCaptureScenario = {

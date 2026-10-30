@@ -702,16 +702,23 @@ it("validates custom local time, changes an existing deadline, searches snoozed 
     await fixture.user.click(
       screen.getByRole("menuitem", { name: change ? "Change snooze" : "Snooze" }),
     );
-    await fixture.user.click(screen.getByRole("menuitem", { name: "Custom…" }));
-    return screen.getByLabelText(/^Until \(/) as HTMLInputElement;
+    await fixture.user.click(screen.getByRole("menuitem", { name: "Custom" }));
+    expect(screen.getByRole("dialog", { name: "Custom" })).toBeDefined();
+    expect(screen.getByRole("grid")).toBeDefined();
+    return {
+      date: screen.getByLabelText("Date") as HTMLInputElement,
+      time: screen.getByLabelText("Time") as HTMLInputElement,
+    };
   };
   const input = await openCustom();
-  fireEvent.change(input, { target: { value: "2000-01-01T10:00" } });
+  fireEvent.change(input.date, { target: { value: "2000-01-01" } });
+  fireEvent.change(input.time, { target: { value: "10:00" } });
   await fixture.user.click(screen.getByRole("button", { name: "Snooze" }));
   expect(screen.getByRole("alert").textContent).toBe("Choose a future date and time.");
   expect(fixture.mutations).toHaveLength(0);
   const future = localSnoozeDateTime(new Date(Date.now() + 2 * 86400_000).toISOString());
-  fireEvent.change(input, { target: { value: future } });
+  fireEvent.change(input.date, { target: { value: future.split("T")[0] } });
+  fireEvent.change(input.time, { target: { value: future.split("T")[1] } });
   await fixture.user.click(screen.getByRole("button", { name: "Snooze" }));
   expect(fixture.mutations.at(-1)).toMatchObject({
     _tag: "Snooze",
@@ -720,9 +727,20 @@ it("validates custom local time, changes an existing deadline, searches snoozed 
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(fixture.container.querySelector("time")?.dateTime).toBe(new Date(future).toISOString());
   const editing = await openCustom(true);
-  expect(editing.value).toBe(future);
-  const later = localSnoozeDateTime(new Date(Date.now() + 3 * 86400_000).toISOString());
-  fireEvent.change(editing, { target: { value: later } });
+  expect(editing.date.value).toBe(future.split("T")[0]);
+  expect(editing.time.value).toBe(future.split("T")[1]);
+  const day = new Date(future);
+  day.setDate(1);
+  day.setMonth(day.getMonth() + 1);
+  const later = localSnoozeDateTime(day.toISOString());
+  await fixture.user.click(screen.getByRole("button", { name: "Go to the Next Month" }));
+  await fixture.user.click(
+    within(screen.getByRole("grid")).getByRole("button", {
+      name: new RegExp(`${day.toLocaleString("en-US", { month: "long" })} ${day.getDate()}\\D`),
+    }),
+  );
+  expect(editing.date.value).toBe(later.split("T")[0]);
+  expect(editing.time.value).toBe(future.split("T")[1]);
   await fixture.user.click(screen.getByRole("button", { name: "Save" }));
   expect(fixture.mutations.at(-1)).toMatchObject({
     _tag: "Snooze",

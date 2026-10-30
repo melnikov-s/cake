@@ -45,7 +45,6 @@ export class ProjectTodosStore extends Store<{
   query = "";
   doneExpanded = false;
   snoozedExpanded = true;
-  snoozingItemId: string | undefined;
   inspectedItemId: string | undefined;
   busy = false;
   error: string | undefined;
@@ -203,17 +202,6 @@ export class ProjectTodosStore extends Store<{
   toggleSnoozed() {
     this.snoozedExpanded = !this.snoozedExpanded;
   }
-  get snoozingItem() {
-    return this.value?.items.find(
-      (item) => item.id === this.snoozingItemId && item.state === "open",
-    );
-  }
-  editSnooze(item: ProjectTodo) {
-    if (item.state === "open" && !this.busy) this.snoozingItemId = item.id;
-  }
-  closeSnooze() {
-    this.snoozingItemId = undefined;
-  }
   async snooze(item: ProjectTodo, until: string) {
     if (item.state !== "open") return;
     const timestamp = new Date(until);
@@ -221,13 +209,12 @@ export class ProjectTodosStore extends Store<{
       this.error = "Choose a future date and time.";
       return;
     }
-    const applied = await this.mutate({
+    return this.mutate({
       _tag: "Snooze",
       id: item.id,
       expectedRevision: item.revision,
       until: timestamp.toISOString(),
     });
-    if (applied) this.closeSnooze();
   }
   unsnooze(item: ProjectTodo) {
     if (item.state !== "open" || !item.snoozedUntil) return;

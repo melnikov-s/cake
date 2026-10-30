@@ -90,12 +90,13 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
       await page
         .getByRole("menuitem", { name: change ? "Change snooze" : "Snooze", exact: true })
         .click();
-      await page.getByRole("menuitem", { name: "Custom…", exact: true }).click();
-      const dialog = page.getByRole("dialog", {
-        name: change ? "Change snooze" : "Snooze to-do",
-        exact: true,
-      });
+      const custom = page.getByRole("menuitem", { name: "Custom", exact: true });
+      await expect(custom).toHaveAttribute("aria-haspopup", "dialog");
+      await custom.focus();
+      await custom.press("ArrowRight");
+      const dialog = page.getByRole("dialog", { name: "Custom", exact: true });
       await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole("grid")).toBeVisible();
       return dialog;
     };
     await action.press("Shift+F10");
@@ -103,16 +104,35 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
     await page.keyboard.press("Escape");
     await action.click();
     await expect(action).toHaveAttribute("aria-pressed", "true");
+    const dismissed = await openCustom();
+    await dismissed.getByRole("button", { name: "Back to menu", exact: true }).click();
+    await expect(
+      page.getByRole("menu", { name: `Actions for ${title}`, exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Snooze", exact: true })).toBeFocused();
+    await page.keyboard.press("Escape");
+    const cancelled = await openCustom();
+    await cancelled.getByLabel("Time", { exact: true }).fill("14:30");
+    await cancelled.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(row.locator("time")).toHaveCount(0);
+    const escaped = await openCustom();
+    await page.keyboard.press("Escape");
+    await expect(escaped).toBeHidden();
     const dialog = await openCustom();
-    const input = dialog.getByLabel(/^Until \(/);
-    await expect(input).toBeFocused();
-    await input.fill("2000-01-01T10:00");
-    await expect(input).toHaveValue("2000-01-01T10:00");
+    await expect(dialog.locator('[data-selected="true"] button')).toBeFocused();
+    const dateInput = dialog.getByLabel("Date", { exact: true });
+    const timeInput = dialog.getByLabel("Time", { exact: true });
+    await dateInput.fill("2000-01-01");
+    await timeInput.fill("10:00");
+    await expect(dateInput).toHaveValue("2000-01-01");
+    await expect(timeInput).toHaveValue("10:00");
     await dialog.getByRole("button", { name: "Snooze", exact: true }).click();
     await expect(dialog.getByRole("alert")).toHaveText("Choose a future date and time.");
     const future = localSnoozeDateTime(new Date(Date.now() + 2 * 86400_000).toISOString());
-    await input.fill(future);
-    await expect(input).toHaveValue(future);
+    await dateInput.fill(future.split("T")[0]!);
+    await timeInput.fill(future.split("T")[1]!);
+    await expect(dateInput).toHaveValue(future.split("T")[0]!);
+    await expect(timeInput).toHaveValue(future.split("T")[1]!);
     await dialog.getByRole("button", { name: "Snooze", exact: true }).click();
     await expect(dialog).toBeHidden();
     await expect(
@@ -131,9 +151,18 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
     await expect(panel.locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
     await expect(toggle).toHaveText("0");
     const changing = await openCustom(true);
-    await expect(changing.getByLabel(/^Until \(/)).toHaveValue(future);
-    const later = localSnoozeDateTime(new Date(Date.now() + 3 * 86400_000).toISOString());
-    await changing.getByLabel(/^Until \(/).fill(later);
+    await expect(changing.getByLabel("Date", { exact: true })).toHaveValue(future.split("T")[0]!);
+    await expect(changing.getByLabel("Time", { exact: true })).toHaveValue(future.split("T")[1]!);
+    const laterDate = new Date(future);
+    laterDate.setDate(laterDate.getDate() + 1);
+    const later = localSnoozeDateTime(laterDate.toISOString());
+    // DayPicker owns native arrow-key navigation; selecting a day preserves the time.
+    const selectedDay = changing.locator('[data-selected="true"] button');
+    await expect(selectedDay).toBeFocused();
+    await selectedDay.press("ArrowRight");
+    await page.keyboard.press("Enter");
+    await expect(changing.getByLabel("Date", { exact: true })).toHaveValue(later.split("T")[0]!);
+    await expect(changing.getByLabel("Time", { exact: true })).toHaveValue(future.split("T")[1]!);
     await changing.getByRole("button", { name: "Save", exact: true }).click();
     await expect(changing).toBeHidden();
     await expect(row.locator("time")).toHaveAttribute("datetime", new Date(later).toISOString());

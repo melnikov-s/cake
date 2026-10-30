@@ -4,7 +4,6 @@ import { Callout } from "@/components/ui/callout";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
 import { ProjectTodoItem } from "./project-todo-item";
-import { ProjectTodoSnoozeDialog } from "./project-todo-snooze-dialog";
 
 export const ProjectTodosPanel = observer(function ProjectTodosPanel({
   store,
@@ -16,7 +15,6 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
   const snoozedItems = store.filteredSnoozedItems;
   const searching = Boolean(store.query.trim());
   const noResults = searching && !openItems.length && !doneItems.length && !snoozedItems.length;
-  const snoozingItem = store.snoozingItem;
   return (
     <div className="h-full overflow-y-auto px-3 pb-4 pt-4">
       <div className="mb-3 flex items-center justify-between gap-2 px-3">
@@ -78,9 +76,6 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
             </AnimatedList>
           )}
         </section>
-      )}
-      {snoozingItem && (
-        <ProjectTodoSnoozeDialog key={snoozingItem.id} item={snoozingItem} store={store} />
       )}
     </div>
   );

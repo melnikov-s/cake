@@ -5,6 +5,7 @@ import { NavItem } from "@/components/ui/nav-item";
 import { ContextMenu, type ContextMenuItem } from "@/components/ui/context-menu";
 import { formatSnoozeDeadline, snoozeTimeZone } from "../lib/project-todo-snooze";
 import { ProjectTodoWorkLink } from "./project-todo-work-link";
+import { ProjectTodoSnoozePicker } from "./project-todo-snooze-picker";
 import { IconButton } from "@/components/ui/icon-button";
 import { CircleIcon, CheckIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
@@ -46,7 +47,12 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
                     new Date(Date.now() + Number(minutes) * 60_000).toISOString(),
                   ),
               })),
-              { label: "Custom…", onSelect: () => store.editSnooze(item) },
+              {
+                label: "Custom",
+                content: (close) => (
+                  <ProjectTodoSnoozePicker item={item} store={store} onClose={close} />
+                ),
+              },
             ],
           },
           ...(item.snoozedUntil
