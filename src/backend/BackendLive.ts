@@ -85,6 +85,7 @@ import { WorktreeLandingCoordinatorLive } from "../services/worktrees/WorktreeLa
 import { loadReviewSessionProjection } from "../services/pi/runtime/sidecar-runtime";
 import { BootstrapLive } from "../main/BootstrapLive";
 import { initializeBackend } from "./initializeBackend";
+import * as localMcp from "../domain/mcp/localMcp";
 import { WorkflowSandboxLive } from "../services/pi/live/WorkflowSandboxLive";
 import { makeWorkflowScriptsLive } from "../services/pi/live/WorkflowScriptsLive";
 import { WorkflowWorkersLive } from "../services/pi/live/WorkflowWorkersLive";
@@ -298,6 +299,7 @@ export const makeBackendLive = <HostServices, HostError>(
     Layer.provide(SessionWorkflowsLive),
   );
   const BackgroundWorkersLive = Layer.mergeAll(
+    Layer.effectDiscard(localMcp.initialize()),
     Layer.effectDiscard(projectTodoResolution.initialize()),
     Layer.effectDiscard(projectTodoSnoozes.initialize()),
     Layer.effectDiscard(projectTodoUpdates.initialize()),

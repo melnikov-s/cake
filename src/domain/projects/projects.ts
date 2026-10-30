@@ -273,11 +273,16 @@ const agentProjectView = (project: ProjectRecord, trustedPaths: readonly string[
   }) satisfies AgentProjectView;
 
 /** Registry-only discovery includes the canonical chat target even before its first open. */
-export const listForAgent = Effect.fn("Projects.listForAgent")(function* (input: AgentListInput) {
+export const listForAgent = Effect.fn("Projects.listForAgent")(function* (
+  input: AgentListInput,
+  allowedProjectPaths?: readonly string[],
+) {
   const state = (yield* ApplicationState).snapshot();
   const query = input.query?.toLowerCase();
   const selected = state.projects.filter(
-    (project) => !query || `${project.name}\n${project.path}`.toLowerCase().includes(query),
+    (project) =>
+      (!allowedProjectPaths || allowedProjectPaths.includes(project.path)) &&
+      (!query || `${project.name}\n${project.path}`.toLowerCase().includes(query)),
   );
   const { items, ...page } = agentListPage(selected, input);
   return {

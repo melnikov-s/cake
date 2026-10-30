@@ -586,8 +586,12 @@ Remote access assumes trusted users with multiple views. Desktop sharing can gat
 whole listener with Google sign-in and a server-enforced account allowlist; approved
 clients still have full backend authority. Listeners without this option, including
 standalone hosting, require private access or an independently authenticated proxy.
-Host/Origin validation alone is not authentication. See
-[the host guide](../development/headless-backend.md#security-and-data-isolation).
+Host/Origin validation alone is not authentication. Opt-in external local MCP is
+separate: a private Unix socket and stdio bridge expose an allowlisted subset of
+Project Chat operations with startup-only Project/scope grants checked on each
+call. It is not the full-authority remote RPC endpoint. See
+[local MCP setup and limitations](../../README.md#local-mcp-access) and the remote
+[host guide](../development/headless-backend.md#security-and-data-isolation).
 
 - Artifacts and blocking requests cross bounded, validated protocols. Generated
   HTML/React executes in an opaque-origin sandbox with restrictive CSP and explicit,
