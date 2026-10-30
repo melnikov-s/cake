@@ -10,6 +10,8 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createRegistry, MemoryStorage } from "@earendil-works/pi-durable";
 import { openDurableChatEngine } from "../../../src/services/pi-durable/durable-chat-engine";
 import { TaskAttributionDoc } from "../../../src/services/pi-durable/durable-task-attribution";
+import { taskAttributionOperations } from "../../../src/services/pi-durable/durable-task-attribution-operations";
+import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { durableInputText } from "../../../src/services/pi-durable/durable-input-presentation";
 import { readDurableOriginalPage } from "../../../src/services/pi-durable/durable-chat-history";
 import { durableAnswer, durableModels } from "../../fixtures/durable-chat";
@@ -499,6 +501,47 @@ it.each(chats)(
           .filter((part) => part.kind === "text" && part.role === "user")
           .map((part) => (part.kind === "text" ? part.taskTodoId : undefined)),
       ).toEqual(decisions);
+      // Repair an already-rendered historical switch through the real metadata operation.
+      const switched = attributed.filter((part) => part.kind === "text" && part.role === "user")[2];
+      if (switched?.kind !== "text" || !switched.entryId) throw new Error("Missing user original");
+      const entryId = switched.entryId;
+      const controls = new CakeOperationRegistry(
+        taskAttributionOperations({
+          conversation: () => engine.root,
+          todos: () => todos.items,
+        }),
+      );
+      const repair = async (todoId: string) => {
+        await controls.invoke(
+          { command: "messages.set-todo", input: { entryId, todoId } },
+          { signal: new AbortController().signal, toolCallId: "repair", runtime: {} },
+        );
+        const doc = await engine.harness.snapshot(
+          TaskAttributionDoc,
+          engine.root.id,
+          BACKGROUND_CONTEXT,
+        );
+        attributed = (
+          await readDurableOriginalPage(
+            engine.root,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            doc?.inputs,
+          )
+        ).parts;
+        projectHistory();
+      };
+      await repair(A);
+      await waitFor(() =>
+        expect(screen.getAllByTitle("Show in To-do: Research options")).toHaveLength(1),
+      );
+      expect(screen.queryByTitle("Show in To-do: Fix the build")).toBeNull();
+      await repair(B);
+      await waitFor(() =>
+        expect(screen.getAllByTitle("Show in To-do: Research options")).toHaveLength(2),
+      );
     } finally {
       await engine.close();
     }

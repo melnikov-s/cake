@@ -14,6 +14,8 @@ import { Type, createAssistantMessageEventStream } from "@earendil-works/pi-dura
 import { afterEach, expect, it, vi } from "vitest";
 import { openDurableChatEngine } from "../../../../src/services/pi-durable/durable-chat-engine";
 import { TaskAttributionDoc } from "../../../../src/services/pi-durable/durable-task-attribution";
+import { taskAttributionOperations } from "../../../../src/services/pi-durable/durable-task-attribution-operations";
+import { CakeOperationRegistry } from "../../../../src/services/pi/runtime/cake-operation-registry";
 import { durableInputText } from "../../../../src/services/pi-durable/durable-input-presentation";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
 import type { ProjectTodo } from "../../../../src/contracts/projects/project-todos";
@@ -37,7 +39,12 @@ const todo = (id: string): ProjectTodo => ({
   associations: [],
 });
 
-async function fixture(withTool = false, database?: string, withTodos = true) {
+async function fixture(
+  withTool = false,
+  database?: string,
+  withTodos = true,
+  createdTodo = todo(A),
+) {
   const f = durableModels((_request, index) =>
     withTool && index === 1
       ? durableAnswer("", [
@@ -68,7 +75,7 @@ async function fixture(withTool = false, database?: string, withTodos = true) {
     parameters: Type.Object({}),
     replay: "safe",
     execute: async () => {
-      items = [todo(A)];
+      items = [...items, createdTodo];
       return { output: [{ type: "text", text: "Created" }] };
     },
   });
@@ -367,32 +374,157 @@ it("keeps attribution across SQLite reopen without classifying old messages agai
   expect(second.classify).not.toHaveBeenCalled();
 });
 
-it("reconsiders an unmatched input when the response creates a new candidate", async () => {
-  const f = await fixture(true);
-  const stream = createAssistantMessageEventStream();
-  vi.mocked(f.models.streamSimple).mockReturnValueOnce(stream);
-  let started = () => {};
-  const classified = new Promise<void>((resolve) => {
-    started = resolve;
+it.each([
+  { initial: null, final: A },
+  { initial: B, final: A },
+  { initial: B, final: null },
+  { initial: B, final: "failure" },
+])(
+  "reconsiders initial $initial when the response creates a candidate (final: $final)",
+  async ({ initial, final }) => {
+    const f = await fixture(true, undefined, true, {
+      ...todo(A),
+      title: "Prototype Cake-set needs-attention to-dos",
+    });
+    f.setTodos([{ ...todo(B), title: "Assess Ultimate ideas applicable to Cake" }]);
+    const stream = createAssistantMessageEventStream();
+    vi.mocked(f.models.streamSimple).mockReturnValueOnce(stream);
+    let started = () => {};
+    const classified = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    f.classify.mockImplementationOnce(async () => {
+      started();
+      return durableAnswer(JSON.stringify({ todoId: initial }));
+    });
+    if (final === "failure") f.classify.mockRejectedValueOnce(new Error("Provider offline"));
+    else f.classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: final })));
+    const sent = f.send(
+      "Get prototypes for Cake-set needs attention in a to-do; I will pick one to implement",
+    );
+    await classified;
+    const message = durableAnswer("", [
+      { type: "toolCall", id: "create-task", name: "create_task", arguments: {} },
+    ]);
+    stream.push({ type: "done", reason: "toolUse", message });
+    const settled = await sent;
+    const doc = await f.finish();
+    expect(f.classify).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(f.classify.mock.calls[0]?.[1].messages)).not.toContain(
+      "Prototype Cake-set needs-attention",
+    );
+    expect(JSON.stringify(f.classify.mock.calls[1]?.[1].messages)).toContain(
+      "Prototype Cake-set needs-attention",
+    );
+    const expected = final === "failure" ? null : final;
+    expect(doc?.inputs[String(settled.entry)]).toEqual({ pending: false, todoId: expected });
+    expect(f.reports).toHaveBeenCalledTimes(final === "failure" ? 1 : 0);
+    const page = await readDurableOriginalPage(
+      f.engine.root,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      doc?.inputs,
+    );
+    expect(
+      page.parts.find((part) => part.kind === "text" && part.entryId === String(settled.entry)),
+    ).toMatchObject({ taskTodoId: expected });
+  },
+);
+
+it("repairs historical grouping through a scoped operation, persists it, and never rewrites originals or to-dos", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-task-repair-"));
+  cleanup.push(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "chat.sqlite");
+  const f = await fixture(false, database);
+  const sent = await f.send("Prototype needs-attention to-dos");
+  await f.finish();
+  const originals = await f.engine.root.entries({}, 200, undefined, context);
+  const todos = [todo(A), todo(B)];
+  const registry = new CakeOperationRegistry(
+    taskAttributionOperations({
+      conversation: () => f.engine.root,
+      todos: () => todos,
+    }),
+  );
+  const invoke = (entryId: string, todoId: string | null) =>
+    registry.invoke(
+      { command: "messages.set-todo", input: { entryId, todoId } },
+      { signal: new AbortController().signal, toolCallId: "repair", runtime: {} },
+    );
+  const entryId = String(sent.entry);
+  const page = async () =>
+    readDurableOriginalPage(
+      f.engine.root,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (await f.finish())?.inputs,
+    );
+  expect(
+    (await page()).parts.find((part) => part.kind === "text" && part.entryId === entryId),
+  ).toMatchObject({ taskTodoId: A });
+  expect((await invoke(entryId, B)).structuredContent).toEqual({
+    command: "messages.set-todo",
+    result: { entryId, todoId: B },
+  });
+  expect(
+    (await page()).parts.find((part) => part.kind === "text" && part.entryId === entryId),
+  ).toMatchObject({ taskTodoId: B });
+  await expect(invoke(entryId, "00000000-0000-4000-8000-000000000099")).rejects.toThrow(
+    "not in this chat",
+  );
+  const assistant = originals.items.find((entry) => entry.kind === "pi.assistant");
+  if (!assistant) throw new Error("Missing assistant original");
+  await expect(invoke(String(assistant.id), B)).rejects.toThrow("settled human-turn");
+  await expect(invoke("9007199254740992", B)).rejects.toThrow("Invalid original");
+  await invoke(entryId, null);
+  expect(
+    (await page()).parts.find((part) => part.kind === "text" && part.entryId === entryId),
+  ).toMatchObject({ taskTodoId: null });
+  await invoke(entryId, B);
+  expect(
+    (await f.engine.root.entries({}, 200, undefined, context)).items.filter((entry) =>
+      entry.kind.startsWith("pi."),
+    ),
+  ).toEqual(originals.items.filter((entry) => entry.kind.startsWith("pi.")));
+  expect(todos).toEqual([todo(A), todo(B)]);
+  await f.engine.close();
+  const reopened = await fixture(false, database);
+  expect((await reopened.finish())?.inputs[entryId]).toEqual({ pending: false, todoId: B });
+  expect(reopened.classify).not.toHaveBeenCalled();
+});
+
+it("rejects repair while attribution is still pending", async () => {
+  const f = await fixture();
+  let release = () => {};
+  const decision = new Promise<void>((resolve) => {
+    release = resolve;
   });
   f.classify.mockImplementationOnce(async () => {
-    started();
-    return durableAnswer(JSON.stringify({ todoId: null }));
+    await decision;
+    return durableAnswer(JSON.stringify({ todoId: A }));
   });
-  const sent = f.send("Investigate startup");
-  await classified;
-  const message = durableAnswer("", [
-    { type: "toolCall", id: "create-task", name: "create_task", arguments: {} },
-  ]);
-  stream.push({ type: "done", reason: "toolUse", message });
-  const settled = await sent;
-  const doc = await f.finish();
-  expect(f.classify).toHaveBeenCalledTimes(2);
-  expect(JSON.stringify(f.classify.mock.calls[0]?.[1].messages)).not.toContain(
-    "Startup investigation",
+  const sent = await f.send("Discuss startup");
+  const registry = new CakeOperationRegistry(
+    taskAttributionOperations({
+      conversation: () => f.engine.root,
+      todos: () => [todo(A), todo(B)],
+    }),
   );
-  expect(JSON.stringify(f.classify.mock.calls[1]?.[1].messages)).toContain("Startup investigation");
-  expect(doc?.inputs[String(settled.entry)]?.todoId).toBe(A);
+  try {
+    await expect(
+      registry.invoke(
+        { command: "messages.set-todo", input: { entryId: String(sent.entry), todoId: B } },
+        { signal: new AbortController().signal, toolCallId: "repair", runtime: {} },
+      ),
+    ).rejects.toThrow("settled human-turn");
+  } finally {
+    release();
+    await f.finish();
+  }
 });
 
 it.each(["not JSON", JSON.stringify({ todoId: "00000000-0000-4000-8000-000000000099" })])(

@@ -55,6 +55,7 @@ import { durableModels } from "./durable-models";
 import type { RequestInspection } from "./request-inspection";
 import { openDurableChatEngine } from "./durable-chat-engine";
 import { TaskAttributionDoc } from "./durable-task-attribution";
+import { taskAttributionOperations } from "./durable-task-attribution-operations";
 import { createDurableSideChats, type DurableSideChats } from "./durable-side-chats";
 import { readDurableActiveTools, readDurableOriginalPage } from "./durable-chat-history";
 import {
@@ -225,29 +226,35 @@ export async function createDurableCakeChatRuntime(
     return { ...(selection ?? caller) };
   };
   const operations = new CakeOperationRegistry(
-    options.coordinator.operations({
-      sessionId,
-      resolveModel,
-      info: async () => ({ sessionId, kind: "cake-chat", sessionFile, streaming }),
-      usage: async () =>
-        Schema.decodeUnknownSync(Schema.Json)((await runtime.snapshot()).usage ?? {}),
-      contextStatus: async () => {
-        const context = await engine.root.context(BACKGROUND_CONTEXT);
-        const { tokens } = estimateContextTokens(context.messages);
-        return {
-          tokens,
-          contextWindow: selected.contextWindow,
-          percent: (tokens / selected.contextWindow) * 100,
-        };
-      },
-      compact: async () => {
-        await runtime.compact();
-        return { compacted: true };
-      },
-      setModel: async (model) => {
-        await runtime.applyConfiguration(model);
-      },
-    }),
+    [
+      ...options.coordinator.operations({
+        sessionId,
+        resolveModel,
+        info: async () => ({ sessionId, kind: "cake-chat", sessionFile, streaming }),
+        usage: async () =>
+          Schema.decodeUnknownSync(Schema.Json)((await runtime.snapshot()).usage ?? {}),
+        contextStatus: async () => {
+          const context = await engine.root.context(BACKGROUND_CONTEXT);
+          const { tokens } = estimateContextTokens(context.messages);
+          return {
+            tokens,
+            contextWindow: selected.contextWindow,
+            percent: (tokens / selected.contextWindow) * 100,
+          };
+        },
+        compact: async () => {
+          await runtime.compact();
+          return { compacted: true };
+        },
+        setModel: async (model) => {
+          await runtime.applyConfiguration(model);
+        },
+      }),
+      ...taskAttributionOperations({
+        conversation: () => engine.root,
+        todos: () => options.cakeChatTodos?.() ?? [],
+      }),
+    ],
     options.sessionReferences?.project,
   );
   const registry = createRegistry();

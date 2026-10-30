@@ -30,7 +30,7 @@ export const TaskAttributionDoc = defineDoc<{
 const Decision = Schema.Struct({ todoId: Schema.NullOr(Schema.String.check(Schema.isUUID(4))) });
 
 type Input = { entryId: EntryId; after: TaskId };
-type Phase = { phase: "classify"; previousTodoIds?: string[] };
+type Phase = { phase: "classify"; previousTodoIds?: string[]; previousTodoId?: string | null };
 
 /** The SDK owns scheduling, cancellation and recovery; no separate agent or transcript. */
 export function createTaskAttribution(options: {
@@ -51,7 +51,7 @@ export function createTaskAttribution(options: {
           state,
         }));
         const utility = options.utilityModel?.();
-        let todoId: string | null = null;
+        let todoId: string | null = task.state.checkpoint.previousTodoId ?? null;
         let reply: Awaited<ReturnType<Models["completeSimple"]>> | undefined;
         let reconsider = false;
         const previous = task.state.checkpoint.previousTodoIds;
@@ -154,12 +154,13 @@ export function createTaskAttribution(options: {
             if (decision.todoId && !todos.some((todo) => todo.id === decision.todoId))
               throw new Error("Attribution returned an unknown to-do");
             todoId = decision.todoId;
-            // Only unmatched inputs need the response to finish. Reclassify only if
-            // new candidates appeared; the model, never this check, assigns identity.
-            reconsider = todoId === null && !previous;
+            // Even a valid existing ID can be the wrong match before the response
+            // creates the right to-do. Reclassify only when new candidates appear.
+            reconsider = !previous;
           }
         } catch (error) {
           if (runtime.signal.aborted) throw error;
+          todoId = null;
           runtime.report(
             new Error(
               `Task attribution unavailable; this turn is ungrouped. ${error instanceof Error ? error.message : String(error)}`,
@@ -191,7 +192,11 @@ export function createTaskAttribution(options: {
           if (reconsider)
             return {
               status: "waiting",
-              checkpoint: { phase: "classify", previousTodoIds: todos.map((todo) => todo.id) },
+              checkpoint: {
+                phase: "classify",
+                previousTodoIds: todos.map((todo) => todo.id),
+                previousTodoId: todoId,
+              },
               on: [task.input.after],
               policy: "allSettled",
             };

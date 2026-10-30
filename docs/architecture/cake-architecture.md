@@ -480,8 +480,10 @@ is a refactoring signal, not precedent.
   rail, labeling task switches rather than every message. A → B → A labels A again on return.
   Each consumed human input schedules one SDK-owned background attribution task using the
   configured utility model immediately, independently of the conversational response.
-  Selection is evidence, never an automatic assignment. A null decision is reconsidered after
-  the response only if new to-do IDs appeared during it, so newly created tasks can be matched.
+  Selection is evidence, never an automatic assignment. The initial decision stays pending until
+  the response settles, and is reconsidered only if new to-do IDs appeared during it. Even a
+  valid existing ID can be the wrong match before the matching task is created. Without new
+  candidates, the initial decision is preserved without another model call.
   Missing utility configuration is reported without a conversational-model fallback.
   The request selects an existing to-do or null; it never creates tasks or changes agent context,
   and does not block the response. The prior human turn's settled attribution is evidence for
@@ -491,6 +493,10 @@ is a refactoring signal, not precedent.
   Identity-only attribution lives beside Durable originals, not in another transcript. Explicitly
   pending attribution provisionally retains the current presentation section; a settled null,
   invalid or unavailable attribution ends it and leaves the turn ungrouped.
+  For explicit user-requested historical grouping repairs, the owning permanent chat exposes
+  `messages.set-todo` with the original user entry ID and an existing chat-scoped to-do ID (or
+  null). It updates settled identity-only attribution, never originals or the to-do itself;
+  pending turns, non-user entries and entries outside the owning conversation are rejected.
   Known incoming session/subagent/exact-message associations are projected without a model call.
   Task-switch headings read the current to-do title and completion state live, without a
   status subtitle, and sit above their messages,
