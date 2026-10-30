@@ -190,14 +190,9 @@ only from `session_start` do not satisfy this contract. Cake does not synthesize
 session events in catalog loaders or share provider closures across sessions.
 
 Provider-only loaders (Durable Cake Chat, restricted auxiliary/isolated sessions,
-and the shared catalog) retain registered model metadata. Chat requests through
-them fail explicitly for providers whose owning extension also registers unbound
-event handlers. Pi exposes no declaration that such providers are independent of
-their hooks, so this is a conservative restriction, including unrelated UI hooks.
-`project_trust` is exempt because the resource loader dispatches it. Authors can
-separate a lifecycle-independent provider into its own extension; otherwise use a
-regular Project Session that binds the actual cwd and session lifecycle. This does
-not make an extension's process-global state safe across independent sessions.
+and the shared catalog) register agent-directory extension providers and run their
+requests without binding those extensions' event handlers. This does not make an
+extension's process-global state safe across independent sessions.
 
 Cake preserves its documentation, project/user instructions, and structured custom
 prompt sections. It does not strip or reword instructions to satisfy a provider's

@@ -182,9 +182,7 @@ export async function loadAgentDirectoryExtensions(
       ...resourceLoader
         .getExtensions()
         .errors.map(({ path, error }) => `Extension "${path}" error: ${error}`),
-      ...(await registerPendingExtensionProviders(resourceLoader, modelRuntime, {
-        sessionless: true,
-      })),
+      ...(await registerPendingExtensionProviders(resourceLoader, modelRuntime)),
     ];
     return { errors, mcpServers: resourceLoader.getExtensions().runtime.mcpServers.list() };
   } catch (error) {

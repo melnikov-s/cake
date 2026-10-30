@@ -32,7 +32,6 @@ afterEach(async () => {
 async function createProject(
   extensionHome: "project" | "agent-directory" = "project",
   deferred = false,
-  hooks = false,
 ) {
   const directory = await mkdtemp(join(tmpdir(), "cake-extension-provider-"));
   directories.push(directory);
@@ -43,7 +42,7 @@ async function createProject(
   await mkdir(extensions, { recursive: true });
   await writeFile(
     join(extensions, "fixture-provider.ts"),
-    `export default function (pi) { ${hooks ? 'pi.on("before_agent_start", () => {});' : ""} ${deferred ? 'pi.on("session_start", () => {' : ""} pi.registerProvider("fixture-provider", ${JSON.stringify(
+    `export default function (pi) { ${deferred ? 'pi.on("session_start", () => {' : ""} pi.registerProvider("fixture-provider", ${JSON.stringify(
       {
         name: "Fixture provider",
         baseUrl: "http://127.0.0.1:9/v1",
@@ -120,19 +119,6 @@ describe("extension provider model resolution", () => {
       vi.stubEnv("OPENAI_API_KEY", "fallback-bait");
       await expect(openRuntime(directory, options)).rejects.toThrow(
         /Selected model fixture-provider\/fixture-model is unavailable.*session_start/,
-      );
-    },
-  );
-
-  it.each([{ auxiliary: true }, { cakeChat: true }])(
-    "discloses unbound provider hooks without hiding model metadata (%j)",
-    async (options) => {
-      const directory = await createProject("agent-directory", false, true);
-      const runtime = await openRuntime(directory, options);
-      const snapshot = await runtime.snapshot();
-      expect(snapshot.model).toMatchObject({ provider: "fixture-provider", id: "fixture-model" });
-      expect(snapshot.diagnostics).toContainEqual(
-        expect.stringContaining("does not bind Pi session hooks (before_agent_start)"),
       );
     },
   );
