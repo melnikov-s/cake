@@ -190,7 +190,7 @@ describe("exact response presentation", () => {
       "Committed as d58aa9b5. Worktree clean; ready for review. No merge, resolution, or restart.",
     );
     const promptCard = within(prompts.closest<HTMLElement>('[data-slot="session-message"]')!);
-    const fullResponse = promptCard.getByRole("link", { name: "Full response" });
+    const fullResponse = promptCard.getByRole("link", { name: titles[1] });
     expect(fullResponse.getAttribute("href")).toBe(promptRef);
     await user.click(fullResponse);
     expect(openSession).toHaveBeenCalledWith(source.getSessionId(), promptId);
@@ -214,7 +214,7 @@ describe("exact response presentation", () => {
     ).toBeTruthy();
     expect(
       within(batch)
-        .getAllByRole("link", { name: "Full response" })
+        .getAllByRole("link")
         .map((link) => link.getAttribute("href")),
     ).toContain(landedRef);
     expect(projectSessionEntries(parent.getEntries())).toEqual(persisted);
@@ -540,9 +540,10 @@ describe("exact response presentation", () => {
       message.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
     ).toEqual([
       "Delegated review",
-      "View message fullscreen: Delegated review",
+
       null,
       "Copy response",
+      "View message fullscreen: Delegated review",
     ]);
     const original = () => screen.getByRole("button", { name: "Original response" });
     await user.click(message.getByRole("button", { name: "Copy response" }));
@@ -749,15 +750,15 @@ describe("exact response presentation", () => {
             disclosure,
           );
           expect(message.queryByRole("button", { name: "Copy response" })).toBeNull();
-          expect(disclosure.textContent).toBe("Producer sessionCompleted");
+          expect(disclosure.parentElement?.textContent).toBe("Producer sessionCompleted");
         } else {
           expect(
             message.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
           ).toEqual([
             "Producer session",
-            "View message fullscreen: Producer session",
             null,
             "Copy response",
+            "View message fullscreen: Producer session",
           ]);
           await user.click(message.getByRole("button", { name: "Copy response" }));
           expect(await navigator.clipboard.readText()).toBe(links);
@@ -910,7 +911,7 @@ describe("exact response presentation", () => {
           expect(card.textContent).toContain("no exact source reference was recorded");
         } else {
           const trigger = within(card).getByRole("button", { name: title });
-          expect(trigger.textContent).toBe(title);
+          expect(trigger.parentElement?.textContent).toBe(title);
           expect(trigger.getAttribute("aria-expanded")).toBe("false");
           expect(inspect).toHaveBeenCalledTimes(reads);
           const user = userEvent.setup();
@@ -927,7 +928,7 @@ describe("exact response presentation", () => {
           }
           await user.click(trigger);
           // Once read, the collapsed row previews the original after its one title.
-          expect(trigger.textContent).toBe(
+          expect(trigger.parentElement?.textContent).toBe(
             `${title}${report && state !== "unavailable" ? report : ""}`,
           );
           expect(trigger.getAttribute("aria-expanded")).toBe("false");

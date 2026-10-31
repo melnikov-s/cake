@@ -137,7 +137,9 @@ test("Project Chat response cards route conversation links, report missing files
     const card = page
       .locator('[data-slot="session-message"]')
       .filter({ hasText: "Investigation update" });
-    await expect(card.getByRole("button", { name: "Investigation update" })).toBeVisible();
+    await expect(
+      card.getByRole("button", { name: "Investigation update", exact: true }),
+    ).toBeVisible();
     await expect(card.getByRole("link", { name: "boards.read", exact: true })).toHaveCount(0);
     await card.getByRole("link", { name: "workgroups.md", exact: true }).click();
     await expect(page.getByText("Could not open file", { exact: true })).toBeVisible();
@@ -145,7 +147,7 @@ test("Project Chat response cards route conversation links, report missing files
     const preview = page.getByRole("dialog", { name: /reference\.md$/ });
     await expect(preview).toContainText("Useful document content.");
     await preview.getByRole("button", { name: "Exit fullscreen" }).click();
-    await card.getByRole("link", { name: "Open conversation", exact: true }).click();
+    await card.getByRole("link", { name: "Investigation update", exact: true }).click();
     await expect(page.getByText("Original diagram investigation", { exact: true })).toBeVisible();
     expect(
       await app.evaluate(({ BrowserWindow }) =>

@@ -12,7 +12,7 @@ import { CopyButton } from "./ui/copy-button";
 import { DisclosureTrigger } from "./ui/disclosure-trigger";
 import { LoadingState } from "./ui/loading-state";
 
-/** Copies the loaded original, shown beside the card's full-response link. */
+/** Copies the complete loaded original through the shared message actions. */
 export const MessageSourceCopy = observer(function MessageSourceCopy({
   store,
 }: {

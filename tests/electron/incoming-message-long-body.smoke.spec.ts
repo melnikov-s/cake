@@ -98,7 +98,9 @@ test("an expanded long incoming message is fully reachable", async () => {
         return (await offsetInTranscript(last)).bottom;
       })
       .toBeLessThanOrEqual(0);
-    await expect(card.getByRole("link", { name: "Full response", exact: true })).toBeVisible();
+    await expect(
+      card.getByRole("link", { name: "Fix the flaky build", exact: true }),
+    ).toBeVisible();
   } finally {
     await app.close();
     await rm(root, { recursive: true, force: true });

@@ -96,9 +96,7 @@ it("retries a complete fullscreen original without changing a collapsed inline r
     await within(fullscreen).findByRole("heading", { name: "Complete original" }),
   ).toBeTruthy();
   expect(within(fullscreen).getByText("Final finding.")).toBeTruthy();
-  expect(within(fullscreen).getByRole("link", { name: "Full response" }).getAttribute("href")).toBe(
-    ref,
-  );
+  expect(within(card).getByRole("link", { name: title }).getAttribute("href")).toBe(ref);
   await fixture.user.click(within(fullscreen).getByRole("button", { name: "Copy message" }));
   expect(await within(fullscreen).findByRole("button", { name: "Copied message" })).toBeTruthy();
   expect(await navigator.clipboard.readText()).toBe(text);
@@ -326,6 +324,8 @@ it("keeps an unrelated exact original in an attributed source card", async () =>
   for (const card of screen.getAllByRole("region", { name: "Message from another session" }))
     await fixture.user.click(within(card).getAllByRole("button")[0]!);
   expect(
-    screen.getAllByRole("link", { name: "Full response" }).map((link) => link.getAttribute("href")),
+    screen
+      .getAllByRole("region", { name: "Message from another session" })
+      .map((card) => within(card).getByRole("link").getAttribute("href")),
   ).toEqual(["cake://session/producer?message=first", "cake://session/producer?message=second"]);
 });

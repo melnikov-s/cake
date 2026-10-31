@@ -153,7 +153,7 @@ it("opens a report's recorded source, follows catalog renames and falls back hon
   const reports = () => screen.getAllByRole("region", { name: "Message from another session" });
   const firstReport = () => within(reports()[0]!);
   expect(firstReport().getByRole("button", { name: "Current API review" })).toBeDefined();
-  const link = firstReport().getByRole("link", { name: "Open conversation" });
+  const link = firstReport().getByRole("link", { name: "Current API review" });
   expect(link.getAttribute("href")).toBe(`cake://session/${sourceId}`);
   expect(firstReport().getByRole("heading", { name: "Report findings" })).toBeDefined();
   expect(firstReport().getByText("this evidence").getAttribute("data-streamdown")).toBe("strong");

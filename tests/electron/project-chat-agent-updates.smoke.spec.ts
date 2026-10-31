@@ -180,7 +180,7 @@ for (const timing of ["next-user", "timer"] as const)
         await expect(update.locator('[data-streamdown="strong"]')).toHaveText("Source located");
         await expect(update.getByRole("listitem")).toHaveText("Checking transport.");
         await expect(
-          update.getByRole("link", { name: "Open conversation", exact: true }),
+          update.getByRole("link", { name: "Investigate attribution", exact: true }),
         ).toHaveAttribute("href", /^cake:\/\/subagent\//);
         await expect(update).not.toContainText("You");
         await expect(page.locator(".transcript")).not.toContainText("Reply through this subagent");
@@ -232,7 +232,7 @@ for (const timing of ["next-user", "timer"] as const)
         );
         await expect(update.locator("pre")).toContainText("const authoredBy = 'worker';");
         await expect(
-          update.getByRole("link", { name: "Open conversation", exact: true }),
+          update.getByRole("link", { name: "Investigate attribution", exact: true }),
         ).toHaveAttribute("href", /^cake:\/\/subagent\/.*\?message=/);
         await expect(update).not.toContainText("You");
         await expect(page.locator(".transcript")).not.toContainText("Deferred reports/status refs");

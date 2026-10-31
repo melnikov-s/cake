@@ -85,6 +85,7 @@ export const ChatTextMessage = forwardRef<
     part: Extract<UiPart, { kind: "text" }>;
     contentRef?: RefObject<HTMLDivElement | null>;
     children?: ReactNode;
+    messageActions?: ReactNode;
     onMouseEnter?: MouseEventHandler<HTMLElement>;
     onMouseLeave?: MouseEventHandler<HTMLElement>;
     onOpenSourceLocation?(location: SourceLocation): void;
@@ -102,6 +103,7 @@ export const ChatTextMessage = forwardRef<
     part,
     contentRef,
     children,
+    messageActions,
     onMouseEnter,
     onMouseLeave,
     onOpenSourceLocation,
@@ -205,6 +207,7 @@ export const ChatTextMessage = forwardRef<
           sources={content ? undefined : sources}
           originals={content ? sources : undefined}
           todo={todo}
+          messageActions={messageActions}
         >
           {report && <SubagentReportAssignment key={part.id} report={report} />}
           {content}
@@ -216,6 +219,15 @@ export const ChatTextMessage = forwardRef<
         </SessionMessage>
       ) : (
         content
+      )}
+      {!part.crossSession && !report && !agentSource && messageActions && (
+        <div
+          data-slot="message-actions"
+          className="mt-1.5 flex min-h-7 items-center gap-1 opacity-0 group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 transition-opacity"
+          aria-label="Message actions"
+        >
+          {messageActions}
+        </div>
       )}
       {children}
     </Message>
@@ -485,6 +497,39 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
             }
       }
       sources={sources}
+      messageActions={
+        part.status !== "streaming" && !presentation?.sourceResponse ? (
+          <>
+            <IconButton
+              tooltip={copied ? "Copied" : "Copy response"}
+              ariaLabel={copied ? "Copied response" : "Copy response"}
+              onClick={() =>
+                void navigator.clipboard.writeText(copyText).then(() => setCopied(true))
+              }
+            >
+              {copied ? <CheckIcon /> : <CopyIcon />}
+            </IconButton>
+            {!part.crossSession && part.entryId && behavior.onFork && (
+              <IconButton
+                tooltip="Fork with full context"
+                ariaLabel="Fork response with full context into new chat"
+                onClick={() => behavior.onFork!(part.entryId!)}
+              >
+                <ForkIcon />
+              </IconButton>
+            )}
+            {!part.crossSession && part.entryId && behavior.onTree && (
+              <IconButton
+                tooltip="Continue here in session tree"
+                ariaLabel="Continue from response in session tree"
+                onClick={() => behavior.onTree!(part.entryId!)}
+              >
+                <TreeIcon />
+              </IconButton>
+            )}
+          </>
+        ) : undefined
+      }
     >
       {behavior.showAssistantFullscreen !== false && canOpenFullscreen && (
         <FullscreenButton
@@ -551,39 +596,6 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
           onRemove={() => behavior.store.removeAnnotation(activeAnnotation.id)}
           onClose={() => setOpenAnnotation(undefined)}
         />
-      )}
-      {part.status !== "streaming" && !presentation?.sourceResponse && (
-        <div
-          data-slot="message-actions"
-          className="mt-1.5 flex min-h-7 items-center gap-1 opacity-0 group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 transition-opacity"
-          aria-label="Message actions"
-        >
-          <IconButton
-            tooltip={copied ? "Copied" : "Copy response"}
-            ariaLabel={copied ? "Copied response" : "Copy response"}
-            onClick={() => void navigator.clipboard.writeText(copyText).then(() => setCopied(true))}
-          >
-            {copied ? <CheckIcon /> : <CopyIcon />}
-          </IconButton>
-          {!part.crossSession && part.entryId && behavior.onFork && (
-            <IconButton
-              tooltip="Fork with full context"
-              ariaLabel="Fork response with full context into new chat"
-              onClick={() => behavior.onFork!(part.entryId!)}
-            >
-              <ForkIcon />
-            </IconButton>
-          )}
-          {!part.crossSession && part.entryId && behavior.onTree && (
-            <IconButton
-              tooltip="Continue here in session tree"
-              ariaLabel="Continue from response in session tree"
-              onClick={() => behavior.onTree!(part.entryId!)}
-            >
-              <TreeIcon />
-            </IconButton>
-          )}
-        </div>
       )}
       {fullscreen && (
         <FullscreenMessage

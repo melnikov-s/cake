@@ -3588,7 +3588,7 @@ const incomingTaskSectionsScenario: VisualCaptureScenario = {
         version: 9,
         data: {
           ...defaultApplicationState(),
-          ...state,
+          ...state.data,
           cakeChatTodos: {
             selectedId: null,
             sequence: 0,
@@ -3828,7 +3828,7 @@ const sessionMessagesScenario: VisualCaptureScenario = {
 const incomingReportRecapScenario: VisualCaptureScenario = {
   name: "incoming-report-recap",
   description: "One sender-attributed incoming report, with a recap link but no duplicate source",
-  states: ["default", "expanded", "fullscreen"],
+  states: ["default", "expanded", "hover", "fullscreen"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     const directory = workspaceSessionDirectory(
@@ -3927,7 +3927,7 @@ const incomingReportRecapScenario: VisualCaptureScenario = {
       "Side-chat shared to-dos and merge-back memory",
     );
     await expect(page.getByRole("link", { name: "Full agent response" })).toBeVisible();
-    if (state === "expanded") {
+    if (state === "expanded" || state === "hover") {
       await disclosure.click();
       await expect(page.getByRole("heading", { name: "Proposed plan" })).toBeVisible();
     } else if (state === "fullscreen") {
@@ -3936,6 +3936,9 @@ const incomingReportRecapScenario: VisualCaptureScenario = {
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
+    // A click leaves the disclosure focused; clear it for an honest resting capture.
+    await disclosure.evaluate((button) => button.blur());
+    if (state === "hover") await page.locator('[data-slot="session-message"]').hover();
   },
   region: (page, state) =>
     state === "fullscreen" ? page.getByRole("dialog") : page.locator(".transcript"),

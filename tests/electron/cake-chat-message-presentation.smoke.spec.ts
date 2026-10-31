@@ -383,7 +383,7 @@ for (const [delivery, theme] of [
         }
         const edges = async (source: typeof first) =>
           source
-            .locator('[data-slot="response-disclosure"]')
+            .locator('[data-slot="response-header"]')
             .first()
             .evaluate(async (button) => {
               await Promise.all(
@@ -457,9 +457,10 @@ for (const [delivery, theme] of [
         await expect(
           first.getByRole("button", { name: "Copy message", exact: true }),
         ).toBeVisible();
-        await expect(
-          first.getByRole("link", { name: "Full response", exact: true }),
-        ).toHaveAttribute("href", metadata.ref);
+        await expect(first.locator('[data-slot="response-header"] a')).toHaveAttribute(
+          "href",
+          metadata.ref,
+        );
         await page.waitForFunction(() =>
           Array.from(
             document.querySelectorAll<HTMLElement>(
@@ -526,9 +527,10 @@ for (const [delivery, theme] of [
         await expect(
           fullscreen.getByRole("img", { name: "Relative screenshot", exact: true }),
         ).toHaveAttribute("src", `data:image/png;base64,${pixels}`);
-        await expect(
-          fullscreen.getByRole("link", { name: "Full response", exact: true }),
-        ).toHaveAttribute("href", metadata.ref);
+        await expect(first.locator('[data-slot="response-header"] a')).toHaveAttribute(
+          "href",
+          metadata.ref,
+        );
         await fullscreen.getByText(/Last original finding/).scrollIntoViewIfNeeded();
         expect(await fullscreen.locator("main").evaluate((main) => main.scrollTop)).toBeGreaterThan(
           0,
@@ -569,7 +571,7 @@ for (const [delivery, theme] of [
           receipt.getByRole("heading", { name: "Original detailed findings" }),
         ).toBeInViewport();
         await expect(
-          receipt.getByRole("link", { name: "Full response", exact: true }),
+          receipt.getByRole("link", { name: "Detailed delegated review", exact: true }),
         ).toHaveAttribute("href", metadata.ref);
         await expect(receipt.getByText("Substance stays in Pi.")).toHaveCount(1);
         await receiptHeader.click();
@@ -631,7 +633,10 @@ for (const [delivery, theme] of [
         name: "Detailed delegated review",
         exact: true,
       });
-      await sourceFullscreen.getByRole("link", { name: "Full response", exact: true }).click();
+      await sourceFullscreen.getByRole("button", { name: /^Exit fullscreen/ }).click();
+      await notification
+        .getByRole("link", { name: "Detailed delegated review", exact: true })
+        .click();
       await expect(sourceFullscreen).toHaveCount(0);
       await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText(
         "Detailed delegated review",

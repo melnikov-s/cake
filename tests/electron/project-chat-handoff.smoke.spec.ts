@@ -275,9 +275,7 @@ for (const timing of ["next-user", "timer"] as const)
         await expect(
           handoff().getByRole("button", { name: "Cake Chat", exact: true }),
         ).toHaveAttribute("aria-expanded", "true");
-        await expect(
-          handoff().getByRole("link", { name: "Open conversation", exact: true }),
-        ).toBeVisible();
+        await expect(handoff().getByRole("link", { name: "Cake Chat", exact: true })).toBeVisible();
         await expect(handoff().locator('[data-streamdown="strong"]')).toHaveText("PASSIVE_HANDOFF");
         await expect(handoff().getByRole("listitem")).toHaveText("Discuss before building.");
         await expect(handoff()).not.toContainText("You");

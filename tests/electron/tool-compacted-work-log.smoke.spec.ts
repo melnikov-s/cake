@@ -298,9 +298,10 @@ test("shows compacted historical work in place, muted and expandable", async () 
     await expect(page.getByText("Check again", { exact: true })).toBeVisible();
     const incoming = page.getByRole("region", { name: "Message from another session" });
     await expect(incoming.getByRole("button", { name: "Cake Chat", exact: true })).toBeVisible();
-    await expect(
-      incoming.getByRole("link", { name: "Open conversation", exact: true }),
-    ).toHaveAttribute("href", "cake://session/coordinator");
+    await expect(incoming.getByRole("link", { name: "Cake Chat", exact: true })).toHaveAttribute(
+      "href",
+      "cake://session/coordinator",
+    );
     await expect(incoming).toContainText("Check again");
     await expect(page.getByRole("img", { name: "Image 2", exact: true })).toBeVisible();
     const compacted = page.locator('[data-slot="activity-group"][data-origin="compacted"]');

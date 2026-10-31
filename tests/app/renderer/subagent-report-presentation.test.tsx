@@ -46,9 +46,9 @@ it.each([
     );
     expect(screen.getByRole("article", { name: heading })).toBeDefined();
     // The card names the worker once, with its status as a badge.
-    expect(screen.getByRole("button", { name: "Bug-fix workflow audit" }).textContent).toBe(
-      `Bug-fix workflow audit${badge}`,
-    );
+    expect(
+      screen.getByRole("button", { name: "Bug-fix workflow audit" }).parentElement?.textContent,
+    ).toBe(`Bug-fix workflow audit${badge}`);
     const body = view.container.querySelector('[data-slot="message-content"]')!;
     expect(body.textContent).toBe(findings);
     const disclosure = screen.getByRole("button", { name: "Assignment details" });
@@ -94,7 +94,7 @@ it.each([
       </MarkdownLinkProvider>,
     );
     expect(screen.getByRole("button", { name: expected })).toBeDefined();
-    const link = screen.getByRole("link", { name: "Open conversation" });
+    const link = screen.getByRole("link", { name: expected });
     expect(link.getAttribute("href")).toBe(href);
     await userEvent.setup().click(link);
     expect(openSubagent).toHaveBeenCalledExactlyOnceWith(

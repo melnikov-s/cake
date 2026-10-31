@@ -60,7 +60,52 @@ for (const theme of ["dark", "light"] as const)
       await expect(source.locator('[data-streamdown="code-block-body"]')).toContainText(
         "const ready = true;",
       );
-      await expect(source.getByRole("link", { name: "Full response", exact: true })).toBeVisible();
+      const titleLink = source.getByRole("link", { name: "Fix the flaky build", exact: true });
+      await expect(titleLink).toHaveAttribute(
+        "href",
+        "cake://session/3d4e5f6a-7b8c-4d9e-8f01-2a3b4c5d6e71?message=build-result",
+      );
+      const actions = source.locator('[data-slot="message-actions"]');
+      const copy = actions.getByRole("button", { name: "Copy message", exact: true });
+      const fullscreen = actions.getByRole("button", { name: /^View message fullscreen:/ });
+      await expect(actions.getByRole("button")).toHaveCount(2);
+      const cardBox = (await source.locator('[data-slot="session-message-card"]').boundingBox())!;
+      expect((await actions.boundingBox())!.y).toBeGreaterThanOrEqual(cardBox.y + cardBox.height);
+      await sourceToggle.evaluate((button) => button.blur());
+      await page.mouse.move(1, 1);
+      await expect(actions).toHaveCSS("opacity", "0");
+      await source.hover();
+      await expect(actions).toHaveCSS("opacity", "1");
+      await page.mouse.move(1, 1);
+      await expect(actions).toHaveCSS("opacity", "0");
+      await copy.focus();
+      await expect(copy).toBeFocused();
+      await expect(actions).toHaveCSS("opacity", "1");
+      await copy.press("Enter");
+      await expect(
+        actions.getByRole("button", { name: "Copied message", exact: true }),
+      ).toBeVisible();
+      expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toContain(
+        "const ready = true;",
+      );
+      await fullscreen.focus();
+      await fullscreen.press("Enter");
+      const reader = page.getByRole("dialog", { name: "Fix the flaky build", exact: true });
+      await expect(reader.getByRole("heading", { name: "Build fixed" })).toBeVisible();
+      await reader.getByRole("button", { name: /^Exit fullscreen/ }).press("Escape");
+      await expect(reader).toHaveCount(0);
+      await expect(fullscreen).toBeFocused();
+      await expect(sourceToggle).toHaveAttribute("aria-expanded", "true");
+      // Both the arrow and empty header area toggle; title navigation is separate.
+      await sourceToggle.click({ position: { x: 12, y: 16 } });
+      await expect(sourceToggle).toHaveAttribute("aria-expanded", "false");
+      const headerBox = (await sourceToggle.boundingBox())!;
+      await sourceToggle.click({ position: { x: headerBox.width - 8, y: 16 } });
+      await expect(sourceToggle).toHaveAttribute("aria-expanded", "true");
+      await sourceToggle.focus();
+      await sourceToggle.press("Tab");
+      await expect(titleLink).toBeFocused();
+      await sourceToggle.focus();
       await sourceToggle.press("Enter");
       const rail = page.getByTitle("Show in To-do: Fix the flaky build").last();
       await rail.click();
@@ -82,6 +127,13 @@ for (const theme of ["dark", "light"] as const)
       await expect(report).toBeVisible();
       await expect(sourceToggle).toHaveAttribute("aria-expanded", "false");
       await expect(rail).toHaveAttribute("aria-description", "Done");
+      const titleLinkAfterReload = source.getByRole("link", {
+        name: "Fix the flaky build",
+        exact: true,
+      });
+      await titleLinkAfterReload.focus();
+      await titleLinkAfterReload.press("Enter");
+      await expect(page.getByRole("heading", { name: "Build fixed" })).toBeVisible();
       expect(
         await app.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows().every((window) => !window.isVisible()),

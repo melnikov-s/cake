@@ -77,9 +77,7 @@ describe("cross-session message presentation", () => {
       />,
     );
     const region = screen.getByRole("region", { name: "Notice about another session" });
-    expect(region.querySelector('[data-slot="response-disclosure"]')?.textContent).toBe(
-      "API review",
-    );
+    expect(region.querySelector('[data-slot="response-header"]')?.textContent).toBe("API review");
   });
 
   it.each(["", "source-session", "Session source-session"])(
@@ -119,20 +117,33 @@ describe("cross-session message presentation", () => {
     ["cake://session/source-session", undefined],
     ["cake://session/source-session?message=original-42", "original-42"],
   ])(
-    "opens href-only source attribution through Markdown navigation (%s)",
+    "navigates the title without toggling, while disclosure remains independent (%s)",
     async (href, entryId) => {
       const openSession = vi.fn();
+      const onToggle = vi.fn();
       render(
         <MarkdownLinkProvider actions={{ openSession, openExternalUrl: vi.fn() }}>
-          <SessionMessage source={{ title: "Investigation update", href }}>Findings</SessionMessage>
+          <SessionMessage
+            source={{ title: "Investigation update", href }}
+            open={false}
+            onToggle={onToggle}
+          >
+            Findings
+          </SessionMessage>
         </MarkdownLinkProvider>,
       );
-      const link = screen.getByRole("link", { name: "Open conversation" });
+      const link = screen.getByRole("link", { name: "Investigation update" });
       expect(link.getAttribute("href")).toBe(href);
       await userEvent.setup().click(link);
       expect(openSession.mock.calls).toEqual([
         entryId ? ["source-session", entryId] : ["source-session"],
       ]);
+      expect(onToggle).not.toHaveBeenCalled();
+      const disclosure = screen.getByRole("button", { name: "Investigation update" });
+      expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+      await userEvent.setup().click(disclosure);
+      expect(onToggle).toHaveBeenCalledExactlyOnceWith();
+      expect(openSession).toHaveBeenCalledTimes(1);
     },
   );
 
@@ -152,7 +163,7 @@ describe("cross-session message presentation", () => {
       </MarkdownLinkProvider>,
     );
     expect(screen.getByRole("button", { name: "Review worker" })).toBeTruthy();
-    await userEvent.setup().click(screen.getByRole("link", { name: "Open conversation" }));
+    await userEvent.setup().click(screen.getByRole("link", { name: "Review worker" }));
     expect(openSubagent).toHaveBeenCalledExactlyOnceWith(
       "parent",
       "10000000-0000-4000-8000-000000000002",
@@ -186,7 +197,7 @@ describe("cross-session message presentation", () => {
         );
         const region = screen.getByRole("region", { name: "Message from another session" });
         // One title, then the delivery badge; the title is never repeated in the body.
-        expect(region.querySelector('[data-slot="response-disclosure"]')?.textContent).toBe(
+        expect(region.querySelector('[data-slot="response-header"]')?.textContent).toBe(
           expectsResponse
             ? resultDelivery === "notification"
               ? "Cake ChatNotification expected"
@@ -208,7 +219,7 @@ describe("cross-session message presentation", () => {
       { ...metadata, replyToMessageId: metadata.threadId },
     );
     renderPersisted(content);
-    expect(screen.getByRole("button", { name: "API review" }).textContent).toBe(
+    expect(screen.getByRole("button", { name: "API review" }).parentElement?.textContent).toBe(
       "API reviewBlocked",
     );
     expect(screen.getByText("decision")).toBeTruthy();
@@ -228,7 +239,9 @@ describe("cross-session message presentation", () => {
       ),
     );
     const region = screen.getByRole("region", { name: "Notice about another session" });
-    expect(screen.getByRole("button", { name: "API review" }).textContent).toBe("API reviewFailed");
+    expect(screen.getByRole("button", { name: "API review" }).parentElement?.textContent).toBe(
+      "API reviewFailed",
+    );
     expect(screen.getByText("Stopped with an error while working on a message.")).toBeTruthy();
     expect(region.querySelector('[data-slot="message-content"]')?.textContent).not.toContain(
       metadata.messageId,

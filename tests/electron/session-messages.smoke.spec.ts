@@ -38,6 +38,7 @@ test("incoming report owns its source before and after recap/reload", async () =
       await expect(page.locator('[data-slot="message-source"]')).toHaveCount(0);
       const disclosure = card.getByRole("button", {
         name: "Side-chat shared to-dos and merge-back memory",
+        exact: true,
       });
       await disclosure.click();
       await expect(card.getByRole("heading", { name: "Proposed plan" })).toBeVisible();
@@ -45,10 +46,12 @@ test("incoming report owns its source before and after recap/reload", async () =
         "const merged = false;",
       );
       await expect(card.locator('[data-slot="message-source"]')).toHaveCount(1);
-      await expect(card.getByRole("link", { name: "Full response", exact: true })).toHaveAttribute(
-        "href",
-        "cake://session/visual-incoming-report?message=original-result",
-      );
+      await expect(
+        card.getByRole("link", {
+          name: "Side-chat shared to-dos and merge-back memory",
+          exact: true,
+        }),
+      ).toHaveAttribute("href", "cake://session/visual-incoming-report?message=original-result");
       await disclosure.click();
       await expect(disclosure).toHaveAttribute("aria-expanded", "false");
       await expect(page.getByText("No code has changed. Shall we review the plan?")).toBeVisible();
@@ -123,15 +126,21 @@ for (const state of ["default", "project", "reference"]) {
       await scenario.prepare(page, state);
       const card = page.getByRole("region", { name: "Message from another session" }).first();
       await expect(card.getByRole("heading", { name: "Completed" })).toBeVisible();
-      await expect(card).toHaveCSS("border-width", "1px");
-      await expect(card).toHaveCSS("border-radius", "10px");
+      await expect(card.locator('[data-slot="session-message-card"]')).toHaveCSS(
+        "border-width",
+        "1px",
+      );
+      await expect(card.locator('[data-slot="session-message-card"]')).toHaveCSS(
+        "border-radius",
+        "10px",
+      );
       // One title row: the sender's title is not repeated in a second header.
       await expect(card.locator('[data-slot="response-disclosure"]')).toHaveCount(1);
       await expect(card.locator('[data-slot="message-content"]')).toHaveCSS("border-width", "0px");
       await expect(card).not.toContainText("cake-session-message");
       const message = card.locator("..");
       const actions = message.locator('[data-slot="message-actions"]');
-      await expect(actions.getByRole("button")).toHaveCount(1);
+      await expect(actions.getByRole("button")).toHaveCount(2);
       const copy = actions.getByRole("button", { name: "Copy response", exact: true });
       await copy.focus();
       await expect(copy).toBeFocused();
@@ -180,15 +189,20 @@ for (const state of ["default", "project", "reference"]) {
       await context.click();
       if (state === "project") {
         const fallback = page.getByRole("region", { name: "Message from another session" }).last();
-        await expect(fallback.getByRole("button", { name: "Untitled session" })).toBeVisible();
+        await expect(
+          fallback.getByRole("button", { name: "Untitled session", exact: true }),
+        ).toBeVisible();
         await expect(fallback).toContainText("Historical report from a now-unavailable session.");
-        await fallback.getByRole("link", { name: "Open conversation", exact: true }).click();
+        await fallback.getByRole("link", { name: "Untitled session", exact: true }).click();
         await expect(
           page.getByText("Cake could not find Project Session missing-session", { exact: true }),
         ).toBeVisible();
         await expect(card).toBeVisible();
       }
-      const source = card.getByRole("link", { name: "Open conversation", exact: true });
+      const source = card.getByRole("link", {
+        name: "Add and globally install manual post-mortem skill",
+        exact: true,
+      });
       await expect(source).toHaveAttribute("href", "cake://session/visual-report-source");
       await source.focus();
       await expect(source).toBeFocused();
