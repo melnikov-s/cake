@@ -129,6 +129,7 @@ export class RootStore extends Store<{
       sidebar: () => this.sidebarStore,
       metadata: () => this.sessionMetadataStore,
       settings: () => this.settingsStore.appearance,
+      dictation: () => this.dictationStore,
       cakeChat: () => this.cakeChatCollectionStore,
       cakeChatCatalog: this.cakeChatCatalogModel,
       navigation: () => this.navigationStore,

@@ -1,5 +1,6 @@
 import { Schema } from "effect";
-import { SessionLabel } from "../application/application-data";
+import { SpeechRecognitionSettings, TextProcessingMode } from "../dictation/dictation-data";
+import { ProjectIcon, SessionLabel } from "../application/application-data";
 import { WorktreeRecord } from "../worktrees/managed-worktree-data";
 
 export const DEFAULT_CAPTURE_SHORTCUT = "Mod+Shift+6";
@@ -49,21 +50,31 @@ export const CaptureRouting = Schema.Struct({
     Schema.Struct({
       path: Schema.String,
       name: Schema.String,
+      icon: Schema.optionalKey(ProjectIcon),
       sessions: Schema.Array(CaptureSessionOption),
     }),
   ),
   cakeChats: Schema.Array(CaptureSessionOption),
   appearance: Schema.Struct({
     theme: Schema.Literals(["system", "light", "dark"]),
+    projectAvatarsEnabled: Schema.Boolean,
     sessionAvatarsEnabled: Schema.Boolean,
     sidebarCharactersEnabled: Schema.Boolean,
+  }),
+  dictation: Schema.Struct({
+    enabled: Schema.Boolean,
+    deviceId: Schema.String,
+    textProcessingMode: TextProcessingMode,
+    recognition: SpeechRecognitionSettings,
   }),
   defaultDestination: CaptureDestination,
 });
 export interface CaptureRouting extends Schema.Schema.Type<typeof CaptureRouting> {}
 
+const CaptureAnnotationText = Schema.String;
 export const CaptureResult = Schema.Struct({
   data: Schema.String.check(Schema.isMaxLength(20_000_000)),
+  annotationText: CaptureAnnotationText,
   destination: CaptureDestination,
 });
 export interface CaptureResult extends Schema.Schema.Type<typeof CaptureResult> {}
@@ -101,10 +112,66 @@ export interface CaptureRect extends CapturePoint {
   readonly width: number;
   readonly height: number;
 }
-export interface CaptureArrow {
-  readonly start: CapturePoint;
-  readonly end: CapturePoint;
-  readonly label: string;
+export type CaptureDrawing =
+  | {
+      readonly kind: "arrow";
+      readonly start: CapturePoint;
+      readonly end: CapturePoint;
+      readonly label: string;
+    }
+  | { readonly kind: "freehand"; readonly points: readonly CapturePoint[]; readonly label: string };
+
+export type CaptureMode = "crop" | "annotate" | "freehand";
+
+export function captureDrawingAnchor(drawing: CaptureDrawing): CapturePoint {
+  return drawing.kind === "arrow" ? drawing.start : drawing.points[drawing.points.length - 1]!;
+}
+
+/** Keep original marker identities when a crop excludes other drawings. */
+export function numberedCaptureDrawings(drawings: readonly CaptureDrawing[], rect?: CaptureRect) {
+  return drawings
+    .map((drawing, index) => ({ drawing, number: index + 1 }))
+    .filter(({ drawing }) => {
+      if (!rect) return true;
+      const points = drawing.kind === "arrow" ? [drawing.start, drawing.end] : drawing.points;
+      return points.some((point, index) =>
+        captureSegmentIntersectsRect(points[Math.max(0, index - 1)]!, point, rect),
+      );
+    });
+}
+
+/** Clip a line's parameter range against the rectangle's two coordinate intervals. */
+function captureSegmentIntersectsRect(start: CapturePoint, end: CapturePoint, rect: CaptureRect) {
+  let enter = 0;
+  let leave = 1;
+  for (const [from, to, min, max] of [
+    [start.x, end.x, rect.x, rect.x + rect.width],
+    [start.y, end.y, rect.y, rect.y + rect.height],
+  ] as const) {
+    const delta = to - from;
+    if (delta === 0) {
+      if (from < min || from > max) return false;
+    } else {
+      const first = (min - from) / delta;
+      const last = (max - from) / delta;
+      enter = Math.max(enter, Math.min(first, last));
+      leave = Math.min(leave, Math.max(first, last));
+      if (enter > leave) return false;
+    }
+  }
+  return true;
+}
+
+export function captureAnnotationText(
+  drawings: readonly CaptureDrawing[],
+  rect?: CaptureRect,
+): string {
+  return numberedCaptureDrawings(drawings, rect)
+    .map(
+      ({ drawing, number }) =>
+        `${number}. ${drawing.label.trim().replace(/\n/g, `\n${" ".repeat(String(number).length + 2)}`) || "(No text)"}`,
+    )
+    .join("\n");
 }
 
 export function captureRect(start: CapturePoint, end: CapturePoint): CaptureRect {

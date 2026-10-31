@@ -1,6 +1,9 @@
 import {
   captureOutputSize,
-  type CaptureArrow,
+  captureDrawingAnchor,
+  numberedCaptureDrawings,
+  type CaptureDrawing,
+  type CapturePoint,
   type CaptureRect,
 } from "../../contracts/desktop/screen-capture-data";
 
@@ -10,11 +13,32 @@ export interface CapturePalette {
   readonly foreground: string;
 }
 
+/** Shared by raster export and accessible marker hit targets, in screenshot pixels. */
+export function captureMarker(
+  point: CapturePoint,
+  width: number,
+  height: number,
+  region?: CaptureRect,
+) {
+  const bounds = region ?? { x: 0, y: 0, width, height };
+  const radius = Math.min(
+    16 * Math.max(1, Math.max(width, height) / 1800),
+    bounds.width / 2,
+    bounds.height / 2,
+  );
+  return {
+    x: Math.max(bounds.x + radius, Math.min(bounds.x + bounds.width - radius, point.x)),
+    y: Math.max(bounds.y + radius, Math.min(bounds.y + bounds.height - radius, point.y)),
+    radius,
+  };
+}
+
 export function paintCapture(
   context: CanvasRenderingContext2D,
   image: HTMLImageElement,
-  arrows: readonly CaptureArrow[],
+  drawings: readonly CaptureDrawing[],
   palette: CapturePalette,
+  region?: CaptureRect,
 ) {
   context.clearRect(0, 0, image.naturalWidth, image.naturalHeight);
   context.drawImage(image, 0, 0);
@@ -23,42 +47,45 @@ export function paintCapture(
   context.lineCap = "round";
   context.lineJoin = "round";
   context.font = `600 ${16 * unit}px system-ui`;
-  for (const arrow of arrows) {
-    const angle = Math.atan2(arrow.end.y - arrow.start.y, arrow.end.x - arrow.start.x);
+  for (const { drawing, number } of numberedCaptureDrawings(drawings, region)) {
     context.strokeStyle = palette.ink;
     context.shadowColor = palette.background;
     context.shadowBlur = 3 * unit;
     context.beginPath();
-    context.moveTo(arrow.start.x, arrow.start.y);
-    context.lineTo(arrow.end.x, arrow.end.y);
-    context.moveTo(
-      arrow.end.x - 14 * unit * Math.cos(angle - Math.PI / 6),
-      arrow.end.y - 14 * unit * Math.sin(angle - Math.PI / 6),
-    );
-    context.lineTo(arrow.end.x, arrow.end.y);
-    context.lineTo(
-      arrow.end.x - 14 * unit * Math.cos(angle + Math.PI / 6),
-      arrow.end.y - 14 * unit * Math.sin(angle + Math.PI / 6),
-    );
+    if (drawing.kind === "freehand") {
+      context.moveTo(drawing.points[0]!.x, drawing.points[0]!.y);
+      for (const point of drawing.points.slice(1)) context.lineTo(point.x, point.y);
+    } else {
+      const angle = Math.atan2(drawing.end.y - drawing.start.y, drawing.end.x - drawing.start.x);
+      context.moveTo(drawing.start.x, drawing.start.y);
+      context.lineTo(drawing.end.x, drawing.end.y);
+      context.moveTo(
+        drawing.end.x - 14 * unit * Math.cos(angle - Math.PI / 6),
+        drawing.end.y - 14 * unit * Math.sin(angle - Math.PI / 6),
+      );
+      context.lineTo(drawing.end.x, drawing.end.y);
+      context.lineTo(
+        drawing.end.x - 14 * unit * Math.cos(angle + Math.PI / 6),
+        drawing.end.y - 14 * unit * Math.sin(angle + Math.PI / 6),
+      );
+    }
     context.stroke();
     context.shadowBlur = 0;
-    if (arrow.label) {
-      const padding = 8 * unit;
-      const textWidth = context.measureText(arrow.label).width;
-      const width = Math.min(image.naturalWidth, textWidth + padding * 2);
-      const height = 32 * unit;
-      const x = Math.max(0, Math.min(image.naturalWidth - width, arrow.start.x + padding));
-      const y = Math.max(
-        0,
-        Math.min(image.naturalHeight - height, arrow.start.y - height - padding),
-      );
-      context.fillStyle = palette.background;
-      context.fillRect(x, y, width, height);
-      context.strokeStyle = palette.ink;
-      context.strokeRect(x, y, width, height);
-      context.fillStyle = palette.foreground;
-      context.fillText(arrow.label, x + padding, y + 22 * unit, Math.max(1, width - padding * 2));
-    }
+    const { x, y, radius } = captureMarker(
+      captureDrawingAnchor(drawing),
+      image.naturalWidth,
+      image.naturalHeight,
+      region,
+    );
+    context.beginPath();
+    context.arc(x, y, radius, 0, Math.PI * 2);
+    context.fillStyle = palette.background;
+    context.fill();
+    context.stroke();
+    context.fillStyle = palette.foreground;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(String(number), x, y, radius * 1.6);
   }
 }
 
@@ -71,10 +98,10 @@ export function loadCaptureImage(data: string): Promise<HTMLImageElement> {
   });
 }
 
-/** Flatten only screenshot + annotations; crop guides and Cake controls are never included. */
+/** Flatten only screenshot, drawings and numbers; prose and Cake controls stay out of pixels. */
 export async function renderCaptureImage(
   data: string,
-  arrows: readonly CaptureArrow[],
+  drawings: readonly CaptureDrawing[],
   rect: CaptureRect | undefined,
   maxDimension: number,
   palette: CapturePalette,
@@ -85,7 +112,7 @@ export async function renderCaptureImage(
   source.height = image.naturalHeight;
   const context = source.getContext("2d");
   if (!context) throw new Error("Canvas rendering is unavailable");
-  paintCapture(context, image, arrows, palette);
+  paintCapture(context, image, drawings, palette, rect);
   const region = rect ?? { x: 0, y: 0, width: source.width, height: source.height };
   const output = document.createElement("canvas");
   const size = captureOutputSize(region.width, region.height, maxDimension);

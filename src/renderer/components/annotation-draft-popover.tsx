@@ -9,6 +9,8 @@ import {
 import { createPortal } from "react-dom";
 import { ChatComposer } from "@/components/chat-composer";
 import { ComposerInput } from "@/components/ai-elements/composer";
+import { IconButton } from "./ui/icon-button";
+import { CloseIcon, TrashIcon } from "./ui/icons";
 import { ComposerSubmitButton } from "@/components/ui/composer-submit-button";
 import type { Annotation } from "../../contracts/conversations/session-contract";
 import type { MessageSelectionAnchor } from "../stores/MessageCommentsStore";
@@ -22,14 +24,30 @@ export function AnnotationDraftPopover({
   anchor,
   selection,
   onAdd,
+  onSave,
   onClose,
+  onCancel = onClose,
+  onRemove,
+  draft,
+  submitLabel = "Add annotation",
 }: {
   anchor: HTMLElement | MessageCommentAnchorRect;
-  selection: MessageSelectionAnchor;
-  onAdd(annotation: Omit<Annotation, "id">): void;
   onClose(): void;
-}) {
-  const [comment, setComment] = useState("");
+  onCancel?(): void;
+  onRemove?(): void;
+  draft?: { value: string; onChange(value: string): void };
+  submitLabel?: string;
+} & (
+  | {
+      selection: MessageSelectionAnchor;
+      onAdd(annotation: Omit<Annotation, "id">): void;
+      onSave?: never;
+    }
+  | { selection?: never; onAdd?: never; onSave(comment: string): void }
+)) {
+  const [localComment, setLocalComment] = useState("");
+  const comment = draft?.value ?? localComment;
+  const setComment = draft?.onChange ?? setLocalComment;
   const surfaceRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [position, setPosition] = useState<CSSProperties>({ visibility: "hidden" });
@@ -76,7 +94,11 @@ export function AnnotationDraftPopover({
       }
     };
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !event.defaultPrevented) {
+        event.preventDefault();
+        event.stopPropagation();
+        onCancel();
+      }
     };
     document.addEventListener("pointerdown", dismiss);
     document.addEventListener("keydown", keydown);
@@ -86,12 +108,13 @@ export function AnnotationDraftPopover({
       document.removeEventListener("keydown", keydown);
       if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true });
     };
-  }, [onClose]);
+  }, [onClose, onCancel]);
 
   const handleSubmit = useCallback(() => {
-    onAdd({ ...selection, comment: comment.trim() || undefined });
+    if (selection) onAdd({ ...selection, comment: comment.trim() || undefined });
+    else onSave(comment.trim());
     onClose();
-  }, [comment, onAdd, onClose, selection]);
+  }, [comment, onAdd, onSave, onClose, selection]);
 
   return createPortal(
     <div
@@ -116,14 +139,28 @@ export function AnnotationDraftPopover({
             value={comment}
             onChange={(event) => setComment(event.currentTarget.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
                 handleSubmit();
               }
             }}
           />
         }
-        toolbarActions={<ComposerSubmitButton tooltip="Add annotation" />}
+        toolbarActions={
+          <>
+            {onRemove && (
+              <IconButton type="button" tooltip="Delete annotation" onClick={onRemove}>
+                <TrashIcon />
+              </IconButton>
+            )}
+            {draft && (
+              <IconButton type="button" tooltip="Cancel editing" onClick={onCancel}>
+                <CloseIcon />
+              </IconButton>
+            )}
+            <ComposerSubmitButton tooltip={submitLabel} />
+          </>
+        }
       />
     </div>,
     document.body,

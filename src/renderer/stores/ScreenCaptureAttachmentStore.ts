@@ -1,3 +1,5 @@
+import { speechRecognitionSettings } from "../../utils/speech-input-settings";
+import type { DictationStore } from "./DictationStore";
 import { Store, snapshot, untracked } from "r-state-tree";
 import {
   DEFAULT_CAPTURE_MAX_DIMENSION,
@@ -33,6 +35,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
   sidebar(): SidebarStore;
   metadata(): SessionMetadataStore;
   settings(): AppearanceSettingsStore;
+  dictation(): DictationStore;
   cakeChat(): CakeChatCollectionStore;
   cakeChatCatalog: CakeChatCatalog;
   navigation(): NavigationStore;
@@ -67,15 +70,22 @@ export class ScreenCaptureAttachmentStore extends Store<{
     return {
       appearance: {
         theme: settings.theme,
+        projectAvatarsEnabled: settings.projectAvatarsEnabled,
         sessionAvatarsEnabled: settings.sessionAvatarsEnabled,
         sidebarCharactersEnabled: settings.sidebarCharactersEnabled,
+      },
+      dictation: {
+        enabled: this.props.dictation().enabled,
+        deviceId: this.props.dictation().deviceId,
+        textProcessingMode: this.props.dictation().textProcessingMode,
+        recognition: speechRecognitionSettings(this.props.dictation().props.preferences.values),
       },
       projects: this.props.projects.orderedProjectPaths.map((path) => {
         // Preserve sidebar ordering, including collapsed descendants. Unsent pane
         // identities are valid destinations but intentionally not sidebar rows.
         const listed = sidebar.sessionListStore.projectSessions(path, false, true);
         const unsent = this.props.registry.unsentSessionsForProject(path, listed);
-        return {
+        const project: CaptureRouting["projects"][number] = {
           path,
           name: this.props.projects.nameForPath(path),
           sessions: [...listed, ...unsent].map((session) => {
@@ -111,6 +121,9 @@ export class ScreenCaptureAttachmentStore extends Store<{
             return option;
           }),
         };
+        const icon = this.props.projects.find(path)?.settings?.icon;
+        if (icon) Object.assign(project, { icon });
+        return project;
       }),
       cakeChats: sidebar.sessionListStore.cakeChatSessions().map((session) => {
         const option: CaptureSessionOption = {
@@ -257,14 +270,19 @@ export class ScreenCaptureAttachmentStore extends Store<{
       if (!draft) throw new Error("The destination chat is no longer editable.");
       if (draft.attachments.length >= 20)
         throw new Error("The destination draft already has 20 attachments.");
+      const name = `Screenshot-${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
       draft.appendAttachments([
         {
           kind: "image",
-          name: `Screenshot-${new Date().toISOString().replace(/[:.]/g, "-")}.png`,
+          name,
           mimeType: "image/png",
           data: result.data,
         },
       ]);
+      if (result.annotationText)
+        draft.setText(
+          [draft.text, `${name}\n${result.annotationText}`].filter(Boolean).join("\n\n"),
+        );
       this.lastTarget = { ...target };
       draft.requestFocus();
     } catch (error) {

@@ -1,40 +1,58 @@
-import { Store, observable } from "r-state-tree";
+import { Store, child, createStore, observable } from "r-state-tree";
 import {
+  captureAnnotationText,
+  captureDrawingAnchor,
   captureRect,
-  type CaptureArrow,
+  type CaptureDrawing,
   type CaptureDestination,
+  type CaptureMode,
   type CapturePoint,
   type CaptureRect,
   type ScreenCaptureSnapshot,
 } from "../../contracts/desktop/screen-capture-data";
 import type { Client } from "../client/Client";
 import type { CapturePalette } from "../screen-capture/render-capture";
+import { DictationStore } from "./DictationStore";
+import { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
 
-/** One overlay's ephemeral editing state. Never persisted; switching modes preserves arrows.
- * Finish is single-flight. Escape can cancel while rasterization runs and prevents delivery.
- */
+/** Ephemeral overlay editing state; image and numbered text share one export projection. */
 export class ScreenCaptureOverlayStore extends Store<{
   client: Pick<Client["electron"], "screenCaptureState" | "finishScreenCapture">;
+  speech: Pick<DictationStore["props"], "client" | "microphone" | "postProcess">;
+  copy(image: string, text: string): Promise<void>;
   renderImage(
     image: string,
-    arrows: readonly CaptureArrow[],
+    drawings: readonly CaptureDrawing[],
     rect: CaptureRect | undefined,
     maxDimension: number,
     palette: CapturePalette,
   ): Promise<string>;
 }> {
   snapshot: ScreenCaptureSnapshot | undefined;
-  mode: "crop" | "annotate" = "crop";
+  mode: CaptureMode = "crop";
   destination: CaptureDestination | undefined;
-  readonly arrows: CaptureArrow[] = observable([]);
+  readonly drawings: CaptureDrawing[] = observable([]);
+  readonly stroke: CapturePoint[] = observable([]);
   dragStart: CapturePoint | undefined;
   dragEnd: CapturePoint | undefined;
   editingIndex: number | undefined;
+  private editingNew = false;
   label = "";
   busy = false;
+  copied = false;
   cancelled = false;
   error: string | undefined;
   palette: CapturePalette = { ink: "", background: "", foreground: "" };
+
+  @child get speechPreferences(): SpeechInputSettingsStore {
+    return createStore(SpeechInputSettingsStore);
+  }
+  @child get dictationStore(): DictationStore {
+    return createStore(DictationStore, {
+      ...this.props.speech,
+      preferences: this.speechPreferences,
+    });
+  }
 
   async initialize() {
     try {
@@ -42,6 +60,20 @@ export class ScreenCaptureOverlayStore extends Store<{
       if (!this.signal.aborted) {
         this.snapshot = snapshot;
         this.destination = snapshot.routing.defaultDestination;
+        const voice = snapshot.routing.dictation;
+        const recognition = voice.recognition;
+        this.speechPreferences.preferences = {
+          ...this.speechPreferences.values,
+          speechStartThreshold: recognition.thresholds.start,
+          speechContinueThreshold: recognition.thresholds.continuation,
+          minimumSpeechMs: recognition.minimumSpeechMs,
+          prerollMs: recognition.prerollMs,
+          maximumUtteranceSeconds: recognition.maximumUtteranceSeconds,
+        };
+        this.dictationStore.enabled = voice.enabled;
+        this.dictationStore.phase = voice.enabled ? "paused" : "off";
+        this.dictationStore.deviceId = voice.deviceId;
+        this.dictationStore.textProcessingMode = voice.textProcessingMode;
       }
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
@@ -49,101 +81,143 @@ export class ScreenCaptureOverlayStore extends Store<{
   }
 
   selectDestination(destination: CaptureDestination) {
-    if (this.busy || this.cancelled) return;
-    this.destination = destination;
+    if (!this.busy && !this.cancelled) this.destination = destination;
   }
-
-  setMode(mode: "crop" | "annotate") {
+  setMode(mode: CaptureMode) {
     this.commitLabel();
-    this.dragStart = undefined;
-    this.dragEnd = undefined;
+    this.abandonDrag();
     this.mode = mode;
   }
-
   get selection() {
     return this.mode === "crop" && this.dragStart && this.dragEnd
       ? captureRect(this.dragStart, this.dragEnd)
       : undefined;
   }
-  get visibleArrows(): readonly CaptureArrow[] {
-    return this.mode === "annotate" && this.dragStart && this.dragEnd
-      ? [...this.arrows, { start: this.dragEnd, end: this.dragStart, label: "" }]
-      : this.arrows.slice();
+  private get pendingDrawing(): CaptureDrawing | undefined {
+    if (!this.dragStart || !this.dragEnd || this.mode === "crop") return undefined;
+    return this.mode === "freehand"
+      ? { kind: "freehand", points: this.stroke.slice(), label: "" }
+      : { kind: "arrow", start: this.dragEnd, end: this.dragStart, label: "" };
+  }
+  get visibleDrawings(): readonly CaptureDrawing[] {
+    const pending = this.pendingDrawing;
+    return pending ? [...this.drawings, pending] : this.drawings.slice();
   }
   get labelPoint() {
-    return this.editingIndex === undefined ? undefined : this.arrows[this.editingIndex]?.start;
+    const drawing = this.editingIndex === undefined ? undefined : this.drawings[this.editingIndex];
+    return drawing && captureDrawingAnchor(drawing);
   }
-
   begin(point: CapturePoint) {
-    if (!this.snapshot || this.busy || this.cancelled) return;
-    this.commitLabel();
+    if (!this.snapshot || this.busy || this.cancelled || this.editingIndex !== undefined) return;
+    this.copied = false;
     this.dragStart = point;
     this.dragEnd = point;
+    this.stroke.splice(0, this.stroke.length, point);
   }
   move(point: CapturePoint) {
-    if (this.dragStart) this.dragEnd = point;
+    if (!this.dragStart) return;
+    this.dragEnd = point;
+    if (this.mode === "freehand") this.stroke.push(point);
   }
   end(point: CapturePoint) {
     if (!this.dragStart || this.busy || this.cancelled) return;
-    const start = this.dragStart;
-    this.dragStart = undefined;
-    this.dragEnd = undefined;
-    const rect = captureRect(start, point);
-    if (Math.hypot(rect.width, rect.height) < 5) return;
+    this.move(point);
+    const rect = captureRect(this.dragStart, point);
+    const drawing = this.pendingDrawing;
+    const length =
+      this.mode === "freehand"
+        ? this.stroke.reduce(
+            (sum, current, index) =>
+              index === 0
+                ? sum
+                : sum +
+                  Math.hypot(
+                    current.x - this.stroke[index - 1]!.x,
+                    current.y - this.stroke[index - 1]!.y,
+                  ),
+            0,
+          )
+        : Math.hypot(rect.width, rect.height);
+    this.abandonDrag();
+    if (length < 5) return;
     if (this.mode === "crop") {
       if (rect.width >= 2 && rect.height >= 2) void this.capture(rect);
-    } else {
-      this.arrows.push({ start: point, end: start, label: "" });
-      this.editingIndex = this.arrows.length - 1;
+    } else if (drawing) {
+      this.drawings.push(drawing);
+      this.editingIndex = this.drawings.length - 1;
+      this.editingNew = true;
       this.label = "";
     }
   }
   abandonDrag() {
     this.dragStart = undefined;
     this.dragEnd = undefined;
+    this.stroke.splice(0);
   }
-
-  /** Dismiss the unfinished gesture before dismissing the capture itself. */
+  editLabel(index: number) {
+    if (this.busy || this.cancelled || !this.drawings[index]) return;
+    this.commitLabel();
+    this.editingIndex = index;
+    this.editingNew = false;
+    this.label = this.drawings[index]!.label;
+  }
+  cancelLabel() {
+    if (this.editingIndex !== undefined && this.editingNew)
+      this.drawings.splice(this.editingIndex, 1);
+    this.editingIndex = undefined;
+    this.label = "";
+  }
+  deleteLabel() {
+    if (this.editingIndex !== undefined) this.drawings.splice(this.editingIndex, 1);
+    this.editingIndex = undefined;
+    this.label = "";
+    this.copied = false;
+  }
   escape() {
-    if (this.editingIndex !== undefined) {
-      this.arrows.splice(this.editingIndex, 1);
-      this.editingIndex = undefined;
-      this.label = "";
-    } else if (this.dragStart) {
-      this.abandonDrag();
-    } else {
-      void this.cancel();
-    }
+    if (this.editingIndex !== undefined) this.cancelLabel();
+    else if (this.dragStart) this.abandonDrag();
+    else void this.cancel();
   }
-
   commitLabel() {
     const index = this.editingIndex;
-    if (index !== undefined && this.arrows[index])
-      this.arrows.splice(index, 1, { ...this.arrows[index], label: this.label.trim() });
+    if (index !== undefined && this.drawings[index]) {
+      this.drawings.splice(index, 1, { ...this.drawings[index]!, label: this.label.trim() });
+      this.copied = false;
+    }
     this.editingIndex = undefined;
     this.label = "";
   }
   undo() {
     this.commitLabel();
-    this.arrows.pop();
+    this.drawings.pop();
+    this.copied = false;
   }
-
-  async capture(rect?: CaptureRect) {
+  async capture(rect?: CaptureRect, copy = false) {
     if (!this.snapshot || !this.destination || this.busy || this.cancelled) return;
     const destination = { ...this.destination };
     this.commitLabel();
+    const drawings = this.drawings.slice();
+    const annotationText = captureAnnotationText(drawings, rect);
     this.busy = true;
     this.error = undefined;
     try {
       const image = await this.props.renderImage(
         this.snapshot.image,
-        this.arrows.slice(),
+        drawings,
         rect,
         this.snapshot.maxDimension,
         this.palette,
       );
       if (this.signal.aborted || this.cancelled) return;
-      await this.props.client.finishScreenCapture({ image, destination }, { signal: this.signal });
+      if (copy) {
+        await this.props.copy(image, annotationText);
+        this.copied = true;
+      } else {
+        await this.props.client.finishScreenCapture(
+          { image, annotationText, destination },
+          { signal: this.signal },
+        );
+      }
     } catch (error) {
       if (!this.signal.aborted && !this.cancelled) this.reportError(error);
     } finally {

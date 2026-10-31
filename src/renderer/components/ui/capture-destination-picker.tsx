@@ -5,9 +5,12 @@ import type {
   CaptureSessionOption,
 } from "../../../contracts/desktop/screen-capture-data";
 import { Button } from "./button";
-import { BackIcon, ChevronDownIcon, FolderIcon, PlusIcon } from "./icons";
+import { BackIcon, CakeIcon, ChevronIcon, ChevronDownIcon, FolderIcon, PlusIcon } from "./icons";
 import { IconButton } from "./icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
+import { Avatar } from "./avatar";
+import { NavItem } from "./nav-item";
+import { cn } from "../../lib/utils";
 import { SessionListItem } from "./session-list-item";
 
 /** Sidebar rows and order, with a pinned New chat action above the scrolling destinations. */
@@ -24,6 +27,13 @@ export function CaptureDestinationPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [choosingProject, setChoosingProject] = useState(false);
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set());
+  const projectIcon = (project: CaptureRouting["projects"][number]) =>
+    routing.appearance.projectAvatarsEnabled ? (
+      <Avatar kind="project" seed={project.name} customIcon={project.icon} aria-hidden="true" />
+    ) : (
+      <FolderIcon />
+    );
   const [collapsed, setCollapsed] = useState(
     () =>
       new Set(
@@ -113,7 +123,7 @@ export function CaptureDestinationPicker({
       <PopoverContent
         aria-label="Screenshot destination"
         align="start"
-        className="w-80 overflow-hidden p-0"
+        className="w-80 overflow-hidden bg-sidebar p-0"
       >
         <div className="border-b border-border p-1.5">
           {choosingProject ? (
@@ -139,36 +149,56 @@ export function CaptureDestinationPicker({
         <div className="max-h-[min(22rem,calc(100vh-9rem))] overflow-y-auto p-1.5">
           {choosingProject ? (
             routing.projects.map((project) => (
-              <Button
+              <NavItem
                 key={project.path}
-                variant="ghost"
-                size="sm"
-                className="w-full justify-start gap-2"
-                aria-label={`New chat in ${project.name}`}
+                icon={projectIcon(project)}
+                label={project.name}
+                active={
+                  destination.kind === "new-session" && destination.projectPath === project.path
+                }
+                actionProps={{ "aria-label": `New chat in ${project.name}` }}
                 onClick={() => select({ kind: "new-session", projectPath: project.path })}
-              >
-                <FolderIcon />
-                {project.name}
-              </Button>
+              />
             ))
           ) : (
             <>
               {routing.cakeChats.length > 0 && (
                 <section aria-label="Cake Chat">
-                  <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">
-                    Cake Chat
+                  <div className="flex items-center gap-2 px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">
+                    <CakeIcon /> Cake Chat
                   </div>
                   <div className="flex flex-col gap-1">{rows(routing.cakeChats, "cake-chat")}</div>
                 </section>
               )}
               {routing.projects.map((project) => (
                 <section key={project.path} aria-label={project.name}>
-                  <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">
-                    {project.name}
-                  </div>
-                  <div className="flex flex-col gap-1 pl-4">
-                    {rows(project.sessions, "project-session")}
-                  </div>
+                  <NavItem
+                    icon={
+                      <span className="flex items-center gap-1">
+                        <ChevronIcon
+                          className={cn(collapsedProjects.has(project.path) && "-rotate-90")}
+                        />
+                        {projectIcon(project)}
+                      </span>
+                    }
+                    label={project.name}
+                    actionProps={{
+                      "aria-label": `${collapsedProjects.has(project.path) ? "Expand" : "Collapse"} ${project.name}`,
+                    }}
+                    onClick={() =>
+                      setCollapsedProjects((current) => {
+                        const next = new Set(current);
+                        if (next.has(project.path)) next.delete(project.path);
+                        else next.add(project.path);
+                        return next;
+                      })
+                    }
+                  />
+                  {!collapsedProjects.has(project.path) && (
+                    <div className="flex flex-col gap-1 pl-4">
+                      {rows(project.sessions, "project-session")}
+                    </div>
+                  )}
                 </section>
               ))}
             </>

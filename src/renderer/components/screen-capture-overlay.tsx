@@ -1,10 +1,10 @@
-import { useEffect, useLayoutEffect, type CSSProperties } from "react";
-import { observer } from "r-state-tree/react";
+import { useCallback, useEffect, useLayoutEffect } from "react";
+import { StoreProvider, observer } from "r-state-tree/react";
 import type { ScreenCaptureOverlayStore } from "../stores/ScreenCaptureOverlayStore";
 import { CaptureCanvas } from "./ui/capture-canvas";
 import { CaptureToolbar } from "./ui/capture-toolbar";
 import { CaptureDestinationPicker } from "./ui/capture-destination-picker";
-import { Input } from "./ui/input";
+import { AnnotationDraftPopover } from "./annotation-draft-popover";
 import { Callout } from "./ui/callout";
 
 export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
@@ -12,6 +12,9 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
 }: {
   store: ScreenCaptureOverlayStore;
 }) {
+  const closeLabel = useCallback(() => store.commitLabel(), [store]);
+  const cancelLabel = useCallback(() => store.cancelLabel(), [store]);
+  const deleteLabel = useCallback(() => store.deleteLabel(), [store]);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if (event.isComposing || event.repeat || event.defaultPrevented) return;
@@ -20,6 +23,7 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
         store.escape();
       } else if (
         event.key === "Enter" &&
+        !(event.target instanceof HTMLTextAreaElement) &&
         !(event.target instanceof HTMLInputElement) &&
         !(event.target instanceof HTMLSelectElement) &&
         (!(event.target instanceof HTMLButtonElement) || event.target.hasAttribute("aria-pressed"))
@@ -41,11 +45,13 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
       delete document.documentElement.dataset.theme;
     };
   }, [theme]);
-  const labelPosition: CSSProperties | undefined =
+  const labelAnchor =
     snapshot && labelPoint
       ? {
-          left: `${Math.min(75, (labelPoint.x / snapshot.width) * 100)}%`,
-          top: `${Math.min(85, (labelPoint.y / snapshot.height) * 100)}%`,
+          left: (labelPoint.x / snapshot.width) * window.innerWidth,
+          right: (labelPoint.x / snapshot.width) * window.innerWidth,
+          top: (labelPoint.y / snapshot.height) * window.innerHeight,
+          bottom: (labelPoint.y / snapshot.height) * window.innerHeight,
         }
       : undefined;
   return (
@@ -56,10 +62,11 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
       {snapshot && (
         <CaptureCanvas
           image={snapshot.image}
-          arrows={store.visibleArrows}
+          drawings={store.visibleDrawings}
           selection={store.selection}
           mode={store.mode}
           disabled={store.busy || store.cancelled}
+          onEdit={(index) => store.editLabel(index)}
           onBegin={(point) => store.begin(point)}
           onMove={(point) => store.move(point)}
           onEnd={(point) => store.end(point)}
@@ -72,32 +79,31 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
           }}
         />
       )}
-      {labelPoint && (
-        <div className="absolute z-10 ml-3 mt-3 w-60" style={labelPosition}>
-          <Input
-            autoFocus
-            aria-label="Arrow label"
-            placeholder="Label this arrow…"
-            maxLength={240}
-            value={store.label}
-            onChange={(event) => {
-              store.label = event.target.value;
+      {labelAnchor && (
+        <StoreProvider store={store.dictationStore}>
+          <AnnotationDraftPopover
+            key={store.editingIndex}
+            anchor={labelAnchor}
+            draft={{
+              value: store.label,
+              onChange: (value) => {
+                store.label = value;
+              },
             }}
-            onBlur={() => store.commitLabel()}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                event.stopPropagation();
-                store.commitLabel();
-              }
-            }}
+            submitLabel="Save annotation"
+            onSave={closeLabel}
+            onClose={closeLabel}
+            onCancel={cancelLabel}
+            onRemove={deleteLabel}
           />
-        </div>
+        </StoreProvider>
       )}
       <CaptureToolbar
         mode={store.mode}
         busy={store.busy || !snapshot}
-        canUndo={store.arrows.length > 0}
+        canUndo={store.drawings.length > 0}
+        copied={store.copied}
+        onCopy={() => void store.capture(undefined, true)}
         destinationPicker={
           snapshot &&
           store.destination && (

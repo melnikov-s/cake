@@ -75,6 +75,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.electron["screen-capture-state"]({}),
           options,
         ),
+      copyScreenCapture: (capture, options) =>
+        execute(
+          "electron.copy-screen-capture",
+          (client) => client.electron["copy-screen-capture"](capture),
+          options,
+        ).then(() => undefined),
       finishScreenCapture: (capture, options) =>
         execute(
           "electron.finish-screen-capture",

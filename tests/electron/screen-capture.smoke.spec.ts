@@ -51,6 +51,7 @@ test("captures and annotates through the hidden native overlay into the existing
       CAKE_HOME: cakeHome,
     },
   });
+  let clipboardSaved = false;
   try {
     // Fake only native capture/registration. Keep the real RPC, native window, editing UI,
     // compositor, destination Store, and Chat. Never capture this user's actual desktop.
@@ -96,8 +97,12 @@ test("captures and annotates through the hidden native overlay into the existing
     await expect(composer).toBeFocused();
     await expect(composer).toHaveValue("Keep this draft");
     const settings = page.getByRole("complementary").getByLabel("Open settings", { exact: true });
-    await settings.click();
-    await page.getByRole("button", { name: /^Screen Capture/ }).click();
+    // Startup navigation restoration may still select its staged session after first paint.
+    await expect(async () => {
+      await settings.click();
+      await page.getByRole("button", { name: /^Screen Capture/ }).click({ timeout: 1_000 });
+      await expect(page.getByLabel("Maximum image dimension")).toBeVisible();
+    }).toPass({ timeout: 10_000 });
     await page.getByLabel("Maximum image dimension").selectOption("1024");
     const shortcut = page.getByRole("button", { name: "Screen capture shortcut", exact: true });
     await shortcut.click();
@@ -136,7 +141,7 @@ test("captures and annotates through the hidden native overlay into the existing
     let overlay = await begin();
     const toolbar = overlay.getByRole("toolbar", { name: "Screen capture tools" });
     const toolbarBounds = (await toolbar.boundingBox())!;
-    expect(toolbarBounds.width).toBeLessThan(500);
+    expect(toolbarBounds.width).toBeLessThan(600);
     expect(toolbarBounds.height).toBeLessThan(50);
     // Empty space on BOTH sides at the toolbar's height reaches the capture canvas.
     for (const x of [toolbarBounds.x - 20, toolbarBounds.x + toolbarBounds.width + 20]) {
@@ -207,56 +212,6 @@ test("captures and annotates through the hidden native overlay into the existing
     // Invoke the registered global callback with Cake on its Settings surface: last chat wins.
     await settings.click();
     await page.getByRole("button", { name: /^Screen Capture/ }).click();
-    // Reproduce launchers whose diagnostic readers have disconnected. Capture teardown can
-    // emit Node warnings; those writes must not become an uncaught EPIPE desktop dialog.
-    for (const channel of ["stdout", "stderr"] as const) {
-      const reader = application.process()[channel];
-      if (!reader) throw new Error(`Electron ${channel} is not piped`);
-      reader.destroy();
-    }
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const reopening = application.waitForEvent("window");
-      await application.evaluate(() => {
-        const callback = Reflect.get(globalThis, "captureShortcut");
-        if (typeof callback !== "function") throw new Error("Capture shortcut was not registered");
-        callback();
-      });
-      const cancelledOverlay = await reopening;
-      await expect(
-        cancelledOverlay.getByRole("toolbar", { name: "Screen capture tools" }),
-      ).toBeVisible();
-      await cancelledOverlay.getByRole("button", { name: "Annotate", exact: true }).click();
-      const bounds = (await cancelledOverlay.locator("canvas").boundingBox())!;
-      await cancelledOverlay.mouse.move(bounds.width * 0.2, bounds.height * 0.4);
-      await cancelledOverlay.mouse.down();
-      await cancelledOverlay.mouse.move(bounds.width * 0.5, bounds.height * 0.6);
-      await cancelledOverlay.mouse.up();
-      await expect(cancelledOverlay.getByRole("textbox", { name: "Arrow label" })).toBeFocused();
-      await cancelledOverlay.keyboard.type("Cancel draft arrow");
-      await cancelledOverlay.keyboard.press("Escape");
-      await expect(cancelledOverlay.getByRole("textbox", { name: "Arrow label" })).toHaveCount(0);
-      await expect(cancelledOverlay.getByRole("toolbar")).toBeVisible();
-      await Promise.all([
-        cancelledOverlay.waitForEvent("close"),
-        cancelledOverlay.keyboard.press("Escape").catch((error: unknown) => {
-          if (!cancelledOverlay.isClosed()) throw error;
-        }),
-      ]);
-      await expect.poll(() => application.windows().length).toBe(1);
-      await application.evaluate(
-        () =>
-          new Promise<void>((resolve) => {
-            process.emitWarning("Warning after screenshot capture cancellation");
-            setImmediate(resolve);
-          }),
-      );
-      expect(
-        await application.evaluate(() => ({
-          failures: Reflect.get(globalThis, "captureFailures"),
-          dialogs: Reflect.get(globalThis, "captureDialogs"),
-        })),
-      ).toEqual({ failures: [], dialogs: [] });
-    }
     const opened = application.waitForEvent("window");
     await application.evaluate(() => {
       const callback = Reflect.get(globalThis, "captureShortcut");
@@ -284,11 +239,12 @@ test("captures and annotates through the hidden native overlay into the existing
     await overlay.mouse.down();
     await overlay.mouse.move(end.x, end.y);
     await overlay.mouse.up();
-    const label = overlay.getByRole("textbox", { name: "Arrow label" });
+    const label = overlay.getByRole("textbox", { name: "Annotation comment" });
     await expect(label).toBeFocused();
     const labelBounds = (await label.boundingBox())!;
-    expect(labelBounds.x).toBeCloseTo(end.x + 12, -1);
-    expect(labelBounds.y).toBeCloseTo(end.y + 12, -1);
+    expect(labelBounds.x).toBeGreaterThanOrEqual(0);
+    expect(labelBounds.x + labelBounds.width).toBeLessThanOrEqual(bounds.width);
+    expect(labelBounds.y + labelBounds.height).toBeLessThanOrEqual(bounds.height);
     await overlay.keyboard.type("Look here");
     await expect(label).toHaveValue("Look here");
     await overlay.keyboard.press("Enter");
@@ -304,9 +260,70 @@ test("captures and annotates through the hidden native overlay into the existing
     await overlay.keyboard.press("Escape");
     await expect(label).toHaveCount(0);
     await expect(overlay.getByRole("toolbar")).toBeVisible();
+    // Markers reopen the exact composer. Cancelling an edit keeps the saved text.
+    await overlay.getByRole("button", { name: "Edit annotation 1", exact: true }).click();
+    await expect(label).toBeFocused();
+    await expect(label).toHaveValue("Look here");
+    await overlay.keyboard.press("End");
+    await overlay.keyboard.press("Shift+Enter");
+    await overlay.keyboard.type("Second line");
+    await overlay.getByRole("button", { name: "Save annotation", exact: true }).click();
+    await overlay.getByRole("button", { name: "Edit annotation 1", exact: true }).click();
+    await expect(label).toHaveValue("Look here\nSecond line");
+    await overlay.getByRole("button", { name: "Cancel editing" }).click();
+
+    // Trusted touch input uses the same release-to-composer path for freehand.
+    await overlay.getByRole("button", { name: "Freehand", exact: true }).click();
+    const touch = await overlay.context().newCDPSession(overlay);
+    const touchPoints = (x: number, y: number) => [{ x, y, id: 1 }];
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: touchPoints(bounds.width * 0.2, bounds.height * 0.7),
+    });
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: touchPoints(bounds.width * 0.4, bounds.height * 0.8),
+    });
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: touchPoints(bounds.width * 0.2, bounds.height * 0.7),
+    });
+    await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await touch.detach();
+    await expect(label).toBeFocused();
+    await overlay.keyboard.type("Freehand note");
+    await overlay.keyboard.press("Enter");
+    await expect(
+      overlay.getByRole("button", { name: "Edit annotation 2", exact: true }),
+    ).toHaveCount(1);
+    await application.evaluate(({ clipboard }) => {
+      const previous = {
+        text: clipboard.readText(),
+        html: clipboard.readHTML(),
+        rtf: clipboard.readRTF(),
+      };
+      const image = clipboard.readImage();
+      if (!image.isEmpty()) Object.assign(previous, { image });
+      Reflect.set(globalThis, "previousCaptureClipboard", previous);
+    });
+    clipboardSaved = true;
+    await overlay.getByRole("button", { name: "Copy image and text", exact: true }).click();
+    await expect(overlay.getByRole("alert")).toHaveCount(0);
+    await expect(overlay.getByRole("button", { name: "Copy image and text" })).toBeEnabled();
+    await expect
+      .poll(() =>
+        application
+          .evaluate(({ clipboard }) => ({ text: clipboard.readText() }))
+          .then((result) => result.text),
+      )
+      .toBe("1. Look here\n   Second line\n2. Freehand note");
+    expect(await application.evaluate(({ clipboard }) => clipboard.readImage().getSize())).toEqual({
+      width: 1024,
+      height: 512,
+    });
     // First Enter commits a label and first Escape discards a draft; neither closes capture.
     await overlay.getByRole("button", { name: "Crop", exact: true }).click();
-    await expect(overlay.getByRole("button", { name: "Undo arrow" })).toBeEnabled();
+    await expect(overlay.getByRole("button", { name: "Undo drawing" })).toBeEnabled();
     await overlay.keyboard.press("Enter");
     await expect.poll(() => application.windows().length).toBe(1);
     const preview = page.getByRole("button", { name: /^View Screenshot-/ });
@@ -339,11 +356,16 @@ test("captures and annotates through the hidden native overlay into the existing
     }, source!);
     expect(pixels.annotated).toBeGreaterThan(100);
     expect(pixels.chrome).toBe(0);
-    await expect(composer).toHaveValue("Keep this draft");
+    await expect(composer).toHaveValue(
+      /Keep this draft\n\nScreenshot-[^\n]+\n1\. Look here\n {3}Second line\n2\. Freehand note/,
+    );
     await composer.click();
     await expect(composer).toBeFocused();
+    await composer.evaluate((input: HTMLTextAreaElement) =>
+      input.setSelectionRange(input.value.length, input.value.length),
+    );
     await page.keyboard.type(" plus screenshot");
-    await expect(composer).toHaveValue("Keep this draft plus screenshot");
+    await expect(composer).toHaveValue(/2\. Freehand note plus screenshot$/);
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 
     await settings.click();
@@ -374,7 +396,11 @@ test("captures and annotates through the hidden native overlay into the existing
       cropBounds.y + cropBounds.height * 0.7,
     );
     await overlay.mouse.up();
+    await expect(overlay.getByRole("textbox", { name: "Annotation comment" })).toBeFocused();
     await overlay.keyboard.type("Crop this annotation");
+    await expect(overlay.getByRole("textbox", { name: "Annotation comment" })).toHaveValue(
+      "Crop this annotation",
+    );
     await overlay.keyboard.press("Enter");
     await overlay.getByRole("button", { name: "Crop", exact: true }).click();
     // Move the strip into the crop area, then out of it; its former footprint stays selectable.
@@ -492,7 +518,9 @@ test("captures and annotates through the hidden native overlay into the existing
     await overlay.getByRole("button", { name: "Attach full display" }).click();
     await expect.poll(() => application.windows().length).toBe(1);
     await expect(preview).toHaveCount(7);
-    await expect(composer).toHaveValue("Keep this draft plus screenshot");
+    await expect(composer).toHaveValue(
+      /1\. Look here\n {3}Second line\n2\. Freehand note plus screenshot/,
+    );
 
     // A small secondary display still gets the entire toolbar, in logical rather than Retina pixels.
     await application.evaluate(({ screen }) => {
@@ -514,7 +542,101 @@ test("captures and annotates through the hidden native overlay into the existing
       overlay.waitForEvent("close"),
       overlay.getByRole("button", { name: "Cancel", exact: true }).click(),
     ]);
+    // Feed the actual copied formats through Cake's native DOM paste handler.
+    const copied = await application.evaluate(({ clipboard }) => ({
+      text: clipboard.readText(),
+      data: clipboard.readImage().toPNG().toString("base64"),
+    }));
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    const imageCount = await preview.count();
+    await composer.fill("Clipboard review:\n");
+    await composer.evaluate((input, payload) => {
+      const transfer = new DataTransfer();
+      transfer.setData("text/plain", payload.text);
+      transfer.items.add(
+        new File(
+          [Uint8Array.from(atob(payload.data), (char) => char.charCodeAt(0))],
+          "Copied screenshot.png",
+          { type: "image/png" },
+        ),
+      );
+      input.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData: transfer, bubbles: true, cancelable: true }),
+      );
+    }, copied);
+    await expect(composer).toHaveValue(
+      "Clipboard review:\n1. Look here\n   Second line\n2. Freehand note",
+    );
+    await expect(preview).toHaveCount(imageCount); // The pasted file has its own name.
+    await expect(
+      page.getByRole("button", { name: "View Copied screenshot.png enlarged", exact: true }),
+    ).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await application.evaluate(({ clipboard }) => {
+      clipboard.write(Reflect.get(globalThis, "previousCaptureClipboard"));
+      return true;
+    });
+    clipboardSaved = false;
+    // Reproduce launchers whose diagnostic readers have disconnected. Capture teardown can
+    // emit Node warnings; those writes must not become an uncaught EPIPE desktop dialog.
+    for (const channel of ["stdout", "stderr"] as const) {
+      const reader = application.process()[channel];
+      if (!reader) throw new Error(`Electron ${channel} is not piped`);
+      reader.destroy();
+    }
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const reopening = application.waitForEvent("window");
+      await application.evaluate(() => {
+        const callback = Reflect.get(globalThis, "captureShortcut");
+        if (typeof callback !== "function") throw new Error("Capture shortcut was not registered");
+        callback();
+      });
+      const cancelledOverlay = await reopening;
+      await expect(
+        cancelledOverlay.getByRole("toolbar", { name: "Screen capture tools" }),
+      ).toBeVisible();
+      await cancelledOverlay.getByRole("button", { name: "Annotate", exact: true }).click();
+      const bounds = (await cancelledOverlay.locator("canvas").boundingBox())!;
+      await cancelledOverlay.mouse.move(bounds.width * 0.2, bounds.height * 0.4);
+      await cancelledOverlay.mouse.down();
+      await cancelledOverlay.mouse.move(bounds.width * 0.5, bounds.height * 0.6);
+      await cancelledOverlay.mouse.up();
+      await expect(
+        cancelledOverlay.getByRole("textbox", { name: "Annotation comment" }),
+      ).toBeFocused();
+      await cancelledOverlay.keyboard.type("Cancel draft arrow");
+      await cancelledOverlay.keyboard.press("Escape");
+      await expect(
+        cancelledOverlay.getByRole("textbox", { name: "Annotation comment" }),
+      ).toHaveCount(0);
+      await expect(cancelledOverlay.getByRole("toolbar")).toBeVisible();
+      await Promise.all([
+        cancelledOverlay.waitForEvent("close"),
+        cancelledOverlay.keyboard.press("Escape").catch((error: unknown) => {
+          if (!cancelledOverlay.isClosed()) throw error;
+        }),
+      ]);
+      await expect.poll(() => application.windows().length).toBe(1);
+      await application.evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            process.emitWarning("Warning after screenshot capture cancellation");
+            setImmediate(resolve);
+          }),
+      );
+      expect(
+        await application.evaluate(() => ({
+          failures: Reflect.get(globalThis, "captureFailures"),
+          dialogs: Reflect.get(globalThis, "captureDialogs"),
+        })),
+      ).toEqual({ failures: [], dialogs: [] });
+    }
   } finally {
+    if (clipboardSaved)
+      await application.evaluate(({ clipboard }) => {
+        clipboard.write(Reflect.get(globalThis, "previousCaptureClipboard"));
+        return true;
+      });
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
   }

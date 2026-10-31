@@ -438,9 +438,14 @@ export const cakeRpcPayloadSchemas = {
   "show-main-window": Schema.Struct({ sessionId: Schema.optionalKey(bounded(1, 256)) }),
   "start-screen-capture": CaptureRouting,
   "screen-capture-state": Schema.Struct({}),
+  "copy-screen-capture": Schema.Struct({ image: CaptureImage, annotationText: Schema.String }),
   "finish-screen-capture": Schema.Struct({
     capture: Schema.optionalKey(
-      Schema.Struct({ image: CaptureImage, destination: CaptureDestination }),
+      Schema.Struct({
+        image: CaptureImage,
+        annotationText: Schema.String,
+        destination: CaptureDestination,
+      }),
     ),
   }),
   "choose-project": Schema.Struct({}),
@@ -895,6 +900,7 @@ export const cakeRpcSuccessSchemas = {
   "show-main-window": Schema.Struct({}),
   "start-screen-capture": Schema.Struct({ capture: Schema.optionalKey(CaptureResult) }),
   "screen-capture-state": ScreenCaptureSnapshot,
+  "copy-screen-capture": Schema.Struct({}),
   "finish-screen-capture": Schema.Struct({}),
   "choose-project": cakeRpcResultSchemas["project-chosen"],
   "open-external-url": cakeRpcResultSchemas["external-url-opened"],

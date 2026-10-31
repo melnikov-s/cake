@@ -32,6 +32,10 @@ export const electronHandlers = ElectronRpc.of({
     withConnection((id) =>
       Effect.flatMap(Electron, (service) => service.screenCaptureState(id, request)),
     ),
+  "electron.copy-screen-capture": (request) =>
+    withConnection((id) =>
+      Effect.flatMap(Electron, (service) => service.copyScreenCapture(id, request)),
+    ),
   "electron.finish-screen-capture": (request) =>
     withConnection((id) =>
       Effect.flatMap(Electron, (service) => service.finishScreenCapture(id, request)),

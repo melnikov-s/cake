@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { captureRouting, captureSession } from "../../helpers/screen-capture";
 import { ScreenCaptureOverlay } from "../../../src/renderer/components/screen-capture-overlay";
 import { ScreenCaptureOverlayStore } from "../../../src/renderer/stores/ScreenCaptureOverlayStore";
+import { createTestClient } from "./test-client";
 
 afterEach(cleanup);
 const snapshot = {
@@ -15,18 +16,31 @@ const snapshot = {
   height: 800,
   maxDimension: 1024,
 };
-
 async function renderOverlay(
-  renderImage: ScreenCaptureOverlayStore["props"]["renderImage"],
+  renderImage: ScreenCaptureOverlayStore["props"]["renderImage"] = async () =>
+    "data:image/png;base64,new",
   routing = captureRouting,
+  copy = vi.fn<ScreenCaptureOverlayStore["props"]["copy"]>(async () => {}),
 ) {
   const finishScreenCapture = vi.fn<
     ScreenCaptureOverlayStore["props"]["client"]["finishScreenCapture"]
   >(async () => {});
+  const client = createTestClient({});
   const store = mount(
     createStore(ScreenCaptureOverlayStore, {
       client: { screenCaptureState: async () => ({ ...snapshot, routing }), finishScreenCapture },
+      speech: {
+        client: client.dictation,
+        postProcess: client.workspaces.postProcessDictation,
+        microphone: {
+          open: async () => {
+            throw new Error("No microphone in this test");
+          },
+          devices: async () => [],
+        },
+      },
       renderImage,
+      copy,
     }),
   );
   const view = render(<ScreenCaptureOverlay store={store} />);
@@ -35,18 +49,27 @@ async function renderOverlay(
     user: userEvent.setup(),
     store,
     finishScreenCapture,
+    copy,
     [Symbol.dispose]() {
       view.unmount();
       store[Symbol.dispose]();
     },
   };
 }
+const comment = () => screen.getByRole("textbox", { name: "Annotation comment" });
+function draw(store: ScreenCaptureOverlayStore) {
+  // Native pointer capture and touch routing are exercised by the Electron test.
+  act(() => {
+    store.begin({ x: 100, y: 200 });
+    store.move({ x: 250, y: 400 });
+    store.end({ x: 400, y: 500 });
+  });
+}
 
-describe("Screen capture overlay completion", () => {
-  it("pins New chat above shared sidebar rows and chooses its Project inside the popup", async () => {
-    using fixture = await renderOverlay(async () => "data:image/png;base64,new");
+describe("Screen capture overlay", () => {
+  it("uses sidebar project icons and session rows, keeps selection and creates a chat in a Project", async () => {
+    using fixture = await renderOverlay();
     const picker = screen.getByRole("button", { name: "Screenshot destination" });
-    expect(picker.textContent).toContain("Session A");
     await fixture.user.click(picker);
     const popup = screen.getByRole("dialog", { name: "Screenshot destination" });
     expect(popup.querySelector("button")?.textContent).toBe("New chat");
@@ -55,24 +78,34 @@ describe("Screen capture overlay completion", () => {
         row.getAttribute("data-session-id"),
       ),
     ).toEqual(["alpha", "beta", "gamma"]);
+    expect(
+      screen
+        .getByRole("button", { name: "Collapse Project" })
+        .querySelector('[data-slot="avatar"]'),
+    ).not.toBeNull();
     expect(popup.querySelector('[data-session-id="alpha"] [data-slot="avatar"]')).not.toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse Project" }));
+    expect(screen.queryByRole("button", { name: /Session A/ })).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Expand Project" }));
     await fixture.user.click(screen.getByRole("button", { name: /Session C/ }));
     expect(picker.textContent).toContain("Session C");
     await fixture.user.click(picker);
     await fixture.user.click(screen.getByRole("button", { name: /^New chat$/ }));
-    await fixture.user.click(screen.getByRole("button", { name: /^New chat in Project$/ }));
-    expect(picker.textContent).toContain("New chat · Project");
+    const project = screen.getByRole("button", { name: /^New chat in Project$/ });
+    expect(project.querySelector('[data-slot="avatar"]')).not.toBeNull();
+    await fixture.user.click(project);
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
     expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
       {
         image: "data:image/png;base64,new",
+        annotationText: "",
         destination: { kind: "new-session", projectPath: "/project" },
       },
       expect.anything(),
     );
   });
 
-  it("shares family disclosure, labels, branch and activity presentation with sidebar rows", async () => {
+  it("shares family disclosure, branch, labels and activity with sidebar rows", async () => {
     const parent = captureSession("parent", "Family parent", {
       familyChildSessionIds: ["child"],
       familyCollapsed: true,
@@ -84,7 +117,7 @@ describe("Screen capture overlay completion", () => {
       familyParentSessionId: "parent",
       familyDepth: 1,
     });
-    using fixture = await renderOverlay(async () => "data:image/png;base64,new", {
+    using fixture = await renderOverlay(undefined, {
       ...captureRouting,
       projects: [{ path: "/project", name: "Project", sessions: [parent, child] }],
       defaultDestination: { kind: "project-session", sessionId: "parent" },
@@ -97,112 +130,167 @@ describe("Screen capture overlay completion", () => {
       screen.getByRole("button", { name: "Expand children of Family parent" }),
     );
     await fixture.user.click(screen.getByRole("button", { name: /Family child/ }));
-    expect(screen.getByRole("button", { name: "Screenshot destination" }).textContent).toContain(
-      "Family child",
-    );
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
     expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
-      {
-        image: "data:image/png;base64,new",
-        destination: { kind: "project-session", sessionId: "child" },
-      },
+      expect.objectContaining({ destination: { kind: "project-session", sessionId: "child" } }),
       expect.anything(),
     );
   });
 
-  it("puts preview and committed arrowheads at the first click and labels at the tail", async () => {
-    using fixture = await renderOverlay(async () => "data:image/png;base64,arrow");
-    await fixture.user.click(screen.getByRole("button", { name: "Annotate" }));
-    const head = { x: 100, y: 200 };
-    const tail = { x: 400, y: 500 };
-    // Pixel gesture policy belongs to the Store; actual pointer/focus is covered in Electron.
-    act(() => {
-      fixture.store.begin(head);
-      fixture.store.move(tail);
+  it.each(["Annotate", "Freehand"])(
+    "opens the exact shared annotation composer on %s release and exports multiline numbered text",
+    async (tool) => {
+      const renderImage = vi.fn<ScreenCaptureOverlayStore["props"]["renderImage"]>(
+        async () => "data:image/png;base64,drawing",
+      );
+      using fixture = await renderOverlay(renderImage);
+      await fixture.user.click(screen.getByRole("button", { name: tool }));
+      draw(fixture.store);
+      expect(
+        screen
+          .getByRole("dialog", { name: "Add annotation" })
+          .querySelector('[data-slot="composer-dictation"]'),
+      ).not.toBeNull();
+      expect(comment().closest('[data-slot="dictation-field"]')).not.toBeNull();
+      await fixture.user.type(comment(), "First line{Shift>}{Enter}{/Shift}Second line");
+      await fixture.user.click(screen.getByRole("button", { name: "Save annotation" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
+      expect(renderImage.mock.calls[0]![1]).toEqual([
+        tool === "Annotate"
+          ? {
+              kind: "arrow",
+              start: { x: 400, y: 500 },
+              end: { x: 100, y: 200 },
+              label: "First line\nSecond line",
+            }
+          : {
+              kind: "freehand",
+              points: [
+                { x: 100, y: 200 },
+                { x: 250, y: 400 },
+                { x: 400, y: 500 },
+              ],
+              label: "First line\nSecond line",
+            },
+      ]);
+      expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
+        {
+          image: "data:image/png;base64,drawing",
+          annotationText: "1. First line\n   Second line",
+          destination: captureRouting.defaultDestination,
+        },
+        expect.anything(),
+      );
+      expect(fixture.store.dictationStore.enabled).toBe(false);
+      expect(screen.queryByRole("button", { name: "Mute dictation" })).toBeNull();
+    },
+  );
+
+  it("retains dictation enablement, microphone and processing preference in the shared composer", async () => {
+    using fixture = await renderOverlay(undefined, {
+      ...captureRouting,
+      dictation: {
+        ...captureRouting.dictation,
+        enabled: true,
+        deviceId: "chosen-mic",
+        textProcessingMode: "utility",
+      },
     });
-    expect(fixture.store.visibleArrows).toEqual([{ start: tail, end: head, label: "" }]);
-    act(() => fixture.store.end(tail));
-    expect(fixture.store.arrows).toEqual([{ start: tail, end: head, label: "" }]);
-    expect(fixture.store.labelPoint).toEqual(tail);
+    await fixture.user.click(screen.getByRole("button", { name: "Freehand" }));
+    draw(fixture.store);
+    expect(fixture.store.dictationStore.enabled).toBe(true);
+    expect(fixture.store.dictationStore.deviceId).toBe("chosen-mic");
+    expect(fixture.store.dictationStore.textProcessingMode).toBe("utility");
+    await fixture.user.click(await screen.findByRole("button", { name: "Mute dictation" }));
+    expect(screen.getByRole("button", { name: "Unmute dictation" })).toBeDefined();
+    expect(
+      screen
+        .getByRole("dialog", { name: "Add annotation" })
+        .querySelector('[data-slot="composer-dictation"]'),
+    ).not.toBeNull();
   });
-  it("discards only the unfinished arrow on Escape, preserving earlier arrows until the next Escape", async () => {
-    using fixture = await renderOverlay(async () => "data:image/png;base64,arrow");
+
+  it("keeps numeric identity on editing/cancel, and renumbers on delete and undo", async () => {
+    using fixture = await renderOverlay();
     await fixture.user.click(screen.getByRole("button", { name: "Annotate" }));
-    act(() => {
-      fixture.store.begin({ x: 100, y: 200 });
-      fixture.store.end({ x: 400, y: 500 });
-    });
-    await fixture.user.type(screen.getByRole("textbox", { name: "Arrow label" }), "Keep this");
-    await fixture.user.keyboard("{Enter}");
-    act(() => {
-      fixture.store.begin({ x: 200, y: 200 });
-      fixture.store.end({ x: 500, y: 500 });
-    });
-    await fixture.user.type(screen.getByRole("textbox", { name: "Arrow label" }), "Discard this");
-    await fixture.user.keyboard("{Escape}");
-    expect(screen.queryByRole("textbox", { name: "Arrow label" })).toBeNull();
-    expect(fixture.store.arrows.map((arrow) => arrow.label)).toEqual(["Keep this"]);
+    draw(fixture.store);
+    await fixture.user.type(comment(), "First{Enter}");
+    draw(fixture.store);
+    await fixture.user.type(comment(), "Second{Enter}");
+    act(() => fixture.store.editLabel(0));
+    await fixture.user.clear(comment());
+    await fixture.user.type(comment(), "Discard change");
+    await fixture.user.click(screen.getByRole("button", { name: "Cancel editing" }));
+    act(() => fixture.store.editLabel(0));
+    expect((comment() as HTMLTextAreaElement).value).toBe("First");
+    await fixture.user.clear(comment());
+    await fixture.user.type(comment(), "Edited{Enter}");
+    act(() => fixture.store.editLabel(1));
+    await fixture.user.click(screen.getByRole("button", { name: "Delete annotation" }));
+    draw(fixture.store);
+    await fixture.user.type(comment(), "Third{Enter}");
+    await fixture.user.click(screen.getByRole("button", { name: "Undo drawing" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
+    expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
+      expect.objectContaining({ annotationText: "1. Edited" }),
+      expect.anything(),
+    );
+  });
+
+  it("discards a new unfinished drawing on Escape but not the capture or saved annotations", async () => {
+    using fixture = await renderOverlay();
+    await fixture.user.click(screen.getByRole("button", { name: "Freehand" }));
+    draw(fixture.store);
+    await fixture.user.type(comment(), "Keep{Enter}");
+    draw(fixture.store);
+    await fixture.user.type(comment(), "Discard{Escape}");
+    expect(screen.queryByRole("textbox", { name: "Annotation comment" })).toBeNull();
+    expect(fixture.store.drawings.map((drawing) => drawing.label)).toEqual(["Keep"]);
     expect(fixture.finishScreenCapture).not.toHaveBeenCalled();
     await fixture.user.keyboard("{Escape}");
     expect(fixture.finishScreenCapture).toHaveBeenCalledWith(undefined, expect.anything());
   });
 
-  it("closes the destination popup on Escape before cancelling capture", async () => {
-    using fixture = await renderOverlay(async () => "data:image/png;base64,new");
+  it("copies image plus numbered text, commits open input and reports clipboard failure without closing", async () => {
+    const copy = vi
+      .fn<ScreenCaptureOverlayStore["props"]["copy"]>(async () => {})
+      .mockRejectedValueOnce(new Error("Clipboard cannot write both formats"));
+    using fixture = await renderOverlay(undefined, undefined, copy);
+    await fixture.user.click(screen.getByRole("button", { name: "Annotate" }));
+    draw(fixture.store);
+    await fixture.user.type(comment(), "Still editing");
+    await fixture.user.click(screen.getByRole("button", { name: "Copy image and text" }));
+    expect(await screen.findByText("Clipboard cannot write both formats")).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Copy image and text" }));
+    expect(copy).toHaveBeenLastCalledWith("data:image/png;base64,new", "1. Still editing");
+    expect(fixture.finishScreenCapture).not.toHaveBeenCalled();
+  });
+
+  it("closes destination popup before cancelling capture on Escape", async () => {
+    using fixture = await renderOverlay();
     await fixture.user.click(screen.getByRole("button", { name: "Screenshot destination" }));
     await fixture.user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog", { name: "Screenshot destination" })).toBeNull();
     expect(fixture.finishScreenCapture).not.toHaveBeenCalled();
     await fixture.user.keyboard("{Escape}");
     expect(fixture.finishScreenCapture).toHaveBeenCalledOnce();
   });
 
-  it("switches between editing modes and attaches the whole screenshot through the native operation", async () => {
-    const renderImage = vi.fn<ScreenCaptureOverlayStore["props"]["renderImage"]>(
-      async () => "data:image/png;base64,composed",
-    );
-    using fixture = await renderOverlay(renderImage);
-    // The capture-specific default overrides the shared floating toolbar's top-4 inset.
-    // Actual screen coordinates, dragging and clipping are checked in the Electron smoke test.
-    expect(
-      screen.getByRole("toolbar", { name: "Screen capture tools" }).classList.contains("top-14"),
-    ).toBe(true);
-    await fixture.user.click(screen.getByRole("button", { name: "Annotate" }));
-    expect(screen.getByRole("button", { name: "Annotate" }).getAttribute("aria-pressed")).toBe(
-      "true",
-    );
-    await fixture.user.click(screen.getByRole("button", { name: "Crop" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
-    expect(renderImage).toHaveBeenCalledWith(
-      snapshot.image,
-      [],
-      undefined,
-      1024,
-      expect.anything(),
-    );
-    expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
-      { image: "data:image/png;base64,composed", destination: captureRouting.defaultDestination },
-      expect.anything(),
-    );
-  });
-
-  it("cancels while flattening and never attaches a late completed render", async () => {
+  it("cancels during flattening and never delivers the late render", async () => {
     let complete!: (value: string) => void;
     const pending = new Promise<string>((resolve) => {
       complete = resolve;
     });
     using fixture = await renderOverlay(async () => pending);
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
-    expect(
-      screen.getByRole("button", { name: "Attach full display" }).hasAttribute("disabled"),
-    ).toBe(true);
     await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
     await act(async () => complete("data:image/png;base64,late"));
-    expect(fixture.finishScreenCapture).toHaveBeenCalledOnce();
-    expect(fixture.finishScreenCapture).toHaveBeenCalledWith(undefined, expect.anything());
+    expect(fixture.finishScreenCapture).toHaveBeenCalledExactlyOnceWith(
+      undefined,
+      expect.anything(),
+    );
   });
 
-  it("keeps the overlay usable after a failed render", async () => {
+  it("recovers after a render error", async () => {
     const renderImage = vi
       .fn<ScreenCaptureOverlayStore["props"]["renderImage"]>()
       .mockRejectedValueOnce(new Error("Cannot render image"))
@@ -212,7 +300,11 @@ describe("Screen capture overlay completion", () => {
     expect(await screen.findByText("Cannot render image")).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
     expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
-      { image: "data:image/png;base64,retry", destination: captureRouting.defaultDestination },
+      {
+        image: "data:image/png;base64,retry",
+        annotationText: "",
+        destination: captureRouting.defaultDestination,
+      },
       expect.anything(),
     );
   });

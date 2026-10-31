@@ -14,6 +14,7 @@ import { startCakeChatOverlay } from "./bootstrap/start-cake-chat-overlay";
 import { CAKE_CHAT_OVERLAY_QUERY } from "../contracts/desktop/cake-chat-overlay-data";
 import { ScreenCaptureOverlay } from "./components/screen-capture-overlay";
 import { ScreenCaptureOverlayStore } from "./stores/ScreenCaptureOverlayStore";
+import { microphone } from "./dictation/microphone";
 import { renderCaptureImage } from "./screen-capture/render-capture";
 import { makeRuntime, makeRemoteRuntime, type Runtime } from "./runtime";
 import { makeClient } from "./client/ClientLive";
@@ -49,17 +50,26 @@ if (!window.cake)
   );
 else if (new URLSearchParams(window.location.search).get("screenCapture") === "1") {
   const runtime = makeRuntime(window.cake.rpc);
+  const client = makeClient(runtime);
   const store = mount(
     createStore(ScreenCaptureOverlayStore, {
-      client: makeClient(runtime).electron,
+      client: client.electron,
+      speech: {
+        client: client.dictation,
+        postProcess: client.workspaces.postProcessDictation,
+        microphone,
+      },
       renderImage: renderCaptureImage,
+      copy: (image, annotationText) => client.electron.copyScreenCapture({ image, annotationText }),
     }),
   );
+  const stopDictation = observeDictation(runtime, store.dictationStore);
   root.render(createElement(ScreenCaptureOverlay, { store }));
   void store.initialize();
   window.addEventListener(
     "pagehide",
     () => {
+      stopDictation();
       store[Symbol.dispose]();
       void runtime.dispose();
     },

@@ -1113,8 +1113,9 @@ const screenCaptureSettingsScenario: VisualCaptureScenario = {
 const captureOverlayRegions = new WeakMap<Page, Locator>();
 const screenCaptureOverlayScenario: VisualCaptureScenario = {
   name: "screen-capture-overlay",
-  description: "Compact movable capture strip, sidebar destination rows, and target-first arrows",
-  states: ["default", "destination", "new-session", "annotate"],
+  description:
+    "Capture tools, sidebar destinations, numbered arrows/freehand and the shared annotation composer",
+  states: ["default", "destination", "new-session", "annotate", "annotation-input"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     const otherProject = join(paths.project, "other-project");
@@ -1195,15 +1196,24 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
         await overlay.getByRole("button", { name: "New chat", exact: true }).click();
       }
     }
-    if (state === "annotate") {
+    if (state === "annotate" || state === "annotation-input") {
       await overlay.getByRole("button", { name: "Annotate", exact: true }).click();
       await overlay.mouse.move(dimensions.width * 0.3, dimensions.height * 0.4);
       await overlay.mouse.down();
       await overlay.mouse.move(dimensions.width * 0.6, dimensions.height * 0.65);
       await overlay.mouse.up();
-      await expect(overlay.getByRole("textbox", { name: "Arrow label" })).toBeFocused();
+      await expect(overlay.getByRole("textbox", { name: "Annotation comment" })).toBeFocused();
       await overlay.keyboard.type("Point to this first");
       await overlay.keyboard.press("Enter");
+      await overlay.getByRole("button", { name: "Freehand", exact: true }).click();
+      await overlay.mouse.move(dimensions.width * 0.25, dimensions.height * 0.7);
+      await overlay.mouse.down();
+      await overlay.mouse.move(dimensions.width * 0.4, dimensions.height * 0.8, { steps: 8 });
+      await overlay.mouse.move(dimensions.width * 0.5, dimensions.height * 0.7, { steps: 8 });
+      await overlay.mouse.up();
+      await expect(overlay.getByRole("textbox", { name: "Annotation comment" })).toBeFocused();
+      await overlay.keyboard.type("Draw around this area");
+      if (state === "annotate") await overlay.keyboard.press("Enter");
     }
     await overlay.waitForFunction(() => document.fonts.status === "loaded");
     await overlay.mouse.move(1, 1);
@@ -1211,7 +1221,7 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
       page,
       state === "default"
         ? toolbar
-        : state === "annotate"
+        : state === "annotate" || state === "annotation-input"
           ? overlay.getByLabel("Screen capture", { exact: true })
           : overlay.getByRole("dialog", { name: "Screenshot destination" }),
     );

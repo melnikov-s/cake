@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -133,6 +133,35 @@ const input = () => screen.getByRole<HTMLTextAreaElement>("combobox", { name: "M
 afterEach(cleanup);
 
 describe("Chat composer workflow", () => {
+  it("pastes and sends both clipboard image and numbered text exactly once", async () => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+      TurnId.make("screenshot-paste"),
+    );
+    using composer = await renderComposer({ sessionChats: { prompt } });
+    await composer.user.type(input(), "Review: ");
+    const png =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+    const file = new File(
+      [Uint8Array.from(atob(png), (char) => char.charCodeAt(0))],
+      "Screenshot.png",
+      { type: "image/png" },
+    );
+    fireEvent.paste(input(), {
+      clipboardData: {
+        getData: () => "1. Arrow\n   continued\n2. Stroke",
+        files: [file],
+        items: [],
+      },
+    });
+    expect(input().value).toBe("Review: 1. Arrow\n   continued\n2. Stroke");
+    await screen.findByRole("button", { name: "View Screenshot.png enlarged" });
+    await composer.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    expect(prompt.mock.calls[0]![0]).toMatchObject({
+      text: "Review: 1. Arrow\n   continued\n2. Stroke",
+      attachments: [{ kind: "image", data: png }],
+    });
+  });
   it("turns a large paste into a compact attachment without putting it in the message and retains the original text", async () => {
     const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => TurnId.make("pasted-input"));
     using composer = await renderComposer({ sessionChats: { prompt } });

@@ -20,7 +20,23 @@ export function captureSession(
 }
 
 export const captureRouting: CaptureRouting = {
-  appearance: { theme: "dark", sessionAvatarsEnabled: true, sidebarCharactersEnabled: false },
+  appearance: {
+    theme: "dark",
+    projectAvatarsEnabled: true,
+    sessionAvatarsEnabled: true,
+    sidebarCharactersEnabled: false,
+  },
+  dictation: {
+    enabled: false,
+    deviceId: "",
+    textProcessingMode: "raw",
+    recognition: {
+      thresholds: { start: 0.6, continuation: 0.4 },
+      minimumSpeechMs: 200,
+      prerollMs: 600,
+      maximumUtteranceSeconds: 30,
+    },
+  },
   projects: [
     {
       path: "/project",

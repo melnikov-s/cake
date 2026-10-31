@@ -9,7 +9,10 @@ import {
   CaptureRouting,
   type CaptureResult,
 } from "../../../src/contracts/desktop/screen-capture-data";
-import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
+import {
+  TurnId,
+  type ConversationSnapshot,
+} from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { App } from "../../../src/renderer/components/app";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
@@ -36,6 +39,7 @@ function renderCapture(
   startScreenCapture: Client["electron"]["startScreenCapture"],
   staged = false,
 ) {
+  const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => TurnId.make("capture-turn"));
   const configureScreenCapture = vi.fn<Client["electron"]["configureScreenCapture"]>(
     async () => {},
   );
@@ -67,6 +71,7 @@ function renderCapture(
     ],
     client: {
       electron: { startScreenCapture, configureScreenCapture },
+      sessionChats: { prompt },
       projectSessions: { open: openSession },
       workspaces: { loadStagedSlashCommands: async () => [] },
     },
@@ -105,6 +110,7 @@ function renderCapture(
     models: fixture.models,
     capture,
     configureScreenCapture,
+    prompt,
     openSession,
     select,
     user: userEvent.setup(),
@@ -146,13 +152,34 @@ const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
 const captured: CaptureResult = {
   data: png,
+  annotationText: "",
   destination: { kind: "project-session", sessionId: "alpha" },
 };
 describe("Screen capture attachment workflow", () => {
+  it("sends the numbered plain text and matching screenshot once through the existing composer", async () => {
+    using fixture = renderCapture(async () => ({
+      ...captured,
+      annotationText: "1. Arrow note\n   continued\n2. Freehand note",
+    }));
+    await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
+    expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
+    const input = screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement;
+    expect(input.value).toMatch(
+      /Existing draft\n\nScreenshot-[^\n]+\n1\. Arrow note\n {3}continued\n2\. Freehand note/,
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(fixture.prompt).toHaveBeenCalledOnce());
+    const sent = fixture.prompt.mock.calls[0]![0];
+    expect(sent.text).toContain("1. Arrow note\n   continued\n2. Freehand note");
+    expect(sent.text.match(/1\. Arrow note/g)).toHaveLength(1);
+    expect(sent.attachments).toEqual([
+      expect.objectContaining({ kind: "image", mimeType: "image/png", data: png }),
+    ]);
+  });
   it("includes an unsent chat outside the Pi catalog and defaults to its existing draft", async () => {
     const start = vi.fn<Client["electron"]["startScreenCapture"]>(async (routing) => {
       Schema.decodeUnknownSync(CaptureRouting)(routing);
-      return { data: png, destination: routing.defaultDestination };
+      return { data: png, annotationText: "", destination: routing.defaultDestination };
     });
     using fixture = renderCapture(start, true);
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
@@ -236,6 +263,7 @@ describe("Screen capture attachment workflow", () => {
     expect(() => Schema.decodeUnknownSync(CaptureRouting)(routing)).not.toThrow();
     expect(routing.projects.map((project) => project.path)).toEqual(["/other", "/project"]);
     expect(routing.appearance).toEqual({
+      projectAvatarsEnabled: true,
       theme: fixture.root.settingsStore.appearance.theme,
       sessionAvatarsEnabled: false,
       sidebarCharactersEnabled: true,
@@ -297,6 +325,7 @@ describe("Screen capture attachment workflow", () => {
   it("offers catalog sessions, defaults to the last chat, and routes to a different chosen session", async () => {
     const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => ({
       data: png,
+      annotationText: "1. Chosen session note",
       destination: { kind: "project-session", sessionId: "beta" },
     }));
     using fixture = renderCapture(start);
@@ -319,9 +348,9 @@ describe("Screen capture attachment workflow", () => {
       ),
     );
     expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
-    expect((screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value).toBe(
-      "",
-    );
+    expect(
+      (screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value,
+    ).toContain("1. Chosen session note");
     act(() => fixture.select("alpha"));
     expectExistingDraft();
     expect(screen.queryByRole("button", { name: /^View Screenshot-/ })).toBeNull();
@@ -330,6 +359,7 @@ describe("Screen capture attachment workflow", () => {
   it("opens an unloaded catalog session in another Project before attaching", async () => {
     using fixture = renderCapture(async () => ({
       data: png,
+      annotationText: "1. Other project note",
       destination: { kind: "project-session", sessionId: "gamma" },
     }));
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
@@ -339,6 +369,9 @@ describe("Screen capture attachment workflow", () => {
       expect.anything(),
     );
     expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("gamma");
+    expect(
+      (screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value,
+    ).toContain("1. Other project note");
     act(() => fixture.select("alpha"));
     expectExistingDraft();
   });
@@ -346,6 +379,7 @@ describe("Screen capture attachment workflow", () => {
   it("creates a fresh session with the attachment in the chosen Project without sending", async () => {
     using fixture = renderCapture(async () => ({
       data: png,
+      annotationText: "1. New session note",
       destination: { kind: "new-session", projectPath: "/other" },
     }));
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
@@ -357,9 +391,9 @@ describe("Screen capture attachment workflow", () => {
     expect(fixture.root.sessionRegistry.findSession(active!.sessionId)?.workspacePath).toBe(
       "/other",
     );
-    expect((screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value).toBe(
-      "",
-    );
+    expect(
+      (screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value,
+    ).toContain("1. New session note");
     act(() => fixture.select("alpha"));
     expectExistingDraft();
   });

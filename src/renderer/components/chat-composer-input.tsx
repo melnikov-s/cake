@@ -81,25 +81,32 @@ export const ChatComposerInput = observer(function ChatComposerInput({
       }}
       onPaste={(event) => {
         const text = store.canPasteText ? event.clipboardData.getData("text/plain") : "";
-        if (store.canPasteText && isLargePaste(text)) {
-          // Intercept before native insertion/onValueChange; never ask a model to classify it.
-          event.preventDefault();
-          store.addPastedText(text);
-          return;
-        }
-        if (!store.canPasteImages) return;
-        const images = [...event.clipboardData.files].filter((file) =>
-          file.type.startsWith("image/"),
-        );
-        if (images.length === 0)
+        const images = store.canPasteImages
+          ? [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"))
+          : [];
+        if (store.canPasteImages && images.length === 0)
           for (const item of event.clipboardData.items) {
             if (!item.type.startsWith("image/")) continue;
             const file = item.getAsFile();
             if (file) images.push(file);
           }
-        if (images.length === 0) return;
-        event.preventDefault();
-        void store.addPastedImages(images);
+        if (images.length > 0) {
+          event.preventDefault();
+          // A screenshot copy offers both formats. Suppressing native paste for the image
+          // must not throw away its numbered annotation text (or paste it twice).
+          if (text && !isLargePaste(text)) {
+            const input = event.currentTarget;
+            store.setDraft(
+              input.value.slice(0, input.selectionStart) +
+                text +
+                input.value.slice(input.selectionEnd),
+            );
+          } else if (text) store.addPastedText(text);
+          void store.addPastedImages(images);
+        } else if (store.canPasteText && isLargePaste(text)) {
+          event.preventDefault();
+          store.addPastedText(text);
+        }
       }}
       onSubmit={onSubmit}
       onEscape={store.canStop ? () => void store.abort() : undefined}

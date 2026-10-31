@@ -97,6 +97,7 @@ it("explains a missing Accessibility permission without attaching anything", asy
 it("routes overlay screenshots only to Cake Chat and attaches them to its draft", async () => {
   const startScreenCapture = vi.fn<Client["electron"]["startScreenCapture"]>(async (routing) => ({
     data: "c2NyZWVu",
+    annotationText: "1. Inspect this\n   and this",
     destination: routing.defaultDestination,
   }));
   using view = overlayFixture(startScreenCapture);
@@ -109,6 +110,7 @@ it("routes overlay screenshots only to Cake Chat and attaches them to its draft"
     kind: "cake-chat",
     sessionId: CAKE_CHAT_SESSION_ID,
   });
+  expect(draft().text).toContain("1. Inspect this\n   and this");
   expect(draft().attachments).toEqual([
     expect.objectContaining({ kind: "image", mimeType: "image/png", data: "c2NyZWVu" }),
   ]);

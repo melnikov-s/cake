@@ -17,6 +17,7 @@ const native = vi.hoisted(() => ({
   permission: "granted",
   blocked: "",
   sources: vi.fn(),
+  copy: vi.fn(),
   output: { width: 2400, height: 1200 },
 }));
 vi.mock("electron", () => ({
@@ -50,6 +51,7 @@ vi.mock("electron", () => ({
       this.emit("closed");
     }
   },
+  clipboard: { write: native.copy },
   desktopCapturer: { getSources: native.sources },
   screen: {
     getCursorScreenPoint: () => ({ x: -100, y: 10 }),
@@ -95,6 +97,7 @@ beforeEach(() => {
   native.blocked = "";
   native.permission = "granted";
   native.output = { width: 2400, height: 1200 };
+  native.copy.mockReset();
   native.sources.mockReset();
   native.sources.mockResolvedValue([
     {
@@ -190,16 +193,36 @@ describe("Native screen capture lifetime", () => {
     });
     capture.finish(window.webContents.id, {
       image: "data:image/png;base64,composed",
+      annotationText: "1. First\n   second",
       destination: { kind: "project-session", sessionId: "beta" },
     });
     expect(await running).toEqual({
       capture: {
         data: Buffer.from("resized").toString("base64"),
+        annotationText: "1. First\n   second",
         destination: { kind: "project-session", sessionId: "beta" },
       },
     });
     expect(native.output).toMatchObject({ width: 1024, height: 512 });
     expect(window.isDestroyed()).toBe(true);
+    capture.stop();
+  });
+  it("copies image and numbered text in one native write without closing or delivering", async () => {
+    const { owner, capture } = fixture();
+    const { running, created } = startOverlay(capture, owner);
+    const window = await created;
+    capture.copy(window.webContents.id, {
+      image: "data:image/png;base64,copy",
+      annotationText: "1. Arrow\n   continued\n2. Stroke",
+    });
+    expect(native.copy).toHaveBeenCalledExactlyOnceWith({
+      image: expect.objectContaining({ toPNG: expect.any(Function) }),
+      text: "1. Arrow\n   continued\n2. Stroke",
+    });
+    expect(window.isDestroyed()).toBe(false);
+    expect(() => capture.state(window.webContents.id)).not.toThrow();
+    capture.finish(window.webContents.id);
+    expect(await running).toEqual({});
     capture.stop();
   });
   it("allows new sessions only in an offered Project and returns the chosen route", async () => {
@@ -210,16 +233,19 @@ describe("Native screen capture lifetime", () => {
     expect(() =>
       capture.finish(window.webContents.id, {
         image: "data:image/png;base64,new",
+        annotationText: "1. First\n   second",
         destination: { kind: "new-session", projectPath: "/unavailable" },
       }),
     ).toThrow("available screenshot destination");
     capture.finish(window.webContents.id, {
       image: "data:image/png;base64,new",
+      annotationText: "1. First\n   second",
       destination: { kind: "new-session", projectPath: "/other" },
     });
     expect(await running).toEqual({
       capture: {
         data: Buffer.from("resized").toString("base64"),
+        annotationText: "1. First\n   second",
         destination: { kind: "new-session", projectPath: "/other" },
       },
     });

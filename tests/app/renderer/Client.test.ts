@@ -219,7 +219,19 @@ describe("Client transport and device integration", () => {
           projects: [],
           cakeChats: [],
           defaultDestination: { kind: "cake-chat", sessionId: "session" },
+          dictation: {
+            enabled: false,
+            deviceId: "",
+            textProcessingMode: "raw",
+            recognition: {
+              thresholds: { start: 0.6, continuation: 0.4 },
+              minimumSpeechMs: 200,
+              prerollMs: 600,
+              maximumUtteranceSeconds: 30,
+            },
+          },
           appearance: {
+            projectAvatarsEnabled: true,
             theme: "dark",
             sessionAvatarsEnabled: true,
             sidebarCharactersEnabled: false,
@@ -228,6 +240,11 @@ describe("Client transport and device integration", () => {
       () => client.electron.configureScreenCapture({ shortcut: "Mod+Shift+6", maxDimension: 2048 }),
       () => client.electron.screenCaptureState(),
       () => client.electron.finishScreenCapture(),
+      () =>
+        client.electron.copyScreenCapture({
+          image: "data:image/png;base64,png",
+          annotationText: "1. Note",
+        }),
       () => client.vscode.install(),
       () => client.browser.open("session"),
       () => client.models.login({ provider: "test", authType: "api_key" }),

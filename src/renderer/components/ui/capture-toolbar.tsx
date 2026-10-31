@@ -1,24 +1,38 @@
 import type { ReactNode } from "react";
+import type { CaptureMode } from "../../../contracts/desktop/screen-capture-data";
 import { FloatingToolbar } from "./floating-toolbar";
 import { IconButton } from "./icon-button";
-import { CaptureArrowIcon, CaptureDisplayIcon, CloseIcon, CropIcon, UndoIcon } from "./icons";
+import {
+  CaptureArrowIcon,
+  CaptureDisplayIcon,
+  CloseIcon,
+  CopyIcon,
+  CheckIcon,
+  EditIcon,
+  CropIcon,
+  UndoIcon,
+} from "./icons";
 
 /** Compact movable capture controls, outside the exported canvas. */
 export function CaptureToolbar({
   mode,
   busy,
   canUndo,
+  copied,
+  onCopy,
   destinationPicker,
   onMode,
   onUndo,
   onCapture,
   onCancel,
 }: {
-  mode: "crop" | "annotate";
+  mode: CaptureMode;
   busy: boolean;
   canUndo: boolean;
+  copied: boolean;
+  onCopy(): void;
   destinationPicker: ReactNode;
-  onMode(mode: "crop" | "annotate"): void;
+  onMode(mode: CaptureMode): void;
   onUndo(): void;
   onCapture(): void;
   onCancel(): void;
@@ -52,8 +66,25 @@ export function CaptureToolbar({
       >
         <CaptureArrowIcon />
       </IconButton>
-      <IconButton tooltip="Undo arrow" disabled={busy || !canUndo} onClick={onUndo}>
+      <IconButton
+        tooltip="Freehand"
+        ariaLabel="Freehand"
+        aria-pressed={mode === "freehand"}
+        disabled={busy}
+        onClick={() => onMode("freehand")}
+      >
+        <EditIcon />
+      </IconButton>
+      <IconButton tooltip="Undo drawing" disabled={busy || !canUndo} onClick={onUndo}>
         <UndoIcon />
+      </IconButton>
+      <IconButton
+        tooltip={copied ? "Copied image and text" : "Copy image and text"}
+        ariaLabel="Copy image and text"
+        disabled={busy}
+        onClick={onCopy}
+      >
+        {copied ? <CheckIcon /> : <CopyIcon />}
       </IconButton>
       <IconButton
         tooltip={busy ? "Attaching screenshot…" : "Attach full display · Enter"}

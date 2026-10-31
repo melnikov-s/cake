@@ -641,6 +641,15 @@ const makeElectronService = (
         catch: electronError,
       }),
     ),
+    copyScreenCapture: Effect.fn("Electron.copyScreenCapture")((connectionId, request) =>
+      Effect.try({
+        try: () => {
+          capture.copy(requireRendererConnection(connectionId).id, request);
+          return {};
+        },
+        catch: electronError,
+      }),
+    ),
     finishScreenCapture: Effect.fn("Electron.finishScreenCapture")((connectionId, request) =>
       Effect.try({
         try: () => {

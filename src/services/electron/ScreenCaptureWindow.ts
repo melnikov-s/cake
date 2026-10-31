@@ -1,5 +1,6 @@
 import {
   BrowserWindow,
+  clipboard,
   desktopCapturer,
   dialog,
   globalShortcut,
@@ -29,7 +30,8 @@ interface CaptureWindowOptions {
 }
 
 /** Native boundary: one capture at a time, with its window and pixels owned until completion.
- * No files or clipboard entries are created. The caller's aborted RPC tears down the overlay.
+ * No files are created; Copy explicitly writes both native clipboard formats.
+ * The caller's aborted RPC tears down the overlay.
  */
 export class ScreenCaptureWindow {
   private readonly settings = new Map<number, ScreenCaptureSettings>();
@@ -191,7 +193,32 @@ export class ScreenCaptureWindow {
     return this.snapshot;
   }
 
-  finish(senderId: number, capture?: { image: string; destination: CaptureDestination }) {
+  private decodeImage(image: string, maxDimension: number) {
+    if (!image.startsWith("data:image/png;base64,"))
+      throw new Error("Screen captures must be PNG images");
+    let result = nativeImage.createFromDataURL(image);
+    if (result.isEmpty()) throw new Error("The captured image could not be decoded");
+    const size = result.getSize();
+    const output = captureOutputSize(size.width, size.height, maxDimension);
+    if (size.width !== output.width || size.height !== output.height)
+      result = result.resize({ ...output, quality: "best" });
+    if (result.toPNG().toString("base64").length > 20_000_000)
+      throw new Error("The captured image is too large. Lower the maximum image dimension.");
+    return result;
+  }
+
+  copy(senderId: number, capture: { image: string; annotationText: string }) {
+    const snapshot = this.state(senderId);
+    clipboard.write({
+      image: this.decodeImage(capture.image, snapshot.maxDimension),
+      text: capture.annotationText,
+    });
+  }
+
+  finish(
+    senderId: number,
+    capture?: { image: string; annotationText: string; destination: CaptureDestination },
+  ) {
     const snapshot = this.state(senderId);
     let data: string | undefined;
     if (capture) {
@@ -206,20 +233,14 @@ export class ScreenCaptureWindow {
                 project.sessions.some((session) => session.sessionId === destination.sessionId),
               );
       if (!offered) throw new Error("Choose an available screenshot destination.");
-      if (!image.startsWith("data:image/png;base64,"))
-        throw new Error("Screen captures must be PNG images");
-      let result = nativeImage.createFromDataURL(image);
-      if (result.isEmpty()) throw new Error("The captured image could not be decoded");
-      const size = result.getSize();
-      const output = captureOutputSize(size.width, size.height, snapshot.maxDimension);
-      if (size.width !== output.width || size.height !== output.height)
-        result = result.resize({ ...output, quality: "best" });
-      data = result.toPNG().toString("base64");
-      if (data.length > 20_000_000)
-        throw new Error("The captured image is too large. Lower the maximum image dimension.");
+      data = this.decodeImage(image, snapshot.maxDimension).toPNG().toString("base64");
     }
     this.overlay?.hide();
-    this.complete?.(data && capture ? { data, destination: capture.destination } : undefined);
+    this.complete?.(
+      data && capture
+        ? { data, annotationText: capture.annotationText, destination: capture.destination }
+        : undefined,
+    );
   }
 
   stop() {

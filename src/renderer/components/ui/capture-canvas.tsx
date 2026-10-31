@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import type {
-  CaptureArrow,
-  CapturePoint,
-  CaptureRect,
+import {
+  captureDrawingAnchor,
+  type CaptureDrawing,
+  type CaptureMode,
+  type CapturePoint,
+  type CaptureRect,
 } from "../../../contracts/desktop/screen-capture-data";
 import {
+  captureMarker,
   loadCaptureImage,
   paintCapture,
   type CapturePalette,
 } from "../../screen-capture/render-capture";
+import { Button } from "./button";
 import { cn } from "../../lib/utils";
 
 /** Controlled screenshot editing surface. DOM measurements and pointer capture stay here;
@@ -16,10 +20,11 @@ import { cn } from "../../lib/utils";
  */
 export function CaptureCanvas({
   image,
-  arrows,
+  drawings,
   selection,
   mode,
   disabled,
+  onEdit,
   onBegin,
   onMove,
   onEnd,
@@ -28,10 +33,11 @@ export function CaptureCanvas({
   onError,
 }: {
   image: string;
-  arrows: readonly CaptureArrow[];
+  drawings: readonly CaptureDrawing[];
   selection?: CaptureRect;
-  mode: "crop" | "annotate";
+  mode: CaptureMode;
   disabled?: boolean;
+  onEdit(index: number): void;
   onBegin(point: CapturePoint): void;
   onMove(point: CapturePoint): void;
   onEnd(point: CapturePoint): void;
@@ -102,33 +108,67 @@ export function CaptureCanvas({
       foreground: getComputedStyle(canvas.parentElement ?? canvas).color,
     };
     callbacks.current.onPalette(palette);
-    paintCapture(context, loaded, arrows, palette);
+    paintCapture(context, loaded, drawings, palette);
     if (selection) {
       context.strokeStyle = palette.ink;
       context.lineWidth = 2 * Math.max(1, canvas.width / canvas.getBoundingClientRect().width);
       context.setLineDash([6 * context.lineWidth, 3 * context.lineWidth]);
       context.strokeRect(selection.x, selection.y, selection.width, selection.height);
     }
-  }, [loaded, arrows, selection]);
+  }, [loaded, drawings, selection]);
   return (
-    <canvas
-      ref={canvasRef}
-      aria-label={mode === "crop" ? "Drag to capture a region" : "Drag to draw an arrow"}
-      data-slot="capture-canvas"
-      className={cn(
-        "block h-full w-full touch-none bg-background text-accent",
-        mode === "crop" ? "cursor-crosshair" : "cursor-cell",
-        disabled && "pointer-events-none",
-      )}
-      onPointerDown={(event) => {
-        if (event.button !== 0 || !loaded || disabled || activePointer.current !== undefined)
-          return;
-        event.preventDefault();
-        activePointer.current = event.pointerId;
-        event.currentTarget.setPointerCapture(event.pointerId);
-        onBegin(capturePoint(event.currentTarget, event));
-      }}
-    />
+    <div className="relative h-full w-full">
+      <canvas
+        ref={canvasRef}
+        aria-label={
+          mode === "crop"
+            ? "Drag to capture a region"
+            : mode === "freehand"
+              ? "Drag to draw freehand"
+              : "Drag to draw an arrow"
+        }
+        data-slot="capture-canvas"
+        className={cn(
+          "block h-full w-full touch-none bg-background text-accent",
+          mode === "crop" ? "cursor-crosshair" : "cursor-cell",
+          disabled && "pointer-events-none",
+        )}
+        onPointerDown={(event) => {
+          if (event.button !== 0 || !loaded || disabled || activePointer.current !== undefined)
+            return;
+          event.preventDefault();
+          activePointer.current = event.pointerId;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          onBegin(capturePoint(event.currentTarget, event));
+        }}
+      />
+      {loaded &&
+        drawings.map((drawing, index) => {
+          const marker = captureMarker(
+            captureDrawingAnchor(drawing),
+            loaded.naturalWidth,
+            loaded.naturalHeight,
+          );
+          return (
+            <Button
+              key={index}
+              variant="ghost"
+              aria-label={`Edit annotation ${index + 1}`}
+              disabled={disabled}
+              className="absolute z-10 min-h-6 min-w-6 -translate-x-1/2 -translate-y-1/2 rounded-full p-0 opacity-0 focus-visible:opacity-100"
+              style={{
+                left: `${(marker.x / loaded.naturalWidth) * 100}%`,
+                top: `${(marker.y / loaded.naturalHeight) * 100}%`,
+                width: `${((marker.radius * 2) / loaded.naturalWidth) * 100}%`,
+                height: `${((marker.radius * 2) / loaded.naturalHeight) * 100}%`,
+              }}
+              onClick={() => onEdit(index)}
+            >
+              {index + 1}
+            </Button>
+          );
+        })}
+    </div>
   );
 }
 
