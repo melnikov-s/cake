@@ -97,7 +97,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div
         className={cn(
-          "flex h-10 shrink-0 items-center gap-1 border-b border-border px-2 [-webkit-app-region:drag]",
+          "flex h-10 shrink-0 items-center gap-1.5 border-b border-border/65 bg-background/95 px-2.5 [-webkit-app-region:drag]",
           !projectSidebarVisible && "pl-[84px]",
         )}
       >
@@ -106,6 +106,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
             <>
               <WorkspacePanelToggle panel="sidebar" visible={false} onToggle={onToggleSidebar} />
               <BrowserSharingMenu />
+              <span aria-hidden="true" className="mx-1 h-4 w-px bg-border/65" />
             </>
           )}
           <IconButton
@@ -130,7 +131,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
           </IconButton>
         </div>
         <Input
-          className="h-7 flex-1 [-webkit-app-region:no-drag]"
+          className="h-7 flex-1 rounded-md border-border/70 bg-muted/55 px-3 font-mono text-xs transition-colors hover:bg-muted/80 focus-visible:bg-card [-webkit-app-region:no-drag]"
           aria-label="Browser address"
           value={browser.address}
           onFocus={() => browser.beginAddressEditing()}
@@ -148,6 +149,12 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
           >
             <InspectIcon />
           </IconButton>
+          {!browser.chatSidebarVisible && headerActions ? (
+            <>
+              <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-border/65" />
+              {headerActions}
+            </>
+          ) : null}
           <WorkspacePanelToggle
             panel="chat"
             visible={browser.chatSidebarVisible}
@@ -156,7 +163,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
         </div>
       </div>
       {browser.error ? (
-        <div className="border-b border-destructive/30 bg-destructive/10 px-3 py-1.5 font-mono text-xs text-destructive">
+        <div className="border-b border-destructive/25 bg-destructive/8 px-3.5 py-2 font-mono text-xs text-destructive">
           {browser.error}
         </div>
       ) : null}
@@ -178,8 +185,8 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
       terminalDock={terminalDock}
       chatSidebar={
         <>
-          <header className="flex h-[35px] select-none items-center justify-between gap-3 border-b border-border px-3 [-webkit-app-region:drag]">
-            <strong className="block min-w-0 truncate text-xs">{sessionTitle}</strong>
+          <header className="flex h-10 select-none items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-3.5 [-webkit-app-region:drag]">
+            <strong className="block min-w-0 truncate text-xs font-semibold">{sessionTitle}</strong>
             <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
               {headerActions}
             </div>

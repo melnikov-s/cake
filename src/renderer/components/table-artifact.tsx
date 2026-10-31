@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { SearchIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
@@ -49,29 +50,40 @@ export function TableArtifact({
       "text/csv",
     );
   return (
-    <div className="grid gap-3">
-      <div className="flex items-center gap-2">
-        <Input
-          className="h-8 text-xs"
-          aria-label="Filter table"
-          placeholder="Filter rows"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <Button variant="outline" size="sm" onClick={exportCsv}>
-          Export CSV
-        </Button>
+    <div className="grid gap-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 pr-10">
+        <div className="relative max-w-xs flex-1">
+          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
+            <SearchIcon size={13} />
+          </span>
+          <Input
+            size="sm"
+            className="pl-8 text-xs"
+            aria-label="Filter table"
+            placeholder="Filter rows…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs text-muted-foreground tabular-nums">
+            {rows.length} {rows.length === 1 ? "row" : "rows"}
+          </span>
+          <Button variant="outline" size="sm" onClick={exportCsv}>
+            Export CSV
+          </Button>
+        </div>
       </div>
-      <div className="max-h-[28rem] overflow-auto rounded-lg border border-border">
+      <div className="max-h-[28rem] overflow-auto rounded-lg border border-border/80 bg-card/40">
         <table data-slot="artifact-table" className="w-full border-collapse text-left text-xs">
           <thead>
-            <tr className="sticky top-0 z-1 bg-muted">
+            <tr className="sticky top-0 z-1 bg-muted/90 backdrop-blur-sm">
               {artifact.payload.selectable && (
-                <th className="border-b border-border p-2.5" aria-label="Selection" />
+                <th className="w-9 border-b border-border/75 px-3 py-2" aria-label="Selection" />
               )}
               {artifact.payload.columns.map((column) => (
                 <th
-                  className="border-b border-border p-2.5 font-semibold text-foreground"
+                  className="border-b border-border/75 px-3 py-2 font-semibold text-foreground"
                   key={column.id}
                 >
                   <Button
@@ -87,11 +99,11 @@ export function TableArtifact({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-border/60">
             {rows.map((row) => (
-              <tr className="hover:bg-muted/50 transition-colors" key={row.id}>
+              <tr className="transition-colors hover:bg-muted/40" key={row.id}>
                 {artifact.payload.selectable && (
-                  <td className="p-2.5">
+                  <td className="px-3 py-2">
                     <input
                       type="checkbox"
                       className="accent-primary"
@@ -109,7 +121,7 @@ export function TableArtifact({
                   </td>
                 )}
                 {artifact.payload.columns.map((column) => (
-                  <td className="p-2.5 text-foreground" key={column.id}>
+                  <td className="px-3 py-2 text-foreground tabular-nums" key={column.id}>
                     {String(row[column.id] ?? "")}
                   </td>
                 ))}

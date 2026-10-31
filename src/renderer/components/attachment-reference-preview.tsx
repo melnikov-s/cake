@@ -20,10 +20,9 @@ export const AttachmentReferencePreview = observer(function AttachmentReferenceP
       eyebrow="Original attachment"
       title={content.reference.name}
       onClose={() => store.close()}
-    >
-      <div className="flex w-full flex-col gap-4">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>
+      toolbar={
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs text-muted-foreground tabular-nums">
             {content.reference.mimeType} · {content.reference.byteLength} bytes
           </span>
           <CopyReferenceButton
@@ -31,31 +30,36 @@ export const AttachmentReferencePreview = observer(function AttachmentReferenceP
             label="attachment link"
           />
         </div>
+      }
+    >
+      <div className="flex w-full flex-col gap-4">
         {content.kind === "image" ? (
           <ImagePreview
             src={`data:${content.mimeType};base64,${content.data}`}
             alt={content.reference.name}
-            imageClassName="max-h-[calc(100vh-180px)] max-w-full object-contain"
+            imageClassName="max-h-[calc(100vh-180px)] max-w-full rounded-lg border border-border/65 object-contain"
           />
         ) : (
           <ReadableData value={content.text} />
         )}
         {store.error && <Callout variant="error">{store.error}</Callout>}
         {content.kind === "text" && (content.offset > 0 || content.nextOffset !== null) && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border/65 bg-muted/35 px-3 py-2">
             <Button
               variant="outline"
+              size="sm"
               disabled={store.loading || content.offset === 0}
               onClick={() => store.previous()}
             >
               Previous
             </Button>
-            <span className="text-xs text-muted-foreground">
+            <span className="font-mono text-xs text-muted-foreground tabular-nums">
               Characters {content.offset + 1}–{content.offset + content.text.length} of{" "}
               {content.totalCharacters}
             </span>
             <Button
               variant="outline"
+              size="sm"
               disabled={store.loading || content.nextOffset === null}
               onClick={() => store.next()}
             >

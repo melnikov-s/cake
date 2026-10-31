@@ -55,15 +55,15 @@ export function ImagePreview({
           title={alt}
           onClose={() => setOpen(false)}
         >
-          <figure className="m-0 flex h-full w-full flex-col items-center justify-center gap-3 bg-black/75 p-6">
+          <figure className="m-0 flex h-full w-full flex-col items-center justify-center gap-3 bg-muted/35 p-8">
             <img
               src={src}
               alt={alt}
               draggable={false}
-              className="max-h-[calc(100vh-120px)] max-w-full rounded-lg object-contain shadow-2xl"
+              className="max-h-[calc(100vh-112px)] max-w-full rounded-lg border border-border/65 bg-card object-contain shadow-xl"
             />
             {caption ? (
-              <figcaption className="max-w-[600px] text-center text-xs text-white/85">
+              <figcaption className="max-w-[600px] text-center text-xs text-muted-foreground">
                 {caption}
               </figcaption>
             ) : null}

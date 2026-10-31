@@ -66,17 +66,20 @@ export function FullscreenSurface({
     };
   }, []);
 
+  const showEyebrow =
+    Boolean(eyebrow.trim()) && eyebrow.trim().toLowerCase() !== title.trim().toLowerCase();
+
   const content = (
     <main
       className={cn(
-        "flex h-full min-h-0 flex-1 justify-center overflow-auto p-6",
-        mode === "canvas" && "overflow-hidden p-0",
-        mode === "dialog" && "items-center",
+        "flex h-full min-h-0 flex-1 justify-center overflow-auto px-8 py-8 max-[620px]:px-4 max-[620px]:py-5",
+        mode === "canvas" && "overflow-hidden p-0 max-[620px]:p-0",
+        mode === "dialog" && "items-center p-6",
       )}
     >
       <article
         className={cn(
-          "w-full max-w-4xl",
+          "w-full max-w-3xl",
           mode === "canvas" && "h-full min-h-0 max-w-none overflow-hidden",
           mode === "dialog" && "max-w-[34rem]",
         )}
@@ -93,24 +96,38 @@ export function FullscreenSurface({
     // (e.g. a diagram's own fullscreen view) stack on top of it.
     <div
       ref={surfaceRef}
-      className="fixed inset-0 z-45 flex flex-col bg-background text-foreground motion-safe:animate-fade-in"
+      className={cn(
+        "fixed inset-0 z-45 flex flex-col bg-background text-foreground motion-safe:animate-fade-in",
+        mode === "dialog" && "bg-background/85 backdrop-blur-md",
+      )}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
-      onMouseDown={onClose}
+      onMouseDown={mode === "dialog" ? onClose : undefined}
     >
       <header
-        className="flex shrink-0 items-center justify-between border-b border-border bg-card py-3 pr-5 pl-[84px]"
+        className="flex h-11 shrink-0 items-center justify-between gap-4 border-b border-border/65 bg-background/95 pr-3.5 pl-[84px] backdrop-blur-md [-webkit-app-region:drag]"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div>
-          <span className="block text-xs font-medium text-muted-foreground">{eyebrow}</span>
-          <h2 id={titleId} className="text-sm font-semibold text-foreground">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {showEyebrow && (
+            <span
+              title={eyebrow}
+              className="max-w-[26rem] shrink-0 truncate rounded-sm border border-border/70 bg-muted/60 px-1.5 py-0.5 text-xs font-medium text-muted-foreground"
+            >
+              {eyebrow}
+            </span>
+          )}
+          <h2
+            id={titleId}
+            className="min-w-0 truncate text-xs font-semibold tracking-tight text-foreground"
+          >
             {title}
           </h2>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1.5 [-webkit-app-region:no-drag]">
           {toolbar}
+          {toolbar && <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />}
           <IconButton
             ref={closeButton}
             tooltip="Exit fullscreen"

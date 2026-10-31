@@ -22,12 +22,12 @@ export const FileLocationPreview = observer(function FileLocationPreview({
         title={preview.path}
         onClose={() => store.closeFilePreview()}
       >
-        <div className="flex h-full w-full items-center justify-center bg-black/75 p-6">
+        <div className="flex h-full w-full items-center justify-center bg-muted/35 p-8">
           <img
             src={`data:${preview.mimeType};base64,${preview.data}`}
             alt={preview.path}
             draggable={false}
-            className="max-h-[calc(100vh-120px)] max-w-full rounded-lg object-contain shadow-2xl"
+            className="max-h-[calc(100vh-112px)] max-w-full rounded-lg border border-border/65 bg-card object-contain shadow-xl"
           />
         </div>
       </FullscreenSurface>

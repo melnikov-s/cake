@@ -42,17 +42,23 @@ export function FullscreenMessage({
     firstLine.current?.scrollIntoView?.({ block: "center" });
   }, [text, sourceRanges]);
   return (
-    <FullscreenSurface eyebrow={eyebrow} title={title} onClose={onClose}>
-      <div className="w-full" {...(partId ? { "data-part-id": partId } : null)}>
-        {sourceSession && (
-          <div className="mb-4 text-sm text-muted-foreground">
-            <Markdown>{`From session: [${sourceSession.title.replace(/[\\`*_[\]]/g, "\\$&")}](cake://session/${encodeURIComponent(sourceSession.sessionId)})`}</Markdown>
-          </div>
-        )}
-        {markdown && allowSourceView && (
-          <Button variant="outline" className="mb-4" onClick={() => setShowSource(!showSource)}>
+    <FullscreenSurface
+      eyebrow={eyebrow}
+      title={title}
+      onClose={onClose}
+      toolbar={
+        markdown && allowSourceView ? (
+          <Button variant="outline" size="sm" onClick={() => setShowSource(!showSource)}>
             {showSource ? "Show Markdown" : "Show source"}
           </Button>
+        ) : undefined
+      }
+    >
+      <div className="w-full" {...(partId ? { "data-part-id": partId } : null)}>
+        {sourceSession && (
+          <div className="mb-4 rounded-md border border-border/65 bg-muted/35 px-3 py-1.5 text-xs text-muted-foreground">
+            <Markdown>{`From session: [${sourceSession.title.replace(/[\\`*_[\]]/g, "\\$&")}](cake://session/${encodeURIComponent(sourceSession.sessionId)})`}</Markdown>
+          </div>
         )}
         <div ref={contentRef}>
           {markdown && !showSource ? (
@@ -64,7 +70,7 @@ export function FullscreenMessage({
               {text}
             </Markdown>
           ) : (
-            <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+            <div className="rounded-lg border border-border/75 bg-card/50 p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
               {sourceRanges?.length
                 ? text.split("\n").map((line, index) => {
                     const ranges = sourceRanges.filter(
@@ -80,7 +86,7 @@ export function FullscreenMessage({
                         ref={first ? firstLine : undefined}
                         className={
                           selected
-                            ? "block bg-accent font-mono text-accent-foreground"
+                            ? "-mx-2 block rounded-xs bg-accent px-2 font-mono text-accent-foreground"
                             : "block font-mono"
                         }
                       >

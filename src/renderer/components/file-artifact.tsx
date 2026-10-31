@@ -27,14 +27,14 @@ export function FileArtifact({
   if (mimeType === "text/markdown") return <Markdown>{new TextDecoder().decode(bytes)}</Markdown>;
   if (mimeType.startsWith("text/") || isTextualApplication(mimeType))
     return (
-      <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">
+      <pre className="overflow-auto rounded-lg border border-border/75 bg-card/50 p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
         {new TextDecoder().decode(bytes)}
       </pre>
     );
   if (mimeType.startsWith("image/"))
     return (
       <img
-        className="max-h-full max-w-full object-contain"
+        className="max-h-full max-w-full rounded-lg border border-border/65 object-contain"
         src={url}
         alt={artifact.title ?? name}
       />
@@ -43,12 +43,17 @@ export function FileArtifact({
     return <audio className="w-full" src={url} title={artifact.title ?? name} controls />;
   if (mimeType.startsWith("video/"))
     return (
-      <video className="max-h-full w-full" src={url} title={artifact.title ?? name} controls />
+      <video
+        className="max-h-full w-full rounded-lg border border-border/65"
+        src={url}
+        title={artifact.title ?? name}
+        controls
+      />
     );
   if (mimeType === "application/pdf")
     return (
       <iframe
-        className="min-h-96 w-full border-0 bg-background"
+        className="min-h-96 w-full rounded-lg border border-border/65 bg-background"
         src={url}
         title={artifact.title ?? name}
         sandbox=""
@@ -56,10 +61,10 @@ export function FileArtifact({
     );
 
   return (
-    <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
+    <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-lg border border-border/75 bg-card/50 p-6 text-center">
       <div>
-        <p className="font-medium text-foreground">{name}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{metadata}</p>
+        <p className="text-sm font-medium text-foreground">{name}</p>
+        <p className="mt-1 font-mono text-xs text-muted-foreground">{metadata}</p>
       </div>
       <Button variant="outline" size="sm" onClick={download}>
         Download file

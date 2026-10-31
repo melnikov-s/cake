@@ -123,14 +123,14 @@ export const IdeWorkspace = observer(function IdeWorkspace({
         <>
           <header
             className={cn(
-              "flex select-none border-b border-border px-3 [-webkit-app-region:drag]",
+              "flex select-none border-b border-border/65 bg-sidebar/30 px-3.5 [-webkit-app-region:drag]",
               contextualAnchor
                 ? "flex-col items-stretch gap-1 py-2"
-                : "h-[35px] items-center justify-between gap-3",
+                : "h-10 items-center justify-between gap-3",
             )}
           >
             <div className="min-w-0">
-              <strong className="block truncate text-xs">
+              <strong className="block truncate text-xs font-semibold">
                 {contextualAnchor ? "Chat about selection" : sessionTitle}
               </strong>
               {contextualAnchor ? (

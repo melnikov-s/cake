@@ -96,8 +96,10 @@ export function SessionTree({
                 node.messageRole ? (
                   <span
                     data-slot="session-tree-role"
-                    className={`w-18 shrink-0 font-mono text-xs text-right ${
-                      node.messageRole === "user" ? "text-accent" : "text-success"
+                    className={`shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[11px] font-medium leading-none ${
+                      node.messageRole === "user"
+                        ? "bg-accent/15 text-accent"
+                        : "bg-success/15 text-success"
                     }`}
                   >
                     {node.messageRole}

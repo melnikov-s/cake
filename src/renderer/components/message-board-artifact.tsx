@@ -23,12 +23,7 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
     ),
   ];
   return (
-    <section className="grid min-w-0 gap-3" aria-label="Workboard">
-      <header className="flex min-w-0 flex-wrap items-center justify-between gap-3 pr-10">
-        <p className="min-w-0 text-xs text-muted-foreground">
-          Shared coordination entries. Browsing does not mark an agent as read.
-        </p>
-      </header>
+    <section className="grid min-w-0 gap-2.5" aria-label="Workboard">
       {store.error && (
         <Callout variant="error">
           {store.error}
@@ -46,27 +41,32 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
         <p className="py-6 text-sm text-muted-foreground">No coordination entries yet.</p>
       )}
       {store.entries.map((entry) => (
-        <article key={entry.sequence} className="min-w-0 rounded-lg border border-border p-3">
+        <article
+          key={entry.sequence}
+          className="min-w-0 rounded-lg border border-border/80 bg-card/55 p-3.5 shadow-2xs"
+        >
           <DisclosureTrigger
             title={`#${entry.sequence} · ${entry.description}`}
             open={store.expanded.includes(entry.sequence)}
             onClick={() => void store.toggleBody(entry.sequence)}
           />
-          <p className="mt-1 break-all text-xs text-muted-foreground">
-            From{" "}
-            <SessionIdLink sessionId={entry.authorSessionId} knownSessionIds={knownSessionIds} /> ·{" "}
-            {new Date(entry.createdAt).toLocaleString()}
-          </p>
-          {entry.topic && (
-            <p className="mt-1 break-all text-xs text-muted-foreground">
-              Topic: {entry.topic}
-              {entry.supersedes?.length
-                ? ` · Supersedes ${entry.supersedes.map((sequence) => `#${sequence}`).join(", ")} for this entry's audience`
-                : ""}
-            </p>
-          )}
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <span>
+              From{" "}
+              <SessionIdLink sessionId={entry.authorSessionId} knownSessionIds={knownSessionIds} />{" "}
+              · {new Date(entry.createdAt).toLocaleString()}
+            </span>
+            {entry.topic && (
+              <span className="break-all">
+                · Topic: {entry.topic}
+                {entry.supersedes?.length
+                  ? ` · Supersedes ${entry.supersedes.map((sequence) => `#${sequence}`).join(", ")} for this entry's audience`
+                  : ""}
+              </span>
+            )}
+          </div>
           {store.expanded.includes(entry.sequence) && (
-            <div className="min-w-0 pt-3">
+            <div className="mt-3 min-w-0 rounded-md border border-border/65 bg-background/70 p-3">
               {store.bodies[entry.sequence] ? (
                 <Markdown>{store.bodies[entry.sequence]?.body ?? ""}</Markdown>
               ) : (
@@ -74,7 +74,7 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
               )}
             </div>
           )}
-          <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <div className="mt-2.5 flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-border/50 pt-2">
             <span className="min-w-0 break-all text-xs text-muted-foreground">
               For{" "}
               {entry.audience === "workgroup"
@@ -89,6 +89,7 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
             <Button
               size="sm"
               variant="ghost"
+              className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
               aria-expanded={store.showingReceipts.includes(entry.sequence)}
               onClick={() => void store.toggleReceipts(entry.sequence)}
             >
@@ -96,13 +97,12 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
             </Button>
           </div>
           {store.showingReceipts.includes(entry.sequence) && (
-            <div className="mt-2 grid min-w-0 gap-2 text-xs text-muted-foreground">
-              <p>Read means supplied content, not understanding or completion.</p>
+            <div className="mt-2 grid min-w-0 gap-1.5 rounded-md border border-border/60 bg-muted/30 p-2.5 text-xs text-muted-foreground">
               {store.receipts[entry.sequence] ? (
                 store.receipts[entry.sequence]?.receipts.map((receipt) => (
                   <div
                     key={receipt.sessionId}
-                    className="grid min-w-0 gap-1 break-all border-t border-border pt-2"
+                    className="flex flex-wrap items-center justify-between gap-2 break-all border-t border-border/50 pt-1.5 first:border-t-0 first:pt-0"
                   >
                     <span className="font-mono">
                       <SessionIdLink
@@ -110,7 +110,7 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
                         knownSessionIds={knownSessionIds}
                       />
                     </span>
-                    <span>
+                    <span className="font-mono tabular-nums">
                       Notified:{" "}
                       {receipt.notifiedAt
                         ? new Date(receipt.notifiedAt).toLocaleString()
