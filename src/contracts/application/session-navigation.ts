@@ -1,10 +1,14 @@
 import { Schema } from "effect";
+import {
+  sessionParentGuidance,
+  sessionTargetDescription,
+} from "../project-sessions/session-reference";
 
 const targetId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 
 /** Shared agent boundary for conversation navigation in the invoking window. */
 export const SessionNavigationInput = Schema.Struct({
-  sessionId: targetId,
+  sessionId: targetId.annotate({ description: sessionTargetDescription }),
   messageId: Schema.optionalKey(targetId),
 });
 
@@ -13,6 +17,7 @@ export const sessionNavigationHelp = {
   summary:
     "Open a Project Session or permanent Cake/Project Chat in the invoking Cake window, optionally at a transcript message.",
   guidance: [
+    sessionParentGuidance,
     "Use a sessionId from sessions.list or the canonical projectChatId from projects.list/projects.info, including a fresh registered Project Chat that has never been opened.",
     "Opening selects the conversation; it does not send a user message or drain passive FYIs. FYIs appear as readable Markdown messages attributed to their sender with the next user message or the normal batch deadline, never as user-authored messages or internal batch instructions.",
     "Uses ordinary window-local navigation: replaces the focused pane's conversation, or focuses the target's pane if it is already open. Never creates a session or a window.",

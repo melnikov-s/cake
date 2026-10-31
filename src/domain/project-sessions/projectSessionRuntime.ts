@@ -434,7 +434,8 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     runtime: {
       ...runtimeIntegrations,
       sessionReferences: {
-        resolve: (reference, signal) => run(sessionReferences.resolve(reference), { signal }),
+        resolve: (reference, signal) =>
+          run(sessionReferences.resolve(reference, sessionId), { signal }),
         project: (value, signal) => run(sessionReferences.project(value), { signal }),
         ids: (signal) =>
           run(
@@ -902,12 +903,14 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         invokeAppControl: async (command, input, signal) => {
           if (
             command !== "sessions.compact" &&
-            backendAgentControl.handles(command) &&
+            (backendAgentControl.handles(command) || command === "sessions.open") &&
             Schema.is(Schema.String)(input.sessionId)
           )
             input = {
               ...input,
-              sessionId: await run(sessionReferences.resolve(input.sessionId), { signal }),
+              sessionId: await run(sessionReferences.resolve(input.sessionId, sessionId), {
+                signal,
+              }),
             };
           await run(
             Effect.scoped(validateMessageReferenceControl({ name: command, arguments: input })),

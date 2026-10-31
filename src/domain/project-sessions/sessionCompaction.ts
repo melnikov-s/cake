@@ -88,7 +88,11 @@ export const compact = Effect.fn("SessionCompaction.compact")(function* (
   const results: SessionCompactionResult[] = [];
   const firstByIdentity = new Map<string, number>();
   for (const reference of targets) {
-    const resolved = yield* references.resolveIn(reference, roster.roster).pipe(Effect.result);
+    const resolved = yield* (
+      reference === "parent"
+        ? references.resolve(reference, caller.sessionId)
+        : references.resolveIn(reference, roster.roster)
+    ).pipe(Effect.result);
     if (resolved._tag === "Failure") {
       results.push({ reference, status: "invalid", message: resolved.failure.message });
       continue;

@@ -1,4 +1,7 @@
-import { transitionAssistantContext } from "../../../../src/services/pi-durable/durable-assistant-context";
+import {
+  AssistantContextDoc,
+  transitionAssistantContext,
+} from "../../../../src/services/pi-durable/durable-assistant-context";
 import {
   projectTodoReminder,
   emptyProjectTodos,
@@ -894,20 +897,39 @@ it("persists one companion history and passive entry/exit metadata across transi
     true,
   );
   const firstId = f.engine.root.id;
-  const a = { sessionId: "session-a", title: "A", mode: "normal" };
+  const a = { sessionId: "00000000-0000-4000-8000-000000000011", title: "A", mode: "normal" };
   const b = { sessionId: "project-chat:b", title: "Project B", mode: "normal" };
   await transitionAssistantContext(f.engine.root, a);
+  expect(
+    (await f.engine.harness.snapshot(AssistantContextDoc, f.engine.root.id, BACKGROUND_CONTEXT))
+      ?.context,
+  ).toEqual(a);
   await transitionAssistantContext(f.engine.root, { ...a, title: "Renamed" });
   expect(f.requests).toHaveLength(0);
   await f.send("First question", "q1");
   await f.send("Ordinary follow-up", "q2");
+  const contextEntries = await f.engine.root.entries({}, 20, undefined, BACKGROUND_CONTEXT);
+  const orientation = contextEntries.items.find(
+    (entry) => entry.kind === "cake.assistant-context/v1",
+  );
+  expect(JSON.stringify(orientation?.model)).toContain('sessionId: \\"parent\\"');
+  expect(JSON.stringify(orientation?.model)).toContain(a.sessionId);
+  expect(JSON.stringify(orientation?.model)).toContain("not the viewed session");
   let parts = (await readDurableOriginalPage(f.engine.root)).parts;
   expect(
     parts.filter((part) => part.kind === "context" && part.title === "Companion context"),
   ).toHaveLength(1);
   await transitionAssistantContext(f.engine.root, b);
+  expect(
+    (await f.engine.harness.snapshot(AssistantContextDoc, f.engine.root.id, BACKGROUND_CONTEXT))
+      ?.context,
+  ).toEqual(b);
   await transitionAssistantContext(f.engine.root, { ...b, mode: "vscode" });
   await transitionAssistantContext(f.engine.root, null);
+  expect(
+    (await f.engine.harness.snapshot(AssistantContextDoc, f.engine.root.id, BACKGROUND_CONTEXT))
+      ?.context,
+  ).toBeNull();
   await transitionAssistantContext(f.engine.root, null);
   await transitionAssistantContext(f.engine.root, a);
   expect(f.requests).toHaveLength(2);

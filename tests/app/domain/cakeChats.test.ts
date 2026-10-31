@@ -156,6 +156,9 @@ describe("permanent Cake Chat", () => {
           defaultCakeChatPreferences().memoryViewBytes,
         );
         expect(options.runtime.cakeChatSystemPrompt?.()).toContain("app-wide companion");
+        expect(options.runtime.cakeChatSystemPrompt?.()).toContain(SESSION_ASSISTANT_ID);
+        expect(options.runtime.cakeChatSystemPrompt?.()).toContain('sessionId: "parent"');
+        expect(options.runtime.cakeChatSystemPrompt?.()).toContain("schedules to yourself");
         expect(options.runtime.cakeChatTodos).toBeUndefined();
         expect(memory.preferences().instructions).not.toContain("Shared chat only");
         yield* Effect.promise(() =>

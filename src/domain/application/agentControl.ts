@@ -321,7 +321,10 @@ export const invoke: (
           });
         }
         case "sessions.set-labels": {
-          const sessionId = yield* sessionReferences.resolve(invocation.arguments.sessionId);
+          const sessionId = yield* sessionReferences.resolve(
+            invocation.arguments.sessionId,
+            caller.sessionId,
+          );
           const target = yield* lookupSession(sessionId);
           const available = yield* labels();
           const selected = invocation.arguments.labelIds.flatMap((id) => {
@@ -553,7 +556,10 @@ export const invoke: (
         case "sessions.cancel-scheduled":
           return yield* scheduledMessageControl.invoke(invocation, caller);
         default: {
-          const sessionId = yield* sessionReferences.resolve(invocation.arguments.sessionId);
+          const sessionId = yield* sessionReferences.resolve(
+            invocation.arguments.sessionId,
+            caller.sessionId,
+          );
           if (isCakeChatSessionId(sessionId)) {
             if (invocation.name === "sessions.info") {
               const configuration = yield* Effect.serviceOption(CakeChatConfiguration);

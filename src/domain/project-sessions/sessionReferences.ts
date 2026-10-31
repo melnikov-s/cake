@@ -1,5 +1,11 @@
 import { Effect, Option, Stream } from "effect";
 import {
+  CAKE_CHAT_SESSION_ID,
+  SESSION_ASSISTANT_ID,
+  isCakeChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
+import { CakeChatDurable } from "../../services/pi-durable/CakeChatDurable";
+import {
   projectSessionReferences,
   resolveSessionReference,
   sessionReference,
@@ -10,11 +16,16 @@ import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
-import { SessionFamilyStorage, familyMemberIds } from "../../services/storage/SessionFamilyStorage";
+import {
+  SessionFamilyStorage,
+  familyMember,
+  familyMemberIds,
+} from "../../services/storage/SessionFamilyStorage";
 import type { ProjectSessionArchiveMetadata } from "../../services/storage/SessionArchiveStorage";
 import type { ProjectSessionLocation } from "../../contracts/project-sessions/project-session-data";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import * as projectSessionLocations from "./projectSessionLocations";
+import * as metadata from "./projectSessionMetadata";
 
 export interface SessionReferenceEntry {
   readonly sessionId: string;
@@ -124,7 +135,41 @@ export const catalog = Effect.fn("SessionReferences.catalog")(function* () {
   return (yield* discover()).roster;
 });
 
-export const resolve = Effect.fn("SessionReferences.resolve")(function* (reference: string) {
+/** Explicit hierarchy, never a creator link or an omitted-target default. Resolve at admission. */
+const parentTarget = Effect.fn("SessionReferences.parentTarget")(function* (
+  callerSessionId?: string,
+) {
+  const fail = (message: string) =>
+    new ProjectSessionError({ operation: "resolveSessionReference", message });
+  if (callerSessionId === undefined) return yield* fail("parent requires a calling conversation");
+  if (callerSessionId === SESSION_ASSISTANT_ID) {
+    const durable = yield* Effect.serviceOption(CakeChatDurable);
+    const target = Option.isSome(durable)
+      ? yield* durable.value.assistantContextSessionId()
+      : undefined;
+    if (!target || target === SESSION_ASSISTANT_ID)
+      return yield* fail("Companion invoking context is unavailable");
+    // Context is a concrete identity, not another alias; the operation still validates access/existence.
+    const canonical = resolveSessionReference(target, []);
+    if (!canonical.ok)
+      return yield* fail("Companion invoking context has no valid session identity");
+    return canonical.sessionId;
+  }
+  if (isCakeChatSessionId(callerSessionId)) return CAKE_CHAT_SESSION_ID;
+  const family = yield* (yield* SessionFamilyStorage).familyForMember(callerSessionId);
+  const member = family && familyMember(family, callerSessionId);
+  if (member?.parentSessionId) return member.parentSessionId;
+  const projectPath =
+    family?.projectPath ??
+    (yield* metadata.findLocation({ sessionId: callerSessionId })).projectPath;
+  return projectChatSessionId(projectPath);
+});
+
+export const resolve = Effect.fn("SessionReferences.resolve")(function* (
+  reference: string,
+  callerSessionId?: string,
+) {
+  if (reference === "parent") return yield* parentTarget(callerSessionId);
   // Canonical identities still undergo existence/access checks at their authoritative route.
   // Only suffixes and other roster-bound references need global identity discovery.
   const canonical = resolveSessionReference(reference, []);

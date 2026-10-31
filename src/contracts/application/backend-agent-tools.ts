@@ -1,3 +1,4 @@
+import { sessionParentGuidance } from "../project-sessions/session-reference";
 import { sessionMessageDeliveryGuidance } from "../conversations/session-message-delivery";
 import { promptFilesGuidance } from "../conversations/prompt-files";
 import { sessionCompactionDefinitions } from "../project-sessions/session-compaction";
@@ -294,6 +295,8 @@ const definitions = [
       guidance: [
         "For a registered Project Chat, call projects.list with query and pass its canonical projectChatId as sessionId. Do not read repository files, hash paths, or inspect recipient history to find its address. The receipt confirms admission/deferred retention, not recipient execution or completion.",
         "sessionId is required from Cake Chat; Cake Chat cannot message itself. Project Sessions reach global Cake Chat by omitting sessionId.",
+        sessionParentGuidance,
+        "A resolved self-target (including Cake Chat parent) cannot create a messaging thread; it does not auto-forward.",
         promptFilesGuidance,
         resultDeliveryGuidance,
         sessionMessageDeliveryGuidance,

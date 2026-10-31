@@ -2,6 +2,12 @@ import { Schema } from "effect";
 import { jsonObjectSchema, type JsonValue } from "../serialization/json-contract";
 import { CAKE_CHAT_REFERENCE, CAKE_CHAT_SESSION_ID } from "../cake-chats/cake-chat-identity";
 
+export const sessionParentGuidance =
+  'Explicit sessionId: "parent" resolves once at tool admission: Companion → viewed session/chat (requires invoking context); child Project Session → actual parent; top-level Project Session → owning Project Chat; Project Chat → Cake Chat; Cake Chat → itself. Creator/source links are not ancestry. This alias never changes an operation\'s omitted-target default or permission checks.';
+
+export const sessionTargetDescription =
+  "Project Session ID or suffix, cake-chat, project-chat:<hash>, or parent (the caller's hierarchy target).";
+
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const shortReference = /^([0-9a-f]{8,64})$/i;
 const hex = (id: string) => id.replaceAll("-", "").toLowerCase();

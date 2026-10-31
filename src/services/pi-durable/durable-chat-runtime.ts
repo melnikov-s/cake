@@ -85,7 +85,7 @@ import {
 } from "./cake-chat-local-tools";
 import { CakeChatMcp, createCakeChatMcpTool, loadCakeChatMcpServers } from "./cake-chat-mcp";
 import type { AssistantContext } from "../../contracts/cake-chats/assistant-context";
-import { transitionAssistantContext } from "./durable-assistant-context";
+import { AssistantContextDoc, transitionAssistantContext } from "./durable-assistant-context";
 import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { SubagentResult, SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
@@ -115,6 +115,7 @@ const unsupported = async () => {
 /** The coordinator runtime and the side-chat forks that share its Durable database. */
 export type DurableCakeChatRuntime = CakeSessionRuntime & {
   readonly assistantContext: (context: AssistantContext | null) => Promise<void>;
+  readonly assistantContextSessionId: () => Promise<string | undefined>;
   readonly sideChats: DurableSideChats;
   readonly catalog: ReturnType<typeof createDurableChatCatalog>;
 };
@@ -633,6 +634,9 @@ export async function createDurableCakeChatRuntime(
       if (!companion) throw new Error("Context transitions belong to the companion");
       return transitionAssistantContext(engine.root, context);
     },
+    assistantContextSessionId: async () =>
+      (await engine.harness.snapshot(AssistantContextDoc, engine.root.id, BACKGROUND_CONTEXT))
+        ?.context?.sessionId,
     importSideChatHistory: (input) => importDurableSideChatHistory(engine.root, input),
     get streaming() {
       return streaming;

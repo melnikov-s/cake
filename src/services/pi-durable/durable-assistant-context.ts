@@ -7,7 +7,7 @@ import {
 } from "../../contracts/cake-chats/assistant-context";
 
 export const ASSISTANT_CONTEXT_ENTRY = "cake.assistant-context/v1";
-const ContextDoc = defineDoc<{ context: AssistantContext | null }>({
+export const AssistantContextDoc = defineDoc<{ context: AssistantContext | null }>({
   kind: "cake.assistant-context",
   version: 1,
   scope: "conversation",
@@ -24,7 +24,7 @@ export async function transitionAssistantContext(
 ) {
   const next = await Schema.decodeUnknownPromise(Schema.NullOr(AssistantContext))(input);
   await root.commit(async (tx) => {
-    const state = await tx.doc(ContextDoc, root.id);
+    const state = await tx.doc(AssistantContextDoc, root.id);
     if (sameAssistantContext(state.context, next)) return;
     const lines = [
       ...(state.context ? ["Left context " + JSON.stringify(state.context) + "."] : []),
@@ -40,7 +40,10 @@ export async function transitionAssistantContext(
           timestamp: Date.now(),
           content:
             "Companion orientation metadata (not a user request; no reply needed).\n" +
-            lines.join("\n"),
+            lines.join("\n") +
+            (next
+              ? '\nFor requests about "this session", use sessionId: "parent" (the entered context above). sessions.schedule without sessionId targets your own companion conversation, not the viewed session. Context metadata is not authorization to act.'
+              : "\nThere is no invoking context; do not invent a parent target."),
         },
       ],
     });

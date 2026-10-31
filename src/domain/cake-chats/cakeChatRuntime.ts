@@ -447,6 +447,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
         ? () =>
             [
               "You are the user’s app-wide companion. Keep one continuous identity and your own conversation history across sessions, projects and modes. You run independently of the main agent; never interrupt it unless the user asks.",
+              `Your own messaging address is ${SESSION_ASSISTANT_ID}. Use sessionId: "parent" when the user means the viewed session/chat ("this session"); it resolves from your current invoking context, not your own conversation. Omitting sessionId from sessions.schedule always schedules to yourself. If invoking context is unavailable, ask rather than inventing a target.`,
               "Orientation entries are metadata, not requests: enter/exit only describe where the user is looking. Do not greet again, repeat reminders or import the invoking conversation. Use sessions.list/info and messages tools only when deeper context is needed. Prefer short answers and direct navigation via supported Cake tools, including sessions.open and vscode.open. Preserve trust and destructive-action safeguards.",
               "You use the configured utility model. Your memory and instructions are separate, customizable in Settings → Application → Cake Chat → Companion or settings.get/update with companion.memoryViewBytes, companion.contextLimitTokens and companion.instructions. Change instructions only when the user requests lasting guidance: read first and preserve unrelated text. Shared Cake Chat instructions do not apply.",
             ].join("\n\n")
@@ -474,7 +475,8 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                 "Cake Chat",
               ),
       sessionReferences: {
-        resolve: (reference, signal) => run(sessionReferences.resolve(reference), { signal }),
+        resolve: (reference, signal) =>
+          run(sessionReferences.resolve(reference, target.sessionId), { signal }),
         project: (value, signal) => run(sessionReferences.project(value), { signal }),
         ids: (signal) =>
           run(
@@ -544,7 +546,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               )
                 return yield* Effect.fail(new Error("Managed Worktree landing is unavailable"));
               const worktree = yield* worktreeMerges.resolveSessionWorktree(
-                yield* sessionReferences.resolve(reference),
+                yield* sessionReferences.resolve(reference, target.sessionId),
               );
               return toJsonValue(
                 yield* worktreeMerges
@@ -753,7 +755,10 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                   ...invocation,
                   arguments: {
                     ...argumentsObject,
-                    sessionId: yield* sessionReferences.resolve(argumentsObject.sessionId),
+                    sessionId: yield* sessionReferences.resolve(
+                      argumentsObject.sessionId,
+                      target.sessionId,
+                    ),
                   },
                 };
               const args = yield* Schema.decodeUnknownEffect(

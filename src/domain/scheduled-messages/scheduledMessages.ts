@@ -1,6 +1,7 @@
 import { DateTime, Effect, Schedule, Stream } from "effect";
 import {
   CAKE_CHAT_SESSION_ID,
+  SESSION_ASSISTANT_ID,
   isCakeChatSessionId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import * as projectSessionMetadata from "../project-sessions/projectSessionMetadata";
@@ -48,7 +49,7 @@ export const list = Effect.fn("ScheduledMessages.list")(function* (targetSession
 const validateTarget = Effect.fn("ScheduledMessages.validateTarget")(function* (
   targetSessionId: string,
 ) {
-  if (targetSessionId === CAKE_CHAT_SESSION_ID) return;
+  if (targetSessionId === CAKE_CHAT_SESSION_ID || targetSessionId === SESSION_ASSISTANT_ID) return;
   if (isCakeChatSessionId(targetSessionId)) {
     const projects = (yield* ApplicationState).snapshot().projects;
     if (projects.some((project) => projectChatSessionId(project.path) === targetSessionId)) return;

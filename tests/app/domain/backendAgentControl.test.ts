@@ -29,7 +29,11 @@ import {
 import type { SessionContextMetadata } from "../../../src/contracts/conversations/session-context-metadata";
 import { CakeChatConfiguration } from "../../../src/services/pi-durable/CakeChatConfiguration";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  SESSION_ASSISTANT_ID,
+} from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { CakeChatDurable } from "../../../src/services/pi-durable/CakeChatDurable";
 import {
   messageReference,
   parseSessionLink,
@@ -322,9 +326,13 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
         };
       }),
   }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
+  let companionContextSessionId: string | undefined;
   let storedSchedules: readonly ScheduledMessage[] = [];
   const dependencies = Layer.mergeAll(
     WorkflowTestLive,
+    Layer.mock(CakeChatDurable, {
+      assistantContextSessionId: () => Effect.sync(() => companionContextSessionId),
+    }),
     ScheduledMessages.layer.pipe(
       Layer.provide(
         Layer.succeed(ScheduledMessageStorage, {
@@ -500,6 +508,9 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
       pauseMessage = true;
     },
     prompts,
+    setCompanionContext: (sessionId: string | undefined) => {
+      companionContextSessionId = sessionId;
+    },
     received,
     deliveries,
     requests,
@@ -3235,6 +3246,274 @@ it.effect("Cake Chat keeps report policy and protected-task redaction without a 
     });
     expect(f.requestCalls).toEqual([]);
   }),
+);
+
+it.effect(
+  "parent schedules follow actual hierarchy, not creator links, while omitted targets stay self",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture(true);
+      yield* scheduledMessages.initialize().pipe(Effect.provide(f.context));
+      const families = Context.get(f.context, SessionFamilyStorage);
+      expect(
+        yield* f.call("sessions.schedule", {
+          sessionId: "parent",
+          text: "Top level",
+          delaySeconds: 30,
+        }),
+      ).toMatchObject({ ok: true, target: { sessionId: projectChatSessionId("/project") } });
+      yield* families.registerSpawn({
+        sessionId: source,
+        projectPath: "/project",
+        workingDirectory: "/project",
+        requester: {
+          kind: "cake-chat",
+          sessionId: CAKE_CHAT_SESSION_ID,
+          title: "Unrelated creator",
+        },
+        reportDelivered: true,
+        handoffSettled: true,
+      });
+      for (const [parentSessionId, childSessionId] of [
+        [source, target],
+        [target, third],
+      ] as const)
+        yield* families.addChild({
+          familyId: crypto.randomUUID(),
+          parentSessionId,
+          childSessionId,
+          parentWorkingDirectory: "/project",
+          childWorkingDirectory: "/project",
+          requestId: crypto.randomUUID(),
+          projectPath: "/project",
+          createdAt: "2026-01-01",
+        });
+      const projectChat = projectChatSessionId("/project");
+      for (const [sender, destination] of [
+        [{ ...caller, sessionId: third }, target],
+        [{ ...caller, sessionId: target }, source],
+        [caller, projectChat],
+        [
+          { kind: "cake-chat" as const, sessionId: projectChat, title: "Project Chat" },
+          CAKE_CHAT_SESSION_ID,
+        ],
+        [
+          { kind: "cake-chat" as const, sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+          CAKE_CHAT_SESSION_ID,
+        ],
+      ] as const) {
+        expect(
+          yield* f.direct(
+            "sessions.schedule",
+            { sessionId: "parent", text: "Hierarchy", delaySeconds: 30 },
+            sender,
+          ),
+        ).toMatchObject({
+          ok: true,
+          target: { sessionId: destination },
+          scheduledMessage: { targetSessionId: destination },
+        });
+        expect(
+          yield* f.direct("sessions.schedule", { text: "Self", delaySeconds: 30 }, sender),
+        ).toMatchObject({ ok: true, target: { sessionId: sender.sessionId } });
+      }
+      // Explicit parent self-resolution at the root never forwards or starts a self-thread.
+      expect(
+        yield* f.direct(
+          "sessions.send",
+          { sessionId: "parent", text: "No loop" },
+          { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+        ),
+      ).toMatchObject({ ok: false, error: "A session thread requires two different sessions." });
+      expect(yield* Queue.size(f.prompts)).toBe(0);
+    }),
+);
+
+it.effect("parent navigation resolves before the existing window permission boundary", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture(true);
+    const projectChat = projectChatSessionId("/project");
+    yield* f.requests.bind({ _tag: "ProjectSession", sessionId: source }, 11);
+    const opening = yield* f.call("sessions.open", { sessionId: "parent" }).pipe(Effect.forkChild);
+    const request = yield* Queue.take(f.deliveries);
+    assert.equal(request.event.type, "project-session-control-requested");
+    expect(f.requestCalls.at(-1)).toMatchObject({
+      command: "sessions.open",
+      input: { sessionId: projectChat },
+    });
+    const denied = { ok: false, command: "sessions.open", error: "Agent navigation is disabled" };
+    yield* f.requests.respondProjectControl(11, source, request.event.controlRequestId, denied);
+    expect(yield* Fiber.join(opening)).toEqual(denied);
+
+    const companion = yield* cakeChatRuntime
+      .acquireOptions({
+        configuration: {
+          location: { workingDirectory: "/chat", sessionDirectory: "/chats/companion" },
+          agentDirectory: "/agent",
+        },
+        target: { sessionId: SESSION_ASSISTANT_ID, tools: [] },
+        newSession: false,
+      })
+      .pipe(Effect.provide(f.context));
+    const control = companion.runtime.globalControl;
+    assert.ok(control);
+    f.setCompanionContext(target);
+    yield* f.requests.bind({ _tag: "CakeChatSession", sessionId: SESSION_ASSISTANT_ID }, 11);
+    const pending = yield* Effect.promise(() =>
+      control.invoke({ name: "sessions.open", arguments: { sessionId: "parent" } }, signal()),
+    ).pipe(Effect.forkChild);
+    const requests = yield* f.requests.cakeChatControlSnapshots(11).pipe(
+      Stream.filter((items) => items.length > 0),
+      Stream.runHead,
+    );
+    assert.ok(requests._tag === "Some" && requests.value[0]);
+    const chatRequest = requests.value[0];
+    expect(chatRequest.invocation).toEqual({
+      name: "sessions.open",
+      arguments: { sessionId: target },
+    });
+    // Changing the viewed session cannot change an already-admitted navigation request.
+    f.setCompanionContext(source);
+    yield* f.requests.respondCakeChatControl(11, chatRequest.controlRequestId, denied);
+    expect(yield* Fiber.join(pending)).toEqual(denied);
+  }),
+);
+
+it.effect(
+  "the projectless companion schedules to parent once, survives navigation, and can remind itself",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture(true);
+      const projectChat = projectChatSessionId("/project");
+      const companion = yield* cakeChatRuntime
+        .acquireOptions({
+          configuration: {
+            location: { workingDirectory: "/chat", sessionDirectory: "/chats/companion" },
+            agentDirectory: "/agent",
+          },
+          target: { sessionId: SESSION_ASSISTANT_ID, tools: [] },
+          newSession: false,
+        })
+        .pipe(Effect.provide(f.context));
+      const control = companion.runtime.globalControl;
+      assert.ok(control);
+      const call = (name: string, input: JsonObject) =>
+        Effect.promise(() => control.invoke({ name, arguments: input }, signal()));
+      yield* scheduledMessages.initialize().pipe(Effect.provide(f.context));
+      f.setCompanionContext(projectChat);
+      expect(
+        yield* call("sessions.schedule", { sessionId: "parent", text: "hello", delaySeconds: 30 }),
+      ).toMatchObject({
+        ok: true,
+        target: { sessionId: projectChat },
+        targetTitle: "Project / Project Chat",
+        scheduledMessage: { targetSessionId: projectChat, sendAt: "1970-01-01T00:00:30.000Z" },
+      });
+      // Original reported invocation now means a valid companion self-reminder, not Project Chat.
+      expect(
+        yield* call("sessions.schedule", { text: "Own reminder", delaySeconds: 60 }),
+      ).toMatchObject({
+        ok: true,
+        target: { sessionId: SESSION_ASSISTANT_ID },
+        targetTitle: "Companion",
+      });
+      expect(
+        yield* call("sessions.schedule", {
+          sessionId: SESSION_ASSISTANT_ID,
+          text: "Explicit self",
+          delaySeconds: 60,
+        }),
+      ).toMatchObject({ ok: true, targetTitle: "Companion" });
+      expect(f.storedSchedules()).toMatchObject([
+        { targetSessionId: projectChat, createdBySessionId: SESSION_ASSISTANT_ID },
+        { targetSessionId: SESSION_ASSISTANT_ID, createdBySessionId: SESSION_ASSISTANT_ID },
+        { targetSessionId: SESSION_ASSISTANT_ID, createdBySessionId: SESSION_ASSISTANT_ID },
+      ]);
+      f.setCompanionContext(target);
+      const worker = yield* Effect.forkScoped(
+        scheduledMessages.runWorker.pipe(Effect.provide(f.context)) as Effect.Effect<never>,
+      );
+      yield* TestClock.adjust("31 seconds");
+      const delivered = yield* Queue.take(f.prompts);
+      expect(delivered.sessionId).toBe(projectChat);
+      expect(parseScheduledMessage(delivered.text)).toMatchObject({
+        text: "hello",
+        origin: { createdBySessionId: SESSION_ASSISTANT_ID },
+      });
+      yield* Context.get(f.context, ScheduledMessages)
+        .changes()
+        .pipe(
+          Stream.filter((s) => s.messages.length === 2),
+          Stream.runHead,
+        );
+      yield* TestClock.adjust("30 seconds");
+      expect((yield* Queue.take(f.prompts)).sessionId).toBe(SESSION_ASSISTANT_ID);
+      expect((yield* Queue.take(f.prompts)).sessionId).toBe(SESSION_ASSISTANT_ID);
+      yield* Fiber.interrupt(worker);
+      expect(yield* Queue.size(f.prompts)).toBe(0);
+    }),
+);
+
+it.effect(
+  "companion parent requires valid context and keeps target validation and sending defaults",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture(true);
+      const sender = {
+        kind: "cake-chat" as const,
+        sessionId: SESSION_ASSISTANT_ID,
+        title: "Companion",
+      };
+      yield* scheduledMessages.initialize().pipe(Effect.provide(f.context));
+      const schedule = () =>
+        f.direct(
+          "sessions.schedule",
+          { sessionId: "parent", text: "hello", delaySeconds: 30 },
+          sender,
+        );
+      expect(yield* schedule()).toMatchObject({
+        ok: false,
+        error: "Companion invoking context is unavailable",
+      });
+      f.setCompanionContext("parent");
+      expect(yield* schedule()).toMatchObject({
+        ok: false,
+        error: "Companion invoking context has no valid session identity",
+      });
+      f.setCompanionContext(projectChatSessionId("/unregistered"));
+      expect(yield* schedule()).toMatchObject({
+        ok: false,
+        error: "Project Chat belongs to no registered project",
+      });
+      f.setCompanionContext("00000000-0000-4000-8000-000000000099");
+      expect(yield* schedule()).toMatchObject({ ok: false });
+      expect(f.storedSchedules()).toEqual([]);
+      f.setCompanionContext(target);
+      expect(yield* schedule()).toMatchObject({ ok: true, target: { sessionId: target } });
+      expect(
+        yield* f.direct(
+          "sessions.send",
+          { sessionId: "parent", text: "Viewed session", resultDelivery: "ignore" },
+          sender,
+        ),
+      ).toMatchObject({ ok: true, target: { sessionId: target } });
+      expect((yield* Queue.take(f.prompts)).sessionId).toBe(target);
+      // Required targets remain required; adding parent does not make other tools default to self.
+      expect(
+        yield* f.direct("sessions.send", { text: "Missing target" }, sender).pipe(Effect.result),
+      ).toMatchObject({ _tag: "Failure" });
+      expect(yield* f.direct("sessions.info", {}, sender).pipe(Effect.result)).toMatchObject({
+        _tag: "Failure",
+      });
+      expect(
+        yield* f.direct(
+          "sessions.schedule",
+          { sessionId: "current", text: "No alias", delaySeconds: 30 },
+          sender,
+        ),
+      ).toMatchObject({ ok: false });
+      expect(f.requestCalls).toEqual([]);
+    }),
 );
 
 it.effect(

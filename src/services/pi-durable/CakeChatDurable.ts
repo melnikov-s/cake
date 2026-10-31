@@ -33,6 +33,7 @@ export class CakeChatDurable extends Context.Service<
       context: AssistantContext | null,
       connectionId: number,
     ) => Effect.Effect<void, DurableChatError>;
+    readonly assistantContextSessionId: () => Effect.Effect<string | undefined, DurableChatError>;
     readonly releaseConnection: (connectionId: number) => Effect.Effect<void, DurableChatError>;
     readonly requestHistory: (sessionId?: string) => Effect.Effect<RequestInspectionHistory>;
     readonly requestPayload: (
@@ -111,6 +112,10 @@ export const makeCakeChatDurableLive = (
           await runtime.assistantContext(context);
           companionOwner = context ? connectionId : undefined;
         }),
+      assistantContextSessionId: () =>
+        operation("assistantContextSessionId", async () =>
+          live.get(SESSION_ASSISTANT_ID)?.assistantContextSessionId(),
+        ),
       releaseConnection: (connectionId) =>
         operation("releaseConnection", async () => {
           if (companionOwner !== connectionId) return;

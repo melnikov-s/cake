@@ -163,7 +163,10 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
   let targetSessionId: string;
   let replyToMessageId = args.replyToMessageId;
   if (invocation.name === "sessions.send") {
-    targetSessionId = yield* sessionReferences.resolve(invocation.arguments.sessionId);
+    targetSessionId = yield* sessionReferences.resolve(
+      invocation.arguments.sessionId,
+      caller.sessionId,
+    );
     if (
       thread &&
       invocation.arguments.maxMessages !== undefined &&

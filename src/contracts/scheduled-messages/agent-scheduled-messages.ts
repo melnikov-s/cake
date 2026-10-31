@@ -1,4 +1,8 @@
 import { Schema } from "effect";
+import {
+  sessionParentGuidance,
+  sessionTargetDescription,
+} from "../project-sessions/session-reference";
 import { AgentListInput, agentListLabel, agentListPage } from "../agent/agent-list-data";
 import { ScheduleRepeatSeconds, ScheduledMessage } from "./scheduled-message-data";
 
@@ -8,8 +12,7 @@ const timestampInput = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLe
 export const AgentScheduleInput = Schema.Struct({
   sessionId: Schema.optionalKey(
     Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
-      description:
-        "Target Project Session ID or suffix, cake-chat, or project-chat:<hash>. Omit to schedule to the calling conversation itself.",
+      description: `${sessionTargetDescription} Omit to schedule to the calling conversation itself, including the Companion, not its viewed session.`,
     }),
   ),
   text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
@@ -36,6 +39,8 @@ export type AgentScheduleInput = typeof AgentScheduleInput.Type;
 export const agentScheduleSummary =
   "Schedule a one-off or recurring message to yourself, Cake Chat, a Project Chat, or a Project Session; it wakes the target when due.";
 export const agentScheduleGuidance = [
+  sessionParentGuidance,
+  'The Companion uses sessionId: "parent" for "this session"; omission always targets its own chat. The concrete resolved destination is returned and stored, so later navigation does not retarget a schedule.',
   "Omit sessionId to schedule to the calling conversation (a self-reminder or check-in); Cake Chat, Project Chats and Project Sessions all work. Other targets accept cake-chat, project-chat:<hash> or a Project Session reference.",
   "Give sendAt (ISO) or delaySeconds for a one-off. Add repeatEverySeconds for a recurring check-in (optional repeatUntil); it keeps one ID and one pending entry.",
   "Schedules survive restart. sessions.scheduled lists them; sessions.cancel-scheduled stops one, including a recurring check-in when its task finishes or the user pauses it.",

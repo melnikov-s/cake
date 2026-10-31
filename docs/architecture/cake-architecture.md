@@ -197,6 +197,11 @@ projections needed by a surface. References do not transfer ownership.
   (session ID/title and mode), including disconnect cleanup; ordinary messages add no
   reminder and transitions never wake or interrupt an agent. Deeper session context and
   navigation use existing validated Cake tools, with unchanged trust and action safeguards.
+  Explicit session target `parent` resolves at admission: companion → current invoking
+  context, child → actual family parent, top-level Project Session → owning Project
+  Chat, Project Chat → Cake Chat, Cake Chat → itself. Creator/source links are not
+  ancestry; absent companion context fails rather than guessing. Schedules persist
+  the concrete destination, and omitted scheduling targets always mean caller/self.
 - Agent discovery follows list → inspect → bounded read. Lists return exact routing
   identities, short labels and selection-relevant metadata, not content, transcripts,
   full settings, file manifests or reports. Apply domain filters and deterministic

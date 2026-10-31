@@ -2,6 +2,7 @@ import { DateTime, Effect, Option } from "effect";
 import type { BackendAgentInvocation } from "../../contracts/application/backend-agent-control";
 import {
   CAKE_CHAT_SESSION_ID,
+  SESSION_ASSISTANT_ID,
   isCakeChatSessionId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import {
@@ -71,6 +72,7 @@ function scheduleTiming(input: AgentScheduleInput, now: number): ScheduleTiming 
 
 const targetTitle = Effect.fn("ScheduledMessageControl.targetTitle")(function* (sessionId: string) {
   if (sessionId === CAKE_CHAT_SESSION_ID) return "Cake Chat";
+  if (sessionId === SESSION_ASSISTANT_ID) return "Companion";
   if (isCakeChatSessionId(sessionId)) {
     const project = (yield* ApplicationState)
       .snapshot()
@@ -98,7 +100,7 @@ export const invoke = Effect.fn("ScheduledMessageControl.invoke")(
         const targetSessionId =
           input.sessionId === undefined
             ? caller.sessionId
-            : yield* sessionReferences.resolve(input.sessionId);
+            : yield* sessionReferences.resolve(input.sessionId, caller.sessionId);
         const timing = scheduleTiming(input, DateTime.toEpochMillis(yield* DateTime.now));
         if (timing.error !== undefined) return fail(timing.error);
         const message = yield* scheduledMessages
@@ -131,7 +133,7 @@ export const invoke = Effect.fn("ScheduledMessageControl.invoke")(
         const sessionId =
           input.sessionId === undefined
             ? undefined
-            : yield* sessionReferences.resolve(input.sessionId);
+            : yield* sessionReferences.resolve(input.sessionId, caller.sessionId);
         return toJsonValue({
           ok: true,
           command,

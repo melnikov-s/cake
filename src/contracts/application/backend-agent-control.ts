@@ -10,6 +10,7 @@ import { PendingReportAcknowledge, PendingReportRead } from "../conversations/pe
 import { CompletionInboxUpdate } from "../conversations/completion-inbox";
 import { ResultDelivery } from "../conversations/result-delivery";
 import { Schema } from "effect";
+import { sessionTargetDescription } from "../project-sessions/session-reference";
 import { SessionLabelColor } from "./application-data";
 import {
   CurrentProjectSettingsGetInput,
@@ -36,7 +37,7 @@ const bounded = (min: number, max: number) =>
 const trimmed = (min: number, max: number) =>
   Schema.Trim.check(Schema.isMinLength(min), Schema.isMaxLength(max));
 const id = Schema.String.check(Schema.isUUID(4));
-const target = { sessionId: bounded(1, 256) };
+const target = { sessionId: bounded(1, 256).annotate({ description: sessionTargetDescription }) };
 const message = {
   promptFiles: Schema.optionalKey(promptFilesSchema),
   resultDelivery: Schema.optionalKey(ResultDelivery),
