@@ -118,6 +118,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   @child get cakeChat(): CakeChatSettingsStore {
     return createStore(CakeChatSettingsStore);
   }
+  @child get companion(): CakeChatSettingsStore {
+    return createStore(CakeChatSettingsStore, { companion: true });
+  }
   @child get cakeChatOverlay(): CakeChatOverlaySettingsStore {
     return createStore(CakeChatOverlaySettingsStore);
   }
@@ -173,6 +176,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     return [
       ...settingsSectionError("experimental", this.experimental),
       ...settingsSectionError("cake-chat", this.cakeChat),
+      ...settingsSectionError("cake-chat", this.companion),
       ...(this.providers.error ? [this.providers.error] : []),
       ...settingsSectionError(this.nonChatModels.errorSection, this.nonChatModels),
       ...settingsSectionError("models", this.utilityModel),
@@ -268,6 +272,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     this.modelPresets.applyApplicationState(revision, state);
     this.cakePrompts.applyApplicationState(revision, state);
     this.cakeChat.applyApplicationState(revision, state);
+    this.companion.applyApplicationState(revision, state);
     this.globalInstructions.applyApplicationState(revision, state);
     this.globalLabels.applyApplicationState(revision, state);
   }

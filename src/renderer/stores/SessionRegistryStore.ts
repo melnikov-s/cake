@@ -9,7 +9,6 @@ import {
   updateStore,
 } from "r-state-tree";
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
-import type { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
 import type { Conversation } from "../models/Conversation";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
@@ -43,7 +42,6 @@ export interface SessionRegistryStoreProps {
   worktreeOperation(workspacePath: string): typeof WorktreeLandingOperation.Encoded | undefined;
   persistNow(): Promise<void>;
   modelPresets?(): readonly ModelPreset[];
-  assistantTools?(): readonly CakeControlTool[];
   openModelPresetSettings?(): void;
   retirement: WorktreeStoreProps["retirement"];
 }
@@ -110,7 +108,6 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
           this.props.catalog?.find(target.sessionId)?.familyId ??
           this.pendingSessions.familyId(target.sessionId),
         modelPresets: () => this.props.modelPresets?.() ?? [],
-        assistantTools: () => this.props.assistantTools?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
         retirement: this.props.retirement,
       }),

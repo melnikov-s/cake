@@ -1,3 +1,4 @@
+import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { AgentActionNotice } from "../../contracts/application/agent-action-notice";
 import { Store, child, createStore, untracked } from "r-state-tree";
 import type {
@@ -9,10 +10,7 @@ import type {
   ProjectSessionControlInvocation,
 } from "../../contracts/project-sessions/project-session-data";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
-import {
-  AppControlBridge,
-  listSessionAssistantControlTools,
-} from "../app-control/AppControlBridge";
+import { AppControlBridge } from "../app-control/AppControlBridge";
 import type { AgentControlSource, AppControlHost } from "../app-control/app-control-data";
 import type { Client } from "../client/Client";
 import { AppControlOperationStore } from "./AppControlOperationStore";
@@ -40,6 +38,7 @@ export class ApplicationControlStore extends Store<{
   operations: Pick<SessionOperationCoordinatorStore, "finish" | "start">;
   cakeChatRequests(): readonly CakeChatControlRequest[];
   projectContext(sessionId: string): ProjectControlContext;
+  assistantSource?(): AgentControlSource | undefined;
   forkProjectSession(sessionId: string, invocation: ForkSessionInvocation): Promise<JsonValue>;
   presentForkSession(invocation: PresentForkSessionInvocation): Promise<JsonValue>;
   openProjectChildSession(
@@ -79,10 +78,6 @@ export class ApplicationControlStore extends Store<{
 
   tools(): ReadonlyArray<CakeControlTool> {
     return this.bridge.listTools();
-  }
-
-  sessionAssistantTools(): ReadonlyArray<CakeControlTool> {
-    return listSessionAssistantControlTools();
   }
 
   invoke(invocation: JsonValue, source?: AgentControlSource): Promise<JsonValue> {
@@ -177,18 +172,25 @@ export class ApplicationControlStore extends Store<{
     const chat = this.props.host.state
       .cakeChatSessions()
       .find((session) => session.sessionId === request.sessionId);
+    const contextSource =
+      request.sessionId === SESSION_ASSISTANT_ID && request.invocation.name.startsWith("vscode.")
+        ? this.props.assistantSource?.()
+        : undefined;
     const result = await this.bridge
-      .invoke(request.invocation, {
-        kind: "cake-chat",
-        sessionId: request.sessionId,
-        ...(chat?.projectPath
-          ? { projectPath: chat.projectPath, workingDirectory: chat.projectPath }
-          : null),
-        title:
-          this.props.host.state
-            .cakeChatSessions()
-            .find((session) => session.sessionId === request.sessionId)?.title ?? "Cake Chat",
-      })
+      .invoke(
+        request.invocation,
+        contextSource ?? {
+          kind: "cake-chat",
+          sessionId: request.sessionId,
+          ...(chat?.projectPath
+            ? { projectPath: chat.projectPath, workingDirectory: chat.projectPath }
+            : null),
+          title:
+            this.props.host.state
+              .cakeChatSessions()
+              .find((session) => session.sessionId === request.sessionId)?.title ?? "Cake Chat",
+        },
+      )
       .catch((error) => ({
         ok: false,
         command: request.invocation.name,

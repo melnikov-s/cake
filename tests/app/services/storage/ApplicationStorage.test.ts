@@ -268,6 +268,9 @@ describe("ApplicationStorage", () => {
             const updates: SettingsUpdateInput[] = [
               { key: "cakeChat.contextLimitTokens", value: 128_000 },
               { key: "cakeChat.memoryViewBytes", value: 20_000 },
+              { key: "companion.contextLimitTokens", value: 64_000 },
+              { key: "companion.memoryViewBytes", value: 5_000 },
+              { key: "companion.instructions", value: "Companion guidance only." },
               {
                 key: "cakeChat.summarizationModel",
                 value: { source: "preset", presetId: preset.id },

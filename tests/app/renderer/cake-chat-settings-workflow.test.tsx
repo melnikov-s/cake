@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { defaultAssistantPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
 import { defaultCakeChatPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
 import type { Client } from "../../../src/renderer/client/Client";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";
@@ -63,6 +64,70 @@ it("persists the active context limit, memory budget and dedicated instructions 
       ),
     );
     expect(screen.getByDisplayValue("Always create worktrees.")).toBe(instructions);
+  } finally {
+    view.unmount();
+  }
+});
+
+it("persists companion customization separately from shared chats and restores it on reopen", async () => {
+  let state = {
+    ...defaultApplicationState(),
+    cakeChatPreferences: { ...defaultCakeChatPreferences(), instructions: "Only main chats" },
+  };
+  const save = vi.fn<Client["workspaces"]["setCakeChatPreferences"]>(
+    async (preferences, _options, companion) => {
+      expect(companion).toBe(true);
+      state = { ...state, assistantPreferences: preferences };
+      return state;
+    },
+  );
+  {
+    using fixture = createRendererStoreFixture({
+      client: { workspaces: { setCakeChatPreferences: save } },
+    });
+    fixture.root.settingsStore.applyApplicationState(1, state);
+    fixture.root.settingsStore.selectPage("cake-chat");
+    const view = render(<SettingsPage settings={fixture.root.settingsStore} />);
+    try {
+      const user = userEvent.setup();
+      const budget = screen.getByRole("combobox", { name: "Companion history-view budget" });
+      expect(budget).toHaveProperty("value", "10000");
+      expect(
+        screen.getByRole("combobox", { name: "Companion active context limit" }),
+      ).toHaveProperty("value", "32000");
+      await user.selectOptions(budget, "5000");
+      const instructions = screen.getByRole("textbox", { name: "Companion instructions" });
+      await user.type(instructions, "Be brief.");
+      await user.tab();
+      await waitFor(() =>
+        expect(state.assistantPreferences).toEqual({
+          ...defaultAssistantPreferences(),
+          memoryViewBytes: 5_000,
+          instructions: "Be brief.",
+        }),
+      );
+      expect(state.cakeChatPreferences.instructions).toBe("Only main chats");
+    } finally {
+      view.unmount();
+    }
+  }
+  using reopened = createRendererStoreFixture();
+  reopened.root.settingsStore.applyApplicationState(1, state);
+  reopened.root.settingsStore.selectPage("cake-chat");
+  const view = render(<SettingsPage settings={reopened.root.settingsStore} />);
+  try {
+    expect(screen.getByRole("textbox", { name: "Companion instructions" })).toHaveProperty(
+      "value",
+      "Be brief.",
+    );
+    expect(screen.getByRole("combobox", { name: "Companion history-view budget" })).toHaveProperty(
+      "value",
+      "5000",
+    );
+    expect(screen.getByRole("combobox", { name: "Cake Chat history-view budget" })).toHaveProperty(
+      "value",
+      "40000",
+    );
   } finally {
     view.unmount();
   }

@@ -3,7 +3,7 @@ import { piSettingUpdateSchema, type PiSettingUpdate } from "../conversations/se
 import { CakeModelChoice } from "../model-presets/cake-model-selection";
 import { NonChatModelReference } from "../models/non-chat-model-data";
 import { CakePrompts } from "./cake-prompt-data";
-import { UtilityModel } from "./application-data";
+import { CakeChatPreferences, UtilityModel } from "./application-data";
 import {
   CAKE_CHAT_CONTEXT_LIMIT_CHOICES,
   CAKE_CHAT_MEMORY_VIEW_CHOICES,
@@ -274,6 +274,30 @@ export const settingsCatalog: readonly SettingDefinition[] = [
     description: "Used when Cake Chat starts a subagent without choosing a model.",
     value: CakeModelChoice,
     type: modelChoiceType,
+  }),
+  setting({
+    key: "companion.contextLimitTokens",
+    category: "Cake Chat",
+    label: "Companion active context limit",
+    description:
+      "Independent companion context limit. Uses the utility model; does not change other permanent chats.",
+    value: Schema.Literals(CAKE_CHAT_CONTEXT_LIMIT_CHOICES),
+  }),
+  setting({
+    key: "companion.memoryViewBytes",
+    category: "Cake Chat",
+    label: "Companion history-view budget",
+    description:
+      "Independent companion OptMem budget in bytes, consolidating toward half. Originals remain available.",
+    value: Schema.Literals(CAKE_CHAT_MEMORY_VIEW_CHOICES),
+  }),
+  setting({
+    key: "companion.instructions",
+    category: "Cake Chat",
+    label: "Companion instructions",
+    description:
+      "Dedicated companion guidance, not shared Cake Chat instructions. Change only at the user's request for lasting guidance; read first and preserve unrelated text.",
+    value: CakeChatPreferences.fields.instructions,
   }),
   setting({
     key: "models.defaultPreset",

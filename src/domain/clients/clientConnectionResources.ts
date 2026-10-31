@@ -1,3 +1,4 @@
+import { CakeChatDurable } from "../../services/pi-durable/CakeChatDurable";
 import { Effect, Option } from "effect";
 import { AttachmentUploads } from "../../services/filesystem/AttachmentUploads";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
@@ -19,6 +20,7 @@ export const releaseConnectionResources = Effect.fn("clients.releaseConnectionRe
     const vscode = yield* Effect.serviceOption(VsCodeServer);
     const uploads = yield* Effect.serviceOption(AttachmentUploads);
     const widgets = yield* Effect.serviceOption(InlineWidgets);
+    const durable = yield* Effect.serviceOption(CakeChatDurable);
     yield* Effect.all(
       [
         Option.isSome(terminal)
@@ -35,6 +37,15 @@ export const releaseConnectionResources = Effect.fn("clients.releaseConnectionRe
         Option.isSome(vscode) ? vscode.value.releaseConnection(owner) : Effect.void,
         Option.isSome(uploads) ? uploads.value.releaseConnection(owner) : Effect.void,
         Option.isSome(widgets) ? widgets.value.releaseConnection(owner) : Effect.void,
+        Option.isSome(durable)
+          ? durable.value
+              .releaseConnection(owner)
+              .pipe(
+                Effect.catch((error) =>
+                  Effect.logWarning("Companion disconnect cleanup failed", error),
+                ),
+              )
+          : Effect.void,
       ],
       { concurrency: "unbounded", discard: true },
     );

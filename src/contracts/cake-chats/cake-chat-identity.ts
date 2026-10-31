@@ -5,9 +5,14 @@ export const CAKE_CHAT_SESSION_ID = "ca4ec4a7-0000-4000-8000-000000000001";
  * global Cake Chat; Project Chats have their own explicit session addresses. */
 export const CAKE_CHAT_REFERENCE = "cake-chat";
 
+/** One app-wide companion, backed by its own permanent Durable conversation. */
+export const SESSION_ASSISTANT_ID = "ca4ec4a7-0000-4000-8000-000000000002";
+
 export const PROJECT_CHAT_PREFIX = "project-chat:";
 export const isCakeChatSessionId = (sessionId: string) =>
-  sessionId === CAKE_CHAT_SESSION_ID || /^project-chat:[a-f0-9]{64}$/.test(sessionId);
+  sessionId === CAKE_CHAT_SESSION_ID ||
+  sessionId === SESSION_ASSISTANT_ID ||
+  /^project-chat:[a-f0-9]{64}$/.test(sessionId);
 
 const SIDE_CHAT_SEPARATOR = ":side-chat:";
 export const cakeChatSideChatParentId = (sessionId: string | undefined) => {

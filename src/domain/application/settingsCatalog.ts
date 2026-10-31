@@ -25,6 +25,7 @@ import {
   DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS,
   cakeChatModelSettingDefaults,
   defaultCakeChatPreferences,
+  defaultAssistantPreferences,
 } from "../../contracts/cake-chats/cake-chat-preferences";
 import { CakeModelChoice } from "../../contracts/model-presets/cake-model-selection";
 import { NonChatModelReference } from "../../contracts/models/non-chat-model-data";
@@ -79,6 +80,10 @@ function piValue(settings: PiSettingsValue, key: string): JsonValue {
 }
 
 function applicationValue(state: ApplicationStateValue, key: string) {
+  const companion = state.assistantPreferences ?? defaultAssistantPreferences();
+  if (key === "companion.instructions") return companion.instructions;
+  if (key === "companion.memoryViewBytes") return companion.memoryViewBytes;
+  if (key === "companion.contextLimitTokens") return companion.contextLimitTokens ?? 32_000;
   const chat = state.cakeChatPreferences ?? defaultCakeChatPreferences();
   const prompt = key.startsWith("prompts.") ? key.slice("prompts.".length) : undefined;
   if (prompt !== undefined)
@@ -126,7 +131,12 @@ function defaultValue(key: string, piDefaults: PiSettingsValue | undefined) {
     case "cakeChat.subagentDefaultModel":
       return cakeChatModelSettingDefaults.subagentDefaultModel;
     case "instructions.global":
+    case "companion.instructions":
       return "";
+    case "companion.memoryViewBytes":
+      return defaultAssistantPreferences().memoryViewBytes;
+    case "companion.contextLimitTokens":
+      return defaultAssistantPreferences().contextLimitTokens;
     case "experimental.dynamicWorkflows":
       return false;
   }
@@ -255,6 +265,28 @@ const write = Effect.fn("SettingsCatalog.write")(function* (key: string, value: 
     return;
   }
   switch (key) {
+    case "companion.contextLimitTokens": {
+      const contextLimitTokens = yield* typed(
+        CakeChatPreferences.fields.contextLimitTokens,
+        key,
+        value,
+      );
+      yield* application.updateAssistantPreferences((current) => ({
+        ...current,
+        contextLimitTokens,
+      }));
+      return;
+    }
+    case "companion.memoryViewBytes": {
+      const memoryViewBytes = yield* typed(CakeChatPreferences.fields.memoryViewBytes, key, value);
+      yield* application.updateAssistantPreferences((current) => ({ ...current, memoryViewBytes }));
+      return;
+    }
+    case "companion.instructions": {
+      const instructions = yield* typed(CakeChatPreferences.fields.instructions, key, value);
+      yield* application.updateAssistantPreferences((current) => ({ ...current, instructions }));
+      return;
+    }
     case "cakeChat.contextLimitTokens": {
       const contextLimitTokens = yield* typed(
         CakeChatPreferences.fields.contextLimitTokens,

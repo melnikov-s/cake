@@ -1,5 +1,5 @@
 import { Context, Layer, Schema, type Effect } from "effect";
-import type { ReviewParentContext, StagedParentMessage } from "../pi/runtime/sidecar-runtime";
+import type { ReviewParentContext, SideChatContextMessage } from "../pi/runtime/sidecar-runtime";
 import type { DiscussionAnchor } from "../../contracts/discussion-sessions/discussion-session-data";
 
 export interface DiscussionSessionRecord {
@@ -60,7 +60,7 @@ export interface DiscussionSessionEnvironmentService {
   readonly location: (
     record: DiscussionSessionRecord,
   ) => Effect.Effect<DiscussionSessionLocation, DiscussionSessionEnvironmentError>;
-  /** The sidecar's system prompt; it references the projection path and never changes per turn. */
+  /** The sidecar system prompt references its bounded parent projection. */
   readonly sidecarSystemPrompt: (
     record: DiscussionSessionRecord,
   ) => Effect.Effect<string, DiscussionSessionEnvironmentError>;
@@ -69,18 +69,13 @@ export interface DiscussionSessionEnvironmentService {
     record: DiscussionSessionRecord,
     parent: ReviewParentContext,
   ) => Effect.Effect<void, DiscussionSessionEnvironmentError>;
-  /** Writes the projection from renderer-held messages while the parent is still staged. */
-  readonly prepareStagedParentContext: (
-    record: DiscussionSessionRecord,
-    messages: ReadonlyArray<StagedParentMessage>,
-  ) => Effect.Effect<void, DiscussionSessionEnvironmentError>;
   /**
    * Writes the Cake Chat conversation through a side chat's branch point once,
    * when the side chat starts; the sidecar's system prompt inlines it.
    */
   readonly prepareCakeChatBranchContext: (
     record: DiscussionSessionRecord,
-    messages: ReadonlyArray<StagedParentMessage>,
+    messages: ReadonlyArray<SideChatContextMessage>,
   ) => Effect.Effect<void, DiscussionSessionEnvironmentError>;
   readonly refreshParentIndex: (
     record: DiscussionSessionRecord,

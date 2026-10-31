@@ -1,5 +1,4 @@
 import { Store, child, createStore } from "r-state-tree";
-import { isSessionAssistantThread } from "../../contracts/discussion-sessions/discussion-session-data";
 import type { ModelPreset, UiPart } from "../../contracts/conversations/session-contract";
 import type { ReviewThread } from "../models/ReviewThread";
 import type { Conversation } from "../models/Conversation";
@@ -35,11 +34,6 @@ export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
     return this.thread.id;
   }
 
-  /** The parent's assistant side chat, as opposed to a user-opened side chat. */
-  get isSessionAssistant() {
-    return isSessionAssistantThread(this.thread);
-  }
-
   /** The sidecar Pi Session ID every shared conversation operation addresses. */
   get sessionId() {
     return this.props.model.sessionId;
@@ -63,7 +57,7 @@ export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
 
   @child
   get mergeStore(): SideChatMergeStore | undefined {
-    if (!this.props.parentBusy || this.isSessionAssistant) return undefined;
+    if (!this.props.parentBusy) return undefined;
     return createStore(SideChatMergeStore, {
       thread: this.thread,
       parentBusy: this.props.parentBusy,
@@ -108,19 +102,13 @@ export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
       chat: {
         history: this.history,
         commands: () => [],
-        placeholder: () =>
-          this.isSessionAssistant ? "Ask the session assistant…" : "Ask a follow-up…",
-        // The assistant always runs on the utility model, which the runtime
-        // reapplies on every acquisition, so offering a picker would mislead.
-        modelPickerVisible: () => !this.isSessionAssistant,
+        placeholder: () => "Ask a follow-up…",
         inputLabel: () =>
-          this.isSessionAssistant
-            ? "Message session assistant"
-            : this.thread.anchor.view === "message" || this.thread.anchor.view === "artifact"
-              ? "Reply to selection side chat"
-              : this.thread.anchor.view === "session"
-                ? "Reply to side chat"
-                : "Reply to code chat",
+          this.thread.anchor.view === "message" || this.thread.anchor.view === "artifact"
+            ? "Reply to selection side chat"
+            : this.thread.anchor.view === "session"
+              ? "Reply to side chat"
+              : "Reply to code chat",
         leadingParts: () => this.anchorParts,
         suggestFiles: (prefix) =>
           this.conversationSessionStore.composerStore.draftStore.suggestFiles(prefix),

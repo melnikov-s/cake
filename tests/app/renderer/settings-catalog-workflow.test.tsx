@@ -169,7 +169,7 @@ describe("settings catalog through the cake tool", () => {
     });
 
     const overview = Schema.decodeUnknownSync(Overview)(await h.call("settings.list"));
-    expect(overview.categories).toContainEqual({ category: "Cake Chat", settings: 4, changed: 0 });
+    expect(overview.categories).toContainEqual({ category: "Cake Chat", settings: 7, changed: 0 });
     expect(overview.categories).toContainEqual({
       category: "Instructions & prompts",
       settings: 7,
@@ -188,7 +188,7 @@ describe("settings catalog through the cake tool", () => {
         { signal: new AbortController().signal, toolCallId: "text", runtime: {} },
       )
     ).text;
-    expect(text).toContain("Cake Chat\t4\t0");
+    expect(text).toContain("Cake Chat\t7\t0");
     expect(text.length).toBeLessThan(1_500);
 
     const chat = Schema.decodeUnknownSync(Rows)(
@@ -199,6 +199,9 @@ describe("settings catalog through the cake tool", () => {
       "cakeChat.memoryViewBytes",
       "cakeChat.summarizationModel",
       "cakeChat.subagentDefaultModel",
+      "companion.contextLimitTokens",
+      "companion.memoryViewBytes",
+      "companion.instructions",
     ]);
     // Unchanged settings omit their default.
     expect(chat.settings[0]).toEqual({
@@ -220,6 +223,28 @@ describe("settings catalog through the cake tool", () => {
     );
     expect(search.settings.map((setting) => setting.key)).toContain("cakeChat.contextLimitTokens");
     expect(search.settings.map((setting) => setting.key)).not.toContain("pi.transport");
+  });
+
+  it("updates dedicated companion preferences without changing shared chat defaults", async () => {
+    await using h = await fixture();
+    expect(await h.call("settings.get", { key: "companion.memoryViewBytes" })).toMatchObject({
+      value: 10_000,
+      default: 10_000,
+    });
+    await h.call("settings.update", { key: "companion.memoryViewBytes", value: 5_000 });
+    await h.call("settings.update", { key: "companion.instructions", value: "Keep it brief." });
+    expect(await h.call("settings.get", { key: "companion.memoryViewBytes" })).toMatchObject({
+      value: 5_000,
+    });
+    expect(await h.call("settings.get", { key: "companion.instructions" })).toMatchObject({
+      value: "Keep it brief.",
+    });
+    expect(await h.call("settings.get", { key: "cakeChat.memoryViewBytes" })).toMatchObject({
+      value: 40_000,
+    });
+    expect(await h.call("settings.get", { key: "cakeChat.contextLimitTokens" })).toMatchObject({
+      value: 300_000,
+    });
   });
 
   it("gets one setting with description, type, full value and default", async () => {

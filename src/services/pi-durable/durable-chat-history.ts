@@ -1,3 +1,4 @@
+import { ASSISTANT_CONTEXT_ENTRY } from "./durable-assistant-context";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
   LiveDoc,
@@ -78,66 +79,83 @@ export async function readDurableOriginalPage(
       .slice()
       .reverse()
       .flatMap((entry): SessionEntry[] =>
-        entry.kind === DURABLE_SIDE_CHAT_IMPORT
+        entry.kind === ASSISTANT_CONTEXT_ENTRY
           ? [
               {
-                type: "custom" as const,
+                type: "custom_message" as const,
                 id: String(entry.id),
                 parentId: null,
                 timestamp: new Date().toISOString(),
-                customType: DURABLE_SIDE_CHAT_IMPORT,
-                data: entry.data,
+                customType: "Companion context",
+                content: Schema.decodeUnknownSync(Schema.Struct({ text: Schema.String }))(
+                  entry.data,
+                ).text,
+                display: true,
               },
             ]
-          : ["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind)
-            ? (entry.model ?? []).flatMap((message) => {
-                const presentation =
-                  message.role === "user"
-                    ? durableInputPresentation(
-                        typeof message.content === "string"
-                          ? message.content
-                          : message.content
-                              .flatMap((block) => (block.type === "text" ? [block.text] : []))
-                              .join("\n"),
-                      )
-                    : undefined;
-                return message.role === "system"
-                  ? []
-                  : [
-                      ...(presentation?.internal
-                        ? [
-                            {
-                              type: "custom" as const,
-                              id: `internal-${entry.id}`,
-                              parentId: null,
-                              timestamp: new Date(message.timestamp).toISOString(),
-                              customType: internalInputEntryType,
-                              data: { timestamp: message.timestamp, origin: presentation.internal },
-                            },
-                          ]
-                        : []),
-                      {
-                        type: "message" as const,
-                        id: String(entry.id),
-                        parentId: null,
-                        timestamp: new Date(message.timestamp).toISOString(),
-                        message: withoutDurableInputPresentation(message, { display: true }),
-                      },
-                      ...(presentation?.markdown
-                        ? [
-                            {
-                              type: "custom" as const,
-                              id: `presentation-${entry.id}`,
-                              parentId: null,
-                              timestamp: new Date(message.timestamp).toISOString(),
-                              customType: userMessagePresentationEntryType,
-                              data: { targetId: String(entry.id), renderAs: "markdown" },
-                            },
-                          ]
-                        : []),
-                    ];
-              })
-            : [],
+          : entry.kind === DURABLE_SIDE_CHAT_IMPORT
+            ? [
+                {
+                  type: "custom" as const,
+                  id: String(entry.id),
+                  parentId: null,
+                  timestamp: new Date().toISOString(),
+                  customType: DURABLE_SIDE_CHAT_IMPORT,
+                  data: entry.data,
+                },
+              ]
+            : ["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind)
+              ? (entry.model ?? []).flatMap((message) => {
+                  const presentation =
+                    message.role === "user"
+                      ? durableInputPresentation(
+                          typeof message.content === "string"
+                            ? message.content
+                            : message.content
+                                .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                                .join("\n"),
+                        )
+                      : undefined;
+                  return message.role === "system"
+                    ? []
+                    : [
+                        ...(presentation?.internal
+                          ? [
+                              {
+                                type: "custom" as const,
+                                id: `internal-${entry.id}`,
+                                parentId: null,
+                                timestamp: new Date(message.timestamp).toISOString(),
+                                customType: internalInputEntryType,
+                                data: {
+                                  timestamp: message.timestamp,
+                                  origin: presentation.internal,
+                                },
+                              },
+                            ]
+                          : []),
+                        {
+                          type: "message" as const,
+                          id: String(entry.id),
+                          parentId: null,
+                          timestamp: new Date(message.timestamp).toISOString(),
+                          message: withoutDurableInputPresentation(message, { display: true }),
+                        },
+                        ...(presentation?.markdown
+                          ? [
+                              {
+                                type: "custom" as const,
+                                id: `presentation-${entry.id}`,
+                                parentId: null,
+                                timestamp: new Date(message.timestamp).toISOString(),
+                                customType: userMessagePresentationEntryType,
+                                data: { targetId: String(entry.id), renderAs: "markdown" },
+                              },
+                            ]
+                          : []),
+                      ];
+                })
+              : [],
       );
     const origins = new Map(
       page.items.flatMap((entry) =>

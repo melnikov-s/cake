@@ -1,20 +1,13 @@
 import * as discussionTodos from "./discussionTodos";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
-import * as backendAgentControl from "../application/agentControl";
-import * as sessionReferences from "../project-sessions/sessionReferences";
-import { findLocation } from "../project-sessions/projectSessionMetadata";
-import { forwardTaskInputControl } from "../cake-chats/taskInputControls";
-import { validateMessageReferenceControl } from "../conversations/messageReferenceForwarding";
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
 import { Effect, Option, Schema, Stream } from "effect";
 import type { DiscussionCatalogUpdate } from "../../contracts/application/catalog-data";
-import { type CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
 import {
   CAKE_CHAT_SESSION_ID,
   isCakeChatSessionId,
   cakeChatSideChatConversationId,
 } from "../../contracts/cake-chats/cake-chat-identity";
-import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 import {
   PiSessionError,
@@ -22,9 +15,7 @@ import {
   type CakeSessionRuntimeAcquireOptions,
   type CakeSessionHandle,
 } from "../../services/pi/CakeSessionRuntimes";
-import { sessionAssistantSystemPrompt } from "../../services/pi/session-assistant";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
-import { ApplicationState } from "../../services/storage/ApplicationState";
 import {
   DiscussionSessionEnvironment,
   DiscussionSessionEnvironmentError,
@@ -43,27 +34,12 @@ import {
   type DiscussionSessionTarget,
   type DiscussionSessionUpdate,
   type DiscussionThread,
-  isSessionAssistantThread,
-  type SessionAssistantEnsureInput,
-  type SessionAssistantEnsured,
-  sessionAssistantThreadPath,
 } from "../../contracts/discussion-sessions/discussion-session-data";
 import { ReviewStorage } from "../../services/storage/ReviewStorage";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import type { InterviewRecord } from "../../contracts/interviews/interview";
 
 export * from "../../contracts/discussion-sessions/discussion-session-data";
-
-const sessionAssistantAnchor = (parentSessionId: string) => ({
-  path: sessionAssistantThreadPath(parentSessionId),
-  view: "session" as const,
-  start: { diffLine: 0 },
-  end: { diffLine: 0 },
-  selectedText: "",
-  contextBefore: "",
-  contextAfter: "",
-  diff: "",
-});
 
 const asError = (operation: string) =>
   Effect.mapError(
@@ -283,188 +259,13 @@ const sideChatConfiguration = Effect.fn("DiscussionSessions.sideChatConfiguratio
   };
 });
 
-/**
- * The session assistant is an ordinary side chat on the utility model with the
- * validated Cake application-control gateway for its parent Project Session.
- * Unlike a read-only side chat, it has the standard file and shell tools in
- * the parent's Working Directory, plus the complete validated application controls.
- */
-const sessionAssistantConfiguration = Effect.fn("DiscussionSessions.sessionAssistantConfiguration")(
-  function* (record: DiscussionSessionRecord, tools: ReadonlyArray<CakeControlTool>) {
-    const environment = yield* DiscussionSessionEnvironment;
-    const application = yield* ApplicationState;
-    const rendererRequests = yield* RendererRequestCoordinator;
-    const utilityModel = application.snapshot().utilityModel;
-    if (!utilityModel)
-      return yield* new DiscussionSessionError({
-        operation: "acquire",
-        message: "Configure a utility model in Settings before using the session assistant",
-      });
-    const run = makePiCallbackExecutor(
-      yield* Effect.context<backendAgentControl.AgentControlServices>(),
-    );
-    const controlTools = tools.map((tool) => ({
-      ...tool,
-      parameters: Schema.decodeUnknownSync(jsonObjectSchema)(tool.parameters),
-      examples: tool.examples?.map((example) => ({
-        ...example,
-        input:
-          example.input === undefined
-            ? undefined
-            : Schema.decodeUnknownSync(jsonObjectSchema)(example.input),
-      })),
-    }));
-    const parentContextPrompt = yield* environment
-      .sidecarSystemPrompt(record)
-      .pipe(asError("acquire"));
-    const configuration: SidecarConfiguration = {
-      systemPrompt: sessionAssistantSystemPrompt({
-        parentContextPrompt,
-        parentSessionId: record.parentSessionId,
-        tools: controlTools,
-      }),
-      tools: ["read", "bash", "edit", "write", "grep", "find", "ls", "cake"],
-      sessionControl: {
-        tools: controlTools,
-        // Pi requires a Promise callback; this is the final adapter from the
-        // Cake-owned control Effect to the Pi runtime callback contract.
-        invoke: (invocation, signal) =>
-          run(
-            Effect.scoped(
-              Effect.gen(function* () {
-                if (!backendAgentControl.handles(invocation.name))
-                  return yield* rendererRequests.requestProjectControl(
-                    record.parentSessionId,
-                    {
-                      _tag: "InvokeAppControl",
-                      command: invocation.name,
-                      input: Schema.decodeUnknownSync(jsonObjectSchema)(invocation.arguments),
-                    },
-                    signal,
-                    "discussion-session",
-                  );
-                const argumentsObject = yield* Schema.decodeUnknownEffect(jsonObjectSchema)(
-                  invocation.arguments,
-                );
-                if (
-                  invocation.name !== "sessions.compact" &&
-                  Schema.is(Schema.String)(argumentsObject.sessionId)
-                )
-                  invocation = {
-                    ...invocation,
-                    arguments: {
-                      ...argumentsObject,
-                      sessionId: yield* sessionReferences.resolve(argumentsObject.sessionId),
-                    },
-                  };
-                const location = yield* findLocation({
-                  sessionId: record.parentSessionId,
-                  workingDirectory: record.workingDirectory,
-                });
-                yield* validateMessageReferenceControl(invocation);
-                const forwarded = yield* forwardTaskInputControl(
-                  record.parentSessionId,
-                  invocation,
-                );
-                const summary = yield* (yield* CakeSessionRuntimes).catalogEntry(
-                  {
-                    workingDirectory: location.workingDirectory,
-                    sessionDirectory: location.sessionDirectory,
-                  },
-                  record.parentSessionId,
-                );
-                const result = yield* backendAgentControl.invoke(
-                  forwarded.name,
-                  forwarded.arguments,
-                  {
-                    kind: "project-session",
-                    sessionId: record.parentSessionId,
-                    title: summary?.title ?? `Project Session ${record.parentSessionId}`,
-                    projectName: location.projectName,
-                    projectPath: location.projectPath,
-                    workingDirectory: location.workingDirectory,
-                  },
-                );
-                if (result === undefined)
-                  return yield* new DiscussionSessionError({
-                    operation: "control",
-                    message: "Backend control was not handled",
-                  });
-                return result;
-              }),
-            ).pipe(Effect.orDie),
-            { signal },
-          ),
-      },
-      model: {
-        provider: utilityModel.provider,
-        modelId: utilityModel.modelId,
-        thinkingLevel: utilityModel.thinkingLevel,
-      },
-    };
-    return configuration;
-  },
-);
-
 /** Acquires a thread's sidecar; the parent projection is regenerated per turn, not here. */
 const prepare = Effect.fn("DiscussionSessions.prepare")(function* (
   record: DiscussionSessionRecord,
-  tools?: ReadonlyArray<CakeControlTool>,
 ) {
-  const configuration = isSessionAssistantThread(record)
-    ? yield* sessionAssistantConfiguration(record, tools ?? [])
-    : yield* sideChatConfiguration(record);
+  const configuration = yield* sideChatConfiguration(record);
   return yield* acquireRecord(record, configuration);
 });
-
-/**
- * Ensures a parent's assistant Discussion Session exists. A thread that has no
- * sidecar yet is started with the pending first message, exactly as `start`
- * does for other side chats; Pi persists the sidecar with that message.
- */
-export const ensureSessionAssistant = Effect.fn("DiscussionSessions.ensureSessionAssistant")(
-  function* (
-    input: SessionAssistantEnsureInput,
-    connectionId?: number,
-  ): Effect.fn.Return<
-    SessionAssistantEnsured,
-    DiscussionSessionError,
-    | RefreshServices
-    | RendererRequestCoordinator
-    | ApplicationState
-    | backendAgentControl.AgentControlServices
-  > {
-    const environment = yield* DiscussionSessionEnvironment;
-    const record = yield* environment
-      .ensure(
-        input.workingDirectory,
-        input.parentSessionId,
-        sessionAssistantAnchor(input.parentSessionId),
-      )
-      .pipe(asError("ensureSessionAssistant"));
-    // A staged parent has no transcript to project; its renderer-held messages
-    // stand in until the parent materializes and per-turn regeneration takes over.
-    if (input.staged)
-      yield* environment
-        .prepareStagedParentContext(record, input.stagedMessages)
-        .pipe(asError("ensureSessionAssistant"));
-    if (record.sidecarSessionId !== undefined) return { thread: projectThread(record) };
-    const firstPrompt = input.firstPrompt;
-    if (!firstPrompt) return { thread: projectThread(record) };
-    const prepared = yield* prepare(record, input.tools);
-    yield* bindSidecarRenderer(prepared.handle, connectionId);
-    const annotations = firstPrompt.annotations ?? [];
-    const attachments =
-      annotations.length > 0 ? [{ kind: "annotation" as const, annotations }] : [];
-    const turnId = TurnId.make(
-      yield* prepared.handle
-        .prompt(firstPrompt.text.trim(), attachments)
-        .pipe(asError("ensureSessionAssistant")),
-    );
-    yield* environment.refreshParentIndex(prepared.record).pipe(asError("ensureSessionAssistant"));
-    return { thread: projectThread(prepared.record), turnId };
-  },
-);
 
 export const list = Effect.fn("DiscussionSessions.list")(function* (input: {
   readonly workingDirectory: string;
@@ -546,7 +347,7 @@ export const observe = Effect.fn("DiscussionSessions.observe")(function* (
       operation: "observe",
       message: "The Discussion Session has no sidecar transcript yet",
     });
-  const prepared = yield* prepare(record, target.tools);
+  const prepared = yield* prepare(record);
   yield* bindSidecarRenderer(prepared.handle, connectionId);
   const sessionId = prepared.record.sidecarSessionId ?? record.sidecarSessionId;
   return observeConversation(prepared.handle).pipe(
@@ -735,11 +536,7 @@ export const merge = Effect.fn("DiscussionSessions.merge")(function* (
   const record = yield* environment
     .get(target.workingDirectory, target.parentSessionId, target.threadId)
     .pipe(asError("merge"));
-  if (
-    record.parentSessionId !== target.parentSessionId ||
-    isSessionAssistantThread(record) ||
-    !record.sidecarSessionId
-  )
+  if (record.parentSessionId !== target.parentSessionId || !record.sidecarSessionId)
     return yield* new DiscussionSessionError({
       operation: "merge",
       message: "This side chat has no conversation to merge",

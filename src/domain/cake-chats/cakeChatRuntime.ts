@@ -50,7 +50,9 @@ import { PiModels } from "../../services/pi/PiModels";
 import {
   cakeChatModelSettingDefaults,
   defaultCakeChatPreferences,
+  defaultAssistantPreferences,
 } from "../../contracts/cake-chats/cake-chat-preferences";
+import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { CakeChatTarget } from "../../contracts/cake-chats/cake-chat-data";
 import {
@@ -232,6 +234,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   readonly newSession: boolean;
 }): Effect.fn.Return<CakeSessionRuntimeAcquireOptions, never, CakeChatRuntimeServices> {
   const application = yield* ApplicationState;
+  const companion = target.sessionId === SESSION_ASSISTANT_ID;
   const models = yield* PiModels;
   const catalogs = yield* SessionCatalogChanges;
   const rendererRequests = yield* RendererRequests;
@@ -294,9 +297,10 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     .projects.find(
       (item) =>
         item.path === configuration.location.workingDirectory &&
-        target.sessionId !== CAKE_CHAT_SESSION_ID,
+        target.sessionId !== CAKE_CHAT_SESSION_ID &&
+        !companion,
     );
-  const title = project ? `${project.name} / Project Chat` : "Cake Chat";
+  const title = companion ? "Companion" : project ? `${project.name} / Project Chat` : "Cake Chat";
   /** Same backend authority, receipts and ProjectAccess check as every other settings writer. */
   const invokeProjectSettings = (
     command: "projects.settings.get" | "projects.settings.update",
@@ -426,40 +430,49 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     runtime: {
       cwd: configuration.location.workingDirectory,
       utilityModel: () => application.snapshot().utilityModel,
-      cakeChatTodos: () =>
-        project
-          ? (application.snapshot().projects.find((item) => item.path === project.path)?.todos
-              ?.items ?? [])
-          : (application.snapshot().cakeChatTodos?.items ?? []),
+      cakeChatTodos: companion
+        ? undefined
+        : () =>
+            project
+              ? (application.snapshot().projects.find((item) => item.path === project.path)?.todos
+                  ?.items ?? [])
+              : (application.snapshot().cakeChatTodos?.items ?? []),
       onCakeChatInputConsumed: (text, signal) => {
         const receipt = projectTodoReceipt(splitSessionDigestReminder(text).text);
         return receipt === undefined
           ? Promise.resolve()
           : run(projectTodos.acknowledge(todoScope, receipt), { signal });
       },
-      cakeChatSystemPrompt: project
+      cakeChatSystemPrompt: companion
         ? () =>
             [
-              "## Project Chat scope",
-              `You are the permanent Project Chat for ${JSON.stringify(project.name)} at ${JSON.stringify(project.path)}.`,
-              `Your messaging address is ${target.sessionId}. Your history and memory belong only to this project; global Cake Chat is a separate conversation at cake-chat.`,
-              "Work only on this project. If a request belongs to another registered project, say so and offer to send it to that project's chat; send it only if the user agrees. You can discuss ideas and decisions without creating tasks. Delegate only when useful, using this project's root.",
-              "VS Code and the interactive Terminal open at this project root; Browser Mode belongs to this conversation. Use these shared tools for visual exploration while keeping discussion primary.",
-              "Other chats have independent memories. Exchange a focused request and relevant references, not entire histories. Do not repeatedly relay or delegate the same request.",
+              "You are the user’s app-wide companion. Keep one continuous identity and your own conversation history across sessions, projects and modes. You run independently of the main agent; never interrupt it unless the user asks.",
+              "Orientation entries are metadata, not requests: enter/exit only describe where the user is looking. Do not greet again, repeat reminders or import the invoking conversation. Use sessions.list/info and messages tools only when deeper context is needed. Prefer short answers and direct navigation via supported Cake tools, including sessions.open and vscode.open. Preserve trust and destructive-action safeguards.",
+              "You use the configured utility model. Your memory and instructions are separate, customizable in Settings → Application → Cake Chat → Companion or settings.get/update with companion.memoryViewBytes, companion.contextLimitTokens and companion.instructions. Change instructions only when the user requests lasting guidance: read first and preserve unrelated text. Shared Cake Chat instructions do not apply.",
+            ].join("\n\n")
+        : project
+          ? () =>
+              [
+                "## Project Chat scope",
+                `You are the permanent Project Chat for ${JSON.stringify(project.name)} at ${JSON.stringify(project.path)}.`,
+                `Your messaging address is ${target.sessionId}. Your history and memory belong only to this project; global Cake Chat is a separate conversation at cake-chat.`,
+                "Work only on this project. If a request belongs to another registered project, say so and offer to send it to that project's chat; send it only if the user agrees. You can discuss ideas and decisions without creating tasks. Delegate only when useful, using this project's root.",
+                "VS Code and the interactive Terminal open at this project root; Browser Mode belongs to this conversation. Use these shared tools for visual exploration while keeping discussion primary.",
+                "Other chats have independent memories. Exchange a focused request and relevant references, not entire histories. Do not repeatedly relay or delegate the same request.",
+                projectTodoBaseline(
+                  application.snapshot().projects.find((item) => item.path === project.path)
+                    ?.todos ?? emptyProjectTodos(),
+                ),
+                application.snapshot().projects.find((item) => item.path === project.path)?.settings
+                  ?.projectChatInstructions,
+              ]
+                .filter(Boolean)
+                .join("\n\n")
+          : () =>
               projectTodoBaseline(
-                application.snapshot().projects.find((item) => item.path === project.path)?.todos ??
-                  emptyProjectTodos(),
+                application.snapshot().cakeChatTodos ?? emptyProjectTodos(),
+                "Cake Chat",
               ),
-              application.snapshot().projects.find((item) => item.path === project.path)?.settings
-                ?.projectChatInstructions,
-            ]
-              .filter(Boolean)
-              .join("\n\n")
-        : () =>
-            projectTodoBaseline(
-              application.snapshot().cakeChatTodos ?? emptyProjectTodos(),
-              "Cake Chat",
-            ),
       sessionReferences: {
         resolve: (reference, signal) => run(sessionReferences.resolve(reference), { signal }),
         project: (value, signal) => run(sessionReferences.project(value), { signal }),
@@ -602,13 +615,17 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       },
       cakeChatMemory: {
         preferences: () =>
-          application.snapshot().cakeChatPreferences ?? defaultCakeChatPreferences(),
+          companion
+            ? (application.snapshot().assistantPreferences ?? defaultAssistantPreferences())
+            : (application.snapshot().cakeChatPreferences ?? defaultCakeChatPreferences()),
         summarize: (input) => {
           const state = application.snapshot();
           let selection;
           try {
             selection = resolveCakeModelChoice(
-              state.cakeChatPreferences?.summarizationModel ??
+              (companion
+                ? { source: "utility" as const }
+                : state.cakeChatPreferences?.summarizationModel) ??
                 cakeChatModelSettingDefaults.summarizationModel,
               cakeModelCatalog(state),
               input.caller,

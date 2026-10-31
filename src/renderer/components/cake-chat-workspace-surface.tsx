@@ -2,6 +2,7 @@ import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { cakeChatTranscriptBehaviorFor } from "../lib/cake-chat-transcript-behavior";
+import { SessionAssistant } from "./session-assistant";
 import { WorkspaceFrame } from "./workspace-frame";
 import { CakeChatWorkspaceControls } from "./cake-chat-workspace-controls";
 import { ConversationActivity } from "./conversation-activity";
@@ -21,6 +22,22 @@ export const CakeChatWorkspaceSurface = observer(function CakeChatWorkspaceSurfa
       <WorkspaceFrame
         session={session}
         mode={mode}
+        projectComposerLeadingAccessory={
+          root.settingsStore.appearance.sessionAvatarsEnabled
+            ? {
+                visible: true,
+                content: (
+                  <SessionAssistant
+                    store={root.sessionAssistantStore}
+                    seed={session.sessionId}
+                    labels={[]}
+                    value={[]}
+                    animated
+                  />
+                ),
+              }
+            : undefined
+        }
         projectComposerHeader={
           <ConversationActivity
             placement="composer"

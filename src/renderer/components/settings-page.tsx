@@ -1,4 +1,5 @@
 import { usePhoneLayout } from "../lib/phone-layout";
+import { SettingsCompanionSection } from "./settings-companion-section";
 import { SettingsCakeChatSection } from "./settings-cake-chat-section";
 import { SettingsCakeChatOverlaySection } from "./settings-cake-chat-overlay-section";
 import { SettingsMcpSection } from "./settings-mcp-section";
@@ -869,6 +870,7 @@ export const SettingsPage = observer(function SettingsPage({
           {activePage === "cake-chat" && (
             <div className="grid gap-5">
               <SettingsCakeChatSection settings={settings} />
+              <SettingsCompanionSection settings={settings} />
               {!browserMode && <SettingsCakeChatOverlaySection store={settings.cakeChatOverlay} />}
             </div>
           )}

@@ -1,3 +1,4 @@
+import { AssistantContext } from "../../contracts/cake-chats/assistant-context";
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import {
@@ -21,6 +22,10 @@ import { TurnId } from "../../contracts/conversations/conversation-data";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 
 export const CakeChatRpc = RpcGroup.make(
+  Rpc.make("cakeChats.assistantContext", {
+    payload: { context: Schema.NullOr(AssistantContext) },
+    error: CakeChatError,
+  }),
   Rpc.make("cakeChats.requestInspection", {
     payload: {
       sessionId: CakeChatTarget.fields.sessionId,

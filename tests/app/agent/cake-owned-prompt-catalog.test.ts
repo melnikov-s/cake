@@ -7,18 +7,19 @@ import { workflowAuthoringReference } from "../../../src/domain/workflows/workfl
 
 const promptDirectory = new URL("../../../src/services/pi/runtime/prompts/", import.meta.url);
 const budgets = {
-  "cake-chat.md": 3_600,
+  "cake-chat.md": 4_100,
   "common.md": 2_500,
   "general-research.md": 1_450,
   "interview.md": 350,
   "project-interaction.md": 450,
   "project-investigation.md": 1_350,
-  "project.md": 1_600,
-  "session-assistant.md": 2_300,
+  "project.md": 1_700,
   "subagent.md": 650,
   "worker-investigation-only.md": 600,
   "worker-mutations.md": 1_050,
   "worktree.md": 800,
+  "worktree-landing-merge.md": 500,
+  "worktree-landing-pull-request.md": 300,
 };
 
 describe("Cake-owned prompt catalog", () => {

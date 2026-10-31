@@ -17,11 +17,7 @@ import type {
   DiscussionSessionTarget,
   DiscussionSessionUpdate,
 } from "../../contracts/discussion-sessions/discussion-session-data";
-import {
-  hasSidecarConversation,
-  isSessionAssistantThread,
-} from "../../contracts/discussion-sessions/discussion-session-data";
-import type { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
+import { hasSidecarConversation } from "../../contracts/discussion-sessions/discussion-session-data";
 import type { ReviewThread } from "../models/ReviewThread";
 import type {
   ProjectSessionCatalogQuery,
@@ -91,8 +87,6 @@ interface ModelSource {
    */
   readonly stagedProjectSessionTargets?: () => ReadonlyArray<ObservedProjectSessionTarget>;
   readonly cakeChatTargets: () => ReadonlyArray<CakeChatTarget>;
-  /** The Cake control catalog a session assistant sidecar is acquired with. */
-  readonly sessionAssistantTools?: () => ReadonlyArray<CakeControlTool>;
 }
 
 type StreamFactory<Update> = (client: CakeIpcClientService) => Stream.Stream<Update, unknown>;
@@ -141,7 +135,6 @@ type ModelInput = {
   readonly discussionSessions?: ReadonlyArray<{
     thread: ReviewThread;
     model: Conversation;
-    tools?: ReadonlyArray<CakeControlTool>;
   }>;
 };
 
@@ -388,7 +381,7 @@ export const createModelObserver = (
     for (const { target, model } of input.discussionCatalogs ?? [])
       observeDiscussionCatalog(target, model);
 
-    for (const { thread, model, tools } of input.discussionSessions ?? []) {
+    for (const { thread, model } of input.discussionSessions ?? []) {
       const sessionId = thread.sidecarSessionId!;
       assertSessionIdentity(model, sessionId);
       const target: DiscussionSessionTarget = {
@@ -396,7 +389,6 @@ export const createModelObserver = (
         workingDirectory: thread.workingDirectory,
         threadId: thread.id,
       };
-      if (tools) Object.assign(target, { tools });
       observe(
         `discussion-session:${sessionId}`,
         model,
@@ -587,8 +579,6 @@ export const createModelObserver = (
               thread.parentSessionId,
             ),
           };
-          if (isSessionAssistantThread(thread))
-            Object.assign(entry, { tools: source.sessionAssistantTools?.() ?? [] });
           return entry;
         }),
       });
@@ -674,7 +664,6 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
     projectSessionTargets: () => root.projectSessionObservationTargets,
     stagedProjectSessionTargets: () => root.stagedProjectSessionTargets,
     cakeChatTargets: () => root.cakeChatCollectionStore.registry.observationTargets,
-    sessionAssistantTools: () => root.applicationControlStore.sessionAssistantTools(),
   });
   return observer.stop;
 };

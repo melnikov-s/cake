@@ -6,10 +6,7 @@ import {
   TurnId,
   type ConversationSnapshot,
 } from "../../../src/contracts/conversations/conversation-data";
-import {
-  sessionAssistantThreadPath,
-  type DiscussionAnchor,
-} from "../../../src/contracts/discussion-sessions/discussion-session-data";
+import { type DiscussionAnchor } from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import {
@@ -78,7 +75,6 @@ function renderReview(
     streaming?: boolean;
     draft?: boolean;
     runtimeQueue?: boolean;
-    assistant?: boolean;
     configured?: boolean;
   } = {},
 ) {
@@ -111,14 +107,7 @@ function renderReview(
         workingDirectory: "/project",
         parentSessionId: "parent-1",
         sidecarSessionId: "sidecar-thread-1",
-        anchor: options.assistant
-          ? {
-              ...anchor,
-              path: sessionAssistantThreadPath("parent-1"),
-              view: "session",
-              selectedText: "",
-            }
-          : anchor,
+        anchor,
         parts: [],
         status: "open",
         createdAt: "2026-01-01T00:00:00.000Z",
@@ -294,12 +283,6 @@ describe("Review side-chat workflow", () => {
     );
   });
 
-  it("does not offer model changes for the utility-model session assistant", () => {
-    using fixture = renderReview({}, { assistant: true, configured: true });
-    void fixture; // Keep the disposable UI fixture alive through the assertions.
-    expect(screen.getByRole("combobox", { name: "Message session assistant" })).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Model configuration" })).toBeNull();
-  });
   it("starts a selected-code discussion on the parent model and preserves a failed draft for retry", async () => {
     const start = vi
       .fn<Client["discussionSessions"]["start"]>()

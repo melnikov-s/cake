@@ -1,3 +1,5 @@
+import { SessionAssistantStore } from "./SessionAssistantStore";
+import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { DictationStore } from "./DictationStore";
 import { ScreenCaptureAttachmentStore } from "./ScreenCaptureAttachmentStore";
 import { microphone, type Microphone } from "../dictation/microphone";
@@ -477,9 +479,28 @@ export class RootStore extends Store<{
       worktreeOperation: (workspacePath) => this.worktreeOperation(workspacePath),
       persistNow: () => this.props.flushWindowState(),
       modelPresets: () => this.settingsStore.modelPresets.presets,
-      assistantTools: () => this.applicationControlStore.sessionAssistantTools(),
       openModelPresetSettings: () => this.navigationStore.showModelPresetSettings(),
       retirement: this.workingDirectoryRetirementStore,
+    });
+  }
+
+  @child
+  get sessionAssistantStore(): SessionAssistantStore {
+    return createStore(SessionAssistantStore, {
+      session: () => this.cakeChatCollectionStore.registry.load(SESSION_ASSISTANT_ID),
+      context: () => {
+        if (this.appShellStore.coveringSurface || !this.appShellStore.activeConversation)
+          return null;
+        const session = this.workspaceSession;
+        if (!session) return null;
+        const title =
+          this.sessionCatalogStore.find(session.sessionId)?.title ??
+          this.cakeChatCollectionStore.summaries.find(
+            (item) => item.sessionId === session.sessionId,
+          )?.title ??
+          "New chat";
+        return { sessionId: session.sessionId, title, mode: session.presentationMode };
+      },
     });
   }
 
@@ -911,6 +932,18 @@ export class RootStore extends Store<{
         this.cakeChatCollectionStore.registry.sessions.flatMap(
           (session) => session.props.controls.requests,
         ),
+      assistantSource: () => {
+        const active = this.appShellStore.activeConversation;
+        if (!active) return undefined;
+        if (active.kind === "project-session") return this.projectControlSource(active.sessionId);
+        const projectPath = this.workspaceProjectPath;
+        return {
+          kind: "cake-chat",
+          sessionId: active.sessionId,
+          title: "Project Chat",
+          ...(projectPath ? { projectPath, workingDirectory: projectPath } : null),
+        };
+      },
       projectContext: (sessionId) => {
         const catalogSession = this.sessionCatalogStore.find(sessionId);
         const sourceWorkingDirectory = this.sessionMetadataStore.workingDirectory(sessionId);

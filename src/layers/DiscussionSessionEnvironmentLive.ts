@@ -166,22 +166,6 @@ export const makeDiscussionSessionEnvironmentLive = (
             }).pipe(Effect.mapError((cause) => environmentError("prepareParentContext", cause)));
           },
         ),
-        prepareStagedParentContext: Effect.fn(
-          "DiscussionSessionEnvironment.prepareStagedParentContext",
-        )(function* (record, messages) {
-          yield* writeDiscussionParentContext(fileSystem, path, {
-            cwd: record.workingDirectory,
-            parentSessionRoot: options.parentSessionDirectory,
-            staged: messages,
-            target: storage.discussionParentContextPath(
-              record.workingDirectory,
-              record.parentSessionId,
-              record.id,
-            ),
-          }).pipe(
-            Effect.mapError((cause) => environmentError("prepareStagedParentContext", cause)),
-          );
-        }),
         prepareCakeChatBranchContext: Effect.fn(
           "DiscussionSessionEnvironment.prepareCakeChatBranchContext",
         )(function* (record, messages) {

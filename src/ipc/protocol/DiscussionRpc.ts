@@ -9,8 +9,6 @@ import {
   DiscussionSessionTarget,
   DiscussionSessionUpdate,
   DiscussionThread,
-  SessionAssistantEnsureInput,
-  SessionAssistantEnsured,
 } from "../../contracts/discussion-sessions/discussion-session-data";
 
 const catalogTarget = {
@@ -44,11 +42,6 @@ export const DiscussionRpc = RpcGroup.make(
   Rpc.make("discussionSessions.start", {
     payload: DiscussionSessionStartInput,
     success: DiscussionSessionAcceptedTurn,
-    error: DiscussionSessionError,
-  }),
-  Rpc.make("discussionSessions.ensureSessionAssistant", {
-    payload: SessionAssistantEnsureInput,
-    success: SessionAssistantEnsured,
     error: DiscussionSessionError,
   }),
   Rpc.make("discussionSessions.merge", {

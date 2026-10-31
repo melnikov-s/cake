@@ -3,6 +3,7 @@ import type { ApplicationState } from "../../contracts/conversations/session-con
 import {
   cakeChatModelSettingDefaults,
   defaultCakeChatPreferences,
+  defaultAssistantPreferences,
   type CakeChatModelSetting,
 } from "../../contracts/cake-chats/cake-chat-preferences";
 import type { CakeChatPreferences } from "../../contracts/application/application-data";
@@ -11,20 +12,30 @@ import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 
 /** Application preferences are main-owned. This window owns optimistic edits and serialized saves. */
-export class CakeChatSettingsStore extends Store {
-  preferences = defaultCakeChatPreferences();
+export class CakeChatSettingsStore extends Store<{ companion?: boolean }> {
+  preferences = this.defaults();
   saving = false;
   error: string | undefined;
   errorDetails: string | undefined;
   private revision = -1;
   private editRevision = 0;
-  private persisted = defaultCakeChatPreferences();
+  private persisted = this.defaults();
+
+  private defaults() {
+    return this.props.companion ? defaultAssistantPreferences() : defaultCakeChatPreferences();
+  }
+  private fromState(state: ApplicationState) {
+    return (
+      (this.props.companion ? state.assistantPreferences : state.cakeChatPreferences) ??
+      this.defaults()
+    );
+  }
   private saves: Promise<unknown> = Promise.resolve();
 
   applyApplicationState(revision: number, state: ApplicationState) {
     if (revision <= this.revision) return;
     this.revision = revision;
-    this.persisted = state.cakeChatPreferences ?? defaultCakeChatPreferences();
+    this.persisted = this.fromState(state);
     if (!this.saving) this.preferences = this.persisted;
   }
 
@@ -61,9 +72,10 @@ export class CakeChatSettingsStore extends Store {
         const state = await ClientContext.consume(this)!.workspaces.setCakeChatPreferences(
           preferences,
           { signal: this.signal },
+          ...(this.props.companion ? ([true] as const) : []),
         );
         if (this.signal.aborted) return;
-        this.persisted = state.cakeChatPreferences ?? defaultCakeChatPreferences();
+        this.persisted = this.fromState(state);
         if (edit === this.editRevision) this.preferences = this.persisted;
       })
       .catch((error) => {

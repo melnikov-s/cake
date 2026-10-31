@@ -1,6 +1,5 @@
 import { Schema } from "effect";
 import { ThinkingLevel } from "../pi/model-data";
-import { CakeControlTool } from "../cake-chats/cake-chat-data";
 import {
   CakeSessionIdentity,
   ConversationEvent,
@@ -34,16 +33,6 @@ export const DiscussionAnchor = Schema.Struct({
 });
 export interface DiscussionAnchor extends Schema.Schema.Type<typeof DiscussionAnchor> {}
 
-export const sessionAssistantThreadPath = (parentSessionId: string) =>
-  `session:${parentSessionId}/assistant`;
-
-export const isSessionAssistantThread = (thread: {
-  readonly parentSessionId: string;
-  readonly anchor: { readonly view?: string; readonly path: string };
-}) =>
-  thread.anchor.view === "session" &&
-  thread.anchor.path === sessionAssistantThreadPath(thread.parentSessionId);
-
 /**
  * Whether a thread's conversation is authoritative from its own live sidecar
  * observation rather than from the parent's Discussion catalog rows.
@@ -71,8 +60,6 @@ export const DiscussionSessionTarget = Schema.Struct({
   parentSessionId: boundedId,
   workingDirectory: Schema.String,
   threadId: boundedId,
-  /** The Cake control catalog a session assistant thread's sidecar exposes; other threads omit it. */
-  tools: Schema.optionalKey(Schema.Array(CakeControlTool)),
 });
 export interface DiscussionSessionTarget extends Schema.Schema.Type<
   typeof DiscussionSessionTarget
@@ -146,43 +133,6 @@ export const CakeChatSideChatStartInput = Schema.Struct({
 });
 export interface CakeChatSideChatStartInput extends Schema.Schema.Type<
   typeof CakeChatSideChatStartInput
-> {}
-
-/**
- * Ensures a Project Session's single assistant Discussion Session exists. Like
- * any side chat, its sidecar is created by delivering a first message, so the
- * pending message is supplied while the thread has no sidecar yet. A staged
- * parent has no transcript, so the renderer supplies its current messages for
- * the read-only projection.
- */
-export const SessionAssistantEnsureInput = Schema.Struct({
-  parentSessionId: boundedId,
-  workingDirectory: Schema.String,
-  tools: Schema.Array(CakeControlTool),
-  staged: Schema.Boolean,
-  stagedMessages: Schema.Array(
-    Schema.Struct({ role: Schema.Literals(["user", "assistant"]), text: boundedText }),
-  ).check(Schema.isMaxLength(500)),
-  firstPrompt: Schema.optionalKey(
-    Schema.Struct({
-      text: boundedText,
-      annotations: Schema.optionalKey(
-        Schema.Array(DiscussionAnnotation).check(Schema.isMaxLength(100)),
-      ),
-    }),
-  ),
-});
-export interface SessionAssistantEnsureInput extends Schema.Schema.Type<
-  typeof SessionAssistantEnsureInput
-> {}
-
-/** The assistant thread, plus the turn `ensure` delivered when it created the sidecar. */
-export const SessionAssistantEnsured = Schema.Struct({
-  thread: DiscussionThread,
-  turnId: Schema.optionalKey(TurnId),
-});
-export interface SessionAssistantEnsured extends Schema.Schema.Type<
-  typeof SessionAssistantEnsured
 > {}
 
 export const DiscussionSessionAcceptedTurn = Schema.Struct({

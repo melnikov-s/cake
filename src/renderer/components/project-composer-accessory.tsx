@@ -23,7 +23,7 @@ export const ProjectComposerAccessory = observer(function ProjectComposerAccesso
     />
   ) : (
     <SessionAssistant
-      store={paneSession.sessionAssistantStore}
+      store={root.sessionAssistantStore}
       animated
       seed={paneSession.sessionId}
       labels={root.sessionMetadataStore.availableSessionLabels(paneSession.sessionId)}

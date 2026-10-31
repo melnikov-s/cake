@@ -31,8 +31,11 @@ export const workspaceHandlers = WorkspaceRpc.of({
     withConnection((connectionId) => projects.generateSessionTitle(connectionId, request)),
   "workspaces.set-utility-model": ({ model }) =>
     settingsResult("setUtilityModel", application.setUtilityModel(model)),
-  "workspaces.set-cake-chat-preferences": ({ preferences }) =>
-    settingsResult("setCakeChatPreferences", application.setCakeChatPreferences(preferences)),
+  "workspaces.set-cake-chat-preferences": ({ preferences, companion }) =>
+    settingsResult(
+      "setCakeChatPreferences",
+      application.setCakeChatPreferences(preferences, companion),
+    ),
   "workspaces.set-cake-prompts": ({ prompts }) =>
     settingsResult("setCakePrompts", application.setCakePrompts(prompts)),
   "workspaces.set-global-custom-instructions": ({ instructions }) =>

@@ -1,3 +1,4 @@
+import { transitionAssistantContext } from "../../../../src/services/pi-durable/durable-assistant-context";
 import {
   projectTodoReminder,
   emptyProjectTodos,
@@ -879,6 +880,70 @@ it("answers an over-limit send with verbatim excerpts when the summarizer is una
   f.limit(300_000);
   f.summarize.mockResolvedValue("user: precise original details remain on disk");
   expect((await f.send("Try again", "retry")).status).toBe("done");
+});
+
+it("persists one companion history and passive entry/exit metadata across transitions and restart without waking the model", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-companion-"));
+  cleanup.unshift(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "companion.sqlite");
+  const f = await fixture(
+    undefined,
+    20_000,
+    await openNodeSqliteStorage(database),
+    undefined,
+    true,
+  );
+  const firstId = f.engine.root.id;
+  const a = { sessionId: "session-a", title: "A", mode: "normal" };
+  const b = { sessionId: "project-chat:b", title: "Project B", mode: "normal" };
+  await transitionAssistantContext(f.engine.root, a);
+  await transitionAssistantContext(f.engine.root, { ...a, title: "Renamed" });
+  expect(f.requests).toHaveLength(0);
+  await f.send("First question", "q1");
+  await f.send("Ordinary follow-up", "q2");
+  let parts = (await readDurableOriginalPage(f.engine.root)).parts;
+  expect(
+    parts.filter((part) => part.kind === "context" && part.title === "Companion context"),
+  ).toHaveLength(1);
+  await transitionAssistantContext(f.engine.root, b);
+  await transitionAssistantContext(f.engine.root, { ...b, mode: "vscode" });
+  await transitionAssistantContext(f.engine.root, null);
+  await transitionAssistantContext(f.engine.root, null);
+  await transitionAssistantContext(f.engine.root, a);
+  expect(f.requests).toHaveLength(2);
+  parts = (await readDurableOriginalPage(f.engine.root)).parts;
+  const notices = parts.filter(
+    (part) => part.kind === "context" && part.title === "Companion context",
+  );
+  expect(notices).toHaveLength(5);
+  expect(notices[1]).toMatchObject({ text: expect.stringContaining("Left context") });
+  expect(notices[1]).toMatchObject({ text: expect.stringContaining("Entered context") });
+  await f.engine.close();
+  cleanup.pop();
+  const reopened = await fixture(
+    undefined,
+    20_000,
+    await openNodeSqliteStorage(database),
+    undefined,
+    true,
+  );
+  expect(reopened.engine.root.id).toBe(firstId);
+  expect((await readDurableOriginalPage(reopened.engine.root)).parts).toEqual(parts);
+  expect(reopened.requests).toHaveLength(0);
+  // Runtime reopen records leaving the last desktop context; the next invocation re-enters.
+  await transitionAssistantContext(reopened.engine.root, null);
+  await transitionAssistantContext(reopened.engine.root, a);
+  await transitionAssistantContext(reopened.engine.root, a);
+  await reopened.send("Still me", "q3");
+  const after = (await readDurableOriginalPage(reopened.engine.root)).parts;
+  expect(
+    after.filter((part) => part.kind === "context" && part.title === "Companion context"),
+  ).toHaveLength(7);
+  expect(
+    after
+      .filter((part) => part.kind === "text" && part.role === "user")
+      .map((part) => part.kind === "text" && part.text),
+  ).toEqual(["First question", "Ordinary follow-up", "Still me"]);
 });
 
 it("adds voice guidance only on transitions, recovering the mode from durable storage after a restart", async () => {

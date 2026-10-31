@@ -260,6 +260,7 @@ interface WorkspaceCommands {
   setCakeChatPreferences(
     preferences: CakeChatPreferences,
     options?: ClientCommandOptions,
+    companion?: boolean,
   ): Promise<ApplicationState>;
   setCakePrompts(
     prompts: CakePromptOverrides,

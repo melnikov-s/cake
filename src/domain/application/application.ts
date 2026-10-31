@@ -17,7 +17,10 @@ import {
   type ExperimentalFeatures,
 } from "../../contracts/application/application-data";
 import { validateSessionLabelName } from "../../utils/session-label-name";
-import { defaultCakeChatPreferences } from "../../contracts/cake-chats/cake-chat-preferences";
+import {
+  defaultAssistantPreferences,
+  defaultCakeChatPreferences,
+} from "../../contracts/cake-chats/cake-chat-preferences";
 import type { CakeChatInstructionsUpdate } from "../../contracts/cake-chats/cake-chat-instructions";
 import { ApplicationState as ApplicationStateOwner } from "../../services/storage/ApplicationState";
 
@@ -108,9 +111,22 @@ export const renameProject = Effect.fn("Application.renameProject")(function* (
 
 export const setCakeChatPreferences = Effect.fn("Application.setCakeChatPreferences")(function* (
   preferences: CakeChatPreferences,
+  companion = false,
 ) {
-  return yield* update((current) => ({ ...current, cakeChatPreferences: preferences }));
+  return yield* update((current) => ({
+    ...current,
+    [companion ? "assistantPreferences" : "cakeChatPreferences"]: preferences,
+  }));
 });
+
+export const updateAssistantPreferences = Effect.fn("Application.updateAssistantPreferences")(
+  function* (change: (current: CakeChatPreferences) => CakeChatPreferences) {
+    return yield* update((current) => ({
+      ...current,
+      assistantPreferences: change(current.assistantPreferences ?? defaultAssistantPreferences()),
+    }));
+  },
+);
 
 /** Change part of the Cake Chat preferences without replacing fields edited elsewhere. */
 export const updateCakeChatPreferences = Effect.fn("Application.updateCakeChatPreferences")(

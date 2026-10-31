@@ -44,12 +44,14 @@ for (const scenario of ["migrated", "unavailable"] as const) {
           body += chunk;
         });
         request.on("end", async () => {
-          requests.push(JSON.parse(body));
+          const summary = /Compaction: (?:compress message|merge lines)/.test(body);
+          if (!summary) requests.push(JSON.parse(body));
           // The archive must be discoverable initially; remove its external
           // storage only after the assistant has been asked to navigate to it.
-          if (scenario === "unavailable" && requests.length === 1) await rm(targetFile);
-          const invocation =
-            requests.length === 1
+          if (!summary && scenario === "unavailable" && requests.length === 1) await rm(targetFile);
+          const invocation = summary
+            ? undefined
+            : requests.length === 1
               ? { command: "sessions.open", input: { sessionId: targetId } }
               : requests.length === 2 && scenario === "migrated"
                 ? {
@@ -72,8 +74,9 @@ for (const scenario of ["migrated", "unavailable"] as const) {
                     ],
                   }
                 : {
-                    content:
-                      scenario === "unavailable"
+                    content: summary
+                      ? "work: companion moved between contexts"
+                      : scenario === "unavailable"
                         ? "That session is no longer available"
                         : "Moved and resolved.",
                   },

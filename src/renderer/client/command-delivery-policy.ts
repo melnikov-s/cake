@@ -13,6 +13,7 @@ export function requiresDeliveryReview(operation: string): boolean {
     case "projectSessions.open":
     case "projectSessions.lookup":
     case "cakeChats.open":
+    case "cakeChats.assistantContext":
     case "modelPresets.resolve":
     case "piSettings.extensions":
     case "models.refresh":

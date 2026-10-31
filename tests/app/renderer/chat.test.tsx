@@ -16,7 +16,7 @@ import { Chat } from "../../../src/renderer/components/chat";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 import { chatSessionId, renderChatSurface } from "./chat-surface-workflow-fixture";
 import { queuePart } from "./prompt-queue-workflow-fixture";
-import { assistantThread, renderSessionAssistant } from "./session-assistant-workflow-fixture";
+import { renderSessionAssistant } from "./session-assistant-workflow-fixture";
 
 const turnId = TurnId.make("10000000-0000-4000-8000-000000000001");
 afterEach(() => {
@@ -262,14 +262,7 @@ describe("Chat composition", () => {
   });
 
   it("keeps the parent configurable while pinning a live session assistant model", async () => {
-    using fixture = renderSessionAssistant(
-      {
-        discussionSessions: {
-          ensureSessionAssistant: async () => ({ thread: assistantThread, turnId }),
-        },
-      },
-      { parentComposer: true },
-    );
+    using fixture = renderSessionAssistant({}, { parentComposer: true });
     expect(screen.getByRole("button", { name: "Model configuration" })).toBeDefined();
     await fixture.user.pointer({
       target: screen.getByRole("button", { name: "Ask session assistant" }),

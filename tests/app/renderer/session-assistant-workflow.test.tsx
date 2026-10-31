@@ -1,217 +1,172 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import { SESSION_ASSISTANT_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { Client } from "../../../src/renderer/client/Client";
-import { assistantThread, renderSessionAssistant } from "./session-assistant-workflow-fixture";
+import { renderSessionAssistant } from "./session-assistant-workflow-fixture";
 
 const turnId = TurnId.make("10000000-0000-4000-8000-000000000001");
 afterEach(cleanup);
 
-// These exercise rendered state and service payloads, not native portal, focus,
-// or parent-composer selection behavior (which needs Electron verification).
-describe("Session assistant workflow", () => {
-  it("sends parent composer selection with the first quick prompt only, then reuses the assistant without resending it", async () => {
-    const ensure = vi.fn<Client["discussionSessions"]["ensureSessionAssistant"]>(async () => ({
-      thread: assistantThread,
-      turnId,
-    }));
+// Payload/state workflows; Chromium focus/selection are verified separately in Electron.
+describe("Shared companion", () => {
+  it("keeps quick and right-click chat on one history, independent of a busy main agent", async () => {
     const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => turnId);
-    using fixture = renderSessionAssistant(
-      { discussionSessions: { ensureSessionAssistant: ensure }, sessionChats: { prompt } },
-      { parentComposer: true },
-    );
-    const parentInput = screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
-    await fixture.user.type(parentInput, "plan for later");
-    // The event driver supplies textarea selection, without fake Range geometry,
-    // window.getSelection mocks, or Store capture calls. This proves the outgoing
-    // annotation contract, not Chromium's native selection/focus retention.
-    await fixture.user.pointer([
-      { target: parentInput, offset: 0, keys: "[MouseLeft>]" },
-      { target: parentInput, offset: 4 },
-      { target: parentInput, offset: 4, keys: "[/MouseLeft]" },
-    ]);
-    expect(parentInput.value.slice(parentInput.selectionStart, parentInput.selectionEnd)).toBe(
-      "plan",
-    );
-    await fixture.user.click(screen.getByRole("button", { name: "Ask session assistant" }));
-    const quick = within(screen.getByRole("dialog", { name: "Quick session assistant" }));
-    await fixture.user.type(
-      quick.getByRole("combobox", { name: "Ask session assistant" }),
+    const orientation = vi.fn<Client["cakeChats"]["assistantContext"]>(async () => undefined);
+    using f = renderSessionAssistant({
+      sessionChats: { prompt },
+      cakeChats: { assistantContext: orientation },
+    });
+    act(() => {
+      f.root.workspaceSession!.model.streaming = true;
+    });
+    await f.user.click(screen.getByRole("button", { name: "Ask session assistant" }));
+    await f.user.type(
+      screen.getByRole("combobox", { name: "Ask session assistant" }),
       "Where is the plan?",
     );
-    await fixture.user.click(quick.getByRole("button", { name: "Send" }));
-    await waitFor(() =>
-      expect(ensure).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({
-          firstPrompt: {
-            text: "Where is the plan?",
-            annotations: [
-              expect.objectContaining({
-                messageId: "composer-selection",
-                selectedText: "plan",
-                startOffset: 0,
-                endOffset: 4,
-              }),
-            ],
-          },
-        }),
-        expect.any(Object),
-      ),
-    );
-    fixture.observe([], true);
-    fixture.settle(turnId, "It is in docs/plan.md.", "Where is the plan?");
-    expect(await screen.findByText("It is in docs/plan.md.")).toBeDefined();
-    expect(parentInput.value).toBe("plan for later");
-    // Clear the selection through a normal composer click before opening the
-    // durable assistant. The original quick context must not leak into its send.
-    await fixture.user.click(parentInput);
-    await fixture.user.pointer({
+    await f.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    expect(prompt.mock.calls[0]?.[0]).toMatchObject({
+      sessionId: SESSION_ASSISTANT_ID,
+      text: "Where is the plan?",
+      attachments: [],
+    });
+    expect(screen.getByRole("status", { name: "Session assistant is thinking" })).toBeDefined();
+    f.settle(turnId, "In docs/plan.md.", "Where is the plan?");
+    expect(await screen.findByText("In docs/plan.md.")).toBeDefined();
+    await f.user.pointer({
       target: screen.getByRole("button", { name: "Ask session assistant" }),
       keys: "[MouseRight]",
     });
     const full = within(screen.getByRole("dialog", { name: "Session assistant chat" }));
-    await fixture.user.type(
-      full.getByRole("combobox", { name: "Message session assistant" }),
-      "What next?",
-    );
-    await fixture.user.click(full.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
-    expect(prompt).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId: "sidecar-assistant",
-        text: "What next?",
-        attachments: [],
-      }),
-      expect.any(Object),
-    );
-    expect(ensure).toHaveBeenCalledOnce();
+    expect(full.getByText("Where is the plan?")).toBeDefined();
+    expect(full.getByText("In docs/plan.md.")).toBeDefined();
+    await f.user.type(full.getByRole("combobox", { name: "Message session assistant" }), "Open it");
+    await f.user.click(full.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
+    expect(prompt.mock.calls[1]?.[0]).toMatchObject({
+      sessionId: SESSION_ASSISTANT_ID,
+      text: "Open it",
+    });
+    expect(orientation).toHaveBeenCalledTimes(1);
+    expect(f.root.workspaceSession!.model.streaming).toBe(true);
   });
 
-  it("starts a quick chat, waits for its reply, then reuses that conversation in full chat", async () => {
-    const ensure = vi.fn<Client["discussionSessions"]["ensureSessionAssistant"]>(async () => ({
-      thread: assistantThread,
-      turnId,
-    }));
-    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => turnId);
-    const abort = vi.fn<Client["sessionChats"]["abort"]>(async () => undefined);
-    using fixture = renderSessionAssistant({
-      discussionSessions: { ensureSessionAssistant: ensure },
-      sessionChats: { prompt, abort },
-    });
+  it("shows a failed quick admission and keeps the user's prompt for retry", async () => {
+    const prompt = vi
+      .fn<Client["sessionChats"]["prompt"]>()
+      .mockRejectedValue(new Error("Lookup failed"));
+    using f = renderSessionAssistant({ sessionChats: { prompt } });
+    await f.user.click(screen.getByRole("button", { name: "Ask session assistant" }));
+    const input = screen.getByRole("combobox", { name: "Ask session assistant" });
+    await f.user.type(input, "Find the session");
+    await f.user.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Lookup failed")).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "Ask session assistant" })).toHaveProperty(
+      "value",
+      "Find the session",
+    );
+  });
 
-    await fixture.user.click(screen.getByRole("button", { name: "Ask session assistant" }));
-    await fixture.user.type(
-      screen.getByRole("combobox", { name: "Ask session assistant" }),
-      "Where is the plan?",
-    );
-    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() =>
-      expect(ensure).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({
-          parentSessionId: "parent-1",
-          workingDirectory: "/project",
-          staged: false,
-          stagedMessages: [],
-          firstPrompt: { text: "Where is the plan?", annotations: [] },
-          tools: expect.any(Array),
-        }),
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      ),
-    );
-    expect(screen.getByRole("status", { name: "Session assistant is thinking" })).toBeDefined();
-    expect(screen.queryByRole("combobox", { name: "Ask session assistant" })).toBeNull();
-    fixture.observe(
-      [
-        {
-          id: "user-1",
-          kind: "text",
-          role: "user",
-          text: "Where is the plan?",
-          status: "complete",
-        },
-      ],
-      true,
-    );
-    expect(screen.getByRole("status", { name: "Session assistant is thinking" })).toBeDefined();
-    expect(prompt).not.toHaveBeenCalled();
-    fixture.settle(turnId, "It is in docs/plan.md.", "Where is the plan?");
-    expect(await screen.findByText("It is in docs/plan.md.")).toBeDefined();
-    expect(screen.queryByRole("status", { name: "Session assistant is thinking" })).toBeNull();
-    expect(screen.queryByRole("combobox")).toBeNull();
-
-    await fixture.user.pointer({
+  it("waits for its own quick turn when a preceding full-chat turn settles", async () => {
+    const earlier = TurnId.make("10000000-0000-4000-8000-000000000002");
+    const prompt = vi
+      .fn<Client["sessionChats"]["prompt"]>()
+      .mockResolvedValueOnce(earlier)
+      .mockResolvedValueOnce(turnId);
+    using f = renderSessionAssistant({ sessionChats: { prompt } });
+    await f.user.pointer({
       target: screen.getByRole("button", { name: "Ask session assistant" }),
       keys: "[MouseRight]",
     });
-    expect(await screen.findByText("Session assistant")).toBeDefined();
-    expect(screen.getByText("Where is the plan?")).toBeDefined();
-    const fullInput = screen.getByRole("combobox", { name: "Message session assistant" });
-    await fixture.user.type(fullInput, "Open the other session");
-    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() =>
-      expect(prompt).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ sessionId: "sidecar-assistant", text: "Open the other session" }),
-        expect.any(Object),
-      ),
+    await f.user.type(
+      screen.getByRole("combobox", { name: "Message session assistant" }),
+      "Long answer",
     );
-    expect(ensure).toHaveBeenCalledOnce();
-    fixture.observe(
-      [
-        {
-          id: "assistant-1",
-          kind: "text",
-          role: "assistant",
-          text: "It is in docs/plan.md.",
-          status: "complete",
-        },
-      ],
-      true,
+    await f.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    f.observe([], true);
+    await f.user.keyboard("{Escape}");
+    await f.user.click(screen.getByRole("button", { name: "Ask session assistant" }));
+    await f.user.type(
+      screen.getByRole("combobox", { name: "Ask session assistant" }),
+      "Quick lookup",
     );
-    await fixture.user.click(await screen.findByRole("button", { name: "Stop" }));
-    await waitFor(() =>
-      expect(abort).toHaveBeenCalledWith(
-        { sessionId: "sidecar-assistant", stop: { by: "user" } },
-        expect.any(Object),
-      ),
-    );
+    await f.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
+    f.settle(earlier, "Previous response", "Long answer");
+    expect(screen.getByRole("status", { name: "Session assistant is thinking" })).toBeDefined();
+    f.settle(turnId, "Quick response", "Quick lookup");
+    expect(await screen.findByText("Quick response")).toBeDefined();
+  });
+
+  it("orients only on real entry, mode/scope changes, exit and re-entry, preserving history while open", async () => {
+    const orientation = vi.fn<Client["cakeChats"]["assistantContext"]>(async () => undefined);
+    using f = renderSessionAssistant({ cakeChats: { assistantContext: orientation } });
+    await f.user.pointer({
+      target: screen.getByRole("button", { name: "Ask session assistant" }),
+      keys: "[MouseRight]",
+    });
+    await waitFor(() => expect(orientation).toHaveBeenCalledTimes(1));
+    expect(orientation.mock.calls[0]?.[0].context).toMatchObject({
+      sessionId: "parent-1",
+      mode: "normal",
+    });
+    f.observe([
+      { id: "old", kind: "text", role: "assistant", text: "I remember.", status: "complete" },
+    ]);
+    act(() => {
+      f.root.workspaceSession!.presentationMode = "vscode";
+    });
+    await waitFor(() => expect(orientation).toHaveBeenCalledTimes(2));
+    expect(orientation.mock.calls[1]?.[0].context?.mode).toBe("vscode");
+    act(() => {
+      f.root.sessionRegistry.load("parent-2", "/project");
+      f.root.navigationStore.selectProjectSession("parent-2");
+    });
+    await waitFor(() => expect(orientation).toHaveBeenCalledTimes(3));
+    expect(orientation.mock.calls[2]?.[0].context?.sessionId).toBe("parent-2");
+    expect(await screen.findByText("I remember.")).toBeDefined();
+    await f.user.keyboard("{Escape}");
+    await waitFor(() => expect(orientation).toHaveBeenCalledTimes(4));
+    expect(orientation.mock.calls[3]?.[0].context).toBeNull();
+    await f.user.pointer({
+      target: screen.getByRole("button", { name: "Ask session assistant" }),
+      keys: "[MouseRight]",
+    });
+    await waitFor(() => expect(orientation).toHaveBeenCalledTimes(5));
+    expect(orientation.mock.calls[4]?.[0].context?.sessionId).toBe("parent-2");
+    expect(await screen.findByText("I remember.")).toBeDefined();
   });
 
   it.each([false, true])(
-    "renders an already-settled first reply and supplies staged-parent context only when staged (%s)",
+    "does not import invoking history, including staged sessions (%s)",
     async (staged) => {
-      const ensure = vi.fn<Client["discussionSessions"]["ensureSessionAssistant"]>(async () => ({
-        thread: assistantThread,
-        turnId,
-      }));
       const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => turnId);
-      using fixture = renderSessionAssistant(
-        { discussionSessions: { ensureSessionAssistant: ensure }, sessionChats: { prompt } },
+      const open = vi.fn<Client["cakeChats"]["open"]>(async () => undefined);
+      using f = renderSessionAssistant(
+        { cakeChats: { open }, sessionChats: { prompt } },
         { staged },
       );
-      await fixture.user.click(screen.getByRole("button", { name: "Ask session assistant" }));
-      await fixture.user.type(
-        screen.getByRole("combobox", { name: "Ask session assistant" }),
+      await f.user.pointer({
+        target: screen.getByRole("button", { name: "Ask session assistant" }),
+        keys: "[MouseRight]",
+      });
+      await f.user.type(
+        screen.getByRole("combobox", { name: "Message session assistant" }),
         "Quick one",
       );
-      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
-      await waitFor(() =>
-        expect(ensure).toHaveBeenCalledWith(
-          expect.objectContaining({
-            staged,
-            stagedMessages: staged ? [{ role: "user", text: "Draft the plan" }] : [],
-            firstPrompt: { text: "Quick one", annotations: [] },
-          }),
-          expect.any(Object),
-        ),
-      );
-      fixture.observe([
-        { id: "user-1", kind: "text", role: "user", text: "Quick one", status: "complete" },
-        { id: "assistant-1", kind: "text", role: "assistant", text: "Done.", status: "complete" },
-      ]);
-      expect(await screen.findByText("Done.")).toBeDefined();
-      expect(prompt).not.toHaveBeenCalled();
-      expect(screen.queryByRole("status", { name: "Session assistant is thinking" })).toBeNull();
+      await f.user.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+      expect(open.mock.calls[0]?.[0].sessionId).toBe(SESSION_ASSISTANT_ID);
+      expect(JSON.stringify(open.mock.calls)).not.toContain("Draft the plan");
+      expect(JSON.stringify(prompt.mock.calls)).not.toContain("Draft the plan");
+      expect(prompt.mock.calls[0]?.[0]).toMatchObject({
+        sessionId: SESSION_ASSISTANT_ID,
+        text: "Quick one",
+      });
     },
   );
 });

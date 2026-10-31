@@ -14,11 +14,9 @@ import type { CakeChatControlUpdate } from "../../../../src/contracts/cake-chats
 import type { CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { createModelObserver, observeModels } from "../../../../src/renderer/observers";
-import { mountRootStore } from "../../../../src/renderer/bootstrap/mount-root-store";
-import { createTestClient } from "../test-client";
 import type { Runtime } from "../../../../src/renderer/runtime";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
-import { projectRecord } from "../fixtures/catalog-fixtures";
+import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
 import {
   observerClient,
   observerRuntime as runtimeFor,
@@ -301,13 +299,22 @@ describe("focused projection lifetimes", () => {
   });
 
   it("observes selected, visible, and running pins alongside the real four-session idle LRU", async () => {
-    const projection = RootProjection.create();
-    const root = mountRootStore(
-      createTestClient({ savedDrafts: { list: async () => [] } }),
-      { state: {}, children: {} },
-      async () => undefined,
-      projection,
-    );
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project" })],
+      sessions: [
+        "selected",
+        "visible",
+        "running",
+        "idle-0",
+        "idle-1",
+        "idle-2",
+        "idle-3",
+        "idle-4",
+        "replacement",
+      ].map((sessionId) => sessionSummary({ sessionId, projectPath: "/project" })),
+    });
+    const projection = fixture.models;
+    const root = fixture.root;
     root.navigationStore.selectProjectSession("selected");
     root.sessionLayoutStore.splitFocused("visible", "x");
     root.sessionLayoutStore.focusSession("selected");
@@ -374,8 +381,6 @@ describe("focused projection lifetimes", () => {
       expect(projection.findProjectConversation("selected")?.observedSnapshotRevision).toBe(1);
     } finally {
       stop();
-      root[Symbol.dispose]();
-      projection[Symbol.dispose]();
     }
   });
 

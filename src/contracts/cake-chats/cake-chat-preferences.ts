@@ -21,6 +21,13 @@ export const defaultCakeChatPreferences = (): CakeChatPreferences => ({
   instructions: "",
 });
 
+/** Companion uses a 10/5 KB OptMem view and 32k active context, independently configurable. */
+export const defaultAssistantPreferences = (): CakeChatPreferences => ({
+  memoryViewBytes: 10_000,
+  contextLimitTokens: 32_000,
+  instructions: "",
+});
+
 /** Cake Chat preferences that choose a model with the shared model-choice interface. */
 export type CakeChatModelSetting = "summarizationModel" | "subagentDefaultModel";
 

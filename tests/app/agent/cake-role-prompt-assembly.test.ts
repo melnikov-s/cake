@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { createCakeSessionRuntimeCapabilities } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
 import { cakeAgentDocumentationDirectory } from "../../../src/services/pi/runtime/cake-agent-documentation";
-import { sessionAssistantSystemPrompt } from "../../../src/services/pi/session-assistant";
 import type * as WorktreePrompt from "../../../src/services/pi/runtime/worktree-system-prompt";
 
 vi.mock("../../../src/services/pi/runtime/worktree-system-prompt", async (importOriginal) => ({
@@ -90,37 +89,5 @@ describe("role-specific prompt assembly", () => {
     expect(await readFile(join(docs, "presentation.md"), "utf8")).toContain(
       "Always present images",
     );
-  });
-
-  it("keeps parent context and identity but discovers session-assistant operation contracts lazily", () => {
-    const prompt = sessionAssistantSystemPrompt({
-      parentSessionId: "parent-session",
-      parentContextPrompt: "Exact parent projection and annotation context.",
-      tools: [
-        {
-          command: "sessions.info",
-          topic: "sessions",
-          summary: "Inspect the authoritative parent session",
-          parameters: {
-            type: "object",
-            properties: {
-              sessionId: { type: "string", description: "SCHEMA_SENTINEL_".repeat(1_000) },
-            },
-          },
-          guidance: ["GUIDANCE_SENTINEL_".repeat(1_000)],
-        },
-      ],
-    });
-    expect(prompt).toContain("Exact parent projection and annotation context.");
-    expect(prompt).toContain("attached to Cake Project Session parent-session");
-    expect(prompt).toContain('"this session" means that parent');
-    expect(prompt).toContain("sessions.cake");
-    expect(prompt).toContain("<operation>.help");
-    expect(prompt).toContain("<operation>.output-schema");
-    expect(prompt).toContain("Available Cake topics");
-    expect(prompt).toContain("sessions");
-    expect(prompt).not.toContain("SCHEMA_SENTINEL");
-    expect(prompt).not.toContain("GUIDANCE_SENTINEL");
-    expect(prompt.length).toBeLessThan(5_000);
   });
 });

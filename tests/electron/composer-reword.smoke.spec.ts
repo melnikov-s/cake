@@ -40,19 +40,22 @@ test("rewords composer text and opens the focused session assistant", async () =
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
-    prompts.push(body);
-    const assistantRequest = body.includes("primary job is to carry out quick Cake actions");
+    const summary = /Compaction: (?:compress message|merge lines)/.test(body);
+    if (!summary) prompts.push(body);
+    const assistantRequest = !summary && body.includes("app-wide companion");
     if (assistantRequest && holdNextAssistantRequest) {
       holdNextAssistantRequest = false;
       await new Promise<void>((resolveRequest) => {
         releaseAssistantRequest = resolveRequest;
       });
     }
-    const rewritten = assistantRequest
-      ? "Assistant ready"
-      : body.includes("Make this terse")
-        ? "Terse request"
-        : "Clear request";
+    const rewritten = summary
+      ? "work: companion discussed the selected text"
+      : assistantRequest
+        ? "Assistant ready"
+        : body.includes("Make this terse")
+          ? "Terse request"
+          : "Clear request";
     response.writeHead(200, { "content-type": "text/event-stream" });
     response.end(completion(rewritten));
   });
@@ -101,6 +104,17 @@ test("rewords composer text and opens the focused session assistant", async () =
         },
       ],
       trustedProjectPaths: [project],
+      modelPresets: [
+        {
+          id: "10000000-0000-4000-8000-000000000099",
+          name: "Main",
+          provider: "reword-provider",
+          modelId: "main-model",
+          thinkingLevel: "off",
+          fastMode: false,
+        },
+      ],
+      defaultModelPresetId: "10000000-0000-4000-8000-000000000099",
       utilityModel: {
         provider: "reword-provider",
         modelId: "reword-model",
@@ -109,19 +123,21 @@ test("rewords composer text and opens the focused session assistant", async () =
     }),
   );
 
-  const application = await electron.launch({
-    args: [repositoryRoot],
-    cwd: repositoryRoot,
-    env: {
-      ...process.env,
-      CAKE_ELECTRON_SMOKE: "1",
-      CAKE_ELECTRON_USER_DATA: userData,
-      CAKE_HOME: cakeHome,
-      PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
-      PI_CODING_AGENT_SESSION_DIR: "",
-    },
-  });
+  const launch = () =>
+    electron.launch({
+      args: [repositoryRoot],
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        CAKE_ELECTRON_SMOKE: "1",
+        CAKE_ELECTRON_USER_DATA: userData,
+        CAKE_HOME: cakeHome,
+        PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
+      },
+    });
 
+  let application = await launch();
   try {
     const page = await application.firstWindow();
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
@@ -212,12 +228,11 @@ test("rewords composer text and opens the focused session assistant", async () =
     expect(responseBox.x + responseBox.width).toBeLessThan(triggerBox.x);
     await expect(composer).toHaveValue("Before rough ramble after!");
     expect(prompts).toHaveLength(2);
-    expect(prompts[1]).toContain("primary job is to carry out quick Cake actions");
-    expect(prompts[1]).toContain("vscode.enter");
+    expect(prompts[1]).toContain("app-wide companion");
+    expect(JSON.parse(prompts[1]!).model).toBe("reword-model");
     expect(prompts[1]).toContain("vscode.open");
-    expect(prompts[1]).toContain("The attached Project Session is your parent and its ID is");
+    expect(prompts[1]).toContain("Entered context");
     // The composer selection travels with the message as an annotation.
-    expect(prompts[1]).toContain("selected text was highlighted in the parent composer");
     expect(prompts[1]).toContain("<cake-annotations>");
     expect(prompts[1]).toContain("rough ramble");
     await expect
@@ -241,6 +256,26 @@ test("rewords composer text and opens the focused session assistant", async () =
     await expect.poll(() => prompts.length).toBe(3);
     expect(prompts.at(-1)).toContain("Open the file from our conversation");
     await expect(composer).toHaveValue("Before rough ramble after!");
+    await application.close();
+    application = await launch();
+    const reopened = await application.firstWindow();
+    await reopened
+      .getByRole("button", { name: "Ask session assistant" })
+      .click({ button: "right" });
+    const continued = reopened.getByRole("dialog", { name: "Session assistant chat" });
+    const continuedInput = continued.getByLabel("Message session assistant");
+    await expect(continuedInput).toBeFocused();
+    await expect(continued.getByText("Open the file from our conversation")).toBeVisible();
+    await continuedInput.pressSequentially("After restart");
+    await expect(continuedInput).toHaveValue("After restart");
+    await expect(continued.getByRole("button", { name: "Send" })).toBeEnabled();
+    await continuedInput.press("Enter");
+    await expect.poll(() => prompts.length).toBe(4);
+    expect(prompts[3]).toContain("What did I just ask?");
+    expect(prompts[3]).toContain("Left context");
+    expect(prompts[3]).toContain("Entered context");
+    expect(prompts[3]).not.toContain("Before rough ramble after!");
+    expect(JSON.parse(prompts[3]!).model).toBe("reword-model");
   } finally {
     await application.close();
     server.close();

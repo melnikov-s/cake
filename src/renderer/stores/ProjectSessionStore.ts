@@ -4,7 +4,6 @@ import {
   conversationModeTarget,
   type ConversationModeTarget,
 } from "./ConversationModeStore";
-import { isSessionAssistantThread } from "../../contracts/discussion-sessions/discussion-session-data";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { Conversation } from "../models/Conversation";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
@@ -13,7 +12,6 @@ import type { WorkflowCatalog } from "../models/WorkflowCatalog";
 import { WorkflowRunStore } from "./WorkflowRunStore";
 import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
-import type { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
 import { ProjectPendingSessionsContext } from "./context/ProjectPendingSessionsContext";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
@@ -25,7 +23,6 @@ import { MessageCommentsStore } from "./MessageCommentsStore";
 import { SubagentActivityStore } from "./SubagentActivityStore";
 import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
 import { StagedSessionCommandStore } from "./StagedSessionCommandStore";
-import { SessionAssistantStore } from "./SessionAssistantStore";
 import { ClientContext } from "./context/ClientContext";
 import { EditorSelectionsStore } from "./EditorSelectionsStore";
 import { SessionManagementContext } from "./context/SessionManagementContext";
@@ -60,7 +57,6 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   projectName(): string;
   familyId(): string | undefined;
   modelPresets(): readonly ModelPreset[];
-  assistantTools?(): readonly CakeControlTool[];
   openModelPresetSettings(): void;
   retirement: WorktreeStoreProps["retirement"];
 }
@@ -163,8 +159,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           thread.status === "open" &&
           (thread.anchor.view === "message" ||
             thread.anchor.view === "artifact" ||
-            thread.anchor.view === "session") &&
-          !isSessionAssistantThread(thread),
+            thread.anchor.view === "session"),
       )
       .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
@@ -173,24 +168,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
   sideChatStreaming(threadId: string) {
     return this.props.reviews().threadStreaming(threadId);
-  }
-
-  @child
-  get sessionAssistantStore(): SessionAssistantStore {
-    return createStore(SessionAssistantStore, {
-      sessionId: this.sessionId,
-      workspacePath: this.workspacePath,
-      staged: () => this.pending.isTemporary(this.sessionId),
-      thread: () => this.props.discussionCatalog.threads.find(isSessionAssistantThread),
-      stagedMessages: () =>
-        this.canonicalParts.flatMap((part) => {
-          if (part.kind === "text" && !part.draft) return [{ role: part.role, text: part.text }];
-          if (part.kind === "skill") return [{ role: "user" as const, text: part.content }];
-          return [];
-        }),
-      tools: () => this.props.assistantTools?.() ?? [],
-      discussionSession: (threadId) => this.props.reviews().discussionSession(threadId),
-    });
   }
 
   get isStreaming() {

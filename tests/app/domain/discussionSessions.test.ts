@@ -1,7 +1,6 @@
 import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import assert from "node:assert/strict";
-import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
@@ -26,7 +25,6 @@ import { makeProjectSessionRuntimeTestLayer } from "./projectSessionRuntimeTestL
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
-import { sessionAssistantThreadPath } from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import {
   CAKE_CHAT_SESSION_ID,
@@ -105,7 +103,6 @@ const cakeChatParts: ConversationSnapshot["parts"] = [
 
 const makeLayer = (
   options: {
-    readonly assistant?: boolean;
     readonly persistedSidecar?: boolean;
     readonly cakeChat?: boolean;
     /** Cake Chat forks natively into this Durable conversation instead of refusing. */
@@ -166,20 +163,7 @@ const makeLayer = (
         deliveryState: "sending",
       },
     ],
-    anchor: options.cakeChat
-      ? cakeChatAnchor
-      : options.assistant
-        ? {
-            path: sessionAssistantThreadPath("parent-1"),
-            view: "session",
-            start: { diffLine: 0 },
-            end: { diffLine: 0 },
-            selectedText: "",
-            contextBefore: "",
-            contextAfter: "",
-            diff: "",
-          }
-        : anchor,
+    anchor: options.cakeChat ? cakeChatAnchor : anchor,
     status: "open",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -190,7 +174,6 @@ const makeLayer = (
   const forwardedInputs: unknown[] = [];
   const rendererBindings: Array<{ sessionId: string; connectionId: number; prompts: number }> = [];
   const interviewRequests: unknown[] = [];
-  let stagedProjections = 0;
   const prompts: Parameters<CakeSessionRuntime["prompt"]>[] = [];
   const queueOperations: string[] = [];
   let preparedContexts = 0;
@@ -358,10 +341,6 @@ const makeLayer = (
       Effect.sync(() => {
         preparedContexts += 1;
       }),
-    prepareStagedParentContext: () =>
-      Effect.sync(() => {
-        stagedProjections += 1;
-      }),
     prepareCakeChatBranchContext: (_record, messages) =>
       Effect.sync(() => {
         branchContexts.push(messages);
@@ -467,7 +446,6 @@ const makeLayer = (
     queueOperations,
     preparedContexts: () => preparedContexts,
     parentIndexRefreshes: () => parentIndexRefreshes,
-    stagedProjections: () => stagedProjections,
     createdRecords,
     branchContexts,
     forkedEntries,
@@ -980,199 +958,4 @@ describe("Discussion Sessions domain", () => {
       assert.equal(first.value.snapshot.conversation.sessionId, accepted.thread.sidecarSessionId);
     }).pipe(Effect.provide(fixture.layer));
   });
-
-  it.effect(
-    "acquires the session assistant as a side chat on the utility model with Cake control",
-    () => {
-      const fixture = makeLayer({ assistant: true });
-      const tool = {
-        command: "sessions.open",
-        topic: "sessions",
-        summary: "Open a session",
-        parameters: { type: "object", properties: {} },
-      };
-      const ensureInput = {
-        parentSessionId: "parent-1",
-        workingDirectory: "/project",
-        tools: [tool],
-        staged: false,
-        stagedMessages: [],
-      };
-      return Effect.gen(function* () {
-        const ensured = yield* discussionSessions.ensureSessionAssistant({
-          ...ensureInput,
-          firstPrompt: { text: "Where is the plan?" },
-        });
-        const thread = ensured.thread;
-        assert.equal(typeof thread.sidecarSessionId, "string");
-        // A brand-new assistant starts with its first message, as any side chat
-        // does, so Pi persists the sidecar before the renderer observes it.
-        assert.match(ensured.turnId ?? "", /^[0-9a-f-]{36}$/);
-        yield* Effect.yieldNow;
-        assert.equal(fixture.prompts.length, 1);
-        assert.equal(fixture.prompts[0]?.[0], "Where is the plan?");
-        assert.equal(fixture.stagedProjections(), 0);
-
-        const sidecar = fixture.options.find((options) => options.auxiliary)!;
-        // Same profile and runtime as a side chat; only the configuration differs.
-        assert.equal(sidecar.auxiliary, true);
-        assert.equal(sidecar.globalControl, undefined);
-        // The assistant can run shell commands, unlike a read-only side chat.
-        assert.deepEqual(sidecar.tools, [
-          "read",
-          "bash",
-          "edit",
-          "write",
-          "grep",
-          "find",
-          "ls",
-          "cake",
-        ]);
-        assert.match(sidecar.additionalSystemPrompt ?? "", /Session Assistant attached to/);
-        assert.match(
-          sidecar.additionalSystemPrompt ?? "",
-          /read, search, edit, write and shell tools/,
-        );
-        assert.match(
-          sidecar.additionalSystemPrompt ?? "",
-          /sessions — Create, fork, inspect, message/,
-        );
-        assert.match(sidecar.additionalSystemPrompt ?? "", /<operation>\.help gives exact inputs/);
-        assert.deepEqual(fixture.modelSelections.at(-1), {
-          provider: "google",
-          modelId: "gemini-3.5-flash-lite",
-        });
-
-        // Backend-owned inspection/settings do not visit the parent renderer.
-        const settings = yield* Effect.promise(() =>
-          sidecar.sessionControl!.invoke(
-            { name: "settings.models.get", arguments: {} },
-            new AbortController().signal,
-          ),
-        );
-        expect(settings).toMatchObject({
-          ok: true,
-          value: { utilityModel: { modelId: "gemini-3.5-flash-lite" } },
-        });
-        assert.deepEqual(fixture.controlInvocations, []);
-        // Window-owned controls still reach the parent renderer.
-        assert.deepEqual(
-          sidecar.sessionControl?.tools.map((candidate) => candidate.command),
-          ["sessions.open"],
-        );
-        yield* Effect.promise(() =>
-          sidecar.sessionControl!.invoke(
-            { name: "sessions.open", arguments: { sessionId: "other" } },
-            new AbortController().signal,
-          ),
-        );
-        assert.deepEqual(fixture.controlInvocations, [
-          {
-            sessionId: "parent-1",
-            invocation: {
-              _tag: "InvokeAppControl",
-              command: "sessions.open",
-              input: { sessionId: "other" },
-            },
-          },
-        ]);
-
-        // Later turns are ordinary shared Session Chat prompts to the sidecar.
-        yield* sessionChats.deliver(
-          {
-            sessionId: thread.sidecarSessionId!,
-            text: "Open the other session",
-            attachments: [],
-            renderUserMessageAsMarkdown: false,
-          },
-          "prompt",
-        );
-        yield* Effect.yieldNow;
-        assert.equal(fixture.prompts.length, 2);
-        assert.equal(fixture.preparedContexts(), 2);
-        assert.equal(fixture.options.filter((options) => options.auxiliary).length, 1);
-
-        // Once the sidecar exists, ensure is a lookup and never re-prompts.
-        const again = yield* discussionSessions.ensureSessionAssistant({
-          ...ensureInput,
-          firstPrompt: { text: "Ignored" },
-        });
-        assert.equal(again.turnId, undefined);
-        assert.equal(again.thread.sidecarSessionId, thread.sidecarSessionId);
-        assert.equal(fixture.prompts.length, 2);
-      }).pipe(Effect.provide(fixture.layer));
-    },
-  );
-
-  it.effect(
-    "session assistant sends with parent identity and scoped attachment authorization, not sidecar identity",
-    () => {
-      const f = makeLayer({ assistant: true, backendControl: true });
-      return Effect.gen(function* () {
-        const ensured = yield* discussionSessions.ensureSessionAssistant({
-          parentSessionId: "parent-1",
-          workingDirectory: "/project",
-          tools: [],
-          staged: false,
-          stagedMessages: [],
-          firstPrompt: { text: "Coordinate" },
-        });
-        yield* Effect.yieldNow;
-        const sidecar = f.options.find((options) => options.auxiliary);
-        assert.ok(sidecar?.sessionControl);
-        const recipient = "00000000-0000-4000-8000-000000000044";
-        const result = yield* Effect.promise(() =>
-          sidecar.sessionControl!.invoke(
-            {
-              name: "sessions.send",
-              arguments: {
-                sessionId: recipient,
-                text: "Parent-scoped task",
-                inputRefs: ["selected"],
-              },
-            },
-            new AbortController().signal,
-          ),
-        );
-        expect(result).toMatchObject({
-          ok: true,
-          expectsResponse: true,
-          target: { sessionId: recipient },
-        });
-        yield* Effect.yieldNow;
-        const message = f.prompts
-          .map((input) => parseCrossSessionMessage(input[0]))
-          .find((input) => input?.text === "Parent-scoped task");
-        expect(message?.metadata.sender).toMatchObject({
-          kind: "project-session",
-          sessionId: "parent-1",
-          title: "Parent authority",
-          workingDirectory: "/project",
-        });
-        expect(message?.metadata.sender.sessionId).not.toBe(ensured.thread.sidecarSessionId);
-        expect(f.forwardedInputs).toEqual([{ owner: "parent-1", refs: ["selected"], recipient }]);
-        expect(f.controlInvocations).toEqual([]);
-      }).pipe(Effect.provide(f.layer));
-    },
-  );
-
-  it.effect(
-    "projects a staged parent's messages for the assistant instead of its transcript",
-    () => {
-      const fixture = makeLayer({ assistant: true });
-      return Effect.gen(function* () {
-        const ensured = yield* discussionSessions.ensureSessionAssistant({
-          parentSessionId: "parent-1",
-          workingDirectory: "/project",
-          tools: [],
-          staged: true,
-          stagedMessages: [{ role: "user", text: "Draft the plan" }],
-        });
-        assert.equal(fixture.stagedProjections(), 1);
-        // Without a first message there is nothing to persist: no sidecar yet.
-        assert.equal(ensured.thread.sidecarSessionId, undefined);
-        assert.equal(fixture.options.filter((options) => options.auxiliary).length, 0);
-      }).pipe(Effect.provide(fixture.layer));
-    },
-  );
 });

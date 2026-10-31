@@ -1,3 +1,4 @@
+import { ASSISTANT_CONTEXT_ENTRY } from "./durable-assistant-context";
 import {
   awaitWithContext,
   BACKGROUND_CONTEXT,
@@ -196,6 +197,10 @@ const sourceText = (entry: EntryRecord) => {
   if (imported) return importedHistoryText(imported);
   // Only originals enter the tree. Reset handoffs, system declarations, emergency
   // compaction summaries and our derived nodes must never be summarized a second time.
+  if (entry.kind === ASSISTANT_CONTEXT_ENTRY)
+    return (
+      "work: " + Schema.decodeUnknownSync(Schema.Struct({ text: Schema.String }))(entry.data).text
+    );
   if (!["pi.user", "pi.assistant"].includes(entry.kind)) return "";
   return entry.model?.map(durableMessageText).filter(Boolean).join("\n") ?? "";
 };

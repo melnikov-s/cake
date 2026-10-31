@@ -84,6 +84,9 @@ import {
   createCakeChatReadTool,
 } from "./cake-chat-local-tools";
 import { CakeChatMcp, createCakeChatMcpTool, loadCakeChatMcpServers } from "./cake-chat-mcp";
+import type { AssistantContext } from "../../contracts/cake-chats/assistant-context";
+import { transitionAssistantContext } from "./durable-assistant-context";
+import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { SubagentResult, SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
 import { Option } from "effect";
@@ -111,6 +114,7 @@ const unsupported = async () => {
 
 /** The coordinator runtime and the side-chat forks that share its Durable database. */
 export type DurableCakeChatRuntime = CakeSessionRuntime & {
+  readonly assistantContext: (context: AssistantContext | null) => Promise<void>;
   readonly sideChats: DurableSideChats;
   readonly catalog: ReturnType<typeof createDurableChatCatalog>;
 };
@@ -129,6 +133,12 @@ export async function createDurableCakeChatRuntime(
     throw new Error("Durable Cake Chat requires the coordinator capability profile");
   const preferences = options.cakeChatMemory;
   const sessionId = options.sessionId;
+  const companion = sessionId === SESSION_ASSISTANT_ID;
+  const utilitySelection = () => {
+    const model = options.utilityModel?.();
+    if (!model) throw new Error("Configure a utility model in Settings before using the companion");
+    return model;
+  };
   const sessionFile = durableChatDatabase(options.sessionDir);
   const settings = SettingsManager.create(options.cwd, options.agentDir, {
     projectTrusted: options.trusted,
@@ -137,7 +147,7 @@ export async function createDurableCakeChatRuntime(
   const cakeDocsDirectory = await cakeAgentDocumentationDirectory(options.agentDir);
   const instructions = () =>
     [
-      coordinatorSystemPrompt(preferences.preferences().instructions, cakeDocsDirectory),
+      coordinatorSystemPrompt(preferences.preferences().instructions, cakeDocsDirectory, companion),
       durableArchiveRecallInstructions(sessionId),
       options.additionalSystemPrompt,
       options.cakeChatSystemPrompt?.(),
@@ -176,10 +186,13 @@ export async function createDurableCakeChatRuntime(
   );
   const available = await catalogRuntime.getAvailable();
   const presets = options.coordinator.modelPresets?.();
-  const preset = presets?.presets.find((entry) => entry.id === presets.defaultPresetId);
+  const preset = companion
+    ? undefined
+    : presets?.presets.find((entry) => entry.id === presets.defaultPresetId);
   const defaultProvider = settings.getDefaultProvider();
   const defaultModelId = settings.getDefaultModel();
   const selection =
+    (companion ? utilitySelection() : undefined) ??
     preset ??
     (defaultProvider && defaultModelId
       ? { provider: defaultProvider, modelId: defaultModelId }
@@ -188,7 +201,10 @@ export async function createDurableCakeChatRuntime(
   if (!defaultModel)
     throw new Error("Configure an authenticated chat model in Settings before opening Cake Chat");
   let thinkingLevel: ThinkingLevel =
-    preset?.thinkingLevel ?? settings.getDefaultThinkingLevel() ?? "off";
+    (companion ? utilitySelection().thinkingLevel : undefined) ??
+    preset?.thinkingLevel ??
+    settings.getDefaultThinkingLevel() ??
+    "off";
   let selected = defaultModel;
   let activePreset: ChatConfiguration["preset"];
   let unavailableModel: { provider: string; modelId: string } | undefined;
@@ -499,6 +515,13 @@ export async function createDurableCakeChatRuntime(
       BACKGROUND_CONTEXT,
     );
   const configureAgent = async () => {
+    if (companion) {
+      const utility = utilitySelection();
+      selected = requireRegisteredModel(catalogRuntime, utility);
+      thinkingLevel = utility.thinkingLevel;
+      unavailableModel = undefined;
+      activePreset = undefined;
+    }
     await engine.root.commit(async (tx) => {
       const state = await tx.doc(PresetContextDoc, engine.root.id);
       if (activePreset) state.preset = activePreset;
@@ -606,6 +629,10 @@ export async function createDurableCakeChatRuntime(
     sessionId,
     sessionFile,
     sideChats,
+    assistantContext: (context) => {
+      if (!companion) throw new Error("Context transitions belong to the companion");
+      return transitionAssistantContext(engine.root, context);
+    },
     importSideChatHistory: (input) => importDurableSideChatHistory(engine.root, input),
     get streaming() {
       return streaming;
@@ -832,6 +859,8 @@ export async function createDurableCakeChatRuntime(
       await abortDurableActiveTurn(engine.harness, engine.root);
     },
     async setModel(provider, modelId) {
+      if (companion)
+        throw new Error("The companion follows the utility model configured in Settings");
       const model = catalogRuntime.getModel(provider, modelId);
       if (!model) throw new Error(`Unknown model ${provider}/${modelId}`);
       selected = model;
@@ -846,6 +875,8 @@ export async function createDurableCakeChatRuntime(
       publish();
     },
     async applyConfiguration(configuration: ChatConfiguration) {
+      if (companion)
+        throw new Error("The companion follows the utility model configured in Settings");
       const model = catalogRuntime.getModel(configuration.provider, configuration.modelId);
       if (!model)
         throw new Error(`Unknown model ${configuration.provider}/${configuration.modelId}`);
@@ -924,7 +955,7 @@ export async function createDurableCakeChatRuntime(
   // Durable reuses the persisted agent on reopen. Apply only the external instruction authority;
   // the model/thinking selection remains the saved coordinator's configuration.
   const savedAgent = await engine.root.agent(BACKGROUND_CONTEXT);
-  if (savedAgent.model) {
+  if (savedAgent.model && !companion) {
     const saved = catalogRuntime.getModel(savedAgent.model.provider, savedAgent.model.modelId);
     unavailableModel = saved
       ? undefined
@@ -943,6 +974,7 @@ export async function createDurableCakeChatRuntime(
       ? { id: preset.id, ...(preset.prompt === undefined ? null : { prompt: preset.prompt }) }
       : undefined;
   await configureAgent();
+  if (companion) await transitionAssistantContext(engine.root, null);
   engine.harness.resume();
   return runtime;
 }

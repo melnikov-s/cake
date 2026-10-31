@@ -252,7 +252,7 @@ export async function runInlineWidgetVisualReview(
 const MAX_DISCUSSION_PARENT_CONTEXT_LENGTH = 524_288;
 
 /** Writes one bounded, regenerated parent projection to a Cake-owned derived-context path. */
-export interface StagedParentMessage {
+export interface SideChatContextMessage {
   readonly role: "user" | "assistant";
   readonly text: string;
 }
@@ -265,10 +265,8 @@ export const writeDiscussionParentContext = Effect.fn("PiSidecar.writeDiscussion
       readonly cwd: string;
       readonly parentSessionRoot: string;
       readonly parent?: ReviewParentContext;
-      /** Renderer-held messages of a staged parent that has no transcript yet. */
-      readonly staged?: ReadonlyArray<StagedParentMessage>;
       /** Cake Chat messages through a side chat's branch point. */
-      readonly cakeChat?: ReadonlyArray<StagedParentMessage>;
+      readonly cakeChat?: ReadonlyArray<SideChatContextMessage>;
       readonly target: string;
     },
   ) {
@@ -293,11 +291,9 @@ export const writeDiscussionParentContext = Effect.fn("PiSidecar.writeDiscussion
           },
           catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
         })
-      : options.staged
-        ? renderStagedParentTranscript(options.staged)
-        : options.cakeChat
-          ? renderCakeChatBranchContext(options.cakeChat)
-          : yield* Effect.fail(new Error("The parent session is unavailable for this discussion"));
+      : options.cakeChat
+        ? renderCakeChatBranchContext(options.cakeChat)
+        : yield* Effect.fail(new Error("The parent session is unavailable for this discussion"));
     yield* atomicWriteFile(fileSystem, path, options.target, projection, (_stage, cause) =>
       cause instanceof Error ? cause : new Error(String(cause)),
     );
@@ -313,7 +309,7 @@ const MAX_CAKE_CHAT_BRANCH_CONTEXT_LENGTH = 120_000;
  * side chat inlines it into a stable system prompt, so it is bounded more
  * tightly than a file-backed parent projection and keeps the newest messages.
  */
-export function renderCakeChatBranchContext(messages: ReadonlyArray<StagedParentMessage>) {
+export function renderCakeChatBranchContext(messages: ReadonlyArray<SideChatContextMessage>) {
   const sections = messages
     .filter((message) => message.text.trim())
     .map((message) => `## ${message.role}\n\n${message.text.trim()}`);
@@ -357,16 +353,6 @@ export function cakeChatSideChatSystemPrompt(
   ]
     .filter(Boolean)
     .join("\n\n");
-}
-
-function renderStagedParentTranscript(messages: ReadonlyArray<StagedParentMessage>) {
-  const header = `# Staged parent session\n\nThe parent Project Session is still a staged chat, so its current user and assistant messages are supplied here as read-only context. Tool calls are intentionally omitted.\n\n`;
-  const transcript = messages
-    .filter((message) => message.text.trim())
-    .map((message) => `## ${message.role}\n\n${message.text.trim()}`)
-    .join("\n\n---\n\n")
-    .slice(-MAX_DISCUSSION_PARENT_CONTEXT_LENGTH);
-  return `${header}${transcript}\n`;
 }
 
 function renderParentTranscript(sessionId: string, entries: SessionEntry[]) {

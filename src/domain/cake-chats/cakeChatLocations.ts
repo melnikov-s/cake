@@ -3,6 +3,7 @@ import { join, dirname } from "node:path";
 import { Effect } from "effect";
 import {
   CAKE_CHAT_SESSION_ID,
+  SESSION_ASSISTANT_ID,
   PROJECT_CHAT_PREFIX,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { CakeChatError } from "../../contracts/cake-chats/cake-chat-data";
@@ -30,6 +31,8 @@ export const resolve = Effect.fn("CakeChats.resolveLocation")(function* (
   sessionId: string,
 ) {
   if (sessionId === CAKE_CHAT_SESSION_ID) return global;
+  if (sessionId === SESSION_ASSISTANT_ID)
+    return { ...global, sessionDirectory: join(dirname(global.sessionDirectory), "companion") };
   const application = yield* ApplicationState;
   const project = application
     .snapshot()

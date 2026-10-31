@@ -1,113 +1,120 @@
 import { child, createStore, effect as reactiveEffect, observable, Store } from "r-state-tree";
-import type { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
 import type { Annotation, UiPart } from "../../contracts/conversations/session-contract";
-import type { ReviewThread } from "../models/ReviewThread";
+import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import type { AssistantContext } from "../../contracts/cake-chats/assistant-context";
+import { sameAssistantContext } from "../../contracts/cake-chats/assistant-context";
 import { describeError } from "../lib/error-details";
 import { ChatStore } from "./ChatStore";
-import type { DiscussionSessionStore } from "./DiscussionSessionStore";
+import type { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { ClientContext } from "./context/ClientContext";
 
 export interface SessionAssistantStoreProps {
-  readonly sessionId: string;
-  readonly workspacePath: string;
-  staged(): boolean;
-  /** The parent's messages while it is still a staged chat without a transcript. */
-  stagedMessages(): ReadonlyArray<{ role: "user" | "assistant"; text: string }>;
-  thread(): ReviewThread | undefined;
-  tools(): readonly CakeControlTool[];
-  /** The assistant thread's shared conversation Store once its sidecar is live. */
-  discussionSession(threadId: string): DiscussionSessionStore | undefined;
+  session(): CakeChatSessionStore;
+  context(): AssistantContext | null;
 }
 
-/**
- * Compact and full-chat presentations of one Project Session's assistant. The
- * assistant is an ordinary Discussion Session on the utility model; this Store
- * owns only the avatar bubble's turn-at-a-time presentation on top of it.
- */
+/** Window-owned presentation of the one app-wide permanent Durable companion. */
 export class SessionAssistantStore extends Store<SessionAssistantStoreProps> {
-  /** The answer bubble: the assistant's reply to the last quick prompt. */
   readonly quickParts: UiPart[] = observable([]);
+  open = false;
+  surface: "quick" | "chat" = "quick";
   error: string | undefined;
   focusRequestRevision = 0;
   quickResponseRevision = 0;
   composerSelection: string | undefined;
-  private ensuring = false;
-  private quickTurnPending = false;
-  private ensureRequest: AbortController | undefined;
+  processing = false;
+  private context: AssistantContext | null = null;
+  private transitions: Promise<void> = Promise.resolve();
 
+  constructor(props: SessionAssistantStore["props"]) {
+    super(props);
+    this.effect(() => {
+      const next = this.open ? this.props.context() : null;
+      if (sameAssistantContext(this.context, next)) return;
+      this.context = next;
+      this.enqueueContext(next);
+    });
+  }
+
+  get contextSessionId() {
+    return this.props.context()?.sessionId;
+  }
   get client() {
     return ClientContext.consume(this)!;
   }
-
-  /** The shared side-chat conversation, once the assistant's sidecar is live. */
-  get discussion() {
-    const thread = this.props.thread();
-    return thread ? this.props.discussionSession(thread.id) : undefined;
+  get session() {
+    return this.props.session();
   }
 
-  get processing() {
-    return this.ensuring || this.quickTurnPending;
+  private enqueueContext(context: AssistantContext | null) {
+    // Serialize actual entry/exit events before submissions; ordinary messages add no reminder.
+    this.transitions = this.transitions
+      .catch(() => undefined)
+      .then(async () => {
+        const session = this.session;
+        await this.client.cakeChats.open(session.props.target(), { signal: this.signal });
+        await this.client.cakeChats.assistantContext({ context }, { signal: this.signal });
+      });
+    void this.transitions.catch((error) => {
+      this.error = describeError(error).message;
+    });
   }
 
-  /** The full chat is the assistant's side chat, exactly as any other side chat. */
-  get chatStore(): ChatStore {
-    return this.discussion?.chatStore ?? this.bootstrapChatStore;
-  }
-
-  /** Composer for the first message, before the assistant's sidecar exists. */
-  @child
-  get bootstrapChatStore(): ChatStore {
+  @child get chatStore(): ChatStore {
     return createStore(ChatStore, {
-      id: () => `session-assistant:${this.props.sessionId}`,
-      parts: () => this.props.thread()?.uiParts ?? [],
-      streaming: () => false,
+      id: () => SESSION_ASSISTANT_ID,
+      parts: () => this.session.model.uiParts,
+      history: this.session.history,
+      streaming: () => this.session.model.streaming,
       submitting: () => this.processing,
       configuration: () => undefined,
       commands: () => [],
-      placeholder: () => "Ask the session assistant…",
+      placeholder: () => "Ask the companion…",
       inputLabel: () => "Message session assistant",
       canSubmit: (draft) => Boolean(draft.trim()) && !this.processing,
       submit: (draft) => this.runPrompt(draft, false),
-      abort: () => this.abort(),
+      abort: () => this.session.conversationSessionStore.chatStore.abort(),
       focusRequestRevision: () => this.focusRequestRevision,
       error: () => ({ message: this.error }),
     });
   }
 
-  @child
-  get quickChatStore(): ChatStore {
+  @child get quickChatStore(): ChatStore {
     return createStore(ChatStore, {
-      id: () => `session-assistant-quick:${this.props.sessionId}`,
+      id: () => `${SESSION_ASSISTANT_ID}:quick`,
       parts: () => this.quickParts,
       streaming: () => false,
       submitting: () => this.processing,
       configuration: () => undefined,
       commands: () => [],
-      placeholder: () => "Ask the session assistant…",
+      placeholder: () => "Ask the companion…",
       inputLabel: () => "Ask session assistant",
       canSubmit: (draft) => Boolean(draft.trim()) && !this.processing,
       submit: (draft) => this.runPrompt(draft, true),
-      abort: () => this.abort(),
+      abort: () => this.session.conversationSessionStore.chatStore.abort(),
       composerVisible: () => !this.processing && this.quickParts.length === 0,
       focusRequestRevision: () => this.focusRequestRevision,
     });
   }
 
-  beginQuickPrompt(composerSelection?: string) {
-    this.composerSelection = composerSelection;
+  beginQuickPrompt(selection?: string) {
+    this.surface = "quick";
+    this.composerSelection = selection;
     this.quickParts.splice(0);
     this.quickChatStore.setDraft("");
     this.quickResponseRevision = 0;
     this.error = undefined;
     this.requestFocus();
   }
-
-  beginChat(composerSelection?: string) {
-    this.composerSelection = composerSelection;
+  beginChat(selection?: string) {
+    this.surface = "chat";
+    this.composerSelection = selection;
     this.error = undefined;
     this.requestFocus();
   }
-
+  setOpen(open: boolean) {
+    this.open = open;
+  }
   requestFocus() {
     this.focusRequestRevision += 1;
   }
@@ -115,120 +122,65 @@ export class SessionAssistantStore extends Store<SessionAssistantStoreProps> {
   private async runPrompt(prompt: string, quick: boolean) {
     const text = prompt.trim();
     if (!text || this.processing) return false;
+    this.processing = true;
     this.error = undefined;
     try {
+      await this.transitions;
+      const session = this.session;
+      const ready = await this.waitFor(() => session.model.observedSnapshotRevision > 0);
+      if (!ready) return false;
       const selection = this.composerSelection;
-      // The parent composer's selection travels with this one message as
-      // user-provided context rather than living in the system prompt.
       this.composerSelection = undefined;
-      const annotation = selection ? composerSelectionAnnotation(selection) : undefined;
-      if (quick) this.quickTurnPending = true;
-      const ensured = await this.ensureDiscussion(text, annotation);
-      if (!ensured || this.signal.aborted) return false;
-      const { discussion, startedTurnId } = ensured;
-      const model = discussion.model;
-      const settledBefore = model.settledTurnRevision;
-      if (startedTurnId === undefined) {
-        if (annotation) discussion.chatStore.addAnnotation(annotation);
-        const submitted = await discussion.chatStore.submit(text);
-        if (!submitted) return false;
+      if (selection)
+        session.conversationSessionStore.chatStore.addAnnotation(
+          composerSelectionAnnotation(selection),
+        );
+      const composer = session.conversationSessionStore.composerStore;
+      composer.draftStore.setText(text);
+      const submitted = await composer.submit();
+      if (submitted === false) {
+        this.error = composer.error;
+        return false;
       }
-      if (!quick) return true;
-      // Settlement arrives as an event. A turn started by `ensure` may already
-      // have settled before this window subscribed, in which case the first
-      // snapshot shows the completed reply instead.
-      const settled = await this.waitFor(
-        () =>
-          model.observedSnapshotRevision > 0 &&
-          (startedTurnId === undefined
-            ? model.settledTurnRevision > settledBefore
-            : model.settledTurns.some((turn) => turn.turnId === startedTurnId) ||
-              (!model.streaming &&
-                model.activeTurnIds.length === 0 &&
-                latestAssistantReply(model.uiParts).length > 0)),
+      if (!quick || !submitted || submitted === true) return true;
+      // A preceding full-chat turn may settle while this quick prompt is queued.
+      // Wait for our accepted turn, not merely the next settlement.
+      if (
+        !(await this.waitFor(() =>
+          session.model.settledTurns.some((turn) => turn.turnId === submitted.turnId),
+        ))
+      )
+        return false;
+      this.quickParts.splice(
+        0,
+        this.quickParts.length,
+        ...latestAssistantReply(session.model.uiParts),
       );
-      if (!settled) return false;
-      this.quickParts.splice(0, this.quickParts.length, ...latestAssistantReply(model.uiParts));
       this.quickResponseRevision += 1;
       return true;
     } catch (error) {
       if (!this.signal.aborted) this.error = describeError(error).message;
       return false;
     } finally {
-      this.quickTurnPending = false;
+      this.processing = false;
     }
   }
 
-  /**
-   * Ensures the assistant's sidecar exists and waits for this window to observe
-   * it. A brand-new assistant is started with this message, as any side chat is.
-   */
-  private async ensureDiscussion(
-    text: string,
-    annotation: Omit<Annotation, "id"> | undefined,
-  ): Promise<{ discussion: DiscussionSessionStore; startedTurnId?: string } | undefined> {
-    const existing = this.discussion;
-    if (existing) return { discussion: existing };
-    const controller = new AbortController();
-    this.ensureRequest = controller;
-    this.ensuring = true;
-    try {
-      const ensured = await this.client.discussionSessions.ensureSessionAssistant(
-        {
-          parentSessionId: this.props.sessionId,
-          workingDirectory: this.props.workspacePath,
-          tools: [...this.props.tools()],
-          staged: this.props.staged(),
-          stagedMessages: this.props.staged() ? [...this.props.stagedMessages()] : [],
-          firstPrompt: {
-            text,
-            annotations: annotation ? [{ ...annotation, id: crypto.randomUUID() }] : [],
-          },
-        },
-        { signal: AbortSignal.any([this.signal, controller.signal]) },
-      );
-      if (controller.signal.aborted) return undefined;
-      const threadId = ensured.thread.id;
-      const ready = await this.waitFor(
-        () => Boolean(this.props.discussionSession(threadId)),
-        controller.signal,
-      );
-      const discussion = ready ? this.props.discussionSession(threadId) : undefined;
-      if (!discussion) return undefined;
-      return ensured.turnId === undefined
-        ? { discussion }
-        : { discussion, startedTurnId: ensured.turnId };
-    } finally {
-      if (this.ensureRequest === controller) this.ensureRequest = undefined;
-      this.ensuring = false;
-    }
-  }
-
-  private waitFor(condition: () => boolean, signal?: AbortSignal): Promise<boolean> {
+  private waitFor(condition: () => boolean): Promise<boolean> {
     if (condition()) return Promise.resolve(true);
-    if (this.signal.aborted || signal?.aborted) return Promise.resolve(false);
+    if (this.signal.aborted) return Promise.resolve(false);
     return new Promise((resolve) => {
-      let settled = false;
       const finish = (ready: boolean) => {
-        if (settled) return;
-        settled = true;
         this.signal.removeEventListener("abort", abort);
-        signal?.removeEventListener("abort", abort);
         dispose();
         resolve(ready);
       };
       const abort = () => finish(false);
       this.signal.addEventListener("abort", abort, { once: true });
-      signal?.addEventListener("abort", abort, { once: true });
       const dispose = reactiveEffect(() => {
         if (condition()) queueMicrotask(() => finish(true));
       });
     });
-  }
-
-  private async abort() {
-    this.ensureRequest?.abort();
-    await this.discussion?.chatStore.abort();
   }
 }
 
@@ -242,8 +194,6 @@ function composerSelectionAnnotation(selection: string): Omit<Annotation, "id"> 
     contextAfter: "",
   };
 }
-
-/** The assistant text produced after the user's most recent message. */
 function latestAssistantReply(parts: readonly UiPart[]): UiPart[] {
   const lastUserIndex = parts.findLastIndex((part) => part.kind === "text" && part.role === "user");
   return parts

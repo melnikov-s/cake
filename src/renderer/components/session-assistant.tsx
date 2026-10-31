@@ -1,14 +1,13 @@
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, type MouseEvent } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import type { SessionLabel } from "../../contracts/application/application-data";
 import { Chat } from "./chat";
+import { Callout } from "./ui/callout";
 import { Avatar } from "./ui/avatar";
 import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
 import { ThinkingBubble } from "./ui/thinking-bubble";
 import type { SessionAssistantStore } from "../stores/SessionAssistantStore";
-
-type AssistantSurface = "quick" | "chat";
 
 function composerSelection(trigger: HTMLElement) {
   const input = trigger
@@ -32,8 +31,9 @@ export const SessionAssistant = observer(function SessionAssistant({
   value: readonly string[];
   animated?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [surface, setSurface] = useState<AssistantSurface>("quick");
+  const open = store.open && store.contextSessionId === seed;
+  const surface = store.surface;
+  const setOpen = (value: boolean) => store.setOpen(value);
   const labelColors = value.flatMap((labelId) => {
     const label = labels.find((candidate) => candidate.id === labelId);
     return label ? [label.color] : [];
@@ -54,7 +54,6 @@ export const SessionAssistant = observer(function SessionAssistant({
 
   const openFullChat = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
-    setSurface("chat");
     setOpen(true);
     store.beginChat(composerSelection(event.currentTarget));
   };
@@ -68,7 +67,6 @@ export const SessionAssistant = observer(function SessionAssistant({
           if (event.button === 0) event.preventDefault();
         }}
         onClick={(event) => {
-          setSurface("quick");
           store.beginQuickPrompt(composerSelection(event.currentTarget));
         }}
         onContextMenu={openFullChat}
@@ -97,27 +95,33 @@ export const SessionAssistant = observer(function SessionAssistant({
               ? "w-fit overflow-visible border-0 bg-transparent shadow-none"
               : "w-[min(22rem,calc(100vw-24px))]",
             quickResponse &&
-              "max-w-[min(22rem,calc(100vw-24px))] rounded-2xl [&_[aria-label=Conversation]]:p-0",
+              "w-[min(19rem,calc(100vw-24px))] max-w-[min(22rem,calc(100vw-24px))] rounded-2xl [&_[aria-label=Conversation]]:p-0",
           )}
         >
           {processing ? (
             <ThinkingBubble />
           ) : (
-            <Chat
-              store={store.quickChatStore}
-              compact
-              embedded
-              composerFocusEnabled
-              inlineComposer
-              className={cn(
-                "h-auto max-h-[min(18rem,60vh)] [&_.transcript]:max-h-[min(18rem,60vh)] [&_[data-slot=message]]:w-fit [&_[data-slot=message-content]]:max-w-[min(22rem,calc(100vw-24px))] [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2.5 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-actions]]:hidden",
-                !quickResponse && "[&_.transcript]:hidden",
-                quickResponse &&
-                  "[&_[data-slot=message-content]]:rounded-2xl [&_[data-slot=message-content]]:rounded-br-md [&_[data-slot=message-content]]:border-border/70 [&_[data-slot=message-content]]:bg-card/95 [&_[data-slot=message-content]]:shadow-lg",
+            <>
+              {store.error && (
+                <Callout variant="error" className="m-2">
+                  {store.error}
+                </Callout>
               )}
-              transcriptBehavior={{ showAssistantFullscreen: false }}
-              error={store.error ? { message: store.error, title: "Assistant failed" } : undefined}
-            />
+              <Chat
+                store={store.quickChatStore}
+                compact
+                embedded
+                composerFocusEnabled
+                inlineComposer
+                className={cn(
+                  "h-auto max-h-[min(18rem,60vh)] [&_.transcript]:max-h-[min(18rem,60vh)] [&_[data-slot=message]]:w-fit [&_[data-slot=message-content]]:max-w-[min(22rem,calc(100vw-24px))] [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2.5 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-actions]]:hidden",
+                  !quickResponse && "[&_.transcript]:hidden",
+                  quickResponse &&
+                    "[&_[data-slot=message-content]]:rounded-2xl [&_[data-slot=message-content]]:rounded-br-md [&_[data-slot=message-content]]:border-border/70 [&_[data-slot=message-content]]:bg-card/95 [&_[data-slot=message-content]]:shadow-lg",
+                )}
+                transcriptBehavior={{ showAssistantFullscreen: false }}
+              />
+            </>
           )}
         </PopoverContent>
       ) : (
@@ -132,7 +136,7 @@ export const SessionAssistant = observer(function SessionAssistant({
         >
           <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
             <div className="flex h-9 items-center border-b border-border/65 bg-sidebar/30 px-3.5">
-              <p className="text-xs font-semibold text-foreground">Session assistant</p>
+              <p className="text-xs font-semibold text-foreground">Companion</p>
             </div>
             <Chat
               store={store.chatStore}

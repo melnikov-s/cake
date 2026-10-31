@@ -1,3 +1,5 @@
+import { listSessionAssistantControlTools } from "../app-control/AppControlBridge";
+import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { Project } from "../models/Project";
 import type { CakeChatTodoList } from "../models/CakeChatTodoList";
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
@@ -73,7 +75,9 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
       .filter(
         (session) =>
           !this.props.pendingSessions().isPending(session.sessionId) &&
-          (this.props.isVisible(session.sessionId) || isRunning(session.model)),
+          (session.sessionId === SESSION_ASSISTANT_ID ||
+            this.props.isVisible(session.sessionId) ||
+            isRunning(session.model)),
       )
       .map((session) => this.target(session.sessionId));
   }
@@ -105,7 +109,13 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
   }
 
   target(sessionId: string): CakeChatTarget {
-    return { sessionId, tools: this.props.tools() };
+    return {
+      sessionId,
+      tools:
+        sessionId === SESSION_ASSISTANT_ID
+          ? listSessionAssistantControlTools()
+          : this.props.tools(),
+    };
   }
 }
 

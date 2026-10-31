@@ -187,9 +187,16 @@ projections needed by a surface. References do not transfer ownership.
   Detailed operational and exact-revision visual handoff rules live in bundled,
   content-addressed readable guides, with explicit pre-action reading gates in each
   applicable kernel. Cake Chat deploys the same guides as Project Sessions; its
-  user-authored dedicated instructions are appended verbatim. Session assistants
-  retain parent context and identity but initially inject only the gateway topic
-  index, discovering operation contracts on demand rather than embedding schemas.
+  user-authored dedicated instructions are appended verbatim. The little-guy companion is
+  one projectless permanent Cake Chat identity with its own Pi Durable database and OptMem
+  history, never a per-task sidecar or imported parent transcript. It follows the utility
+  model and has independent instructions, a 10/5 KB default memory view and 32k active
+  context limit, customizable through Settings and companion.* setting keys. Window-owned
+  presentation reuses the existing quick-click and right-click chats in Project Sessions,
+  Project Chat and global Cake Chat. Real context entries/exits are passive Durable originals
+  (session ID/title and mode), including disconnect cleanup; ordinary messages add no
+  reminder and transitions never wake or interrupt an agent. Deeper session context and
+  navigation use existing validated Cake tools, with unchanged trust and action safeguards.
 - Agent discovery follows list → inspect → bounded read. Lists return exact routing
   identities, short labels and selection-relevant metadata, not content, transcripts,
   full settings, file manifests or reports. Apply domain filters and deterministic
@@ -322,8 +329,8 @@ domain operations; they do not own business policy.
 
 Agent-invoked backend settings, Project settings, labels, session inspection, and
 non-family message/thread coordination execute through domain handlers without a
-renderer binding. Project Session, permanent Cake Chat, and session-assistant
-gateways retain their distinct sender and task-input policies before dispatch;
+renderer binding. Project Session and permanent Cake Chat gateways (including the
+companion) retain their sender and task-input policies before dispatch;
 family messaging and backend-direct creation/fork/worktree routes stay separate.
 Thread bindings, closed state, message identities and settled outcomes are durable
 Cake coordination metadata, never another transcript or execution queue. Inspection reports backend facts; window selection remains

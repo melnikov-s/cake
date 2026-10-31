@@ -1,3 +1,5 @@
+import type { AssistantContext } from "../../contracts/cake-chats/assistant-context";
+import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { Context, Deferred, Effect, Layer } from "effect";
 import type { CakeSessionRuntimeSetup } from "../pi/CakeSessionRuntimes";
 import type {
@@ -27,6 +29,11 @@ import type {
 export class CakeChatDurable extends Context.Service<
   CakeChatDurable,
   {
+    readonly assistantContext: (
+      context: AssistantContext | null,
+      connectionId: number,
+    ) => Effect.Effect<void, DurableChatError>;
+    readonly releaseConnection: (connectionId: number) => Effect.Effect<void, DurableChatError>;
     readonly requestHistory: (sessionId?: string) => Effect.Effect<RequestInspectionHistory>;
     readonly requestPayload: (
       id: string,
@@ -73,6 +80,7 @@ export const makeCakeChatDurableLive = (
   Layer.sync(CakeChatDurable, () => {
     // References only: RcMap owns the runtimes. Forks must reuse their own parent's Harness.
     const live = new Map<string, DurableCakeChatRuntime>();
+    let companionOwner: number | undefined;
     const ready = new Map<string, Deferred.Deferred<DurableCakeChatRuntime>>();
     const inspections = new Map<string, RequestInspection>();
     const inspection = (sessionId = CAKE_CHAT_SESSION_ID) => {
@@ -96,6 +104,19 @@ export const makeCakeChatDurableLive = (
       return runtime?.sessionFile === durableChatDatabase(directory) ? runtime.catalog : undefined;
     };
     return CakeChatDurable.of({
+      assistantContext: (context, connectionId) =>
+        operation("assistantContext", async () => {
+          const runtime = live.get(SESSION_ASSISTANT_ID);
+          if (!runtime) throw new Error("Open the companion before changing its context");
+          await runtime.assistantContext(context);
+          companionOwner = context ? connectionId : undefined;
+        }),
+      releaseConnection: (connectionId) =>
+        operation("releaseConnection", async () => {
+          if (companionOwner !== connectionId) return;
+          companionOwner = undefined;
+          await live.get(SESSION_ASSISTANT_ID)?.assistantContext(null);
+        }),
       requestHistory: Effect.fn("CakeChatDurable.requestHistory")((sessionId) =>
         Effect.sync(() => inspection(sessionId).list()),
       ),

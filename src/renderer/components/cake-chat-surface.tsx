@@ -8,6 +8,7 @@ import { RootStore } from "../stores/RootStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { CakeChatPaneHeader, type CakeChatOverlayChrome } from "./cake-chat-pane-header";
 import { ConversationActivity } from "./conversation-activity";
+import { SessionAssistant } from "./session-assistant";
 import { ProjectChatHeaderLink } from "./project-chat-header-link";
 
 export const CakeChatSurface = observer(function CakeChatSurface({
@@ -25,6 +26,20 @@ export const CakeChatSurface = observer(function CakeChatSurface({
       : undefined;
   const sidebarCollapsed = !root.sidebarStore.visible;
   const cakeChatProps = (paneSession: CakeChatSessionStore) => ({
+    composerLeadingAccessory: root.settingsStore.appearance.sessionAvatarsEnabled
+      ? {
+          visible: true,
+          content: (
+            <SessionAssistant
+              store={root.sessionAssistantStore}
+              seed={paneSession.sessionId}
+              labels={[]}
+              value={[]}
+              animated
+            />
+          ),
+        }
+      : undefined,
     composerHeader: (
       <ConversationActivity
         placement="composer"

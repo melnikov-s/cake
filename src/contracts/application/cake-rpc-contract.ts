@@ -679,7 +679,10 @@ export const cakeRpcPayloadSchemas = {
   "set-utility-model": Schema.Struct({
     model: Schema.optional(utilityModelSchema),
   }),
-  "set-cake-chat-preferences": Schema.Struct({ preferences: CakeChatPreferences }),
+  "set-cake-chat-preferences": Schema.Struct({
+    preferences: CakeChatPreferences,
+    companion: Schema.optionalKey(Schema.Boolean),
+  }),
   "set-cake-prompts": Schema.Struct({
     prompts: CakePromptOverrides,
   }),

@@ -1,3 +1,4 @@
+import { CakeChatDurable } from "../../services/pi-durable/CakeChatDurable";
 import { Effect, Stream } from "effect";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import * as locations from "../../domain/cake-chats/cakeChatLocations";
@@ -27,6 +28,16 @@ const bindRenderer = (connectionId: number, sessionId: string) =>
 
 export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration) =>
   CakeChatRpc.of({
+    "cakeChats.assistantContext": ({ context }) =>
+      withConnection((connectionId) =>
+        Effect.flatMap(CakeChatDurable, (durable) =>
+          durable.assistantContext(context, connectionId),
+        ),
+      ).pipe(
+        Effect.mapError(
+          (error) => new CakeChatError({ operation: error.operation, message: error.message }),
+        ),
+      ),
     "cakeChats.requestInspection": (input) => requestInspection.inspect(input),
     "cakeChats.observeCatalog": (query) =>
       Stream.unwrap(cakeChatMetadata.observeCatalog(query, configuration.location)),

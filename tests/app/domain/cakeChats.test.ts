@@ -8,6 +8,8 @@ import * as chatLocations from "../../../src/domain/cake-chats/cakeChatLocations
 import * as metadata from "../../../src/domain/cake-chats/cakeChatMetadata";
 import { configureCakeSessionRuntime } from "../../../src/layers/CakeOperations";
 import { acquireOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
+import { SESSION_ASSISTANT_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { defaultAssistantPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import {
   PROJECT_TODO_CLOSING_RULE,
@@ -116,6 +118,72 @@ function fixture() {
 
 describe("permanent Cake Chat", () => {
   it.effect(
+    "keeps the companion projectless with independent small configurable memory and utility summaries",
+    () => {
+      const f = fixture();
+      const utility = { provider: "p", modelId: "utility", thinkingLevel: "off" } as const;
+      f.setState({
+        ...defaultApplicationState(),
+        utilityModel: utility,
+        cakeChatPreferences: {
+          ...defaultCakeChatPreferences(),
+          instructions: "Shared chat only",
+          summarizationModel: {
+            source: "model",
+            model: { provider: "p", modelId: "expensive", thinkingLevel: "off", fastMode: false },
+          },
+        },
+      });
+      return Effect.gen(function* () {
+        const location = yield* chatLocations.resolve(configuration.location, SESSION_ASSISTANT_ID);
+        expect(location).toEqual({
+          workingDirectory: "/home/user",
+          sessionDirectory: "/cake/companion",
+        });
+        expect(yield* chatLocations.resolve(configuration.location, SESSION_ASSISTANT_ID)).toEqual(
+          location,
+        );
+        const options = yield* acquireOptions({
+          configuration: { ...configuration, location },
+          target: { sessionId: SESSION_ASSISTANT_ID, tools: cakeChatControlTools() },
+          newSession: false,
+        });
+        expect(options.runtime.sessionId).toBe(SESSION_ASSISTANT_ID);
+        expect(options.runtime.utilityModel?.()).toEqual(utility);
+        const memory = options.runtime.cakeChatMemory!;
+        expect(memory.preferences()).toEqual(defaultAssistantPreferences());
+        expect(memory.preferences().memoryViewBytes).toBeLessThan(
+          defaultCakeChatPreferences().memoryViewBytes,
+        );
+        expect(options.runtime.cakeChatSystemPrompt?.()).toContain("app-wide companion");
+        expect(options.runtime.cakeChatTodos).toBeUndefined();
+        expect(memory.preferences().instructions).not.toContain("Shared chat only");
+        yield* Effect.promise(() =>
+          memory.summarize({
+            instructions: "Summarize",
+            context: "Own dialogue",
+            signal: new AbortController().signal,
+            caller: { provider: "p", modelId: "expensive", thinkingLevel: "off", fastMode: false },
+          }),
+        );
+        expect(f.completions).toEqual(["utility"]);
+        f.setState({
+          ...f.state(),
+          assistantPreferences: {
+            ...defaultAssistantPreferences(),
+            instructions: "Brief",
+            memoryViewBytes: 5_000,
+          },
+        });
+        expect(memory.preferences()).toMatchObject({
+          instructions: "Brief",
+          memoryViewBytes: 5_000,
+        });
+        expect(f.state().cakeChatPreferences?.instructions).toBe("Shared chat only");
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
+  it.effect(
     "catalogs registered Project Chats without starting Harnesses and validates scope locations",
     () => {
       const f = fixture();
@@ -219,6 +287,8 @@ describe("permanent Cake Chat", () => {
           "todos.read",
           "todos.create",
           "todos.update",
+          "todos.snooze",
+          "todos.unsnooze",
           "todos.update-many",
         ]);
         const prompt = () => configured.cakeChatSystemPrompt?.() ?? "";
