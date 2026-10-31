@@ -35,13 +35,13 @@ describe("Work-log presentation workflow", () => {
   });
 
   it.each([0, 5, 49, 50, 100, 999, 1000, 1200])(
-    "shows recorded tool duration %sms only when at least one whole second has elapsed",
+    "shows recorded tool duration %sms, including subsecond work",
     async (durationMs) => {
       using fixture = renderWorkLog([{ ...readFile("recorded"), durationMs }]);
       await fixture.user.click(workLog().summary);
-      const elapsed = screen.queryByLabelText("elapsed time");
-      if (durationMs < 1000) expect(elapsed).toBeNull();
-      else expect(elapsed?.textContent).toBe("1s");
+      expect(screen.getByLabelText("elapsed time").textContent).toBe(
+        durationMs < 1000 ? `${durationMs}ms` : "1s",
+      );
     },
   );
 
@@ -298,7 +298,7 @@ describe("Work-log presentation workflow", () => {
     using fixture = renderWorkLog([addedFile("running")], { streaming: true });
     await fixture.user.click(workLog().summary);
     const diff = screen.getByRole("region", { name: "File changes to src/added.ts" });
-    const steps = screen.getByRole("button", { name: "1 tool call Activity View steps" });
+    const steps = screen.getByRole("button", { name: "1 tool call · 0ms Activity View steps" });
     await fixture.user.click(steps);
     const tool = screen.getByRole("button", { name: /^write/ });
     await fixture.user.click(tool);
@@ -306,7 +306,9 @@ describe("Work-log presentation workflow", () => {
     expect(screen.getByRole("region", { name: "File changes to src/added.ts" })).toBe(diff);
     expect(diff.textContent).toContain("one");
     expect(diff.textContent).toContain("three");
-    expect(screen.getByRole("button", { name: "1 tool call Activity Hide steps" })).toBe(steps);
+    expect(screen.getByRole("button", { name: "1 tool call · 500ms Activity Hide steps" })).toBe(
+      steps,
+    );
     expect(tool.getAttribute("aria-expanded")).toBe("true");
   });
 
@@ -336,7 +338,7 @@ describe("Work-log presentation workflow", () => {
     const { summary, group } = workLog();
     await fixture.user.click(summary);
     expect(
-      within(group).getByRole("button", { name: "1 tool call Activity View steps" }),
+      within(group).getByRole("button", { name: "1 tool call · 0ms Activity View steps" }),
     ).toBeDefined();
     act(() => vi.advanceTimersByTime(1_000));
     expect(
@@ -426,7 +428,7 @@ describe("Work-log presentation workflow", () => {
     await reloaded.user.click(workLog().summary);
     expect(screen.getByLabelText("elapsed time").textContent).toBe("38s");
     reloaded.publish(result(5));
-    expect(screen.queryByLabelText("elapsed time")).toBeNull();
+    expect(screen.getByLabelText("elapsed time").textContent).toBe("5ms");
   });
 
   it("keeps Churning continuous through committed tools, model output and the next tool round", () => {
@@ -521,6 +523,7 @@ describe("Work-log presentation workflow", () => {
       "false",
     );
     expect(screen.getAllByLabelText("elapsed time").map((chip) => chip.textContent)).toEqual([
+      "0ms",
       "1s",
     ]);
   });

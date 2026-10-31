@@ -8,7 +8,7 @@ import type { VisualCaptureTheme } from "./arguments";
 
 export const toolCallRowsScenario = {
   name: "tool-call-rows",
-  description: "Selectable tool calls, spaced path links, home display and rounded durations",
+  description: "Selectable tool calls, spaced path links, home display and subsecond durations",
   states: ["default", "bottom"],
   async seed(
     paths: { cakeHome: string; project: string; userData: string },
@@ -38,7 +38,7 @@ export const toolCallRowsScenario = {
         projects: [
           { path: paths.project, name: "Tool rows", addedAt: timestamp, lastOpenedAt: timestamp },
         ],
-        trustedProjectPaths: [],
+        trustedProjectPaths: [paths.project],
       }),
     );
     const calls = [

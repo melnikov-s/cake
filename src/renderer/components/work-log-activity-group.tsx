@@ -15,6 +15,7 @@ import { combineSubagentWorkLogParts } from "../lib/subagent-work-log";
 import { useArrivals } from "../hooks/use-arrivals";
 import type { CanonicalTranscriptBehavior } from "./chat-message";
 import { TranscriptPart } from "./chat-transcript-part";
+import { WorkLogRunTimer } from "./work-log-run-timer";
 
 interface WorkLogScrollState {
   atBottom: boolean;
@@ -180,11 +181,16 @@ export const ActivityGroup = observer(function ActivityGroup({
         role="status"
       >
         <StatusDot status={activityIsRunning ? "running" : "complete"} />
-        {compacted
-          ? "Compacted work log · Reasoning details not exposed"
-          : reasoningIsStreaming
-            ? "Thinking…"
-            : "Reasoning details not exposed"}
+        <span className="min-w-0 flex-1 truncate">
+          {compacted
+            ? "Compacted work log · Reasoning details not exposed"
+            : reasoningIsStreaming
+              ? "Thinking…"
+              : "Reasoning details not exposed"}
+        </span>
+        {firstPartId && lastPartId && (
+          <WorkLogRunTimer store={behavior.store} startPartId={firstPartId} partId={lastPartId} />
+        )}
       </div>
     );
   const workLog = (

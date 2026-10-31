@@ -4,7 +4,8 @@ import { Markdown } from "@/components/ai-elements/markdown";
 import { Reasoning } from "@/components/ai-elements/reasoning";
 import { ShellCommand } from "@/components/ai-elements/shell-command";
 import { Source } from "@/components/ai-elements/source";
-import { Tool, ToolRunTimer } from "@/components/ai-elements/tool";
+import { Tool } from "@/components/ai-elements/tool";
+import { WorkLogRunTimer } from "./work-log-run-timer";
 import { AnnotationSummary } from "@/components/annotation-summary";
 import { Badge } from "@/components/ui/badge";
 import { AttachmentReference } from "./ui/attachment-reference";
@@ -213,6 +214,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         }
         streaming={part.status === "streaming"}
         hasContent={Boolean(part.text.trim())}
+        timer={<WorkLogRunTimer store={behavior.store} partId={part.id} />}
       >
         <Markdown
           streaming={part.status === "streaming"}
@@ -282,7 +284,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         part={part}
         onOpenSourceLocation={behavior.openSourceLocation}
         timer={
-          <ToolRunTimer
+          <WorkLogRunTimer
             store={behavior.store}
             partId={part.id}
             startPartId={subagentStartPart?.id}

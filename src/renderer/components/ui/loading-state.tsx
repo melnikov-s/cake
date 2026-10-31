@@ -26,11 +26,11 @@ export function formatElapsed(milliseconds: number) {
   return `${Math.floor(total / 60)}m ${total % 60}s`;
 }
 
-/** Work-log metadata is omitted when its displayed whole-second value would be zero. */
+/** Work-log timing stays visible for fast operations; missing timing stays absent. */
 export function formatVisibleElapsed(milliseconds: number | undefined) {
   if (milliseconds === undefined) return undefined;
-  const elapsed = formatElapsed(milliseconds);
-  return elapsed === "0s" ? undefined : elapsed;
+  if (milliseconds < 1_000) return `${Math.floor(Math.max(0, milliseconds))}ms`;
+  return formatElapsed(milliseconds);
 }
 
 export function LoadingSpinner({ label = "Pending" }: { label?: string }) {

@@ -9,12 +9,14 @@ export function Reasoning({
   children,
   streaming,
   hasContent = true,
+  timer,
 }: {
   open: boolean;
   onToggle(): void;
   children: ReactNode;
   streaming?: boolean;
   hasContent?: boolean;
+  timer?: ReactNode;
 }) {
   const label = streaming
     ? "Thinking…"
@@ -25,13 +27,17 @@ export function Reasoning({
     <div className="rounded-xl border border-border/80 bg-muted/45 px-4 py-3">
       {hasContent ? (
         <>
-          <DisclosureTrigger
-            title={label}
-            status={streaming ? "running" : "complete"}
-            onClick={onToggle}
-            open={open}
-            showChevron={false}
-          />
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <DisclosureTrigger
+              className="flex-1"
+              title={label}
+              status={streaming ? "running" : "complete"}
+              onClick={onToggle}
+              open={open}
+              showChevron={false}
+            />
+            {timer}
+          </div>
           {open && <div className="mt-3 text-sm leading-6 text-muted-foreground">{children}</div>}
         </>
       ) : (
@@ -43,7 +49,8 @@ export function Reasoning({
           role="status"
         >
           <StatusDot status={streaming ? "running" : "complete"} />
-          <span className="truncate">{label}</span>
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {timer}
         </div>
       )}
     </div>

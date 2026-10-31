@@ -53,7 +53,9 @@ export class WorkLogPresentationStore extends Store<WorkLogPresentationStoreProp
           .flatMap((part) =>
             part.kind === "tool"
               ? [`${part.id}\u0000${part.state}\u0000${part.startedAt}\u0000${part.durationMs}`]
-              : [],
+              : part.kind === "reasoning"
+                ? [`${part.id}\u0000${part.status}`]
+                : [],
           )
           .join("\u0001"),
       () => this.syncTimers(),
@@ -94,8 +96,18 @@ export class WorkLogPresentationStore extends Store<WorkLogPresentationStoreProp
     const retainedPartIds = new Set<string>();
     for (const part of parts) {
       retainedPartIds.add(part.id);
-      if (part.kind !== "tool") continue;
       const timer = this.timers.get(part.id);
+      if (part.kind === "reasoning") {
+        // Pi does not persist per-block reasoning durations. Time only blocks
+        // observed streaming here, then freeze them when that block completes.
+        if (part.status === "streaming") {
+          this.timers.set(part.id, { startedAt: timer?.startedAt ?? now });
+        } else if (timer && timer.endedAt === undefined) {
+          this.timers.set(part.id, { ...timer, endedAt: now });
+        }
+        continue;
+      }
+      if (part.kind !== "tool") continue;
       if (part.state === "running" || part.state === "approval") {
         if (part.startedAt === null) {
           this.timers.delete(part.id);

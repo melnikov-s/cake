@@ -362,7 +362,7 @@ function partsFromMessage(
   streaming = false,
   entryId?: string,
   renderUserMessageAsMarkdown = false,
-  streamingToolContentIndex?: number,
+  streamingContentIndex?: number,
   abortPresentation: AbortPresentation = interruptedAbort,
   internal?: InternalInput,
 ): UiPart[] {
@@ -659,10 +659,15 @@ function partsFromMessage(
       if (type === "thinking") {
         return [
           {
-            id: `${baseId}-reasoning-${index}`,
+            // Keep the observed reasoning clock when stream ids become entry ids.
+            // The request timestamp identifies the block; it is not its start time.
+            id:
+              typeof requestedAt === "number" && Number.isFinite(requestedAt)
+                ? `reasoning-${requestedAt}-${index}`
+                : `${baseId}-reasoning-${index}`,
             kind: "reasoning",
             text: String(Reflect.get(item, "thinking") ?? ""),
-            status: streaming ? "streaming" : "complete",
+            status: streaming && index === streamingContentIndex ? "streaming" : "complete",
             response: takeResponse(),
           },
         ];
@@ -679,7 +684,7 @@ function partsFromMessage(
             input: formatToolInput(name, args),
             artifactId: toolArtifactId(args),
             filePath: toolFilePath(name, args),
-            inputStreaming: index === streamingToolContentIndex,
+            inputStreaming: index === streamingContentIndex,
             state: "running",
             response: takeResponse(),
           },
@@ -887,8 +892,11 @@ export function createLiveMessageProjector(
     if (event.type === "message_update") {
       activeStreamId ??= nextStreamId();
       const update = event.assistantMessageEvent;
-      const streamingToolContentIndex =
-        update.type === "toolcall_start" || update.type === "toolcall_delta"
+      const streamingContentIndex =
+        update.type === "toolcall_start" ||
+        update.type === "toolcall_delta" ||
+        update.type === "thinking_start" ||
+        update.type === "thinking_delta"
           ? update.contentIndex
           : undefined;
       const parts = partsFromMessage(
@@ -897,7 +905,7 @@ export function createLiveMessageProjector(
         true,
         undefined,
         false,
-        streamingToolContentIndex,
+        streamingContentIndex,
       );
       for (const part of parts) activeAssistantPartIds.add(part.id);
       return parts;

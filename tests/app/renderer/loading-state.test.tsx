@@ -28,7 +28,9 @@ describe("elapsed duration formatting", () => {
     [3_661_999, "61m 1s"],
   ])("formats %sms without overstating elapsed time", (milliseconds, expected) => {
     expect(formatElapsed(milliseconds)).toBe(expected);
-    expect(formatVisibleElapsed(milliseconds)).toBe(expected === "0s" ? undefined : expected);
+    expect(formatVisibleElapsed(milliseconds)).toBe(
+      milliseconds < 1000 ? `${Math.max(0, milliseconds)}ms` : expected,
+    );
   });
 
   it("omits missing work-log timing", () => {

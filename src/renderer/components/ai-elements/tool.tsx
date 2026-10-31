@@ -6,7 +6,6 @@ import type {
   UiPart,
 } from "../../../contracts/conversations/session-contract";
 import type { SourceLocation } from "../../../contracts/editor/source-location";
-import type { ChatStore } from "../../stores/ChatStore";
 import { toolOperationName } from "../../../utils/cake-tool";
 import { toolDiff } from "../../../utils/turn-diff";
 import { toolSourceRange } from "../../../utils/source-ranges";
@@ -147,31 +146,6 @@ function editorLocation(part: Extract<UiPart, { kind: "tool" }>): SourceLocation
   const range = part.name === "read" ? undefined : toolSourceRange(part);
   return { path, range };
 }
-
-/** Count-up elapsed-time chip for a work log tool item; frozen once the item finishes. */
-export const ToolRunTimer = observer(function ToolRunTimer({
-  store,
-  partId,
-  startPartId,
-}: {
-  store: ChatStore;
-  partId: string;
-  startPartId?: string;
-}) {
-  const elapsedMs = startPartId
-    ? store.workLogPresentation.elapsedMsRange(startPartId, partId)
-    : store.workLogPresentation.elapsedMs(partId);
-  const elapsed = formatVisibleElapsed(elapsedMs);
-  if (!elapsed) return null;
-  return (
-    <span
-      className="flex items-center gap-1 font-mono text-xs tabular-nums text-muted-foreground whitespace-nowrap"
-      aria-label="elapsed time"
-    >
-      {elapsed}
-    </span>
-  );
-});
 
 export const Tool = observer(function Tool({
   part,

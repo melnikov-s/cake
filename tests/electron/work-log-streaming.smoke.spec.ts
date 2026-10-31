@@ -91,7 +91,7 @@ async function verifyStreamingWorkLog(theme: "dark" | "light") {
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
   const application = await electron.launch({
@@ -144,6 +144,10 @@ async function verifyStreamingWorkLog(theme: "dark" | "light") {
     const content = log.locator('[data-slot="work-log-content"]');
     await expect(content).toBeVisible();
     await content.getByRole("button", { name: "Thinking…", exact: true }).click();
+    const reasoningTimer = content
+      .locator('[data-part-id^="reasoning-"]')
+      .getByLabel("elapsed time", { exact: true });
+    await expect(reasoningTimer).toHaveText(/^\d+(?:ms|s|m \d+s)$/);
     await expect
       .poll(() => content.evaluate((element) => element.scrollHeight))
       .toBeGreaterThan(600);
@@ -477,6 +481,8 @@ async function verifyStreamingWorkLog(theme: "dark" | "light") {
         ),
       )
       .toBeLessThanOrEqual(1);
+    await content.getByRole("button", { name: /View steps/ }).click();
+    await expect(reasoningTimer).toHaveText(/^\d+(?:ms|s|m \d+s)$/);
   } finally {
     response?.end();
     await application.close();
