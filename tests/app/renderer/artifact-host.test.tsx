@@ -180,6 +180,17 @@ describe("ArtifactHost rendering integration", () => {
     expect(screen.getByText("Readable content.")).toBeDefined();
   });
 
+  it("renders message-board content without the artifact-wide fullscreen trigger", () => {
+    using fixture = renderArtifactHost({
+      ...base,
+      kind: "message-board",
+      title: "Workboard",
+      payload: { familyId: "family" },
+    });
+    expect(within(fixture.container).getByText("Readable fallback")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "View Workboard fullscreen" })).toBeNull();
+  });
+
   it("opens the real fullscreen surface for a document artifact", async () => {
     using fixture = renderArtifactHost({
       ...base,

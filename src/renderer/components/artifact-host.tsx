@@ -110,7 +110,7 @@ export const ArtifactHost = observer(function ArtifactHost({
       data-artifact-id={artifact.id}
       data-artifact-kind={artifact.kind}
     >
-      {artifact.kind !== "diagram" && (
+      {artifact.kind !== "diagram" && artifact.kind !== "message-board" && (
         <FullscreenButton
           className="absolute top-0 right-0 z-10 bg-background/85"
           label={`View ${title} fullscreen`}

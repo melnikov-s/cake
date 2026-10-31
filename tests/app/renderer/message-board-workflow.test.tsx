@@ -103,6 +103,7 @@ describe("message-board artifact workflow", () => {
           );
           await user.click(await screen.findByRole("button", { name: /Workboard/ }));
           await screen.findByRole("button", { name: /#1 · Finding 1/ });
+          expect(screen.queryByRole("button", { name: /View .* fullscreen/ })).toBeNull();
           expect(screen.getByText("Append-only coordination log")).toBeDefined();
           expect(
             screen.getByText(/Topic: output.*Supersedes #1 for this entry's audience/),
