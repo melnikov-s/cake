@@ -121,6 +121,10 @@ export interface PopoverContentProps extends HTMLAttributes<HTMLDivElement> {
   offset?: number;
   side?: PopoverSide;
   motion?: "none" | "bouncy";
+  /** Preferred focus target within the content, applied once after opening is visible. */
+  initialFocusSelector?: string;
+  /** Let explicit popup dismissal take precedence over an input consuming Escape. */
+  dismissOnEscapeCapture?: boolean;
 }
 
 export function PopoverContent({
@@ -133,6 +137,8 @@ export function PopoverContent({
   offset = 8,
   side = "bottom",
   motion = "none",
+  initialFocusSelector,
+  dismissOnEscapeCapture = false,
   style,
   ...props
 }: PopoverContentProps) {
@@ -252,14 +258,18 @@ export function PopoverContent({
     if (!prevOpenRef.current) {
       prevOpenRef.current = true;
       const content = contentRef.current;
-      if (content && !content.contains(document.activeElement)) {
+      const preferred = initialFocusSelector
+        ? content?.querySelector<HTMLElement>(initialFocusSelector)
+        : undefined;
+      if (preferred) preferred.focus();
+      else if (content && !content.contains(document.activeElement)) {
         const focusable = content.querySelector<HTMLElement>(
           'input:not([disabled]), button:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         );
         focusable?.focus();
       }
     }
-  }, [open, position.ready]);
+  }, [initialFocusSelector, open, position.ready]);
 
   const updatePositionRef = useRef(updatePosition);
   updatePositionRef.current = updatePosition;
@@ -286,7 +296,7 @@ export function PopoverContent({
     };
     const reposition = () => updatePositionRef.current();
     document.addEventListener("pointerdown", dismiss, true);
-    document.addEventListener("keydown", escape);
+    document.addEventListener("keydown", escape, dismissOnEscapeCapture);
     document.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
     const observer =
@@ -295,12 +305,12 @@ export function PopoverContent({
     if (effectiveAnchorRef.current) observer?.observe(effectiveAnchorRef.current);
     return () => {
       document.removeEventListener("pointerdown", dismiss, true);
-      document.removeEventListener("keydown", escape);
+      document.removeEventListener("keydown", escape, dismissOnEscapeCapture);
       document.removeEventListener("scroll", reposition, true);
       window.removeEventListener("resize", reposition);
       observer?.disconnect();
     };
-  }, [effectiveAnchorRef, open]);
+  }, [dismissOnEscapeCapture, effectiveAnchorRef, open]);
 
   if ((!open && !exiting) || !("document" in globalThis)) return null;
   return createPortal(

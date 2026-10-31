@@ -7,6 +7,8 @@ import { Callout } from "./ui/callout";
 import { Avatar } from "./ui/avatar";
 import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
 import { ThinkingBubble } from "./ui/thinking-bubble";
+import { IconButton } from "./ui/icon-button";
+import { CloseIcon } from "./ui/icons";
 import type { SessionAssistantStore } from "../stores/SessionAssistantStore";
 
 function composerSelection(trigger: HTMLElement) {
@@ -38,19 +40,12 @@ export const SessionAssistant = observer(function SessionAssistant({
     const label = labels.find((candidate) => candidate.id === labelId);
     return label ? [label.color] : [];
   });
-  const quickResponseRevision = store.quickResponseRevision;
   const processing = store.processing;
   const quickResponse = store.quickParts.length > 0;
 
   useEffect(() => {
     if (open) store.requestFocus();
   }, [open, store, surface]);
-
-  useEffect(() => {
-    if (!open || surface !== "quick" || quickResponseRevision === 0) return;
-    const timer = window.setTimeout(() => setOpen(false), 5_000);
-    return () => window.clearTimeout(timer);
-  }, [open, quickResponseRevision, surface]);
 
   const openFullChat = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -62,12 +57,15 @@ export const SessionAssistant = observer(function SessionAssistant({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverIconTrigger
         ariaLabel="Ask session assistant"
+        hotkey="open-companion"
         onMouseDown={(event) => {
           // Keep the parent composer selection intact until the assistant snapshots it.
           if (event.button === 0) event.preventDefault();
         }}
         onClick={(event) => {
-          store.beginQuickPrompt(composerSelection(event.currentTarget));
+          event.preventDefault();
+          if (open) setOpen(false);
+          else store.openQuickPrompt(composerSelection(event.currentTarget));
         }}
         onContextMenu={openFullChat}
         className="size-8 rounded-full p-0 hover:bg-muted [&_[data-slot=avatar]]:size-7"
@@ -87,6 +85,8 @@ export const SessionAssistant = observer(function SessionAssistant({
           boundary="nearest-ancestor"
           offset={quickResponse ? 12 : 8}
           aria-label="Quick session assistant"
+          dismissOnEscapeCapture
+          initialFocusSelector="textarea:not([disabled])"
           // Portals still bubble React events through the parent composer form.
           onSubmit={(event) => event.stopPropagation()}
           className={cn(
@@ -98,6 +98,15 @@ export const SessionAssistant = observer(function SessionAssistant({
               "w-[min(19rem,calc(100vw-24px))] max-w-[min(22rem,calc(100vw-24px))] rounded-2xl [&_[aria-label=Conversation]]:p-0",
           )}
         >
+          <div className="flex justify-end px-1 pt-1">
+            <IconButton
+              ariaLabel="Close companion"
+              onClick={() => setOpen(false)}
+              className="size-6 rounded-full bg-popover/95"
+            >
+              <CloseIcon size={12} />
+            </IconButton>
+          </div>
           {processing ? (
             <ThinkingBubble />
           ) : (
@@ -112,6 +121,7 @@ export const SessionAssistant = observer(function SessionAssistant({
                 compact
                 embedded
                 composerFocusEnabled
+                parkComposerFocusWhileDictating={false}
                 inlineComposer
                 className={cn(
                   "h-auto max-h-[min(18rem,60vh)] [&_.transcript]:max-h-[min(18rem,60vh)] [&_[data-slot=message]]:w-fit [&_[data-slot=message-content]]:max-w-[min(22rem,calc(100vw-24px))] [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2.5 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-actions]]:hidden",
@@ -131,15 +141,21 @@ export const SessionAssistant = observer(function SessionAssistant({
           boundary="nearest-ancestor"
           offset={12}
           aria-label="Session assistant chat"
+          dismissOnEscapeCapture
+          initialFocusSelector="textarea:not([disabled])"
           onSubmit={(event) => event.stopPropagation()}
           className="h-[min(26rem,72vh)] w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl p-0"
         >
           <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-            <div className="flex h-9 items-center border-b border-border/65 bg-sidebar/30 px-3.5">
+            <div className="flex h-9 items-center justify-between border-b border-border/65 bg-sidebar/30 pl-3.5 pr-1">
               <p className="text-xs font-semibold text-foreground">Companion</p>
+              <IconButton ariaLabel="Close companion" onClick={() => setOpen(false)}>
+                <CloseIcon size={14} />
+              </IconButton>
             </div>
             <Chat
               store={store.chatStore}
+              parkComposerFocusWhileDictating={false}
               compact
               embedded
               className="[&_[data-slot=message]]:gap-1.5 [&_[data-slot=message-content]]:rounded-lg [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-label]]:text-xs [&_form]:rounded-lg [&_form]:p-2 [&_textarea]:min-h-9 [&_textarea]:py-1.5"

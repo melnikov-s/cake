@@ -52,6 +52,51 @@ describe("Cake Popover", () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it("focuses the preferred input only on opening, not content updates", () => {
+    const renderContent = (reply: string) => (
+      <Popover>
+        <PopoverTrigger>Companion</PopoverTrigger>
+        <PopoverContent initialFocusSelector="textarea" aria-label="Companion">
+          <button>Close</button>
+          <textarea aria-label="Ask" />
+          <p>{reply}</p>
+        </PopoverContent>
+      </Popover>
+    );
+    act(() => root.render(renderContent("First words")));
+    const trigger = container.querySelector<HTMLButtonElement>("button")!;
+    act(() => trigger.click());
+    const content = document.body.querySelector('[aria-label="Companion"]')!;
+    const input = content.querySelector("textarea")!;
+    const close = content.querySelector("button")!;
+    expect(document.activeElement).toBe(input);
+    act(() => close.focus());
+    act(() => root.render(renderContent("More streamed words")));
+    expect(document.activeElement).toBe(close);
+    act(() => trigger.click());
+    act(() => trigger.click());
+    expect(document.activeElement).toBe(document.body.querySelector("textarea"));
+  });
+
+  it("can dismiss before an input consumes Escape", () => {
+    act(() =>
+      root.render(
+        <Popover>
+          <PopoverTrigger>Companion</PopoverTrigger>
+          <PopoverContent dismissOnEscapeCapture initialFocusSelector="textarea">
+            <textarea onKeyDown={(event) => event.stopPropagation()} />
+          </PopoverContent>
+        </Popover>,
+      ),
+    );
+    const trigger = container.querySelector<HTMLButtonElement>("button")!;
+    act(() => trigger.click());
+    const input = document.body.querySelector("textarea")!;
+    act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it("flips and clamps a surface that would overflow the viewport", () => {
     const position = calculatePopoverPosition(
       { top: 170, right: 190, bottom: 190, left: 150, width: 40, height: 20 },

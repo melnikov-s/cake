@@ -188,6 +188,13 @@ export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
     defaultBinding: "Mod+G",
   },
   {
+    id: "open-companion",
+    group: "Conversation",
+    label: "Open companion",
+    description: "Open the shared companion popup or focus its input when already open.",
+    defaultBinding: "Mod+Shift+J",
+  },
+  {
     id: "toggle-work-logs",
     group: "Conversation",
     label: "Change work-log expansion",

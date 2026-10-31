@@ -20,7 +20,6 @@ export class SessionAssistantStore extends Store<SessionAssistantStoreProps> {
   surface: "quick" | "chat" = "quick";
   error: string | undefined;
   focusRequestRevision = 0;
-  quickResponseRevision = 0;
   composerSelection: string | undefined;
   processing = false;
   private context: AssistantContext | null = null;
@@ -97,13 +96,17 @@ export class SessionAssistantStore extends Store<SessionAssistantStoreProps> {
     });
   }
 
-  beginQuickPrompt(selection?: string) {
-    this.surface = "quick";
-    this.composerSelection = selection;
-    this.quickParts.splice(0);
-    this.quickChatStore.setDraft("");
-    this.quickResponseRevision = 0;
-    this.error = undefined;
+  openQuickPrompt(selection?: string) {
+    if (!this.open) {
+      this.surface = "quick";
+      this.composerSelection = selection;
+      this.quickParts.splice(0);
+      this.error = undefined;
+      this.open = true;
+    } else if (this.surface === "quick" && (this.processing || this.quickParts.length > 0)) {
+      // A quick reply/thinking bubble has no composer; focus the same conversation's chat.
+      this.surface = "chat";
+    }
     this.requestFocus();
   }
   beginChat(selection?: string) {
@@ -156,7 +159,6 @@ export class SessionAssistantStore extends Store<SessionAssistantStoreProps> {
         this.quickParts.length,
         ...latestAssistantReply(session.model.uiParts),
       );
-      this.quickResponseRevision += 1;
       return true;
     } catch (error) {
       if (!this.signal.aborted) this.error = describeError(error).message;

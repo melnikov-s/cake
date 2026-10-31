@@ -7,6 +7,7 @@ import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import type { SidebarStore } from "../stores/SidebarStore";
 import type { TerminalStore } from "../stores/TerminalStore";
+import type { SessionAssistantStore } from "../stores/SessionAssistantStore";
 import type { UiHintModeStore } from "../stores/UiHintModeStore";
 
 // The App handles hovered-message opening because it requires a DOM target.
@@ -28,6 +29,7 @@ export function createApplicationCommandRegistry(owners: {
   sidebar(): SidebarStore;
   terminal(): TerminalStore;
   hints(): UiHintModeStore;
+  assistant(): SessionAssistantStore;
 }) {
   const projectSelected = () => owners.shell().selection.kind === "project-session";
   const projectResolved = () => {
@@ -63,6 +65,10 @@ export function createApplicationCommandRegistry(owners: {
   };
   const commands = {
     "new-session": { run: () => owners.newSession().show() },
+    "open-companion": {
+      enabled: () => Boolean(owners.assistant().contextSessionId),
+      run: () => owners.assistant().openQuickPrompt(),
+    },
     "toggle-agent-editor": toggleEditor,
     "open-editor": toggleEditor,
     "open-changes": {

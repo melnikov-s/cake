@@ -102,6 +102,7 @@ export class RootStore extends Store<{
     sidebar: () => this.sidebarStore,
     terminal: () => this.terminalStore,
     hints: () => this.uiHintModeStore,
+    assistant: () => this.sessionAssistantStore,
   });
 
   @child
