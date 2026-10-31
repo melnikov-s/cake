@@ -170,7 +170,11 @@ the whole message with no height cap or nested scroller, then a footer with the 
 to-do titles and a link to the original ("Full response" for an exact message, otherwise
 "Open conversation"). Delivered inline messages start expanded so immediate prompts
 remain readable; exact originals start collapsed and load lazily. Done checkboxes stay
-in the row, so associations remain visible when collapsed.
+in the row, so associations remain visible when collapsed. The row's `FullscreenButton`
+opens the same content in `FullscreenSurface` with a scrolling reader. Exact references
+load all source pages in an independent reader, preserving the inline disclosure and
+current page when fullscreen closes. Markdown, images, source links and to-do actions
+remain available in fullscreen.
 Delivered messages use assistant-style Markdown and copy-only actions.
 Use recorded provenance;
 do not infer the sender from message text. A missing source title reads "Untitled

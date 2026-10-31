@@ -1,4 +1,4 @@
-import { Store } from "r-state-tree";
+import { child, createStore, Store } from "r-state-tree";
 import {
   decodeMessageReadResult,
   messageNavigationTarget,
@@ -12,8 +12,18 @@ import { ClientContext } from "./context/ClientContext";
 export class MessageReferencePreviewStore extends Store<{
   reference?: string;
   partId?: string;
+  complete?: boolean;
 }> {
   expanded = false;
+
+  /** Fullscreen reads independently, preserving inline disclosure and pagination. */
+  @child
+  get fullscreenReader(): MessageReferencePreviewStore {
+    return createStore(MessageReferencePreviewStore, {
+      reference: this.props.reference,
+      complete: true,
+    });
+  }
 
   toggle() {
     this.expanded = !this.expanded;
@@ -70,6 +80,10 @@ export class MessageReferencePreviewStore extends Store<{
     this.copyError = undefined;
     const current = this.page;
     if (!current) throw new Error("No original message is loaded");
+    return this.readCompleteText(current);
+  }
+
+  private async readCompleteText(current: MessageReadResult) {
     const { sessionId, entryId } = current.message;
     let page = current.offset === 0 ? current : await this.readPage(sessionId, entryId, 0);
     const chunks = [page.text];
@@ -95,7 +109,11 @@ export class MessageReferencePreviewStore extends Store<{
     try {
       const page = await this.readPage(sessionId, entryId, offset);
       if (revision !== this.revision || this.signal.aborted) return false;
-      this.page = page;
+      const completePage = this.props.complete
+        ? { ...page, text: await this.readCompleteText(page), nextOffset: null }
+        : page;
+      if (revision !== this.revision || this.signal.aborted) return false;
+      this.page = completePage;
       return true;
     } catch (error) {
       if (revision === this.revision && !this.signal.aborted)

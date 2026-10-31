@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId } from "react";
 import { observer } from "r-state-tree/react";
 import type { MessageReferencePreviewStore } from "../stores/MessageReferencePreviewStore";
 import { attachmentLink } from "../../contracts/conversations/message-reference";
@@ -37,6 +37,9 @@ export const MessageSourceBody = observer(function MessageSourceBody({
 }: {
   store: MessageReferencePreviewStore;
 }) {
+  useEffect(() => {
+    if (store.props.complete) void store.load();
+  }, [store]);
   const reference = store.props.reference!;
   const page = store.page;
   return (

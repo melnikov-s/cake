@@ -172,7 +172,7 @@ describe("exact response presentation", () => {
       within(batch)
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label")),
-    ).toEqual(titles);
+    ).toEqual(titles.flatMap((title) => [title, `View message fullscreen: ${title}`]));
     expect(
       within(batch).getAllByRole("region", { name: "Message from another session" }),
     ).toHaveLength(3);
@@ -538,7 +538,12 @@ describe("exact response presentation", () => {
     const message = within(delivered.closest("article")!);
     expect(
       message.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
-    ).toEqual(["Delegated review", null, "Copy response"]);
+    ).toEqual([
+      "Delegated review",
+      "View message fullscreen: Delegated review",
+      null,
+      "Copy response",
+    ]);
     const original = () => screen.getByRole("button", { name: "Original response" });
     await user.click(message.getByRole("button", { name: "Copy response" }));
     expect(await navigator.clipboard.readText()).toBe("Worker summary");
@@ -748,7 +753,12 @@ describe("exact response presentation", () => {
         } else {
           expect(
             message.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
-          ).toEqual(["Producer session", null, "Copy response"]);
+          ).toEqual([
+            "Producer session",
+            "View message fullscreen: Producer session",
+            null,
+            "Copy response",
+          ]);
           await user.click(message.getByRole("button", { name: "Copy response" }));
           expect(await navigator.clipboard.readText()).toBe(links);
         }

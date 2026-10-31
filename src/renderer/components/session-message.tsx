@@ -9,6 +9,8 @@ import { MessageSourceBody, MessageSourceCopy, OriginalResponse } from "./messag
 import { ResultTodoDone, ResultTodoTitles, type ResultTodoLink } from "./result-todo-done";
 import { badgeVariants } from "./ui/badge";
 import { ChevronIcon } from "./ui/icons";
+import { FullscreenButton } from "./ui/fullscreen-button";
+import { FullscreenSurface } from "./fullscreen-surface";
 
 /**
  * A message from another session as one summary row: the sender's title, status, a preview
@@ -48,6 +50,7 @@ export const SessionMessage = observer(function SessionMessage({
   const actions = useMarkdownLinkActions();
   const contentId = useId();
   const [localOpen, setLocalOpen] = useState(true);
+  const [fullscreen, setFullscreen] = useState(false);
   const id = source?.sessionId?.trim();
   // Catalog identity can recover a title omitted by an older report and follows renames.
   // The send-time title remains useful when the source is no longer in the catalog.
@@ -76,6 +79,22 @@ export const SessionMessage = observer(function SessionMessage({
   const reference = (sources[0] ?? originals[0])?.props.reference;
   const linkedTodos = todo?.origin ? (todo.todos?.itemsForResult(todo.origin) ?? []) : [];
   const href = reference ?? source?.href ?? (id ? `cake://session/${encodeURIComponent(id)}` : "");
+  const renderFooter = (reader = sources[0]) => (
+    <footer className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 px-5 py-2 text-xs text-muted-foreground">
+      <ResultTodoTitles {...todo} />
+      {href && actions && (
+        <MarkdownLink
+          href={href}
+          showIcon={false}
+          title={reference ? "Open the original message" : "Open source conversation"}
+          className="ml-auto font-medium text-inherit decoration-transparent hover:text-foreground hover:decoration-current"
+        >
+          {reference ? "Full response" : "Open conversation"}
+        </MarkdownLink>
+      )}
+      {reader && <MessageSourceCopy store={reader} />}
+    </footer>
+  );
   return (
     <section
       data-slot="session-message"
@@ -119,6 +138,11 @@ export const SessionMessage = observer(function SessionMessage({
           )}
         </button>
         <ResultTodoDone {...todo} />
+        <FullscreenButton
+          className="shrink-0 translate-x-0 translate-y-0"
+          label={`View message fullscreen: ${title}`}
+          onClick={() => setFullscreen(true)}
+        />
       </div>
       {open && (
         <>
@@ -134,23 +158,24 @@ export const SessionMessage = observer(function SessionMessage({
               <OriginalResponse key={store.props.reference} store={store} />
             ))}
           </div>
-          {(linkedTodos.length > 0 || (href && actions) || sources[0]?.page) && (
-            <footer className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 px-5 py-2 text-xs text-muted-foreground">
-              <ResultTodoTitles {...todo} />
-              {href && actions && (
-                <MarkdownLink
-                  href={href}
-                  showIcon={false}
-                  title={reference ? "Open the original message" : "Open source conversation"}
-                  className="ml-auto font-medium text-inherit decoration-transparent hover:text-foreground hover:decoration-current"
-                >
-                  {reference ? "Full response" : "Open conversation"}
-                </MarkdownLink>
-              )}
-              {sources[0] && <MessageSourceCopy store={sources[0]} />}
-            </footer>
-          )}
+          {(linkedTodos.length > 0 || (href && actions) || sources[0]?.page) && renderFooter()}
         </>
+      )}
+      {fullscreen && (
+        <FullscreenSurface
+          eyebrow="Message"
+          title={title}
+          onClose={() => setFullscreen(false)}
+          toolbar={linkedTodos.length > 0 ? <ResultTodoDone {...todo} /> : undefined}
+        >
+          <div className="flex min-w-0 flex-col gap-3">
+            {children}
+            {[...sources, ...originals].map((store) => (
+              <MessageSourceBody key={store.props.reference} store={store.fullscreenReader} />
+            ))}
+            {renderFooter((sources[0] ?? originals[0])?.fullscreenReader)}
+          </div>
+        </FullscreenSurface>
       )}
     </section>
   );

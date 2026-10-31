@@ -58,8 +58,8 @@ for (const [delivery, theme] of [
       await mkdir(join(producer, ".visual-captures"), { recursive: true });
       const applicationPath = join(paths.cakeHome, "state", "application.json");
       const state = JSON.parse(await readFile(applicationPath, "utf8"));
-      state.projects.push({ ...state.projects[0], path: producer, name: "Producer" });
-      state.trustedProjectPaths.push(producer);
+      state.data.projects.push({ ...state.data.projects[0], path: producer, name: "Producer" });
+      state.data.trustedProjectPaths.push(producer);
       await writeFile(applicationPath, JSON.stringify(state));
       const pixels =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
@@ -504,6 +504,44 @@ for (const [delivery, theme] of [
         ).toBeVisible();
         expect(await page.evaluate(() => Reflect.get(window, "copiedMessage"))).toBe(originalText);
         await expect(first.getByText(/Last original finding/)).toBeVisible();
+        const fullscreenButton = first.getByRole("button", { name: /^View message fullscreen:/ });
+        await fullscreenButton.click();
+        const fullscreen = page.getByRole("dialog", {
+          name: linkedIsIncoming ? researchOrigin.task : "Detailed delegated review",
+          exact: true,
+        });
+        await expect(fullscreen).toBeVisible();
+        await expect(
+          fullscreen.getByRole("heading", { name: "Original detailed findings" }),
+        ).toBeVisible();
+        await expect(fullscreen.locator('[data-slot="message-source"]')).toHaveText(
+          /Original detailed findings[\s\S]*Last original finding\./,
+        );
+        await expect(fullscreen.locator('[data-streamdown="strong"]')).toContainText(
+          "Substance stays in Pi.",
+        );
+        await expect(fullscreen.locator('[data-streamdown="code-block-body"]')).toContainText(
+          "const evidence",
+        );
+        await expect(
+          fullscreen.getByRole("img", { name: "Relative screenshot", exact: true }),
+        ).toHaveAttribute("src", `data:image/png;base64,${pixels}`);
+        await expect(
+          fullscreen.getByRole("link", { name: "Full response", exact: true }),
+        ).toHaveAttribute("href", metadata.ref);
+        await fullscreen.getByText(/Last original finding/).scrollIntoViewIfNeeded();
+        expect(await fullscreen.locator("main").evaluate((main) => main.scrollTop)).toBeGreaterThan(
+          0,
+        );
+        await page.keyboard.press("Escape");
+        await expect(fullscreen).toHaveCount(0);
+        await expect(fullscreenButton).toBeFocused();
+        // The independent complete reader must not reset the inline page or its disclosure.
+        await expect(firstToggle).toHaveAttribute("aria-expanded", "true");
+        await expect(first.getByText(/Last original finding/)).toBeVisible();
+        await expect(
+          first.getByRole("heading", { name: "Original detailed findings" }),
+        ).toHaveCount(0);
         await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();
         // Reset the page before checking the notification's original heading; the
         // notification may itself be the canonical preview exercised above.
@@ -513,11 +551,15 @@ for (const [delivery, theme] of [
         ).toBeVisible();
         // Notification-mode source is available without any model-authored relay.
         await firstToggle.click();
-        await notification.getByRole("button", { name: "Detailed delegated review" }).click();
+        await notification
+          .getByRole("button", { name: "Detailed delegated review", exact: true })
+          .click();
         await expect(
           notification.getByRole("heading", { name: "Original detailed findings" }),
         ).toBeVisible();
-        await notification.getByRole("button", { name: "Detailed delegated review" }).click();
+        await notification
+          .getByRole("button", { name: "Detailed delegated review", exact: true })
+          .click();
         const receiptHeader = receipt.getByRole("button", {
           name: "Detailed delegated review",
           exact: true,
@@ -532,6 +574,18 @@ for (const [delivery, theme] of [
         await expect(receipt.getByText("Substance stays in Pi.")).toHaveCount(1);
         await receiptHeader.click();
         await expect(receiptHeader).toHaveAttribute("aria-expanded", "false");
+        await receipt.getByRole("button", { name: /^View message fullscreen:/ }).click();
+        const receiptFullscreen = page.getByRole("dialog", {
+          name: "Detailed delegated review",
+          exact: true,
+        });
+        await expect(receiptFullscreen.getByText(/Last original finding/)).toHaveCount(1);
+        await receiptFullscreen
+          .getByRole("button", { name: "Exit fullscreen Detailed delegated review" })
+          .click();
+        await expect(receiptFullscreen).toHaveCount(0);
+        await expect(receiptHeader).toHaveAttribute("aria-expanded", "false");
+        await expect(receipt.locator('[data-slot="message-source"]')).toHaveCount(0);
         await missing.getByRole("button", { name: "Untitled session", exact: true }).click();
         await expect(missing.getByText("Original response unavailable")).toBeVisible();
         await expect(missing.getByRole("button", { name: "Retry source" })).toBeVisible();
@@ -572,7 +626,13 @@ for (const [delivery, theme] of [
       await notification
         .getByRole("button", { name: "Detailed delegated review", exact: true })
         .click();
-      await notification.getByRole("link", { name: "Full response", exact: true }).click();
+      await notification.getByRole("button", { name: /^View message fullscreen:/ }).click();
+      const sourceFullscreen = page.getByRole("dialog", {
+        name: "Detailed delegated review",
+        exact: true,
+      });
+      await sourceFullscreen.getByRole("link", { name: "Full response", exact: true }).click();
+      await expect(sourceFullscreen).toHaveCount(0);
       await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText(
         "Detailed delegated review",
       );

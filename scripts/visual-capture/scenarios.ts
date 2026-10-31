@@ -3754,7 +3754,7 @@ const sessionMessagesScenario: VisualCaptureScenario = {
 const incomingReportRecapScenario: VisualCaptureScenario = {
   name: "incoming-report-recap",
   description: "One sender-attributed incoming report, with a recap link but no duplicate source",
-  states: ["default", "expanded"],
+  states: ["default", "expanded", "fullscreen"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     const directory = workspaceSessionDirectory(
@@ -3856,11 +3856,15 @@ const incomingReportRecapScenario: VisualCaptureScenario = {
     if (state === "expanded") {
       await disclosure.click();
       await expect(page.getByRole("heading", { name: "Proposed plan" })).toBeVisible();
+    } else if (state === "fullscreen") {
+      await page.getByRole("button", { name: /^View message fullscreen:/ }).click();
+      await expect(page.getByRole("heading", { name: "Proposed plan" })).toBeVisible();
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },
-  region: (page) => page.locator(".transcript"),
+  region: (page, state) =>
+    state === "fullscreen" ? page.getByRole("dialog") : page.locator(".transcript"),
 };
 
 const sessionMessageVariantsScenario: VisualCaptureScenario = {

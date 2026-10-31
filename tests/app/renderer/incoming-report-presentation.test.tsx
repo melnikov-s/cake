@@ -47,6 +47,69 @@ const assistant = (text: string): AssistantMessage => ({
 });
 afterEach(cleanup);
 
+it("retries a complete fullscreen original without changing a collapsed inline receipt", async () => {
+  const source = SessionManager.inMemory("/producer");
+  const text =
+    "## Complete original\n\n" + "Detailed findings.\n\n".repeat(1400) + "Final finding.";
+  const entryId = source.appendMessage(assistant(text));
+  const ref = readMessageReference(source, { entryId }).message.ref;
+  const parent = SessionManager.inMemory("/project");
+  parent.appendMessage({
+    role: "user",
+    timestamp: 1,
+    content: encodeCrossSessionMessage(appendMessageReferences(protectedResponseNotice, [ref]), {
+      ...metadata,
+      sender: { ...sender, sessionId: source.getSessionId() },
+    }),
+  });
+  let fail = true;
+  const inspect = vi.fn(
+    async (request: { entryId?: string; offset?: number; maxChars?: number }) => {
+      if (request.offset && fail) {
+        fail = false;
+        throw new Error("Source temporarily unavailable");
+      }
+      return readMessageReference(source, request);
+    },
+  );
+  const parts = projectSessionEntries(parent.getEntries());
+  using fixture = renderChatSurface({
+    parts,
+    client: {
+      sessionChats: { inspect },
+      electron: { setFullscreenSurfaceOpen: async () => undefined },
+    },
+  });
+  const card = screen.getByRole("region", { name: "Message from another session" });
+  const toggle = within(card).getByRole("button", { name: title });
+  expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  expect(inspect).not.toHaveBeenCalled();
+  await fixture.user.click(
+    within(card).getByRole("button", { name: `View message fullscreen: ${title}` }),
+  );
+  const fullscreen = await screen.findByRole("dialog", { name: title });
+  expect((await within(fullscreen).findByRole("alert")).textContent).toContain(
+    "Source temporarily unavailable",
+  );
+  await fixture.user.click(within(fullscreen).getByRole("button", { name: "Retry source" }));
+  expect(
+    await within(fullscreen).findByRole("heading", { name: "Complete original" }),
+  ).toBeTruthy();
+  expect(within(fullscreen).getByText("Final finding.")).toBeTruthy();
+  expect(within(fullscreen).getByRole("link", { name: "Full response" }).getAttribute("href")).toBe(
+    ref,
+  );
+  await fixture.user.click(within(fullscreen).getByRole("button", { name: "Copy message" }));
+  expect(await within(fullscreen).findByRole("button", { name: "Copied message" })).toBeTruthy();
+  expect(await navigator.clipboard.readText()).toBe(text);
+  await fixture.user.click(
+    within(fullscreen).getByRole("button", { name: `Exit fullscreen ${title}` }),
+  );
+  expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  expect(card.querySelector('[data-slot="message-source"]')).toBeNull();
+  expect(projectSessionEntries(parent.getEntries())).toEqual(parts);
+});
+
 it.each(["receipt", "reply", "request", "digest", "UserWithReminders", "UpdateBatch"] as const)(
   "keeps one attributed incoming original through recap streaming and reload (%s)",
   async (delivery) => {
