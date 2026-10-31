@@ -211,6 +211,81 @@ it("supplies settled continuity evidence for short follow-ups without overriding
   expect(f.classify).toHaveBeenCalledTimes(turns.length);
 });
 
+it.each([
+  { text: "make them consistent", decision: B },
+  { text: "Explain the completed whole-seconds duration work", decision: null },
+  { text: "Discuss the completed whole-seconds duration work", decision: A },
+])(
+  "excludes completed tasks from automatic attribution ($text → $decision)",
+  async ({ text, decision }) => {
+    const f = await fixture();
+    f.setTodos([
+      { ...todo(A), title: "Show elapsed durations in whole seconds", state: "done" },
+      { ...todo(B), title: "Make worklog timing consistent" },
+    ]);
+    f.classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: decision })));
+    const sent = await f.send(text);
+    const doc = await f.finish();
+    const content = f.classify.mock.calls[0]?.[1].messages[1]?.content;
+    if (typeof content !== "string") throw new Error("Expected classifier JSON");
+    const payload = JSON.parse(content);
+    expect(payload.todos.map((item: { id: string }) => item.id)).toEqual([B]);
+    expect(doc?.inputs[String(sent.entry)]).toEqual({
+      pending: false,
+      todoId: decision === A ? null : decision,
+    });
+    expect(f.reports).toHaveBeenCalledTimes(decision === A ? 1 : 0);
+  },
+);
+
+it("does not pass a completed prior attribution as eligible continuity or rewrite its historical group", async () => {
+  const f = await fixture();
+  const prior = await f.send("Investigate startup");
+  await f.finish();
+  f.setTodos([{ ...todo(A), state: "done" }, todo(B)]);
+  f.classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: B })));
+  const sent = await f.send("Make navigation consistent");
+  const doc = await f.finish();
+  const content = f.classify.mock.calls.at(-1)?.[1].messages[1]?.content;
+  if (typeof content !== "string") throw new Error("Expected classifier JSON");
+  expect(JSON.parse(content).previousTodoId).toBeNull();
+  expect(doc?.inputs[String(sent.entry)]).toEqual({ pending: false, todoId: B });
+  expect(doc?.inputs[String(prior.entry)]).toEqual({ pending: false, todoId: A });
+});
+
+it("drops a completed checkpoint attribution when settling after the response without new candidates", async () => {
+  const f = await fixture();
+  const stream = createAssistantMessageEventStream();
+  vi.mocked(f.models.streamSimple).mockReturnValueOnce(stream);
+  let checkpointed = () => {};
+  const waiting = new Promise<void>((resolve) => {
+    checkpointed = resolve;
+  });
+  const unsubscribe = f.engine.harness.subscribeCommits((publication) => {
+    if (
+      publication.changes.some(
+        (change) => change.type === "document" && change.record.kind === "cake.task-attribution",
+      )
+    )
+      void f.engine.harness.snapshot(TaskAttributionDoc, f.engine.root.id, context).then((doc) => {
+        if (Object.values(doc?.inputs ?? {}).some((input) => input.pending && input.todoId === A))
+          checkpointed();
+      });
+  });
+  try {
+    const sent = f.send("Finish the startup investigation");
+    await waiting;
+    f.setTodos([{ ...todo(A), state: "done" }, todo(B)]);
+    stream.push({ type: "done", reason: "stop", message: durableAnswer("Finished startup") });
+    const settled = await sent;
+    const doc = await f.finish();
+    expect(doc?.inputs[String(settled.entry)]).toEqual({ pending: false, todoId: null });
+    expect(f.classify).toHaveBeenCalledTimes(1);
+  } finally {
+    unsubscribe();
+  }
+});
+
 it.each([true, false])(
   "treats broader merge-and-resolve work as a switch after PDF resize discussion (matching to-do: %s)",
   async (matchingTodo) => {
@@ -441,7 +516,7 @@ it("repairs historical grouping through a scoped operation, persists it, and nev
   const sent = await f.send("Prototype needs-attention to-dos");
   await f.finish();
   const originals = await f.engine.root.entries({}, 200, undefined, context);
-  const todos = [todo(A), todo(B)];
+  const todos: ProjectTodo[] = [todo(A), { ...todo(B), state: "done" }];
   const registry = new CakeOperationRegistry(
     taskAttributionOperations({
       conversation: () => f.engine.root,
@@ -490,7 +565,7 @@ it("repairs historical grouping through a scoped operation, persists it, and nev
       entry.kind.startsWith("pi."),
     ),
   ).toEqual(originals.items.filter((entry) => entry.kind.startsWith("pi.")));
-  expect(todos).toEqual([todo(A), todo(B)]);
+  expect(todos).toEqual([todo(A), { ...todo(B), state: "done" }]);
   await f.engine.close();
   const reopened = await fixture(false, database);
   expect((await reopened.finish())?.inputs[entryId]).toEqual({ pending: false, todoId: B });
