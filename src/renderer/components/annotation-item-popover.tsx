@@ -21,14 +21,14 @@ function anchorRect(anchor: HTMLElement | MessageCommentAnchorRect) {
 export const AnnotationItemPopover = observer(function AnnotationItemPopover({
   anchor,
   annotation,
-  onUpdate,
+  onSave,
   onRemove,
   onClose,
 }: {
   anchor: HTMLElement | MessageCommentAnchorRect;
-  annotation: Annotation;
-  onUpdate(id: string, update: Partial<Omit<Annotation, "id">>): void;
-  onRemove(id: string): void;
+  annotation: Pick<Annotation, "comment" | "selectedText">;
+  onSave(comment: string): void;
+  onRemove(): void;
   onClose(): void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -89,7 +89,9 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
       }
     };
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !event.defaultPrevented && !event.isComposing) {
+        event.preventDefault();
+        event.stopPropagation();
         if (isEditing) {
           setIsEditing(false);
           setDraftComment(annotation.comment ?? "");
@@ -108,9 +110,9 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
   }, [isEditing, onClose, annotation.comment]);
 
   const handleSave = useCallback(() => {
-    onUpdate(annotation.id, { comment: draftComment.trim() || undefined });
+    onSave(draftComment.trim());
     setIsEditing(false);
-  }, [annotation.id, draftComment, onUpdate]);
+  }, [draftComment, onSave]);
 
   return createPortal(
     <div
@@ -143,7 +145,7 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
               el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
             }}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
                 handleSave();
               }
@@ -193,7 +195,7 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
               tooltip="Delete annotation"
               ariaLabel="Delete annotation"
               onClick={() => {
-                onRemove(annotation.id);
+                onRemove();
                 onClose();
               }}
             >

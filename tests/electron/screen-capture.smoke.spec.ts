@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type Page } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
+import { installCaptureMicrophone, seedCaptureDictation } from "../fixtures/capture-dictation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -19,6 +20,7 @@ test("captures and annotates through the hidden native overlay into the existing
     mkdir(otherProject, { recursive: true }),
     mkdir(join(cakeHome, "state"), { recursive: true }),
   ]);
+  await seedCaptureDictation(userData);
   await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "dark" }));
   await writeFile(
     join(cakeHome, "state", "application.json"),
@@ -49,6 +51,7 @@ test("captures and annotates through the hidden native overlay into the existing
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
       CAKE_HOME: cakeHome,
+      CAKE_SMOKE_DICTATION_HELPER: join(userData, "capture-dictation"),
     },
   });
   let clipboardSaved = false;
@@ -103,6 +106,10 @@ test("captures and annotates through the hidden native overlay into the existing
       await page.getByRole("button", { name: /^Screen Capture/ }).click({ timeout: 1_000 });
       await expect(page.getByLabel("Maximum image dimension")).toBeVisible();
     }).toPass({ timeout: 10_000 });
+    await installCaptureMicrophone(page);
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await page.getByRole("switch", { name: "Dictation mode" }).click();
+    await page.getByRole("button", { name: /^Screen Capture/ }).click();
     await page.getByLabel("Maximum image dimension").selectOption("1024");
     const shortcut = page.getByRole("button", { name: "Screen capture shortcut", exact: true });
     await shortcut.click();
@@ -231,6 +238,7 @@ test("captures and annotates through the hidden native overlay into the existing
         overlay.locator("canvas").evaluate((canvas) => (canvas as HTMLCanvasElement).width),
       )
       .toBe(2400);
+    await installCaptureMicrophone(overlay);
     await overlay.getByRole("button", { name: "Annotate", exact: true }).click();
     const bounds = (await overlay.locator("canvas").boundingBox())!;
     const start = { x: bounds.x + bounds.width * 0.25, y: bounds.y + bounds.height * 0.4 };
@@ -241,13 +249,27 @@ test("captures and annotates through the hidden native overlay into the existing
     await overlay.mouse.up();
     const label = overlay.getByRole("textbox", { name: "Annotation comment" });
     await expect(label).toBeFocused();
+    await expect(overlay.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+    await expect(
+      overlay.getByRole("button", { name: "Add annotation", exact: true }),
+    ).toBeEnabled();
     const labelBounds = (await label.boundingBox())!;
     expect(labelBounds.x).toBeGreaterThanOrEqual(0);
     expect(labelBounds.x + labelBounds.width).toBeLessThanOrEqual(bounds.width);
     expect(labelBounds.y + labelBounds.height).toBeLessThanOrEqual(bounds.height);
     await overlay.keyboard.type("Look here");
     await expect(label).toHaveValue("Look here");
-    await overlay.keyboard.press("Enter");
+    await overlay.evaluate(() => {
+      const processor = Reflect.get(globalThis, "captureDictationProcessor") as AudioWorkletNode;
+      for (let i = 0; i < 8; i++)
+        processor.port.dispatchEvent(
+          new MessageEvent("message", { data: new Float32Array(1600).fill(0.1) }),
+        );
+    });
+    await expect(label).toHaveValue("Look here Fixture dictated annotation");
+    await expect(label).toBeFocused();
+    await label.fill("Look here");
+    await overlay.getByRole("button", { name: "Add annotation", exact: true }).click();
     await expect(label).toHaveCount(0);
     // Escape while typing cancels only the second draft arrow, not the committed first one.
     await overlay.mouse.move(start.x + 30, start.y + 30);
@@ -257,20 +279,35 @@ test("captures and annotates through the hidden native overlay into the existing
     await expect(label).toBeFocused();
     await overlay.keyboard.type("Discard me");
     await expect(label).toHaveValue("Discard me");
+    // Exactly like other annotations: Escape first mutes live dictation, then cancels.
+    await overlay.keyboard.press("Escape");
+    await expect(overlay.getByRole("button", { name: "Unmute dictation" })).toBeVisible();
+    await expect(label).toHaveValue("Discard me");
     await overlay.keyboard.press("Escape");
     await expect(label).toHaveCount(0);
     await expect(overlay.getByRole("toolbar")).toBeVisible();
-    // Markers reopen the exact composer. Cancelling an edit keeps the saved text.
+    // Markers reuse annotation details; edit/cancel stays separate from creation.
     await overlay.getByRole("button", { name: "Edit annotation 1", exact: true }).click();
-    await expect(label).toBeFocused();
-    await expect(label).toHaveValue("Look here");
+    const details = overlay.getByRole("dialog", { name: "Annotation details" });
+    await expect(details.getByText("Look here", { exact: true })).toBeVisible();
+    await details.getByRole("button", { name: "Edit annotation", exact: true }).click();
+    const edit = details.getByRole("textbox", { name: "Edit annotation comment" });
+    await expect(edit).toBeFocused();
+    await expect(edit).toHaveValue("Look here");
+    await overlay.keyboard.press("ArrowRight");
     await overlay.keyboard.press("End");
     await overlay.keyboard.press("Shift+Enter");
     await overlay.keyboard.type("Second line");
-    await overlay.getByRole("button", { name: "Save annotation", exact: true }).click();
+    await details.getByRole("button", { name: "Save annotation", exact: true }).click();
     await overlay.getByRole("button", { name: "Edit annotation 1", exact: true }).click();
-    await expect(label).toHaveValue("Look here\nSecond line");
-    await overlay.getByRole("button", { name: "Cancel editing" }).click();
+    await details.getByRole("button", { name: "Edit annotation", exact: true }).click();
+    await expect(edit).toHaveValue("Look here\nSecond line");
+    await edit.fill("Discard this edit");
+    await overlay.keyboard.press("Escape");
+    await expect(details.getByText("Look here\nSecond line", { exact: true })).toBeVisible();
+    await overlay.keyboard.press("Escape");
+    await expect(details).toHaveCount(0);
+    await expect(overlay.getByRole("toolbar")).toBeVisible();
 
     // Trusted touch input uses the same release-to-composer path for freehand.
     await overlay.getByRole("button", { name: "Freehand", exact: true }).click();
@@ -321,7 +358,7 @@ test("captures and annotates through the hidden native overlay into the existing
       width: 1024,
       height: 512,
     });
-    // First Enter commits a label and first Escape discards a draft; neither closes capture.
+    // Enter commits a label; cancelling a draft does not close capture.
     await overlay.getByRole("button", { name: "Crop", exact: true }).click();
     await expect(overlay.getByRole("button", { name: "Undo drawing" })).toBeEnabled();
     await overlay.keyboard.press("Enter");
@@ -369,6 +406,9 @@ test("captures and annotates through the hidden native overlay into the existing
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 
     await settings.click();
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await page.getByRole("switch", { name: "Dictation mode" }).click();
+    await page.getByRole("button", { name: /^Screen Capture/ }).click();
     overlay = await begin();
     const cropBounds = (await overlay.locator("canvas").boundingBox())!;
     // Explicit cancellation still discards just the gesture and lets the next drag work.

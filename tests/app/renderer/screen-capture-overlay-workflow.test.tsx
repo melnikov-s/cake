@@ -153,7 +153,7 @@ describe("Screen capture overlay", () => {
       ).not.toBeNull();
       expect(comment().closest('[data-slot="dictation-field"]')).not.toBeNull();
       await fixture.user.type(comment(), "First line{Shift>}{Enter}{/Shift}Second line");
-      await fixture.user.click(screen.getByRole("button", { name: "Save annotation" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Add annotation" }));
       await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
       expect(renderImage.mock.calls[0]![1]).toEqual([
         tool === "Annotate"
@@ -218,13 +218,17 @@ describe("Screen capture overlay", () => {
     draw(fixture.store);
     await fixture.user.type(comment(), "Second{Enter}");
     act(() => fixture.store.editLabel(0));
-    await fixture.user.clear(comment());
-    await fixture.user.type(comment(), "Discard change");
-    await fixture.user.click(screen.getByRole("button", { name: "Cancel editing" }));
-    act(() => fixture.store.editLabel(0));
-    expect((comment() as HTMLTextAreaElement).value).toBe("First");
-    await fixture.user.clear(comment());
-    await fixture.user.type(comment(), "Edited{Enter}");
+    expect(screen.getByText("First")).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Edit annotation" }));
+    const edit = () => screen.getByRole("textbox", { name: "Edit annotation comment" });
+    await fixture.user.clear(edit());
+    await fixture.user.type(edit(), "Discard change{Escape}");
+    expect(screen.getByText("First")).toBeDefined();
+    expect(fixture.finishScreenCapture).not.toHaveBeenCalled();
+    await fixture.user.click(screen.getByRole("button", { name: "Edit annotation" }));
+    expect((edit() as HTMLTextAreaElement).value).toBe("First");
+    await fixture.user.clear(edit());
+    await fixture.user.type(edit(), "Edited{Enter}");
     act(() => fixture.store.editLabel(1));
     await fixture.user.click(screen.getByRole("button", { name: "Delete annotation" }));
     draw(fixture.store);

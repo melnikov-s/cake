@@ -36,7 +36,7 @@ export class ScreenCaptureOverlayStore extends Store<{
   dragStart: CapturePoint | undefined;
   dragEnd: CapturePoint | undefined;
   editingIndex: number | undefined;
-  private editingNew = false;
+  editingNew = false;
   label = "";
   busy = false;
   copied = false;

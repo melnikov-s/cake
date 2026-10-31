@@ -54,6 +54,10 @@ import {
   installSpeechHttpFixture,
 } from "../../tests/electron/main-harness.ts";
 import { windowState } from "../../tests/fixtures/window-state";
+import {
+  installCaptureMicrophone,
+  seedCaptureDictation,
+} from "../../tests/fixtures/capture-dictation";
 import { TaskInputStorage } from "../../src/services/storage/TaskInputStorage.ts";
 import { makeTaskInputStorageLive } from "../../src/services/storage/TaskInputStorageLive.ts";
 
@@ -1116,8 +1120,12 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
   description:
     "Capture tools, sidebar destinations, numbered arrows/freehand and the shared annotation composer",
   states: ["default", "destination", "new-session", "annotate", "annotation-input"],
+  environment: (paths) => ({
+    CAKE_SMOKE_DICTATION_HELPER: join(paths.userData, "capture-dictation"),
+  }),
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
+    await seedCaptureDictation(paths.userData);
     const otherProject = join(paths.project, "other-project");
     await mkdir(otherProject, { recursive: true });
     const timestamp = new Date(0).toISOString();
@@ -1179,6 +1187,8 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
       dimensions,
     );
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await page.getByRole("switch", { name: "Dictation mode" }).click();
     await page.getByRole("button", { name: /^Screen Capture/ }).click();
     const opened = application.waitForEvent("window");
     await page.getByRole("button", { name: "Capture screenshot", exact: true }).click();
@@ -1197,6 +1207,7 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
       }
     }
     if (state === "annotate" || state === "annotation-input") {
+      await installCaptureMicrophone(overlay);
       await overlay.getByRole("button", { name: "Annotate", exact: true }).click();
       await overlay.mouse.move(dimensions.width * 0.3, dimensions.height * 0.4);
       await overlay.mouse.down();
@@ -1213,6 +1224,10 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
       await overlay.mouse.up();
       await expect(overlay.getByRole("textbox", { name: "Annotation comment" })).toBeFocused();
       await overlay.keyboard.type("Draw around this area");
+      await expect(overlay.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+      await expect(
+        overlay.getByRole("button", { name: "Add annotation", exact: true }),
+      ).toBeEnabled();
       if (state === "annotate") await overlay.keyboard.press("Enter");
     }
     await overlay.waitForFunction(() => document.fonts.status === "loaded");

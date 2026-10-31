@@ -545,8 +545,10 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
         <AnnotationItemPopover
           anchor={openAnnotation!.anchor}
           annotation={activeAnnotation}
-          onUpdate={(id, update) => behavior.store.updateAnnotation(id, update)}
-          onRemove={(id) => behavior.store.removeAnnotation(id)}
+          onSave={(comment) =>
+            behavior.store.updateAnnotation(activeAnnotation.id, { comment: comment || undefined })
+          }
+          onRemove={() => behavior.store.removeAnnotation(activeAnnotation.id)}
           onClose={() => setOpenAnnotation(undefined)}
         />
       )}

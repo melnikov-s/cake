@@ -5,6 +5,7 @@ import { CaptureCanvas } from "./ui/capture-canvas";
 import { CaptureToolbar } from "./ui/capture-toolbar";
 import { CaptureDestinationPicker } from "./ui/capture-destination-picker";
 import { AnnotationDraftPopover } from "./annotation-draft-popover";
+import { AnnotationItemPopover } from "./annotation-item-popover";
 import { Callout } from "./ui/callout";
 
 export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
@@ -81,21 +82,36 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
       )}
       {labelAnchor && (
         <StoreProvider store={store.dictationStore}>
-          <AnnotationDraftPopover
-            key={store.editingIndex}
-            anchor={labelAnchor}
-            draft={{
-              value: store.label,
-              onChange: (value) => {
-                store.label = value;
-              },
-            }}
-            submitLabel="Save annotation"
-            onSave={closeLabel}
-            onClose={closeLabel}
-            onCancel={cancelLabel}
-            onRemove={deleteLabel}
-          />
+          {store.editingNew ? (
+            <AnnotationDraftPopover
+              key={store.editingIndex}
+              anchor={labelAnchor}
+              draft={{
+                value: store.label,
+                onChange: (value) => {
+                  store.label = value;
+                },
+              }}
+              onSave={closeLabel}
+              onClose={closeLabel}
+              onCancel={cancelLabel}
+            />
+          ) : (
+            <AnnotationItemPopover
+              key={store.editingIndex}
+              anchor={labelAnchor}
+              annotation={{
+                comment: store.label,
+                selectedText: `Annotation ${store.editingIndex! + 1}`,
+              }}
+              onSave={(comment) => {
+                store.label = comment;
+                store.commitLabel();
+              }}
+              onClose={cancelLabel}
+              onRemove={deleteLabel}
+            />
+          )}
         </StoreProvider>
       )}
       <CaptureToolbar

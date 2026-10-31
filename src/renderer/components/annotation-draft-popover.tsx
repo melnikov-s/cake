@@ -9,8 +9,6 @@ import {
 import { createPortal } from "react-dom";
 import { ChatComposer } from "@/components/chat-composer";
 import { ComposerInput } from "@/components/ai-elements/composer";
-import { IconButton } from "./ui/icon-button";
-import { CloseIcon, TrashIcon } from "./ui/icons";
 import { ComposerSubmitButton } from "@/components/ui/composer-submit-button";
 import type { Annotation } from "../../contracts/conversations/session-contract";
 import type { MessageSelectionAnchor } from "../stores/MessageCommentsStore";
@@ -27,16 +25,12 @@ export function AnnotationDraftPopover({
   onSave,
   onClose,
   onCancel = onClose,
-  onRemove,
   draft,
-  submitLabel = "Add annotation",
 }: {
   anchor: HTMLElement | MessageCommentAnchorRect;
   onClose(): void;
   onCancel?(): void;
-  onRemove?(): void;
   draft?: { value: string; onChange(value: string): void };
-  submitLabel?: string;
 } & (
   | {
       selection: MessageSelectionAnchor;
@@ -146,21 +140,7 @@ export function AnnotationDraftPopover({
             }}
           />
         }
-        toolbarActions={
-          <>
-            {onRemove && (
-              <IconButton type="button" tooltip="Delete annotation" onClick={onRemove}>
-                <TrashIcon />
-              </IconButton>
-            )}
-            {draft && (
-              <IconButton type="button" tooltip="Cancel editing" onClick={onCancel}>
-                <CloseIcon />
-              </IconButton>
-            )}
-            <ComposerSubmitButton tooltip={submitLabel} />
-          </>
-        }
+        toolbarActions={<ComposerSubmitButton tooltip="Add annotation" />}
       />
     </div>,
     document.body,
