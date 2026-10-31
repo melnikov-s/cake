@@ -1,14 +1,21 @@
+import { cn } from "@/lib/utils";
 import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
 
 export function HtmlArtifact({
   artifact,
+  fill = false,
 }: {
   artifact: Extract<CakeArtifactV1, { kind: "html" }>;
+  fill?: boolean;
 }) {
   return (
     <iframe
-      className="w-full rounded-lg border border-border bg-background"
-      style={{ height: artifact.payload.height ?? 240 }}
+      // Fullscreen owns the viewport; the document inside owns content scrolling.
+      className={cn(
+        "w-full rounded-lg border border-border bg-background",
+        fill && "h-full min-h-0",
+      )}
+      style={fill ? undefined : { height: artifact.payload.height ?? 240 }}
       title={artifact.title ?? artifact.id}
       sandbox=""
       referrerPolicy="no-referrer"

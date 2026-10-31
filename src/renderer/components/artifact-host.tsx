@@ -45,7 +45,7 @@ export const ArtifactHost = observer(function ArtifactHost({
   };
   const title = artifact.title ?? artifact.id;
 
-  const renderArtifact = () => (
+  const renderArtifact = (fill = false) => (
     <>
       {artifact.kind === "message-board" ? (
         messageBoard ? (
@@ -69,7 +69,7 @@ export const ArtifactHost = observer(function ArtifactHost({
           {artifact.payload.diff}
         </pre>
       ) : null}
-      {artifact.kind === "html" ? <HtmlArtifact artifact={artifact} /> : null}
+      {artifact.kind === "html" ? <HtmlArtifact artifact={artifact} fill={fill} /> : null}
       {artifact.kind === "file" ? <FileArtifact artifact={artifact} /> : null}
     </>
   );
@@ -85,7 +85,7 @@ export const ArtifactHost = observer(function ArtifactHost({
           presentation="workspace"
         />
       ) : (
-        renderArtifact()
+        renderArtifact(true)
       );
     return (
       <ArtifactPresentationSurface
@@ -152,7 +152,7 @@ export const ArtifactHost = observer(function ArtifactHost({
           sessionId={stateSessionId}
           onClose={closeFullscreen}
         >
-          {renderArtifact()}
+          {renderArtifact(true)}
         </ArtifactPresentationSurface>
       )}
     </article>
