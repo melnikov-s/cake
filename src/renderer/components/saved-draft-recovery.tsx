@@ -5,10 +5,18 @@ import { Callout } from "./ui/callout";
 export function SavedDraftRecovery({ recover, disabled }: { recover(): void; disabled: boolean }) {
   return (
     <Callout variant="warning">
-      This saved Draft may already have started. Check the session transcript before retrying; a
-      first turn can be accepted before it appears in the catalog. If no turn was accepted, you can
-      release the claim and activate it again.
-      <Button variant="outline" disabled={disabled} onClick={recover}>
+      <span>
+        This saved Draft may already have started. Check the session transcript before retrying; a
+        first turn can be accepted before it appears in the catalog. If no turn was accepted, you
+        can release the claim and activate it again.
+      </span>
+      <Button
+        size="sm"
+        variant="outline"
+        className="mt-1 justify-self-start"
+        disabled={disabled}
+        onClick={recover}
+      >
         I checked — no turn was accepted
       </Button>
     </Callout>

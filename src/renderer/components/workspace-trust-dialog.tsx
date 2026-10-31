@@ -25,9 +25,12 @@ export const WorkspaceTrustDialog = observer(function WorkspaceTrustDialog() {
         <ConfirmationRequest>
           <ConfirmationTitle id="trust-title">Trust this workspace?</ConfirmationTitle>
           <ConfirmationDescription id="trust-description">
-            Trust {projectOpen.pendingTrustPath} to run agents and load its project-local Pi
-            extensions and MCP. These can execute code on your computer. Trust only projects whose
-            contents you know.
+            Trust{" "}
+            <code className="break-all rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
+              {projectOpen.pendingTrustPath}
+            </code>{" "}
+            to run agents and load its project-local Pi extensions and MCP. These can execute code
+            on your computer. Trust only projects whose contents you know.
           </ConfirmationDescription>
           <ConfirmationActions>
             <ConfirmationAction

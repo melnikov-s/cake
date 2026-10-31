@@ -47,25 +47,37 @@ export function ExecutionChoice({
       <ConfirmationDescription id="execution-choice-description">
         {description}
       </ConfirmationDescription>
-      <p className="mt-2 break-all text-xs text-muted-foreground">Project owner: {ownerLabel}</p>
-      {phases.length > 0 ? (
-        <ol aria-label="Proposed phases" className="my-3 list-inside list-decimal text-sm">
-          {phases.map((phase, index) => (
-            <li key={`${index}:${phase}`}>{phase}</li>
-          ))}
-        </ol>
-      ) : (
-        <p className="my-3 text-sm text-muted-foreground">No phases declared.</p>
-      )}
-      <Button
-        variant="outline"
-        size="sm"
-        aria-expanded={showScript}
-        aria-controls="execution-choice-script"
-        onClick={() => setShowScript((current) => !current)}
-      >
-        {showScript ? "Hide script" : "View script"}
-      </Button>
+      <div className="mt-3 rounded-lg border border-border/75 bg-muted/25 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="min-w-0 break-all font-mono text-xs text-muted-foreground">
+            Project owner: {ownerLabel}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            aria-expanded={showScript}
+            aria-controls="execution-choice-script"
+            onClick={() => setShowScript((current) => !current)}
+          >
+            {showScript ? "Hide script" : "View script"}
+          </Button>
+        </div>
+        {phases.length > 0 ? (
+          <ol
+            aria-label="Proposed phases"
+            className="mt-2.5 list-inside list-decimal space-y-1 border-t border-border/60 pt-2.5 text-xs text-foreground"
+          >
+            {phases.map((phase, index) => (
+              <li key={`${index}:${phase}`}>{phase}</li>
+            ))}
+          </ol>
+        ) : (
+          <p className="mt-2.5 border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
+            No phases declared.
+          </p>
+        )}
+      </div>
       {showScript && (
         <div
           id="execution-choice-script"

@@ -55,47 +55,57 @@ export const SettingsGoogleRemoteAccess = observer(function SettingsGoogleRemote
               onChange={(event) => sharing.setAllowedEmails(event.target.value)}
             />
           </label>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={sharing.pending || sharing.saving}
-            onClick={() => void sharing.saveGooglePreferences()}
-          >
-            Save allowed accounts
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            One email per line. Saving a removal signs that account out immediately.
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              One email per line. Saving a removal signs that account out immediately.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              disabled={sharing.pending || sharing.saving}
+              onClick={() => void sharing.saveGooglePreferences()}
+            >
+              Save allowed accounts
+            </Button>
+          </div>
           <DisclosureTrigger
             title="Google & Tailscale setup"
             open={sharing.googleSetupOpen}
             onClick={() => sharing.toggleGoogleSetup()}
           />
           {sharing.googleSetupOpen && (
-            <div className="grid gap-1.5 text-xs text-muted-foreground">
+            <div className="grid gap-2.5 rounded-lg border border-border/65 bg-muted/25 p-3 text-xs text-muted-foreground">
               <p>
                 Install and sign in to Tailscale on this computer. Create a Google OAuth web client
                 for personal use with these exact values:
               </p>
-              <span>Authorized JavaScript origin</span>
-              <code className="break-all select-text">
-                {sharing.publicOrigin || "https://laptop.your-tailnet.ts.net"}
-              </code>
-              <span>Authorized redirect URI</span>
-              <code className="break-all select-text">
-                {sharing.publicOrigin || "https://laptop.your-tailnet.ts.net"}/auth/google/callback
-              </code>
+              <div className="grid gap-1">
+                <span className="font-medium text-foreground">Authorized JavaScript origin</span>
+                <code className="block break-all select-text rounded border border-border/60 bg-background/80 px-2.5 py-1.5 font-mono text-xs text-foreground">
+                  {sharing.publicOrigin || "https://laptop.your-tailnet.ts.net"}
+                </code>
+              </div>
+              <div className="grid gap-1">
+                <span className="font-medium text-foreground">Authorized redirect URI</span>
+                <code className="block break-all select-text rounded border border-border/60 bg-background/80 px-2.5 py-1.5 font-mono text-xs text-foreground">
+                  {sharing.publicOrigin || "https://laptop.your-tailnet.ts.net"}
+                  /auth/google/callback
+                </code>
+              </div>
               <p>
                 Google sign-in only; no client secret is needed. Add your Google test users if the
                 consent app is in Testing.
               </p>
-              <p>
-                After enabling Google-protected sharing in Cake, configure Funnel to forward to this
-                listener:
-              </p>
-              <code className="break-all select-text">
-                tailscale funnel --bg http://127.0.0.1:{sharing.port}
-              </code>
+              <div className="grid gap-1">
+                <p>
+                  After enabling Google-protected sharing in Cake, configure Funnel to forward to
+                  this listener:
+                </p>
+                <code className="block break-all select-text rounded border border-border/60 bg-background/80 px-2.5 py-1.5 font-mono text-xs text-foreground">
+                  tailscale funnel --bg http://127.0.0.1:{sharing.port}
+                </code>
+              </div>
               <p>
                 Cake does not run this command. Keep the host online. The phone needs only a
                 browser.
@@ -108,6 +118,7 @@ export const SettingsGoogleRemoteAccess = observer(function SettingsGoogleRemote
         <Button
           variant="outline"
           size="sm"
+          className="justify-self-start"
           disabled={sharing.pending || sharing.saving}
           onClick={() => void sharing.saveGooglePreferences()}
         >

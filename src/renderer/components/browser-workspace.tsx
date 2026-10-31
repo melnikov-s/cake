@@ -185,8 +185,10 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
       terminalDock={terminalDock}
       chatSidebar={
         <>
-          <header className="flex h-10 select-none items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-3.5 [-webkit-app-region:drag]">
-            <strong className="block min-w-0 truncate text-xs font-semibold">{sessionTitle}</strong>
+          <header className="flex h-10 select-none items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 [-webkit-app-region:drag]">
+            <strong className="block min-w-0 flex-1 truncate text-xs font-semibold text-foreground">
+              {sessionTitle}
+            </strong>
             <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
               {headerActions}
             </div>

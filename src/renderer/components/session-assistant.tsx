@@ -128,20 +128,17 @@ export const SessionAssistant = observer(function SessionAssistant({
           offset={12}
           aria-label="Session assistant chat"
           onSubmit={(event) => event.stopPropagation()}
-          className="h-[min(24rem,70vh)] w-[min(19rem,calc(100vw-1rem))] overflow-hidden rounded-md p-0"
+          className="h-[min(26rem,72vh)] w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl p-0"
         >
           <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-            <div className="border-b border-border px-3 py-2">
-              <p className="text-xs font-semibold">Session assistant</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Uses your utility model and continues this session’s assistant chat.
-              </p>
+            <div className="flex h-9 items-center border-b border-border/65 bg-sidebar/30 px-3.5">
+              <p className="text-xs font-semibold text-foreground">Session assistant</p>
             </div>
             <Chat
               store={store.chatStore}
               compact
               embedded
-              className="[&_[data-slot=message]]:gap-1.5 [&_[data-slot=message-content]]:rounded-md [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-label]]:text-xs [&_form]:rounded-md [&_form]:p-2 [&_textarea]:min-h-9 [&_textarea]:py-1.5"
+              className="[&_[data-slot=message]]:gap-1.5 [&_[data-slot=message-content]]:rounded-lg [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-label]]:text-xs [&_form]:rounded-lg [&_form]:p-2 [&_textarea]:min-h-9 [&_textarea]:py-1.5"
               error={store.error ? { message: store.error, title: "Assistant failed" } : undefined}
               empty={
                 <div className="grid h-full place-items-center p-5 text-center text-xs leading-relaxed text-muted-foreground">

@@ -127,9 +127,9 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
         }
       }}
     >
-      <DialogContent ref={contentRef} className="max-w-md p-3">
-        <div className="flex items-start justify-between gap-3 px-2 pb-3 pt-1">
-          <div className="grid gap-2">
+      <DialogContent ref={contentRef} className="max-w-md overflow-hidden p-0 phone:p-0">
+        <div className="flex items-start justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 py-3">
+          <div className="grid gap-1">
             <DialogTitle id={`${id}-title`}>{title}</DialogTitle>
             {description && (
               <DialogDescription id={`${id}-description`}>{description}</DialogDescription>
@@ -139,115 +139,118 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
             <CloseIcon />
           </IconButton>
         </div>
-        <SearchableChoiceInput
-          inputRef={inputRef}
-          query={query}
-          role="combobox"
-          aria-label={searchLabel}
-          aria-autocomplete="list"
-          aria-expanded="true"
-          aria-controls={`${id}-choices`}
-          aria-activedescendant={active ? optionId(activeIndex) : undefined}
-          placeholder="Type to filter…"
-          onQueryChange={(value) => {
-            setActiveId(undefined);
-            setQuery(value);
-          }}
-          onConfirm={() => {
-            if (active) onSelect(active.id);
-          }}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return;
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-              event.preventDefault();
-              const delta = event.key === "ArrowDown" ? 1 : -1;
-              const nextIndex = (activeIndex + delta + choices.length) % choices.length;
-              const next = choices[nextIndex];
-              setActiveId(next?.id);
-            }
-          }}
-        />
-        {filters}
-        <div
-          id={`${id}-choices`}
-          role="listbox"
-          aria-label={choicesLabel}
-          className="mt-2 max-h-72 overflow-y-auto"
-        >
-          {choices.slice(pageStart, pageEnd).map((choice, offset) => {
-            const index = pageStart + offset;
-            return renderChoice ? (
-              <div key={choice.id}>
-                {renderChoice(
-                  choice,
-                  {
-                    id: optionId(index),
-                    role: "option",
-                    "aria-selected": active?.id === choice.id,
-                    tabIndex: -1,
-                    onMouseDown: (event) => event.preventDefault(),
-                  },
-                  () => onSelect(choice.id),
-                )}
-              </div>
-            ) : (
-              <Button
-                key={choice.id}
-                id={optionId(index)}
-                role="option"
-                aria-selected={active?.id === choice.id}
-                tabIndex={-1}
-                variant="ghost"
-                className={cn(
-                  "h-auto w-full justify-start gap-3 border border-transparent px-3 py-2.5 text-left text-foreground",
-                  active?.id === choice.id && "border-primary/40 bg-primary/10 hover:bg-primary/15",
-                )}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => onSelect(choice.id)}
-              >
-                {choice.icon && (
-                  <span className="shrink-0 text-muted-foreground">{choice.icon}</span>
-                )}
-                <span className="grid min-w-0 gap-0.5">
-                  <span className="truncate">{choice.label}</span>
-                  {choice.description && (
-                    <span className="truncate text-xs font-normal text-foreground/75">
-                      {choice.description}
-                    </span>
+        <div className="p-3">
+          <SearchableChoiceInput
+            inputRef={inputRef}
+            query={query}
+            role="combobox"
+            aria-label={searchLabel}
+            aria-autocomplete="list"
+            aria-expanded="true"
+            aria-controls={`${id}-choices`}
+            aria-activedescendant={active ? optionId(activeIndex) : undefined}
+            placeholder="Type to filter…"
+            onQueryChange={(value) => {
+              setActiveId(undefined);
+              setQuery(value);
+            }}
+            onConfirm={() => {
+              if (active) onSelect(active.id);
+            }}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return;
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                const delta = event.key === "ArrowDown" ? 1 : -1;
+                const nextIndex = (activeIndex + delta + choices.length) % choices.length;
+                const next = choices[nextIndex];
+                setActiveId(next?.id);
+              }
+            }}
+          />
+          {filters}
+          <div
+            id={`${id}-choices`}
+            role="listbox"
+            aria-label={choicesLabel}
+            className="mt-2 max-h-72 space-y-0.5 overflow-y-auto"
+          >
+            {choices.slice(pageStart, pageEnd).map((choice, offset) => {
+              const index = pageStart + offset;
+              return renderChoice ? (
+                <div key={choice.id}>
+                  {renderChoice(
+                    choice,
+                    {
+                      id: optionId(index),
+                      role: "option",
+                      "aria-selected": active?.id === choice.id,
+                      tabIndex: -1,
+                      onMouseDown: (event) => event.preventDefault(),
+                    },
+                    () => onSelect(choice.id),
                   )}
-                </span>
-              </Button>
-            );
-          })}
-        </div>
-        {choices.length > RESULT_BATCH_SIZE && (
-          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={pageStart === 0}
-              onClick={() => setActiveId(choices[pageStart - RESULT_BATCH_SIZE]?.id)}
-            >
-              Previous results
-            </Button>
-            <span>
-              {pageStart + 1}–{pageEnd} of {choices.length}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={pageEnd === choices.length}
-              onClick={() => setActiveId(choices[pageEnd]?.id)}
-            >
-              Next results
-            </Button>
+                </div>
+              ) : (
+                <Button
+                  key={choice.id}
+                  id={optionId(index)}
+                  role="option"
+                  aria-selected={active?.id === choice.id}
+                  tabIndex={-1}
+                  variant="ghost"
+                  className={cn(
+                    "h-auto w-full justify-start gap-3 rounded-md border border-transparent px-3 py-2 text-left text-xs text-foreground",
+                    active?.id === choice.id &&
+                      "border-primary/40 bg-primary/10 hover:bg-primary/15",
+                  )}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => onSelect(choice.id)}
+                >
+                  {choice.icon && (
+                    <span className="shrink-0 text-muted-foreground">{choice.icon}</span>
+                  )}
+                  <span className="grid min-w-0 gap-0.5">
+                    <span className="truncate font-medium">{choice.label}</span>
+                    {choice.description && (
+                      <span className="truncate text-xs font-normal text-muted-foreground">
+                        {choice.description}
+                      </span>
+                    )}
+                  </span>
+                </Button>
+              );
+            })}
           </div>
-        )}
-        {choices.length === 0 && (
-          <p role="status" className="px-3 py-6 text-center text-sm text-muted-foreground">
-            {emptyMessage}
-          </p>
-        )}
+          {choices.length > RESULT_BATCH_SIZE && (
+            <div className="mt-2 flex items-center justify-between gap-2 border-t border-border/60 pt-2 text-xs text-muted-foreground">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={pageStart === 0}
+                onClick={() => setActiveId(choices[pageStart - RESULT_BATCH_SIZE]?.id)}
+              >
+                Previous results
+              </Button>
+              <span className="font-mono tabular-nums">
+                {pageStart + 1}–{pageEnd} of {choices.length}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={pageEnd === choices.length}
+                onClick={() => setActiveId(choices[pageEnd]?.id)}
+              >
+                Next results
+              </Button>
+            </div>
+          )}
+          {choices.length === 0 && (
+            <p role="status" className="px-3 py-6 text-center text-xs text-muted-foreground">
+              {emptyMessage}
+            </p>
+          )}
+        </div>
       </DialogContent>
     </DialogBackdrop>
   );

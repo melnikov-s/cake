@@ -13,9 +13,9 @@ import { cn } from "@/lib/utils";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
 
 const inputClassName =
-  "w-full rounded-md border border-border bg-background text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+  "w-full rounded-lg border border-border/75 bg-card/45 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
 const radioRowClassName = cn(
-  "flex items-center gap-2.5 rounded-md border px-2.5 py-1.5 text-sm text-foreground hover:bg-muted",
+  "flex min-h-9 items-center gap-2.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/65",
   "has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-inset has-[input:focus-visible]:ring-ring",
 );
 
@@ -152,14 +152,14 @@ export const InterviewForm = observer(function InterviewForm({ store }: { store:
               return (
                 <div
                   key={field.id}
-                  className="flex items-start gap-3 rounded-md border border-border px-3 py-2"
+                  className="flex items-start gap-3 rounded-lg border border-border/75 bg-card/45 px-3 py-2"
                 >
                   <div className="grid min-w-0 flex-1 gap-0.5">
                     <dt className="text-xs font-medium text-muted-foreground">{field.label}</dt>
                     <dd
                       className={cn(
-                        "text-sm break-words whitespace-pre-wrap",
-                        text === undefined ? "text-muted-foreground italic" : "text-foreground",
+                        "break-words whitespace-pre-wrap text-xs",
+                        text === undefined ? "italic text-muted-foreground" : "text-foreground",
                       )}
                     >
                       {text ?? "No answer"}
@@ -180,10 +180,17 @@ export const InterviewForm = observer(function InterviewForm({ store }: { store:
         )}
         {visibleFields.map((field) =>
           field.type === "checkbox" ? (
-            <label key={field.id} className="flex items-center gap-2.5 text-sm text-foreground">
+            <label
+              key={field.id}
+              className={cn(
+                radioRowClassName,
+                "cursor-pointer",
+                shown[field.id] ? "border-primary/50 bg-primary/10" : "border-border/75 bg-card/45",
+              )}
+            >
               <Input
                 type="checkbox"
-                className="h-auto w-auto rounded-none border-0 p-0 accent-primary"
+                className="h-auto w-auto shrink-0 rounded-none border-0 p-0 accent-primary"
                 disabled={disabled}
                 checked={Boolean(shown[field.id])}
                 onChange={(event) => store.setValue(field.id, event.target.checked)}
@@ -196,7 +203,7 @@ export const InterviewForm = observer(function InterviewForm({ store }: { store:
               <label
                 className={cn(
                   "font-medium",
-                  stepped ? "text-sm text-foreground" : "text-xs text-muted-foreground",
+                  stepped ? "text-xs text-foreground" : "text-xs text-muted-foreground",
                 )}
                 htmlFor={`${group}-${field.id}`}
               >
@@ -206,27 +213,29 @@ export const InterviewForm = observer(function InterviewForm({ store }: { store:
                 <Textarea
                   dictation
                   id={`${group}-${field.id}`}
-                  className={cn(inputClassName, "min-h-28 resize-y py-2")}
+                  className={cn(inputClassName, "min-h-24 resize-y py-2")}
                   placeholder={field.placeholder}
                   disabled={disabled}
                   value={String(shown[field.id] ?? "")}
                   onChange={(event) => store.setValue(field.id, event.target.value)}
                 />
               ) : field.type === "select" ? (
-                <div aria-label={field.label} className="grid gap-1" role="radiogroup">
+                <div aria-label={field.label} className="grid gap-1.5" role="radiogroup">
                   {listedOptions(field)?.map((option) => (
                     <label
                       key={option.value}
                       className={cn(
                         radioRowClassName,
                         "cursor-pointer",
-                        shown[field.id] === option.value ? "border-ring bg-muted" : "border-border",
+                        shown[field.id] === option.value
+                          ? "border-primary/50 bg-primary/10"
+                          : "border-border/75 bg-card/45",
                       )}
                     >
                       <Input
                         type="radio"
                         name={`${group}-${field.id}`}
-                        className="h-auto w-auto rounded-none border-0 p-0 accent-primary outline-none"
+                        className="h-auto w-auto shrink-0 rounded-none border-0 p-0 accent-primary outline-none"
                         value={option.value}
                         onKeyDown={advanceFromText}
                         disabled={disabled}
@@ -241,13 +250,15 @@ export const InterviewForm = observer(function InterviewForm({ store }: { store:
                   <div
                     className={cn(
                       radioRowClassName,
-                      isCustomRow(field) ? "border-ring bg-muted" : "border-border",
+                      isCustomRow(field)
+                        ? "border-primary/50 bg-primary/10"
+                        : "border-border/75 bg-card/45",
                     )}
                   >
                     <Input
                       type="radio"
                       name={`${group}-${field.id}`}
-                      className="h-auto w-auto rounded-none border-0 p-0 accent-primary outline-none"
+                      className="h-auto w-auto shrink-0 rounded-none border-0 p-0 accent-primary outline-none"
                       aria-label="Other"
                       onKeyDown={advanceFromText}
                       disabled={disabled}
@@ -262,7 +273,7 @@ export const InterviewForm = observer(function InterviewForm({ store }: { store:
                       rows={1}
                       aria-label={`${field.label} other option`}
                       placeholder="Other…"
-                      className="min-h-9 resize-none border-0 bg-transparent text-sm"
+                      className="min-h-6 flex-1 resize-none border-0 bg-transparent px-0 py-0 text-xs font-normal shadow-none focus-visible:ring-0"
                       disabled={disabled}
                       value={isCustomRow(field) ? String(shown[field.id] ?? "") : ""}
                       onFocus={() => selectCustomRow(field)}
@@ -311,13 +322,19 @@ export const InterviewForm = observer(function InterviewForm({ store }: { store:
             className={cn("flex items-center gap-2", stepped ? "justify-between" : "justify-end")}
           >
             {stepped && (
-              <Button variant="outline" disabled={step === 0} onClick={() => goTo(step - 1)}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={step === 0}
+                onClick={() => goTo(step - 1)}
+              >
                 Back
               </Button>
             )}
             <div className="flex gap-2">
               {requested && (
                 <Button
+                  size="sm"
                   variant="outline"
                   disabled={store.responding}
                   onClick={() => void store.respond(undefined, true)}
@@ -325,7 +342,7 @@ export const InterviewForm = observer(function InterviewForm({ store }: { store:
                   Skip
                 </Button>
               )}
-              <Button onClick={advance} disabled={store.responding} data-step-focus>
+              <Button size="sm" onClick={advance} disabled={store.responding} data-step-focus>
                 {!stepped || reviewing ? "Submit" : step === fields.length - 1 ? "Review" : "Next"}
               </Button>
             </div>

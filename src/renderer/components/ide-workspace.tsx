@@ -123,28 +123,21 @@ export const IdeWorkspace = observer(function IdeWorkspace({
         <>
           <header
             className={cn(
-              "flex select-none border-b border-border/65 bg-sidebar/30 px-3.5 [-webkit-app-region:drag]",
-              contextualAnchor
-                ? "flex-col items-stretch gap-1 py-2"
-                : "h-10 items-center justify-between gap-3",
+              "flex select-none items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 [-webkit-app-region:drag]",
+              contextualAnchor ? "min-h-[52px] py-2" : "h-10",
             )}
           >
-            <div className="min-w-0">
-              <strong className="block truncate text-xs font-semibold">
+            <div className="min-w-0 flex-1">
+              <strong className="block truncate text-xs font-semibold text-foreground">
                 {contextualAnchor ? "Chat about selection" : sessionTitle}
               </strong>
               {contextualAnchor ? (
-                <span className="block truncate font-mono text-xs text-muted-foreground">
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
                   {anchorTitle(contextualAnchor)}
-                </span>
+                </p>
               ) : null}
             </div>
-            <div
-              className={cn(
-                "flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]",
-                contextualAnchor && "flex-wrap justify-end",
-              )}
-            >
+            <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
               {headerActions}
               {contextualAnchor ? (
                 <Button variant="ghost" size="sm" onClick={closeContext}>

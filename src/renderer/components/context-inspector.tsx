@@ -104,16 +104,16 @@ export const ContextInspector = observer(function ContextInspector({
           }}
         >
           <DialogContent
-            className="flex max-h-[85vh] max-w-[36rem] flex-col overflow-hidden p-0 phone:overflow-hidden phone:p-0"
+            className="flex max-h-[85vh] max-w-[38rem] flex-col overflow-hidden p-0 phone:overflow-hidden phone:p-0"
             data-slot="context-inspector"
             data-cake-private-preview="true"
           >
-            <header className="flex items-center justify-between gap-3 border-b border-border bg-background px-5 py-3">
+            <header className="flex items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 py-3">
               <div className="min-w-0">
-                <DialogTitle className="text-[0.9375rem] font-medium">Context</DialogTitle>
+                <DialogTitle className="text-sm font-semibold text-foreground">Context</DialogTitle>
                 {headerTokens !== undefined && (
                   <p
-                    className="mt-0.5 text-xs text-muted-foreground"
+                    className="mt-0.5 font-mono text-xs tabular-nums text-muted-foreground"
                     title={
                       activeTokens !== undefined
                         ? "Estimated active context, including instructions, tools, memory, messages and tool results. Browsing earlier originals does not add them."
@@ -149,7 +149,7 @@ export const ContextInspector = observer(function ContextInspector({
               </div>
             </header>
             <div
-              className="min-h-0 overflow-auto px-4 py-3"
+              className="min-h-0 space-y-3 overflow-auto px-4 py-3"
               key={store.loading ? "loading" : "content"}
             >
               {store.compacting && <LoadingSpinner label="Compacting memory" />}
@@ -159,21 +159,37 @@ export const ContextInspector = observer(function ContextInspector({
                 </Callout>
               )}
               {store.compactionComplete && (
-                <p role="status" className="mb-3 px-2 text-xs text-muted-foreground">
+                <p role="status" className="px-1 text-xs font-medium text-muted-foreground">
                   Compaction complete.
                 </p>
               )}
               {status && (
-                <div className="mb-3 border-b border-border px-2 pb-3">
+                <div className="rounded-lg border border-border/75 bg-card/50 p-2">
                   <table
+                    role="table"
                     aria-label="Context statistics"
-                    className="w-full table-fixed text-xs leading-6 [&_td]:py-0.5 [&_td]:text-right [&_td]:font-mono [&_td]:tabular-nums [&_th]:py-0.5 [&_th]:pr-4 [&_th]:text-left [&_th]:font-normal [&_th]:text-muted-foreground"
+                    className="block w-full text-xs"
                   >
-                    <tbody>
+                    <tbody role="rowgroup" className="grid grid-cols-2 gap-1.5 phone:grid-cols-1">
                       {statistics.map(([label, value]) => (
-                        <tr key={label}>
-                          <th scope="row">{label}</th>
-                          <td>{value}</td>
+                        <tr
+                          key={label}
+                          role="row"
+                          className="flex items-baseline justify-between gap-2 rounded-md border border-border/50 bg-muted/25 px-2.5 py-1.5"
+                        >
+                          <th
+                            scope="row"
+                            role="rowheader"
+                            className="text-left font-normal text-muted-foreground"
+                          >
+                            {label}
+                          </th>
+                          <td
+                            role="cell"
+                            className="text-right font-mono font-medium tabular-nums text-foreground"
+                          >
+                            {value}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -183,18 +199,29 @@ export const ContextInspector = observer(function ContextInspector({
               {store.loading && <LoadingSpinner label="Loading context" />}
               {store.error && (
                 <Callout variant="error" role="alert">
-                  {store.error}
-                  <Button variant="ghost" size="sm" onClick={() => void store.refresh()}>
+                  <span>{store.error}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="justify-self-start"
+                    onClick={() => void store.refresh()}
+                  >
                     Try again
                   </Button>
                 </Callout>
               )}
               {!store.loading && !store.error && store.sources.length === 0 && (
-                <p className="px-2 py-6 text-sm text-muted-foreground">No assembled context yet.</p>
+                <p className="rounded-lg border border-dashed border-border/70 px-3 py-6 text-center text-xs text-muted-foreground">
+                  No assembled context yet.
+                </p>
               )}
-              {store.sources.map((node) => (
-                <ContextInspectorNode key={node.id} node={node} store={store} />
-              ))}
+              {store.sources.length > 0 && (
+                <div className="space-y-1">
+                  {store.sources.map((node) => (
+                    <ContextInspectorNode key={node.id} node={node} store={store} />
+                  ))}
+                </div>
+              )}
             </div>
           </DialogContent>
         </DialogBackdrop>

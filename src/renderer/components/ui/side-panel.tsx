@@ -27,14 +27,10 @@ export function SidePanel({
       )}
       aria-label={title}
     >
-      <header className="flex min-w-0 items-center gap-3 border-b border-border/65 px-4">
+      <header className="flex min-w-0 items-center gap-3 border-b border-border/65 bg-sidebar/30 px-4">
         <div className="min-w-0 flex-1">
-          {eyebrow && (
-            <p className="truncate font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              {eyebrow}
-            </p>
-          )}
-          <strong className="block truncate text-sm font-semibold">{title}</strong>
+          <strong className="block truncate text-xs font-semibold text-foreground">{title}</strong>
+          {eyebrow && <p className="mt-0.5 truncate text-xs text-muted-foreground">{eyebrow}</p>}
         </div>
         {headerActions}
         <IconButton tooltip={`Close ${title}`} ariaLabel={`Close ${title}`} onClick={onClose}>

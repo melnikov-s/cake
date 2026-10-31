@@ -113,8 +113,8 @@ export const ArtifactPresentationSurface = observer(function ArtifactPresentatio
         onChatSidebarWidthChange: (width) => store.setChatWidth(width),
         chatSidebar: (
           <ArtifactPresentationChatContext value={artifact.id}>
-            <header className="flex h-10 shrink-0 items-center border-b border-border/65 bg-sidebar/30 px-3.5">
-              <strong className="min-w-0 truncate text-xs font-semibold text-foreground">
+            <header className="flex h-10 shrink-0 items-center border-b border-border/65 bg-sidebar/30 px-4">
+              <strong className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">
                 {conversationTitle}
               </strong>
             </header>

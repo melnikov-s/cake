@@ -21,7 +21,7 @@ export const BlockingInterviews = observer(function BlockingInterviews({
   );
   if (!unlinked.length) return null;
   return (
-    <div className="max-h-[min(50vh,28rem)] overflow-auto px-1 pb-2 *:motion-safe:animate-arrive">
+    <div className="max-h-[min(50vh,28rem)] space-y-2 overflow-auto px-1 pb-2 *:rounded-xl *:border *:border-border/75 *:bg-card/85 *:p-3.5 *:shadow-sm *:motion-safe:animate-arrive">
       {unlinked.map((store) => (
         <Interview key={store.record.id} store={store} inlineWidgets={inlineWidgets} />
       ))}

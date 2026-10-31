@@ -63,6 +63,7 @@ export const ConversationActivity = observer(function ConversationActivity({
                 const current = subagents.run(run.key);
                 return `${current?.status ?? run.status}${current?.released ? " · Resources released" : ""}`;
               },
+              model: () => subagents.model(run.key),
               chatStore,
             });
           },

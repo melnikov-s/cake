@@ -56,19 +56,26 @@ export const SideChatsMenu = observer(function SideChatsMenu({
       </PopoverIconTrigger>
       <PopoverContent
         align="end"
-        className="w-[min(24rem,calc(100vw-24px))] p-2"
+        className="w-[min(22rem,calc(100vw-24px))] overflow-hidden p-0"
         aria-label="Open side chats"
       >
-        <div className="mb-1 flex items-center gap-2 px-2 py-1">
-          <ChatIcon size={14} />
-          <strong className="font-mono text-xs uppercase tracking-wider">Open side chats</strong>
+        <div className="flex items-center justify-between gap-2 border-b border-border/65 bg-sidebar/30 px-3 py-2">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+            <span className="text-muted-foreground">
+              <ChatIcon size={13} />
+            </span>
+            <span>Open side chats</span>
+          </div>
+          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+            {threads.length}
+          </span>
         </div>
         {threads.length ? (
-          <div className="grid gap-1">
+          <div className="grid max-h-72 gap-0.5 overflow-y-auto p-1.5">
             {threads.map((thread) => (
               <Button
                 key={thread.id}
-                className="h-auto min-w-0 justify-start gap-2 px-2.5 py-2 text-left"
+                className="h-auto min-w-0 justify-start gap-2.5 rounded-md px-2.5 py-2 text-left"
                 variant="ghost"
                 onClick={() => {
                   onOpen?.();
@@ -77,8 +84,10 @@ export const SideChatsMenu = observer(function SideChatsMenu({
               >
                 <StatusDot status={store.sideChatStreaming(thread.id) ? "running" : "complete"} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-medium">{threadTitle(thread)}</span>
-                  <span className="block truncate text-xs font-normal text-muted-foreground">
+                  <span className="block truncate text-xs font-medium text-foreground">
+                    {threadTitle(thread)}
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
                     {store.sideChatStreaming(thread.id) ? "Working…" : threadPreview(thread)}
                   </span>
                 </span>
@@ -86,7 +95,7 @@ export const SideChatsMenu = observer(function SideChatsMenu({
             ))}
           </div>
         ) : (
-          <p className="px-2 py-3 text-xs text-muted-foreground">No open side chats</p>
+          <p className="px-3 py-4 text-center text-xs text-muted-foreground">No open side chats</p>
         )}
       </PopoverContent>
     </Popover>

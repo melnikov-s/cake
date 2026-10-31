@@ -21,12 +21,14 @@ export const SessionForkStatus = observer(function SessionForkStatus({
           {!setup.sessionId && (
             <span>Backend changes may already exist. Retrying will request the fork again.</span>
           )}
-          <Button size="sm" variant="outline" onClick={() => void store.retryFork()}>
-            Retry fork setup
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => store.discardPreview()}>
-            Discard preview
-          </Button>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => void store.retryFork()}>
+              Retry fork setup
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => store.discardPreview()}>
+              Discard preview
+            </Button>
+          </div>
         </Callout>
       ) : (
         <LoadingState label="Preparing fork" />

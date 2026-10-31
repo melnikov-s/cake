@@ -180,7 +180,7 @@ export const SettingsPage = observer(function SettingsPage({
                   key={group.page}
                   className="border-t border-border/60 pt-4 first:border-t-0 first:pt-0"
                 >
-                  <p className="mb-2 px-2.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
+                  <p className="mb-1.5 px-2.5 text-xs font-medium text-muted-foreground">
                     {group.label}
                   </p>
                   <div className="grid gap-1.5">
@@ -219,7 +219,7 @@ export const SettingsPage = observer(function SettingsPage({
                   key={group.label}
                   className="border-t border-border/60 pt-4 first:border-t-0 first:pt-0"
                 >
-                  <p className="mb-2 px-2.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
+                  <p className="mb-1.5 px-2.5 text-xs font-medium text-muted-foreground">
                     {group.label}
                   </p>
                   <div className="grid gap-1.5">

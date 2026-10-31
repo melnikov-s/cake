@@ -20,15 +20,15 @@ export const ContextInspectorNode = observer(function ContextInspectorNode({
   const contentId = useId();
   if (node.kind === "original")
     return (
-      <figure className="my-4" title={node.source}>
-        <figcaption className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+      <figure className="my-2.5" title={node.source}>
+        <figcaption className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
           {node.title}
           <Badge variant="outline" size="xs">
             Original
           </Badge>
         </figcaption>
-        <blockquote className="border-l-2 border-border pl-3">
-          <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7">
+        <blockquote className="rounded-r-md border-l-2 border-accent/65 bg-muted/25 py-2 pl-3 pr-2.5">
+          <pre className="whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-foreground">
             {node.text}
           </pre>
         </blockquote>
@@ -51,7 +51,7 @@ export const ContextInspectorNode = observer(function ContextInspectorNode({
               id={`${contentId}-depth`}
               variant="accent"
               size="xs"
-              className="mt-1 shrink-0 whitespace-nowrap"
+              className="mt-0.5 shrink-0 whitespace-nowrap"
             >
               Depth {node.summaryDepth}
             </Badge>
@@ -61,27 +61,36 @@ export const ContextInspectorNode = observer(function ContextInspectorNode({
         chevronPosition="start"
         wrapTitle
         aria-controls={open ? contentId : undefined}
-        className="min-h-9 rounded-md px-2 py-2 text-sm font-normal leading-6 hover:bg-muted/50"
+        className="min-h-8 rounded-md px-2.5 py-1.5 text-xs font-medium leading-5 hover:bg-muted/60"
         onClick={() => store.toggle(node)}
       />
       {open && (
-        <div id={contentId} className={page ? "pb-2" : "pb-2 pl-7"} title={node.source}>
+        <div
+          id={contentId}
+          className={page ? "pb-2" : "ml-3 border-l border-border/60 pb-2 pl-3.5"}
+          title={node.source}
+        >
           {node.text && (
-            <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7">
+            <pre className="my-1.5 overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-border/65 bg-card/60 p-3 font-mono text-xs leading-relaxed text-foreground/90">
               {node.text}
             </pre>
           )}
           {pending && <LoadingSpinner label="Loading earlier detail" />}
           {error && (
             <Callout variant="error" role="alert">
-              {error}
-              <Button variant="ghost" size="sm" onClick={() => void store.loadDetail(node)}>
+              <span>{error}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="justify-self-start"
+                onClick={() => void store.loadDetail(node)}
+              >
                 Try again
               </Button>
             </Callout>
           )}
           {children && (
-            <div className={!page && (historical || node.detail) ? "pl-3" : undefined}>
+            <div className={!page && (historical || node.detail) ? "space-y-1 pt-1" : "space-y-1"}>
               {children.map((child) => (
                 <ContextInspectorNode
                   key={child.id}
@@ -94,7 +103,7 @@ export const ContextInspectorNode = observer(function ContextInspectorNode({
           )}
           {((node.detail && children?.length === 0) ||
             (node.kind === "summary" && !node.detail && !children)) && (
-            <p className="text-xs text-muted-foreground">Earlier detail is unavailable.</p>
+            <p className="py-1 text-xs text-muted-foreground">Earlier detail is unavailable.</p>
           )}
         </div>
       )}

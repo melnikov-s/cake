@@ -54,8 +54,11 @@ export const CommandPane = observer(function CommandPane({
       className="col-start-3 flex h-full w-full flex-col overflow-hidden border-l border-border/65 bg-sidebar/35 max-[620px]:fixed max-[620px]:inset-x-0 max-[620px]:bottom-0 max-[620px]:top-[52px] max-[620px]:z-45 max-[620px]:border-l-0 phone:absolute phone:h-auto phone:col-span-full phone:inset-x-0 phone:bottom-0 phone:top-24 phone:z-45 phone:border-l-0 phone:bg-card"
       aria-labelledby="command-pane-title"
     >
-      <header className="flex h-[52px] shrink-0 items-center justify-between gap-2.5 border-b border-border/65 px-4">
-        <h2 id="command-pane-title" className="m-0 truncate text-xs font-semibold text-foreground">
+      <header className="flex h-[52px] shrink-0 items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4">
+        <h2
+          id="command-pane-title"
+          className="m-0 min-w-0 flex-1 truncate text-xs font-semibold text-foreground"
+        >
           {title}
         </h2>
         <IconButton
