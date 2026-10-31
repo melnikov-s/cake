@@ -64,13 +64,13 @@ for (const dictation of [false, true]) {
       // Neither clicking the input nor explicitly focusing another popup control closes it
       // or causes convenience autofocus to reclaim the input.
       await input.click();
-      const close = quick.getByRole("button", { name: "Close companion", exact: true });
-      await close.focus();
-      await expect(close).toBeFocused();
+      const send = quick.getByRole("button", { name: "Send", exact: true });
+      await send.focus();
+      await expect(send).toBeFocused();
       await page.keyboard.press(shortcut);
       await expect(input).toBeFocused();
       await expect(input).toHaveValue("A draft to keep");
-      await close.click();
+      await input.press("Escape");
       await expect(quick).toHaveCount(0);
       await page.keyboard.press(shortcut);
       await expect(input).toBeFocused();

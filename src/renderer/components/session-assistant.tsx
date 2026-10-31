@@ -98,15 +98,6 @@ export const SessionAssistant = observer(function SessionAssistant({
               "w-[min(19rem,calc(100vw-24px))] max-w-[min(22rem,calc(100vw-24px))] rounded-2xl [&_[aria-label=Conversation]]:p-0",
           )}
         >
-          <div className="flex justify-end px-1 pt-1">
-            <IconButton
-              ariaLabel="Close companion"
-              onClick={() => setOpen(false)}
-              className="size-6 rounded-full bg-popover/95"
-            >
-              <CloseIcon size={12} />
-            </IconButton>
-          </div>
           {processing ? (
             <ThinkingBubble />
           ) : (

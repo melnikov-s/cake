@@ -244,7 +244,7 @@ test("rewords composer text and opens the focused session assistant", async () =
       )
       .toEqual([7, 19]);
 
-    await quickAssistant.getByRole("button", { name: "Close companion", exact: true }).click();
+    await page.keyboard.press("Escape");
     await expect(quickAssistant).toHaveCount(0);
     await assistantTrigger.click({ button: "right" });
     const fullAssistant = page.getByRole("dialog", { name: "Session assistant chat" });

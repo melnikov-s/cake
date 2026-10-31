@@ -105,7 +105,7 @@ test("companion replies persist, support reading and links, and dismiss without 
       quick.getByRole("status", { name: "Session assistant is thinking", exact: true }),
     ).toBeVisible();
     await expect.poll(() => Boolean(releaseReply)).toBe(true);
-    await quick.getByRole("button", { name: "Close companion", exact: true }).click();
+    await page.keyboard.press("Escape");
     await expect(quick).toHaveCount(0);
     await trigger.click();
     await expect(
