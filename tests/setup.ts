@@ -21,6 +21,15 @@ if (typeof window !== "undefined" && !("ResizeObserver" in globalThis)) {
   };
 }
 
+// jsdom has no SVG layout. Avatar animation reads geometry during setup even
+// with reduced motion; real geometry and motion are verified in Electron.
+if (typeof SVGElement !== "undefined" && !("getBBox" in SVGElement.prototype)) {
+  Object.defineProperty(SVGElement.prototype, "getBBox", {
+    configurable: true,
+    value: () => ({ x: 0, y: 0, width: 0, height: 0 }),
+  });
+}
+
 // DOM-only tests default to reduced motion; real animation and media changes
 // are verified in Electron (focused primitive tests can override this boundary).
 if (typeof window !== "undefined" && !("FontFace" in globalThis)) {

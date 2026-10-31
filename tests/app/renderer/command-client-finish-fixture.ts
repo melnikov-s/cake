@@ -5,7 +5,7 @@ import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
 
-export const commandClientSource = {
+const commandClientSource = {
   kind: "project-session",
   sessionId: "calling",
   title: "Planner",

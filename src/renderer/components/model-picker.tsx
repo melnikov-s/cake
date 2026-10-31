@@ -19,7 +19,7 @@ import { Badge } from "./ui/badge";
 import { Callout } from "./ui/callout";
 import { SegmentedControlGroup, SegmentedControlButton } from "./ui/segmented-control";
 
-export interface ModelGroup {
+interface ModelGroup {
   id: string;
   name: string;
   models: readonly ModelOption[];

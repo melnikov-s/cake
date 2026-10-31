@@ -66,7 +66,7 @@ export const SideChatsMenu = observer(function SideChatsMenu({
             </span>
             <span>Open side chats</span>
           </div>
-          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+          <span className="font-mono text-xs tabular-nums text-muted-foreground">
             {threads.length}
           </span>
         </div>

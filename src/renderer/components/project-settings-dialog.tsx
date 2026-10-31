@@ -349,7 +349,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
                     {variables.map(([name, description]) => (
                       <div key={name} className="contents">
                         <dt>
-                          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+                          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
                             {name}
                           </code>
                         </dt>

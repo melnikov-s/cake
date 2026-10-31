@@ -91,7 +91,7 @@ describe("Tool", () => {
   });
 
   it.each([0, 5, 49, 50, 100, 999, 1000, 1200])(
-    "shows nested duration %sms in whole seconds, omitting zero",
+    "shows nested duration %sms with the shared elapsed-time units",
     (durationMs) => {
       const call = {
         id: "nested",
@@ -103,8 +103,7 @@ describe("Tool", () => {
       };
       act(() => root.render(<Tool part={{ kind: "tool", ...call }} activity={call} />));
       const elapsed = container.querySelector('[aria-label="elapsed time"]');
-      if (durationMs < 1000) expect(elapsed).toBeNull();
-      else expect(elapsed?.textContent).toBe("1s");
+      expect(elapsed?.textContent).toBe(durationMs < 1000 ? `${durationMs}ms` : "1s");
     },
   );
 
