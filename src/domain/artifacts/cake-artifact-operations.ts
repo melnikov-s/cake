@@ -7,6 +7,7 @@ import { createSelectedDesignOperations } from "./cake-selected-design-operation
 import { readPrototypeSource } from "../../services/widgets/prototype-source";
 import { Schema } from "effect";
 import { inlineWidgetLanguageSchema } from "../../contracts/widgets/inline-widget-contract";
+import type { WidgetGenerationProgress } from "../../contracts/widgets/widget-generation";
 import { retainedWidgetPreviewEvidence } from "../../contracts/widgets/widget-view-evidence";
 import { jsonValueSchema } from "../../contracts/serialization/json-contract";
 import {
@@ -193,6 +194,18 @@ function artifactPage(metadata: readonly ArtifactProjectionMetadata[], input: Ag
       title: agentListLabel(artifact.title ?? artifact.lineageId),
     })),
   };
+}
+
+/** Streams widget side-chat progress into the calling tool's live result. */
+function widgetProgressReporter(context: CakeOperationExecutionContext) {
+  return (progress: WidgetGenerationProgress) =>
+    context.onUpdate?.({
+      widgetGeneration: {
+        phase: progress.phase,
+        files: progress.files,
+        characters: progress.characters,
+      },
+    });
 }
 
 function runtimeContext(context: CakeOperationExecutionContext) {
@@ -651,6 +664,7 @@ export function createCakeArtifactOperations(
             initialStateVersion: latestState.version,
             model: runtime.model,
             signal: context.signal,
+            onProgress: widgetProgressReporter(context),
           };
           const generated = generationSessionId
             ? await options.reviseInlineWidget!({ ...revisionInput, generationSessionId })
@@ -943,6 +957,7 @@ export function createCakeArtifactOperations(
             ? { provider: runtime.model.provider, id: runtime.model.id }
             : undefined,
           signal: context.signal,
+          onProgress: widgetProgressReporter(context),
         });
         if (context.signal.aborted) throw new Error("Widget generation was cancelled");
         if (!generated.browser) throw new Error("Accepted widget has no retained browser output");

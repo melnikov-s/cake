@@ -40,28 +40,34 @@ test("remote Electron loads backend widgets and companion actions, then Pi revie
           },
         },
       };
+      // Parent tool call, side-chat file write, side-chat finish, screenshot review, parent reply.
       const content =
-        index === 2
-          ? `\`\`\`cake-react\n${reviewedSource}\n\`\`\``
-          : index === 3
-            ? "ACCEPT_CURRENT"
-            : "Reviewed widget complete";
-      const delta =
+        index === 3 ? "Done" : index === 4 ? "ACCEPT_CURRENT" : "Reviewed widget complete";
+      const call =
         index === 1
-          ? {
-              tool_calls: [
-                {
-                  index: 0,
-                  id: "call-widget",
-                  type: "function",
-                  function: { name: "cake", arguments: JSON.stringify(tool) },
-                },
-              ],
-            }
-          : { content };
+          ? { id: "call-widget", name: "cake", arguments: JSON.stringify(tool) }
+          : index === 2
+            ? {
+                id: "call-write",
+                name: "write",
+                arguments: JSON.stringify({ path: "widget/widget.tsx", content: reviewedSource }),
+              }
+            : undefined;
+      const delta = call
+        ? {
+            tool_calls: [
+              {
+                index: 0,
+                id: call.id,
+                type: "function",
+                function: { name: call.name, arguments: call.arguments },
+              },
+            ],
+          }
+        : { content };
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.end(
-        `data: ${JSON.stringify({ id: `fixture-${index}`, object: "chat.completion.chunk", created: 0, model: "fixture-model", choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: `fixture-${index}`, object: "chat.completion.chunk", created: 0, model: "fixture-model", choices: [{ index: 0, delta: {}, finish_reason: index === 1 ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`,
+        `data: ${JSON.stringify({ id: `fixture-${index}`, object: "chat.completion.chunk", created: 0, model: "fixture-model", choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: `fixture-${index}`, object: "chat.completion.chunk", created: 0, model: "fixture-model", choices: [{ index: 0, delta: {}, finish_reason: call ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`,
       );
     });
   });
@@ -316,9 +322,9 @@ export default function RemoteWidget() {
       await input.fill("Present a visually reviewed remote widget");
       await page.getByRole("button", { name: "Send", exact: true }).click();
       await expect(page.getByText("Reviewed widget complete")).toBeVisible({ timeout: 30_000 });
-      expect(providerRequests).toHaveLength(4);
-      expect(providerRequests[1]).toContain("Build this presentation");
-      const reviewImage = JSON.stringify(JSON.parse(providerRequests[2]!)).match(
+      expect(providerRequests).toHaveLength(5);
+      expect(providerRequests[1]).toContain("Cake widget side chat");
+      const reviewImage = JSON.stringify(JSON.parse(providerRequests[3]!)).match(
         /data:image\/png;base64,([A-Za-z0-9+/=]+)/,
       )?.[1];
       expect(reviewImage?.length).toBeGreaterThan(1000);

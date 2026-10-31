@@ -79,7 +79,8 @@ export function readPrototypeSource(source: string): PrototypeSource | undefined
   return bundle;
 }
 
-function moduleImports(module: PrototypeModule): Set<string> {
+/** The distinct static import/re-export specifiers of one module; rejects invalid syntax. */
+export function moduleImports(module: Pick<PrototypeModule, "id" | "source">): Set<string> {
   const diagnostics =
     ts.transpileModule(module.source, {
       fileName: `${module.id}.tsx`,

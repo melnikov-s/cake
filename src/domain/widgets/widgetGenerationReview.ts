@@ -3,7 +3,7 @@ import type { InlineWidgetLanguage } from "../../contracts/widgets/inline-widget
 import type { WidgetBrowserOutput } from "../../contracts/widgets/widget-browser-output";
 import type { WidgetPreview } from "../../contracts/widgets/widget-preview";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
-import { extractRepairedWidget } from "../../services/widgets/inline-widget-service";
+import type { WidgetGenerationProgress } from "../../contracts/widgets/widget-generation";
 import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 
 export interface InlineWidgetGenerationRequest {
@@ -16,6 +16,7 @@ export interface InlineWidgetGenerationRequest {
   readonly surface?: "widget" | "session-plugin";
   readonly model?: { readonly provider: string; readonly id: string };
   readonly signal?: AbortSignal;
+  readonly onProgress?: (progress: WidgetGenerationProgress) => void;
 }
 
 export interface InlineWidgetGenerationResult {
@@ -40,12 +41,12 @@ export interface WidgetGenerationReviewDependencies {
   readonly requireVisionModel: (
     model: { readonly provider: string; readonly id: string } | undefined,
   ) => Effect.Effect<void, unknown>;
-  readonly generate: () => Effect.Effect<
-    { readonly sessionId: string; readonly response: string },
-    unknown
-  >;
-  readonly compile: (source: string) => Effect.Effect<
+  /** Runs the first side-chat turn, which writes the widget files. */
+  readonly generate: () => Effect.Effect<{ readonly sessionId: string }, unknown>;
+  /** Assembles the current widget files into source and compiles it. */
+  readonly compile: () => Effect.Effect<
     {
+      readonly source: string;
       readonly widget: { readonly token: string; readonly url: string };
       readonly release: Effect.Effect<void>;
       /** Retain only the accepted compiled output, never rejected candidates. */
@@ -53,10 +54,8 @@ export interface WidgetGenerationReviewDependencies {
     },
     unknown
   >;
-  readonly repair: (
-    source: string,
-    diagnostic: string,
-  ) => Effect.Effect<{ readonly response: string }, unknown>;
+  /** Sends a diagnostic to the side chat, which fixes the widget files. */
+  readonly repair: (diagnostic: string) => Effect.Effect<unknown, unknown>;
   readonly capture: (widget: { readonly token: string; readonly url: string }) => Effect.Effect<
     {
       readonly pngBase64: string;
@@ -64,11 +63,11 @@ export interface WidgetGenerationReviewDependencies {
     },
     unknown
   >;
+  /** Shows the side chat its rendered screenshot; it accepts or changes the files. */
   readonly review: (
-    source: string,
     diagnostic: string,
     pngBase64: string,
-  ) => Effect.Effect<{ readonly response: string }, unknown>;
+  ) => Effect.Effect<{ readonly accepted: boolean; readonly changed: boolean }, unknown>;
 }
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
@@ -81,23 +80,6 @@ const mapFailure = (
   operation: WidgetGenerationReviewError["operation"],
   kind: WidgetGenerationReviewError["kind"],
 ) => Effect.mapError((cause: unknown) => fail(operation, kind, cause));
-const extract = (
-  response: string,
-  operation: WidgetGenerationReviewError["operation"],
-  language: InlineWidgetLanguage,
-) =>
-  Effect.try({
-    try: () => {
-      if (language !== "html") return extractRepairedWidget(response, language);
-      const match = /^```cake-html[^\S\r\n]*\r?\n([\s\S]*?)\r?\n```$/.exec(response.trim());
-      const source = match?.[1]?.trim();
-      if (!source) throw new Error("HTML generation requires one complete cake-html fence");
-      if (!/^<!doctype html>\s*<html[\s>][\s\S]*<\/html>$/i.test(source))
-        throw new Error("HTML generation requires a complete self-contained HTML document");
-      return source;
-    },
-    catch: (cause) => fail(operation, "candidate", cause),
-  });
 
 /** Cohesive pre-publication policy: every renderable candidate receives screenshot review. */
 export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate")(function* (
@@ -113,7 +95,6 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
     );
   const generated = yield* dependencies.generate().pipe(mapFailure("generate", "infrastructure"));
   const language = input.language ?? "react";
-  let source = yield* extract(generated.response, "generate", language);
   let replacements = 0;
   let diagnostic = "Compilation succeeded.";
 
@@ -121,7 +102,7 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
     if (input.signal?.aborted)
       return yield* fail("review", "cancelled", "Widget generation was cancelled");
     const compiled = yield* dependencies
-      .compile(source)
+      .compile()
       .pipe(mapFailure("compile", "candidate"), Effect.result);
     if (compiled._tag === "Failure") {
       diagnostic = `Compilation failed: ${compiled.failure.message}`.slice(0, 8_000);
@@ -131,10 +112,7 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
           "candidate",
           `Widget review exhausted its two replacements. ${diagnostic}`,
         );
-      const repaired = yield* dependencies
-        .repair(source, diagnostic)
-        .pipe(mapFailure("repair", "infrastructure"));
-      source = yield* extract(repaired.response, "repair", language);
+      yield* dependencies.repair(diagnostic).pipe(mapFailure("repair", "infrastructure"));
       replacements += 1;
       continue;
     }
@@ -152,13 +130,12 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
         );
       diagnostic = [diagnostic, ...capture.diagnostics].join("\n").slice(0, 8_000);
       const review = yield* dependencies
-        .review(source, diagnostic, capture.pngBase64)
+        .review(diagnostic, capture.pngBase64)
         .pipe(mapFailure("review", "infrastructure"));
-      const browser =
-        review.response.trim() === "ACCEPT_CURRENT"
-          ? yield* candidate.retain().pipe(mapFailure("compile", "infrastructure"))
-          : undefined;
-      return { response: review.response, pngBase64: capture.pngBase64, browser };
+      const browser = review.accepted
+        ? yield* candidate.retain().pipe(mapFailure("compile", "infrastructure"))
+        : undefined;
+      return { review, pngBase64: capture.pngBase64, browser };
     }).pipe(Effect.ensuring(candidate.release), Effect.result);
 
     if (outcome._tag === "Failure") {
@@ -166,16 +143,14 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
         return yield* fail("review", "cancelled", "Widget generation was cancelled");
       if (outcome.failure.kind !== "candidate") return yield* outcome.failure;
       if (replacements >= 2) return yield* outcome.failure;
-      const repaired = yield* dependencies
-        .repair(source, `Rendered preview failed: ${outcome.failure.message}`)
+      yield* dependencies
+        .repair(`Rendered preview failed: ${outcome.failure.message}`)
         .pipe(mapFailure("repair", "infrastructure"));
-      source = yield* extract(repaired.response, "repair", language);
       replacements += 1;
       continue;
     }
 
-    const response = outcome.success.response.trim();
-    if (response === "ACCEPT_CURRENT") {
+    if (outcome.success.review.accepted) {
       if (!outcome.success.browser)
         return yield* fail(
           "compile",
@@ -184,20 +159,25 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
         );
       return {
         language,
-        source,
+        source: candidate.source,
         generationSessionId: generated.sessionId,
         preview: { mimeType: "image/png" as const, data: outcome.success.pngBase64 },
         browser: outcome.success.browser,
       };
     }
+    if (!outcome.success.review.changed)
+      return yield* fail(
+        "review",
+        "candidate",
+        "The widget visual review neither accepted the widget nor changed its files",
+      );
     if (replacements >= 2)
       return yield* fail(
         "review",
         "candidate",
         "Widget visual review requested a third replacement; the two-replacement limit is exhausted",
       );
-    source = yield* extract(response, "review", language);
     replacements += 1;
-    diagnostic = "Visual reviewer supplied a replacement.";
+    diagnostic = "Visual review changed the widget files.";
   }
 });

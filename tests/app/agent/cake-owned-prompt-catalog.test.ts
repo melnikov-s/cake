@@ -38,21 +38,19 @@ describe("Cake-owned prompt catalog", () => {
     }
   });
 
-  it("preserves the built-in prototype manifest and saved-selection payloads", async () => {
+  it("preserves the built-in prototype module files and saved-selection payload", async () => {
     const directory = new URL("../../../src/services/pi/skills/prototype-ui/", import.meta.url);
     const widget = await readFile(new URL("widget.md", directory), "utf8");
     const skill = await readFile(new URL("SKILL.md", directory), "utf8");
     const payloads = [...widget.matchAll(/```json\n([\s\S]*?)\n```/g)].map((match) =>
       JSON.parse(match[1]!),
     );
-    expect(payloads[0]).toMatchObject({
-      schema: "cake.prototype-source/v1",
-      chooser: { id: "chooser" },
-      options: [1, 2, 3, 4, 5].map((id) => ({ id: `option-${id}` })),
-      shared: [],
-    });
-    expect(payloads[1]).toEqual({ schema: "cake.prototype-ui/v1", selectedOptionId: null });
+    expect(payloads).toEqual([{ schema: "cake.prototype-ui/v1", selectedOptionId: null }]);
     for (const fact of [
+      "`widget/chooser.tsx`",
+      "`widget/options/<id>.tsx`: exactly five files",
+      "`widget/shared/<id>.tsx`",
+      "Cake assembles these files into the `cake.prototype-source/v1` module manifest",
       "await `save({ ...value, selectedOptionId: option.id })`",
       "No dynamic imports, require, relative paths or file imports",
       "No module may import the chooser; no dependency cycles",

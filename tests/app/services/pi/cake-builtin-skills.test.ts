@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { cakeBuiltinSkillsOverride } from "../../../../src/services/pi/runtime/cake-builtin-skills";
-import { createWidgetCandidateTools } from "../../../../src/services/pi/runtime/widget-candidate-tools";
+import { createWidgetBranchTools } from "../../../../src/services/pi/runtime/widget-branch-tools";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -101,9 +101,16 @@ describe("built-in Cake skills", () => {
     const { root, loader } = await fixture();
     const skills = loader.getSkills().skills;
     const prototype = skills.find((skill) => skill.name === "cake:prototype-ui")!;
-    const tools = await createWidgetCandidateTools({
+    const declaration = (name: string) => ({
+      name,
+      description: name,
+      parameters: { type: "object", properties: {} },
+    });
+    const tools = await createWidgetBranchTools({
       cwd: root,
-      candidate: { source: "", state: null },
+      declarations: ["read", "write", "edit"].map(declaration),
+      candidate: { files: {}, state: null },
+      allowState: true,
       skills,
     });
     const read = tools.find((tool) => tool.name === "read")!;
@@ -124,6 +131,6 @@ describe("built-in Cake skills", () => {
     await writeFile(projectFile, "Parent-only design research");
     await expect(
       read.execute("read-project", { path: projectFile }, undefined, undefined, {} as never),
-    ).rejects.toThrow("Only discovered skill resources");
+    ).rejects.toThrow("Only widget files and discovered skill resources");
   });
 });

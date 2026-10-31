@@ -34,7 +34,7 @@ Read `widget.md` before preparing the brief. Request the `widgets` topic and use
 - The gathered app-specific design context. Match the existing app by default; make a redesign only when requested.
 - The absolute path to this skill's `widget.md`, and an instruction for the specialist to read it.
 - `initialState: { "schema": "cake.prototype-ui/v1", "selectedOptionId": null }`.
-- The validated `cake.prototype-source/v1` module-bundle format in `widget.md`. Each option must be separately addressable; the chooser imports all five, while each option imports only its required shared modules/packages. Do not put all alternatives into one source module.
+- The module files in `widget.md`, which Cake assembles into a `cake.prototype-source/v1` bundle. Each option must be separately addressable; the chooser imports all five, while each option imports only its required shared modules/packages. Do not put all alternatives into one source module.
 - A short Markdown fallback describing the five directions.
 
 The specialist writes React source; supply intent, evidence, state contract and interactions, not your own widget source. Keep all five prototypes in one generation branch. Refine the same artifact with `artifacts.replace`; revisions inherit generation history. Pass new parent findings explicitly.

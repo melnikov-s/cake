@@ -18,6 +18,7 @@ import {
 } from "../contracts/artifacts/artifact-contract";
 import type { CakeEvent } from "../contracts/application/cake-rpc-contract";
 import { compileInlineWidget } from "../services/widgets/inline-widget-service";
+import { assembleWidgetSource, widgetFilesFromSource } from "../services/widgets/widget-files";
 import {
   publishInlineWidget,
   revokeInlineWidget,
@@ -396,7 +397,8 @@ export class ProjectSessionIntegrationHost {
       fallback: input.fallback,
       surface: input.surface ?? "widget",
     });
-    const candidate: WidgetCandidate = { source: "", state: input.initialState ?? null };
+    const candidate: WidgetCandidate = { files: {}, state: input.initialState ?? null };
+    const allowState = input.surface !== "session-plugin";
     return this.reviewWidget(input, context, candidate, () =>
       this.runWidgetGeneration({
         cwd: this.workspacePath,
@@ -404,9 +406,18 @@ export class ProjectSessionIntegrationHost {
         sessionDir: this.widgetSessionDir,
         sessionRoots: this.widgetSessionRoots,
         conversation: { type: "parent", origin: input.parentConversation },
-        candidate: input.surface === "session-plugin" ? undefined : candidate,
+        candidate,
+        allowState,
         projectTrusted: this.isTrusted(),
-        ...input,
+        brief: input.brief,
+        language: input.language,
+        data: input.data,
+        initialState: input.initialState,
+        fallback: input.fallback,
+        surface: input.surface,
+        model: input.model,
+        signal: input.signal,
+        onProgress: input.onProgress,
       }),
     );
   }
@@ -427,8 +438,12 @@ export class ProjectSessionIntegrationHost {
       initialState: input.initialStateVersion === 0 ? undefined : input.initialState,
       model: input.model,
       signal: input.signal,
+      onProgress: input.onProgress,
     };
-    const candidate: WidgetCandidate = { source: input.source, state: input.initialState ?? null };
+    const candidate: WidgetCandidate = {
+      files: widgetFilesFromSource(input.source, input.language),
+      state: input.initialState ?? null,
+    };
     return this.reviewWidget(generationInput, context, candidate, () =>
       this.runWidgetRepair({
         cwd: this.workspacePath,
@@ -438,13 +453,14 @@ export class ProjectSessionIntegrationHost {
         conversation: { type: "revision", sessionId: input.generationSessionId },
         language: input.language,
         capability: "artifact",
-        source: input.source,
         candidate,
+        allowState: true,
         projectTrusted: this.isTrusted(),
         context,
         diagnostic: `Requested durable revision: ${input.instructions}`,
         model: input.model,
         signal: input.signal,
+        onProgress: input.onProgress,
       }),
     );
   }
@@ -456,10 +472,30 @@ export class ProjectSessionIntegrationHost {
     generate: () => ReturnType<typeof runInlineWidgetGeneration>,
   ) {
     let generationSessionId: string | undefined;
-    const conversation = () => {
+    const language = input.language ?? "react";
+    const plugin = input.surface === "session-plugin";
+    const branch = () => {
       if (!generationSessionId) throw new Error("Widget generation has not started");
-      return { type: "continue" as const, sessionId: generationSessionId };
+      return {
+        cwd: this.workspacePath,
+        agentDir: this.agentDir,
+        sessionDir: this.widgetSessionDir,
+        sessionRoots: this.widgetSessionRoots,
+        conversation: { type: "continue" as const, sessionId: generationSessionId },
+        candidate,
+        allowState: !plugin,
+        projectTrusted: this.isTrusted(),
+        model: input.model,
+        signal: input.signal,
+        onProgress: input.onProgress,
+      };
     };
+    const progress = (phase: "compiling" | "rendering") =>
+      input.onProgress?.({
+        phase,
+        files: Object.keys(candidate.files).toSorted(),
+        characters: Object.values(candidate.files).reduce((total, text) => total + text.length, 0),
+      });
     const fromPromise = <A>(evaluate: (signal: AbortSignal) => Promise<A>) =>
       Effect.tryPromise({ try: evaluate, catch: (cause) => cause });
     const originalState = JSON.stringify(candidate.state);
@@ -471,57 +507,52 @@ export class ProjectSessionIntegrationHost {
           generationSessionId = generated.sessionId;
           return generated;
         }),
-      compile: (source) =>
-        fromPromise(() => {
-          candidate.source = source;
-          return this.compileWidget(
-            input.language ?? "react",
+      compile: () =>
+        fromPromise(async () => {
+          progress("compiling");
+          const source = assembleWidgetSource(candidate.files, language);
+          const compiled = await this.compileWidget(
+            language,
             source,
-            input.surface === "session-plugin" ? "session-plugin" : "artifact",
+            plugin ? "session-plugin" : "artifact",
           );
+          return { source, compiled };
         }).pipe(
-          Effect.map((compiled) => {
+          Effect.map(({ source, compiled }) => {
             const widget = publishInlineWidget(compiled);
             return {
+              source,
               widget,
               release: Effect.sync(() => revokeInlineWidget(widget.token)),
               retain: () => fromPromise(() => this.retainWidgetBrowser(compiled)),
             };
           }),
         ),
-      repair: (source, diagnostic) =>
+      repair: (diagnostic) =>
         fromPromise(() =>
           this.runWidgetRepair({
-            cwd: this.workspacePath,
-            agentDir: this.agentDir,
-            sessionDir: this.widgetSessionDir,
-            sessionRoots: this.widgetSessionRoots,
-            conversation: conversation(),
-            language: input.language ?? "react",
-            capability: input.surface === "session-plugin" ? "session-plugin" : "artifact",
-            source,
-            candidate: input.surface === "session-plugin" ? undefined : candidate,
-            projectTrusted: this.isTrusted(),
+            ...branch(),
+            language,
+            capability: plugin ? "session-plugin" : "artifact",
             context,
             diagnostic,
-            model: input.model,
-            signal: input.signal,
           }),
         ),
       capture: (widget) =>
-        fromPromise((signal) =>
-          this.captureWidget(
+        fromPromise((signal) => {
+          progress("rendering");
+          return this.captureWidget(
             input.sessionId,
             widget,
             signal,
-            input.surface === "session-plugin"
+            plugin
               ? (input.initialState ?? null)
               : input.initialState === undefined && candidate.state === null
                 ? undefined
                 : candidate.state,
-          ),
-        ),
-      review: (source, diagnostic, pngBase64) => {
+          );
+        }),
+      review: (diagnostic, pngBase64) => {
         const model = input.model;
         if (!model)
           return Effect.fail(
@@ -529,22 +560,19 @@ export class ProjectSessionIntegrationHost {
           );
         return fromPromise(() =>
           this.runWidgetVisualReview({
-            cwd: this.workspacePath,
-            agentDir: this.agentDir,
-            sessionDir: this.widgetSessionDir,
-            sessionRoots: this.widgetSessionRoots,
-            conversation: conversation(),
-            language: input.language ?? "react",
-            source,
-            context:
-              input.surface === "session-plugin"
-                ? context
-                : `${context}\n\nCurrent staged artifact state (authoritative for this preview):\n${JSON.stringify(candidate.state)}`,
+            ...branch(),
+            context: plugin
+              ? context
+              : `${context}\n\nCurrent staged artifact state (authoritative for this preview):\n${JSON.stringify(candidate.state)}`,
             diagnostic,
             pngBase64,
             model,
-            signal: input.signal,
           }),
+        ).pipe(
+          Effect.map((reviewed) => ({
+            accepted: !reviewed.changed && reviewed.response.trim() === "ACCEPT_CURRENT",
+            changed: reviewed.changed,
+          })),
         );
       },
     }).pipe(

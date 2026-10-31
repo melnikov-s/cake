@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { inlineWidgetLayoutRequirements } from "../../../../src/services/pi/runtime/sidecar-runtime";
-import {
-  compileInlineWidget,
-  extractRepairedWidget,
-} from "../../../../src/services/widgets/inline-widget-service";
+import { compileInlineWidget } from "../../../../src/services/widgets/inline-widget-service";
 
 describe("inline widget service", () => {
   it("wraps free-form HTML in an isolated runtime document", async () => {
@@ -46,12 +43,6 @@ describe("inline widget service", () => {
     await expect(compileInlineWidget("react", source, "session-plugin")).rejects.toThrow(
       "available only to artifact widgets",
     );
-  });
-
-  it("extracts a repaired fence without surrounding agent prose", () => {
-    expect(
-      extractRepairedWidget("Here is the fix:\n```cake-html\n<strong>Fixed</strong>\n```", "html"),
-    ).toBe("<strong>Fixed</strong>");
   });
 
   it("injects the narrow request API into HTML widgets", async () => {

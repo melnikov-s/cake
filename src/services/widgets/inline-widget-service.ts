@@ -417,13 +417,3 @@ function isBuildFailure(error: unknown): error is InlineWidgetBuildFailure {
     typeof error === "object" && error !== null && "errors" in error && Array.isArray(error.errors)
   );
 }
-
-export function extractRepairedWidget(text: string, language: InlineWidgetLanguage) {
-  const fence = language === "html" ? "cake-html" : "cake-react";
-  const match = new RegExp(
-    "(?:^|\\n)```" + fence + "[^\\S\\r\\n]*\\r?\\n([\\s\\S]*?)\\r?\\n```(?:\\n|$)",
-  ).exec(text);
-  const source = (match?.[1] ?? text).trim();
-  if (!source) throw new Error("The repair agent returned an empty widget");
-  return source;
-}

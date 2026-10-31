@@ -9,16 +9,26 @@ import type { WidgetCandidate } from "../../../../src/contracts/widgets/widget-c
 import type { InlineWidgetGenerationRequest } from "../../../../src/contracts/widgets/widget-generation";
 import { RenderedWidgetCaptureError } from "../../../../src/contracts/widgets/rendered-widget-capture-errors";
 import { inlineWidgetDocument } from "../../../../src/services/widgets/inline-widget-document-registry";
+import { readPrototypeSource } from "../../../../src/services/widgets/prototype-source";
 
-const source = (name: string) =>
-  `\`\`\`cake-react\nexport default function ${name}(){ return <div>${name}</div> }\n\`\`\``;
+const source = (name: string) => `export default function ${name}(){ return <div>${name}</div> }`;
 
 const htmlSource = (name: string) =>
-  `\`\`\`cake-html\n<!doctype html><html><head><style>button{font:inherit}</style></head><body><button id="count">Count 0</button><script>function ${name}() { let count = 0; document.querySelector("button").onclick = () => document.querySelector("button").textContent = "Count " + ++count; } ${name}();</script></body></html>\n\`\`\``;
+  `<!doctype html><html><head><style>button{font:inherit}</style></head><body><button id="count">Count 0</button><script>function ${name}() { let count = 0; document.querySelector("button").onclick = () => document.querySelector("button").textContent = "Count " + ++count; } ${name}();</script></body></html>`;
+
+/** Writes one widget file the way the side chat's write tool does. */
+const write = (
+  candidate: WidgetCandidate,
+  language: "html" | "react" | undefined,
+  text: string,
+) => {
+  candidate.files[language === "html" ? "widget/widget.html" : "widget/widget.tsx"] = text;
+};
 
 function host(options: {
   generation?: string;
   language?: "html" | "react";
+  /** Each review either accepts or writes a replacement component with this name. */
   reviews: string[];
   compileFailures?: Set<string>;
   signal?: AbortSignal;
@@ -36,7 +46,7 @@ function host(options: {
   const repairInputs: unknown[] = [];
   const reviewInputs: unknown[] = [];
   let token = 0;
-  const integration = new ProjectSessionIntegrationHost({
+  const hostOptions: ConstructorParameters<typeof ProjectSessionIntegrationHost>[0] = {
     workspacePath: "/workspace",
     runReviewedWidget: generateReviewedWidget,
     execute: (effect, signal) => Effect.runPromise(effect, signal ? { signal } : undefined),
@@ -52,12 +62,13 @@ function host(options: {
     runWidgetGeneration: async (input) => {
       generationInputs.push(input);
       calls.push("generate");
-      return {
-        sessionId: "generation-session",
-        response:
-          options.generation ??
+      write(
+        input.candidate,
+        input.language,
+        options.generation ??
           (options.language === "html" ? htmlSource("Initial") : source("Initial")),
-      };
+      );
+      return { sessionId: "generation-session", response: "Done", changed: true };
     },
     openWidgetBrowser: async () => {
       calls.push("open-retained");
@@ -96,28 +107,37 @@ function host(options: {
     },
     runWidgetRepair: async (input) => {
       repairInputs.push(input);
-      if (input.candidate) options.stageState?.(input.candidate);
+      options.stageState?.(input.candidate);
       calls.push(`repair:${input.diagnostic?.split(":")[0]}`);
-      return {
-        sessionId: "repair",
-        response: input.language === "html" ? htmlSource("Repaired") : source("Repaired"),
-      };
+      write(
+        input.candidate,
+        input.language,
+        input.language === "html" ? htmlSource("Repaired") : source("Repaired"),
+      );
+      return { sessionId: "repair", response: "Done", changed: true };
     },
     runWidgetVisualReview: async (input) => {
       reviewInputs.push(input);
       const { signal, context } = input;
       reviewContexts.push(context);
       calls.push("review");
-      return {
-        sessionId: "review",
-        response: options.visualReview
-          ? await options.visualReview(signal)
-          : (options.reviews.shift() ?? "ACCEPT_CURRENT"),
-      };
+      const decision = options.visualReview
+        ? await options.visualReview(signal)
+        : (options.reviews.shift() ?? "ACCEPT_CURRENT");
+      if (decision === "ACCEPT_CURRENT" || decision === "UNCHANGED")
+        return { sessionId: "review", response: decision, changed: false };
+      write(
+        input.candidate,
+        options.language,
+        options.language === "html" ? htmlSource(decision) : source(decision),
+      );
+      return { sessionId: "review", response: "Fixed", changed: true };
     },
-  });
+  };
+  const integration = new ProjectSessionIntegrationHost(hostOptions);
   return {
     integration,
+    hostOptions,
     calls,
     compileLanguages,
     generationInputs,
@@ -202,6 +222,7 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     "publishes explicit %s through the authoring operation and real review policy",
     async (language) => {
       const fixture = host({ language, reviews: ["ACCEPT_CURRENT"] });
+      const onUpdate = vi.fn();
       const persistArtifact = vi.fn(async (artifact: CakeArtifactV1) => ({
         artifact,
         workspacePath: "/workspace",
@@ -237,6 +258,7 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
         {
           signal: new AbortController().signal,
           toolCallId: "widget-1",
+          onUpdate,
           runtime: {
             ...request().parentConversation,
             model: request().model,
@@ -259,58 +281,61 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
         data: Buffer.from("png-1").toString("base64"),
       });
       expect(appendEntry).toHaveBeenCalledOnce();
+      expect(onUpdate).toHaveBeenCalledWith({
+        widgetGeneration: {
+          phase: "rendering",
+          files: [language === "html" ? "widget/widget.html" : "widget/widget.tsx"],
+          characters: expect.any(Number),
+        },
+      });
     },
   );
 
-  it.each(["invalid", "rejected"] as const)(
-    "does not publish %s HTML through the authoring operation",
-    async (failure) => {
-      const fixture = host({
-        language: "html",
-        generation: failure === "invalid" ? "Not HTML" : undefined,
-        reviews: [htmlSource("Second"), htmlSource("Third"), htmlSource("Rejected")],
-      });
-      const persistArtifact = vi.fn();
-      const appendEntry = vi.fn();
-      const registry = new CakeOperationRegistry(
-        createCakeArtifactOperations(
-          { appendEntry },
-          {
-            persistArtifact,
-            generateInlineWidget:
-              fixture.integration.runtimeIntegrations("project-session").generateInlineWidget,
-          },
-        ),
-      );
-      await expect(
-        registry.invoke(
-          {
-            command: "widgets.present",
-            input: {
-              widget: {
-                id: "counter",
-                title: "Counter",
-                brief: "Count",
-                language: "html",
-                fallback: { markdown: "Count" },
-              },
+  it("does not publish rejected HTML through the authoring operation", async () => {
+    const fixture = host({
+      language: "html",
+      reviews: ["Second", "Third", "Rejected"],
+    });
+    const persistArtifact = vi.fn();
+    const appendEntry = vi.fn();
+    const registry = new CakeOperationRegistry(
+      createCakeArtifactOperations(
+        { appendEntry },
+        {
+          persistArtifact,
+          generateInlineWidget:
+            fixture.integration.runtimeIntegrations("project-session").generateInlineWidget,
+        },
+      ),
+    );
+    await expect(
+      registry.invoke(
+        {
+          command: "widgets.present",
+          input: {
+            widget: {
+              id: "counter",
+              title: "Counter",
+              brief: "Count",
+              language: "html",
+              fallback: { markdown: "Count" },
             },
           },
-          {
-            signal: new AbortController().signal,
-            toolCallId: "rejected",
-            runtime: {
-              ...request().parentConversation,
-              model: request().model,
-            },
+        },
+        {
+          signal: new AbortController().signal,
+          toolCallId: "rejected",
+          runtime: {
+            ...request().parentConversation,
+            model: request().model,
           },
-        ),
-      ).rejects.toThrow(failure === "invalid" ? "HTML generation requires" : "third replacement");
-      expect(persistArtifact).not.toHaveBeenCalled();
-      expect(appendEntry).not.toHaveBeenCalled();
-      expect(fixture.calls.some((call) => call.startsWith("retain"))).toBe(false);
-    },
-  );
+        },
+      ),
+    ).rejects.toThrow("third replacement");
+    expect(persistArtifact).not.toHaveBeenCalled();
+    expect(appendEntry).not.toHaveBeenCalled();
+    expect(fixture.calls.some((call) => call.startsWith("retain"))).toBe(false);
+  });
 
   it("preserves HTML and stages state when revising the accepted generation branch", async () => {
     const fixture = host({
@@ -342,8 +367,8 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
       conversation: { type: "revision", sessionId: "accepted-html" },
     });
     expect(fixture.reviewInputs[0]).toMatchObject({
-      language: "html",
       conversation: { type: "continue", sessionId: "repair" },
+      candidate: { files: { "widget/widget.html": expect.stringContaining("function Repaired") } },
     });
   });
 
@@ -351,7 +376,7 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     const fixture = host({
       language: "html",
       compileFailures: new Set(["Initial"]),
-      reviews: [htmlSource("Second"), "ACCEPT_CURRENT"],
+      reviews: ["Second", "ACCEPT_CURRENT"],
     });
     const result = await generate(fixture.integration, { ...request(), language: "html" });
     expect(result.language).toBe("html");
@@ -359,33 +384,35 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     expect(fixture.compileLanguages).toEqual(["html", "html", "html"]);
     expect(fixture.generationInputs[0]).toMatchObject({ language: "html" });
     expect(fixture.repairInputs[0]).toMatchObject({ language: "html" });
-    expect(fixture.reviewInputs).toEqual([
-      expect.objectContaining({ language: "html" }),
-      expect.objectContaining({ language: "html" }),
-    ]);
+    expect(fixture.reviewInputs).toHaveLength(2);
     expect(fixture.calls.filter((call) => call.startsWith("retain"))).toEqual(["retain:2"]);
     expect(result.preview.data).toBe(Buffer.from("png-2").toString("base64"));
   });
 
   it.each([
     "prose",
-    "```cake-html\n<p>Not a document</p>\n```",
+    "<p>Not a document</p>",
     source("WrongMode"),
-    htmlSource("Valid") + "\nTrailing prose",
-    htmlSource("Valid") + "\nTrailing prose\n```",
-  ])("rejects invalid HTML candidates without retention: %s", async (generation) => {
-    const fixture = host({ generation, reviews: [] });
-    await expect(generate(fixture.integration, { ...request(), language: "html" })).rejects.toThrow(
-      /HTML generation requires/,
-    );
-    expect(fixture.compileLanguages).toEqual([]);
-    expect(fixture.calls.some((call) => call.startsWith("retain"))).toBe(false);
-  });
+    htmlSource("Valid") + "\nTrailing",
+  ])(
+    "sends an invalid HTML document back to the side chat before compiling it: %s",
+    async (generation) => {
+      const fixture = host({ language: "html", generation, reviews: ["ACCEPT_CURRENT"] });
+      const result = await generate(fixture.integration, { ...request(), language: "html" });
+      expect(fixture.repairInputs).toEqual([
+        expect.objectContaining({
+          diagnostic: expect.stringContaining("one complete <!doctype html>"),
+        }),
+      ]);
+      expect(fixture.compileLanguages).toEqual(["html"]);
+      expect(result.source).toContain("function Repaired");
+    },
+  );
 
   it("never retains HTML after visual rejection exhausts the replacement budget", async () => {
     const fixture = host({
       language: "html",
-      reviews: [htmlSource("Second"), htmlSource("Third"), htmlSource("Rejected")],
+      reviews: ["Second", "Third", "Rejected"],
     });
     await expect(generate(fixture.integration, { ...request(), language: "html" })).rejects.toThrow(
       "third replacement",
@@ -514,7 +541,7 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
   });
 
   it("captures and reviews every rendered candidate before accepting a replacement", async () => {
-    const fixture = host({ reviews: [source("Second"), "ACCEPT_CURRENT"] });
+    const fixture = host({ reviews: ["Second", "ACCEPT_CURRENT"] });
     const result = await generate(fixture.integration, request());
     expect(result.source).toContain("function Second");
     expect(result.preview).toEqual({
@@ -545,7 +572,7 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     const fixture = host({
       generation: source("Broken"),
       compileFailures: new Set(["Broken"]),
-      reviews: [source("Third"), source("Forbidden")],
+      reviews: ["Third", "Forbidden"],
     });
     await expect(generate(fixture.integration, request())).rejects.toThrow("third replacement");
     expect(fixture.calls.filter((call) => call.startsWith("capture"))).toHaveLength(2);
@@ -636,5 +663,62 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
       "vision-capable model",
     );
     expect(fixture.calls).toEqual(["vision:undefined"]);
+  });
+
+  it("fails clearly when visual review neither accepts nor changes the widget", async () => {
+    const fixture = host({ reviews: ["UNCHANGED"] });
+    await expect(generate(fixture.integration, request())).rejects.toThrow(
+      "neither accepted the widget nor changed its files",
+    );
+    expect(fixture.calls.some((call) => call.startsWith("retain"))).toBe(false);
+  });
+
+  it("reports building, compiling and rendering progress to the caller", async () => {
+    const fixture = host({ reviews: ["ACCEPT_CURRENT"] });
+    const progress: unknown[] = [];
+    await generate(fixture.integration, {
+      ...request(),
+      onProgress: (update) => progress.push(update),
+    });
+    expect(fixture.generationInputs[0]).toMatchObject({ onProgress: expect.any(Function) });
+    expect(progress).toEqual([
+      { phase: "compiling", files: ["widget/widget.tsx"], characters: source("Initial").length },
+      { phase: "rendering", files: ["widget/widget.tsx"], characters: source("Initial").length },
+    ]);
+  });
+
+  it("assembles prototype files into the published module manifest", async () => {
+    const ids = ["dense", "split", "cards", "timeline", "minimal"];
+    const fixture = host({ reviews: ["ACCEPT_CURRENT"] });
+    const compiled: string[] = [];
+    const integration = new ProjectSessionIntegrationHost({
+      ...fixture.hostOptions,
+      runWidgetGeneration: async (input) => {
+        input.candidate.files["widget/shared/tokens.tsx"] = "export const gap = 8;";
+        for (const id of ids)
+          input.candidate.files[`widget/options/${id}.tsx`] =
+            `import { gap } from "cake:prototype/tokens"; export default function Option(){ return <div style={{ gap }}>${id}</div> }`;
+        input.candidate.files["widget/chooser.tsx"] = [
+          'import { useArtifactState } from "@cake/artifact-sdk";',
+          ...ids.map((id, index) => `import O${index} from "cake:prototype/${id}";`),
+          "export default function Chooser(){ useArtifactState(null); return <><O0 /><O1 /><O2 /><O3 /><O4 /></>; }",
+        ].join("\n");
+        return { sessionId: "generation-session", response: "Done", changed: true };
+      },
+      compileWidget: async (_language, source) => {
+        compiled.push(source);
+        return { token: "00000000-0000-4000-8000-000000000001", document: "<html>Chooser</html>" };
+      },
+    });
+    const result = await generate(integration, request());
+    const manifest = readPrototypeSource(result.source)!;
+    expect(compiled).toEqual([result.source]);
+    expect(manifest.options.map((option) => option.id)).toEqual(ids);
+    expect(manifest.chooser.dependencies).toEqual([
+      "@cake/artifact-sdk",
+      ...ids.map((id) => `cake:prototype/${id}`),
+    ]);
+    expect(manifest.options[0]!.dependencies).toEqual(["cake:prototype/tokens"]);
+    expect(manifest.shared.map((module) => module.id)).toEqual(["tokens"]);
   });
 });

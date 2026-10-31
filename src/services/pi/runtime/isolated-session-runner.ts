@@ -1,3 +1,4 @@
+import { getCurrentSystemMessage, getCurrentTools } from "@earendil-works/pi-ai";
 import {
   DefaultResourceLoader,
   ModelRuntime,
@@ -14,7 +15,7 @@ import {
 } from "./extension-providers";
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
 import { createWidgetContextExtension } from "./widget-context-extension";
-import { createWidgetCandidateTools } from "./widget-candidate-tools";
+import { createWidgetBranchTools } from "./widget-branch-tools";
 import { cakeBuiltinSkillsOverride } from "./cake-builtin-skills";
 import type { WidgetCandidate } from "../../../contracts/widgets/widget-candidate";
 import { createNestedToolActivityProjection } from "./nested-tool-activity-projection";
@@ -42,11 +43,21 @@ export interface IsolatedSessionOptions {
   agentDir: string;
   sessionManager: SessionManager;
   projectTrusted: boolean;
-  systemPrompt: string;
-  /** Retains ancestor prompt sections and appends the restricted widget task. */
-  inheritWidgetContext?: boolean;
-  /** Grants only skill-resource reads and edits to this operation-local candidate. */
-  widgetCandidate?: WidgetCandidate;
+  /** Required unless `widgetBranch` inherits the conversation's own prompt. */
+  systemPrompt?: string;
+  /**
+   * Continues an inherited conversation as a widget side chat. The session keeps
+   * the conversation's exact system prompt and tool declarations, so its first
+   * request reuses the parent's prompt cache; only what the tools do changes.
+   * `write`/`edit` change this operation-local candidate, `read` reads it and
+   * skill resources, and every other inherited tool refuses.
+   */
+  widgetBranch?: {
+    readonly candidate: WidgetCandidate;
+    /** Whether `widget/state.json` (artifact JSON state) may be edited. */
+    readonly allowState: boolean;
+    onChange?(): void;
+  };
   /** Explicit roots that may contain this session's cache ancestors. */
   promptCacheSessionRoots?: ReadonlyArray<string>;
   prompt: string;
@@ -86,6 +97,8 @@ export interface IsolatedSessionResult {
   sessionFile: string | undefined;
   response: string;
   error?: string;
+  /** Why the final assistant reply stopped, for example `"length"` at the output limit. */
+  stopReason?: string;
   usage?: ConversationSnapshot["usage"];
 }
 
@@ -129,6 +142,13 @@ function resourcePathIsInside(root: string, resourcePath: string) {
 export async function runIsolatedSession(
   options: IsolatedSessionOptions,
 ): Promise<IsolatedSessionResult> {
+  const widgetBranch = options.widgetBranch;
+  const inherited = widgetBranch ? options.sessionManager.buildSessionContext().messages : [];
+  const inheritedSystem = widgetBranch ? getCurrentSystemMessage(inherited) : undefined;
+  if (widgetBranch && !inheritedSystem)
+    throw new Error("The widget side chat has no inherited system prompt to reuse");
+  if (!widgetBranch && options.systemPrompt === undefined)
+    throw new Error(`The ${options.modelPurpose} session requires a system prompt`);
   const settingsManager = SettingsManager.create(options.cwd, options.agentDir, {
     projectTrusted: options.projectTrusted,
   });
@@ -141,7 +161,8 @@ export async function runIsolatedSession(
   // apply, as do explicit Cake-owned context/cache hooks for widget branches.
   await registerAgentDirectoryExtensionProviders(options.agentDir, modelRuntime);
   const resourceRoot = options.resourceRoot;
-  const builtinSkills = options.includeSkills
+  const includeSkills = options.includeSkills || !!widgetBranch;
+  const builtinSkills = includeSkills
     ? await cakeBuiltinSkillsOverride(options.agentDir)
     : undefined;
   const promptCacheLineage = options.promptCacheSessionRoots
@@ -152,17 +173,15 @@ export async function runIsolatedSession(
     agentDir: options.agentDir,
     settingsManager,
     noExtensions: true,
-    noSkills: !options.includeSkills,
+    noSkills: !includeSkills,
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: !options.includeContextFiles,
-    systemPrompt: options.inheritWidgetContext ? undefined : options.systemPrompt,
-    appendSystemPromptOverride: options.inheritWidgetContext ? () => [] : undefined,
+    systemPrompt: inheritedSystem ? undefined : options.systemPrompt,
+    appendSystemPromptOverride: inheritedSystem ? () => [] : undefined,
     extensionFactories: [
       ...(promptCacheLineage ? [promptCacheLineage.extension] : []),
-      ...(options.inheritWidgetContext
-        ? [createWidgetContextExtension(options.sessionManager, options.systemPrompt)]
-        : []),
+      ...(inheritedSystem ? [createWidgetContextExtension(inheritedSystem)] : []),
     ],
     skillsOverride: (base) => {
       const current = builtinSkills ? builtinSkills(base) : base;
@@ -184,16 +203,17 @@ export async function runIsolatedSession(
       : undefined,
   });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.projectTrusted });
-  const candidateTools = options.widgetCandidate
-    ? await createWidgetCandidateTools({
+  const branchTools = widgetBranch
+    ? await createWidgetBranchTools({
         cwd: options.cwd,
-        candidate: options.widgetCandidate,
+        declarations: getCurrentTools(inherited),
+        candidate: widgetBranch.candidate,
+        allowState: widgetBranch.allowState,
         skills: resourceLoader.getSkills().skills,
+        onChange: widgetBranch.onChange,
       })
     : [];
-  const selectedTools = options.widgetCandidate
-    ? candidateTools.map((tool) => tool.name)
-    : options.tools;
+  const selectedTools = widgetBranch ? branchTools.map((tool) => tool.name) : options.tools;
   const selectedModel = options.model
     ? requireRegisteredModel(modelRuntime, {
         provider: options.model.provider,
@@ -210,13 +230,15 @@ export async function runIsolatedSession(
     resourceLoader,
     settingsManager,
     sessionManager: options.sessionManager,
-    customTools: [...(options.customTools ?? []), ...candidateTools],
+    customTools: [...(options.customTools ?? []), ...branchTools],
   };
   const optionsWithTools = selectedTools
     ? { ...agentSessionOptions, tools: selectedTools }
     : agentSessionOptions;
   const { session } = await createAgentSession(
-    options.noTools ? { ...optionsWithTools, noTools: options.noTools } : optionsWithTools,
+    options.noTools && !widgetBranch
+      ? { ...optionsWithTools, noTools: options.noTools }
+      : optionsWithTools,
   );
 
   try {
@@ -231,12 +253,13 @@ export async function runIsolatedSession(
           sessionManager: options.sessionManager,
           sessionRoots: options.promptCacheSessionRoots,
         });
-      if (options.bindExtensions || promptCacheLineage || options.inheritWidgetContext)
+      if (options.bindExtensions || promptCacheLineage || inheritedSystem)
         await session.bindExtensions({ mode: "rpc" });
       if (options.thinkingLevel) session.setThinkingLevel(options.thinkingLevel);
 
       let response = "";
       let failure = "";
+      let stopReason: string | undefined;
       const projectLiveMessage = createLiveMessageProjector();
       const activeToolCalls = new Map<
         string,
@@ -322,6 +345,7 @@ export async function runIsolatedSession(
         }
         if (event.type === "message_end" && event.message.role === "assistant") {
           response = textFromContent(event.message.content).trim();
+          stopReason = event.message.stopReason;
           if (event.message.errorMessage) failure = event.message.errorMessage;
           options.onEvent?.({ type: "usage-updated", usage: sessionUsage(session) });
         }
@@ -345,6 +369,7 @@ export async function runIsolatedSession(
         sessionFile: session.sessionFile,
         response,
         error: failure || undefined,
+        stopReason,
         usage: sessionUsage(session),
       };
     } finally {

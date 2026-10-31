@@ -4,6 +4,15 @@ import type { WidgetConversationOrigin } from "./widget-conversation";
 import type { WidgetPreview } from "./widget-preview";
 import type { WidgetBrowserOutput } from "./widget-browser-output";
 
+/** Live progress of one widget side chat, reported to the calling tool while it runs. */
+export interface WidgetGenerationProgress {
+  phase: "building" | "repairing" | "revising" | "compiling" | "rendering" | "reviewing";
+  /** Widget file paths written so far. */
+  files: string[];
+  /** Total characters across those files. */
+  characters: number;
+}
+
 export interface InlineWidgetGenerationRequest {
   sessionId: string;
   parentConversation: WidgetConversationOrigin;
@@ -16,6 +25,7 @@ export interface InlineWidgetGenerationRequest {
   surface?: "widget" | "session-plugin";
   model?: { provider: string; id: string };
   signal?: AbortSignal;
+  onProgress?(progress: WidgetGenerationProgress): void;
 }
 
 export interface InlineWidgetGenerationResult {
@@ -41,4 +51,5 @@ export interface InlineWidgetRevisionRequest {
   initialStateVersion: number;
   model?: { provider: string; id: string };
   signal?: AbortSignal;
+  onProgress?(progress: WidgetGenerationProgress): void;
 }

@@ -249,16 +249,17 @@ describe("widget conversation branches", () => {
     ).rejects.toThrow("no longer available");
   });
 
-  it("generation, repair and screenshot review use the same persisted branch and restricted runtime", async () => {
-    const options = await fixture();
+  it("generation, repair and screenshot review use the same persisted branch and widget tools", async () => {
+    const candidate = { files: {}, state: null };
+    const options = { ...(await fixture()), candidate, allowState: true };
     run.mockImplementation(async (input) => {
       const manager = input.sessionManager;
       expect(input).toMatchObject({
-        inheritWidgetContext: true,
+        widgetBranch: { candidate, allowState: true },
         promptCacheSessionRoots: options.sessionRoots,
         projectTrusted: false,
-        noTools: "all",
       });
+      expect(input.systemPrompt).toBeUndefined();
       expect(JSON.stringify(manager.buildSessionContext().messages)).toContain(
         "verified facts only",
       );
@@ -268,6 +269,7 @@ describe("widget conversation branches", () => {
         sessionId: manager.getSessionId(),
         sessionFile: manager.getSessionFile(),
         response: "Generated output",
+        stopReason: "stop",
       };
     });
     const generated = await runInlineWidgetGeneration({
@@ -283,7 +285,6 @@ describe("widget conversation branches", () => {
     const repaired = await runInlineWidgetRepair({
       ...options,
       conversation,
-      source: "source",
       context: "chart",
       language: "react",
       capability: "display",
@@ -291,7 +292,6 @@ describe("widget conversation branches", () => {
     const reviewed = await runInlineWidgetVisualReview({
       ...options,
       conversation,
-      source: "source",
       context: "chart",
       diagnostic: "readable",
       pngBase64: "cG5n",

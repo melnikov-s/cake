@@ -342,21 +342,40 @@ image with its exact revision reference and digest. Generated implementation sou
 available selectively through exact-revision file reads; it is not automatically injected.
 
 Cake checks that the active configured model is available, authenticated and
-supports image input, then forks a hidden, persisted Pi conversation from the
-caller's captured ancestor path. The fork excludes sibling branches and later
-parent messages, retains Pi's compaction/context edits, and cuts before an
-unfinished assistant/tool-result batch. The explicit widget assignment is appended
-to that complete prefix. General coding tools, discovered extensions, and project trust remain disabled;
-inherited instructions do not grant capabilities. Restricted tools read discovered
-skill resources and inspect or surgically edit the candidate's staged source and JSON
-state. They cannot access arbitrary files, execute commands, or call Cake controls.
-Cake-owned inline hooks preserve inherited prompt sections, append restricted task
-instructions, and reuse the existing fork-lineage provider cache-key policy across
-the explicitly allowed project/widget session roots. Transcript and transport
-identities stay independent; actual cache hits remain provider/prefix-dependent.
-That agent stages one React component or one complete self-contained HTML document,
-and optional JSON document state from the
-untrusted brief and skill resources. Electron main compile-checks it and
+supports image input, then forks a hidden, persisted Pi conversation (the widget
+side chat) from the caller's captured ancestor path. The fork excludes sibling
+branches and later parent messages, retains Pi's compaction/context edits, and cuts
+before an unfinished assistant/tool-result batch. The widget assignment, brief and
+data are appended to that complete prefix as one user message.
+
+The side chat exists so widget work stays out of the caller's context without paying
+to re-read it, so it must reuse the caller's prompt cache. Its requests therefore
+start with exactly the bytes of the caller's own next request: the inherited system
+prompt sections and tool declarations are rebuilt unchanged, the thinking level is
+inherited, and the fork-lineage provider cache key is reused across the allowed
+project/widget session roots. Pi records any prompt or tool-declaration change as a
+mid-conversation system update, and providers then re-read the entire inherited
+conversation; the side chat never causes one. Cake keeps every inherited declaration
+and replaces only what the tools do. `write` and `edit` change the operation's private
+widget files, `read` reads those files or discovered skill resources, and every other
+inherited tool refuses. Discovered extensions and project trust stay disabled;
+inherited instructions grant no capabilities. A parent without `read`, `write` and
+`edit` declarations, or without a structured system prompt, cannot host a side chat:
+generation fails explicitly instead of running uncached.
+
+The side chat writes source as files, one per tool call, so no single reply has to
+carry the whole widget and the widget's size is bounded by the context window rather
+than one reply's output limit: `widget/widget.tsx` (React or Session Plugin),
+`widget/widget.html` (HTML), or `widget/chooser.tsx` plus five
+`widget/options/<id>.tsx` and optional `widget/shared/<id>.tsx` (prototype-ui), and
+`widget/state.json` for artifact state. Writing empty content removes a file. It
+finishes with a reply that calls no tool. Cake assembles the files into the published
+source; for prototype-ui it builds the module manifest and computes each module's
+dependencies from its imports. A reply that stops at the model's output limit gets one
+continuation in the same branch with written files kept; a second consecutive one fails
+with "hit the model's output limit while reasoning". `widgets.present` streams the
+phase and written files to the caller's live tool result while this runs.
+Electron main compile-checks the assembled source and
 loads the compiled sandbox document in a fixed-size, main-owned hidden offscreen
 `BrowserWindow` with deterministic artifact-panel dimensions. The host waits for
 the same bounded ready/runtime protocol used by normal widget display, then captures
@@ -365,11 +384,12 @@ lifetimes are serialized process-wide so one candidate cannot capture another's
 pixels. The host is never associated with a renderer session, composited into a
 user's Cake window, or otherwise shown in the application.
 
-The frame reports readiness after its bounded font/layout-settle policy. A restricted
-specialist receives the
-PNG, source, brief and bounded diagnostics. It returns `ACCEPT_CURRENT` or complete
-replacement source. At most two replacements are permitted across compilation,
-runtime and visual repairs combined. Every successfully rendered candidate,
+The frame reports readiness after its bounded font/layout-settle policy. The same
+side chat then receives the PNG and bounded diagnostics as its next user message. It
+replies `ACCEPT_CURRENT` without changing files, or fixes the files with its tools.
+Assembly and compilation errors are sent back the same way for the side chat to fix.
+At most two replacements are permitted across compilation, runtime and visual repairs
+combined; a review that neither accepts nor changes the files fails. Every successfully rendered candidate,
 including the final replacement, receives screenshot review. Cancellation and
 capture/provider infrastructure failures stop the operation rather than consuming source-repair
 attempts. Hidden windows and transient compiled tokens are released on settlement.
@@ -430,16 +450,16 @@ instantiation does not rewrite hardcoded source. Old implementations need an
 explicit source revision to adopt data-driven behavior. Reopening/presenting
 never silently rewrites an immutable implementation.
 
-HTML generation returns exactly one `cake-html` fence containing a complete
+HTML generation writes `widget/widget.html` containing one complete
 `<!doctype html><html><head>...</head><body>...</body></html>` document, with inline
 CSS and browser JavaScript. It has no JSX, imports, external scripts/styles/fonts,
 remote resources, npm packages, dependency resolution or bundling step. Native DOM,
 SVG and browser APIs provide interaction. The existing compiler injects the same
 sandbox runtime and scoped state bridge before authored scripts; the same mandatory
-browser render, visual acceptance and retained-build integrity checks apply. Markdown,
-wrong-language fences and incomplete documents cannot publish as generated HTML.
-Staged surgical source/state edits keep the selected language through generation,
-repair and visual replacements. `artifacts.replace` preserves the accepted revision’s
+browser render, visual acceptance and retained-build integrity checks apply. Incomplete
+documents and React files are assembly errors sent back to the side chat; they cannot
+publish as generated HTML. The selected language holds through generation, repair and
+visual replacements. `artifacts.replace` preserves the accepted revision’s
 `payload.language`; it has no language-switch input. Source, language, brief, browser
 output and accepted screenshot remain immutable revision metadata.
 
@@ -589,7 +609,8 @@ JSON Schema.
 New prototype-ui widgets encode `export default <strict JSON>;` with schema
 `cake.prototype-source/v1`: one chooser, exactly five stable option modules and
 bounded shared modules. Each module contains an ID, TSX source and exact static
-import/re-export dependency manifest. The compiler and source reader validate the
+import/re-export dependency manifest. Cake assembles this manifest from the side chat's
+widget files and derives each dependency list from the module's imports. The compiler and source reader validate the
 same structure and AST imports; missing modules, duplicate IDs, cycles, dynamic
 imports and cross-option dependencies fail. The chooser compiles all five options
 as one interactive widget; extraction does not guess component boundaries.
@@ -706,9 +727,10 @@ context, exports, and surgical editing rules belong to the skill and widget,
 not these tools. Repeated independent documents can use `widgets.instantiate`
 with the same accepted implementation and separate initial state.
 
-Source edits continue the existing private Pi artifact branch. Its candidate starts
-from current live state, reads skill resources, and stages edits without touching the
-live document. Compilation and capture hydrate an isolated in-memory candidate.
+Source edits fork the existing private Pi artifact branch as a new side chat. Its
+widget files start from the accepted source (a prototype manifest splits back into its
+chooser, option and shared files) and its state from current live state; it reads skill
+resources and edits files without touching the live document. Compilation and capture hydrate an isolated in-memory candidate.
 Acceptance publishes source/browser/capture and changed state atomically; cancellation,
 review failure, or a stale changed-state version publishes nothing. Unchanged state
 is omitted from the publication transaction so unrelated live saves survive.

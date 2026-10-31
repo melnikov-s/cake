@@ -166,18 +166,15 @@ it.live(
         {
           requireVisionModel: () =>
             capture.preflight ? capture.preflight(sessionId) : Effect.void,
-          generate: () =>
-            Effect.succeed({
-              sessionId: "fixture-generation",
-              response: `\`\`\`cake-react\n${original}\n\`\`\``,
-            }),
-          compile: (source) =>
+          generate: () => Effect.succeed({ sessionId: "fixture-generation" }),
+          compile: () =>
             Effect.gen(function* () {
               const published = publishInlineWidget(
-                yield* Effect.promise(() => compileInlineWidget("react", source, "display")),
+                yield* Effect.promise(() => compileInlineWidget("react", original, "display")),
               );
               yield* Deferred.succeed(publication, published.token);
               return {
+                source: original,
                 widget: published,
                 release: Effect.sync(() => revokeInlineWidget(published.token)),
                 retain: () => Effect.succeed({ digest: "a".repeat(64) }),
@@ -185,7 +182,7 @@ it.live(
             }),
           repair: () => Effect.fail(new Error("Unexpected repair")),
           capture: (widget) => capture.capture(sessionId, widget, new AbortController().signal),
-          review: (_source, _diagnostic, pixels) =>
+          review: (_diagnostic, pixels) =>
             Effect.gen(function* () {
               expect(pixels).toBe(capturedPixels);
               const token = yield* Deferred.await(publication);
@@ -193,7 +190,7 @@ it.live(
                 (yield* Effect.promise(() => fetch(`${host}/widget-assets/document/${token}`)))
                   .status,
               ).toBe(200);
-              return { response: "ACCEPT_CURRENT" };
+              return { accepted: true, changed: false };
             }),
         },
       ).pipe(Effect.forkScoped);
