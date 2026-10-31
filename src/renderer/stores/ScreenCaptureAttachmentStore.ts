@@ -71,7 +71,9 @@ export class ScreenCaptureAttachmentStore extends Store<{
       appearance: {
         theme:
           settings.activeImportedTheme?.type ??
-          (settings.theme === "light" || settings.theme === "dark" ? settings.theme : "system"),
+          (settings.selectedThemeChoice === "light" || settings.selectedThemeChoice === "dark"
+            ? settings.selectedThemeChoice
+            : "system"),
         importedTheme: settings.activeImportedTheme,
         projectAvatarsEnabled: settings.projectAvatarsEnabled,
         sessionAvatarsEnabled: settings.sessionAvatarsEnabled,

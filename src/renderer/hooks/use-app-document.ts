@@ -6,10 +6,11 @@ export function useAppDocument(root: RootStore) {
   const settings = root.settingsStore;
   const extensionUi = root.extensionUiStore;
   const customTheme = settings.appearance.activeImportedTheme;
+  const themeChoice = settings.appearance.selectedThemeChoice;
   useLayoutEffect(() => {
-    applyDocumentTheme(settings.appearance.theme, customTheme);
+    applyDocumentTheme(themeChoice, customTheme);
     return () => applyDocumentTheme("system");
-  }, [settings.appearance.theme, customTheme]);
+  }, [themeChoice, customTheme]);
   useEffect(() => {
     document.title = extensionUi.title ? `${extensionUi.title} · Cake` : "Cake";
   }, [extensionUi.title]);

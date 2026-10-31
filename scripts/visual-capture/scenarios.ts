@@ -2204,6 +2204,56 @@ const importedColorThemeScenario: VisualCaptureScenario = {
       : cakePromptsSettingsScenario.region(page, "default"),
 };
 
+const themeGalleryScenario: VisualCaptureScenario = {
+  name: "theme-gallery",
+  description:
+    "Visual Cake theme cards with independent light/dark palettes and live preview actions",
+  states: ["light", "dark", "preview"],
+  seed: assistantMarkdownCode.seed,
+  async prepare(page, state) {
+    await importedColorThemeScenario.prepare(page, "dark-preview");
+    await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+    const theme = vscodeColorThemeFixture("light");
+    await page.getByLabel("Import VS Code theme", { exact: true }).setInputFiles({
+      name: "paper.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify(theme)),
+    });
+    await expect(page.getByText(`Preview: ${theme.name}`)).toBeVisible();
+    await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+    await page
+      .getByRole("button", { name: state === "light" ? "Light theme" : "Dark theme", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+    if (state === "preview")
+      await page.getByRole("button", { name: "Sea glass theme", exact: true }).click();
+    for (const [name, color] of [
+      ["Light", "rgb(160, 17, 31)"],
+      ["Dark", "rgb(249, 117, 131)"],
+    ] as const) {
+      const builtin = page.getByRole("button", { name: `${name} theme`, exact: true });
+      await expect(
+        builtin.locator("code span[style]").filter({ hasText: "const" }).first(),
+      ).toHaveCSS("color", color);
+    }
+    for (const type of ["light", "dark"] as const) {
+      const imported = vscodeColorThemeFixture(type);
+      const scene = page
+        .getByRole("button", { name: `${imported.name} theme`, exact: true })
+        .locator('[data-slot="theme-preview-scene"]');
+      await expect(scene).toHaveCSS(
+        "background-color",
+        type === "light" ? "rgb(255, 248, 232)" : "rgb(16, 37, 43)",
+      );
+      await expect(
+        scene.locator("code span[style]").filter({ hasText: "const" }).first(),
+      ).toHaveCSS("color", type === "light" ? "rgb(131, 85, 181)" : "rgb(199, 146, 234)");
+    }
+    await page.mouse.move(1, 1);
+  },
+  region: cakePromptsSettingsScenario.region,
+};
+
 const projectChatSidebar: VisualCaptureScenario = {
   name: "project-chat-sidebar",
   description: "Full-width Project Chat selection and status alignment with Project Sessions",
@@ -6085,6 +6135,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   mcpSettingsLayoutScenario,
   appearanceSettingsScenario,
   importedColorThemeScenario,
+  themeGalleryScenario,
   browserSharingScenario,
   projectCustomInstructionsScenario,
   newSessionScenario,

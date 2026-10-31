@@ -40,7 +40,16 @@
 }
 
 :root,
-:root[data-theme="light"] {
+[data-color-theme] {
+  --sidebar-foreground: var(--foreground);
+  --sidebar-selection-foreground: var(--foreground);
+  --composer-foreground: var(--foreground);
+  --selection: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+:root,
+:root[data-theme="light"],
+[data-color-theme="light"] {
   color-scheme: light;
   --background: oklch(0.98 0.003 250);
   --foreground: oklch(0.205 0.012 252);
@@ -76,14 +85,11 @@
   --traffic-light-maximize: #28c840;
   --traffic-light-glyph: rgb(0 0 0 / 0.55);
   --shadow: 220 28% 20%;
-  --sidebar-foreground: var(--foreground);
-  --sidebar-selection-foreground: var(--foreground);
-  --composer-foreground: var(--foreground);
-  --selection: color-mix(in srgb, var(--accent) 30%, transparent);
   --radius: 0.5rem;
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+[data-color-theme="dark"] {
   color-scheme: dark;
   --background: oklch(0.205 0.006 255);
   --foreground: oklch(0.93 0.004 255);

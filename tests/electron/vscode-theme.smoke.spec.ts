@@ -83,7 +83,13 @@ for (const initialTheme of ["dark", "light"] as const) {
       const setTheme = async (theme: "light" | "dark" | "system") => {
         await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
         await page.getByRole("button", { name: /^Appearance/ }).click();
-        await page.getByLabel("Color theme", { exact: true }).selectOption(theme);
+        await page
+          .getByRole("button", {
+            name: `${theme === "system" ? "System" : theme === "light" ? "Light" : "Dark"} theme`,
+            exact: true,
+          })
+          .click();
+        await page.getByRole("button", { name: "Apply theme", exact: true }).click();
         await page.getByRole("button", { name: "Back to chat", exact: true }).click();
         await expect(page.getByLabel("Color theme", { exact: true })).toHaveCount(0);
       };

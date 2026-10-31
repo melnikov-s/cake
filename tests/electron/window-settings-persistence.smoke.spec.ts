@@ -31,7 +31,7 @@ for (const action of ["close", "quit"] as const) {
             lastOpenedAt: new Date(0).toISOString(),
           },
         ],
-        trustedProjectPaths: [],
+        trustedProjectPaths: [project],
       }),
     );
     const launch = () =>
@@ -55,8 +55,9 @@ for (const action of ["close", "quit"] as const) {
       });
       await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
       await page.getByRole("button", { name: /^Appearance/ }).click();
-      // Native select interaction, not direct Store mutation.
-      await page.getByLabel("Color theme", { exact: true }).selectOption("dark");
+      // Native card interaction, not direct Store mutation.
+      await page.getByRole("button", { name: "Dark theme", exact: true }).click();
+      await page.getByRole("button", { name: "Apply theme", exact: true }).click();
       const closed =
         action === "quit" ? application.waitForEvent("close") : page.waitForEvent("close");
       await application
@@ -79,7 +80,9 @@ for (const action of ["close", "quit"] as const) {
       application = await launch();
       const restored = await application.firstWindow();
       await restored.getByRole("button", { name: /^Appearance/ }).click({ timeout: 20_000 });
-      await expect(restored.getByLabel("Color theme", { exact: true })).toHaveValue("dark");
+      await expect(
+        restored.getByRole("button", { name: "Dark theme", exact: true }),
+      ).toHaveAttribute("aria-pressed", "true");
     } finally {
       await application.close().catch(() => undefined);
       await rm(temporaryRoot, { recursive: true, force: true });

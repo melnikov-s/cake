@@ -11,6 +11,7 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
   @snapshot theme: ThemeChoice = "system";
   @snapshot importedThemes: ImportedColorTheme[] = observable([]);
   previewTheme: ImportedColorTheme | undefined = undefined;
+  previewChoice: ThemeChoice | undefined = undefined;
   importError: string | undefined = undefined;
   importing = false;
   themeSource: ReadonlyMap<string, string> | undefined = undefined;
@@ -22,11 +23,26 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
   @snapshot workLogViewMode: WorkLogViewMode = "auto";
   @snapshot workLogsExpansion: WorkLogsExpansion = "collapsed";
 
+  get selectedThemeChoice() {
+    return this.previewChoice ?? this.theme;
+  }
+
   get activeImportedTheme() {
-    return (
-      this.previewTheme ??
-      this.importedThemes.find((theme) => `imported:${theme.id}` === this.theme)
-    );
+    if (this.previewTheme && this.selectedThemeChoice === `imported:${this.previewTheme.id}`)
+      return this.previewTheme;
+    return this.importedThemes.find((theme) => `imported:${theme.id}` === this.selectedThemeChoice);
+  }
+
+  get previewName() {
+    const choice = this.selectedThemeChoice;
+    if (choice === "system") return "System";
+    if (choice === "light") return "Light";
+    if (choice === "dark") return "Dark";
+    return this.activeImportedTheme?.name;
+  }
+
+  previewSelection(theme: ThemeChoice) {
+    this.previewChoice = theme;
   }
 
   async importThemeFiles(files: readonly File[]) {
@@ -62,6 +78,7 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
   previewEntry(entry: string) {
     this.selectedEntry = entry;
     this.previewTheme = undefined;
+    this.previewChoice = undefined;
     this.importError = undefined;
     try {
       this.previewTheme = parseVsCodeTheme(
@@ -69,20 +86,22 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
         this.themeSource ?? new Map(),
         crypto.randomUUID(),
       );
+      this.previewChoice = `imported:${this.previewTheme.id}`;
     } catch (error) {
       this.importError = error instanceof Error ? error.message : String(error);
     }
   }
 
   applyPreview() {
-    if (!this.previewTheme) return;
-    const theme = this.previewTheme;
-    this.importedThemes.push(theme);
-    this.theme = `imported:${theme.id}`;
+    if (!this.previewChoice) return;
+    if (this.previewTheme && this.previewChoice === `imported:${this.previewTheme.id}`)
+      this.importedThemes.push(this.previewTheme);
+    this.theme = this.previewChoice;
     this.cancelPreview();
   }
 
   cancelPreview() {
+    this.previewChoice = undefined;
     this.previewTheme = undefined;
     this.themeSource = undefined;
     this.themeEntries.splice(0);
@@ -90,10 +109,12 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
   }
 
   removeImportedTheme() {
-    const index = this.importedThemes.findIndex((theme) => `imported:${theme.id}` === this.theme);
+    const choice = this.selectedThemeChoice;
+    const index = this.importedThemes.findIndex((theme) => `imported:${theme.id}` === choice);
     if (index < 0) return;
     this.importedThemes.splice(index, 1);
-    this.setTheme("system");
+    if (choice === this.theme) this.setTheme("system");
+    else this.cancelPreview();
   }
 
   setTheme(theme: ThemeChoice) {

@@ -153,7 +153,10 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       page.getByRole("region", { name: "Safety & privacy" }).getByLabel("Default project trust"),
     ).toBeVisible();
     await page.getByRole("button", { name: "Appearance" }).click();
-    await expect(page.getByLabel("Color theme")).toHaveValue("system");
+    await expect(page.getByRole("button", { name: "System theme", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await page.getByRole("button", { name: "Back to chat" }).click();
     await expect(
       page.locator(".session-item").filter({ hasText: "Existing investigation" }),

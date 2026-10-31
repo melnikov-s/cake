@@ -2,6 +2,8 @@ import { observer } from "r-state-tree/react";
 import { Select } from "./ui/select";
 import { Button } from "./ui/button";
 import { FilePicker } from "./ui/file-picker";
+import { ThemePreviewCard } from "./ui/theme-preview-card";
+import { useSystemColorTheme } from "../lib/resolved-color-theme";
 import { SettingsToggle } from "./settings/settings-toggle";
 import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
 
@@ -10,47 +12,51 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
 }: {
   appearance: AppearanceSettingsStore;
 }) {
+  const systemTheme = useSystemColorTheme();
+  const selected = appearance.selectedThemeChoice;
   return (
     <section className="grid gap-1.5" aria-labelledby="appearance-title">
       <h2 id="appearance-title" className="px-0.5 text-xs font-semibold text-foreground">
         Appearance
       </h2>
       <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
-        <label
-          id="setting-theme"
-          className="scroll-mt-8 flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm"
-        >
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <strong className="text-xs font-medium text-foreground">Theme</strong>
-          </span>
-          <Select
+        <div id="setting-theme" className="grid scroll-mt-8 gap-3 px-3.5 py-3">
+          <h3 className="text-xs font-medium text-foreground">Theme</h3>
+          <div
+            role="group"
             aria-label="Color theme"
-            className="h-8 w-44 rounded-sm text-xs"
-            value={appearance.theme}
-            onChange={(event) => {
-              const theme = (["system", "light", "dark"] as const).find(
-                (candidate) => candidate === event.target.value,
-              );
-              if (theme) appearance.setTheme(theme);
-              else {
-                const imported = appearance.importedThemes.find(
-                  (item) => `imported:${item.id}` === event.target.value,
-                );
-                if (imported) appearance.setTheme(`imported:${imported.id}`);
-              }
-            }}
+            className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13rem),1fr))] gap-3"
           >
-            <option value="system">System</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-            {appearance.importedThemes.map((theme) => (
-              <option key={theme.id} value={`imported:${theme.id}`}>
-                {theme.name}
-              </option>
+            {(["system", "light", "dark"] as const).map((choice) => (
+              <ThemePreviewCard
+                key={choice}
+                name={choice === "system" ? "System" : choice === "light" ? "Light" : "Dark"}
+                theme={choice === "system" ? systemTheme : choice}
+                selected={selected === choice}
+                onSelect={() => appearance.previewSelection(choice)}
+              />
             ))}
-          </Select>
-        </label>
-        <div className="grid gap-2 px-3.5 py-2.5">
+            {appearance.importedThemes.map((theme) => (
+              <ThemePreviewCard
+                key={theme.id}
+                name={theme.name}
+                theme={theme}
+                selected={selected === `imported:${theme.id}`}
+                onSelect={() => appearance.previewSelection(`imported:${theme.id}`)}
+              />
+            ))}
+            {appearance.previewTheme ? (
+              <ThemePreviewCard
+                name={appearance.previewTheme.name}
+                theme={appearance.previewTheme}
+                selected={selected === `imported:${appearance.previewTheme.id}`}
+                onSelect={() => {
+                  if (appearance.previewTheme)
+                    appearance.previewSelection(`imported:${appearance.previewTheme.id}`);
+                }}
+              />
+            ) : null}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <FilePicker
               disabled={appearance.importing}
@@ -65,33 +71,35 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
             >
               Import theme folder
             </FilePicker>
-            {appearance.theme.startsWith("imported:") && !appearance.themeSource ? (
+            {selected.startsWith("imported:") && !appearance.themeSource ? (
               <Button variant="ghost" size="sm" onClick={() => appearance.removeImportedTheme()}>
                 Remove theme
               </Button>
             ) : null}
           </div>
-          {appearance.themeSource ? (
+          {appearance.themeSource && appearance.themeEntries.length > 1 ? (
+            <Select
+              aria-label="Theme source"
+              value={appearance.selectedEntry}
+              onChange={(event) => appearance.previewEntry(event.target.value)}
+            >
+              {appearance.themeEntries.map((path) => (
+                <option key={path} value={path}>
+                  {path}
+                </option>
+              ))}
+            </Select>
+          ) : null}
+          {appearance.previewChoice !== undefined || appearance.themeSource ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Select
-                aria-label="Theme source"
-                value={appearance.selectedEntry}
-                onChange={(event) => appearance.previewEntry(event.target.value)}
-              >
-                {appearance.themeEntries.map((path) => (
-                  <option key={path} value={path}>
-                    {path}
-                  </option>
-                ))}
-              </Select>
-              {appearance.previewTheme ? (
-                <span className="text-xs text-muted-foreground">
-                  Preview: {appearance.previewTheme.name}
+              {appearance.previewChoice !== undefined ? (
+                <span role="status" className="mr-auto text-xs text-muted-foreground">
+                  Preview: {appearance.previewName}
                 </span>
               ) : null}
               <Button
                 size="sm"
-                disabled={!appearance.previewTheme}
+                disabled={appearance.previewChoice === undefined}
                 onClick={() => appearance.applyPreview()}
               >
                 Apply theme

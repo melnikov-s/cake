@@ -40,7 +40,16 @@ let colorSchemeQuery: MediaQueryList | undefined;
 function resolvedColorTheme(): ResolvedColorTheme {
   const preference = document.documentElement.dataset.theme;
   if (preference === "light" || preference === "dark") return preference;
+  return systemColorTheme();
+}
+
+function systemColorTheme(): ResolvedColorTheme {
   return window.matchMedia?.(darkModeQuery).matches ? "dark" : "light";
+}
+
+/** Theme cards follow the OS independently of the current app selection. */
+export function useSystemColorTheme(): ResolvedColorTheme {
+  return useSyncExternalStore(subscribe, systemColorTheme, () => "light");
 }
 
 function notifyThemeChanged() {

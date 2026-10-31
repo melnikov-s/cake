@@ -1,5 +1,6 @@
 import type { CodeHighlighterPlugin } from "streamdown";
 import { currentEditorTheme } from "./resolved-color-theme";
+import type { EditorColorTheme } from "../../contracts/themes/color-theme";
 import {
   maxHighlightCharacters,
   supportedSyntaxLanguages,
@@ -171,6 +172,46 @@ function getSyntaxWorker() {
   }
 }
 
+/** Shared worker/cache path for the active app and independently themed previews. */
+export function highlightSyntaxForTheme(
+  options: Parameters<CodeHighlighterPlugin["highlight"]>[0],
+  selected: EditorColorTheme,
+  callback?: (result: SyntaxHighlightResult) => void,
+) {
+  const language = normalizeLanguage(options.language);
+  if (options.code.length > maxHighlightCharacters || !isSupportedLanguage(language))
+    return plainSyntaxHighlight(options.code);
+
+  const theme = selected === "light" || selected === "dark" ? undefined : selected;
+  const key = `${language}\u0000${theme?.id ?? syntaxThemes.join(":")}\u0000${options.code}`;
+  const cached = cachedResult(key);
+  if (cached) return cached;
+
+  const worker = getSyntaxWorker();
+  if (!worker) return plainSyntaxHighlight(options.code);
+
+  const existing = pendingByKey.get(key);
+  if (existing) {
+    if (callback) existing.callbacks.add(callback);
+    return null;
+  }
+
+  const id = nextRequestId++;
+  const pending: PendingHighlight = {
+    code: options.code,
+    key,
+    language,
+    startedAt: performance.now(),
+    callbacks: new Set(callback ? [callback] : []),
+  };
+  pendingByKey.set(key, pending);
+  pendingById.set(id, pending);
+  const request: SyntaxHighlightRequest = { id, code: options.code, language };
+  if (theme) request.theme = theme;
+  worker.postMessage(request);
+  return null;
+}
+
 export const syntaxHighlighter = {
   name: "shiki",
   type: "code-highlighter",
@@ -181,38 +222,6 @@ export const syntaxHighlighter = {
     syntaxThemes[1],
   ],
   highlight(options, callback?) {
-    const language = normalizeLanguage(options.language);
-    if (options.code.length > maxHighlightCharacters || !isSupportedLanguage(language))
-      return plainSyntaxHighlight(options.code);
-
-    const selected = currentEditorTheme();
-    const theme = selected === "light" || selected === "dark" ? undefined : selected;
-    const key = `${language}\u0000${theme?.id ?? syntaxThemes.join(":")}\u0000${options.code}`;
-    const cached = cachedResult(key);
-    if (cached) return cached;
-
-    const worker = getSyntaxWorker();
-    if (!worker) return plainSyntaxHighlight(options.code);
-
-    const existing = pendingByKey.get(key);
-    if (existing) {
-      if (callback) existing.callbacks.add(callback);
-      return null;
-    }
-
-    const id = nextRequestId++;
-    const pending: PendingHighlight = {
-      code: options.code,
-      key,
-      language,
-      startedAt: performance.now(),
-      callbacks: new Set(callback ? [callback] : []),
-    };
-    pendingByKey.set(key, pending);
-    pendingById.set(id, pending);
-    const request: SyntaxHighlightRequest = { id, code: options.code, language };
-    if (theme) request.theme = theme;
-    worker.postMessage(request);
-    return null;
+    return highlightSyntaxForTheme(options, currentEditorTheme(), callback);
   },
 } satisfies CodeHighlighterPlugin;

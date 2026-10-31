@@ -175,39 +175,102 @@ describe("Appearance settings workflow", () => {
       expect(document.documentElement.dataset.theme).toBe("system");
       await fixture.user.upload(picker, themeFile(theme));
       await fixture.user.click(await screen.findByRole("button", { name: "Apply theme" }));
-      expect(screen.getByRole("option", { selected: true }).textContent).toBe("Ocean");
+      expect(screen.getByRole("button", { name: "Ocean theme" }).getAttribute("aria-pressed")).toBe(
+        "true",
+      );
       saved = fixture.savedSnapshot();
-      await fixture.user.selectOptions(screen.getByLabelText("Color theme"), "light");
+      await fixture.user.click(screen.getByRole("button", { name: "Light theme" }));
       expect(document.documentElement.dataset.theme).toBe("light");
       expect(document.documentElement.style.getPropertyValue("--background")).toBe("");
     }
     using restored = renderAppearanceSettings(saved);
-    expect(screen.getByRole("option", { selected: true }).textContent).toBe("Ocean");
+    expect(screen.getByRole("button", { name: "Ocean theme" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
     expect(document.documentElement.style.getPropertyValue("--background")).toBe("#102030");
     await restored.user.click(screen.getByRole("button", { name: "Remove theme" }));
-    expect(screen.getByRole("option", { selected: true }).textContent).toBe("System");
+    expect(screen.getByRole("button", { name: "System theme" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
   });
 
   it("shows invalid import errors and leaves the current preference intact", async () => {
     using fixture = renderAppearanceSettings();
-    await fixture.user.selectOptions(screen.getByLabelText("Color theme"), "light");
+    await fixture.user.click(screen.getByRole("button", { name: "Light theme" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Apply theme" }));
     await fixture.user.upload(screen.getByLabelText("Import VS Code theme"), themeFile("{"));
     expect((await screen.findByRole("alert")).textContent).toContain("Invalid JSON");
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(screen.getByRole("button", { name: "Apply theme" }).hasAttribute("disabled")).toBe(true);
   });
 
-  it("lets users choose either fixed theme and return to the system preference", async () => {
-    using fixture = renderAppearanceSettings();
-    const theme = screen.getByRole("combobox", { name: "Color theme" });
-    const selectedTheme = () => screen.getByRole("option", { selected: true }).textContent;
+  it("previews built-in cards without saving, cancels, and persists only Apply", async () => {
+    let previewSnapshot: StoreSnapshot;
+    let appliedSnapshot: StoreSnapshot;
+    {
+      using fixture = renderAppearanceSettings();
+      expect(document.documentElement.dataset.theme).toBe("system");
+      expect(
+        screen.getByRole("button", { name: "System theme" }).getAttribute("aria-pressed"),
+      ).toBe("true");
+      await fixture.user.click(screen.getByRole("button", { name: "Dark theme" }));
+      expect(document.documentElement.dataset.theme).toBe("dark");
+      expect(screen.getByRole("status").textContent).toBe("Preview: Dark");
+      previewSnapshot = fixture.savedSnapshot();
+      await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(document.documentElement.dataset.theme).toBe("system");
+      await fixture.user.click(screen.getByRole("button", { name: "Light theme" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Apply theme" }));
+      appliedSnapshot = fixture.savedSnapshot();
+      await fixture.user.click(screen.getByRole("button", { name: "System theme" }));
+      expect(document.documentElement.dataset.theme).toBe("system");
+      await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(document.documentElement.dataset.theme).toBe("light");
+    }
+    {
+      using restoredPreview = renderAppearanceSettings(previewSnapshot);
+      expect(
+        restoredPreview.container
+          .querySelector('button[aria-label="System theme"]')
+          ?.getAttribute("aria-pressed"),
+      ).toBe("true");
+    }
+    {
+      using restoredApplied = renderAppearanceSettings(appliedSnapshot);
+      expect(
+        restoredApplied.container
+          .querySelector('button[aria-label="Light theme"]')
+          ?.getAttribute("aria-pressed"),
+      ).toBe("true");
+      expect(document.documentElement.dataset.theme).toBe("light");
+    }
+  });
 
-    expect(selectedTheme()).toBe("System");
-    await fixture.user.selectOptions(theme, "dark");
-    expect(selectedTheme()).toBe("Dark");
-    await fixture.user.selectOptions(theme, "light");
-    expect(selectedTheme()).toBe("Light");
-    await fixture.user.selectOptions(theme, "system");
-    expect(selectedTheme()).toBe("System");
+  it("compares saved imported cards and applies one again without duplicating it", async () => {
+    using fixture = renderAppearanceSettings();
+    const picker = screen.getByLabelText("Import VS Code theme");
+    for (const [name, type, background] of [
+      ["Ocean", "dark", "#102030"],
+      ["Paper", "light", "#fff8e8"],
+    ]) {
+      await fixture.user.upload(
+        picker,
+        themeFile(JSON.stringify({ name, type, colors: { "editor.background": background } })),
+      );
+      await fixture.user.click(await screen.findByRole("button", { name: "Apply theme" }));
+    }
+    expect(screen.getByRole("button", { name: "Paper theme" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Ocean theme" }));
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#102030");
+    await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#fff8e8");
+    await fixture.user.click(screen.getByRole("button", { name: "Ocean theme" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Apply theme" }));
+    expect(screen.getAllByRole("button", { name: "Ocean theme" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Ocean theme" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
   });
 });

@@ -1,6 +1,7 @@
 /* Inspired by Vercel AI Elements code-block.tsx at 0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b (Apache-2.0). */
 import { useEffect, useState, type CSSProperties } from "react";
-import { syntaxHighlighter } from "@/lib/syntax-highlighter";
+import { highlightSyntaxForTheme, type syntaxHighlighter } from "@/lib/syntax-highlighter";
+import type { EditorColorTheme } from "../../../contracts/themes/color-theme";
 import { useEditorColorTheme } from "@/lib/resolved-color-theme";
 
 type HighlightResult = ReturnType<typeof syntaxHighlighter.highlight>;
@@ -9,16 +10,24 @@ type HighlightLanguage = Parameters<typeof syntaxHighlighter.highlight>[0]["lang
 
 type HighlightToken = HighlightTokens[number][number];
 
-export function syntaxTokenStyle(token: HighlightToken): CSSProperties {
+export function syntaxTokenStyle(
+  token: HighlightToken,
+  colorScheme?: "light" | "dark",
+): CSSProperties {
+  const color =
+    colorScheme === "dark"
+      ? (token.htmlStyle?.["--shiki-dark"] ?? token.htmlStyle?.color)
+      : token.htmlStyle?.color;
   const style = {
     ...token.htmlStyle,
     // Shiki exposes the light color as `color` and the dark color as a CSS
     // variable. Keep both values available so the renderer can switch themes
     // without allowing a stale dark token color to bleed into light mode.
-    "--shiki-light": token.htmlStyle?.color ?? "var(--foreground)",
+    "--shiki-light": color ?? "var(--foreground)",
   };
-  // SAFETY: React's CSSProperties omits custom properties, but this object is a valid inline CSS map.
-  return style as CSSProperties;
+  const scopedStyle = { ...style, "--shiki-dark": color ?? "var(--foreground)" };
+  // SAFETY: React's CSSProperties omits custom properties, but these are valid Shiki CSS maps.
+  return (colorScheme ? scopedStyle : style) as CSSProperties;
 }
 
 const languages = new Map<string, HighlightLanguage>([
@@ -61,9 +70,14 @@ export function languageForSource(path: string): HighlightLanguage {
   return languages.get(path.split(".").pop()?.toLowerCase() ?? "") ?? "markdown";
 }
 
-function highlightSource(path: string, source: string, apply: (tokens: HighlightTokens) => void) {
+function highlightSource(
+  path: string,
+  source: string,
+  theme: EditorColorTheme,
+  apply: (tokens: HighlightTokens) => void,
+) {
   const accept = (result: NonNullable<HighlightResult>) => apply(result.tokens);
-  const immediate = syntaxHighlighter.highlight(
+  const immediate = highlightSyntaxForTheme(
     // Use a high-contrast light theme for source diffs; github-light renders
     // punctuation and other neutral TypeScript tokens too faintly here.
     {
@@ -71,19 +85,26 @@ function highlightSource(path: string, source: string, apply: (tokens: Highlight
       language: languageForSource(path),
       themes: ["github-light-high-contrast", "github-dark"],
     },
+    theme,
     accept,
   );
   if (immediate) accept(immediate);
 }
 
-export function useHighlightedSource(path: string, source: string, enabled = true) {
-  const theme = useEditorColorTheme();
+export function useHighlightedSource(
+  path: string,
+  source: string,
+  enabled = true,
+  previewTheme?: EditorColorTheme,
+) {
+  const appTheme = useEditorColorTheme();
+  const theme = previewTheme ?? appTheme;
   const [tokens, setTokens] = useState<HighlightTokens>();
   useEffect(() => {
     let active = true;
     setTokens(undefined);
     if (enabled)
-      highlightSource(path, source, (next) => {
+      highlightSource(path, source, theme, (next) => {
         if (active) setTokens(next);
       });
     return () => {

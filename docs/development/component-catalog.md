@@ -24,6 +24,8 @@ See `AGENTS.md` for renderer implementation rules.
 | [Link](../../src/renderer/components/ui/link.tsx)                                                                                                                       | Shared anchors, source references and Cake links with destination tooltips.                                           |
 | [LoadingState](../../src/renderer/components/ui/loading-state.tsx)                                                                                                      | Shared loading treatments.                                                                                            |
 
+[ThemePreviewCard](../../src/renderer/components/ui/theme-preview-card.tsx) composes a selectable button with [ThemePreviewScene](../../src/renderer/components/ui/theme-preview-scene.tsx), a decorative miniature Cake window. Scoped light/dark variables, the shared imported-color mapper, and the syntax worker keep neighboring previews independent of the active app theme.
+
 [FilePicker](../../src/renderer/components/ui/file-picker.tsx) opens a native file or folder chooser and supplies only user-selected `File` data. It supports JSON/JSONC source sets for theme imports.
 
 `PopoverContent` accepts `initialFocusSelector` to prefer an input over toolbar controls once an opening is visible, without refocusing on content updates. `dismissOnEscapeCapture` lets an explicit-dismissal popup handle Escape before an input consumes it.

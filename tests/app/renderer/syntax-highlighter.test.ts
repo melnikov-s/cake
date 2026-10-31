@@ -72,6 +72,53 @@ describe("syntaxHighlighter", () => {
     expect(worker.messages).toHaveLength(1);
   });
 
+  it("highlights simultaneous theme previews without changing the active app palette or sharing their cache entries", async () => {
+    const { highlightSyntaxForTheme, syntaxHighlighter } =
+      await import("../../../src/renderer/lib/syntax-highlighter");
+    const options = {
+      code: 'const theme = "Cake";',
+      language: "typescript" as const,
+      themes: ["github-light-high-contrast", "github-dark"] satisfies [
+        "github-light-high-contrast",
+        "github-dark",
+      ],
+    };
+    const ocean = {
+      id: "ocean",
+      name: "Ocean",
+      type: "dark" as const,
+      colors: { "editor.background": "#102030" },
+      tokenColors: [{ scope: "keyword", settings: { foreground: "#abcdef" } }],
+      semanticTokenColors: {},
+      semanticHighlighting: true,
+    };
+    const paper = {
+      ...ocean,
+      id: "paper",
+      name: "Paper",
+      type: "light" as const,
+      colors: { "editor.background": "#fff8e8" },
+    };
+    highlightSyntaxForTheme(options, ocean);
+    highlightSyntaxForTheme(options, paper);
+    syntaxHighlighter.highlight(options);
+    const worker = FakeWorker.instances[0]!;
+    expect(worker.messages.map((request) => request.theme?.id)).toEqual([
+      "ocean",
+      "paper",
+      undefined,
+    ]);
+    for (const request of worker.messages)
+      worker.respond({
+        id: request.id,
+        result: { tokens: [[{ content: request.theme?.name ?? "builtin", offset: 0 }]] },
+      });
+    expect(highlightSyntaxForTheme(options, ocean)?.tokens[0]?.[0]?.content).toBe("Ocean");
+    expect(highlightSyntaxForTheme(options, paper)?.tokens[0]?.[0]?.content).toBe("Paper");
+    expect(syntaxHighlighter.highlight(options)?.tokens[0]?.[0]?.content).toBe("builtin");
+    expect(worker.messages).toHaveLength(3);
+  });
+
   it("retains a virtualized transcript-sized working set", async () => {
     const { syntaxHighlighter } = await import("../../../src/renderer/lib/syntax-highlighter");
     const workerOptions = Array.from({ length: 256 }, (_, index) => ({

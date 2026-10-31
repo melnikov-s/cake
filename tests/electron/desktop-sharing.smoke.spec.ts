@@ -323,7 +323,8 @@ test("connection preferences survive quitting and a fresh desktop process withou
       .fill("https://laptop.tailnet.ts.net:8443");
     // Also exercise the window snapshot's debounce at the real quit boundary.
     await first.getByRole("button", { name: "Appearance", exact: true }).click();
-    await first.getByRole("combobox", { name: "Color theme" }).selectOption("dark");
+    await first.getByRole("button", { name: "Dark theme", exact: true }).click();
+    await first.getByRole("button", { name: "Apply theme", exact: true }).click();
     // No enable, debounce delay or explicit save before an orderly quit.
     await application.close();
     application = await launch();
@@ -346,7 +347,10 @@ test("connection preferences survive quitting and a fresh desktop process withou
     ).toHaveValue("0");
     await expect(fresh.getByRole("switch", { name: "Enable browser sharing" })).not.toBeChecked();
     await fresh.getByRole("button", { name: "Appearance", exact: true }).click();
-    await expect(fresh.getByRole("combobox", { name: "Color theme" })).toHaveValue("dark");
+    await expect(fresh.getByRole("button", { name: "Dark theme", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   } finally {
     if (application?.process().exitCode === null) await application.close();
     await rm(directory, { recursive: true, force: true });
