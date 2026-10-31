@@ -96,7 +96,15 @@ const assistantMarkdown = [
 const assistantMarkdownCode: VisualCaptureScenario = {
   name: "assistant-markdown-code",
   description: "Assistant Markdown with a highlighted TypeScript code block",
-  states: ["default", "hover", "selected", "quick-assistant", "assistant-chat", "resolved"],
+  states: [
+    "default",
+    "hover",
+    "selected",
+    "quick-assistant",
+    "assistant-chat",
+    "resolved",
+    "fullscreen",
+  ],
   async seed(paths, theme) {
     const sessionId = "visual-assistant-markdown-code";
     const timestamp = new Date(0).toISOString();
@@ -117,16 +125,19 @@ const assistantMarkdownCode: VisualCaptureScenario = {
     await writeFile(
       join(paths.cakeHome, "state", "application.json"),
       JSON.stringify({
-        schemaVersion: 1,
-        projects: [
-          {
-            path: paths.project,
-            name: "visual-capture-project",
-            addedAt: timestamp,
-            lastOpenedAt: timestamp,
-          },
-        ],
-        trustedProjectPaths: [],
+        version: 7,
+        data: {
+          ...defaultApplicationState(),
+          projects: [
+            {
+              path: paths.project,
+              name: "visual-capture-project",
+              addedAt: timestamp,
+              lastOpenedAt: timestamp,
+            },
+          ],
+          trustedProjectPaths: [paths.project],
+        },
       }),
     );
     await writeFile(
@@ -185,6 +196,14 @@ const assistantMarkdownCode: VisualCaptureScenario = {
       ).some((token) => token.style.getPropertyValue("--sdm-c") !== "inherit"),
     );
 
+    if (state === "fullscreen") {
+      await page.mouse.move(1, 1);
+      await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Alt+Enter");
+      const reader = page.getByRole("dialog", { name: "Cake", exact: true });
+      await expect(reader).toBeVisible();
+      await page.mouse.move(1, 1);
+      return;
+    }
     if (state === "hover") {
       await page
         .locator('[data-slot="code-snippet"]')
@@ -236,6 +255,7 @@ const assistantMarkdownCode: VisualCaptureScenario = {
     await page.mouse.move(1, 1);
   },
   region(page, state) {
+    if (state === "fullscreen") return page.getByRole("dialog", { name: "Cake", exact: true });
     if (state === "selected")
       return page.locator('[data-slot="transcript-item"][aria-current="true"]');
     const dialog = page.getByRole("dialog");

@@ -51,7 +51,6 @@ describe("FullscreenSurface", () => {
       root.render(
         <FullscreenSurfaceFixture>
           <FullscreenSurface
-            eyebrow="Full response"
             title="Cake"
             onClose={() => {
               closed = true;

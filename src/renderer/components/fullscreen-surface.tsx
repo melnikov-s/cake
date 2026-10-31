@@ -17,7 +17,7 @@ export function FullscreenSurface({
   chatSidebar,
 }: {
   children: ReactNode;
-  eyebrow: string;
+  eyebrow?: string;
   mode?: "reader" | "canvas" | "dialog";
   onClose(): void;
   title: string;
@@ -67,7 +67,7 @@ export function FullscreenSurface({
   }, []);
 
   const showEyebrow =
-    Boolean(eyebrow.trim()) && eyebrow.trim().toLowerCase() !== title.trim().toLowerCase();
+    Boolean(eyebrow?.trim()) && eyebrow?.trim().toLowerCase() !== title.trim().toLowerCase();
 
   const content = (
     <main
@@ -106,7 +106,10 @@ export function FullscreenSurface({
       onMouseDown={mode === "dialog" ? onClose : undefined}
     >
       <header
-        className="flex h-11 shrink-0 items-center justify-between gap-4 border-b border-border/65 bg-background/95 pr-3.5 pl-[84px] backdrop-blur-md [-webkit-app-region:drag]"
+        className={cn(
+          "flex h-11 shrink-0 items-center justify-between gap-4 border-b border-border/65 bg-background/95 pr-3.5 pl-[84px] backdrop-blur-md [-webkit-app-region:drag]",
+          !eyebrow && "h-13",
+        )}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="flex min-w-0 flex-1 items-center gap-2">

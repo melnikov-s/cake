@@ -8,6 +8,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { CAKE_TITLE_BAR_HEIGHT } from "../../src/services/electron/Electron";
 
 const repository = resolve(import.meta.dirname, "../..");
 const partial = "Streaming fullscreen response. ".repeat(24);
@@ -177,6 +178,17 @@ for (const surface of ["project", "global", "session"] as const) {
           await page.keyboard.press(`${modifier}+Enter`);
         }
         await expect(reader).toBeVisible();
+        const title = await reader
+          .getByRole("heading", { name: "Cake", exact: true })
+          .boundingBox();
+        const close = await reader
+          .getByRole("button", { name: "Exit fullscreen Cake" })
+          .boundingBox();
+        expect(title).not.toBeNull();
+        expect(close).not.toBeNull();
+        // Title and exit action share the native traffic lights' centerline.
+        expect(Math.abs(title!.y + title!.height / 2 - CAKE_TITLE_BAR_HEIGHT / 2)).toBeLessThan(1);
+        expect(Math.abs(close!.y + close!.height / 2 - CAKE_TITLE_BAR_HEIGHT / 2)).toBeLessThan(1);
         await expect(reader).toContainText(partial.trim());
         const readerNode = await reader.elementHandle();
         response.write(chunk({ content: ending }));

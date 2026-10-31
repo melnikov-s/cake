@@ -21,7 +21,7 @@ export function FullscreenMessage({
   text,
   title,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   allowSourceView?: boolean;
   highlightAnchors?: readonly MessageHighlightAnchor[];
   markdown: boolean;

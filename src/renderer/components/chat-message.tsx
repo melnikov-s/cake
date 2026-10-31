@@ -585,7 +585,6 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       )}
       {fullscreen && (
         <FullscreenMessage
-          eyebrow="Full response"
           title="Cake"
           text={part.text}
           markdown

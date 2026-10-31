@@ -58,7 +58,6 @@ export const AppOverlayHost = observer(function AppOverlayHost({
       {floatingTerminal}
       {fullscreenPart?.kind === "text" && fullscreenPart.role === "assistant" && (
         <FullscreenMessage
-          eyebrow="Full response"
           title="Cake"
           text={fullscreenPart.text}
           markdown
