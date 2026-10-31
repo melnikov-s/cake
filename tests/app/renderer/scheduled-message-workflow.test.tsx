@@ -115,6 +115,12 @@ describe("Scheduled message workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     // With nothing steering or queued, the scheduled group sits in the pending list expanded.
     const list = await screen.findByRole("group", { name: "Scheduled" });
+    const pendingList = screen.getByRole("list", { name: "Queued prompts" });
+    expect(within(pendingList).getAllByRole("group")).toEqual([list]);
+    expect(within(pendingList).queryByText("Steering", { exact: true })).toBeNull();
+    expect(within(pendingList).queryByText("Queued", { exact: true })).toBeNull();
+    expect(list.classList.contains("border-t")).toBe(false);
+    expect(list.classList.contains("pt-2")).toBe(false);
     expect(within(list).getByRole("button", { name: /1 scheduled/ })).toMatchObject({
       ariaExpanded: "true",
     });

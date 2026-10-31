@@ -22,6 +22,66 @@ afterEach(cleanup);
 // Real Root/Models/Chat and delivery policy, with typed SessionChats authority
 // snapshots. Pi queue execution/abort/command semantics stay in service tests.
 describe("Prompt queue workflow", () => {
+  it.each(["steering", "queued"] as const)(
+    "shows only populated lane headings and removes empty chrome when cancelling %s first",
+    async (removeFirst) => {
+      const steering = queuePart(1, "Steer this", { lane: "steering" });
+      const queued = queuePart(2, "Do this later");
+      const first = removeFirst === "steering" ? steering : queued;
+      const remaining = removeFirst === "steering" ? queued : steering;
+      const remainingLabel = removeFirst === "steering" ? "Queued" : "Steering";
+      const removedLabel = removeFirst === "steering" ? "Steering" : "Queued";
+      const remove = vi
+        .fn<Client["sessionChats"]["removeQueuedMessage"]>()
+        .mockImplementationOnce(async () => fixture.publish([remaining]))
+        .mockImplementationOnce(async () => fixture.publish([]));
+      using fixture = renderQueue([], { sessionChats: { removeQueuedMessage: remove } });
+      expect(screen.queryByRole("list", { name: "Queued prompts" })).toBeNull();
+      expect(screen.queryByRole("group", { name: "Steering" })).toBeNull();
+      expect(screen.queryByRole("group", { name: "Queued" })).toBeNull();
+
+      fixture.publish([steering, queued]);
+      const list = screen.getByRole("list", { name: "Queued prompts" });
+      expect(
+        within(list)
+          .getAllByRole("group")
+          .map((group) => group.getAttribute("aria-label")),
+      ).toEqual(["Steering", "Queued"]);
+      expect(within(list).getByText("Steering", { exact: true })).toBeDefined();
+      expect(within(list).getByText("Queued", { exact: true })).toBeDefined();
+      expect(screen.getByRole("group", { name: "Queued" }).classList.contains("border-t")).toBe(
+        true,
+      );
+
+      await fixture.user.click(
+        screen.getByRole("button", {
+          name: `Cancel ${removeFirst === "steering" ? "steering" : "queued message"}: ${first.text}`,
+        }),
+      );
+      expect(screen.queryByRole("group", { name: removedLabel })).toBeNull();
+      expect(within(list).queryByText(removedLabel, { exact: true })).toBeNull();
+      const group = screen.getByRole("group", { name: remainingLabel });
+      expect(within(group).getByText(remainingLabel, { exact: true })).toBeDefined();
+      expect(within(list).getAllByRole("group")).toHaveLength(1);
+      expect(group.classList.contains("border-t")).toBe(false);
+      expect(group.classList.contains("pt-2")).toBe(false);
+      expect(queuedTexts()).toEqual([remaining.text]);
+
+      await fixture.user.click(
+        screen.getByRole("button", {
+          name: `Cancel ${remaining.deliveryState === "steering" ? "steering" : "queued message"}: ${remaining.text}`,
+        }),
+      );
+      expect(screen.queryByRole("list", { name: "Queued prompts" })).toBeNull();
+      expect(screen.queryByRole("group", { name: "Steering" })).toBeNull();
+      expect(screen.queryByRole("group", { name: "Queued" })).toBeNull();
+      expect(remove.mock.calls.map(([input]) => input)).toEqual([
+        { sessionId: queueSessionId, partId: first.id },
+        { sessionId: queueSessionId, partId: remaining.id },
+      ]);
+    },
+  );
+
   it.each([false, true])(
     "keeps text and an attachment together through pending admission, queueing, steering (%s), and delivery",
     async (promote) => {
