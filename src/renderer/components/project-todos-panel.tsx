@@ -2,6 +2,7 @@ import { observer } from "r-state-tree/react";
 import { AnimatedList } from "@/components/ui/animated-list";
 import { Callout } from "@/components/ui/callout";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
+import { cn } from "@/lib/utils";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
 import { ProjectTodoItem } from "./project-todo-item";
 
@@ -39,30 +40,29 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
           {store.error}
         </Callout>
       )}
-      <section aria-label="Needs attention">
-        <h2 className="mb-3 px-3 text-xs font-semibold">
-          Needs attention{" "}
-          <span className="ml-1 font-normal tabular-nums text-muted-foreground">
-            {attentionItems.length}
-          </span>
-        </h2>
-        {attentionItems.length ? (
+      {attentionItems.length > 0 && (
+        <section aria-label="Needs attention">
+          <h2 className="mb-3 px-3 text-xs font-semibold">
+            Needs attention{" "}
+            <span className="ml-1 font-normal tabular-nums text-muted-foreground">
+              {attentionItems.length}
+            </span>
+          </h2>
           <AnimatedList as="ul" aria-label="Needs attention to-dos" className="space-y-2">
             {attentionItems.map((item) => (
               <ProjectTodoItem key={item.id} item={item} store={store} />
             ))}
           </AnimatedList>
-        ) : (
-          <p role="status" className="px-3 py-3 text-xs text-muted-foreground">
-            {searching ? "No matching to-dos." : "Nothing needs your attention."}
-          </p>
-        )}
-      </section>
-      {sections.map((section) => (
+        </section>
+      )}
+      {sections.map((section, index) => (
         <section
           key={section.title}
           aria-label={section.title}
-          className="mt-4 border-t border-border px-1 pt-2"
+          className={cn(
+            "px-1",
+            (attentionItems.length > 0 || index > 0) && "mt-4 border-t border-border pt-2",
+          )}
         >
           <DisclosureTrigger
             title={`${section.title} (${section.items.length})`}

@@ -224,6 +224,37 @@ function renderTodos(
   };
 }
 
+it("renders Needs attention and its separator only when the displayed attention list is nonempty", async () => {
+  using fixture = renderTodos(false, { todos: emptyProjectTodos(), sessions: [] });
+  const active = () => screen.getByRole("region", { name: "Active" });
+  const expectNoAttention = () => {
+    expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
+    expect(screen.queryByText("Nothing needs your attention.")).toBeNull();
+    expect(active().className).not.toMatch(/\b(mt-4|border-t|pt-2)\b/);
+    expect(
+      screen.getAllByRole("region").map((region) => region.getAttribute("aria-label")),
+    ).toEqual(["Active", "Snoozed", "Done"]);
+    expect(screen.getByRole("region", { name: "Snoozed" }).className).toContain("border-t");
+  };
+  expectNoAttention();
+
+  const items = [
+    { ...todo(100), needsAttention: true, attentionReason: "Review the findings" },
+    { ...todo(101), title: "Continue implementation" },
+  ];
+  await fixture.updateTodos({ ...emptyProjectTodos(), items });
+  expect(screen.getByRole("heading", { name: "Needs attention 1" })).toBeDefined();
+  expect(active().className).toContain("border-t");
+  const search = screen.getByRole("searchbox", { name: "Search to-dos" });
+  await fixture.user.type(search, "Continue");
+  expectNoAttention();
+  expect(screen.getByRole("button", { name: "Continue implementation" })).toBeDefined();
+  expect(fixture.todos().items).toEqual(items);
+  await fixture.user.clear(search);
+  expect(screen.getByRole("heading", { name: "Needs attention 1" })).toBeDefined();
+  expect(active().className).toContain("border-t");
+});
+
 it("shows action-first requests, dismisses without selection/lifecycle effects, restores, and hides retained reasons from search", async () => {
   const item = {
     ...todo(100),
@@ -261,7 +292,7 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
     attentionReason: item.attentionReason,
   });
   expect(fixture.mutations.map((mutation) => mutation._tag)).toEqual(["Select", "SetAttention"]);
-  expect(screen.getByText("Nothing needs your attention.")).toBeDefined();
+  expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
   const row = within(screen.getByRole("list", { name: "Active to-dos" })).getByRole("button", {
     name: item.title,
   });
@@ -335,6 +366,7 @@ it("uses a manual reason editor for Mark/Edit, rejects blank, supports cancel, a
     }),
   ).toBeDefined();
   expect(fixture.todos().items[0]?.needsAttention).toBe(true);
+  expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
   await fixture.user.pointer({
     target: screen.getByRole("button", { name: item.title }),
     keys: "[MouseRight]",
@@ -626,7 +658,9 @@ it("filters titles and descriptions without changing selection or the authoritat
   expect(screen.queryByRole("button", { name: "Follow up" })).toBeNull();
   await fixture.user.clear(search);
   await fixture.user.type(search, "Report delivered");
-  expect(screen.getByRole("status").textContent).toContain("No matching to-dos");
+  expect(
+    within(screen.getByRole("region", { name: "Active" })).getByText("No matching to-dos."),
+  ).toBeDefined();
   await fixture.user.click(screen.getByRole("button", { name: "Clear search to-dos" }));
   expect(title().getAttribute("aria-pressed")).toBe("true");
   expect(screen.getByRole("button", { name: "Follow up" })).toBeDefined();
@@ -662,7 +696,9 @@ it("keeps matching done items grouped and preserves disclosure and done/reopen a
   );
   await fixture.user.clear(search);
   await fixture.user.type(search, "no such task");
-  expect(screen.getByRole("status").textContent).toContain("No matching to-dos");
+  expect(
+    within(screen.getByRole("region", { name: "Active" })).getByText("No matching to-dos."),
+  ).toBeDefined();
   await fixture.user.click(screen.getByRole("button", { name: "Clear search to-dos" }));
   expect(screen.getByRole("list", { name: "Done to-dos" })).toBeDefined();
   expect(screen.getByRole("list", { name: "Active to-dos" })).toBeDefined();

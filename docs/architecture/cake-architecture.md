@@ -422,8 +422,8 @@ is a refactoring signal, not precedent.
   bounded, nonempty `attentionReason`. Older saved items may omit attention fields (off);
   no reason is invented. Four exclusive sections, in order: Needs attention (open, unsnoozed,
   flagged), Active (open, unsnoozed, unflagged), Snoozed (open with a deadline), Done.
-  Needs attention always shows expanded, including its empty state; the other sections collapse
-  independently. It presents the human action first, with quieter task identity and clickable
+  Needs attention shows expanded only when its filtered list is nonempty; when empty, its
+  heading, count and section spacing/divider are omitted. The other sections collapse independently. It presents the human action first, with quieter task identity and clickable
   work/source links, no attention bell. Row selection is existing next-message context, not a send.
   The model invoking todo mutations owns attention; background refresh stays description-only.
   One-step Dismiss clears only the flag, retaining the hidden reason, selection and work state.
