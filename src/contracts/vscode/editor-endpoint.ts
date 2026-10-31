@@ -1,6 +1,8 @@
 import { Schema } from "effect";
 
-export const EditorTheme = Schema.Literals(["light", "dark"]);
+import { ImportedColorTheme } from "../themes/color-theme";
+
+export const EditorTheme = Schema.Union([Schema.Literals(["light", "dark"]), ImportedColorTheme]);
 export const EditorLeaseId = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/));
 const workspacePath = Schema.NonEmptyString.check(Schema.isMaxLength(4_096));
 const endpoint = Schema.NonEmptyString.check(Schema.isMaxLength(8_192));

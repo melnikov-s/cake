@@ -1,15 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
+import { applyDocumentTheme } from "../lib/resolved-color-theme";
 import type { RootStore } from "../stores/RootStore";
 
 export function useAppDocument(root: RootStore) {
   const settings = root.settingsStore;
   const extensionUi = root.extensionUiStore;
-  useEffect(() => {
-    document.documentElement.dataset.theme = settings.appearance.theme;
-    return () => {
-      delete document.documentElement.dataset.theme;
-    };
-  }, [settings.appearance.theme]);
+  const customTheme = settings.appearance.activeImportedTheme;
+  useLayoutEffect(() => {
+    applyDocumentTheme(settings.appearance.theme, customTheme);
+    return () => applyDocumentTheme("system");
+  }, [settings.appearance.theme, customTheme]);
   useEffect(() => {
     document.title = extensionUi.title ? `${extensionUi.title} · Cake` : "Cake";
   }, [extensionUi.title]);

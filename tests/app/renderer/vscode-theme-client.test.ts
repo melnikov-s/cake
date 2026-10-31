@@ -3,16 +3,30 @@ import type { FromClientEncoded, FromServerEncoded } from "effect/unstable/rpc/R
 import { afterEach, expect, it, vi } from "vitest";
 import { makeClient } from "../../../src/renderer/client/ClientLive";
 import { makeRuntime } from "../../../src/renderer/runtime";
+import { applyDocumentTheme } from "../../../src/renderer/lib/resolved-color-theme";
+import type { ImportedColorTheme } from "../../../src/contracts/themes/color-theme";
+
+const ocean: ImportedColorTheme = {
+  id: "ocean",
+  name: "Ocean",
+  type: "dark",
+  colors: { "editor.background": "#102030" },
+  tokenColors: [{ scope: "keyword", settings: { foreground: "#ffaa00" } }],
+  semanticTokenColors: {},
+  semanticHighlighting: true,
+};
 
 afterEach(() => {
+  applyDocumentTheme("system");
   delete document.documentElement.dataset.theme;
   vi.unstubAllGlobals();
 });
 
-it.each(["light", "dark", "system"] as const)(
+it.each(["light", "dark", "system", "imported:ocean"] as const)(
   "acquires and presents new/reopened native editors with Cake's effective %s theme",
   async (preference) => {
-    document.documentElement.dataset.theme = preference;
+    if (preference === "imported:ocean") applyDocumentTheme(preference, ocean);
+    else document.documentElement.dataset.theme = preference;
     let systemDark = false;
     vi.stubGlobal("matchMedia", () => ({ matches: systemDark }));
     const messages: FromClientEncoded[] = [];
@@ -47,8 +61,9 @@ it.each(["light", "dark", "system"] as const)(
       const payloads = messages.flatMap((message) =>
         message._tag === "Request" ? [{ tag: message.tag, payload: message.payload }] : [],
       );
-      const first = preference === "system" ? "light" : preference;
-      const reopened = preference === "system" ? "dark" : preference;
+      const first =
+        preference === "system" ? "light" : preference === "imported:ocean" ? ocean : preference;
+      const reopened = preference === "system" ? "dark" : first;
       expect(payloads).toEqual([
         {
           tag: "vscode.acquire",

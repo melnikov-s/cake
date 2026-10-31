@@ -5,6 +5,20 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
+import { observer } from "r-state-tree/react";
+import { useAppDocument } from "../../../src/renderer/hooks/use-app-document";
+import type { RootStore } from "../../../src/renderer/stores/RootStore";
+
+const DocumentTheme = observer(function DocumentTheme({ root }: { root: RootStore }) {
+  useAppDocument(root);
+  return null;
+});
+
+function themeFile(content: string) {
+  const file = new File([content], "ocean.json", { type: "application/json" });
+  Object.defineProperty(file, "text", { value: async () => content });
+  return file;
+}
 import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import { SettingsAppearanceSection } from "../../../src/renderer/components/settings-appearance-section";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
@@ -32,6 +46,7 @@ function renderAppearanceSettings(snapshot?: StoreSnapshot, customIcon = false) 
   const { root } = rootFixture;
   const view = render(
     <>
+      <DocumentTheme root={root} />
       <SettingsAppearanceSection appearance={root.settingsStore.appearance} />
       <SidebarProjectGroup
         cakeChat={root.cakeChatCollectionStore}
@@ -139,6 +154,47 @@ describe("Appearance settings workflow", () => {
     await fixture.user.click(sessions);
     expect(projects.getAttribute("aria-checked")).toBe("true");
     expect(sessions.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("previews, cancels, applies and restores imported color data through the window snapshot", async () => {
+    let saved: StoreSnapshot;
+    const theme = JSON.stringify({
+      name: "Ocean",
+      type: "dark",
+      colors: { "editor.background": "#102030", "editor.foreground": "#eeeeee" },
+      tokenColors: [{ scope: "keyword", settings: { foreground: "#ffaa00" } }],
+    });
+    {
+      using fixture = renderAppearanceSettings();
+      const picker = screen.getByLabelText("Import VS Code theme");
+      await fixture.user.upload(picker, themeFile(theme));
+      expect(await screen.findByText("Preview: Ocean")).toBeTruthy();
+      expect(document.documentElement.dataset.theme).toBe("dark");
+      expect(document.documentElement.style.getPropertyValue("--background")).toBe("#102030");
+      await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(document.documentElement.dataset.theme).toBe("system");
+      await fixture.user.upload(picker, themeFile(theme));
+      await fixture.user.click(await screen.findByRole("button", { name: "Apply theme" }));
+      expect(screen.getByRole("option", { selected: true }).textContent).toBe("Ocean");
+      saved = fixture.savedSnapshot();
+      await fixture.user.selectOptions(screen.getByLabelText("Color theme"), "light");
+      expect(document.documentElement.dataset.theme).toBe("light");
+      expect(document.documentElement.style.getPropertyValue("--background")).toBe("");
+    }
+    using restored = renderAppearanceSettings(saved);
+    expect(screen.getByRole("option", { selected: true }).textContent).toBe("Ocean");
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#102030");
+    await restored.user.click(screen.getByRole("button", { name: "Remove theme" }));
+    expect(screen.getByRole("option", { selected: true }).textContent).toBe("System");
+  });
+
+  it("shows invalid import errors and leaves the current preference intact", async () => {
+    using fixture = renderAppearanceSettings();
+    await fixture.user.selectOptions(screen.getByLabelText("Color theme"), "light");
+    await fixture.user.upload(screen.getByLabelText("Import VS Code theme"), themeFile("{"));
+    expect((await screen.findByRole("alert")).textContent).toContain("Invalid JSON");
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(screen.getByRole("button", { name: "Apply theme" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("lets users choose either fixed theme and return to the system preference", async () => {

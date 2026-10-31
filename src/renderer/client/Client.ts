@@ -1,3 +1,4 @@
+import type { EditorColorTheme } from "../../contracts/themes/color-theme";
 import type {
   PrepareFileLocation,
   PreparedFileLocation,
@@ -401,7 +402,7 @@ interface VsCodeCommands {
     options?: ClientCommandOptions,
   ): Promise<{ id: string; endpoint: string } | undefined>;
   release(leaseId: string, options?: ClientCommandOptions): Promise<void>;
-  setTheme(theme: "light" | "dark", options?: ClientCommandOptions): Promise<void>;
+  setTheme(theme: EditorColorTheme, options?: ClientCommandOptions): Promise<void>;
   updateBounds(
     input: {
       visible: boolean;

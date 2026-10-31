@@ -25,6 +25,7 @@ import { unified } from "unified";
 import { usePhoneLayout } from "../../lib/phone-layout";
 import { DiagramContext } from "../../lib/diagram-context";
 import { supportsSyntaxHighlightLanguage, syntaxHighlighter } from "@/lib/syntax-highlighter";
+import { useEditorColorTheme } from "@/lib/resolved-color-theme";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../contracts/editor/source-location";
 import { parseSubagentLink, subagentLink } from "../../../contracts/subagents/subagent-reference";
@@ -588,6 +589,7 @@ function MarkdownRenderer({
   richPlugins,
   ...props
 }: MarkdownProps & { richPlugins?: RichMarkdownPlugins }) {
+  const theme = useEditorColorTheme();
   const linkActions = useContext(MarkdownLinkContext);
   const [fullscreenDiagram, setFullscreenDiagram] = useState<string>();
   const [fullscreenTable, setFullscreenTable] = useState<ReactNode>();
@@ -737,6 +739,7 @@ function MarkdownRenderer({
     <>
       <DiagramContext value={diagramActions}>
         <Streamdown
+          key={theme === "light" || theme === "dark" ? "builtin" : theme.id}
           {...props}
           components={components}
           className={cn(

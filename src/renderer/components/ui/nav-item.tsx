@@ -81,7 +81,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
         "group group/nav-item grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md px-2 py-1 text-left text-xs tracking-[-0.005em] transition-colors select-none [app-region:no-drag]",
         !trailing && "grid-cols-1",
         active
-          ? "bg-sidebar-active text-primary font-medium"
+          ? "bg-sidebar-active text-sidebar-selection-foreground font-medium"
           : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
         associated && !active && associationHighlightClassName,
         wholeRowAction && "relative",
@@ -187,7 +187,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
             <div
               className={cn(
                 "mt-0.5 text-xs font-normal leading-snug",
-                active ? "text-primary/75" : "text-muted-foreground/75",
+                active ? "text-sidebar-selection-foreground/75" : "text-muted-foreground/75",
               )}
             >
               {description}

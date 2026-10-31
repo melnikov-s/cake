@@ -69,7 +69,10 @@ export class ScreenCaptureAttachmentStore extends Store<{
     const settings = this.props.settings();
     return {
       appearance: {
-        theme: settings.theme,
+        theme:
+          settings.activeImportedTheme?.type ??
+          (settings.theme === "light" || settings.theme === "dark" ? settings.theme : "system"),
+        importedTheme: settings.activeImportedTheme,
         projectAvatarsEnabled: settings.projectAvatarsEnabled,
         sessionAvatarsEnabled: settings.sessionAvatarsEnabled,
         sidebarCharactersEnabled: settings.sidebarCharactersEnabled,

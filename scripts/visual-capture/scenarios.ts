@@ -54,6 +54,7 @@ import {
   installSpeechHttpFixture,
 } from "../../tests/electron/main-harness.ts";
 import { windowState } from "../../tests/fixtures/window-state";
+import { vscodeColorThemeFixture } from "../../tests/fixtures/vscode-color-themes";
 import {
   installCaptureMicrophone,
   seedCaptureDictation,
@@ -2164,6 +2165,43 @@ const appearanceSettingsScenario: VisualCaptureScenario = {
     await page.mouse.move(1, 1);
   },
   region: cakePromptsSettingsScenario.region,
+};
+
+const importedColorThemeScenario: VisualCaptureScenario = {
+  name: "imported-color-theme",
+  description: "Imported VS Code palettes on Appearance preview and conversation surfaces",
+  states: ["light-preview", "dark-preview", "light-chat", "dark-chat"],
+  seed: assistantMarkdownCode.seed,
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Appearance", exact: true }).click();
+    const theme = vscodeColorThemeFixture(state.startsWith("light") ? "light" : "dark");
+    await page.getByLabel("Import VS Code theme", { exact: true }).setInputFiles({
+      name: "color-theme.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify(theme)),
+    });
+    await expect(page.getByText(`Preview: ${theme.name}`)).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme.type);
+    if (state.endsWith("chat")) {
+      await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+      await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+      const token = page
+        .locator('[data-streamdown="code-block-body"] span[style]')
+        .filter({ hasText: "interface" })
+        .first();
+      await expect(token).toHaveCSS(
+        "color",
+        theme.type === "dark" ? "rgb(199, 146, 234)" : "rgb(131, 85, 181)",
+      );
+    }
+    await page.mouse.move(1, 1);
+  },
+  region: (page, state) =>
+    state.endsWith("chat")
+      ? assistantMarkdownCode.region(page, "default")
+      : cakePromptsSettingsScenario.region(page, "default"),
 };
 
 const projectChatSidebar: VisualCaptureScenario = {
@@ -6046,6 +6084,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   localMcpSettingsScenario,
   mcpSettingsLayoutScenario,
   appearanceSettingsScenario,
+  importedColorThemeScenario,
   browserSharingScenario,
   projectCustomInstructionsScenario,
   newSessionScenario,

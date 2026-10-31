@@ -17,7 +17,10 @@ export function VoiceMeter({
     <span
       aria-hidden="true"
       data-slot="voice-meter"
-      className={cn("flex items-center", size === "sm" ? "h-3 gap-px" : "h-5 gap-1 text-primary")}
+      className={cn(
+        "flex items-center",
+        size === "sm" ? "h-3 gap-px" : "h-5 gap-1 text-foreground",
+      )}
     >
       {barWeights.map((weight, index) => {
         const style: BarStyle = { "--voice-bar-scale": 0.18 + boundedLevel * weight * 0.82 };

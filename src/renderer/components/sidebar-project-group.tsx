@@ -112,7 +112,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
             appearance.projectAvatarsEnabled && "grid-cols-[auto_auto_minmax(0,1fr)_auto]",
             focusMode &&
               "h-11 gap-2 pl-1.5 text-foreground [&_[data-slot=avatar]]:size-7 [&_svg]:size-5",
-            projectChatSelected && "bg-sidebar-active text-primary",
+            projectChatSelected && "bg-sidebar-active text-sidebar-selection-foreground",
           )}
           title={path}
         >

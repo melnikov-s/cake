@@ -456,6 +456,9 @@ describe("VsCodeServerRuntime startup", () => {
 
     await runtime["ensureEditorPreferences"](join(root, "profile"));
     expect(JSON.parse(await readFile(settingsPath, "utf8"))).toEqual({
+      "workbench.colorCustomizations": {},
+      "editor.tokenColorCustomizations": {},
+      "editor.semanticTokenColorCustomizations": {},
       "security.workspace.trust.enabled": false,
       "workbench.colorTheme": "Cake Dark",
       "workbench.startupEditor": "none",
@@ -481,6 +484,9 @@ describe("VsCodeServerRuntime startup", () => {
     const updatedRaw = await readFile(settingsPath, "utf8");
     expect(updatedRaw).toContain("Keep this comment; Cake still canonicalizes the keys around it.");
     expect(parseJsonc(updatedRaw)).toEqual({
+      "workbench.colorCustomizations": {},
+      "editor.tokenColorCustomizations": {},
+      "editor.semanticTokenColorCustomizations": {},
       "security.workspace.trust.enabled": false,
       "workbench.colorTheme": "Cake Dark",
       "workbench.startupEditor": "none",
@@ -499,6 +505,38 @@ describe("VsCodeServerRuntime startup", () => {
         "workbench.colorTheme"
       ],
     ).toBe("Cake Light");
+  });
+
+  it("persists imported editor colors and syntax, then clears them on switching back", async () => {
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-colors-"));
+    runtime = createRuntime({ root });
+    const theme = {
+      id: "ocean",
+      name: "Ocean",
+      type: "dark" as const,
+      colors: { "editor.background": "#102030" },
+      tokenColors: [{ scope: "keyword", settings: { foreground: "#ffaa00" } }],
+      semanticTokenColors: { variable: "#abcdef" },
+      semanticHighlighting: true,
+    };
+    await runtime["ensureEditorPreferences"](join(root, "profile"), theme);
+    const path = join(root, "profile", "User", "settings.json");
+    expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({
+      "workbench.colorTheme": "Cake Dark",
+      "workbench.colorCustomizations": theme.colors,
+      "editor.tokenColorCustomizations": { textMateRules: theme.tokenColors },
+      "editor.semanticTokenColorCustomizations": {
+        enabled: true,
+        rules: theme.semanticTokenColors,
+      },
+    });
+    await runtime["ensureEditorPreferences"](join(root, "profile"), "light");
+    expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({
+      "workbench.colorTheme": "Cake Light",
+      "workbench.colorCustomizations": {},
+      "editor.tokenColorCustomizations": {},
+      "editor.semanticTokenColorCustomizations": {},
+    });
   });
 
   it("writes the companion's contributed theme files into the extension directory", async () => {

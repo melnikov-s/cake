@@ -4,7 +4,7 @@ import { observer } from "r-state-tree/react";
 import type { SessionPlugin } from "../../contracts/application/application-data";
 import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
 import { readWidgetTheme } from "../lib/widget-theme";
-import { useResolvedColorTheme } from "../lib/resolved-color-theme";
+import { useEditorColorTheme } from "../lib/resolved-color-theme";
 import { inlineWidgetMessageSchema } from "../../utils/inline-widget-message";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { InlineWidgetFrame } from "./inline-widget-frame";
@@ -22,7 +22,7 @@ export const GeneratedSessionPlugin = observer(function GeneratedSessionPlugin({
   readonly inlineWidgets: InlineWidgetStore;
   readonly call: (command: string, input: JsonObject) => Promise<JsonValue>;
 }) {
-  const colorScheme = useResolvedColorTheme();
+  const colorScheme = useEditorColorTheme();
   const instance = useId();
   const compileId = `${plugin.sessionId}:session-plugin:${plugin.id}:${instance}`;
   const compiledState = inlineWidgets.state(compileId);

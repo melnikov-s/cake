@@ -8,7 +8,12 @@ export const CakeSettingsGetInput = Schema.Struct({
 });
 
 const AppearanceChanges = Schema.Struct({
-  theme: Schema.optionalKey(Schema.Literals(["system", "light", "dark"])),
+  theme: Schema.optionalKey(
+    Schema.Union([
+      Schema.Literals(["system", "light", "dark"]),
+      Schema.TemplateLiteral(["imported:", Schema.String]),
+    ]),
+  ),
   projectAvatarsEnabled: Schema.optionalKey(Schema.Boolean),
   sessionAvatarsEnabled: Schema.optionalKey(Schema.Boolean),
   sidebarCharactersEnabled: Schema.optionalKey(Schema.Boolean),

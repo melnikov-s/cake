@@ -11,7 +11,7 @@ import type { BrowserFiles } from "./BrowserFiles";
 import { browserFileChunk } from "./BrowserFiles";
 import type { BrowserMenuStore } from "../stores/BrowserMenuStore";
 import { browserMenus } from "./BrowserMenus";
-import { resolvedColorTheme } from "../lib/resolved-color-theme";
+import { currentEditorTheme } from "../lib/resolved-color-theme";
 
 const isolatedEditorUrl = (lease: {
   id: string;
@@ -326,7 +326,7 @@ export function makeClient(
           client.vscode.acquire({
             requestId: crypto.randomUUID(),
             workspacePath: workingDirectory,
-            theme: resolvedColorTheme(),
+            theme: currentEditorTheme(),
           }),
         ),
         options,

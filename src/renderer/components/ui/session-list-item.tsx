@@ -139,7 +139,7 @@ export const SessionListItem = observer(function SessionListItem({
               : "grid-cols-[2.75rem_minmax(0,1fr)]"
           : "grid-cols-[1.25rem_minmax(0,1fr)]",
         selected
-          ? "active text-primary font-medium"
+          ? "active text-sidebar-selection-foreground font-medium"
           : "text-muted-foreground hover:text-foreground",
         actionProps?.role === "option" &&
           (selected ? "bg-sidebar-active" : "hover:bg-sidebar-hover"),
@@ -267,7 +267,7 @@ export const SessionListItem = observer(function SessionListItem({
               className={cn(
                 "flex w-full min-w-0 items-center gap-1.5 text-xs font-normal leading-none",
                 focusMode && "text-xs leading-tight",
-                selected ? "text-primary/80" : "text-muted-foreground/80",
+                selected ? "text-sidebar-selection-foreground/80" : "text-muted-foreground/80",
               )}
             >
               {source && (
@@ -332,7 +332,7 @@ export const SessionListItem = observer(function SessionListItem({
                     className={cn(
                       "session-resolve-action col-start-1 row-start-1 size-6 flex items-center justify-center rounded transition-opacity",
                       selected && !activity
-                        ? "text-primary/80 opacity-100 hover:bg-primary/10 hover:text-primary"
+                        ? "text-sidebar-selection-foreground/80 opacity-100 hover:bg-sidebar-hover hover:text-sidebar-selection-foreground"
                         : "text-muted-foreground opacity-0 hover:bg-sidebar-hover hover:text-foreground group-hover/session:opacity-100 group-focus-within/session:opacity-100",
                     )}
                     tooltip={resolved ? "Restore" : "Resolve"}

@@ -7,7 +7,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { useResolvedColorTheme } from "../lib/resolved-color-theme";
+import { useEditorColorTheme } from "../lib/resolved-color-theme";
 import { readWidgetTheme } from "../lib/widget-theme";
 import { cn } from "@/lib/utils";
 import type { CompiledInlineWidget } from "../../contracts/widgets/inline-widget-contract";
@@ -38,13 +38,13 @@ export const InlineWidgetFrame = forwardRef<
   },
   ref,
 ) {
-  const colorScheme = useResolvedColorTheme();
+  const colorTheme = useEditorColorTheme();
   const frame = useRef<HTMLIFrameElement>(null);
   // The initial theme is carried before first paint. Live changes are posted,
   // never assigned to src: reloading would erase widget interaction state.
   const [initial] = useState(() =>
     encodeURIComponent(
-      JSON.stringify({ theme: readWidgetTheme(colorScheme), presentation, sizing }),
+      JSON.stringify({ theme: readWidgetTheme(colorTheme), presentation, sizing }),
     ),
   );
   const postPresentation = useCallback(() => {
@@ -53,11 +53,11 @@ export const InlineWidgetFrame = forwardRef<
         source: "cake-widget-host",
         token: compiled.token,
         type: "presentation",
-        value: { theme: readWidgetTheme(colorScheme), presentation, sizing },
+        value: { theme: readWidgetTheme(colorTheme), presentation, sizing },
       },
       "*",
     );
-  }, [colorScheme, compiled.token, presentation, sizing]);
+  }, [colorTheme, compiled.token, presentation, sizing]);
   useEffect(postPresentation, [postPresentation]);
   useImperativeHandle(ref, () => frame.current!, [compiled.token]);
   const url = widgetDocumentUrl(compiled, window.location);

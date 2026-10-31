@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { emitRendererEvent } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
+import { vscodeColorThemeFixture } from "../fixtures/vscode-color-themes";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const codeServer = "/opt/homebrew/bin/code-server";
@@ -65,9 +66,12 @@ for (const initialTheme of ["dark", "light"] as const) {
             if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
             const theme = await contents.executeJavaScript(`(() => {
             const workbench = document.querySelector('.monaco-workbench');
-            return workbench?.classList.contains('vs-dark') ? 'dark' : workbench?.classList.contains('vs') ? 'light' : undefined;
+            return {
+              theme: workbench?.classList.contains('vs-dark') ? 'dark' : workbench?.classList.contains('vs') ? 'light' : undefined,
+              background: workbench ? getComputedStyle(workbench).getPropertyValue('--vscode-editor-background').trim() : undefined,
+            };
           })()`);
-            return { id: contents.id, theme };
+            return { id: contents.id, ...theme };
           }
           return undefined;
         });
@@ -118,6 +122,52 @@ for (const initialTheme of ["dark", "light"] as const) {
           .toEqual({ preference: "system", dark: theme === "dark" });
         await expectTheme(theme);
       }
+      // Import JSONC and a sibling include as data; the running workbench keeps its identity.
+      const imported = vscodeColorThemeFixture(initialTheme);
+      const sourceDirectory = join(directory, "theme-source");
+      await mkdir(join(sourceDirectory, "themes"), { recursive: true });
+      const entryPath = join(
+        sourceDirectory,
+        initialTheme === "dark" ? "themes" : "",
+        "imported.jsonc",
+      );
+      const basePath = join(sourceDirectory, "base.json");
+      await writeFile(basePath, JSON.stringify({ colors: imported.colors }));
+      await writeFile(
+        entryPath,
+        `// Theme data only\n${JSON.stringify({ ...imported, colors: undefined, include: initialTheme === "dark" ? "../base.json" : "./base.json" })}`,
+      );
+      await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+      await page.getByRole("button", { name: /^Appearance/ }).click();
+      if (initialTheme === "dark") {
+        await page
+          .getByLabel("Import theme folder", { exact: true })
+          .setInputFiles(sourceDirectory);
+        await page
+          .getByLabel("Theme source", { exact: true })
+          .selectOption({ label: "theme-source/themes/imported.jsonc" });
+      } else {
+        await page
+          .getByLabel("Import VS Code theme", { exact: true })
+          .setInputFiles([entryPath, basePath]);
+      }
+      await expect(page.getByText(`Preview: ${imported.name}`)).toBeVisible();
+      await expect(page.locator("html")).toHaveCSS(
+        "--background",
+        imported.colors["editor.background"],
+      );
+      await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+      await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+      await expect.poll(editorState, { timeout: 25_000 }).toMatchObject({
+        id: editorId,
+        theme: initialTheme,
+        background: imported.colors["editor.background"],
+      });
+      await setTheme("light");
+      await expect
+        .poll(editorState)
+        .toMatchObject({ id: editorId, theme: "light", background: "#f5f7f9" });
+
       await emitRendererEvent(application, {
         type: "embedded-editor-back-to-agent",
         workspacePath: project,

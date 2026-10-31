@@ -1,3 +1,4 @@
+import { editorThemeSettings, type EditorColorTheme } from "../../contracts/themes/color-theme";
 import { Option, Schema } from "effect";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
@@ -130,7 +131,7 @@ type CompanionRequest =
   | { type: "open-source-control" }
   | ({ type: "annotations" } & EditorAnnotationSnapshot)
   | ({ type: "selection-highlights" } & EditorSelectionHighlights)
-  | { type: "set-theme"; theme: "light" | "dark" }
+  | { type: "set-theme"; theme: EditorColorTheme }
   | { type: "script"; source: string; input: JsonValue }
   | { type: "editor-action"; action: VscodeEditorAction };
 
@@ -266,7 +267,7 @@ export class VsCodeServerRuntime {
   private bridgePort: number | undefined;
   private readonly bridgeToken = randomBytes(32).toString("hex");
   /** Per-workspace desktop theme; duplicate companion pushes are skipped. */
-  private themes = new Map<string, "light" | "dark">();
+  private themes = new Map<string, EditorColorTheme>();
   private disposed = false;
 
   constructor(props: VsCodeServerRuntimeProps) {
@@ -345,7 +346,7 @@ export class VsCodeServerRuntime {
   async acquire(
     connectionId: number,
     workspacePath: string,
-    theme: "light" | "dark",
+    theme: EditorColorTheme,
     signal?: AbortSignal,
     networkViewer = false,
   ): Promise<VsCodeLease> {
@@ -559,10 +560,10 @@ export class VsCodeServerRuntime {
     await postJson(port, "/", { type: "annotations", ...snapshot }, this.bridgeToken, signal);
   }
 
-  async setTheme(connectionId: number, theme: "light" | "dark", signal?: AbortSignal) {
+  async setTheme(connectionId: number, theme: EditorColorTheme, signal?: AbortSignal) {
     const lease = this.leases.get(connectionId);
     if (!lease) return;
-    if (this.themes.get(lease.workspacePath) === theme) return;
+    if (JSON.stringify(this.themes.get(lease.workspacePath)) === JSON.stringify(theme)) return;
     // The workbench can render this change before the companion acknowledges it.
     // Compare subsequent updates with the requested theme, not the previous response.
     this.themes.set(lease.workspacePath, theme);
@@ -921,7 +922,7 @@ export class VsCodeServerRuntime {
     });
   }
 
-  private async ensureEditorPreferences(userDataDir: string, theme: "light" | "dark" = "dark") {
+  private async ensureEditorPreferences(userDataDir: string, theme: EditorColorTheme = "dark") {
     const userDir = join(userDataDir, "User");
     const settingsPath = join(userDir, "settings.json");
     await mkdir(userDir, { recursive: true });
@@ -948,9 +949,8 @@ export class VsCodeServerRuntime {
     // The embedded editor is a Cake-managed surface: it always follows the app's
     // appearance, so an earlier pick (or a stale value from a previous mode) is
     // replaced with the current preference on every start.
-    const themeLabel = theme === "dark" ? "Cake Dark" : "Cake Light";
-    if (settings["workbench.colorTheme"] !== themeLabel) {
-      updates.push({ key: "workbench.colorTheme", value: themeLabel });
+    for (const [key, value] of Object.entries(editorThemeSettings(theme))) {
+      if (JSON.stringify(settings[key]) !== JSON.stringify(value)) updates.push({ key, value });
     }
     if (settings["workbench.startupEditor"] === undefined)
       updates.push({ key: "workbench.startupEditor", value: "none" });

@@ -83,9 +83,26 @@ async function highlight(request: SyntaxHighlightRequest) {
     await loadLanguage(highlighter, request.language);
     const loadMs = performance.now() - loadStartedAt;
     const tokenizeStartedAt = performance.now();
+    const custom = request.theme;
+    const name = custom ? `cake-imported-${custom.id}` : undefined;
+    if (custom && name && !highlighter.getLoadedThemes().includes(name)) {
+      await highlighter.loadTheme({
+        name,
+        type: custom.type,
+        colors: {
+          "editor.background": custom.type === "dark" ? "#1e1e1e" : "#ffffff",
+          "editor.foreground": custom.type === "dark" ? "#d4d4d4" : "#333333",
+          ...custom.colors,
+        },
+        tokenColors: custom.tokenColors.map((rule) => ({
+          ...rule,
+          scope: rule.scope?.slice(),
+        })),
+      });
+    }
     const result = highlighter.codeToTokens(request.code, {
       lang: request.language,
-      themes: { light: syntaxThemes[0], dark: syntaxThemes[1] },
+      themes: { light: name ?? syntaxThemes[0], dark: name ?? syntaxThemes[1] },
       tokenizeMaxLineLength: 2_000,
       tokenizeTimeLimit: 100,
     });

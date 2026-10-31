@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { resolvedColorTheme } from "../lib/resolved-color-theme";
+import { currentEditorTheme } from "../lib/resolved-color-theme";
 import type { CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import type { Client, ClientCommandOptions } from "./Client";
 
@@ -572,7 +572,7 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           "vscode.open-embedded-editor",
           (client) =>
             Effect.gen(function* () {
-              const theme = resolvedColorTheme();
+              const theme = currentEditorTheme();
               const lease = yield* client.vscode.acquire({
                 requestId,
                 workspacePath: workingDirectory,

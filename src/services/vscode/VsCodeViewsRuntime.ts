@@ -1,3 +1,4 @@
+import type { EditorColorTheme } from "../../contracts/themes/color-theme";
 import { BrowserWindow, WebContentsView } from "electron";
 import { Option, Schema } from "effect";
 import type { CakeEvent } from "../../contracts/application/cake-rpc-contract";
@@ -20,7 +21,7 @@ export interface VsCodeViewBounds {
 export interface VsCodeViewEndpoint {
   readonly workspacePath: string;
   readonly url: string;
-  readonly theme: "light" | "dark";
+  readonly theme: EditorColorTheme;
 }
 interface ViewEntry extends VsCodeViewEndpoint {
   readonly view: WebContentsView;
@@ -54,7 +55,11 @@ export class VsCodeViewsRuntime {
     const view = new WebContentsView({
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: false },
     });
-    view.setBackgroundColor(VSCODE_BACKGROUND[endpoint.theme]);
+    view.setBackgroundColor(
+      endpoint.theme === "light" || endpoint.theme === "dark"
+        ? VSCODE_BACKGROUND[endpoint.theme]
+        : (endpoint.theme.colors["editor.background"] ?? VSCODE_BACKGROUND[endpoint.theme.type]),
+    );
     const entry = { ...endpoint, view };
     this.views.set(nativeId, entry);
     // The managed workbench must not navigate to another origin or open arbitrary windows.
@@ -94,7 +99,13 @@ export class VsCodeViewsRuntime {
     try {
       await view.webContents.loadURL(endpoint.url);
       signal.throwIfAborted();
-      await view.webContents.executeJavaScript(waitForWorkbenchLayoutScript(endpoint.theme));
+      await view.webContents.executeJavaScript(
+        waitForWorkbenchLayoutScript(
+          endpoint.theme === "light" || endpoint.theme === "dark"
+            ? endpoint.theme
+            : endpoint.theme.type,
+        ),
+      );
       signal.throwIfAborted();
       await view.webContents.executeJavaScript(
         vscodeShellControlsScript(

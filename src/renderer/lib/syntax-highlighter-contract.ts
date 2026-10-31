@@ -1,4 +1,5 @@
 import type { CodeHighlighterPlugin } from "streamdown";
+import type { ImportedColorTheme } from "../../contracts/themes/color-theme";
 
 export const syntaxThemes = ["github-light-high-contrast", "github-dark"] as const;
 export const supportedSyntaxLanguages = [
@@ -35,6 +36,7 @@ export type SyntaxHighlightRequest = {
   id: number;
   code: string;
   language: SupportedSyntaxLanguage;
+  theme?: ImportedColorTheme;
 };
 export type SyntaxHighlightResponse = {
   id: number;

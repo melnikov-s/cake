@@ -11,6 +11,10 @@
   }
 }
 
+::selection {
+  background: var(--selection);
+}
+
 /* Native range highlights are shared by transcript and fullscreen content. */
 ::highlight(cake-message-comment) {
   background: color-mix(in oklab, var(--accent) 28%, transparent);
@@ -72,6 +76,10 @@
   --traffic-light-maximize: #28c840;
   --traffic-light-glyph: rgb(0 0 0 / 0.55);
   --shadow: 220 28% 20%;
+  --sidebar-foreground: var(--foreground);
+  --sidebar-selection-foreground: var(--foreground);
+  --composer-foreground: var(--foreground);
+  --selection: color-mix(in srgb, var(--accent) 30%, transparent);
   --radius: 0.5rem;
 }
 
@@ -182,6 +190,9 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-selection-foreground: var(--sidebar-selection-foreground);
+  --color-composer-foreground: var(--composer-foreground);
   --color-sidebar-hover: var(--sidebar-hover);
   --color-sidebar-active: var(--sidebar-active);
   --color-composer: var(--composer);

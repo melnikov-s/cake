@@ -1,13 +1,43 @@
 import { useSyncExternalStore } from "react";
+import type {
+  EditorColorTheme,
+  ImportedColorTheme,
+  ThemeChoice,
+} from "../../contracts/themes/color-theme";
+import { cakeThemeTokens } from "../../utils/vscode-theme";
 
-export type ResolvedColorTheme = "light" | "dark";
+let importedTheme: ImportedColorTheme | undefined;
+let appliedTokens: string[] = [];
+
+/** Window-scoped DOM projection of AppearanceSettingsStore, not a persistence authority. */
+export function applyDocumentTheme(choice: ThemeChoice, custom?: ImportedColorTheme) {
+  for (const token of appliedTokens) document.documentElement.style.removeProperty(token);
+  const tokens = custom ? cakeThemeTokens(custom) : {};
+  appliedTokens = Object.keys(tokens);
+  for (const [token, value] of Object.entries(tokens))
+    document.documentElement.style.setProperty(token, value);
+  importedTheme = custom;
+  document.documentElement.dataset.theme =
+    custom?.type ?? (choice.startsWith("imported:") ? "system" : choice);
+  notifyThemeChanged();
+}
+
+export function currentEditorTheme(): EditorColorTheme {
+  return importedTheme ?? resolvedColorTheme();
+}
+
+export function useEditorColorTheme(): EditorColorTheme {
+  return useSyncExternalStore(subscribe, currentEditorTheme, () => "light");
+}
+
+type ResolvedColorTheme = "light" | "dark";
 
 const darkModeQuery = "(prefers-color-scheme: dark)";
 const listeners = new Set<() => void>();
 let themeObserver: MutationObserver | undefined;
 let colorSchemeQuery: MediaQueryList | undefined;
 
-export function resolvedColorTheme(): ResolvedColorTheme {
+function resolvedColorTheme(): ResolvedColorTheme {
   const preference = document.documentElement.dataset.theme;
   if (preference === "light" || preference === "dark") return preference;
   return window.matchMedia?.(darkModeQuery).matches ? "dark" : "light";
@@ -36,9 +66,4 @@ function subscribe(listener: () => void) {
     colorSchemeQuery?.removeEventListener("change", notifyThemeChanged);
     colorSchemeQuery = undefined;
   };
-}
-
-/** Resolves Cake's explicit theme and follows the OS while the preference is system. */
-export function useResolvedColorTheme(): ResolvedColorTheme {
-  return useSyncExternalStore<ResolvedColorTheme>(subscribe, resolvedColorTheme, () => "light");
 }

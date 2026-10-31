@@ -197,7 +197,7 @@ export const SettingsPage = observer(function SettingsPage({
                               className={cn(
                                 "font-semibold leading-snug",
                                 active
-                                  ? "text-primary"
+                                  ? "text-sidebar-selection-foreground"
                                   : "text-foreground/90 group-hover/nav-item:text-foreground",
                               )}
                             >
@@ -235,7 +235,7 @@ export const SettingsPage = observer(function SettingsPage({
                               className={cn(
                                 "font-semibold leading-snug",
                                 active
-                                  ? "text-primary"
+                                  ? "text-sidebar-selection-foreground"
                                   : "text-foreground/90 group-hover/nav-item:text-foreground",
                               )}
                             >

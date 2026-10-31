@@ -1,3 +1,4 @@
+import type { EditorColorTheme } from "../../contracts/themes/color-theme";
 import { Context, type Effect, type Stream } from "effect";
 import type { EditorAnnotationSnapshot } from "../../contracts/editor/editor-annotation";
 import type { EditorLocation } from "../../contracts/editor/editor-location";
@@ -35,7 +36,7 @@ export class VsCodeServer extends Context.Service<
     ) => Effect.Effect<RequestIdentity, VsCodeServerError>;
     readonly acquire: (
       connectionId: number,
-      request: WorkspaceRequest & { readonly theme: "light" | "dark" },
+      request: WorkspaceRequest & { readonly theme: EditorColorTheme },
     ) => Effect.Effect<VsCodeLease, VsCodeServerError>;
     readonly leaseFor: (connectionId: number) => VsCodeLease | undefined;
     readonly releaseConnection: (connectionId: number) => Effect.Effect<void>;
@@ -43,7 +44,7 @@ export class VsCodeServer extends Context.Service<
     readonly setVisible: (connectionId: number, visible: boolean) => Effect.Effect<void>;
     readonly setTheme: (
       connectionId: number,
-      theme: "light" | "dark",
+      theme: EditorColorTheme,
     ) => Effect.Effect<void, VsCodeServerError>;
     readonly reveal: (
       connectionId: number,

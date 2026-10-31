@@ -39,7 +39,7 @@ export const DictationIndicator = observer(function DictationIndicator({
     >
       <IconButton
         className={cn(
-          "size-6 shrink-0 rounded-full border border-border text-primary aria-pressed:text-muted-foreground aria-pressed:hover:bg-muted aria-pressed:hover:text-foreground",
+          "size-6 shrink-0 rounded-full border border-border text-foreground aria-pressed:text-muted-foreground aria-pressed:hover:bg-muted aria-pressed:hover:text-foreground",
           failed && "border-destructive text-destructive",
         )}
         tooltip={failed ? `${store.label} — ${action}` : action}

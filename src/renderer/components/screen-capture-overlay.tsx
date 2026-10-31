@@ -7,6 +7,7 @@ import { CaptureDestinationPicker } from "./ui/capture-destination-picker";
 import { AnnotationDraftPopover } from "./annotation-draft-popover";
 import { AnnotationItemPopover } from "./annotation-item-popover";
 import { Callout } from "./ui/callout";
+import { applyDocumentTheme } from "../lib/resolved-color-theme";
 
 export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
   store,
@@ -39,13 +40,12 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
   const snapshot = store.snapshot;
   const labelPoint = store.labelPoint;
   const theme = snapshot?.routing.appearance.theme;
+  const importedTheme = snapshot?.routing.appearance.importedTheme;
   useLayoutEffect(() => {
     if (!theme) return;
-    document.documentElement.dataset.theme = theme;
-    return () => {
-      delete document.documentElement.dataset.theme;
-    };
-  }, [theme]);
+    applyDocumentTheme(theme, importedTheme);
+    return () => applyDocumentTheme("system");
+  }, [theme, importedTheme]);
   const labelAnchor =
     snapshot && labelPoint
       ? {

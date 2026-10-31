@@ -18,6 +18,12 @@ See [Cake architecture](./docs/architecture/cake-architecture.md) for the produc
 and ownership model, and the [documentation map](./docs/architecture/README.md)
 for focused contracts and documentation responsibilities.
 
+## Color themes
+
+In **Settings → Appearance**, import a VS Code color-theme JSON/JSONC file, preview it, then apply. For themes with `include` files, select their containing folder (or select sibling files together), then choose the theme source. Imports copy color data only; no extension code is installed or executed. Imported themes and the selection use Cake's existing per-window settings persistence. Light, Dark and System remain available.
+
+Cake maps workbench colors onto its semantic surfaces and derives chat/status colors with light/dark defaults. Embedded VS Code receives workbench, TextMate and semantic-token colors; Cake code blocks and diffs use TextMate colors for supported languages. The result is a matching palette, not a pixel-identical VS Code skin: Cake has different surfaces, syntax grammars can differ, and language-server semantic highlighting is editor-only. Legacy `.tmTheme` references, includes outside the selected source, fonts, icons, extension code and Marketplace installation are not imported.
+
 ## Development
 
 Requirements: Node.js 22 or newer and Corepack.

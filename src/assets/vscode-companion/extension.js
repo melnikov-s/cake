@@ -522,10 +522,30 @@ async function openWorkingTreeDiff(vscode, api, targetUri, base) {
 }
 
 async function setTheme(vscode, payload) {
-  const themeLabel = payload.theme === "dark" ? "Cake Dark" : "Cake Light";
-  await vscode.workspace
-    .getConfiguration("workbench")
-    .update("colorTheme", themeLabel, vscode.ConfigurationTarget.Global);
+  const custom = payload.theme === "light" || payload.theme === "dark" ? undefined : payload.theme;
+  const type = custom?.type ?? payload.theme;
+  const workbench = vscode.workspace.getConfiguration("workbench");
+  const editor = vscode.workspace.getConfiguration("editor");
+  await workbench.update(
+    "colorCustomizations",
+    custom?.colors ?? {},
+    vscode.ConfigurationTarget.Global,
+  );
+  await editor.update(
+    "tokenColorCustomizations",
+    custom ? { textMateRules: custom.tokenColors } : {},
+    vscode.ConfigurationTarget.Global,
+  );
+  await editor.update(
+    "semanticTokenColorCustomizations",
+    custom ? { enabled: custom.semanticHighlighting, rules: custom.semanticTokenColors } : {},
+    vscode.ConfigurationTarget.Global,
+  );
+  await workbench.update(
+    "colorTheme",
+    type === "dark" ? "Cake Dark" : "Cake Light",
+    vscode.ConfigurationTarget.Global,
+  );
 }
 
 function editorViewColumn(vscode, group) {

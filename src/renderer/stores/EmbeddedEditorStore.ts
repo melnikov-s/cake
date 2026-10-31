@@ -1,3 +1,4 @@
+import type { EditorColorTheme } from "../../contracts/themes/color-theme";
 import { Store } from "r-state-tree";
 import type { EditorAnnotationSnapshot } from "../../contracts/editor/editor-annotation";
 import type { EditorLocation } from "../../contracts/editor/editor-location";
@@ -455,7 +456,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       this.error = "Connection lost. Return to agent and reopen VS Code after reconnecting.";
   }
 
-  async updateTheme(theme: "light" | "dark") {
+  async updateTheme(theme: EditorColorTheme) {
     if (!this.nativeViewReady) return;
     try {
       await this.vscode.setTheme(theme, { signal: this.signal });

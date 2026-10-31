@@ -1,3 +1,4 @@
+import type { EditorColorTheme } from "../../src/contracts/themes/color-theme";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -75,7 +76,7 @@ it("embeds only an isolated editor origin, supports editor resources and revokes
       let upstreamUrl = `http://127.0.0.1:${address.port}/`;
       const controlled = browserBackendAdapter(projectPath, true);
       let acquisitions = 0;
-      const themes: string[] = [];
+      const themes: EditorColorTheme[] = [];
       let lease: VsCodeLease | undefined;
       const backend = yield* makeNetworkTestBackend({
         adapter: controlled.adapter,

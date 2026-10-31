@@ -3,7 +3,7 @@ import { observer } from "r-state-tree/react";
 import type { EmbeddedEditorStore } from "../stores/EmbeddedEditorStore";
 import { Button } from "./ui/button";
 import { LoadingState } from "./ui/loading-state";
-import { useResolvedColorTheme } from "../lib/resolved-color-theme";
+import { useEditorColorTheme } from "../lib/resolved-color-theme";
 
 const StatusCard = observer(function StatusCard({ store }: { store: EmbeddedEditorStore }) {
   const setupRequired = store.status === "missing";
@@ -61,7 +61,7 @@ export const EmbeddedEditorPane = observer(function EmbeddedEditorPane({
   store: EmbeddedEditorStore;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const theme = useResolvedColorTheme();
+  const theme = useEditorColorTheme();
   const ready = store.nativeViewReady;
   useEffect(() => {
     if (ready) void store.updateTheme(theme);

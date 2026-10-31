@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { SpeechRecognitionSettings, TextProcessingMode } from "../dictation/dictation-data";
 import { ProjectIcon, SessionLabel } from "../application/application-data";
 import { WorktreeRecord } from "../worktrees/managed-worktree-data";
+import { ImportedColorTheme } from "../themes/color-theme";
 
 export const DEFAULT_CAPTURE_SHORTCUT = "Mod+Shift+6";
 export const DEFAULT_CAPTURE_MAX_DIMENSION = 2048;
@@ -57,6 +58,7 @@ export const CaptureRouting = Schema.Struct({
   cakeChats: Schema.Array(CaptureSessionOption),
   appearance: Schema.Struct({
     theme: Schema.Literals(["system", "light", "dark"]),
+    importedTheme: Schema.optional(ImportedColorTheme),
     projectAvatarsEnabled: Schema.Boolean,
     sessionAvatarsEnabled: Schema.Boolean,
     sidebarCharactersEnabled: Schema.Boolean,

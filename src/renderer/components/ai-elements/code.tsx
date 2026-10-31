@@ -1,6 +1,7 @@
 /* Inspired by Vercel AI Elements code-block.tsx at 0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b (Apache-2.0). */
 import { useEffect, useState, type CSSProperties } from "react";
 import { syntaxHighlighter } from "@/lib/syntax-highlighter";
+import { useEditorColorTheme } from "@/lib/resolved-color-theme";
 
 type HighlightResult = ReturnType<typeof syntaxHighlighter.highlight>;
 export type HighlightTokens = NonNullable<HighlightResult>["tokens"];
@@ -76,6 +77,7 @@ function highlightSource(path: string, source: string, apply: (tokens: Highlight
 }
 
 export function useHighlightedSource(path: string, source: string, enabled = true) {
+  const theme = useEditorColorTheme();
   const [tokens, setTokens] = useState<HighlightTokens>();
   useEffect(() => {
     let active = true;
@@ -87,6 +89,6 @@ export function useHighlightedSource(path: string, source: string, enabled = tru
     return () => {
       active = false;
     };
-  }, [enabled, path, source]);
+  }, [enabled, path, source, theme]);
   return tokens;
 }

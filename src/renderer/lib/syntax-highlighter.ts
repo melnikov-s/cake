@@ -1,4 +1,5 @@
 import type { CodeHighlighterPlugin } from "streamdown";
+import { currentEditorTheme } from "./resolved-color-theme";
 import {
   maxHighlightCharacters,
   supportedSyntaxLanguages,
@@ -184,7 +185,9 @@ export const syntaxHighlighter = {
     if (options.code.length > maxHighlightCharacters || !isSupportedLanguage(language))
       return plainSyntaxHighlight(options.code);
 
-    const key = `${language}\u0000${syntaxThemes[0]}\u0000${syntaxThemes[1]}\u0000${options.code}`;
+    const selected = currentEditorTheme();
+    const theme = selected === "light" || selected === "dark" ? undefined : selected;
+    const key = `${language}\u0000${theme?.id ?? syntaxThemes.join(":")}\u0000${options.code}`;
     const cached = cachedResult(key);
     if (cached) return cached;
 
@@ -207,7 +210,9 @@ export const syntaxHighlighter = {
     };
     pendingByKey.set(key, pending);
     pendingById.set(id, pending);
-    worker.postMessage({ id, code: options.code, language } satisfies SyntaxHighlightRequest);
+    const request: SyntaxHighlightRequest = { id, code: options.code, language };
+    if (theme) request.theme = theme;
+    worker.postMessage(request);
     return null;
   },
 } satisfies CodeHighlighterPlugin;
