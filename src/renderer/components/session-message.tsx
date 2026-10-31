@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { MarkdownLink, useMarkdownLinkActions } from "./ai-elements/markdown";
+import { Message } from "./ai-elements/message";
 import type { CrossSessionBadge } from "../lib/cross-session-presentation";
 import { markdownSummary } from "../lib/message-summary";
 import { cn } from "../lib/utils";
@@ -10,10 +11,9 @@ import { ResultTodoDone, ResultTodoTitles, type ResultTodoLink } from "./result-
 import { badgeVariants } from "./ui/badge";
 import { Button } from "./ui/button";
 import { ChevronIcon } from "./ui/icons";
-import { FullscreenButton } from "./ui/fullscreen-button";
 import { FullscreenSurface } from "./fullscreen-surface";
 
-/** Incoming session content with independent title navigation and disclosure. */
+/** An assistant message with source navigation, disclosure and linked to-dos. */
 export const SessionMessage = observer(function SessionMessage({
   source,
   title: explicitTitle,
@@ -84,18 +84,28 @@ export const SessionMessage = observer(function SessionMessage({
       </footer>
     );
   return (
-    <section
+    <Message
+      role="region"
       data-slot="session-message"
       aria-label={
         relation === "notice" ? "Notice about another session" : "Message from another session"
       }
-      className="group/session-message min-w-0"
+      actions={
+        <>
+          {messageActions}
+          {sources[0] && <MessageSourceCopy store={sources[0]} />}
+        </>
+      }
+      fullscreen={{
+        label: `View message fullscreen: ${title}`,
+        onClick: () => setFullscreen(true),
+      }}
     >
       <div
         data-slot="session-message-card"
         className="min-w-0 rounded-lg border border-border bg-card text-card-foreground"
       >
-        <div className="flex min-h-10 min-w-0 items-center gap-1 py-1 pr-1.5 pl-1">
+        <div className="flex min-h-10 min-w-0 items-center gap-1 py-1 pr-10 pl-1">
           <div
             data-slot="response-header"
             className="relative flex h-8 min-w-0 flex-1 items-center"
@@ -169,19 +179,6 @@ export const SessionMessage = observer(function SessionMessage({
           </>
         )}
       </div>
-      <div
-        data-slot="message-actions"
-        aria-label="Message actions"
-        className="mt-1.5 flex min-h-7 items-center gap-1 opacity-0 transition-opacity group-hover/session-message:opacity-100 group-focus-within/session-message:opacity-100"
-      >
-        {messageActions}
-        {sources[0] && <MessageSourceCopy store={sources[0]} />}
-        <FullscreenButton
-          className="shrink-0 translate-x-0 translate-y-0"
-          label={`View message fullscreen: ${title}`}
-          onClick={() => setFullscreen(true)}
-        />
-      </div>
       {fullscreen && (
         <FullscreenSurface
           eyebrow="Message"
@@ -201,6 +198,6 @@ export const SessionMessage = observer(function SessionMessage({
           </div>
         </FullscreenSurface>
       )}
-    </section>
+    </Message>
   );
 });

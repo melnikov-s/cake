@@ -139,7 +139,7 @@ supplies the addressable session identity. Original-message previews reuse `Full
 [`MessageSourceBody`](../../src/renderer/components/message-source-body.tsx) renders an
 exact original with shared Markdown and pagination inside a `SessionMessage` card.
 Consolidated notifications, receipt-only session cards and linked originals use this
-same viewer; the card owns the title, expansion, copy action and "Full response" link.
+same viewer; the card owns the linked title, expansion and copy action.
 A delivered message that has its own text shows the original behind a nested
 `OriginalResponse` disclosure instead. Opening reads the exact source on demand;
 loading, unavailable and empty states appear in the body. The transcript scroll owner
@@ -163,17 +163,22 @@ a sent image hands its pixels to the saved reference, older ones load for displa
 collision-aware session suffix while retaining the canonical UUID in its link and
 destination tooltip. Use it for identity metadata where the session context is clear.
 
-[`SessionMessage`](../../src/renderer/components/session-message.tsx) presents every
-message from another session (replies, requests, notices, worker reports, batch notes
+[`Message`](../../src/renderer/components/ai-elements/message.tsx) owns the shared
+message frame, hover/focus action row below the content, and top-right fullscreen
+control. Ordinary assistant replies and incoming linked responses reuse this chrome.
+
+[`SessionMessage`](../../src/renderer/components/session-message.tsx) specializes that
+assistant-message frame for every message from another session (replies, requests, notices, worker reports, batch notes
 and exact originals) as one summary row: chevron, the sender's title (shown once, never
 repeated in the body), status badges, a one-line preview while collapsed, and an
 icon-only Done checkbox per linked to-do whose tooltip names the to-do. Expanding shows
 the whole message with no height cap or nested scroller, then a footer with the linked
-to-do titles and a link to the original ("Full response" for an exact message, otherwise
-"Open conversation"). Delivered inline messages start expanded so immediate prompts
+to-do titles. The sender's title links to the exact original when available, otherwise
+the source conversation; title navigation is independent of disclosure.
+Delivered inline messages start expanded so immediate prompts
 remain readable; exact originals start collapsed and load lazily. Done checkboxes stay
-in the row, so associations remain visible when collapsed. The row's `FullscreenButton`
-opens the same content in `FullscreenSurface` with a scrolling reader. Exact references
+in the row, so associations remain visible when collapsed. The shared top-right fullscreen
+control opens the same content in `FullscreenSurface` with a scrolling reader. Exact references
 load all source pages in an independent reader, preserving the inline disclosure and
 current page when fullscreen closes. Markdown, images, source links and to-do actions
 remain available in fullscreen.

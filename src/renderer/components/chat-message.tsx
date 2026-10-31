@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type MouseEventHandler,
   type ReactNode,
   type RefObject,
@@ -17,7 +18,6 @@ import { cn } from "@/lib/utils";
 import { rangeAtOffsets, useMessageHighlights } from "@/lib/message-highlights";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { FullscreenMessage } from "@/components/fullscreen-message";
-import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { SessionMessage } from "@/components/session-message";
 import { IconButton } from "@/components/ui/icon-button";
 import {
@@ -86,6 +86,7 @@ export const ChatTextMessage = forwardRef<
     contentRef?: RefObject<HTMLDivElement | null>;
     children?: ReactNode;
     messageActions?: ReactNode;
+    fullscreen?: ComponentProps<typeof Message>["fullscreen"];
     onMouseEnter?: MouseEventHandler<HTMLElement>;
     onMouseLeave?: MouseEventHandler<HTMLElement>;
     onOpenSourceLocation?(location: SourceLocation): void;
@@ -104,6 +105,7 @@ export const ChatTextMessage = forwardRef<
     contentRef,
     children,
     messageActions,
+    fullscreen,
     onMouseEnter,
     onMouseLeave,
     onOpenSourceLocation,
@@ -179,10 +181,12 @@ export const ChatTextMessage = forwardRef<
       aria-label={report ? subagentReportHeading(report) : undefined}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
+      actions={!part.crossSession && !report && !agentSource ? messageActions : undefined}
+      fullscreen={fullscreen}
       className={cn(
         assistant || report || part.crossSession || agentSource
-          ? "group/msg relative mr-auto w-full"
-          : "group/msg relative ml-auto w-[min(88%,42rem)]",
+          ? "mr-auto w-full"
+          : "ml-auto w-[min(88%,42rem)]",
       )}
     >
       {!assistant &&
@@ -219,15 +223,6 @@ export const ChatTextMessage = forwardRef<
         </SessionMessage>
       ) : (
         content
-      )}
-      {!part.crossSession && !report && !agentSource && messageActions && (
-        <div
-          data-slot="message-actions"
-          className="mt-1.5 flex min-h-7 items-center gap-1 opacity-0 group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 transition-opacity"
-          aria-label="Message actions"
-        >
-          {messageActions}
-        </div>
       )}
       {children}
     </Message>
@@ -497,6 +492,11 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
             }
       }
       sources={sources}
+      fullscreen={
+        behavior.showAssistantFullscreen !== false && canOpenFullscreen
+          ? { label: "View response fullscreen", onClick: openFullscreen }
+          : undefined
+      }
       messageActions={
         part.status !== "streaming" && !presentation?.sourceResponse ? (
           <>
@@ -531,13 +531,6 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
         ) : undefined
       }
     >
-      {behavior.showAssistantFullscreen !== false && canOpenFullscreen && (
-        <FullscreenButton
-          className="absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-md bg-transparent p-0 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/msg:opacity-100 group-focus-within/msg:opacity-100"
-          label="View response fullscreen"
-          onClick={openFullscreen}
-        />
-      )}
       {commentThreads.map(
         (thread, index) =>
           markerPositions[thread.id] && (

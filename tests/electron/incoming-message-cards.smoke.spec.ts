@@ -67,17 +67,32 @@ for (const theme of ["dark", "light"] as const)
       );
       const actions = source.locator('[data-slot="message-actions"]');
       const copy = actions.getByRole("button", { name: "Copy message", exact: true });
-      const fullscreen = actions.getByRole("button", { name: /^View message fullscreen:/ });
-      await expect(actions.getByRole("button")).toHaveCount(2);
-      const cardBox = (await source.locator('[data-slot="session-message-card"]').boundingBox())!;
-      expect((await actions.boundingBox())!.y).toBeGreaterThanOrEqual(cardBox.y + cardBox.height);
+      const fullscreen = source.getByRole("button", { name: /^View message fullscreen:/ });
+      await expect(actions.getByRole("button")).toHaveCount(1);
+      const geometry = await source.evaluate((element) => {
+        const box = (selector: string) =>
+          element.querySelector(selector)!.getBoundingClientRect().toJSON();
+        return {
+          card: box('[data-slot="session-message-card"]'),
+          actions: box('[data-slot="message-actions"]'),
+          fullscreen: box(".fullscreen-trigger"),
+          header: box('[data-slot="response-disclosure"]'),
+        };
+      });
+      expect(geometry.actions.y).toBeGreaterThanOrEqual(geometry.card.bottom);
+      expect(Math.abs(geometry.fullscreen.y - geometry.card.y)).toBeLessThan(10);
+      expect(Math.abs(geometry.card.right - geometry.fullscreen.right)).toBeLessThan(10);
+      expect(geometry.header.right).toBeLessThan(geometry.fullscreen.x);
       await sourceToggle.evaluate((button) => button.blur());
       await page.mouse.move(1, 1);
       await expect(actions).toHaveCSS("opacity", "0");
+      await expect(fullscreen).toHaveCSS("opacity", "0");
       await source.hover();
       await expect(actions).toHaveCSS("opacity", "1");
+      await expect(fullscreen).toHaveCSS("opacity", "1");
       await page.mouse.move(1, 1);
       await expect(actions).toHaveCSS("opacity", "0");
+      await expect(fullscreen).toHaveCSS("opacity", "0");
       await copy.focus();
       await expect(copy).toBeFocused();
       await expect(actions).toHaveCSS("opacity", "1");
@@ -89,6 +104,7 @@ for (const theme of ["dark", "light"] as const)
         "const ready = true;",
       );
       await fullscreen.focus();
+      await expect(fullscreen).toHaveCSS("opacity", "1");
       await fullscreen.press("Enter");
       const reader = page.getByRole("dialog", { name: "Fix the flaky build", exact: true });
       await expect(reader.getByRole("heading", { name: "Build fixed" })).toBeVisible();
