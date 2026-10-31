@@ -3,7 +3,7 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
-import { CautionIcon, NetworkIcon, NetworkOffIcon, ReloadIcon } from "./ui/icons";
+import { CautionIcon, NetworkIcon, ReloadIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
 import { cn } from "../lib/utils";
 import { QrCode } from "./ui/qr-code";
@@ -42,10 +42,8 @@ export const BrowserSharingMenu = observer(function BrowserSharingMenu() {
           </span>
         ) : error || sharing.state?.status === "failed" ? (
           <CautionIcon />
-        ) : sharing.enabled ? (
-          <NetworkIcon />
         ) : (
-          <NetworkOffIcon />
+          <NetworkIcon />
         )}
       </PopoverIconTrigger>
       <PopoverContent align="end" className="grid w-72 gap-3" aria-label="Browser sharing">

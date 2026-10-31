@@ -1,6 +1,8 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { renderToStaticMarkup } from "react-dom/server";
+import { NetworkIcon } from "../../../src/renderer/components/ui/icons";
 import { StoreProvider } from "r-state-tree/react";
 import { createStore, mount, updateStore } from "r-state-tree";
 import { DesktopConnectionStore } from "../../../src/renderer/stores/DesktopConnectionStore";
@@ -49,6 +51,10 @@ const offline = () => screen.getByRole("button", { name: "Browser sharing: Offli
 it("starts from the topbar with saved preferences, prevents repeated starts and shares Settings state", async () => {
   using f = setup();
   expect(f.configure).not.toHaveBeenCalled();
+  const connectionIcon = renderToStaticMarkup(<NetworkIcon />);
+  expect(offline().querySelector("svg")?.outerHTML).toBe(connectionIcon);
+  expect(offline().classList.contains("text-muted-foreground")).toBe(true);
+  expect(offline().classList.contains("text-success")).toBe(false);
   await f.user.click(offline());
   expect(screen.getByRole("dialog", { name: "Browser sharing" })).toBeDefined();
   expect(screen.getByText(/Anyone who can connect has full host access/)).toBeDefined();
@@ -74,13 +80,17 @@ it("starts from the topbar with saved preferences, prevents repeated starts and 
   await act(async () => {
     finish(state("serving"));
   });
-  expect(await screen.findByRole("button", { name: "Browser sharing: Online" })).toBeDefined();
+  const online = await screen.findByRole("button", { name: "Browser sharing: Online" });
+  expect(online.querySelector("svg")?.outerHTML).toBe(connectionIcon);
+  expect(online.classList.contains("text-success")).toBe(true);
   expect(
     screen.getByRole("switch", { name: "Enable browser sharing" }).getAttribute("aria-checked"),
   ).toBe("true");
   expect(screen.getByText("https://cake.tailnet.ts.net/")).toBeDefined();
   await f.user.click(screen.getByRole("button", { name: "Go offline" }));
   await waitFor(() => expect(offline()).toBeDefined());
+  expect(offline().querySelector("svg")?.outerHTML).toBe(connectionIcon);
+  expect(offline().classList.contains("text-success")).toBe(false);
   expect(f.configure).toHaveBeenLastCalledWith(
     { enabled: false, ...preferences },
     expect.anything(),
