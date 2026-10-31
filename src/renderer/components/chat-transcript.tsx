@@ -42,7 +42,10 @@ import { ChatTranscriptItem } from "./chat-transcript-item";
 import { transcriptItemKeys } from "./chat-transcript-items";
 import { transcriptTaskSections } from "../lib/transcript-task-sections";
 import { resultTodoOrigin, referenceTodoOrigin } from "../lib/result-todo-origin";
-import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  isCakeChatSessionId,
+  cakeChatSideChatParentId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { useArrivals } from "../hooks/use-arrivals";
 import {
   createTranscriptScrollOwner,
@@ -179,7 +182,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   ];
   const itemKeys = transcriptItemKeys(items);
   const taskSections =
-    isCakeChatSessionId(store.id) && behavior.todos
+    (isCakeChatSessionId(store.id) || cakeChatSideChatParentId(store.id)) && behavior.todos
       ? transcriptTaskSections(items, (item) => {
           const origin =
             item.kind === "tool" && item.messageReference

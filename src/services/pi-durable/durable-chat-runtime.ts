@@ -51,7 +51,9 @@ import { subagentCompletionMessage } from "../../contracts/subagents/subagent-re
 import { durableModels } from "./durable-models";
 import type { RequestInspection } from "./request-inspection";
 import { openDurableChatEngine } from "./durable-chat-engine";
-import { TaskAttributionDoc } from "./durable-task-attribution";
+import { TaskAttributionDoc, TASK_ATTRIBUTION_INSTRUCTIONS } from "./durable-task-attribution";
+import { isAutomaticInput } from "../pi/runtime/internal-input-projection";
+import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { taskAttributionOperations } from "./durable-task-attribution-operations";
 import { createDurableSideChats, type DurableSideChats } from "./durable-side-chats";
 import { readDurableActiveTools, readDurableOriginalPage } from "./durable-chat-history";
@@ -153,6 +155,7 @@ export async function createDurableCakeChatRuntime(
       options.additionalSystemPrompt,
       options.cakeChatSystemPrompt?.(),
       commands.instructions(),
+      options.cakeChatTodos ? TASK_ATTRIBUTION_INSTRUCTIONS : undefined,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -175,14 +178,6 @@ export async function createDurableCakeChatRuntime(
     () => fastMode,
     inspection,
     options.sessionReferences,
-    sessionId,
-  );
-  // Utility work shares credentials/catalog, not the conversation's Fast-mode billing tier.
-  const utilityModels = durableModels(
-    catalogRuntime,
-    () => false,
-    inspection,
-    undefined,
     sessionId,
   );
   const available = await catalogRuntime.getAvailable();
@@ -463,8 +458,6 @@ export async function createDurableCakeChatRuntime(
       preferences.preferences().contextLimitTokens ?? DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS,
     onInputConsumed: options.onCakeChatInputConsumed,
     todos: options.cakeChatTodos,
-    utilityModel: options.utilityModel,
-    utilityModels,
     memory: {
       budget: () => preferences.preferences().memoryViewBytes,
       summarize: (input) =>
@@ -591,6 +584,12 @@ export async function createDurableCakeChatRuntime(
           internal,
           { mode: presentationMode ?? previous.presentation, previousMode: previous.presentation },
           previousArtifactTarget,
+          options.cakeChatTodos &&
+            !subagentReport &&
+            !isAutomaticInput(internal) &&
+            !parseCrossSessionMessage(text)
+            ? engine.root.id
+            : undefined,
         ),
       },
       // Reference attachments have no image parts.
@@ -926,7 +925,6 @@ export async function createDurableCakeChatRuntime(
     async refreshModels() {
       await catalogRuntime.refresh();
       models.synchronizeProviders();
-      utilityModels.synchronizeProviders();
       modelOptions = await projectModels();
       publish();
     },

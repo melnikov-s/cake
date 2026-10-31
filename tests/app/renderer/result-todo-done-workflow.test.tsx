@@ -8,6 +8,7 @@ import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, expect, it, vi } from "vitest";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createRegistry, MemoryStorage } from "@earendil-works/pi-durable";
+import { createAssistantMessageEventStream } from "@earendil-works/pi-durable-ai";
 import { openDurableChatEngine } from "../../../src/services/pi-durable/durable-chat-engine";
 import { TaskAttributionDoc } from "../../../src/services/pi-durable/durable-task-attribution";
 import { taskAttributionOperations } from "../../../src/services/pi-durable/durable-task-attribution-operations";
@@ -327,12 +328,37 @@ it.each(chats)(
     await using f = await renderChat(kind);
     const A = f.items.workerTodo.id;
     const B = f.items.sessionTodo.id;
-    // Exercise real admission envelopes, background tasks, durable metadata and history
-    // projection. Only the external model is fake; taskTodoId is never hand-assembled.
-    const models = durableModels(() =>
-      durableAnswer("Research options and Fix the build are names, not task associations."),
-    );
+    // Real admission, main-response stream, durable metadata and history projection.
+    const models = durableModels();
     const classify = vi.spyOn(models.models, "completeSimple");
+    let currentDecision: string | null = A;
+    let responseGate: Promise<void> | undefined;
+    let requestStarted = () => {};
+    vi.mocked(models.models.streamSimple).mockImplementation((_model, request) => {
+      models.requests.push(structuredClone(request));
+      const stream = createAssistantMessageEventStream();
+      const user = request.messages.findLast((message) => message.role === "user");
+      const wire =
+        user?.role === "user"
+          ? typeof user.content === "string"
+            ? user.content
+            : user.content
+                .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                .join("\n")
+          : "";
+      const id = [...wire.matchAll(/cake-turn id="([^"]+)"/g)].at(-1)?.[1];
+      if (!id) throw new Error("Missing current turn identity");
+      const message = durableAnswer(
+        "Research options and Fix the build are names, not task associations." +
+          `<cake-todo>${JSON.stringify({ turnId: id, todoId: currentDecision })}</cake-todo>`,
+      );
+      void (async () => {
+        requestStarted();
+        await responseGate;
+        stream.push({ type: "done", reason: "stop", message });
+      })();
+      return stream;
+    });
     const todos = await f.list();
     const engine = await openDurableChatEngine({
       storage: new MemoryStorage(),
@@ -341,7 +367,6 @@ it.each(chats)(
       agent: { model: { provider: "fixture", modelId: "fixture" } },
       memory: { budget: () => 4000, summarize: async () => "memory" },
       todos: () => todos.items,
-      utilityModel: () => ({ provider: "fixture", modelId: "fixture", thinkingLevel: "off" }),
       onChanged: () => {},
       onReport: (error) => {
         throw error;
@@ -388,24 +413,37 @@ it.each(chats)(
                 releaseDecision = resolve;
               })
             : undefined;
-        classify.mockImplementationOnce(async () => {
-          await pendingDecision;
-          return durableAnswer(JSON.stringify({ todoId: decision }));
+        currentDecision = decision;
+        responseGate = pendingDecision;
+        const started = new Promise<void>((resolve) => {
+          requestStarted = resolve;
         });
         const submission = await engine.root.submit(
           {
             type: "input",
-            content: durableInputText(text, [], false, false, undefined, undefined, {
-              _tag: "UserWithReminders",
-              text: prepared.text,
-              userText: text,
-              notices: [],
-            }),
+            content: durableInputText(
+              prepared.text,
+              [],
+              false,
+              false,
+              undefined,
+              undefined,
+              {
+                _tag: "UserWithReminders",
+                text: prepared.text,
+                userText: text,
+                notices: [],
+              },
+              undefined,
+              false,
+              engine.root.id,
+            ),
           },
           BACKGROUND_CONTEXT,
         );
         await f.commit(projectTodos.consumeSelection(prepared));
-        await submission.wait(BACKGROUND_CONTEXT);
+        await started;
+        if (!pendingDecision) await submission.wait(BACKGROUND_CONTEXT);
         if (pendingDecision) {
           try {
             const pending = await engine.harness.snapshot(
@@ -432,25 +470,17 @@ it.each(chats)(
                 f.view.container.querySelectorAll('[data-slot="task-section-label"]'),
               ).toHaveLength(1),
             );
-            // The real history → Message Model → transcript path must not break
-            // the rail just because its utility-model decision is still pending.
+            // A new unresolved input must not extend the previous task's rail.
             const followup = Array.from(
               f.view.container.querySelectorAll('[data-slot="transcript-item"]'),
             ).find((row) => row.textContent?.includes(text));
             expect(followup).toBeDefined();
-            expect(followup!.querySelector('[data-slot="margin-rail"]')).not.toBeNull();
+            expect(followup!.querySelector('[data-slot="margin-rail"]')).toBeNull();
           } finally {
             releaseDecision?.();
           }
         }
-        const tasks = await engine.root.commit(
-          (tx) =>
-            tx.scanTasks({ conversationId: engine.root.id, kind: "cake.task-attribution" }, 100),
-          BACKGROUND_CONTEXT,
-        );
-        await Promise.all(
-          tasks.items.map((task) => engine.harness.waitForTask(task.id, BACKGROUND_CONTEXT)),
-        );
+        await submission.wait(BACKGROUND_CONTEXT);
         const doc = await engine.harness.snapshot(
           TaskAttributionDoc,
           engine.root.id,
@@ -473,29 +503,8 @@ it.each(chats)(
           ).toHaveLength([1, 1, 2, 3, 3][index]!),
         );
       }
-      expect(classify).toHaveBeenCalledTimes(5);
-      // A selection snapshot lives in UserWithReminders, not in displayed user prose.
-      const lastInput = (index: number) => {
-        const content = classify.mock.calls[index]?.[1].messages.find(
-          (message) => message.role === "user",
-        )?.content;
-        if (typeof content !== "string") throw new Error("Missing attribution input");
-        return JSON.parse(content).messages.at(-1);
-      };
-      expect(lastInput(0)).toMatchObject({
-        text: "Discuss this",
-        selectedTask: expect.stringContaining('Selected to-do: "Research options".'),
-      });
-      expect(lastInput(1)).toMatchObject({ text: "What about follow-ups?" });
-      expect(lastInput(1).selectedTask).toBeUndefined();
-      expect(lastInput(2)).toMatchObject({
-        text: "Switch topics",
-        selectedTask: expect.stringContaining('Selected to-do: "Fix the build".'),
-      });
-      expect(lastInput(3)).toMatchObject({
-        text: "Back to this",
-        selectedTask: expect.stringContaining('Selected to-do: "Research options".'),
-      });
+      expect(classify).not.toHaveBeenCalled();
+      expect(models.requests).toHaveLength(5);
       expect(
         attributed
           .filter((part) => part.kind === "text" && part.role === "user")

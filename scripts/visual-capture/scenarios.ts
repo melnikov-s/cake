@@ -2854,6 +2854,42 @@ const pdfTaskSwitch: VisualCaptureScenario = {
   region: (page) => page.locator('[data-slot="side-chat-layout"]'),
 };
 
+const pendingTaskTurn: VisualCaptureScenario = {
+  name: "project-chat-pending-task-turn",
+  description: "An unresolved human topic switch does not inherit the preceding task rail",
+  states: ["default"],
+  async seed(paths, theme) {
+    await pdfTaskSwitch.seed(paths, theme);
+    const hash = createHash("sha256").update(paths.project).digest("hex");
+    const storage = await openNodeSqliteStorage(
+      join(paths.cakeHome, "pi", "project-chats", hash, "coordinator.sqlite"),
+    );
+    const harness = await Harness.open(
+      storage,
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    try {
+      const root = await harness.root(BACKGROUND_CONTEXT);
+      const latest = (await root.entries({}, 100, undefined, BACKGROUND_CONTEXT)).items.find(
+        (entry) => entry.kind === "pi.user",
+      );
+      if (!latest) throw new Error("Missing pending human turn");
+      await root.commit(async (tx) => {
+        (await tx.doc(TaskAttributionDoc, root.id)).inputs[String(latest.id)] = {
+          pending: true,
+          todoId: null,
+        };
+      }, BACKGROUND_CONTEXT);
+    } finally {
+      await harness.close(BACKGROUND_CONTEXT);
+      await storage.close(BACKGROUND_CONTEXT);
+    }
+  },
+  prepare: (page) => pdfTaskSwitch.prepare(page, "default"),
+  region: (page) => page.locator('[data-slot="side-chat-layout"]'),
+};
+
 const activeSidebarSessions: VisualCaptureScenario = {
   name: "active-sidebar-sessions",
   description:
@@ -6028,6 +6064,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   projectChatTodos,
   projectChatAttention,
   projectChatTaskRails,
+  pendingTaskTurn,
   pdfTaskSwitch,
   activeSidebarSessions,
   dictationInputScenario,

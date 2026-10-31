@@ -503,21 +503,33 @@ is a refactoring signal, not precedent.
   baseline in Project Chat’s live system context also survives recreation/reset.
   Permanent Project Chat and Cake Chat group contiguous related conversation with a margin
   rail, labeling task switches rather than every message. A → B → A labels A again on return.
-  Each consumed human input schedules one SDK-owned background attribution task using the
-  configured utility model immediately, independently of the conversational response.
-  Selection is evidence, never an automatic assignment. The initial decision stays pending until
-  the response settles, and is reconsidered only if new to-do IDs appeared during it. Even a
-  valid existing ID can be the wrong match before the matching task is created. Without new
-  candidates, the initial decision is preserved without another model call.
-  Missing utility configuration is reported without a conversational-model fallback.
-  The request selects an existing to-do or null; it never creates tasks or changes agent context,
-  and does not block the response. The prior human turn's settled attribution is evidence for
-  model-decided continuity: related short replies stay with their discussion, while genuine
-  task/scope switches choose another item or null (for example PDF resizing → managing all
-  completed sessions). No topic-matching heuristics or sticky task fallback override decisions.
-  Identity-only attribution lives beside Durable originals, not in another transcript. Explicitly
-  pending attribution provisionally retains the current presentation section; a settled null,
-  invalid or unavailable attribution ends it and leaves the turn ungrouped.
+  Newly admitted human inputs start unresolved and ungrouped, including while queued or
+  streaming; they never optimistically extend the preceding heading, status or rail.
+  This also applies to shared-list side chats forked from permanent chats, not ordinary
+  coding-session task management. A stable instruction asks the main conversational agent
+  to append a hidden `<cake-todo>` JSON trailer to its normal final response, with the exact
+  admitted `cake-turn` UUID and an open chat-scoped `todoId` or explicit JSON null.
+  The admission token lives in Durable's existing input envelope and is exposed once on
+  that input at the provider boundary. There is no utility attribution model, background
+  classifier, classification-only tool round, extra inference, duplicate history payload
+  or per-turn full-list fetch. Existing baseline/reminders and normal creation-tool results
+  supply identities, including to-dos created during the response.
+  Selection is evidence, never an automatic assignment. Related follow-ups continue; genuine
+  topic switches choose another identity or none, and returning to an earlier task labels it
+  again. The provider-boundary adapter removes complete and split/incomplete trailers from
+  live and persisted assistant text, validates successful final decisions against the exact
+  consumed human inputs and current open list, and commits identity-only metadata beside
+  Durable originals. Duplicate, invalid, completed, missing, truncated, interrupted and stale
+  decisions remain unresolved, distinct from explicit none. Settled metadata and manual
+  corrections cannot be overwritten by later or replayed results. Reload preserves both
+  unresolved and settled states; old settled associations are not reclassified.
+  The static instruction changes the system prefix once on deployment; per-input UUID
+  markers are stable across tool rounds and later requests. Trailers add generation tokens.
+  Removing a trailer from subsequent context may invalidate the cached suffix beginning
+  there (hence metadata is requested at the end, not before prose); no zero-latency or
+  zero-cache-impact guarantee is made. Local preparation reads only the active run's
+  submissions/originals, not dialogue history, and performs metadata transactions without
+  creating scheduled work.
   For explicit user-requested historical grouping repairs, the owning permanent chat exposes
   `messages.set-todo` with the original user entry ID and an existing chat-scoped to-do ID (or
   null). It updates settled identity-only attribution, never originals or the to-do itself;

@@ -1,4 +1,5 @@
 import { copyJson } from "@earendil-works/chord";
+import { TaskAttributionDoc } from "./durable-task-attribution";
 import type { CakeOperationRegistry } from "../pi/runtime/cake-operation-registry";
 import type { PresetContext } from "../../contracts/model-presets/preset-context";
 import { PresetContextDoc } from "./durable-preset-context";
@@ -214,6 +215,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
             await readDurableActiveTools(tx, conversation.id),
             (await tx.doc(UserMessagePresentationDoc, conversation.id)).overrides,
             await readDurableActiveInterviews(tx, conversation.id),
+            (await tx.doc(TaskAttributionDoc, conversation.id)).inputs,
           ),
         BACKGROUND_CONTEXT,
       );
@@ -280,6 +282,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
             await readDurableActiveTools(tx, conversation.id),
             (await tx.doc(UserMessagePresentationDoc, conversation.id)).overrides,
             await readDurableActiveInterviews(tx, conversation.id),
+            (await tx.doc(TaskAttributionDoc, conversation.id)).inputs,
           );
           const live = await tx.doc(LiveDoc, conversation.id);
           const agent = await tx.doc(AgentDoc, conversation.id);
@@ -380,7 +383,21 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           {
             type: "input",
             content: [
-              { type: "text", text: durableInputText(text, attachments, markdown, busy) },
+              {
+                type: "text",
+                text: durableInputText(
+                  text,
+                  attachments,
+                  markdown,
+                  busy,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  false,
+                  host.todoOperations ? conversation.id : undefined,
+                ),
+              },
               ...(first
                 ? [
                     {
@@ -520,6 +537,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
             await readDurableActiveTools(tx, conversation.id),
             (await tx.doc(UserMessagePresentationDoc, conversation.id)).overrides,
             await readDurableActiveInterviews(tx, conversation.id),
+            (await tx.doc(TaskAttributionDoc, conversation.id)).inputs,
           ),
         BACKGROUND_CONTEXT,
       );

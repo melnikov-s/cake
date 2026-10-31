@@ -1,4 +1,5 @@
 import { Option, Schema } from "effect";
+import { randomUUID } from "node:crypto";
 import { artifactTargetFromReminder } from "../../contracts/artifacts/artifact-presentation-context";
 import { InternalInput, withoutPassiveNotices } from "../../contracts/conversations/internal-input";
 import {
@@ -42,6 +43,12 @@ const Presentation = Schema.Struct({
   responseMode: Schema.optionalKey(ConversationResponseMode),
   presentationMode: Schema.optionalKey(ProjectSessionPresentationMode),
   artifactTarget: Schema.optionalKey(Schema.Boolean),
+  attribution: Schema.optionalKey(
+    Schema.Struct({
+      conversationId: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      turnId: Schema.String.check(Schema.isUUID(4)),
+    }),
+  ),
 });
 const prefix = /^<cake-input-presentation>([^\n]*)<\/cake-input-presentation>\n/;
 
@@ -69,6 +76,7 @@ export function durableInputText(
     readonly previousMode: ProjectSessionPresentationMode;
   },
   previousArtifactTarget = false,
+  attributionConversationId?: number,
 ) {
   const body = `${promptText(text, [...attachments])}${subagentReport ? `\n\nWorker provenance: ${JSON.stringify(subagentReport)}` : ""}`;
   const presented = presentation
@@ -77,6 +85,11 @@ export function durableInputText(
   const metadata = {
     internal,
     subagentReport,
+    ...(attributionConversationId === undefined
+      ? null
+      : {
+          attribution: { conversationId: attributionConversationId, turnId: randomUUID() },
+        }),
     textLength: text.length,
     textOffset: presented.length - body.length,
     markdown,
@@ -101,6 +114,7 @@ export function durableInputPresentation(value: string) {
       const textOffset = decoded.value.textOffset ?? 0;
       return {
         body,
+        attribution: decoded.value.attribution,
         subagentReport: decoded.value.subagentReport,
         internal: decoded.value.internal,
         text: body.slice(textOffset, textOffset + decoded.value.textLength),
@@ -123,6 +137,7 @@ export function durableInputPresentation(value: string) {
   // Synthetic memory/clock user blocks are ordinary SDK messages, not inputs.
   return {
     body: value,
+    attribution: undefined,
     text: value,
     textOffset: 0,
     markdown: false,
@@ -142,6 +157,7 @@ export function markDurableInputSteering(value: string, steering = true): string
   const input = durableInputPresentation(value);
   const metadata = {
     internal: input.internal,
+    attribution: input.attribution,
     subagentReport: input.subagentReport,
     textLength: input.text.length,
     textOffset: input.textOffset,
@@ -162,7 +178,10 @@ export function withoutDurableInputPresentation(
 ): Message {
   const body = (text: string) => {
     const input = durableInputPresentation(text);
-    return options?.display && input.subagentReport ? input.text : input.body;
+    if (options?.display) return input.subagentReport ? input.text : input.body;
+    return (
+      input.body + (input.attribution ? `\n<cake-turn id="${input.attribution.turnId}"/>` : "")
+    );
   };
   if (message.role !== "user") return message;
   return {

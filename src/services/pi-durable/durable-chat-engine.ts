@@ -33,13 +33,9 @@ import { Schema } from "effect";
 import { isContextOverflow } from "@earendil-works/pi-durable-ai/utils/overflow";
 import { anthropicCacheEstimate, durableCacheEvidence } from "./durable-cache-evidence";
 import { ChatMetadataDoc } from "./durable-chat-metadata";
-import { createTaskAttribution, TaskAttributionDoc } from "./durable-task-attribution";
+import { prepareTaskAttribution } from "./durable-task-attribution";
 import { durableInputPresentation } from "./durable-input-presentation";
-import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
-import { isAutomaticInput } from "../pi/runtime/internal-input-projection";
 import type { ProjectTodo } from "../../contracts/projects/project-todos";
-import type { UtilityModel } from "../../contracts/conversations/session-contract";
-import { defineExtension } from "@earendil-works/pi-durable";
 import { durableContextMetadata } from "./durable-context-metadata";
 import { createDurableChatMemory, type DurableMemoryOptions } from "./durable-chat-memory";
 import { withoutDurableInputPresentation } from "./durable-input-presentation";
@@ -127,24 +123,11 @@ export async function openDurableChatEngine(options: {
   onChanged(): void;
   onReport(error: unknown): void;
   onInputConsumed?(text: string, signal: AbortSignal): Promise<void>;
-  utilityModels?: Models;
   todos?(): readonly ProjectTodo[];
-  utilityModel?(): UtilityModel | undefined;
 }) {
   const closing = new AbortController();
   let root: Conversation;
   let memory: ReturnType<typeof createDurableChatMemory>;
-  const attribution = options.todos
-    ? createTaskAttribution({
-        models: options.utilityModels ?? options.models,
-        todos: options.todos,
-        utilityModel: options.utilityModel,
-      })
-    : undefined;
-  if (attribution)
-    options.registry.install(
-      defineExtension({ name: "cake-task-attribution", tasks: [attribution] }),
-    );
   let activity: CakeChatContextStatus["activity"];
   let contextRevision = 0;
   let compacting = false;
@@ -250,6 +233,32 @@ export async function openDurableChatEngine(options: {
           streamOptions?.sessionId !== undefined &&
           streamOptions.sessionId !== identity.sessionId
         ) {
+          const rawInput = request.messages.findLast((message) => message.role === "user");
+          const text =
+            rawInput?.role === "user"
+              ? typeof rawInput.content === "string"
+                ? rawInput.content
+                : rawInput.content
+                    .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                    .join("\n")
+              : "";
+          const target = durableInputPresentation(text).attribution;
+          // SAFETY: the input schema validates a nonnegative integer, Durable’s ConversationId representation.
+          // Also confirm the SDK provider identity before touching fork metadata.
+          const fork = target
+            ? await harness.conversation(target.conversationId as ConversationId, context)
+            : undefined;
+          const provider = fork ? await harness.snapshot(ProviderDoc, fork.id, context) : undefined;
+          const project =
+            fork && provider?.sessionId === streamOptions.sessionId && options.todos
+              ? await prepareTaskAttribution({
+                  conversation: fork,
+                  harness,
+                  storage: options.storage,
+                  signal,
+                  todos: options.todos,
+                })
+              : undefined;
           preparing = false;
           const source = options.models.streamSimple(
             model,
@@ -258,7 +267,7 @@ export async function openDurableChatEngine(options: {
             },
             { ...streamOptions, sessionId: identity.sessionId },
           );
-          for await (const event of source) stream.push(event);
+          for await (const event of source) stream.push(project ? await project(event) : event);
           return;
         }
         const live = await harness.snapshot(LiveDoc, root.id, context);
@@ -283,43 +292,6 @@ export async function openDurableChatEngine(options: {
               await options.onInputConsumed(text, signal);
             }
           }
-        const attributionRun = live?.run;
-        if (attribution && attributionRun) {
-          for (const id of attributionRun.inputs) {
-            const submission = await options.storage.submission(id, context);
-            if (submission?.status !== "placed") continue;
-            const entry = await options.storage.entry(root.id, submission.entry, context);
-            const user = entry?.entry.model?.find((message) => message.role === "user");
-            if (!user || user.role !== "user") continue;
-            const content =
-              typeof user.content === "string"
-                ? user.content
-                : user.content
-                    .flatMap((part) => (part.type === "text" ? [part.text] : []))
-                    .join("\n");
-            const input = durableInputPresentation(content);
-            // UserWithReminders still carries a human turn; only automatic deliveries are excluded.
-            if (
-              isAutomaticInput(input.internal) ||
-              input.subagentReport ||
-              parseCrossSessionMessage(input.text)
-            )
-              continue;
-            await root.commit(async (tx) => {
-              const doc = await tx.doc(TaskAttributionDoc, root.id);
-              if (doc.inputs[String(submission.entry)]) return;
-              doc.inputs[String(submission.entry)] = { pending: true, todoId: null };
-              await tx.createTask(
-                attribution,
-                {
-                  entryId: submission.entry,
-                  after: attributionRun.taskId,
-                },
-                { conversationId: root.id, ownership: { kind: "conversation" }, background: true },
-              );
-            }, context);
-          }
-        }
         let active = await root.context(context);
         const boundary = await Schema.decodeUnknownPromise(Boundary)(
           (await harness.snapshot(BoundaryDoc, root.id, context)) ?? { input: -1, marker: -1 },
@@ -492,6 +464,15 @@ export async function openDurableChatEngine(options: {
           // Read the committed head even on recovery of a request whose old cutoff predates
           // the reset. Tool rounds and emergency compactions remain ordinary active context.
           active = await root.context(context);
+          const project = options.todos
+            ? await prepareTaskAttribution({
+                conversation: root,
+                harness,
+                storage: options.storage,
+                signal,
+                todos: options.todos,
+              })
+            : undefined;
           const requestedAt = now();
           const evidence = durableCacheEvidence(model.api);
           preparing = false;
@@ -565,7 +546,7 @@ export async function openDurableChatEngine(options: {
                 policy.requestSystem = durableSystemFingerprint(active.messages);
               }, context);
             }
-            stream.push(event);
+            stream.push(project ? await project(event) : event);
           }
           if (!recover) break;
         }

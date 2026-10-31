@@ -97,7 +97,7 @@ it("uses known incoming associations once per switch and lets explicit human att
   ]);
 });
 
-it("keeps a pending follow-up in flow but honors settled continuation, switch, null and error decisions", () => {
+it("starts a pending follow-up ungrouped, then honors settled continuation, switch and null decisions", () => {
   const pending: UiPart = { ...user("follow-up"), taskAttributionPending: true };
   const model = Message.create(messageSnapshots([pending], "chat")[0]);
   const sections = () =>
@@ -109,15 +109,14 @@ it("keeps a pending follow-up in flow but honors settled continuation, switch, n
         answer("followup-answer"),
       ]),
     ).sections;
-  expect(sections().map((section) => section.todoId)).toEqual(["A", "A", "A", "A"]);
+  expect(sections().map((section) => section.todoId)).toEqual(["A", "A", undefined, undefined]);
   expect(sections().filter((section) => section.start)).toHaveLength(1);
   expect(model.update(user("follow-up", "A"))).toBe(true);
   expect(model.value).not.toHaveProperty("taskAttributionPending");
   expect(sections().filter((section) => section.start)).toHaveLength(1);
   expect(model.update(user("follow-up", "B"))).toBe(true);
   expect(sections().map((section) => section.todoId)).toEqual(["A", "A", "B", "B"]);
-  // Full snapshot refreshes also clear provisional presentation. Both an
-  // unrelated model decision and a reported classifier failure settle to null.
+  // Full snapshot refreshes distinguish unresolved from explicit none.
   applySnapshot(model, messageSnapshots([pending], "chat")[0]!);
   applySnapshot(model, messageSnapshots([user("follow-up", null)], "chat")[0]!);
   expect(model.value).not.toHaveProperty("taskAttributionPending");

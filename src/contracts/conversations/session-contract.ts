@@ -345,7 +345,7 @@ export const uiPartSchema = Schema.Union([
     /** Original payload and stable identity while Pi holds this input. */
     /** Presentation-only attribution of this input; null explicitly ends a task section. */
     taskTodoId: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isUUID(4)))),
-    /** Keep the current presentation section while the utility model is deciding. */
+    /** Unresolved human input starts ungrouped until the conversational agent decides. */
     taskAttributionPending: Schema.optionalKey(Schema.Boolean),
     queuedInput: Schema.optionalKey(
       Schema.Struct({

@@ -3,29 +3,41 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { SettingsManager } from "@earendil-works/pi-coding-agent";
+import { createDurableSideChats } from "../../../../src/services/pi-durable/durable-side-chats";
+import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
+import { projectChatSessionId } from "../../../../src/domain/cake-chats/cakeChatLocations";
 import {
   createRegistry,
   defineExtension,
   defineTool,
   MemoryStorage,
-  UsageDoc,
+  LiveDoc,
 } from "@earendil-works/pi-durable";
-import { Type, createAssistantMessageEventStream } from "@earendil-works/pi-durable-ai";
+import {
+  Type,
+  createAssistantMessageEventStream,
+  type Context,
+  type AssistantMessage,
+} from "@earendil-works/pi-durable-ai";
 import { afterEach, expect, it, vi } from "vitest";
 import { openDurableChatEngine } from "../../../../src/services/pi-durable/durable-chat-engine";
-import { TaskAttributionDoc } from "../../../../src/services/pi-durable/durable-task-attribution";
+import {
+  prepareTaskAttribution,
+  TaskAttributionDoc,
+  TASK_ATTRIBUTION_INSTRUCTIONS,
+} from "../../../../src/services/pi-durable/durable-task-attribution";
 import { taskAttributionOperations } from "../../../../src/services/pi-durable/durable-task-attribution-operations";
 import { CakeOperationRegistry } from "../../../../src/services/pi/runtime/cake-operation-registry";
 import { durableInputText } from "../../../../src/services/pi-durable/durable-input-presentation";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
 import type { ProjectTodo } from "../../../../src/contracts/projects/project-todos";
-import type { InternalInput } from "../../../../src/contracts/conversations/internal-input";
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
 
 const A = "00000000-0000-4000-8000-000000000001";
 const B = "00000000-0000-4000-8000-000000000002";
 const context = BACKGROUND_CONTEXT;
-const cleanup: Array<() => Promise<void>> = [];
+const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
@@ -38,36 +50,32 @@ const todo = (id: string): ProjectTodo => ({
   revision: 0,
   associations: [],
 });
+const turnIds = (request: Context) =>
+  request.messages
+    .flatMap((message) =>
+      message.role !== "user"
+        ? []
+        : typeof message.content === "string"
+          ? [message.content]
+          : message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])),
+    )
+    .flatMap((text) => [...text.matchAll(/<cake-turn id="([^"]+)"\/>/g)].map((match) => match[1]));
+const metadata = (turnId: string, todoId: string | null) =>
+  `<cake-todo>${JSON.stringify({ turnId, todoId })}</cake-todo>`;
 
-async function fixture(
-  withTool = false,
-  database?: string,
-  withTodos = true,
-  createdTodo = todo(A),
-) {
-  const f = durableModels((_request, index) =>
-    withTool && index === 1
-      ? durableAnswer("", [
-          { type: "toolCall", id: "create-task", name: "create_task", arguments: {} },
-        ])
-      : durableAnswer("Normal streamed answer"),
+async function fixture(database?: string) {
+  let decision: string | null | undefined = A;
+  let response: ((request: Context, index: number) => AssistantMessage) | undefined;
+  let items = [todo(A), todo(B)];
+  const f = durableModels(
+    (request, index) =>
+      response?.(request, index) ??
+      durableAnswer(
+        "Normal streamed answer" +
+          (decision === undefined ? "" : metadata(turnIds(request).at(-1)!, decision)),
+      ),
   );
-  let items = withTool ? [] : [todo(A), todo(B)];
-  const utility = { ...durableModel, provider: "utility-provider", id: "fast-utility" };
-  vi.mocked(f.models.getModel).mockImplementation((provider, id) =>
-    provider === utility.provider && id === utility.id ? utility : durableModel,
-  );
-  const utilityModel = vi.fn(
-    (): { provider: string; modelId: string; thinkingLevel: "off" } | undefined => ({
-      provider: utility.provider,
-      modelId: utility.id,
-      thinkingLevel: "off",
-    }),
-  );
-  const classify = vi
-    .spyOn(f.models, "completeSimple")
-    .mockResolvedValue(durableAnswer(JSON.stringify({ todoId: A })));
-  const reports = vi.fn();
+  const classify = vi.spyOn(f.models, "completeSimple");
   const registry = createRegistry();
   const tool = defineTool({
     name: "create_task",
@@ -75,8 +83,8 @@ async function fixture(
     parameters: Type.Object({}),
     replay: "safe",
     execute: async () => {
-      items = [...items, createdTodo];
-      return { output: [{ type: "text", text: "Created" }] };
+      items.push(todo(B));
+      return { output: [{ type: "text", text: JSON.stringify(todo(B)) }] };
     },
   });
   registry.install(defineExtension({ name: "test", tools: [tool] }));
@@ -84,443 +92,276 @@ async function fixture(
     storage: database ? await openNodeSqliteStorage(database) : new MemoryStorage(),
     models: f.models,
     registry,
-    agent: { model: { provider: "fixture", modelId: "fixture" }, tools: withTool ? [tool] : [] },
+    agent: {
+      model: { provider: "fixture", modelId: "fixture" },
+      tools: [tool],
+      instructions: TASK_ATTRIBUTION_INSTRUCTIONS,
+    },
     memory: { budget: () => 4000, summarize: async () => "memory" },
-    todos: withTodos ? () => items : undefined,
-    utilityModel,
+    todos: () => items,
     onChanged: vi.fn(),
-    onReport: reports,
+    onReport: vi.fn(),
   });
-  cleanup.push(() => engine.close());
-  const send = async (text: string, internal?: InternalInput) => {
-    const submission = await engine.root.submit(
+  let closed = false;
+  const close = async () => {
+    if (!closed) {
+      closed = true;
+      await engine.close();
+    }
+  };
+  cleanup.push(close);
+  const submit = (
+    text: string,
+    conversation = engine.root,
+    delivery: "steer" | "followUp" = "followUp",
+  ) =>
+    conversation.submit(
       {
         type: "input",
-        content: durableInputText(text, [], false, false, undefined, undefined, internal),
+        content: durableInputText(
+          text,
+          [],
+          false,
+          false,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          false,
+          conversation.id,
+        ),
+        whenBusy: delivery,
       },
       context,
     );
-    const settled = await submission.wait(context);
-    if (settled.status !== "done" || settled.type !== "input")
+  const send = async (text: string, conversation = engine.root) => {
+    const s = await submit(text, conversation);
+    const result = await s.wait(context);
+    if (result.status !== "done" || result.type !== "input")
       throw new Error("Main response failed");
-    return settled;
+    return result;
   };
-  const finish = async () => {
-    const tasks = await engine.root.commit(
-      (tx) => tx.scanTasks({ conversationId: engine.root.id, kind: "cake.task-attribution" }, 100),
-      context,
+  const doc = (conversation = engine.root) =>
+    engine.harness.snapshot(TaskAttributionDoc, conversation.id, context);
+  const page = async (conversation = engine.root) =>
+    readDurableOriginalPage(
+      conversation,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (await doc(conversation))?.inputs,
     );
-    await Promise.all(tasks.items.map((task) => engine.harness.waitForTask(task.id, context)));
-    return engine.harness.snapshot(TaskAttributionDoc, engine.root.id, context);
+  const hold = () => {
+    const stream = createAssistantMessageEventStream();
+    let ready!: (request: Context) => void;
+    const started = new Promise<Context>((resolve) => {
+      ready = resolve;
+    });
+    vi.mocked(f.models.streamSimple).mockImplementationOnce((_model, request) => {
+      f.requests.push(structuredClone(request));
+      ready(request);
+      return stream;
+    });
+    return {
+      started,
+      stream,
+      finish: (request: Context, id: string | null = A) => {
+        const message = durableAnswer("Held answer" + metadata(turnIds(request).at(-1)!, id));
+        stream.push({ type: "done", reason: "stop", message });
+      },
+    };
   };
   return {
     ...f,
     engine,
     classify,
+    submit,
     send,
-    finish,
-    reports,
-    utility,
-    utilityModel,
-    setTodos: (value: ProjectTodo[]) => {
-      items = value;
+    doc,
+    page,
+    hold,
+    close,
+    setDecision: (id: string | null | undefined) => {
+      decision = id;
+    },
+    setResponse: (fn: typeof response) => {
+      response = fn;
+    },
+    setTodos: (todos: ProjectTodo[]) => {
+      items = todos;
     },
   };
 }
 
-it("runs once per human input on the separate utility model and projects A → A → B → A → none without rewriting originals", async () => {
+it("uses only the normal conversation request for continuation, switch, explicit none and return, without metadata in prose", async () => {
   const f = await fixture();
-  const decisions = [A, A, B, A, null];
-  for (const id of decisions)
-    f.classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: id })));
-  const inputs = [];
-  for (const text of [
-    "Investigate startup",
-    "Check config reads too",
-    "Switch to navigation",
-    "Back to startup",
-    "Unrelated: what is the weather in Oslo?",
-  ]) {
-    const settled = await f.send(text);
-    inputs.push(String(settled.entry));
-    await f.finish();
-  }
-  expect(f.classify).toHaveBeenCalledTimes(5);
-  const doc = await f.finish();
-  expect(inputs.map((id) => doc?.inputs[id]?.todoId)).toEqual(decisions);
-  expect(f.classify.mock.calls[0]?.[0]).toMatchObject({
-    provider: "utility-provider",
-    id: "fast-utility",
-  });
-  expect(f.classify.mock.calls[0]?.[2]).toMatchObject({
-    maxTokens: 256,
-    reasoning: undefined,
-    toolChoice: "none",
-    signal: expect.any(AbortSignal),
-  });
-  const originals = await f.engine.root.entries({}, 200, undefined, context);
-  const page = await readDurableOriginalPage(
-    f.engine.root,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    doc?.inputs,
-  );
-  expect(
-    page.parts
-      .filter((p) => p.kind === "text" && p.role === "user")
-      .map((p) => (p.kind === "text" ? p.taskTodoId : undefined)),
-  ).toEqual(decisions);
-  expect(
-    (await f.engine.root.entries({}, 200, undefined, context)).items.filter((entry) =>
-      entry.kind.startsWith("pi."),
-    ),
-  ).toEqual(originals.items.filter((entry) => entry.kind.startsWith("pi.")));
-  expect(f.reports).not.toHaveBeenCalled();
-});
-
-it("supplies settled continuity evidence for short follow-ups without overriding switches or null decisions", async () => {
-  const f = await fixture();
-  const turns = [
-    ["Investigate startup", A, null],
-    ["Yes", A, A],
-    ["What about that?", A, A],
-    ["Go ahead", A, A],
-    ["Actually switch to navigation", B, A],
-    ["Unrelated: what is the weather in Oslo?", null, B],
-    ["And tomorrow?", null, null],
-    ["Back to startup", A, null],
-  ] as const;
-  for (const [text, decision, previousTodoId] of turns) {
-    f.classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: decision })));
-    const sent = await f.send(text);
-    const doc = await f.finish();
-    expect(doc?.inputs[String(sent.entry)]).toEqual({ pending: false, todoId: decision });
-    const request = f.classify.mock.calls.at(-1)?.[1].messages;
-    const content = request?.[1]?.content;
-    if (typeof content !== "string") throw new Error("Expected classifier JSON");
-    const payload = JSON.parse(content);
-    expect(payload.previousTodoId).toBe(previousTodoId);
-    expect(payload.messages.at(-1).text).toBe(text);
-    expect(request?.[0]?.content).toContain("do not return null merely because");
-    expect(request?.[0]?.content).toContain(
-      "never keep a task just because it was previously active",
+  const decisions = [A, A, B, null, A];
+  const entries = [];
+  for (const [i, id] of decisions.entries()) {
+    f.setDecision(id);
+    entries.push(
+      String(
+        (
+          await f.send(
+            ["Startup", "Check config too", "Navigation instead", "Weather?", "Back to startup"][
+              i
+            ]!,
+          )
+        ).entry,
+      ),
     );
   }
-  expect(f.classify).toHaveBeenCalledTimes(turns.length);
-});
-
-it.each([
-  { text: "make them consistent", decision: B },
-  { text: "Explain the completed whole-seconds duration work", decision: null },
-  { text: "Discuss the completed whole-seconds duration work", decision: A },
-])(
-  "excludes completed tasks from automatic attribution ($text → $decision)",
-  async ({ text, decision }) => {
-    const f = await fixture();
-    f.setTodos([
-      { ...todo(A), title: "Show elapsed durations in whole seconds", state: "done" },
-      { ...todo(B), title: "Make worklog timing consistent" },
-    ]);
-    f.classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: decision })));
-    const sent = await f.send(text);
-    const doc = await f.finish();
-    const content = f.classify.mock.calls[0]?.[1].messages[1]?.content;
-    if (typeof content !== "string") throw new Error("Expected classifier JSON");
-    const payload = JSON.parse(content);
-    expect(payload.todos.map((item: { id: string }) => item.id)).toEqual([B]);
-    expect(doc?.inputs[String(sent.entry)]).toEqual({
-      pending: false,
-      todoId: decision === A ? null : decision,
-    });
-    expect(f.reports).toHaveBeenCalledTimes(decision === A ? 1 : 0);
-  },
-);
-
-it("does not pass a completed prior attribution as eligible continuity or rewrite its historical group", async () => {
-  const f = await fixture();
-  const prior = await f.send("Investigate startup");
-  await f.finish();
-  f.setTodos([{ ...todo(A), state: "done" }, todo(B)]);
-  f.classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: B })));
-  const sent = await f.send("Make navigation consistent");
-  const doc = await f.finish();
-  const content = f.classify.mock.calls.at(-1)?.[1].messages[1]?.content;
-  if (typeof content !== "string") throw new Error("Expected classifier JSON");
-  expect(JSON.parse(content).previousTodoId).toBeNull();
-  expect(doc?.inputs[String(sent.entry)]).toEqual({ pending: false, todoId: B });
-  expect(doc?.inputs[String(prior.entry)]).toEqual({ pending: false, todoId: A });
-});
-
-it("drops a completed checkpoint attribution when settling after the response without new candidates", async () => {
-  const f = await fixture();
-  const stream = createAssistantMessageEventStream();
-  vi.mocked(f.models.streamSimple).mockReturnValueOnce(stream);
-  let checkpointed = () => {};
-  const waiting = new Promise<void>((resolve) => {
-    checkpointed = resolve;
-  });
-  const unsubscribe = f.engine.harness.subscribeCommits((publication) => {
-    if (
-      publication.changes.some(
-        (change) => change.type === "document" && change.record.kind === "cake.task-attribution",
-      )
-    )
-      void f.engine.harness.snapshot(TaskAttributionDoc, f.engine.root.id, context).then((doc) => {
-        if (Object.values(doc?.inputs ?? {}).some((input) => input.pending && input.todoId === A))
-          checkpointed();
-      });
-  });
-  try {
-    const sent = f.send("Finish the startup investigation");
-    await waiting;
-    f.setTodos([{ ...todo(A), state: "done" }, todo(B)]);
-    stream.push({ type: "done", reason: "stop", message: durableAnswer("Finished startup") });
-    const settled = await sent;
-    const doc = await f.finish();
-    expect(doc?.inputs[String(settled.entry)]).toEqual({ pending: false, todoId: null });
-    expect(f.classify).toHaveBeenCalledTimes(1);
-  } finally {
-    unsubscribe();
-  }
-});
-
-it.each([true, false])(
-  "treats broader merge-and-resolve work as a switch after PDF resize discussion (matching to-do: %s)",
-  async (matchingTodo) => {
-    const f = await fixture();
-    f.setTodos([
-      {
-        ...todo(A),
-        title: "Fix PDF auto-fit behavior",
-        description: "Recalculate fit on window and reader resize.",
-      },
-      ...(matchingTodo
-        ? [
-            {
-              ...todo(B),
-              title: "Merge and resolve completed sessions",
-              description: "Manage all sessions as they finish.",
-            },
-          ]
-        : []),
-    ]);
-    const decisions = [A, A, matchingTodo ? B : null];
-    for (const [index, text] of [
-      "Fix PDF auto-fit behavior",
-      "it doesn't resize when it should, like window resize",
-      "merge and resolve and sessions as they finish",
-    ].entries()) {
-      f.classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: decisions[index] })));
-      const sent = await f.send(text);
-      const doc = await f.finish();
-      expect(doc?.inputs[String(sent.entry)]?.todoId).toBe(decisions[index]);
-    }
-    const messages = f.classify.mock.calls.at(-1)?.[1].messages;
-    const content = messages?.[1]?.content;
-    if (typeof content !== "string") throw new Error("Expected classifier JSON");
-    const payload = JSON.parse(content);
-    expect(payload.previousTodoId).toBe(A);
-    expect(payload.messages.at(-1).text).toBe("merge and resolve and sessions as they finish");
-    expect(
-      payload.messages.some((message: { text: string }) => message.text.includes("window resize")),
-    ).toBe(true);
-    expect(messages?.[0]?.content).toContain("a task switch, not a PDF follow-up");
-  },
-);
-
-it.each(["continuation", "unrelated", "failure"] as const)(
-  "projects pending attribution separately, then honors the settled %s rather than hiding it",
-  async (outcome) => {
-    const f = await fixture();
-    await f.send("Investigate startup");
-    await f.finish();
-    let release!: () => void;
-    let started!: () => void;
-    const deciding = new Promise<void>((resolve) => {
-      started = resolve;
-    });
-    const decision = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    f.classify.mockImplementationOnce(async () => {
-      started();
-      await decision;
-      if (outcome === "failure") throw new Error("Provider offline");
-      return durableAnswer(JSON.stringify({ todoId: outcome === "continuation" ? A : null }));
-    });
-    const sent = await f.send(outcome === "unrelated" ? "Unrelated: weather in Oslo?" : "Yes");
-    await deciding;
-    const project = async () => {
-      const doc = await f.engine.harness.snapshot(TaskAttributionDoc, f.engine.root.id, context);
-      const page = await readDurableOriginalPage(
-        f.engine.root,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        doc?.inputs,
-      );
-      return page.parts.find((part) => part.kind === "text" && part.entryId === String(sent.entry));
-    };
-    expect(await project()).toMatchObject({ taskAttributionPending: true });
-    release();
-    await f.finish();
-    const settled = await project();
-    expect(settled).toMatchObject({ taskTodoId: outcome === "continuation" ? A : null });
-    expect(settled).not.toHaveProperty("taskAttributionPending");
-    expect(f.reports).toHaveBeenCalledTimes(outcome === "failure" ? 1 : 0);
-  },
-);
-
-it("attributes human inputs carrying reminders but not automatic deliveries", async () => {
-  const f = await fixture();
-  const human = await f.send("Discuss startup", {
-    _tag: "UserWithReminders",
-    text: "Discuss startup",
-    userText: "Discuss startup",
-    notices: [],
-  });
-  await f.finish();
-  for (const internal of [
-    { _tag: "UpdateBatch", notices: [] },
-    { _tag: "WorkboardDelivery", boardId: "board", sequences: [1] },
-    { _tag: "SubagentCompletion", details: {} },
-  ] satisfies InternalInput[])
-    await f.send("Automatic startup update", internal);
-  const doc = await f.finish();
-  expect(f.classify).toHaveBeenCalledTimes(1);
-  expect(doc?.inputs).toEqual({ [String(human.entry)]: { pending: false, todoId: A } });
-});
-
-it("does not block the normal response or start an agent/tool round for attribution", async () => {
-  const f = await fixture();
-  let release: (value: ReturnType<typeof durableAnswer>) => void = () => {
-    throw new Error("Not started");
-  };
-  let notifyStarted = () => {};
-  const started = new Promise<void>((resolve) => {
-    notifyStarted = resolve;
-  });
-  const decision = new Promise<ReturnType<typeof durableAnswer>>((resolve) => {
-    release = resolve;
-  });
-  f.classify.mockImplementation(() => {
-    notifyStarted();
-    return decision;
-  });
-  const settled = await f.send("Startup please");
-  expect(settled.status).toBe("done");
-  const originals = await f.engine.root.entries({}, 200, undefined, context);
+  const doc = await f.doc();
+  expect(entries.map((entry) => doc?.inputs[entry])).toEqual(
+    decisions.map((todoId) => ({ pending: false, todoId, turnId: expect.any(String) })),
+  );
+  const page = await f.page();
+  expect(
+    page.parts
+      .filter((part) => part.kind === "text" && part.role === "user")
+      .map((part) => (part.kind === "text" ? part.taskTodoId : undefined)),
+  ).toEqual(decisions);
+  expect(JSON.stringify(page.parts)).not.toContain("cake-todo");
+  expect(JSON.stringify(page.parts)).not.toContain("cake-turn");
+  expect(f.requests).toHaveLength(5);
+  expect(f.classify).not.toHaveBeenCalled();
   const tasks = await f.engine.root.commit(
     (tx) => tx.scanTasks({ conversationId: f.engine.root.id, kind: "cake.task-attribution" }, 100),
     context,
   );
-  // A deterministic start signal, not elapsed time, releases the external model boundary.
-  await started;
-  release(durableAnswer(JSON.stringify({ todoId: A })));
-  await Promise.all(tasks.items.map((task) => f.engine.harness.waitForTask(task.id, context)));
-  expect(
-    (await f.engine.root.entries({}, 200, undefined, context)).items.filter((entry) =>
-      entry.kind.startsWith("pi."),
-    ),
-  ).toEqual(originals.items.filter((entry) => entry.kind.startsWith("pi.")));
-  expect(f.requests).toHaveLength(1);
-});
-
-it("keeps attribution across SQLite reopen without classifying old messages again", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "cake-task-attribution-"));
-  cleanup.push(() => rm(directory, { recursive: true, force: true }));
-  const database = join(directory, "chat.sqlite");
-  const first = await fixture(false, database);
-  const settled = await first.send("Investigate startup");
-  const before = await first.finish();
-  await first.engine.close();
-  const second = await fixture(false, database);
-  second.engine.harness.resume();
-  const after = await second.engine.harness.snapshot(
-    TaskAttributionDoc,
-    second.engine.root.id,
-    context,
+  expect(tasks.items).toEqual([]);
+  // Earlier inputs are byte-identical across subsequent requests; no replayed classifier payload.
+  expect(f.requests[1]?.messages.find((message) => message.role === "user")).toEqual(
+    f.requests[0]?.messages.find((message) => message.role === "user"),
   );
-  expect(after).toEqual(before);
-  expect(after?.inputs[String(settled.entry)]?.todoId).toBe(A);
-  expect(second.classify).not.toHaveBeenCalled();
 });
 
-it.each([
-  { initial: null, final: A },
-  { initial: B, final: A },
-  { initial: B, final: null },
-  { initial: B, final: "failure" },
-])(
-  "reconsiders initial $initial when the response creates a candidate (final: $final)",
-  async ({ initial, final }) => {
-    const f = await fixture(true, undefined, true, {
-      ...todo(A),
-      title: "Prototype Cake-set needs-attention to-dos",
+it("projects a newly admitted input pending while an old group exists, even before request preparation, then settles it", async () => {
+  const f = await fixture();
+  await f.send("Startup");
+  const held = f.hold();
+  const s = await f.submit("Navigation instead");
+  const request = await held.started;
+  const doc = await f.doc();
+  const pending = Object.values(doc?.inputs ?? {}).find((value) => value.pending);
+  expect(pending).toMatchObject({ pending: true, todoId: null });
+  const parts = (await f.page()).parts;
+  expect(parts.findLast((part) => part.kind === "text" && part.role === "user")).toMatchObject({
+    taskAttributionPending: true,
+  });
+  // Projection defaults a token-bearing new turn to unresolved even if its doc write has not happened.
+  const before = await readDurableOriginalPage(f.engine.root);
+  expect(
+    before.parts.findLast((part) => part.kind === "text" && part.role === "user"),
+  ).toMatchObject({ taskAttributionPending: true });
+  held.finish(request, B);
+  await s.wait(context);
+  expect(
+    (await f.page()).parts.findLast((part) => part.kind === "text" && part.role === "user"),
+  ).toMatchObject({ taskTodoId: B });
+});
+
+it("supports a new to-do created mid-response without an attribution-only model/tool round", async () => {
+  const f = await fixture();
+  f.setTodos([todo(A)]);
+  f.setResponse((request, index) =>
+    index === 1
+      ? durableAnswer("", [{ type: "toolCall", id: "create", name: "create_task", arguments: {} }])
+      : durableAnswer("Created navigation" + metadata(turnIds(request).at(-1)!, B)),
+  );
+  const sent = await f.send("Create navigation work");
+  expect((await f.doc())?.inputs[String(sent.entry)]).toMatchObject({ pending: false, todoId: B });
+  expect(f.requests).toHaveLength(2);
+  expect(f.classify).not.toHaveBeenCalled();
+});
+
+it.each(["invalid", "unknown", "completed", "missing", "duplicate", "interrupted", "length"])(
+  "keeps %s decisions unresolved rather than inheriting or claiming explicit none",
+  async (mode) => {
+    const f = await fixture();
+    await f.send("Startup");
+    if (mode === "completed") f.setTodos([todo(A), { ...todo(B), state: "done" }]);
+    f.setResponse((request) => {
+      const id = turnIds(request).at(-1)!;
+      const block =
+        mode === "invalid"
+          ? '<cake-todo>{"turnId":"bad","todoId":null}</cake-todo>'
+          : mode === "missing"
+            ? ""
+            : metadata(id, mode === "unknown" ? "00000000-0000-4000-8000-000000000099" : B);
+      const answer = durableAnswer(
+        "Other subject" + block + (mode === "duplicate" ? metadata(id, A) : ""),
+      );
+      if (mode === "interrupted") answer.stopReason = "aborted";
+      if (mode === "length") answer.stopReason = "length";
+      return answer;
     });
-    f.setTodos([{ ...todo(B), title: "Assess Ultimate ideas applicable to Cake" }]);
-    const stream = createAssistantMessageEventStream();
-    vi.mocked(f.models.streamSimple).mockReturnValueOnce(stream);
-    let started = () => {};
-    const classified = new Promise<void>((resolve) => {
-      started = resolve;
-    });
-    f.classify.mockImplementationOnce(async () => {
-      started();
-      return durableAnswer(JSON.stringify({ todoId: initial }));
-    });
-    if (final === "failure") f.classify.mockRejectedValueOnce(new Error("Provider offline"));
-    else f.classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: final })));
-    const sent = f.send(
-      "Get prototypes for Cake-set needs attention in a to-do; I will pick one to implement",
+    const sent = await f.submit("Other subject");
+    await sent.wait(context);
+    const user = (await f.page()).parts.findLast(
+      (part) => part.kind === "text" && part.role === "user",
     );
-    await classified;
-    const message = durableAnswer("", [
-      { type: "toolCall", id: "create-task", name: "create_task", arguments: {} },
-    ]);
-    stream.push({ type: "done", reason: "toolUse", message });
-    const settled = await sent;
-    const doc = await f.finish();
-    expect(f.classify).toHaveBeenCalledTimes(2);
-    expect(JSON.stringify(f.classify.mock.calls[0]?.[1].messages)).not.toContain(
-      "Prototype Cake-set needs-attention",
-    );
-    expect(JSON.stringify(f.classify.mock.calls[1]?.[1].messages)).toContain(
-      "Prototype Cake-set needs-attention",
-    );
-    const expected = final === "failure" ? null : final;
-    expect(doc?.inputs[String(settled.entry)]).toEqual({ pending: false, todoId: expected });
-    expect(f.reports).toHaveBeenCalledTimes(final === "failure" ? 1 : 0);
-    const page = await readDurableOriginalPage(
-      f.engine.root,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      doc?.inputs,
-    );
-    expect(
-      page.parts.find((part) => part.kind === "text" && part.entryId === String(settled.entry)),
-    ).toMatchObject({ taskTodoId: expected });
+    expect(user).toMatchObject({ taskAttributionPending: true });
+    expect(user).not.toHaveProperty("taskTodoId");
+    expect(JSON.stringify((await f.page()).parts)).not.toContain("cake-todo");
   },
 );
 
-it("repairs historical grouping through a scoped operation, persists it, and never rewrites originals or to-dos", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "cake-task-repair-"));
+it("never applies an earlier decision to a queued or later input, and ignores repeated old IDs", async () => {
+  const f = await fixture();
+  const held = f.hold();
+  const first = await f.submit("Startup");
+  const request = await held.started;
+  const oldId = turnIds(request).at(-1)!;
+  const second = await f.submit("Navigation queued");
+  f.setResponse((req) =>
+    durableAnswer("Navigation" + metadata(oldId, A) + metadata(turnIds(req).at(-1)!, B)),
+  );
+  held.finish(request, A);
+  await first.wait(context);
+  await second.wait(context);
+  expect(
+    (await f.page()).parts
+      .filter((part) => part.kind === "text" && part.role === "user")
+      .map((part) => (part.kind === "text" ? part.taskTodoId : undefined)),
+  ).toEqual([A, B]);
+  f.setResponse(() => durableAnswer("Stale" + metadata(oldId, B)));
+  const last = await f.send("Unassigned new input");
+  expect((await f.doc())?.inputs[String(last.entry)]).toMatchObject({ pending: true });
+});
+
+it("binds overlapping steered input decisions individually, never promoting an older result", async () => {
+  const f = await fixture();
+  const held = f.hold();
+  const first = await f.submit("Startup");
+  const request = await held.started;
+  const oldId = turnIds(request).at(-1)!;
+  const second = await f.submit("Switch now", f.engine.root, "steer");
+  f.setResponse((req) =>
+    durableAnswer("Switched" + metadata(oldId, B) + metadata(turnIds(req).at(-1)!, B)),
+  );
+  held.finish(request, A);
+  await first.wait(context);
+  await second.wait(context);
+  const inputs = Object.values((await f.doc())?.inputs ?? {});
+  expect(inputs[0]).toMatchObject({ todoId: A });
+  expect(inputs[1]).toMatchObject({ todoId: B });
+});
+
+it("keeps unresolved and settled decisions and manual corrections across SQLite reopen without model replay", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-task-attribution-"));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const database = join(directory, "chat.sqlite");
-  const f = await fixture(false, database);
-  const sent = await f.send("Prototype needs-attention to-dos");
-  await f.finish();
-  const originals = await f.engine.root.entries({}, 200, undefined, context);
-  const todos: ProjectTodo[] = [todo(A), { ...todo(B), state: "done" }];
+  const f = await fixture(database);
+  const first = await f.send("Startup");
+  f.setDecision(undefined);
+  const second = await f.send("Missing decision");
+  const originals = await f.engine.root.entries({}, 100, undefined, context);
   const registry = new CakeOperationRegistry(
     taskAttributionOperations({
       conversation: () => f.engine.root,
-      todos: () => todos,
+      todos: () => [todo(A), { ...todo(B), state: "done" }],
     }),
   );
   const invoke = (entryId: string, todoId: string | null) =>
@@ -528,213 +369,153 @@ it("repairs historical grouping through a scoped operation, persists it, and nev
       { command: "messages.set-todo", input: { entryId, todoId } },
       { signal: new AbortController().signal, toolCallId: "repair", runtime: {} },
     );
-  const entryId = String(sent.entry);
-  const page = async () =>
-    readDurableOriginalPage(
-      f.engine.root,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      (await f.finish())?.inputs,
-    );
-  expect(
-    (await page()).parts.find((part) => part.kind === "text" && part.entryId === entryId),
-  ).toMatchObject({ taskTodoId: A });
-  expect((await invoke(entryId, B)).structuredContent).toEqual({
-    command: "messages.set-todo",
-    result: { entryId, todoId: B },
-  });
-  expect(
-    (await page()).parts.find((part) => part.kind === "text" && part.entryId === entryId),
-  ).toMatchObject({ taskTodoId: B });
-  await expect(invoke(entryId, "00000000-0000-4000-8000-000000000099")).rejects.toThrow(
+  await invoke(String(first.entry), B);
+  await expect(invoke(String(second.entry), A)).rejects.toThrow("settled human-turn");
+  await expect(invoke("9007199254740992", A)).rejects.toThrow("Invalid original");
+  await expect(invoke(String(first.entry), "00000000-0000-4000-8000-000000000099")).rejects.toThrow(
     "not in this chat",
   );
-  const assistant = originals.items.find((entry) => entry.kind === "pi.assistant");
-  if (!assistant) throw new Error("Missing assistant original");
-  await expect(invoke(String(assistant.id), B)).rejects.toThrow("settled human-turn");
-  await expect(invoke("9007199254740992", B)).rejects.toThrow("Invalid original");
-  await invoke(entryId, null);
   expect(
-    (await page()).parts.find((part) => part.kind === "text" && part.entryId === entryId),
-  ).toMatchObject({ taskTodoId: null });
-  await invoke(entryId, B);
-  expect(
-    (await f.engine.root.entries({}, 200, undefined, context)).items.filter((entry) =>
+    (await f.engine.root.entries({}, 100, undefined, context)).items.filter((entry) =>
       entry.kind.startsWith("pi."),
     ),
   ).toEqual(originals.items.filter((entry) => entry.kind.startsWith("pi.")));
-  expect(todos).toEqual([todo(A), { ...todo(B), state: "done" }]);
-  await f.engine.close();
-  const reopened = await fixture(false, database);
-  expect((await reopened.finish())?.inputs[entryId]).toEqual({ pending: false, todoId: B });
+  await f.close();
+  const reopened = await fixture(database);
+  expect((await reopened.doc())?.inputs[String(first.entry)]).toMatchObject({
+    pending: false,
+    todoId: B,
+  });
+  expect((await reopened.doc())?.inputs[String(second.entry)]).toMatchObject({ pending: true });
+  expect(reopened.requests).toHaveLength(0);
   expect(reopened.classify).not.toHaveBeenCalled();
 });
 
-it("rejects repair while attribution is still pending", async () => {
-  const f = await fixture();
-  let release = () => {};
-  const decision = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  f.classify.mockImplementationOnce(async () => {
-    await decision;
-    return durableAnswer(JSON.stringify({ todoId: A }));
-  });
-  const sent = await f.send("Discuss startup");
-  const registry = new CakeOperationRegistry(
-    taskAttributionOperations({
-      conversation: () => f.engine.root,
-      todos: () => [todo(A), todo(B)],
-    }),
-  );
-  try {
-    await expect(
-      registry.invoke(
-        { command: "messages.set-todo", input: { entryId: String(sent.entry), todoId: B } },
-        { signal: new AbortController().signal, toolCallId: "repair", runtime: {} },
-      ),
-    ).rejects.toThrow("settled human-turn");
-  } finally {
-    release();
-    await f.finish();
-  }
-});
-
-it.each(["not JSON", JSON.stringify({ todoId: "00000000-0000-4000-8000-000000000099" })])(
-  "leaves invalid/unknown attribution ungrouped and still accounts for its model usage (%s)",
-  async (output) => {
+it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
+  "attributes shared-list side-chat admission, live snapshot, history and reopen independently (%s)",
+  async (parentSessionId) => {
     const f = await fixture();
-    const reply = durableAnswer(output);
-    reply.usage.input = 7;
-    reply.usage.totalTokens = 7;
-    f.classify.mockResolvedValueOnce(reply);
-    const settled = await f.send("Startup please");
-    const doc = await f.finish();
-    expect(doc?.inputs[String(settled.entry)]).toEqual({ todoId: null, pending: false });
-    expect(f.reports).toHaveBeenCalled();
-    const usage = await f.engine.harness.snapshot(UsageDoc, f.engine.root.id, context);
-    expect(usage?.models["utility-provider/fast-utility"]?.input).toBe(7);
-  },
-);
-
-it("classifies selected to-dos as evidence even for short follow-ups and explicit switches", async () => {
-  const f = await fixture();
-  for (const [text, decision] of [
-    ["Yes, check that too", A],
-    ["Switch to navigation instead", B],
-  ] as const) {
-    f.classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: decision })));
-    const reminder =
-      "<system-reminder>\nProject Chat user changes. Context only.\n" +
-      JSON.stringify({ selection: todo(A), changes: [] }) +
-      "\n</system-reminder>\n\n";
-    const settled = await f.send(text, {
-      _tag: "UserWithReminders",
-      text: reminder + text,
-      userText: text,
-      notices: [],
-    });
-    const doc = await f.finish();
-    expect(doc?.inputs[String(settled.entry)]?.todoId).toBe(decision);
-  }
-  expect(f.classify).toHaveBeenCalledTimes(2);
-  for (const call of f.classify.mock.calls) {
-    const content = call[1].messages[1]?.content;
-    if (typeof content !== "string") throw new Error("Expected classifier JSON");
-    const payload = JSON.parse(content);
-    expect(payload.messages.at(-1).selectedTask).toContain("Startup investigation");
-    expect(payload.messages.at(-1).text).not.toContain("system-reminder");
-  }
-});
-
-it("starts attribution before the conversation produces its first answer", async () => {
-  const f = await fixture();
-  const stream = createAssistantMessageEventStream();
-  vi.mocked(f.models.streamSimple).mockReturnValueOnce(stream);
-  let started = () => {};
-  const classified = new Promise<void>((resolve) => {
-    started = resolve;
-  });
-  f.classify.mockImplementationOnce(async () => {
-    started();
-    return durableAnswer(JSON.stringify({ todoId: A }));
-  });
-  let answered = false;
-  const sent = f.send("Check startup").then((result) => {
-    answered = true;
-    return result;
-  });
-  await classified;
-  expect(answered).toBe(false);
-  const message = durableAnswer("Main answer");
-  stream.push({ type: "done", reason: "stop", message });
-  await sent;
-  await f.finish();
-});
-
-it("sends bounded recent dialogue and candidate metadata with a stable instruction prefix", async () => {
-  const f = await fixture();
-  for (let i = 0; i < 4; i++) {
-    await f.send(`Startup follow-up ${i}: ` + "x".repeat(5000));
-    await f.finish();
-  }
-  const first = f.classify.mock.calls[0]?.[1].messages;
-  const last = f.classify.mock.calls.at(-1)?.[1].messages;
-  expect(last?.[0]).toEqual(first?.[0]);
-  const content = last?.[1]?.content;
-  if (typeof content !== "string") throw new Error("Expected classifier JSON");
-  const payload = JSON.parse(content);
-  expect(payload.messages).toHaveLength(6);
-  expect(payload.messages.every((message: { text: string }) => message.text.length <= 1600)).toBe(
-    true,
-  );
-  expect(payload.messages.at(-1).text).toContain("Startup follow-up 3");
-  expect(payload.messages.map((message: { text: string }) => message.text).join(" ")).not.toContain(
-    "Startup follow-up 0",
-  );
-  expect(payload.todos.map((item: { id: string }) => item.id)).toEqual([A, B]);
-  expect(payload.todos[0]).toEqual({
-    id: A,
-    title: "Startup investigation",
-    description: "Current work",
-    state: "open",
-  });
-});
-
-it.each(["missing", "unavailable", "failed"] as const)(
-  "reports %s utility configuration/provider failures without blocking or falling back",
-  async (failure) => {
-    const f = await fixture();
-    if (failure === "missing") f.utilityModel.mockReturnValue(undefined);
-    if (failure === "unavailable")
-      vi.mocked(f.models.getModel).mockImplementation((provider) =>
-        provider === f.utility.provider ? undefined : durableModel,
-      );
-    if (failure === "failed") f.classify.mockRejectedValueOnce(new Error("Provider offline"));
-    const settled = await f.send("Startup please");
-    const doc = await f.finish();
-    expect(doc?.inputs[String(settled.entry)]).toEqual({ pending: false, todoId: null });
-    expect(f.classify).toHaveBeenCalledTimes(failure === "failed" ? 1 : 0);
-    expect(f.reports.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({
-        message: expect.stringContaining(
-          failure === "missing"
-            ? "Configure a utility model"
-            : failure === "unavailable"
-              ? "Configured utility model"
-              : "Provider offline",
-        ),
-      }),
+    await f.send("Startup");
+    const parent = await f.doc();
+    const reply = (await f.page()).parts.find(
+      (part) => part.kind === "text" && part.role === "assistant",
     );
-    expect(f.requests).toHaveLength(1);
+    if (reply?.kind !== "text" || !reply.entryId) throw new Error("Missing branch point");
+    const sideChats = createDurableSideChats({
+      parentSessionId,
+      harness: f.engine.harness,
+      root: f.engine.root,
+      storage: f.engine.storage,
+      sessionFile: "/fixture/chat.sqlite",
+      catalog: { getModel: () => durableModel },
+      settings: SettingsManager.inMemory(),
+      models: () => [],
+      fastMode: () => false,
+      todoOperations: new CakeOperationRegistry([]),
+      todoContext: () => "Shared existing list",
+    });
+    const sessionId = await sideChats.fork(reply.entryId);
+    const open = () =>
+      sideChats.open({
+        sessionId,
+        cwd: "/fixture",
+        agentDir: "/agent",
+        sessionDir: "/sessions",
+        trusted: true,
+        requestUi: async () => undefined,
+        onEvent: () => {},
+      });
+    const side = await open();
+    try {
+      f.setDecision(B);
+      await side.prompt("Navigation side topic", "prompt", []);
+      const snapshot = await side.snapshot();
+      expect(
+        snapshot.parts.find((part) => part.kind === "text" && part.role === "user"),
+      ).toMatchObject({ taskTodoId: B });
+      expect(JSON.stringify(snapshot.parts)).not.toContain("cake-todo");
+      expect(await f.doc()).toEqual(parent);
+    } finally {
+      await side.dispose();
+    }
+    const reopened = await open();
+    try {
+      expect(
+        (await reopened.snapshot()).parts.find(
+          (part) => part.kind === "text" && part.role === "user",
+        ),
+      ).toMatchObject({ taskTodoId: B });
+      expect(f.classify).not.toHaveBeenCalled();
+    } finally {
+      await reopened.dispose();
+    }
   },
 );
 
-it("does not install attribution outside permanent chats supplying a to-do scope", async () => {
-  const f = await fixture(false, undefined, false);
-  await f.send("Startup please");
-  expect(await f.finish()).toBeUndefined();
-  expect(f.classify).not.toHaveBeenCalled();
+it("strips split metadata from every streaming event and stopped partial without delaying ordinary prose", async () => {
+  const f = await fixture();
+  const held = f.hold();
+  const s = await f.submit("Startup");
+  const req = await held.started;
+  const project = await prepareTaskAttribution({
+    conversation: f.engine.root,
+    harness: f.engine.harness,
+    storage: f.engine.storage,
+    signal: new AbortController().signal,
+    todos: () => [todo(A)],
+  });
+  const wire = "Answer" + metadata(turnIds(req).at(-1)!, A);
+  let raw = "";
+  let visible = "";
+  for (const char of wire) {
+    raw += char;
+    const partial = durableAnswer(raw);
+    const event = await project({ type: "text_delta", contentIndex: 0, delta: char, partial });
+    if (event.type === "text_delta") visible += event.delta;
+    expect(JSON.stringify(event)).not.toContain("cake-todo");
+  }
+  expect(visible).toBe("Answer");
+  const interrupted = await project({
+    type: "error",
+    reason: "aborted",
+    error: { ...durableAnswer("Answer<cake-todo>{"), stopReason: "aborted" },
+  });
+  expect(JSON.stringify(interrupted)).not.toContain("cake-todo");
+  expect(Object.values((await f.doc())?.inputs ?? {})[0]).toMatchObject({ pending: true });
+  held.finish(req, A);
+  await s.wait(context);
+});
+
+it("rejects a late result after its run was stopped", async () => {
+  const f = await fixture();
+  const held = f.hold();
+  const s = await f.submit("Startup");
+  const request = await held.started;
+  const stopped = new AbortController();
+  const project = await prepareTaskAttribution({
+    conversation: f.engine.root,
+    harness: f.engine.harness,
+    storage: f.engine.storage,
+    signal: stopped.signal,
+    todos: () => [todo(A)],
+  });
+  const live = await f.engine.harness.snapshot(LiveDoc, f.engine.root.id, context);
+  expect(live?.run).toBeDefined();
+  stopped.abort();
+  await project({
+    type: "done",
+    reason: "stop",
+    message: durableAnswer(metadata(turnIds(request).at(-1)!, A)),
+  });
+  expect(Object.values((await f.doc())?.inputs ?? {})[0]).toMatchObject({ pending: true });
+  // Also reject replay after the real request has settled and its run is gone.
+  f.setDecision(undefined);
+  held.stream.push({ type: "done", reason: "stop", message: durableAnswer("No decision") });
+  await s.wait(context);
+  await project({
+    type: "done",
+    reason: "stop",
+    message: durableAnswer(metadata(turnIds(request).at(-1)!, A)),
+  });
+  expect(Object.values((await f.doc())?.inputs ?? {})[0]).toMatchObject({ pending: true });
 });

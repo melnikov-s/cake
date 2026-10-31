@@ -157,6 +157,7 @@ export async function readDurableOriginalPage(
                 })
               : [],
       );
+    const attributionInputs = new Set<string>();
     const origins = new Map(
       page.items.flatMap((entry) =>
         (entry.model ?? []).flatMap((message) => {
@@ -168,6 +169,7 @@ export async function readDurableOriginalPage(
                   .flatMap((block) => (block.type === "text" ? [block.text] : []))
                   .join("\n"),
           );
+          if (input.attribution) attributionInputs.add(String(entry.id));
           return input.subagentReport ? [[String(entry.id), input.subagentReport] as const] : [];
         }),
       ),
@@ -205,9 +207,10 @@ export async function readDurableOriginalPage(
       const origin = origins.get(part.entryId);
       const markdown = presentationOverrides[part.entryId];
       const attribution = attributions[part.entryId];
+      const unresolved = !attribution && attributionInputs.has(part.entryId);
       return {
         ...part,
-        ...(attribution?.pending
+        ...(attribution?.pending || unresolved
           ? { taskAttributionPending: true }
           : attribution
             ? { taskTodoId: attribution.todoId }

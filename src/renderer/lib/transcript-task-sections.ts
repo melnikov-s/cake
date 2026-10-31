@@ -9,11 +9,14 @@ export function transcriptTaskSections(
   const sections = items.map((item) => {
     const previous = current;
     const linked = linkedTodo?.(item);
-    if (item.kind === "text" && item.role === "user" && !item.deliveryState) {
-      // Pending is provisional continuity, not a topic decision. Settled null
-      // (including reported attribution failures) still ends the section.
-      if (!item.taskAttributionPending)
-        current = item.taskTodoId === undefined ? linked : (item.taskTodoId ?? undefined);
+    if (item.kind === "text" && item.role === "user") {
+      // Neither queued nor unresolved human input inherits the preceding task.
+      current =
+        item.deliveryState || item.taskAttributionPending
+          ? undefined
+          : item.taskTodoId === undefined
+            ? linked
+            : (item.taskTodoId ?? undefined);
     } else if (linked) current = linked;
     if (item.kind === "skill") current = undefined;
     return { todoId: current, start: Boolean(current && current !== previous) };
