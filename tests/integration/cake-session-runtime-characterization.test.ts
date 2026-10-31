@@ -768,7 +768,13 @@ describe("CakeSessionRuntime characterization", () => {
 
     await runtime.setPiSetting({ key: "autoCompact", value: true });
     events.length = 0;
-    await runtime.prompt("After enabling automatic compaction", "prompt", []);
+    // Cross the fixture model's 4k context threshold explicitly instead of
+    // relying on the current size of Cake's system instructions.
+    await runtime.prompt(
+      `After enabling automatic compaction: ${"context padding ".repeat(2_000)}`,
+      "prompt",
+      [],
+    );
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "part-updated",
@@ -790,11 +796,10 @@ describe("CakeSessionRuntime characterization", () => {
     expect(injections()).toEqual([
       expect.objectContaining({
         part: expect.objectContaining({
-          title: "Additional instructions",
+          title: "System",
           text: expect.stringContaining("CHANGED_CANONICAL_INSTRUCTION"),
         }),
       }),
-      expect.objectContaining({ part: expect.objectContaining({ title: "System" }) }),
     ]);
     expect(requestSystems(bodies[5]!)[0]!.content).toContain("CHANGED_CANONICAL_INSTRUCTION");
     expect(requestSystems(bodies[5]!)[0]!.content).not.toContain("REQUIRED_CANONICAL_INSTRUCTION");
@@ -802,7 +807,7 @@ describe("CakeSessionRuntime characterization", () => {
     expect(settled.parts).toContainEqual(
       expect.objectContaining({
         kind: "context",
-        title: "Additional instructions",
+        title: "System",
         text: expect.stringContaining("CHANGED_CANONICAL_INSTRUCTION"),
       }),
     );

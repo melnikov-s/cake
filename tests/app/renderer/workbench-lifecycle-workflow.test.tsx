@@ -268,9 +268,9 @@ describe("Workbench conversation lifecycle", () => {
       projectSessions: { open },
     });
     const dialog = screen.getByRole("alertdialog", { name: "Trust this workspace?" });
-    expect(
-      within(dialog).getByText(/\/project contains project-local executable Pi resources/),
-    ).toBeDefined();
+    expect(dialog.textContent).toContain(
+      "Trust /project to run agents and load its project-local Pi extensions and MCP.",
+    );
     expect(inspect).toHaveBeenCalledWith(
       expect.objectContaining({ path: "/project" }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),

@@ -4,15 +4,11 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import { Effect, Stream } from "effect";
-import { beforeAll, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { connectClient } from "./fixtures/network-client";
 import { unexpectedNodeStderr } from "./fixtures/node-stderr";
 
 const execFileAsync = promisify(execFile);
-
-beforeAll(async () => {
-  await execFileAsync(process.execPath, ["scripts/build-server.mjs"]);
-}, 30_000);
 
 it.each([
   ["CAKE_SERVER_ENABLED", "not-a-boolean"],

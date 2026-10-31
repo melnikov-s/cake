@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { expect, it } from "vitest";
+import { expect, it, onTestFinished } from "vitest";
 import { unexpectedNodeStderr } from "./fixtures/node-stderr";
 
 it.each([
@@ -106,6 +106,17 @@ it.each([
     };
     const output = join(root, "restart-check.mjs");
     let first: ReturnType<typeof spawn> | undefined;
+    const cleanup = async () => {
+      if (first && first.exitCode === null && first.signalCode === null) {
+        const exited = new Promise<void>((resolve) => first?.once("exit", () => resolve()));
+        first.kill("SIGKILL");
+        await exited;
+      }
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(root, { recursive: true, force: true });
+    };
+    onTestFinished(cleanup);
     try {
       await mkdir(join(root, "project", ".pi", "extensions"), { recursive: true });
       await writeFile(
@@ -125,7 +136,9 @@ it.each([
                 reasoning: false,
                 input: ["text"],
                 cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-                contextWindow: 4096,
+                // Permanent Chat's real system/tools prefix must fit before
+                // this fixture can test interrupted execution and recovery.
+                contextWindow: 128_000,
                 maxTokens: 1024,
               },
             ],
@@ -258,10 +271,7 @@ it.each([
       expect(requests).toBe(hasQueue ? 3 : 2);
       if (uncertainTool) expect(await readFile(join(root, "mutation-count"), "utf8")).toBe("1");
     } finally {
-      if (first && first.exitCode === null && first.signalCode === null) first.kill("SIGKILL");
-      server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-      await rm(root, { recursive: true, force: true });
+      await cleanup();
     }
   },
   90_000,

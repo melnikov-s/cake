@@ -1,21 +1,11 @@
-import { spawn, execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
-import { beforeAll, it } from "vitest";
+import { it } from "vitest";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
-
-beforeAll(async () => {
-  await promisify(execFile)(process.execPath, ["scripts/build-server.mjs"]);
-  await promisify(execFile)(
-    process.execPath,
-    ["node_modules/vite/bin/vite.js", "build", "--config", "vite.browser.config.ts"],
-    { maxBuffer: 4 * 1024 * 1024 },
-  );
-}, 60_000);
 
 // Homebrew's installed code-server is a host qualification, not a CI dependency.
 // Linux/other hosts skip rather than substituting a fake upstream as parity proof.
@@ -261,18 +251,10 @@ it.skipIf(!existsSync("/opt/homebrew/bin/code-server"))(
         ]);
         try {
           await expect(editor.locator(".monaco-workbench")).toBeVisible({ timeout: 30_000 });
-          // Explicitly reopen through Quick Open; Explorer expansion and restored tabs
-          // are code-server UI preferences, not the saved-file contract under test.
-          await editor.locator(".monaco-workbench").click();
-          await page.keyboard.press("ControlOrMeta+p");
-          const quickOpen = editor.locator(".quick-input-widget input");
-          await expect(quickOpen).toBeVisible();
-          await quickOpen.fill("qualification.ts");
-          await editor
-            .locator(".quick-input-list")
-            .getByRole("option")
-            .filter({ has: editor.getByText("qualification.ts", { exact: true }) })
-            .click();
+          // Reopen through Cake's retained source selection after the iframe reload.
+          // Restored tabs and code-server's Quick Open index are upstream preferences,
+          // not the saved-file or companion-reconnection contract under test.
+          await reveal.click();
           await expect(editor.locator(".tab.active")).toContainText("qualification.ts", {
             timeout: 20_000,
           });

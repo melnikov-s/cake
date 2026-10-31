@@ -29,23 +29,29 @@ let annotationEmitter;
 let annotationDecorations;
 
 function postBridge(payload) {
-  if (!BRIDGE_PORT || !BRIDGE_TOKEN || !WORKSPACE) return;
+  if (!BRIDGE_PORT || !BRIDGE_TOKEN || !WORKSPACE) return Promise.resolve();
   const body = Buffer.from(JSON.stringify({ ...payload, workspace: WORKSPACE }));
-  const request = http.request({
-    host: "127.0.0.1",
-    port: BRIDGE_PORT,
-    method: "POST",
-    path: "/",
-    headers: {
-      "content-type": "application/json",
-      "content-length": body.length,
-      "x-cake-token": BRIDGE_TOKEN,
-    },
-    timeout: 5_000,
+  return new Promise((resolve) => {
+    const request = http.request({
+      host: "127.0.0.1",
+      port: BRIDGE_PORT,
+      method: "POST",
+      path: "/",
+      headers: {
+        "content-type": "application/json",
+        "content-length": body.length,
+        "x-cake-token": BRIDGE_TOKEN,
+      },
+      timeout: 5_000,
+    });
+    request.on("response", (response) => {
+      response.on("end", resolve);
+      response.resume();
+    });
+    request.on("error", resolve);
+    request.on("timeout", () => request.destroy());
+    request.end(body);
   });
-  request.on("error", () => {});
-  request.on("timeout", () => request.destroy());
-  request.end(body);
 }
 
 function postHello() {
@@ -917,7 +923,12 @@ async function activate(context) {
   });
 }
 
-function deactivate() {
+async function deactivate() {
+  // A normal workbench reload stops this host before its replacement registers.
+  // Retire the address first so Cake waits for the next hello instead of using a dead port.
+  const address = revealServer?.address();
+  if (address && address.port !== undefined)
+    await postBridge({ type: "goodbye", port: address.port });
   selectionSubscription?.dispose();
   if (selectionTimer) clearTimeout(selectionTimer);
   selectionLocations = [];

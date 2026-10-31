@@ -1,23 +1,13 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { chromium, expect as browserExpect } from "@playwright/test";
 import { Effect } from "effect";
-import { beforeAll, it } from "vitest";
+import { it } from "vitest";
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import type { UiPart } from "../../src/contracts/conversations/session-contract";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
-
-beforeAll(async () => {
-  await promisify(execFile)(
-    process.execPath,
-    ["node_modules/vite/bin/vite.js", "build", "--config", "vite.browser.config.ts"],
-    { maxBuffer: 4 * 1024 * 1024 },
-  );
-}, 60_000);
 
 it("projects review-run status, saves a label, and gates browser-only native settings", async () => {
   await Effect.runPromise(
@@ -82,7 +72,9 @@ it("projects review-run status, saves a label, and gates browser-only native set
           await browserExpect(page.getByText("Browser qualification")).toBeVisible();
           await page.getByRole("button", { name: "Network & privacy" }).click();
           await browserExpect(
-            page.getByText("Desktop sharing is managed in the Cake desktop app", { exact: false }),
+            page.getByText("Remote access and allowed accounts are managed on the host desktop.", {
+              exact: true,
+            }),
           ).toBeVisible();
           await browserExpect(
             page.getByRole("button", { name: /start sharing|enable sharing/i }),

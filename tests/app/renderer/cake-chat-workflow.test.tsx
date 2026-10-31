@@ -365,8 +365,10 @@ it("reopening the permanent assistant retains its conversation and unsent messag
 });
 
 it("opens Cake Chat project investigators in the existing subagent interface and preserves follow-ups until release", async () => {
-  const prompt = vi.fn<Client["subagents"]["prompt"]>(async () => undefined);
-  using fixture = createRendererStoreFixture({ client: { subagents: { prompt } } });
+  const submit = vi.fn<Client["subagents"]["submit"]>(async () => ({
+    turnId: "00000000-0000-4000-8000-000000000001",
+  }));
+  using fixture = createRendererStoreFixture({ client: { subagents: { submit } } });
   applySnapshot(fixture.models.cakeChatCatalog, {
     loaded: true,
     sessions: [{ sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" }],
@@ -444,8 +446,13 @@ it("opens Cake Chat project investigators in the existing subagent interface and
     );
     await user.click(within(panel).getByRole("button", { name: "Send" }));
     await waitFor(() =>
-      expect(prompt).toHaveBeenCalledWith(
-        { parentSessionId: CAKE_CHAT_SESSION_ID, handleId, text: "Recheck that file" },
+      expect(submit).toHaveBeenCalledWith(
+        {
+          parentSessionId: CAKE_CHAT_SESSION_ID,
+          handleId,
+          text: "Recheck that file",
+          renderUserMessageAsMarkdown: false,
+        },
         { signal: expect.any(AbortSignal) },
       ),
     );

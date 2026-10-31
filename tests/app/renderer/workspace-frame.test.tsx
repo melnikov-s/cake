@@ -185,9 +185,7 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
         }),
       ).toBeDefined();
       expect(await screen.findByText("Workspace answer")).toBeDefined();
-      expect(screen.queryByRole("button", { name: "Ask session assistant" }) !== null).toBe(
-        kind === "project",
-      );
+      expect(screen.getByRole("button", { name: "Ask session assistant" })).toBeDefined();
       expect(
         screen.queryByRole("button", { name: "Fork response with full context into new chat" }) !==
           null,

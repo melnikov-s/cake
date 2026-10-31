@@ -130,6 +130,10 @@ describe("Standalone workflow sandbox", () => {
       },
     });
     try {
+      // The backend hook is ready before renderer hydration. Wait for the
+      // renderer's save responder too, so ordinary app.close can flush state.
+      const page = await app.firstWindow();
+      await page.getByRole("heading", { name: "What should we build?" }).waitFor();
       const result = await app.evaluate(
         async (_electron, input) => {
           // The compiled main's test-only hook executes the production backend Service.

@@ -2,12 +2,10 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { chromium, expect as browserExpect } from "@playwright/test";
 import { Context, Effect, Layer } from "effect";
-import { beforeAll, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { decodeArtifactLineageId } from "../../src/contracts/artifacts/artifact-lineage";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { openNetworkListener } from "../../src/server/NetworkListener";
@@ -26,14 +24,6 @@ import {
 } from "../../src/services/widgets/inline-widget-document-registry";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
-
-beforeAll(async () => {
-  await promisify(execFile)(
-    process.execPath,
-    ["node_modules/vite/bin/vite.js", "build", "--config", "vite.browser.config.ts"],
-    { maxBuffer: 4 * 1024 * 1024 },
-  );
-}, 60_000);
 
 it("selects published widget and HTML artifacts through the real library projection in Chromium", async () => {
   await Effect.runPromise(

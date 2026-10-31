@@ -36,7 +36,7 @@ const openLibrary = async (user: ReturnType<typeof renderAppShellNavigation>["us
   if (!screen.queryByRole("button", { name: "Browse all artifacts" })) {
     await user.click(screen.getByRole("button", { name: /^(?:\d+ artifacts|Artifacts)$/ }));
   }
-  await user.click(screen.getByRole("button", { name: "Browse all artifacts" }));
+  await user.click(await screen.findByRole("button", { name: "Browse all artifacts" }));
 };
 const sessionButton = (name: string) =>
   screen.getByRole("button", { name: new RegExp(`^${name} conversation `) });
@@ -62,7 +62,9 @@ describe("App shell navigation workflow", () => {
       {
         using fixture = renderAppShellNavigation();
         await fixture.user.click(sessionButton("alpha"));
+        await expectProjectChat("alpha");
         await fixture.user.click(sessionButton("beta"));
+        await expectProjectChat("beta");
         if (workspace === "cake-chat") {
           await fixture.user.click(cakeChatButton());
           await expectCakeChat();
@@ -100,6 +102,7 @@ describe("App shell navigation workflow", () => {
     await fixture.user.click(sessionButton("alpha"));
     await expectProjectChat("alpha");
     await fixture.user.click(sessionButton("alpha"));
+    await expectProjectChat("alpha");
     await fixture.user.click(cakeChatButton());
     await expectCakeChat();
     await fixture.user.click(cakeChatButton());
@@ -144,9 +147,12 @@ describe("App shell navigation workflow", () => {
   it("skips newly resolved project visits in both directions but retains the permanent Cake Chat", async () => {
     using fixture = renderAppShellNavigation();
     await fixture.user.click(sessionButton("alpha"));
+    await expectProjectChat("alpha");
     await fixture.user.click(sessionButton("beta"));
+    await expectProjectChat("beta");
     await fixture.user.click(cakeChatButton());
     await fixture.user.click(sessionButton("gamma"));
+    await expectProjectChat("gamma");
     await fixture.publishResolved("beta");
     await openLibrary(fixture.user);
     await fixture.user.click(back());
@@ -171,6 +177,7 @@ describe("App shell navigation workflow", () => {
       { resolvedIds: ["beta"] },
     );
     await fixture.user.click(sessionButton("alpha"));
+    await expectProjectChat("alpha");
     await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
     await fixture.user.click(screen.getAllByRole("button", { name: "Expand beta resolved" })[0]!);
     await fixture.user.click(sessionButton("beta"));
@@ -208,6 +215,7 @@ describe("App shell navigation workflow", () => {
       { resolvedIds: ["beta"] },
     );
     await fixture.user.click(sessionButton("alpha"));
+    await expectProjectChat("alpha");
     await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
     await fixture.user.click(screen.getAllByRole("button", { name: "Expand beta resolved" })[0]!);
     await fixture.user.click(sessionButton("beta"));
@@ -272,6 +280,7 @@ describe("App shell navigation workflow", () => {
     }));
     using fixture = renderAppShellNavigation({ artifacts: { catalog } });
     await fixture.user.click(sessionButton("alpha"));
+    await expectProjectChat("alpha");
     await fixture.user.click(settings());
     expect(await screen.findByText("Model configuration")).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));

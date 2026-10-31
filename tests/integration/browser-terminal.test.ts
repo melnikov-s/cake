@@ -1,26 +1,15 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { promisify } from "node:util";
 import { chromium, expect as browserExpect } from "@playwright/test";
 import { Deferred, Effect, Queue, Stream } from "effect";
-import { beforeAll, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import type { TerminalEvent } from "../../src/services/terminal/Terminal";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
-
-beforeAll(async () => {
-  await promisify(execFile)(process.execPath, ["scripts/build-server.mjs"]);
-  await promisify(execFile)(
-    process.execPath,
-    ["node_modules/vite/bin/vite.js", "build", "--config", "vite.browser.config.ts"],
-    { maxBuffer: 4 * 1024 * 1024 },
-  );
-}, 60_000);
 
 it("opens a socket-owned browser terminal, accepts input/output and never replays it after reconnect", async () => {
   await Effect.runPromise(

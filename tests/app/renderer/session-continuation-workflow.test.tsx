@@ -427,7 +427,7 @@ describe("Session continuation workflow", () => {
     expect(screen.getByText("Fork of Source conversation")).toBeDefined();
     expect(screen.getByRole("status", { name: "Preparing fork in progress" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: /^Source conversation/ }));
-    expect(visibleSessionId()).toBe("source");
+    await waitFor(() => expect(visibleSessionId()).toBe("source"));
     await act(async () => pendingFork.resolve({ sessionId: "forked" }));
     await fixture.hydrateFork("/current-worktree");
     expect(visibleSessionId()).toBe("source");

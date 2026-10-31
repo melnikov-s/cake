@@ -564,12 +564,26 @@ it.live(
           "selected laptop bytes",
         );
       }
-      expect(attached[1]).toEqual({
+      const serverImage = attached[1];
+      expect(serverImage?.kind).toBe("image");
+      if (serverImage?.kind !== "image") throw new Error("Expected uploaded image");
+      expect(serverImage).toEqual({
         kind: "image",
         name: "large-paste.png",
         mimeType: "image/png",
         data: imageBytes.toString("base64"),
+        inputReference: {
+          kind: "input",
+          id: expect.any(String),
+          name: "large-paste.png",
+          mimeType: "image/png",
+          byteLength: imageBytes.length,
+        },
+        originalPath: expect.any(String),
       });
+      const originalImage = serverImage.originalPath;
+      assert.ok(originalImage);
+      expect(yield* Effect.promise(() => readFile(originalImage))).toEqual(imageBytes);
       yield* connection.close();
       yield* Queue.take(backend.cleaned);
       if (serverFile?.kind === "file")
@@ -914,7 +928,11 @@ it.live("accepted_turn_survives_last_socket_disconnect_and_reconnect_reads_curre
     ).pipe(Effect.provideContext(backend.context));
     assert.equal(replacement.address._tag, "TcpAddress");
     const c = yield* connectClient(`ws://127.0.0.1:${replacement.address.port}/rpc`);
-    const current = yield* c.client["conversations.observe"](target).pipe(Stream.runHead);
+    yield* c.client["projectSessions.open"]({ sessionId, workingDirectory: "/project" });
+    const current = yield* c.client["conversations.observe"](target).pipe(
+      Stream.filter((update) => update._tag === "Snapshot"),
+      Stream.runHead,
+    );
     assert.equal(current._tag, "Some");
     expect(current.value).toMatchObject({
       _tag: "Snapshot",

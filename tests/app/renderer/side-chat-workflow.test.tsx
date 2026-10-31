@@ -295,25 +295,21 @@ describe("Secondary conversation workflows", () => {
       ...thread("code", "Code discussion"),
       anchor: { ...thread("code", "").anchor, view: "file" as const, path: "src/app.ts" },
     };
-    const assistant = {
-      ...thread("assistant", "Assistant discussion"),
-      anchor: { ...thread("assistant", "").anchor, path: "session:parent-1/assistant" },
-    };
     using fixture = renderSideChats(start, {
-      threads: [resolved, code, assistant, selection],
+      threads: [resolved, code, selection],
       streamingThreads: [selection.id],
     });
     await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     const menu = within(screen.getByLabelText("Open side chats"));
     expect(menu.getByText("Working…")).toBeDefined();
-    expect(menu.queryByText(/Resolved discussion|Code discussion|Assistant discussion/)).toBeNull();
+    expect(menu.queryByText(/Resolved discussion|Code discussion/)).toBeNull();
     await fixture.user.click(menu.getByRole("button", { name: /The important selection/ }));
     expect(screen.queryByLabelText("Open side chats")).toBeNull();
     const panel = within(screen.getByRole("complementary", { name: "Side chat" }));
     expect(panel.getByRole("combobox", { name: "Reply to selection side chat" })).toBeDefined();
     expect(panel.getByRole("button", { name: "Stop" })).toBeDefined();
     await fixture.user.click(panel.getByRole("button", { name: "Close Side chat" }));
-    fixture.publish([resolved, code, assistant, { ...selection, status: "resolved" }]);
+    fixture.publish([resolved, code, { ...selection, status: "resolved" }]);
     expect(screen.queryByRole("button", { name: /^Side chats,/ })).toBeNull();
     expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
     expect(start).not.toHaveBeenCalled();

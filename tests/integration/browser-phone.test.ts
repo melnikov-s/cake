@@ -1,22 +1,12 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { chromium, devices, expect as browserExpect } from "@playwright/test";
 import { Effect } from "effect";
-import { beforeAll, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
-
-beforeAll(async () => {
-  await promisify(execFile)(
-    process.execPath,
-    ["node_modules/vite/bin/vite.js", "build", "--config", "vite.browser.config.ts"],
-    { maxBuffer: 4 * 1024 * 1024 },
-  );
-}, 60_000);
 
 it.each([320, 360, 384, 390, 412])(
   "touch browser at %ipx navigates, types and recovers without replay",
@@ -353,7 +343,8 @@ it.each([320, 360, 384, 390, 412])(
             await inspector.getByRole("button", { name: "Close context", exact: true }).tap();
             await page.setViewportSize({ width, height: 844 });
             await page.locator('[data-slot="header-sidebar-toggle"]').first().tap();
-            await sidebar.getByRole("button", { name: /^Open settings for / }).tap();
+            await sidebar.getByRole("button", { name: /^Project actions for / }).tap();
+            await page.getByRole("menuitem", { name: /^Open settings for / }).tap();
             const projectDialog = page.getByRole("dialog");
             const cancel = projectDialog.getByRole("button", { name: "Cancel", exact: true });
             await cancel.scrollIntoViewIfNeeded();

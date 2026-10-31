@@ -2868,7 +2868,7 @@ describe("automatic spawned-session reporting", () => {
                 parts.map((part) =>
                   part.kind === "context" ? part.title : part.kind === "text" ? part.text : "",
                 ),
-                ["What should I look at next?", "Cake · session updates"],
+                ["Cake · session updates", "What should I look at next?"],
               );
               assert.deepEqual((yield* f.storage.state()).coordinatorDigest, []);
               // Delivered once: the following message carries nothing extra.

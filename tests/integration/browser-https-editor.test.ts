@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
   createServer as createHttpServer,
@@ -10,25 +10,15 @@ import { connect } from "node:net";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { promisify } from "node:util";
 import { NodeSocket } from "@effect/platform-node-shared";
 import { chromium, expect as browserExpect } from "@playwright/test";
 import { Effect, Stream } from "effect";
-import { beforeAll, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import type { VsCodeLease } from "../../src/services/vscode/VsCodeServerRuntime";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
-
-beforeAll(async () => {
-  await promisify(execFile)(process.execPath, ["scripts/build-server.mjs"]);
-  await promisify(execFile)(
-    process.execPath,
-    ["node_modules/vite/bin/vite.js", "build", "--config", "vite.browser.config.ts"],
-    { maxBuffer: 4 * 1024 * 1024 },
-  );
-}, 60_000);
 
 async function freeLocalPort() {
   const probe = createHttpServer();

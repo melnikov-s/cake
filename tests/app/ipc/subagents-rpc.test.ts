@@ -72,6 +72,10 @@ describe("Subagent Effect RPC contract", () => {
     const client = await runtime.execute(Effect.service(CakeIpcClient));
     expect(Object.keys(client.subagents ?? {})).toEqual([
       "observe",
+      "readAttachment",
+      "submit",
+      "editQueued",
+      "setUserMessageMarkdown",
       "prompt",
       "steer",
       "abort",

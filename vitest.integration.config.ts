@@ -10,6 +10,7 @@ export default defineConfig({
   },
   test: {
     include: ["tests/integration/**/*.test.{ts,tsx}"],
+    globalSetup: ["./tests/integration/global-setup.ts"],
     setupFiles: ["./tests/setup.ts"],
     reporters: [new QuietReporter()],
     testTimeout: 30_000,

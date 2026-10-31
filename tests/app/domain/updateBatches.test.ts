@@ -616,7 +616,7 @@ describe("worker report presentation", () => {
         assert.equal(origin?._tag, timing === "next-user" ? "UserWithReminders" : "UpdateBatch");
         assert.ok(origin?._tag === "UserWithReminders" || origin?._tag === "UpdateBatch");
         assert.equal(origin.updates?.[0]?.text, "## Findings\n\n**Exact evidence**");
-        assert.equal(origin.updates?.[0]?.source.title, "Worker worker-1");
+        assert.equal(origin.updates?.[0]?.source.title, "Investigate attribution");
         assert.ok(origin.updates?.[0]?.source.href.includes("?message=answer"));
         assert.equal(origin.notices.length, 1);
         assert.equal(origin.reportNotices?.[0]?.text, "Session report");

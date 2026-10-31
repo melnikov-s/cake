@@ -4,7 +4,7 @@ import { createServer, request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
 import { NodeSocket } from "@effect/platform-node-shared";
-import { expect, it } from "vitest";
+import { expect, it, onTestFinished } from "vitest";
 import { openNativePreviewTunnel } from "../../src/services/browser/NativePreviewTunnel";
 
 /** The fixture certificate is a test-only CA. Production never disables TLS verification. */
@@ -18,13 +18,20 @@ it("trusted HTTPS/WSS Cake endpoint carries bounded preview HTTP POST and same-o
         const child = spawn(
           process.execPath,
           [
-            resolve(import.meta.dirname, "../../node_modules/vitest/vitest.mjs"),
-            "run",
-            "--config",
-            resolve(import.meta.dirname, "../../vitest.integration.config.ts"),
-            join(import.meta.dirname, "preview-trusted-tls.test.ts"),
+            "--input-type=module",
+            "--eval",
+            `import { startVitest } from "vitest/node";
+const context = await startVitest("test", [${JSON.stringify(join(import.meta.dirname, "preview-trusted-tls.test.ts"))}], {
+  config: ${JSON.stringify(resolve(import.meta.dirname, "../../vitest.integration.config.ts"))},
+  // The parent already built shared assets. This TLS-only child needs none.
+  globalSetup: [],
+  maxWorkers: 1,
+  run: true,
+});
+await context.close();`,
           ],
           {
+            cwd: resolve(import.meta.dirname, "../.."),
             env: {
               ...process.env,
               NODE_EXTRA_CA_CERTS: certPath,
@@ -33,6 +40,9 @@ it("trusted HTTPS/WSS Cake endpoint carries bounded preview HTTP POST and same-o
             stdio: ["ignore", "pipe", "pipe"],
           },
         );
+        onTestFinished(() => {
+          if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+        });
         let text = "";
         child.stdout.on("data", (chunk: Buffer) => (text += chunk.toString()));
         child.stderr.on("data", (chunk: Buffer) => (text += chunk.toString()));

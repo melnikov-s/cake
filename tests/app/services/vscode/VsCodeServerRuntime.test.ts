@@ -619,6 +619,64 @@ describe("VsCodeServerRuntime startup", () => {
     }
   });
 
+  it("retires a stopped companion while preserving its replacement's registration", async () => {
+    const activeRuntime = createRuntime({ root: "/project" });
+    runtime = activeRuntime;
+    const post = (type: "hello" | "goodbye", port: number) =>
+      activeRuntime["handleBridgeMessage"](
+        Buffer.from(JSON.stringify({ type, workspace: "/project", port })),
+      );
+    post("hello", 4321);
+    expect(await runtime["waitForCompanionPort"]("/project")).toBe(4321);
+    post("goodbye", 4321);
+    expect(runtime["companionPorts"].has("/project")).toBe(false);
+    post("hello", 4322);
+    post("goodbye", 4321);
+    expect(await runtime["waitForCompanionPort"]("/project")).toBe(4322);
+  });
+
+  it("keeps a theme change made before the previous companion response arrives", async () => {
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
+    let receivedDark!: () => void;
+    const darkReceived = new Promise<void>((resolve) => {
+      receivedDark = resolve;
+    });
+    let respondToDark!: () => void;
+    const received: unknown[] = [];
+    const server = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        const message = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        received.push(message);
+        if (message.theme === "dark") {
+          respondToDark = () => response.writeHead(204).end();
+          receivedDark();
+        } else response.writeHead(204).end();
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      runtime = createRuntime({ root });
+      seedLease(runtime, 17, "/project");
+      runtime["companionPorts"].set("/project", (server.address() as AddressInfo).port);
+      runtime["themes"].set("/project", "light");
+      const dark = runtime.setTheme(17, "dark");
+      await darkReceived;
+      // VS Code can render dark before its HTTP acknowledgement reaches Cake.
+      await runtime.setTheme(17, "light");
+      respondToDark();
+      await dark;
+      expect(received).toEqual([
+        { type: "set-theme", theme: "dark" },
+        { type: "set-theme", theme: "light" },
+      ]);
+      expect(runtime["themes"].get("/project")).toBe("light");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it("pushes the current theme to running companions and skips unchanged preferences", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
     const received: unknown[] = [];

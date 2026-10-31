@@ -206,7 +206,7 @@ it.each(["foreground", "subagent"] as const)(
 );
 
 it.each(["complete", "failed", "aborted"] as const)(
-  "projects coordinator %s settlement while elsewhere and clears it when read",
+  "projects coordinator %s settlement while elsewhere and acknowledges only completed responses",
   async (outcome) => {
     using fixture = createRendererStoreFixture({
       client: { cakeChats: { open: async () => undefined } },
@@ -249,10 +249,14 @@ it.each(["complete", "failed", "aborted"] as const)(
       expect(
         screen.getByRole("img", { name: outcome === "complete" ? "Ready, unread" : "Error" }),
       ).toBeTruthy();
+      const assertAcknowledged = () => {
+        if (outcome === "complete") expect(screen.queryByRole("img")).toBeNull();
+        else expect(screen.getByRole("img", { name: "Error" })).toBeTruthy();
+      };
       await user.click(screen.getByRole("button", { name: /^Cake Chat/ }));
-      expect(screen.queryByRole("img")).toBeNull();
+      assertAcknowledged();
       await user.click(screen.getByRole("button", { name: "Elsewhere" }));
-      expect(screen.queryByRole("img")).toBeNull();
+      assertAcknowledged();
       // Delegated/independently running Project work and queued coordinator input are not its own active turn.
       act(() => {
         const worker = fixture.models.projectConversation("worker", "/project");
@@ -268,7 +272,7 @@ it.each(["complete", "failed", "aborted"] as const)(
           },
         });
       });
-      expect(screen.queryByRole("img")).toBeNull();
+      assertAcknowledged();
     } finally {
       view.unmount();
     }

@@ -196,7 +196,11 @@ describe("Project opening workflow", () => {
       "user",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(getHomeDirectory).toHaveBeenCalledOnce();
+    // Project opening and work-log path presentation each resolve home.
+    expect(getHomeDirectory).toHaveBeenCalledTimes(2);
+    expect(getHomeDirectory).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(start).not.toHaveBeenCalled();
   });
   it("opens a staged conversation only after trusting the workspace", async () => {
@@ -237,7 +241,7 @@ describe("Project opening workflow", () => {
     using fixture = renderProjectOpen({ workspaces: { respondToTrust, registerProject } });
     await fixture.user.click(screen.getByRole("button", { name: "Open project" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Trust this workspace?" });
-    expect(within(dialog).getByText(/Trust \/work\/cake to run agents/)).toBeDefined();
+    expect(dialog.textContent).toContain("Trust /work/cake to run agents");
     await fixture.user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(respondToTrust).toHaveBeenCalledWith(

@@ -3,24 +3,14 @@ import { join, resolve } from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import type { ResourceLoader } from "@earendil-works/pi-coding-agent";
 import { tmpdir } from "node:os";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { chromium, expect as browserExpect } from "@playwright/test";
 import { Effect } from "effect";
-import { beforeAll, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { loadExtensionCompanions } from "../../src/services/pi/runtime/extension-companions";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
-
-beforeAll(async () => {
-  await promisify(execFile)(
-    process.execPath,
-    ["node_modules/vite/bin/vite.js", "build", "--config", "vite.browser.config.ts"],
-    { maxBuffer: 4 * 1024 * 1024 },
-  );
-}, 60_000);
 
 it("Chromium imports a published companion in the shared shell and dispatches its declared action through backend projection", async () => {
   await Effect.runPromise(

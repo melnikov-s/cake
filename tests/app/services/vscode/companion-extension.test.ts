@@ -381,6 +381,10 @@ const moduleLoader = Module as unknown as {
 };
 const originalLoad = moduleLoader._load;
 let installRoot: string;
+let extension: {
+  activate(context: { subscriptions: unknown[]; extensionPath: string }): Promise<void>;
+  deactivate(): Promise<void>;
+};
 
 beforeAll(async () => {
   // The manager installs the companion as `package.json` + `extension.js`; the
@@ -398,26 +402,30 @@ beforeAll(async () => {
     if (request === "vscode") return fakeVscode;
     return originalLoad.call(this, request, ...rest);
   };
-  vi.spyOn(http, "request").mockImplementation((() => ({
-    on() {},
-    end(body: Buffer) {
-      posted.push(JSON.parse(body.toString("utf8")));
-    },
-    destroy() {},
-  })) as unknown as typeof http.request);
+  vi.spyOn(http, "request").mockImplementation((() => {
+    const request = new EventEmitter();
+    return Object.assign(request, {
+      end(body: Buffer) {
+        posted.push(JSON.parse(body.toString("utf8")));
+        const response = Object.assign(new EventEmitter(), {
+          resume: () => queueMicrotask(() => response.emit("end")),
+        });
+        queueMicrotask(() => request.emit("response", response));
+      },
+      destroy() {},
+    });
+  }) as unknown as typeof http.request);
   vi.spyOn(http, "createServer").mockImplementation(((handler: typeof receive) => {
     receive = handler;
     return {
       on() {},
       listen() {},
       close() {},
-      address: () => undefined,
+      address: () => ({ port: 4322 }),
     };
   }) as unknown as typeof http.createServer);
   const load = createRequire(import.meta.url);
-  const extension = load(join(installRoot, "extension.js")) as {
-    activate(context: { subscriptions: unknown[]; extensionPath: string }): Promise<void>;
-  };
+  extension = load(join(installRoot, "extension.js")) as typeof extension;
   await extension.activate({ subscriptions: [], extensionPath: WORKSPACE });
 });
 
@@ -1049,4 +1057,9 @@ describe("companion explicit selection actions in diff editors", () => {
     );
     expect(posted).toEqual([]);
   });
+});
+
+it("retires its companion address before the extension host exits on workbench reload", async () => {
+  await extension.deactivate();
+  expect(posted).toContainEqual({ type: "goodbye", workspace: WORKSPACE, port: 4322 });
 });

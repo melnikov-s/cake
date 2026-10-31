@@ -185,6 +185,13 @@ describe("Cake operation registry", () => {
     expect(cakeToolDescription).toContain("<operation>.output-schema");
     expect(cakeToolDescription).toContain("typed operations resolve to {command,result}");
     expect(cakeToolDescription).toContain("Artifact content is not preloaded");
+    expect(cakeToolDescription).toContain("html.present {id,title,html,height?}");
+    expect(cakeToolDescription).toContain("inline, no files/specialist");
+    expect(cakeToolDescription).toContain(
+      "complete widgets.instantiate call (template,initialState) directly",
+    );
+    expect(cakeToolDescription).toContain("no artifact/editor lookup, docs or generation");
+    expect(cakeToolDescription).toContain("Other interactive UI: widgets.present");
     expect(cakeToolDescription).toContain("artifacts.present");
   });
 

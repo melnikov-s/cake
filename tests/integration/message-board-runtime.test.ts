@@ -794,15 +794,23 @@ describe("message-board disk recovery with a recreated Pi session and storage ru
   it("reloads entries and independent receipts without staging or stamping duplicate notifications", async () => {
     const seeded = await seedPersistedBoard();
     let backend = seeded.backend;
+    // Routine posts are passive; assignment/blocker descriptions enter automatic context.
     await backend.control.append({
       audience: ["child"],
+      event: "assignment",
       description: "Finding 1",
       body: "Full evidence 1",
     });
     await backend.control.append({
       audience: ["child"],
+      event: "blocker",
       description: "Finding 2",
       body: "Full evidence 2",
+    });
+    await backend.control.append({
+      audience: ["child"],
+      description: "Routine finding",
+      body: "Passive evidence",
     });
     let fixture = await harness({
       persisted: { cwd: seeded.cwd, control: backend.control },
@@ -816,6 +824,7 @@ describe("message-board disk recovery with a recreated Pi session and storage ru
       expect(entriesBefore.map((entry) => entry.body)).toEqual([
         "Full evidence 1",
         "Full evidence 2",
+        "Passive evidence",
       ]);
       expect(receiptsBefore).toEqual([
         {
@@ -853,7 +862,7 @@ describe("message-board disk recovery with a recreated Pi session and storage ru
         (await backend.runtime.runPromise(boards.readNew("child", {}))).entries.map(
           (entry) => entry.sequence,
         ),
-      ).toEqual([2]);
+      ).toEqual([2, 3]);
       expect((await backend.runtime.runPromise(boards.readNew("child", {}, true))).entries).toEqual(
         [],
       );
@@ -889,6 +898,7 @@ describe("message-board disk recovery with a recreated Pi session and storage ru
       const boardId = seeded.boardId;
       await backend.control.append({
         audience: ["child"],
+        event: "assignment",
         description: "Finding 1",
         body: "Full evidence 1",
       });
@@ -919,6 +929,7 @@ describe("message-board disk recovery with a recreated Pi session and storage ru
       expect(await backend.runtime.runPromise(backend.storage.receipts(boardId))).toEqual([]);
       await backend.control.append({
         audience: ["child"],
+        event: "blocker",
         description: "Finding 2",
         body: "Full evidence 2",
       });

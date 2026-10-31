@@ -1,7 +1,9 @@
 import { it } from "@effect/vitest";
 import { describe, expect, vi } from "vitest";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
-import { resolve } from "node:path";
+import { cp, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { Deferred, Effect, Exit, Fiber, Queue } from "effect";
 import { TestClock } from "effect/testing";
 import {
@@ -49,15 +51,25 @@ const objectSchema: WorkflowOutputSchema = {
   additionalProperties: false,
 };
 
+// Resource loading installs bundled skills. Keep those writes out of tracked fixtures.
+const temporaryAgentDirectory = Effect.fn("WorkflowWorkersTest.agentDirectory")(function* () {
+  const path = yield* Effect.acquireRelease(
+    Effect.promise(() => mkdtemp(join(tmpdir(), "cake-workflow-agent-"))),
+    (directory) => Effect.promise(() => rm(directory, { recursive: true, force: true })),
+  );
+  yield* Effect.promise(() =>
+    cp(resolve("tests/app/services/fixtures/workflow-user"), path, { recursive: true }),
+  );
+  return path;
+});
+
 // Fake only the Pi runtime boundary; retain the worker adapter and its turn handling.
 describe("Workflow workers", () => {
   it.effect("loads project context and skills with common and task-specific instructions", () =>
     Effect.gen(function* () {
       const cwd = resolve("tests/app/services/fixtures/workflow-project");
-      const fixture = yield* makeWorkerFixture({
-        answers: ["done"],
-        agentPath: resolve("tests/app/services/fixtures/workflow-user"),
-      });
+      const agentPath = yield* temporaryAgentDirectory();
+      const fixture = yield* makeWorkerFixture({ answers: ["done"], agentPath });
       yield* Effect.gen(function* () {
         const workers = yield* WorkflowWorkers;
         yield* workers.run(
@@ -99,6 +111,7 @@ describe("Workflow workers", () => {
     "exposes file tools without Cake controls, message_parent or recursive delegation",
     () =>
       Effect.gen(function* () {
+        const agentPath = yield* temporaryAgentDirectory();
         const fixture = yield* makeWorkerFixture({ answers: ["done"] });
         yield* Effect.gen(function* () {
           const workers = yield* WorkflowWorkers;
@@ -120,9 +133,9 @@ describe("Workflow workers", () => {
             options: {
               ...options,
               cwd: resolve("tests/app/services/fixtures/workflow-project"),
-              agentDir: resolve("tests/app/services/fixtures/workflow-user"),
+              agentDir: agentPath,
             },
-            agentDir: resolve("tests/app/services/fixtures/workflow-user"),
+            agentDir: agentPath,
             settingsManager: SettingsManager.inMemory(),
             modelRuntime: { getAvailableOfType: async () => [] },
             requestExtensions: [],

@@ -79,7 +79,9 @@ it("discovers Pi project and global skills without loading project executable ex
     commands
       .catalog()
       .every(
-        (item) => item.source === "skill" || ["model", "compact", "schedule"].includes(item.name),
+        (item) =>
+          item.source === "skill" ||
+          ["model", "compact", "sidechat", "schedule"].includes(item.name),
       ),
   ).toBe(true);
   expect(existsSync(marker)).toBe(false);
@@ -97,7 +99,7 @@ it("expands built-in namespaced skills with the same Pi envelope and arguments",
   const commands = await f.open();
   const expanded = await commands.expand("/skill:cake:prototype-ui prototype the settings screen");
   expect(expanded).toContain('<skill name="cake:prototype-ui"');
-  expect(expanded).toContain("Build one interactive widget containing five distinct prototypes");
+  expect(expanded).toContain("Build one interactive widget with five distinct prototypes");
   expect(expanded).toContain("</skill>\n\nprototype the settings screen");
   expect(commands.instructions()).toContain("cake:prototype-ui");
   await commands.reload();

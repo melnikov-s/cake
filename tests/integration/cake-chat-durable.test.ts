@@ -1576,7 +1576,17 @@ it("keeps side-chat forks across restart and refuses Cake controls inside them",
   // Session-keyed provider caches see the same identity as Cake Chat.
   expect(f.providerSessions[1]).toBe(f.providerSessions[0]);
   expect(invoke).not.toHaveBeenCalled();
-  expect(JSON.stringify(f.requests[2])).toContain("Cake controls are unavailable in side chats");
+  expect(f.requests[2]!.messages).toContainEqual(
+    expect.objectContaining({
+      role: "toolResult",
+      toolName: "cake",
+      content: expect.arrayContaining([
+        expect.objectContaining({
+          text: expect.stringContaining("Unknown Cake command: sessions.create"),
+        }),
+      ]),
+    }),
+  );
   await side.close();
   await first.close();
 

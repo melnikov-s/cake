@@ -208,6 +208,7 @@ describe("Terminal workflow", () => {
     expect(first.getAttribute("aria-selected")).toBe("true");
     expect(second.getAttribute("aria-selected")).toBe("false");
     await fixture.user.click(screen.getByRole("button", { name: /^Second task / }));
+    await waitFor(() => expect(screen.getAllByText("Second task").length).toBeGreaterThan(1));
     expect(screen.getByRole("tab", { name: "zsh 1" }).getAttribute("aria-selected")).toBe("true");
     expect(fixture.open).toHaveBeenCalledTimes(2);
     expect(fixture.close).not.toHaveBeenCalled();
@@ -220,6 +221,7 @@ describe("Terminal workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "New terminal tab" }));
     await fixture.user.click(await screen.findByRole("tab", { name: "zsh 1" }));
     await fixture.user.click(screen.getByRole("button", { name: /^Other checkout / }));
+    await waitFor(() => expect(screen.getAllByText("Other checkout").length).toBeGreaterThan(1));
     expect(await screen.findByRole("tab", { name: "zsh" })).toBeDefined();
     expect(screen.getAllByRole("tab")).toHaveLength(1);
     expect(fixture.open).toHaveBeenLastCalledWith({
@@ -228,6 +230,7 @@ describe("Terminal workflow", () => {
       rows: 24,
     });
     await fixture.user.click(screen.getByRole("button", { name: /^First task / }));
+    await screen.findByRole("tab", { name: "zsh 1" });
     expect(screen.getAllByRole("tab")).toHaveLength(2);
     expect(screen.getByRole("tab", { name: "zsh 1" }).getAttribute("aria-selected")).toBe("true");
     expect(fixture.open).toHaveBeenCalledTimes(3);
@@ -295,6 +298,7 @@ describe("Terminal workflow", () => {
         resolveWorkingDirectory: resolve,
       });
       await fixture.user.click(screen.getByRole("button", { name: /^Other checkout / }));
+      await waitFor(() => expect(screen.getAllByText("Other checkout").length).toBeGreaterThan(1));
       await fixture.user.click(screen.getByRole("button", { name: "Terminal" }));
       expect(screen.getByRole("tab", { name: "Starting…" })).toBeDefined();
       await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));
@@ -340,6 +344,7 @@ describe("Terminal workflow", () => {
       landedWorktree: true,
     });
     await fixture.user.click(screen.getByRole("button", { name: /^Other checkout / }));
+    await waitFor(() => expect(screen.getAllByText("Other checkout").length).toBeGreaterThan(1));
     await fixture.user.click(screen.getByRole("button", { name: "Terminal" }));
     await screen.findByRole("tab", { name: "zsh" });
     await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));
@@ -380,6 +385,7 @@ describe("Terminal workflow", () => {
       resolveWorkingDirectory: resolve,
     });
     await fixture.user.click(screen.getByRole("button", { name: /^Other checkout / }));
+    await waitFor(() => expect(screen.getAllByText("Other checkout").length).toBeGreaterThan(1));
     await fixture.user.click(screen.getByRole("button", { name: "Terminal" }));
     await screen.findByRole("tab", { name: "zsh" });
     await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));

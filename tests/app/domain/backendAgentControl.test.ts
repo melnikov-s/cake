@@ -2044,7 +2044,7 @@ it.effect("keeps task-input metadata redacted in session and report text catalog
       text: "PRIVATE_REPORT_BODY",
       source: {
         kind: "subagent",
-        handleId: "PRIVATE_HANDLE",
+        handleId: "00000000-0000-4000-8000-000000000044",
         sessionId: target,
         task: "PRIVATE_TASK",
         status: "done",
@@ -2054,6 +2054,16 @@ it.effect("keeps task-input metadata redacted in session and report text catalog
     expect(report.text).toBe(
       `1 pending reports\nid\tadmissions\tsession\thandle\tstatus\ttask\nprotected-report\t0\t${target}\t-\tdone\tTask session`,
     );
+    expect(report.details).toMatchObject({
+      result: {
+        items: [
+          {
+            ref: `cake://subagent/${CAKE_CHAT_SESSION_ID}/00000000-0000-4000-8000-000000000044`,
+            source: { sessionId: target, title: "Task session" },
+          },
+        ],
+      },
+    });
     expect(JSON.stringify(report)).not.toContain("PRIVATE_");
     expect((yield* storage.state()).deferredReferences).toHaveLength(1);
     expect(f.runtimeCreates).toEqual([source]);

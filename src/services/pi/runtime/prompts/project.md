@@ -8,10 +8,10 @@ Create children with assignment: { description, body }; Cake persists it before 
 
 Cake documentation directory: `{{cakeDocsDirectory}}` (not preloaded). Read before acting:
 
-- `workgroups.md`: family entry guide for delegation and additional operations. Initial child startup supplies required basics and exact calls; follow task-specific guides only as needed.
-- `communication.md`: launch result choices/outbound delivery; `sessions.md`: creation/forks/lifecycle/landing; `reports.md`: reports.
+- `workgroups.md`: family entry guide for delegation and additional operations. Child startup supplies basics/calls; follow task-specific guides only as needed.
+- `communication.md`: result/outbound delivery; `sessions.md`: creation/forks/lifecycle/landing; `reports.md`: reports.
 - `session-discovery.md`: listings/routing; `session-history.md`: history/messages/attachments/compaction.
-- `artifacts.md`: publish/share/implement designs; `presentation.md`: rich output/images/files/links/selected text; `interactions.md`: widgets. Exception: a loaded skill with a complete prepared-widget creation call is sufficient for ordinary creation; follow it directly without additional docs, discovery or generation.
+- `artifacts.md`: publish/share/implement designs; `presentation.md`: rich output/images/files/links/selected text; `interactions.md`: widgets. Loaded skills' complete prepared-widget creation calls need no further docs, discovery or generation.
 - `models.md`: models/images/classifiers; also Pi's codemode docs for generation.
 
-Use Cake-managed worktrees. For unfamiliar contracts read `<operation>.help`; never guess arguments.
+Use Cake-managed worktrees. Read `<operation>.help` for unfamiliar contracts; never guess arguments.

@@ -145,6 +145,19 @@ export async function widgetPackageResolver(
         contents: `export default new URL(${JSON.stringify(args.path)}, location.href).href;`,
         loader: "js",
       }));
+      // Validate resolved files once when loaded, rather than asking esbuild
+      // to re-resolve every edge in a package's dependency graph.
+      builder.onLoad({ filter: /.*/, namespace: "file" }, async (args) => {
+        const target = await realpath(args.path);
+        if (
+          !coreDirectories.some((directory) => within(directory, target)) &&
+          (!moduleRoot || !within(moduleRoot, target))
+        )
+          throw new Error(
+            "Widget dependencies cannot resolve outside the shared widget package environment",
+          );
+        return undefined;
+      });
       builder.onResolve({ filter: /.*/ }, async (args) => {
         if (
           args.path.startsWith("cake:") ||
@@ -165,11 +178,7 @@ export async function widgetPackageResolver(
             );
           declared(args.path);
         }
-        if (
-          args.namespace === "file" &&
-          coreDirectories.some((directory) => within(directory, args.importer))
-        )
-          return;
+        if (args.namespace === "file") return;
         if (!moduleRoot)
           throw new Error(
             `Widget dependency ${JSON.stringify(args.path)} requires a user-installed widget package environment`,

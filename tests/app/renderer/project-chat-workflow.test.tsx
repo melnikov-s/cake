@@ -187,6 +187,11 @@ it.each(["/zombies", "/managed/task-worktree"])(
     using f = await fixture(undefined, undefined, workingDirectory);
     await act(async () => f.root.navigationStore.openCakeChat(otherId));
     await f.user.click(screen.getByRole("button", { name: /^task(?: |$)/ }));
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-slot="session-pane"][data-session-id="task"]'),
+      ).toBeTruthy(),
+    );
     act(() => f.root.projectWorkbenchStore.projectOpenStore.activate("/finance"));
     const header = document.querySelector<HTMLElement>(
       '[data-slot="session-pane"][data-session-id="task"] [data-slot="workspace-header"]',
@@ -502,6 +507,7 @@ it.each([projectId, CAKE_CHAT_SESSION_ID, "task"])(
     f.publish(id, [live], true);
     if (id === "task") {
       await f.user.click(screen.getByRole("button", { name: /^task(?: |$)/ }));
+      await screen.findByRole("combobox", { name: "Message" });
     } else if (id === projectId) {
       await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
     }
@@ -627,8 +633,8 @@ it.each(
       )!,
       document.querySelector<HTMLElement>('.session-item[data-session-id="task"]')!,
     ];
-    const openEntry = (entry: HTMLElement, index: number) =>
-      f.user.click(
+    const openEntry = async (entry: HTMLElement, index: number) => {
+      await f.user.click(
         within(entry).getByRole("button", {
           name:
             index === 1
@@ -638,6 +644,10 @@ it.each(
                 : /^zombies /,
         }),
       );
+      await screen.findByRole("combobox", {
+        name: index === 1 ? "Message" : "Message Project Chat",
+      });
+    };
     const models = [
       f.models.cakeChatConversation(projectId),
       f.models.projectConversation("task", "/zombies"),
@@ -708,10 +718,48 @@ it.each(
         ending === "complete" ? "Ready, unread" : "Error",
         ending === "complete" ? "bg-success" : "bg-destructive",
       );
-    // Opening acknowledges completion/failure equally; leaving cannot resurrect a dot.
-    for (const [index, entry] of entries().entries()) await openEntry(entry, index);
+    // Reading acknowledges completed responses, not unresolved execution errors.
+    for (const [index, entry] of entries().entries()) {
+      await openEntry(entry, index);
+      if (ending === "failed" || ending === "aborted") assertDots("Error", "bg-destructive");
+    }
     await f.user.click(screen.getByRole("button", { name: "Cake Chat" }));
-    assertDots();
+    if (ending === "failed" || ending === "aborted") {
+      assertDots("Error", "bg-destructive");
+      // A successful retry replaces the error with an ordinary unread response.
+      const retryTurnId = TurnId.make("00000000-0000-4000-8000-000000000002");
+      act(() => {
+        for (const model of models)
+          applyConversationUpdate(model, {
+            _tag: "Event",
+            revision: ++revision,
+            event: {
+              _tag: "TurnAccepted",
+              sessionId: model.sessionId,
+              turnId: retryTurnId,
+              delivery: "prompt",
+            },
+          });
+      });
+      assertDots("Running", "bg-accent");
+      act(() => {
+        for (const model of models)
+          applyConversationUpdate(model, {
+            _tag: "Event",
+            revision: ++revision,
+            event: {
+              _tag: "TurnSettled",
+              sessionId: model.sessionId,
+              turnId: retryTurnId,
+              outcome: "complete",
+            },
+          });
+      });
+      assertDots("Ready, unread", "bg-success");
+      for (const [index, entry] of entries().entries()) await openEntry(entry, index);
+      await f.user.click(screen.getByRole("button", { name: "Cake Chat" }));
+      assertDots();
+    } else assertDots();
   },
 );
 

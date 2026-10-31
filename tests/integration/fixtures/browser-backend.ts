@@ -166,6 +166,8 @@ export function browserBackendAdapter(
                 },
               ],
             });
+            // Publishing the first user message is this adapter's persistence boundary.
+            options.onInitialTranscriptPersisted?.();
             await Effect.runPromise(Deferred.await(gate));
             pending.delete(id);
             publish({

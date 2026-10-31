@@ -199,7 +199,7 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
     expect(input.value).toBe("");
   });
 
-  it("recovers from a failed stop, applies a live model command and retries an edited prompt", async () => {
+  it("recovers from a failed stop and applies a live model command", async () => {
     const stoppedAssistant = { ...workingAssistantPart, status: "complete" as const };
     const abort = vi
       .fn<Client["sessionChats"]["abort"]>()
@@ -210,15 +210,9 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
     const setModel = vi.fn<Client["sessionChats"]["setModel"]>(async ({ provider, modelId }) => {
       fixture.publish({ model: { provider, id: modelId, name: "GPT-5" } });
     });
-    const editMessage = vi
-      .fn<Client["sessionChats"]["editMessage"]>()
-      .mockRejectedValueOnce(new Error("Edit unavailable"))
-      .mockImplementationOnce(async ({ text }) => {
-        fixture.publish({ parts: [{ ...originalUserPart, text }, stoppedAssistant] });
-      });
     const prompt = vi.fn<Client["sessionChats"]["prompt"]>();
     using fixture = renderConversationSession(profile, {
-      sessionChats: { abort, setModel, editMessage, prompt },
+      sessionChats: { abort, setModel, prompt },
     });
     const input = () =>
       screen.getByRole<HTMLTextAreaElement>("combobox", { name: fixture.inputLabel });
@@ -232,7 +226,7 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
     expect(screen.getByRole("button", { name: "Stop" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "Edit latest prompt" })).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Stop" }));
-    expect(await screen.findByRole("button", { name: "Edit latest prompt" })).toBeDefined();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Stop" })).toBeNull());
     expect(abort).toHaveBeenCalledTimes(2);
 
     await fixture.user.type(input(), "/model openai/gpt-5");
@@ -248,31 +242,6 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
     );
     expect(prompt).not.toHaveBeenCalled();
     expect(input().value).toBe("");
-
-    await fixture.user.click(screen.getByRole("button", { name: "Edit latest prompt" }));
-    expect(input().value).toBe("Original prompt");
-    await fixture.user.clear(input());
-    await fixture.user.type(input(), "Edited prompt");
-    await fixture.user.click(screen.getByRole("button", { name: "Save and regenerate" }));
-    expect(await screen.findByText("Edit unavailable")).toBeDefined();
-    expect(input().value).toBe("Edited prompt");
-    expect(screen.getByText("Original prompt")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Save and regenerate" }));
-    await waitFor(() => expect(editMessage).toHaveBeenCalledTimes(2));
-    expect(editMessage).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        sessionId: fixture.sessionId,
-        entryId: "user-entry",
-        text: "Edited prompt",
-        attachments: [],
-        responseMode: "text",
-      }),
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    expect(await screen.findByText("Edited prompt")).toBeDefined();
-    expect(input().value).toBe("");
-    expect(screen.queryByText("Edit unavailable")).toBeNull();
-    expect(prompt).not.toHaveBeenCalled();
   });
 
   it("keeps an admitted queued prompt after a failed edit removal and restores it only after a successful retry", async () => {
@@ -332,4 +301,44 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
     expect(input().value).toBe("");
     expect(screen.queryByText("Queue edit unavailable")).toBeNull();
   });
+});
+
+// Regular Pi permits transcript edits; permanent Durable Cake Chat does not.
+it("retries an edited Project Session prompt", async () => {
+  const stoppedAssistant = { ...workingAssistantPart, status: "complete" as const };
+  const editMessage = vi
+    .fn<Client["sessionChats"]["editMessage"]>()
+    .mockRejectedValueOnce(new Error("Edit unavailable"))
+    .mockImplementationOnce(async ({ text }) => {
+      fixture.publish({ parts: [{ ...originalUserPart, text }, stoppedAssistant] });
+    });
+  const prompt = vi.fn<Client["sessionChats"]["prompt"]>();
+  using fixture = renderConversationSession("project", { sessionChats: { editMessage, prompt } });
+  fixture.publish({ streaming: false, parts: [originalUserPart, stoppedAssistant] });
+  const input = () =>
+    screen.getByRole<HTMLTextAreaElement>("combobox", { name: fixture.inputLabel });
+  await fixture.user.click(screen.getByRole("button", { name: "Edit latest prompt" }));
+  expect(input().value).toBe("Original prompt");
+  await fixture.user.clear(input());
+  await fixture.user.type(input(), "Edited prompt");
+  await fixture.user.click(screen.getByRole("button", { name: "Save and regenerate" }));
+  expect(await screen.findByText("Edit unavailable")).toBeDefined();
+  expect(input().value).toBe("Edited prompt");
+  expect(screen.getByText("Original prompt")).toBeDefined();
+  await fixture.user.click(screen.getByRole("button", { name: "Save and regenerate" }));
+  await waitFor(() => expect(editMessage).toHaveBeenCalledTimes(2));
+  expect(editMessage).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      sessionId: fixture.sessionId,
+      entryId: "user-entry",
+      text: "Edited prompt",
+      attachments: [],
+      responseMode: "text",
+    }),
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
+  expect(await screen.findByText("Edited prompt")).toBeDefined();
+  expect(input().value).toBe("");
+  expect(screen.queryByText("Edit unavailable")).toBeNull();
+  expect(prompt).not.toHaveBeenCalled();
 });

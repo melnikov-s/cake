@@ -151,11 +151,14 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       )
     )
       return "running";
+    const settled = settledSessionActivity(model.settledTurns.at(-1)?.outcome, model.parts);
+    // Reading acknowledges a response, not an unresolved execution failure.
+    if (settled === "error" || settled === "stopped") return settled;
     if (
       !(this.props.isSelected() && this.sessionId === sessionId) &&
       model.settledTurnRevision > (this.readSettledTurnRevisions.get(sessionId) ?? 0)
     )
-      return settledSessionActivity(model.settledTurns.at(-1)?.outcome, model.parts);
+      return settled;
     return this.summaries.find((session) => session.sessionId === sessionId)?.unread
       ? "unread"
       : undefined;

@@ -891,6 +891,8 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                   yield* recoveryStorage.update({
                     ...record,
                     inputs,
+                    state:
+                      inputs.length === 0 && record.state === "active" ? "complete" : record.state,
                     canceledInputIds: [
                       ...new Set([...(record.canceledInputIds ?? []), ...cancelled]),
                     ],

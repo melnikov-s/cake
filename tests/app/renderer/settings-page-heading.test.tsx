@@ -15,7 +15,7 @@ const pages: Array<{ page: SettingsPageId; title: string; introduction?: string 
   {
     page: "network",
     title: "Network & privacy",
-    introduction: "Host connection, browser sharing, provider transport, and workspace trust.",
+    introduction: "Host connection, remote access, provider transport, and workspace trust.",
   },
   { page: "mcp", title: "MCP servers" },
   { page: "appearance", title: "Appearance" },

@@ -4,6 +4,7 @@ import { Context, Effect, FileSystem, Layer, Path, Queue, Stream } from "effect"
 import { Git, GitError } from "../../src/services/git/Git";
 import type { WorktreeRecord } from "../../src/contracts/worktrees/managed-worktree-data";
 import * as boards from "../../src/domain/artifacts/messageBoards";
+import { parseCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import { acquireOptions } from "../../src/domain/project-sessions/projectSessionRuntime";
 import { ManagedWorktrees } from "../../src/services/worktrees/ManagedWorktrees";
 import { ProjectAccess } from "../../src/services/projects/ProjectAccess";
@@ -134,7 +135,12 @@ it.live(
         ),
       );
       assert.equal((root as { workspacePath: string }).workspacePath, "/project");
-      assert.equal(yield* Queue.take(backend.started), "Root work");
+      const rootInput = parseCrossSessionMessage(yield* Queue.take(backend.started));
+      assert.ok(rootInput);
+      assert.equal(rootInput.text, "Root work");
+      assert.equal(rootInput.metadata.sender.sessionId, project.sessionId);
+      assert.equal(rootInput.metadata.sender.kind, "project-session");
+      assert.equal(rootInput.metadata.resultDelivery, "notification");
       const isolated = yield* Effect.promise(() =>
         create(
           {
@@ -149,7 +155,11 @@ it.live(
       assert.equal((isolated as { workspacePath: string }).workspacePath, records[0]?.worktreePath);
       assert.match(records[0]?.branch ?? "", /^agent\/isolated-job-[a-f0-9]{6}$/);
       assert.equal(records[0]?.baseCommit, "commit:main");
-      assert.equal(yield* Queue.take(backend.started), "Isolated work");
+      const isolatedInput = parseCrossSessionMessage(yield* Queue.take(backend.started));
+      assert.ok(isolatedInput);
+      assert.equal(isolatedInput.text, "Isolated work");
+      assert.equal(isolatedInput.metadata.sender.sessionId, project.sessionId);
+      assert.equal(isolatedInput.metadata.resultDelivery, "notification");
       assert.deepEqual(created, [{ projectPath: "/project", backgroundSetup: true }]);
       assert.equal(backend.stats.turns, 2);
       const fork = options.runtime.currentSessionControl?.forkSession;
@@ -184,7 +194,11 @@ it.live(
       assert.match(records[1]?.branch ?? "", /^agent\/child-isolated-[a-f0-9]{6}$/);
       assert.equal(records[1]?.baseCommit, "commit:HEAD");
       assert.equal((child as { launch: { status: string } }).launch.status, "accepted");
-      assert.match(yield* Queue.take(backend.started), /assignment is already persisted/);
+      const childInput = parseCrossSessionMessage(yield* Queue.take(backend.started));
+      assert.ok(childInput);
+      assert.equal(childInput.metadata.sender.sessionId, project.sessionId);
+      assert.match(childInput.text, /The full initial assignment is included below/);
+      assert.match(childInput.text, /Description: Child work\n\nChild work/);
       const assignment = yield* run(
         boards.read((child as { childSessionId: string }).childSessionId, [1]),
       );

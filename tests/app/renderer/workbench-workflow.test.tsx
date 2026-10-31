@@ -208,10 +208,14 @@ describe("Workbench workflow", () => {
         }),
       );
       using fixture = renderWorkbench({ projectSessions: { resolveWorkingDirectory } });
-      for (const id of visits)
+      for (const id of visits) {
         await fixture.user.click(
           screen.getByRole("button", { name: new RegExp(`^${id} conversation `) }),
         );
+        await waitFor(() =>
+          expect(screen.getAllByText(`${id} conversation`).length).toBeGreaterThan(1),
+        );
+      }
       await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));
       await waitFor(() =>
         expect(screen.getAllByText("previous conversation").length).toBeGreaterThan(1),
@@ -240,6 +244,7 @@ describe("Workbench workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));
     await waitFor(() => expect(resolveWorkingDirectory).toHaveBeenCalledOnce());
     await fixture.user.click(screen.getByRole("button", { name: /^two conversation / }));
+    await waitFor(() => expect(screen.getAllByText("two conversation").length).toBeGreaterThan(1));
     await act(async () =>
       pending.resolve({
         projectPath: "/project",
@@ -262,7 +267,7 @@ describe("Workbench workflow", () => {
       screen.getAllByRole("button", { name: "Expand Project resolved" })[0]!,
     );
     await fixture.user.click(screen.getByRole("button", { name: /^two conversation / }));
-    expect(screen.getAllByText("two conversation").length).toBeGreaterThan(1);
+    await waitFor(() => expect(screen.getAllByText("two conversation").length).toBeGreaterThan(1));
     expect(screen.queryByRole("button", { name: "Open VS Code" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Open workspace changes in VS Code" })).toBeNull();
     expect(open).not.toHaveBeenCalled();

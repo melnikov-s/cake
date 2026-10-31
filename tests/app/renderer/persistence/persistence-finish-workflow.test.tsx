@@ -64,6 +64,7 @@ describe("window presentation persistence workflows", () => {
         using persistence = new WindowStatePersistence(fixture.client, reportError);
         persistence.observe(fixture.root);
         await fixture.user.click(openAlpha());
+        await screen.findByPlaceholderText("Ask Cake to work in alpha…");
         await fixture.user.type(projectComposer(), "Continue this unsent investigation");
         await fixture.user.click(screen.getAllByRole("button", { name: "Toggle sidebar" })[0]!);
         await fixture.user.click(screen.getAllByRole("button", { name: "Open settings" })[0]!);

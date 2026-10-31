@@ -65,7 +65,10 @@ to debug a failure.
 Default `pnpm test` runs fast in-process tests, including React workflow integration tests; tests that drive real external
 services (git, Vite/esbuild bundling, the Pi runtime) live in
 `tests/integration` and run with `pnpm test:integration` — usually in CI or for
-an explicitly requested verification pass, not per change.
+an explicitly requested verification pass, not per change. Its global setup builds
+the slim Electron/browser application and standalone server once before test workers
+start. Individual suites must not rebuild shared `out/` assets while other suites
+are serving them.
 
 Do not run the full e2e suite for every change. Run only the targeted e2e tests
 that could actually be affected by the change (same components, stores, or

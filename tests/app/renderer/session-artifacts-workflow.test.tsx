@@ -308,6 +308,10 @@ describe("Session artifact workflows", () => {
         })),
       ],
     );
+    // Newer presentations fold historical occurrences; the reader can reopen each independently.
+    const historical = await screen.findAllByRole("button", { name: "Family report Expand" });
+    expect(historical).toHaveLength(2);
+    for (const disclosure of historical) await fixture.user.click(disclosure);
     await waitFor(() => expect(screen.getAllByText("Family report content r1")).toHaveLength(2));
     expect(screen.getAllByText("Family report content r2")).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Family report Collapse" })).toHaveLength(3);
@@ -550,12 +554,19 @@ describe("Session artifact workflows", () => {
       await using fixture = renderSessionArtifacts(
         {
           effective: async () => [visual(2)],
-          referenceMetadata: async () => visualMetadata(),
+          referenceMetadata: async (reference) => {
+            const revision = parseArtifactRef(reference).revision ?? 2;
+            return {
+              ...visualMetadata(),
+              revision: visual(revision).revision.metadata,
+              exactRef: visual(revision).exactRef,
+            };
+          },
           readExact,
         },
         [visual(2)],
         [
-          visualPart,
+          { ...visualPart, artifactRevision: undefined },
           {
             id: "assistant-embed",
             kind: "text",
@@ -571,9 +582,14 @@ describe("Session artifact workflows", () => {
         },
       );
       await screen.findAllByText("Explanation r2");
-      expect(screen.getAllByRole("button", { name: "Visual explanation Collapse" })).toHaveLength(
-        2,
-      );
+      if (revision === 1) {
+        await fixture.user.click(
+          screen.getByRole("button", { name: "Visual explanation Expand Old version" }),
+        );
+      }
+      expect(
+        screen.getAllByRole("button", { name: /^Visual explanation Collapse(?: Old version)?$/ }),
+      ).toHaveLength(2);
       expect(screen.getByText("Follow-up explanation.")).toBeDefined();
       if (revision === 1) expect(await screen.findByText("Explanation r1")).toBeDefined();
       if (revision === 1)

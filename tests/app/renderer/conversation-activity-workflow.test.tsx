@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
@@ -304,9 +304,11 @@ it("regular sessions show only running direct children and open the selected ses
   await view.user.click(
     within(menu).getByRole("button", { name: "Open session: Activity UI review" }),
   );
-  expect(view.openSession).toHaveBeenCalledWith(
-    { sessionId: childId, workingDirectory: "/project" },
-    expect.anything(),
+  await waitFor(() =>
+    expect(view.openSession).toHaveBeenCalledWith(
+      { sessionId: childId, workingDirectory: "/project" },
+      expect.anything(),
+    ),
   );
   expect(
     document.querySelector(`[data-slot="session-pane"][data-session-id="${childId}"]`),

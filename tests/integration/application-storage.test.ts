@@ -49,7 +49,7 @@ describe("ApplicationStorage filesystem integration", () => {
     assert.equal(loaded.source, "migrated");
     assert.ok(!("resolvedSessionIds" in loaded.state));
     const document = JSON.parse(await readFile(target, "utf8"));
-    assert.equal(document.version, 6);
+    assert.equal(document.version, 10);
     // Migration retains the shipped v1 labels, rather than substituting today's
     // fresh-install defaults or adding optional preferences that were never saved.
     const migrated = {

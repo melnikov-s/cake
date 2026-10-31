@@ -3,7 +3,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { beforeAll, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
 import { unexpectedNodeStderr } from "./fixtures/node-stderr";
 
@@ -30,11 +30,6 @@ const environment = (root: string) => ({
   PI_CODING_AGENT_DIR: join(root, "pi"),
   PI_CODING_AGENT_SESSION_DIR: "",
 });
-
-beforeAll(async () => {
-  // All entrypoint checks exercise the actual production build command.
-  await execFileAsync(process.execPath, ["scripts/build-server.mjs"]);
-}, 30_000);
 
 it.each([undefined, "relative/cake-data", ""])(
   "headless_boot_rejects_invalid_CAKE_HOME (%s) before creating data",

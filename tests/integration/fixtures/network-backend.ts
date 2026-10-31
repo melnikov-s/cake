@@ -131,7 +131,10 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       sessionIds: () => Stream.empty,
       catalog: () => Stream.empty,
       catalogEntry: () => Effect.succeed(undefined),
-      inspect: () => Effect.succeed(undefined),
+      inspect: (target) =>
+        Effect.sync(() =>
+          stats.acquisitions > 0 && target.sessionId === current.sessionId ? current : undefined,
+        ),
       changelog: () => Effect.succeed("# Test changelog"),
       createRuntime: (options) =>
         Effect.sync(() => {

@@ -297,6 +297,7 @@ describe("Embedded editor workflow", () => {
     await fixture.user.click(await screen.findByRole("link", { name: "Inspect source" }));
     await waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
     await fixture.user.click(screen.getByRole("button", { name: /^Other project / }));
+    await screen.findByPlaceholderText("Ask Cake to work in Other…");
     await act(async () =>
       pending.resolve({
         viewer: "text",

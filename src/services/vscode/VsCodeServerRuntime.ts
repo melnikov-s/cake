@@ -82,6 +82,11 @@ const bridgeMessageSchema = Schema.Union([
     ...workspaceMessage,
     port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65_535 })),
   }),
+  Schema.Struct({
+    type: Schema.Literal("goodbye"),
+    ...workspaceMessage,
+    port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65_535 })),
+  }),
   Schema.Struct({ type: Schema.Literal("back-to-agent"), ...workspaceMessage }),
   Schema.Struct({ type: Schema.Literal("toggle-project-sidebar"), ...workspaceMessage }),
   Schema.Struct({ type: Schema.Literal("toggle-chat-sidebar"), ...workspaceMessage }),
@@ -558,9 +563,16 @@ export class VsCodeServerRuntime {
     const lease = this.leases.get(connectionId);
     if (!lease) return;
     if (this.themes.get(lease.workspacePath) === theme) return;
-    const port = await this.waitForCompanionPort(lease.workspacePath, signal);
-    await postJson(port, "/", { type: "set-theme", theme }, this.bridgeToken, signal);
+    // The workbench can render this change before the companion acknowledges it.
+    // Compare subsequent updates with the requested theme, not the previous response.
     this.themes.set(lease.workspacePath, theme);
+    try {
+      const port = await this.waitForCompanionPort(lease.workspacePath, signal);
+      await postJson(port, "/", { type: "set-theme", theme }, this.bridgeToken, signal);
+    } catch (error) {
+      if (this.themes.get(lease.workspacePath) === theme) this.themes.delete(lease.workspacePath);
+      throw error;
+    }
   }
 
   private waitForCompanionPort(workspacePath: string, signal?: AbortSignal) {
@@ -828,8 +840,11 @@ export class VsCodeServerRuntime {
     }
     const message = Schema.decodeUnknownOption(bridgeMessageSchema)(payload);
     if (Option.isNone(message)) return;
-    if (message.value.type === "hello") {
-      this.companionPorts.set(message.value.workspace, message.value.port);
+    if (message.value.type === "hello" || message.value.type === "goodbye") {
+      if (message.value.type === "hello")
+        this.companionPorts.set(message.value.workspace, message.value.port);
+      else if (this.companionPorts.get(message.value.workspace) === message.value.port)
+        this.companionPorts.delete(message.value.workspace);
       return;
     }
     const lease = [...this.leases.values()].find(
