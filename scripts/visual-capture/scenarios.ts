@@ -1119,7 +1119,14 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
   name: "screen-capture-overlay",
   description:
     "Capture tools, sidebar destinations, numbered arrows/freehand and the shared annotation composer",
-  states: ["default", "destination", "new-session", "annotate", "annotation-input"],
+  states: [
+    "default",
+    "destination",
+    "new-session",
+    "annotate",
+    "annotation-input",
+    "annotation-details",
+  ],
   environment: (paths) => ({
     CAKE_SMOKE_DICTATION_HELPER: join(paths.userData, "capture-dictation"),
   }),
@@ -1206,7 +1213,9 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
         await overlay.getByRole("button", { name: "New chat", exact: true }).click();
       }
     }
-    if (state === "annotate" || state === "annotation-input") {
+    const annotationState =
+      state === "annotate" || state === "annotation-input" || state === "annotation-details";
+    if (annotationState) {
       await installCaptureMicrophone(overlay);
       await overlay.getByRole("button", { name: "Annotate", exact: true }).click();
       await overlay.mouse.move(dimensions.width * 0.3, dimensions.height * 0.4);
@@ -1228,7 +1237,11 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
       await expect(
         overlay.getByRole("button", { name: "Add annotation", exact: true }),
       ).toBeEnabled();
-      if (state === "annotate") await overlay.keyboard.press("Enter");
+      if (state !== "annotation-input") await overlay.keyboard.press("Enter");
+      if (state === "annotation-details") {
+        await overlay.getByRole("button", { name: "Edit annotation 1", exact: true }).click();
+        await expect(overlay.getByRole("dialog", { name: "Annotation details" })).toBeVisible();
+      }
     }
     await overlay.waitForFunction(() => document.fonts.status === "loaded");
     await overlay.mouse.move(1, 1);
@@ -1236,7 +1249,7 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
       page,
       state === "default"
         ? toolbar
-        : state === "annotate" || state === "annotation-input"
+        : annotationState
           ? overlay.getByLabel("Screen capture", { exact: true })
           : overlay.getByRole("dialog", { name: "Screenshot destination" }),
     );
