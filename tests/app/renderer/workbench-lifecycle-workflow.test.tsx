@@ -109,18 +109,29 @@ function renderCachedWorkbench(
   };
 }
 
-async function renderRestoredWorkbench(client: TestClientOverrides) {
+async function renderRestoredWorkbench(client: TestClientOverrides, resolved = false) {
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project" })],
-    sessions: [sessionSummary({ sessionId: "session-1", projectPath: "/project" })],
+    sessions: [
+      sessionSummary({
+        sessionId: "session-1",
+        projectPath: "/project",
+        workingDirectory: "/worktree",
+        resolved,
+      }),
+    ],
     client,
     snapshot: {
       state: {},
       children: {
         appShellStore: {
+          state: { navigationVersion: 2, workspace: "project-sessions" },
+          children: {},
+        },
+        sessionLayoutStore: {
           state: {
-            selection: { kind: "project-session", sessionId: "session-1" },
-            activeConversation: { kind: "project-session", sessionId: "session-1" },
+            layout: { kind: "pane", paneId: "restored", history: ["session-1"], historyCursor: 0 },
+            focusedPaneId: "restored",
           },
           children: {},
         },
@@ -128,7 +139,36 @@ async function renderRestoredWorkbench(client: TestClientOverrides) {
     },
   });
   // This is the real renderer bootstrap entry point, not a simulated user control.
-  await act(async () => fixture.root.initialize());
+  await act(async () => {
+    const initialized = fixture.root.initialize();
+    applyConversationUpdate(fixture.models.projectConversation("session-1", "/worktree"), {
+      _tag: "Preview",
+      revision: 1,
+      snapshot: {
+        sessionId: "session-1",
+        sessionFile: "/sessions/session-1.jsonl",
+        parts: [
+          {
+            kind: "text",
+            id: "history",
+            role: "user",
+            text: "Restored conversation",
+            status: "complete",
+          },
+        ],
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      },
+    });
+    await initialized;
+  });
   const view = render(
     <StoreProvider store={fixture.root}>
       <App />
@@ -256,34 +296,51 @@ describe("Workbench conversation lifecycle", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
-  it("re-authorizes a restored workspace before opening its conversation and lets the user decline", async () => {
+  it.each([false, true])(
+    "restores trusted Project history without checkout authorization (resolved=%s)",
+    async (resolved) => {
+      const inspect = vi.fn<Client["workspaces"]["inspect"]>(async (input) => ({
+        ...input,
+        trustRequired: input.path !== "/project",
+      }));
+      const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
+      const respondToTrust = vi.fn<Client["workspaces"]["respondToTrust"]>(async () => undefined);
+      using fixture = await renderRestoredWorkbench(
+        {
+          workspaces: { inspect, respondToTrust },
+          projectSessions: { open },
+        },
+        resolved,
+      );
+      await fixture.user.click(screen.getByRole("combobox", { name: "Message" }));
+      if (resolved) expect(inspect).not.toHaveBeenCalled();
+      else
+        expect(inspect).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ path: "/project" }),
+          expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
+      expect(respondToTrust).not.toHaveBeenCalled();
+      expect(screen.queryByRole("alertdialog", { name: "Trust this workspace?" })).toBeNull();
+    },
+  );
+
+  it("still asks for consent when restoring an active session in an untrusted Project", async () => {
     const inspect = vi.fn<Client["workspaces"]["inspect"]>(async (input) => ({
       ...input,
       trustRequired: true,
     }));
-    const open = vi.fn<Client["projectSessions"]["open"]>();
     const respondToTrust = vi.fn<Client["workspaces"]["respondToTrust"]>(async () => undefined);
+    const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
     using fixture = await renderRestoredWorkbench({
       workspaces: { inspect, respondToTrust },
       projectSessions: { open },
     });
     const dialog = screen.getByRole("alertdialog", { name: "Trust this workspace?" });
-    expect(dialog.textContent).toContain(
-      "Trust /project to run agents and load its project-local Pi extensions and MCP.",
-    );
-    expect(inspect).toHaveBeenCalledWith(
-      expect.objectContaining({ path: "/project" }),
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
+    expect(dialog.textContent).toContain("Trust /project to run agents");
     expect(open).not.toHaveBeenCalled();
     await fixture.user.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(respondToTrust).toHaveBeenCalledWith(
-      expect.objectContaining({
-        path: "/project",
-        approved: false,
-        operationId: expect.any(String),
-      }),
+      expect.objectContaining({ path: "/project", approved: false }),
     );
     expect(open).not.toHaveBeenCalled();
   });

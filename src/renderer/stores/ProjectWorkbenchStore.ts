@@ -268,7 +268,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return { message: this.error, details: this.errorDetails };
   }
 
-  /** Re-authorizes the hydrated Working Directory before loading executable project resources. */
+  /** Restore history without authorizing its checkout as a new Project. */
   async initialize(selection?: { workspacePath: string; sessionId: string }) {
     if (selection) {
       this.projectOpenStore.activate(selection.workspacePath);
@@ -282,6 +282,22 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const temporary = sessionId
       ? this.sessionRegistry.pendingSessions.isTemporary(sessionId)
       : true;
+    if (sessionId && !temporary) {
+      const revision = ++this.sessionOpenRevision;
+      try {
+        const summary = await this.props.catalog.lookup(sessionId);
+        if (this.signal.aborted || revision !== this.sessionOpenRevision) return;
+        if (!summary) throw new Error(`Cake could not find session ${sessionId}`);
+        // Resolved history needs no runtime or checkout trust. Live acquisition uses
+        // Project trust, so authorize that same identity rather than the checkout.
+        if (summary.resolved) await this.openSession(sessionId);
+        else await this.projectOpenStore.inspectPath(summary.projectPath, { sessionId });
+      } catch (error) {
+        if (!this.signal.aborted && revision === this.sessionOpenRevision)
+          this.setError(error, "Opening Project Session", sessionId);
+      }
+      return;
+    }
     await this.projectOpenStore.initialize({
       path,
       newSession: temporary,
@@ -780,9 +796,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         this.session
       ) {
         this.reopenAfterAgentRestart = false;
-        void this.projectOpenStore.inspectPath(this.projectOpenStore.projectPath, {
-          sessionId: this.session.sessionId,
-        });
+        void this.initialize();
       }
       return;
     }
