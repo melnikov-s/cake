@@ -130,17 +130,25 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   goBack(): SessionHistoryEntry | undefined {
     const cursor = this.historyCursorInDirection(-1);
     if (cursor === undefined) return undefined;
-    const entry = this.sessionHistory[cursor]!;
-    this.pendingTraversal = { entry, cursor };
-    return entry;
+    return this.traverseTo(cursor);
   }
 
   /** Steps the history cursor forward to the next unresolved entry. */
   goForward(): SessionHistoryEntry | undefined {
     const cursor = this.historyCursorInDirection(1);
     if (cursor === undefined) return undefined;
+    return this.traverseTo(cursor);
+  }
+
+  private traverseTo(cursor: number) {
     const entry = this.sessionHistory[cursor]!;
-    this.pendingTraversal = { entry, cursor };
+    const active = this.activeConversation;
+    if (active && sameSessionEntry(active, entry)) {
+      // Scoped history can contain consecutive visits to the visible session.
+      // It has already landed; a metadata lookup must not hold its cursor back.
+      this.sessionHistoryCursor = cursor;
+      this.pendingTraversal = undefined;
+    } else this.pendingTraversal = { entry, cursor };
     return entry;
   }
 

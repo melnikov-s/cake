@@ -147,7 +147,7 @@ export default (pi) => {
     await expect(parentTrigger).toHaveAttribute("aria-expanded", "true");
     release("error", 500, "Fixture child failed");
     await expect(page.getByText("Nested script finished", { exact: true })).toBeVisible();
-    await expect(page.locator('[title*="15 billed tokens"]')).toBeVisible();
+    await expect(page.locator('[aria-description*="15 billed tokens"]')).toBeVisible();
     await expect(parent).toContainText("Script failed");
     await expect(activity.locator('[data-slot="tool"]')).toHaveCount(3);
 
@@ -159,7 +159,7 @@ export default (pi) => {
     await expect(log).toBeVisible();
     if ((await log.getAttribute("open")) === null) await log.locator(":scope > summary").click();
     await expect(parentTrigger).toBeVisible();
-    await expect(page.locator('[title*="15 billed tokens"]')).toBeVisible();
+    await expect(page.locator('[aria-description*="15 billed tokens"]')).toBeVisible();
     if ((await parentTrigger.getAttribute("aria-expanded")) !== "true") await parentTrigger.click();
     await expect(parent.locator('[data-streamdown="code-block-body"]').first()).toContainText(
       script,

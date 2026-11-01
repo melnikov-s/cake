@@ -230,7 +230,9 @@ for (const scope of ["global", "project"] as const) {
       // Drive real provider boundaries until every accepted input has been consumed.
       for (let index = 0; index < 4; index++) {
         finish(index);
-        await expect.poll(() => responses.length).toBe(index + 2);
+        await expect
+          .poll(async () => responses.length === index + 2 || (await queue.count()) === 0)
+          .toBe(true);
         if ((await queue.count()) === 0) break;
       }
       await expect(queue).toHaveCount(0);

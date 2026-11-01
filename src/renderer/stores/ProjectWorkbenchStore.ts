@@ -31,6 +31,8 @@ export interface ProjectWorkbenchStoreProps {
   catalog: SessionCatalogStore;
   startCakeChat(prompt?: string): Promise<void>;
   presentationSession(): PresentationSession | undefined;
+  /** Startup may restore a saved workspace mode only while its surface is uncovered. */
+  canRestorePresentation(): boolean;
   presentationProjectPath(): string | undefined;
   originatingDirectory(): string | undefined;
   browserHost?: boolean;
@@ -290,8 +292,12 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         if (!summary) throw new Error(`Cake could not find session ${sessionId}`);
         // Resolved history needs no runtime or checkout trust. Live acquisition uses
         // Project trust, so authorize that same identity rather than the checkout.
-        if (summary.resolved) await this.openSession(sessionId);
-        else await this.projectOpenStore.inspectPath(summary.projectPath, { sessionId });
+        if (summary.resolved) await this.openSessionTarget(sessionId, false, true);
+        else
+          await this.projectOpenStore.inspectPath(summary.projectPath, {
+            sessionId,
+            restoring: true,
+          });
       } catch (error) {
         if (!this.signal.aborted && revision === this.sessionOpenRevision)
           this.setError(error, "Opening Project Session", sessionId);
@@ -481,7 +487,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     });
   }
 
-  private async openSessionTarget(sessionId: string, acceptedProjectOpen: boolean) {
+  private async openSessionTarget(
+    sessionId: string,
+    acceptedProjectOpen: boolean,
+    restoring = false,
+  ) {
     const revision = ++this.sessionOpenRevision;
     const phase = beginSessionSwitchMeasurement(
       sessionId,
@@ -489,7 +499,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       acceptedProjectOpen ? "project-open" : "navigation",
     );
     try {
-      return await this.loadSessionTarget(sessionId, acceptedProjectOpen, revision, phase);
+      return await this.loadSessionTarget(
+        sessionId,
+        acceptedProjectOpen,
+        revision,
+        phase,
+        restoring,
+      );
     } catch (error) {
       phase("failed");
       // Warm navigation is already visible while its metadata request completes.
@@ -514,6 +530,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     acceptedProjectOpen: boolean,
     revision: number,
     phase: (phase: SessionSwitchPhase) => void,
+    restoring: boolean,
   ) {
     const sourceSessionId = this.activeSessionId;
     this.openingSession = undefined;
@@ -561,8 +578,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         Boolean(existingSession?.model.sessionFile))
     ) {
       const preserveEditor = this.hasCurrentVisibleEditor(sessionId, workspacePath);
-      this.props.selectSession(sessionId);
-      if (!preserveEditor) this.presentationStore.restore();
+      if (!restoring) {
+        this.props.selectSession(sessionId);
+        if (!preserveEditor) this.presentationStore.restore();
+      }
       phase("selected");
       return;
     }
@@ -599,7 +618,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         const ready = await this.waitForSessionHydration(sessionId, revision);
         phase("hydration-end");
         if (!ready || this.signal.aborted || revision !== this.sessionOpenRevision) return;
-        this.activateLoadedSession(sessionId);
+        if (!restoring) this.activateLoadedSession(sessionId);
         phase("selected");
       }
       ProjectCatalogContext.consume(this)!.register(
@@ -697,6 +716,21 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   private async acceptProjectOpen(result: ProjectOpenResult) {
     if (this.signal.aborted) return;
+    if (result.restoring) {
+      // Startup authorizes the retained conversation; it is not a new visit.
+      // In particular it must not dismiss Settings opened while inspection ran.
+      const session = result.sessionId && this.sessionRegistry.findSession(result.sessionId);
+      if (!session || result.sessionId !== this.activeSessionId) return;
+      if (result.kind === "new-session") await session.stagedCommandStore.load(result.path);
+      else await this.openSessionTarget(session.sessionId, true, true);
+      if (
+        this.props.canRestorePresentation() &&
+        !this.presentationStore.embeddedEditorStore.visible &&
+        !this.presentationStore.browserStore.visible
+      )
+        this.presentationStore.restore();
+      return;
+    }
     this.commandPaneStore.dismiss();
     const targetSessionId =
       result.kind === "project"

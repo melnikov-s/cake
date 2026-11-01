@@ -72,6 +72,9 @@ test("Workboards update live, preserve reading state, and reconcile after board 
       .getByRole("dialog", { name: "Artifacts", exact: true })
       .getByRole("button", { name: /Editor isolation/ })
       .click();
+    const panel = page.getByRole("complementary", { name: "Editor isolation", exact: true });
+    await expect(panel).toBeVisible();
+    await panel.getByRole("button", { name: "View Editor isolation fullscreen" }).click();
     const fullscreen = page.getByRole("dialog", { name: "Editor isolation", exact: true });
     await expect(fullscreen).toBeVisible();
     const board = page.locator(`[data-artifact-id="${MESSAGE_BOARD_FIXTURE_ID}"]`);
@@ -128,19 +131,19 @@ test("Workboards update live, preserve reading state, and reconcile after board 
       board.getByRole("button", { name: "#28 · Live finding 28", exact: true }),
     ).toHaveCount(1);
     const scrollTop = await board.evaluate((element) => {
-      const main = element.closest("main")!;
-      main.scrollTop = 250;
-      return main.scrollTop;
+      element.scrollTop = 250;
+      return element.scrollTop;
     });
     expect(scrollTop).toBeGreaterThan(0);
     await appendLiveEntries(application, 29, 1);
     await expect(
       board.getByRole("button", { name: "#29 · Live finding 29", exact: true }),
     ).toHaveCount(1);
-    expect(await board.evaluate((element) => element.closest("main")!.scrollTop)).toBe(scrollTop);
+    expect(await board.evaluate((element) => element.scrollTop)).toBe(scrollTop);
     await expect(finding).toHaveAttribute("aria-expanded", "true");
 
     await fullscreen.getByRole("button", { name: "Exit fullscreen Editor isolation" }).click();
+    await panel.getByRole("button", { name: "Close Editor isolation", exact: true }).click();
     // Browse explicitly before switching to an artifact outside the current session.
     await page.getByRole("button", { name: "1 artifacts" }).click();
     await page

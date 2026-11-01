@@ -98,7 +98,8 @@ export default function ExpandingWidget() {
             frame.style.height = `${Math.ceil(data.value)}px`;
         };
         window.addEventListener("message", receive);
-        frame.src = url;
+        // This fixture adapts a content-sized display; ordinary artifacts use fixed viewports.
+        frame.src = `${url}#cake-widget=${encodeURIComponent(JSON.stringify({ sizing: "content" }))}`;
       }, expanding.widget);
       const expandingFrame = iframe.contentFrame();
       await expect(

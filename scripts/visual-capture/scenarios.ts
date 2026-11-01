@@ -2072,13 +2072,18 @@ const requestExplanationScenario: VisualCaptureScenario = {
   },
   async prepare(page, state) {
     await page.getByRole("button", { name: "1 artifacts" }).click();
-    await page.getByRole("button", { name: "A prompt through Cake" }).click();
+    await page
+      .getByRole("dialog", { name: "Artifacts", exact: true })
+      .getByRole("button", { name: /^A prompt through Cake/ })
+      .click();
     let frame = page.frameLocator('iframe[title="A prompt through Cake"]');
-    await frame.getByRole("heading", { name: "The conversation crosses." }).waitFor();
+    await frame.getByRole("heading", { name: "Intent, not privilege.", exact: true }).waitFor();
     if (state === "fullscreen") {
       await page.getByRole("button", { name: "View A prompt through Cake fullscreen" }).click();
-      frame = page.frameLocator('iframe[title="A prompt through Cake fullscreen"]');
-      await frame.getByRole("heading", { name: "The conversation crosses." }).waitFor();
+      frame = page
+        .getByRole("dialog", { name: "A prompt through Cake", exact: true })
+        .frameLocator('iframe[title="A prompt through Cake"]');
+      await frame.getByRole("heading", { name: "Intent, not privilege.", exact: true }).waitFor();
     }
     if (state !== "default") {
       await frame.getByRole("button", { name: "04 Run" }).click();
@@ -2087,8 +2092,11 @@ const requestExplanationScenario: VisualCaptureScenario = {
     }
     await page.mouse.move(1, 1);
   },
-  region(page) {
-    return page.getByRole("dialog").or(page.locator('[data-artifact-kind="widget"]')).last();
+  region(page, state) {
+    return page.getByRole(state === "fullscreen" ? "dialog" : "complementary", {
+      name: "A prompt through Cake",
+      exact: true,
+    });
   },
 };
 
@@ -2489,13 +2497,20 @@ const projectChatSidebar: VisualCaptureScenario = {
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     const file = join(paths.cakeHome, "state", "application.json");
-    const state = JSON.parse(await readFile(file, "utf8"));
+    const document = JSON.parse(await readFile(file, "utf8"));
+    const state = document.data;
     await writeFile(
       file,
       JSON.stringify({
-        ...state,
-        projects: state.projects.map((project: { path: string }) => ({ ...project, name: "cake" })),
-        unreadSessionIds: ["visual-sidebar-unread"],
+        ...document,
+        data: {
+          ...state,
+          projects: state.projects.map((project: { path: string }) => ({
+            ...project,
+            name: "cake",
+          })),
+          unreadSessionIds: ["visual-sidebar-unread"],
+        },
       }),
     );
     const sessions = workspaceSessionDirectory(
@@ -2566,7 +2581,7 @@ const sidebarRowLayout: VisualCaptureScenario = {
     await projectChatSidebar.seed(paths, theme);
     const file = join(paths.cakeHome, "state", "application.json");
     const state = JSON.parse(await readFile(file, "utf8"));
-    state.projects[0].name = "engineering-workspace";
+    state.data.projects[0].name = "engineering-workspace";
     await writeFile(file, JSON.stringify(state));
     const sessions = workspaceSessionDirectory(
       paths.project,
@@ -3929,7 +3944,7 @@ const reportHeadersScenario: VisualCaptureScenario = {
     // Worker display titles are intentionally capped independently of CSS truncation.
     const title = subagentTaskTitle(task);
     const card = page
-      .locator('[data-slot="session-message"]')
+      .locator('[data-slot="session-message"]:not([data-slot="content-transition-outgoing"] *)')
       .filter({
         has: page.getByRole("button", { name: title, exact: true }),
       })
@@ -3937,21 +3952,36 @@ const reportHeadersScenario: VisualCaptureScenario = {
     await expect(page.locator('[data-slot="subagent-report"]').first()).toBeVisible({
       timeout: 20_000,
     });
-    // Long report bodies put intermediate cards outside the virtualized range.
-    const transcript = page.locator(".transcript");
-    await transcript.evaluate((element) => element.scrollTo(0, 0));
+    const transcript = page.locator('.transcript:not([data-slot="content-transition-outgoing"] *)');
+    const disclosure = card.locator('[data-slot="response-disclosure"]');
+    // A mounted tall card can have its header thousands of pixels outside the
+    // viewport. Reveal the actual header with reader input, not DOM presence.
+    await transcript.hover({ position: { x: 20, y: 100 } });
+    await page.mouse.wheel(0, -20_000);
     await expect
       .poll(
         async () => {
-          if (await card.count()) return true;
-          await transcript.evaluate((element) => element.scrollBy(0, 400));
+          const geometry = await disclosure.evaluateAll((buttons) => {
+            const button = buttons[0];
+            const scroller = button?.closest(".transcript");
+            if (!button || !scroller) return undefined;
+            const rect = button.getBoundingClientRect();
+            const viewport = scroller.getBoundingClientRect();
+            return {
+              top: rect.top,
+              bottom: rect.bottom,
+              start: viewport.top,
+              end: viewport.bottom,
+            };
+          });
+          if (geometry && geometry.top >= geometry.start && geometry.bottom <= geometry.end)
+            return true;
+          await page.mouse.wheel(0, geometry && geometry.top < geometry.start ? -400 : 400);
           return false;
         },
-        { intervals: [100] },
+        { intervals: [50], timeout: 15_000 },
       )
       .toBe(true);
-    const disclosure = card.locator('[data-slot="response-disclosure"]');
-    await disclosure.scrollIntoViewIfNeeded();
     await expect(disclosure).toHaveAttribute("title", title);
     if (state === "collapsed") await disclosure.click();
     await expect(disclosure).toHaveAttribute(
@@ -4782,6 +4812,10 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
       paths.project,
       join(paths.cakeHome, "pi", "sessions"),
     );
+    const originals = [
+      ...reports,
+      { id: "standalone", text: "An exact original presented independently of the update batch." },
+    ];
     await writeFile(
       join(directory, `1970-01-01T00-00-00-000Z_${sourceId}.jsonl`),
       [
@@ -4793,10 +4827,10 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
           timestamp,
           name: "Cake change reports",
         },
-        ...reports.map((report, index) => ({
+        ...originals.map((report, index) => ({
           type: "message",
           id: report.id,
-          parentId: index === 0 ? "title" : reports[index - 1]!.id,
+          parentId: index === 0 ? "title" : originals[index - 1]!.id,
           timestamp,
           message: {
             role: "assistant",
@@ -4852,32 +4886,36 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
     try {
       const root = await harness.root(BACKGROUND_CONTEXT);
       await root.commit(async (tx) => {
-        // A standalone reference and batched references share the transcript gutter.
-        await tx.appendEntry(AssistantEntry, root.id, {
+        // Standalone cards come from messages.present; Markdown links stay links.
+        // Use an original outside the batch rather than duplicating an incoming report.
+        const ref = `cake://session/${sourceId}?message=standalone`;
+        await tx.appendEntry(ToolResultEntry, root.id, {
           model: [
             {
-              role: "assistant",
-              content: [
-                {
-                  type: "text",
-                  text: `[Original report](cake://session/${sourceId}?message=merge)`,
+              role: "toolResult",
+              toolName: "cake",
+              toolCallId: "present-standalone",
+              content: [{ type: "text", text: JSON.stringify({ ref }) }],
+              details: {
+                command: "messages.present",
+                result: {
+                  ref,
+                  link: ref,
+                  sessionId: sourceId,
+                  entryId: "standalone",
+                  parentId: "contrast",
+                  timestamp,
+                  role: "assistant",
+                  active: true,
+                  inputRefs: [],
+                  hasImages: false,
                 },
-              ],
-              timestamp: 9,
-              api: "anthropic-messages",
-              provider: "anthropic",
-              model: "visual-fixture",
-              stopReason: "stop",
-              usage: {
-                input: 0,
-                output: 0,
-                cacheRead: 0,
-                cacheWrite: 0,
-                totalTokens: 0,
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
               },
+              isError: false,
+              timestamp: 9,
             },
           ],
+          data: { diagnostics: [] },
         });
         await tx.appendEntry(UserEntry, root.id, {
           model: [
@@ -6551,7 +6589,9 @@ const assistantMarkdownTable: VisualCaptureScenario = {
     const scroller = page.locator(".transcript");
     await expect(wrapper).toBeVisible();
     await page.waitForFunction(() => document.fonts.status === "loaded");
-    await wrapper.scrollIntoViewIfNeeded();
+    // Hover retries a replaced cached-history row while bootstrap hydrates it;
+    // scrollIntoViewIfNeeded retains a detached element handle instead.
+    await wrapper.hover();
     await page.mouse.move(1, 1);
     await expect(actions).toHaveCSS("opacity", "1");
     const geometry = await wrapper.evaluate((element) => ({

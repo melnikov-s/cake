@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -14,6 +14,7 @@ import { compileInlineWidget } from "../../src/services/widgets/inline-widget-se
 import { ArtifactProjection } from "../../src/services/artifacts/ArtifactProjection";
 import { makeArtifactProjectionLive } from "../../src/services/artifacts/ArtifactProjectionLive";
 import { encodePrototype, prototypeFixture } from "../fixtures/prototype-source";
+import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -56,6 +57,19 @@ test("one structured five-option chooser persists a choice independently of visi
       }),
     );
     await runtime.dispose();
+    // The chooser was published at r2; the fixture’s original publication remains r1.
+    // Point its explicit embed at the chooser instead of expecting history to change.
+    const sessionFile = join(
+      cakeWorkspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      "1970-01-01T00-00-00-000Z_visual-inline-artifact.jsonl",
+    );
+    await writeFile(
+      sessionFile,
+      (await readFile(sessionFile, "utf8")).replaceAll(
+        "![Inline visualization](cake://artifact/inline-visual@r1)",
+        "![Inline visualization](cake://artifact/inline-visual@r2)",
+      ),
+    );
     app = await electron.launch({
       args: [repositoryRoot],
       cwd: repositoryRoot,
@@ -72,7 +86,9 @@ test("one structured five-option chooser persists a choice independently of visi
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]!.setContentSize(1280, 1000),
     );
-    const host = page.locator('[data-artifact-id="inline-visual"]').first();
+    const host = page.locator(
+      '[data-artifact-reference="cake://artifact/inline-visual@r2"] [data-artifact-id="inline-visual"]',
+    );
     await host.scrollIntoViewIfNeeded();
     const frame = host.locator("iframe").contentFrame();
     await expect(frame.getByText("option-1 design", { exact: true })).toBeVisible();

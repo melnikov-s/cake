@@ -106,6 +106,10 @@ export default function Widget() {
           body: `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="${200 + (index % 7) * 150}"/>`,
         });
       });
+      const errors: string[] = [];
+      application.context().on("page", (page) => {
+        page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
+      });
       const opened = application.waitForEvent("window");
       await application.evaluate(
         async (
@@ -125,8 +129,6 @@ export default function Widget() {
         { html, messageCount, chatMode, widget, withUpdates, withImages },
       );
       const page = await opened;
-      const errors: string[] = [];
-      page.on("pageerror", (error) => errors.push(error.message));
       const transcript = page.locator(".transcript");
       await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
         withUpdates ? "Make widgets follow Cake theme live" : `Message ${messageCount - 1}`,
@@ -877,25 +879,22 @@ for (const chatMode of ["full", "compact"]) {
           await expectHeld(trigger, saved);
           const body = page.locator(`[id="${await trigger.getAttribute("aria-controls")}"]`);
           expect(await body.evaluate((element) => element.scrollHeight)).toBeGreaterThan(600);
-          if (original) {
-            // A wheel inside the bounded original scrolls its body, not the chat.
-            const bounds = await body.boundingBox();
-            await page.mouse.move(bounds!.x + 20, bounds!.y + 20);
-            await page.mouse.wheel(0, 180);
-            await expect
-              .poll(() => body.evaluate((element) => element.scrollTop))
-              .toBeGreaterThan(0);
-            await expectHeld(trigger, saved);
-          } else {
-            const before = await top(transcript);
-            await wheel(page, transcript, 180);
-            await expect.poll(() => top(transcript)).toBeGreaterThan(before + 100);
-          }
+          // Expanded responses are part of the transcript, not nested scroll
+          // traps. Wheel over the body and read it through the outer scroller.
+          expect(
+            await body.evaluate((element) => element.scrollHeight - element.clientHeight),
+          ).toBeLessThanOrEqual(1);
+          const before = await top(transcript);
+          const bounds = await body.boundingBox();
+          await page.mouse.move(bounds!.x + 20, bounds!.y + 20);
+          await page.mouse.wheel(0, 180);
+          await expect.poll(() => top(transcript)).toBeGreaterThan(before + 100);
+          expect(await body.evaluate((element) => element.scrollTop)).toBe(0);
           await trigger.scrollIntoViewIfNeeded();
           await trigger.click();
           await expect(trigger).toHaveAttribute("aria-expanded", "false");
           const reopened = await offset(trigger);
-          // Keyboard activation must pause following too, and reopening starts at the top.
+          // Keyboard activation must pause following too.
           await trigger.focus();
           await trigger.press("Enter");
           await expect(trigger).toHaveAttribute("aria-expanded", "true");

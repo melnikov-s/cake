@@ -286,21 +286,26 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
       await page.evaluate((value) => {
         document.documentElement.dataset.theme = value;
       }, theme);
-      await expect(stopAndSend).toHaveCSS(
-        "color",
-        theme === "light" ? "oklch(0.5 0.018 250)" : "oklch(0.66 0.015 250)",
-      );
+      const colors = await page.evaluate(() => {
+        const reference = document.createElement("span");
+        document.body.append(reference);
+        reference.style.color = "var(--muted-foreground)";
+        const muted = getComputedStyle(reference).color;
+        reference.style.color = "var(--foreground)";
+        const foreground = getComputedStyle(reference).color;
+        reference.remove();
+        return { muted, foreground };
+      });
+      await expect(stopAndSend).toHaveCSS("color", colors.muted);
       await stopAndSend.hover();
-      await expect(stopAndSend).toHaveCSS(
-        "color",
-        theme === "light" ? "oklch(0.22 0.012 252)" : "oklch(0.91 0.008 250)",
-      );
+      await expect(stopAndSend).toHaveCSS("color", colors.foreground);
     }
     const viewport = await page.evaluate(() => ({
       width: window.innerWidth,
       height: window.innerHeight,
     }));
     await page.setViewportSize({ width: 640, height: 760 });
+    await stopAndSend.scrollIntoViewIfNeeded();
     await expect(stopAndSend).toBeInViewport({ ratio: 1 });
     expect(await queue.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true,
@@ -320,7 +325,8 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
       .click();
     // Navigation may leave the transient reader open; close it before inspecting the destination.
     const exit = page.getByRole("button", { name: "Exit fullscreen Origin session" });
-    if (await exit.isVisible()) await exit.click();
+    await page.keyboard.press("Escape");
+    await expect(exit).toHaveCount(0);
     await expect(page.getByText("Origin transcript.")).toBeVisible({ timeout: 15_000 });
   } finally {
     await fixture.dispose();

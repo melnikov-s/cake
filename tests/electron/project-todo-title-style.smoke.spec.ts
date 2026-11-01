@@ -114,11 +114,19 @@ for (const theme of ["light", "dark"] as const) {
       const title = associated.getByText("Startup investigation", { exact: true });
       await page.mouse.move(1, 1);
       const selected = await titleAppearance(title);
+      const selectionBar = page.locator('[data-slot="selection-bar"]');
+      const selectionBarHeight = (await selectionBar.boundingBox())!.height;
       await associated.click();
       await expect(associated).toHaveAttribute("aria-pressed", "false");
       await expect(associated.locator("..")).not.toHaveAttribute("data-associated");
       await page.mouse.move(1, 1);
-      expect(await titleAppearance(title)).toEqual(selected);
+      // Clearing context removes its selection bar; the title moves with the
+      // whole list, but its typography and row-local geometry stay identical.
+      await expect(selectionBar).toHaveCount(0);
+      expect(await titleAppearance(title)).toEqual({
+        ...selected,
+        rects: selected.rects.map((rect) => ({ ...rect, y: rect.y - selectionBarHeight })),
+      });
     } finally {
       await app?.close();
       await dispose?.();

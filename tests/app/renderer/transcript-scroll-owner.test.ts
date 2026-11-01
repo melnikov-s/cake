@@ -99,6 +99,24 @@ describe("transcript scroll owner measurement boundaries", () => {
     expect(scroller.scrollTop).toBe(1_100);
   });
 
+  it("compensates a previously measured row remounting with a smaller loading body", () => {
+    const diagram = addRow("diagram", 500, 400);
+    owner.reconcile();
+    diagram.remove();
+    owner.reconcile();
+
+    // The virtualizer remembers the loaded diagram's height, but its remount
+    // initially renders only a small spinner. This is a real content resize,
+    // not an unknown row's provisional range estimate.
+    addRow("diagram", 500, 100, 400);
+    shift = -300;
+    contentHeight -= 300;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(700);
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(700);
+  });
+
   it("preserves the anchor when measured older rows are prepended", () => {
     const older = addRow("older", 700, 300);
     list.prepend(older);

@@ -351,7 +351,10 @@ test("shows compacted historical work in place, muted and expandable", async () 
       "Markdown",
     );
     await systemChange.click();
-    await page.getByRole("button", { name: "Tools", exact: true }).click();
+    await page
+      .locator('[data-part-id="entry-changed-system-system-prompt-tools"]')
+      .getByRole("button", { name: "Tools", exact: true })
+      .click();
     await expect(page.locator('[data-slot="context-pill"] pre')).toContainText('"name": "read"');
     // Only current reminders and genuine changes are inspectable in the continuation.
     const currentReminder = page.getByRole("button", { name: "Cake · response mode", exact: true });
@@ -361,6 +364,9 @@ test("shows compacted historical work in place, muted and expandable", async () 
       page.locator('[data-slot="context-pill"]').filter({ has: currentReminder }),
     ).toContainText("Cake response mode: text");
     await expect(page.getByText("Original answer.", { exact: true })).toBeVisible();
+    await page.locator(".transcript").evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
     await expect(page.getByText("Current answer.", { exact: true })).toBeVisible();
   } finally {
     await application.close();

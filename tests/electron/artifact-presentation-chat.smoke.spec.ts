@@ -144,20 +144,26 @@ for (const placement of ["old", "latest"] as const) {
       await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
         timeout: 20_000,
       });
+      const transcript = page
+        .locator('.transcript:not([data-slot="content-transition-outgoing"] *)')
+        .first();
       if (placement === "old") {
-        await expect(page.getByText(/^Later conversation 35/)).toBeVisible();
-        await page
-          .locator(".transcript")
-          .first()
-          .evaluate((element) => {
-            element.dispatchEvent(new WheelEvent("wheel", { deltaY: -100000, bubbles: true }));
-            element.scrollTop = 0;
-          });
+        await expect(transcript.getByText(/^Later conversation 35/)).toBeVisible();
+        // Initial history can be replaced while the runtime opens. Keep navigating the
+        // live viewport until the old artifact is actually mounted, then test presentation.
+        await expect(async () => {
+          const bounds = (await transcript.boundingBox())!;
+          await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+          await page.mouse.wheel(0, -100000);
+          await expect(
+            transcript.locator('[data-slot="artifact-disclosure"] iframe').first(),
+          ).toBeVisible({ timeout: 1000 });
+        }).toPass({ timeout: 20_000 });
       }
       const inline =
         placement === "old"
-          ? page.locator('[data-slot="artifact-disclosure"]').first()
-          : page.locator(
+          ? transcript.locator('[data-slot="artifact-disclosure"]').first()
+          : transcript.locator(
               '[data-part-id="entry-later-message-1-text-0"] [data-slot="artifact-disclosure"]',
             );
       await expect(

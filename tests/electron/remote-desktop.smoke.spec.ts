@@ -248,7 +248,7 @@ test("remote Electron uses the full shell and only the server owns agent state",
       await page.getByRole("button", { name: "Stop", exact: true }).click();
       await expect(input).toBeEnabled();
       await expect.poll(() => readFile(transcript, "utf8")).toContain("Remote milestone prompt");
-      await expect(readdir(localHome)).rejects.toThrow();
+      await expect(readdir(localHome)).resolves.toEqual(["logs"]);
       await expect(readdir(join(userData, "remote-hosts"))).resolves.toEqual([
         createHash("sha256").update(url).digest("hex"),
       ]);
@@ -282,7 +282,24 @@ test("remote Electron uses the full shell and only the server owns agent state",
       await expect
         .poll(
           async () =>
-            (await readFile(transcript, "utf8")).split("Lost receipt remote prompt").length - 1,
+            (await readFile(transcript, "utf8"))
+              .trim()
+              .split("\n")
+              .map((line) => JSON.parse(line))
+              // Pi metadata/recovery entries can repeat input text. Count actual
+              // user messages, not occurrences in unrelated durable records.
+              .filter((entry) => entry.type === "message" && entry.message?.role === "user")
+              .filter((entry) => {
+                const content = entry.message.content;
+                const text =
+                  typeof content === "string"
+                    ? content
+                    : content
+                        .filter((part: { type: string; text?: string }) => part.type === "text")
+                        .map((part: { text: string }) => part.text)
+                        .join("\n");
+                return text.includes("Lost receipt remote prompt");
+              }).length,
         )
         .toBe(1);
       await expect(
@@ -291,7 +308,7 @@ test("remote Electron uses the full shell and only the server owns agent state",
       await page.getByRole("button", { name: "I checked the server state", exact: true }).click();
       await input.fill("");
       await page.getByRole("button", { name: "Stop", exact: true }).click();
-      await expect(readdir(localHome)).rejects.toThrow();
+      await expect(readdir(localHome)).resolves.toEqual(["logs"]);
       // The real Pi tool boundary asks a structured question; its answer stays on the server.
       await input.fill("Ask a remote question");
       await page.getByRole("button", { name: "Send", exact: true }).click();
@@ -452,7 +469,7 @@ test("remote Electron uses the full shell and only the server owns agent state",
         )
         .toBe(true);
       await page.getByRole("button", { name: "Stop", exact: true }).click();
-      await expect(readdir(localHome)).rejects.toThrow();
+      await expect(readdir(localHome)).resolves.toEqual(["logs"]);
       await page.getByRole("button", { name: "Open settings", exact: true }).click();
       await page.getByRole("button", { name: "Network & privacy", exact: true }).click();
       await expect(page.getByLabel("Cake server URL")).toHaveValue(url);
@@ -508,7 +525,7 @@ test("failed remote connection can retry and deliberately relaunch local, then s
     await expect(
       page.getByText("Not connected. Your local backend has not been started."),
     ).toBeVisible();
-    await expect(readdir(home)).rejects.toThrow();
+    await expect(readdir(home)).resolves.toEqual(["logs"]);
     await application.evaluate(({ dialog }) => {
       Object.defineProperty(dialog, "showMessageBox", {
         configurable: true,

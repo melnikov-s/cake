@@ -382,6 +382,25 @@ describe("Embedded editor workflow", () => {
     expect(openSourceControl).not.toHaveBeenCalled();
   });
 
+  it("defers a saved IDE preference while user-opened Settings covers startup", async () => {
+    const boundary = bootstrapBoundary();
+    const lease = editorLease("b");
+    const open = vi.fn<Client["vscode"]["open"]>(async () => lease);
+    using fixture = renderEmbeddedEditor(
+      { ...boundary.client, vscode: { open } },
+      { bootstrap: true, savedIde: true },
+    );
+    await fixture.user.click(screen.getAllByRole("button", { name: "Open settings" })[0]!);
+    await boundary.accept();
+    await hydrateBootstrap(boundary, fixture);
+    expect(screen.getByRole("button", { name: "Back to chat" })).toBeDefined();
+    expect(workspaceFrame()).toBeNull();
+    expect(open).not.toHaveBeenCalled();
+    await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
+    await waitFor(() => expect(workspaceFrame()?.getAttribute("src")).toBe(lease.endpoint));
+    expect(open).toHaveBeenCalledOnce();
+  });
+
   it.each(["hide", "disconnect"] as const)(
     "does not revive a pending Source Control intent after explicit %s during reauthorization",
     async (cancellation) => {

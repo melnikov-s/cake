@@ -454,9 +454,16 @@ export class NavigationStore extends Store<{
     if (projectChat && (await opening) === false) return;
     this.commitCakeChatSelection(sessionId);
     this.presentation.restore();
-    collection.registry
-      .find(sessionId)
-      ?.conversationSessionStore.composerStore.draftStore.requestFocus();
+    // Sidebar activation runs on mousedown. Restore input focus after the native
+    // button default, not in the microtask that it can overwrite.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    if (
+      this.props.shell.activeConversation?.sessionId === sessionId &&
+      !this.props.shell.coveringSurface
+    )
+      collection.registry
+        .find(sessionId)
+        ?.conversationSessionStore.composerStore.draftStore.requestFocus();
     await opening;
   }
 
@@ -466,6 +473,10 @@ export class NavigationStore extends Store<{
     await this.props.cakeChat().activate(prompt);
     this.commitCakeChatSelection(CAKE_CHAT_SESSION_ID);
     this.presentation.restore();
+    this.props
+      .cakeChat()
+      .registry.find(CAKE_CHAT_SESSION_ID)
+      ?.conversationSessionStore.composerStore.draftStore.requestFocus();
   }
 
   openArtifact(sessionId: string | undefined, lineageId: string, revision?: number) {

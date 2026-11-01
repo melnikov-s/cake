@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { App } from "../../../src/renderer/components/app";
 import type { StoreEvent } from "../../../src/renderer/events/StoreEvent";
@@ -109,7 +110,12 @@ function renderCachedWorkbench(
   };
 }
 
-async function renderRestoredWorkbench(client: TestClientOverrides, resolved = false) {
+async function renderRestoredWorkbench(
+  client: TestClientOverrides,
+  resolved = false,
+  duringRestore?: (user: ReturnType<typeof userEvent.setup>) => Promise<void>,
+  staged = false,
+) {
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project" })],
     sessions: [
@@ -138,6 +144,13 @@ async function renderRestoredWorkbench(client: TestClientOverrides, resolved = f
       },
     },
   });
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <App />
+    </StoreProvider>,
+  );
+  const user = userEvent.setup();
+  if (staged) fixture.root.sessionRegistry.pendingSessions.prepareStaged("/worktree", "session-1");
   // This is the real renderer bootstrap entry point, not a simulated user control.
   await act(async () => {
     const initialized = fixture.root.initialize();
@@ -167,15 +180,11 @@ async function renderRestoredWorkbench(client: TestClientOverrides, resolved = f
         tree: [],
       },
     });
+    await duringRestore?.(user);
     await initialized;
   });
-  const view = render(
-    <StoreProvider store={fixture.root}>
-      <App />
-    </StoreProvider>,
-  );
   return {
-    user: userEvent.setup(),
+    user,
     [Symbol.dispose]() {
       view.unmount();
       fixture[Symbol.dispose]();
@@ -321,6 +330,57 @@ describe("Workbench conversation lifecycle", () => {
         );
       expect(respondToTrust).not.toHaveBeenCalled();
       expect(screen.queryByRole("alertdialog", { name: "Trust this workspace?" })).toBeNull();
+    },
+  );
+
+  it.each([false, true])(
+    "keeps user-opened Settings visible when startup authorization completes (staged=%s)",
+    async (staged) => {
+      const gate = deferredOpen();
+      const inspect = vi.fn<Client["workspaces"]["inspect"]>(async (input) => {
+        await gate.promise;
+        return { ...input, trustRequired: false };
+      });
+      const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
+      const loadStagedSlashCommands = vi.fn<Client["workspaces"]["loadStagedSlashCommands"]>(
+        async () => [],
+      );
+      using fixture = await renderRestoredWorkbench(
+        {
+          workspaces: {
+            inspect,
+            registerProject: async () => defaultApplicationState(),
+            loadStagedSlashCommands,
+          },
+          projectSessions: { open },
+        },
+        false,
+        async (user) => {
+          await waitFor(() => expect(inspect).toHaveBeenCalledOnce());
+          await user.click(screen.getAllByRole("button", { name: "Open settings" })[0]!);
+          await user.click(screen.getByRole("button", { name: /^Agent Behavior and content$/ }));
+          expect(
+            screen.getByRole("switch", { name: "Allow agent session navigation" }),
+          ).toBeDefined();
+          gate.resolve();
+        },
+        staged,
+      );
+      if (staged) {
+        expect(open).not.toHaveBeenCalled();
+        expect(loadStagedSlashCommands).toHaveBeenCalledOnce();
+      } else {
+        // The retained preview is already observed; startup must not issue an
+        // extra open before its observation has assembled the runtime.
+        expect(open).not.toHaveBeenCalled();
+        expect(inspect).toHaveBeenCalledOnce();
+      }
+      expect(screen.getByRole("switch", { name: "Allow agent session navigation" })).toBeDefined();
+      await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
+      expect(
+        document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+      ).toBe("session-1");
+      expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
     },
   );
 

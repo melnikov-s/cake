@@ -56,10 +56,7 @@ async function launch({
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = Buffer.concat(chunks).toString("utf8");
-    if (
-      postProcessedText !== undefined &&
-      body.includes("Lightly clean a speech-to-text transcript")
-    ) {
+    if (postProcessedText !== undefined && body.includes("Lightly clean speech-to-text:")) {
       utilityRequests.push(body);
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.end(
@@ -775,8 +772,8 @@ test("conversation controls enter, mute and exit with real capture and streaming
     await expect(preparing).toBeDisabled();
     await expect(preparing.locator('[role="status"]')).toBeVisible();
     const preparingSize = await preparing.boundingBox();
-    expect(preparingSize!.width).toBe(30);
-    expect(preparingSize!.height).toBe(30);
+    expect(preparingSize!.width).toBe(28);
+    expect(preparingSize!.height).toBe(28);
     expect(await layout()).toEqual(restingLayout);
     await composer.focus();
     await composer.press("End");
@@ -1205,9 +1202,7 @@ test("local speech provider uses native selection, persists, and speaks without 
     await provider.selectOption("elevenlabs");
     await expect(slider).toHaveValue("1");
     await expect(slider).toHaveAttribute("max", "1.2");
-    await expect(
-      f.page.getByText("ElevenLabs speed is saved separately; its limit is 1.2×."),
-    ).toBeVisible();
+    await expect(f.page.getByText("ElevenLabs speed (up to 1.2×).", { exact: true })).toBeVisible();
     await slider.focus();
     await slider.press("End");
     await expect(slider).toHaveValue("1.2");

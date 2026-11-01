@@ -50,6 +50,8 @@ for (const visible of [false, true]) {
       });
       // Equal timestamps sort by title, so destination 2 need not be on the first page.
       const rows = page.locator(".session-item[data-session-id]");
+      // The selected transcript can hydrate before the first catalog page arrives.
+      await expect(rows).toHaveCount(Math.min(10, fixture.sessionCount));
       while ((await rows.count()) < fixture.sessionCount) {
         const nextCount = Math.min(fixture.sessionCount, (await rows.count()) + 10);
         await page.getByRole("button", { name: "Show more", exact: true }).click();

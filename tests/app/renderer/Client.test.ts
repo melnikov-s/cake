@@ -7,6 +7,8 @@ import { ClientError } from "../../../src/renderer/client/Client";
 import type { EditorLease } from "../../../src/contracts/vscode/editor-endpoint";
 import { commandClientFinishTransport } from "./command-client-finish-transport";
 import { sessionSummary } from "./fixtures/catalog-fixtures";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { defaultCakeChatPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
 
 function browserDevices() {
   const files = new BrowserFiles();
@@ -29,6 +31,30 @@ afterEach(() => vi.unstubAllGlobals());
 // encoded transport replies. Generated-client retains wire encoding, cancellation,
 // attachment ordering and non-retrying Stream tests rather than duplicating them.
 describe("Client transport and device integration", () => {
+  it.each([
+    { name: "Cake Chat", companion: undefined },
+    { name: "Companion", companion: true },
+  ])("encodes the $name preference owner through the real RPC schema", async ({ companion }) => {
+    const preferences = { ...defaultCakeChatPreferences(), instructions: "Keep my guidance" };
+    const state = {
+      ...defaultApplicationState(),
+      [companion ? "assistantPreferences" : "cakeChatPreferences"]: preferences,
+    };
+    await using transport = commandClientFinishTransport(() => ({
+      _tag: "Success",
+      value: { state },
+    }));
+    const client = makeClient(transport.runtime);
+    await expect(
+      client.workspaces.setCakeChatPreferences(preferences, undefined, companion),
+    ).resolves.toEqual(state);
+    expect(transport.requests()).toHaveLength(1);
+    expect(transport.requests()[0]).toMatchObject({
+      tag: "workspaces.set-cake-chat-preferences",
+      payload: { preferences, companion: companion ?? false },
+    });
+  });
+
   it("allows exact-ID lookup while remote mutation delivery is blocked", async () => {
     const summary = sessionSummary({ sessionId: "session", projectPath: "/project" });
     await using transport = commandClientFinishTransport(() => ({

@@ -90,7 +90,9 @@ for (const [surface, theme] of [
           const canvas = document.createElement("canvas");
           const context = canvas.getContext("2d")!;
           context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-          const metrics = context.measureText(element.value || element.placeholder);
+          // A fixed cap-height sample measures the font baseline, not whether
+          // the current placeholder happens to contain descending glyphs.
+          const metrics = context.measureText("H");
           const lineHeight = parseFloat(style.lineHeight);
           const baseline =
             field.top +
@@ -101,6 +103,9 @@ for (const [surface, theme] of [
           const inkCenter =
             baseline + (metrics.actualBoundingBoxDescent - metrics.actualBoundingBoxAscent) / 2;
           return {
+            fontSize: parseFloat(style.fontSize),
+            lineHeight,
+            rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
             height: field.height,
             formHeight: form.getBoundingClientRect().height,
             voice: center(voice),
@@ -127,7 +132,10 @@ for (const [surface, theme] of [
           expect(Math.abs(geometry.voice - geometry.send)).toBeLessThan(0.1);
           expect(Math.abs(geometry.lineCenter - geometry.send)).toBeLessThan(0.1);
           expect(Math.abs(geometry.voiceInk - geometry.sendInk)).toBeLessThan(0.5);
-          // Full Companion retains its larger text-sm typography.
+          // text-xs and text-sm share Cake's readable 0.875rem floor;
+          // the composer retains the shared leading-6 line box on every surface.
+          expect(geometry.fontSize).toBe(geometry.rootFontSize * 0.875);
+          expect(geometry.lineHeight).toBe(geometry.rootFontSize * 1.5);
           expect(Math.abs(geometry.textInk - geometry.sendInk)).toBeLessThanOrEqual(
             companion ? 2 : 1,
           );
@@ -166,8 +174,9 @@ for (const [surface, theme] of [
         await expectCenterline();
         await input.press("Shift+Tab");
         await expect(voice).toBeFocused();
-        // Companion captures Escape to dismiss the popover; Tab follows its inline DOM order.
-        await voice.press(companion ? "Tab" : "Escape");
+        // Both assistant popovers capture Escape to dismiss; Tab follows their
+        // inline DOM order. Annotation's voice control retains Escape-to-input.
+        await voice.press(annotation ? "Escape" : "Tab");
         await expect(input).toBeFocused();
         await voice.click();
         await expect(voice).toHaveAttribute("aria-pressed", "false");

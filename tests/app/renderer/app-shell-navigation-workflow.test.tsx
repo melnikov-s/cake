@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
+import { sessionSummary } from "./fixtures/catalog-fixtures";
 
 beforeEach(() => {
   vi.stubGlobal("PointerEvent", MouseEvent);
@@ -230,6 +231,39 @@ describe("App shell navigation workflow", () => {
     await expectProjectChat("alpha");
     expect(back()).toHaveProperty("disabled", true);
     expect(forward()).toHaveProperty("disabled", true);
+  });
+
+  it("traverses repeated scoped visits to the visible session without waiting for metadata", async () => {
+    let holdLookup = false;
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const lookup = vi.fn<Client["projectSessions"]["lookup"]>(async ({ sessionId }) => {
+      if (holdLookup) await pending;
+      return sessionSummary({
+        sessionId,
+        title: `${sessionId} conversation`,
+        projectPath: `/${sessionId}`,
+      });
+    });
+    using fixture = renderAppShellNavigation(
+      { projectSessions: { lookup } },
+      { history: ["alpha", "beta", "alpha", "gamma", "alpha", "beta"] },
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Project actions for alpha" }));
+    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on alpha" }));
+    await fixture.user.click(back());
+    await expectProjectChat("alpha");
+    holdLookup = true;
+    await fixture.user.click(back());
+    expect(back()).toHaveProperty("disabled", false);
+    await fixture.user.click(back());
+    expect(back()).toHaveProperty("disabled", true);
+    await act(async () => finish());
+    await expectProjectChat("alpha");
+    expect(back()).toHaveProperty("disabled", true);
+    expect(forward()).toHaveProperty("disabled", false);
   });
 
   it.each([false, true])(

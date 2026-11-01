@@ -320,6 +320,9 @@ for (const timing of ["next-user", "timer"] as const)
         execution: "unverified",
         target: { sessionId: promptId },
       });
+      expect(
+        receipts.filter((receipt) => receipt.command === "sessions.open").at(-1),
+      ).toMatchObject({ ok: true, opened: { sessionId: promptId, workspacePath: promptProject } });
       await expect(selected()).toHaveAttribute("data-session-id", promptId);
       await expect(page.locator(".transcript")).toContainText("IMMEDIATE_HANDOFF");
       await expect(page.getByText("Immediate handoff processed.", { exact: true })).toBeVisible();

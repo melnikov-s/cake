@@ -219,11 +219,21 @@ readline.createInterface({input:process.stdin}).on('line', line => {
             .setContentSize(width, 500);
         }, width);
         await expect.poll(() => overlay.evaluate(() => innerWidth)).toBe(width);
-        for (const [selector, maxWidth] of [
-          [".workbench-composer", 884],
-          ['[aria-label="Conversation"]', 816],
+        for (const [column, maxWidth] of [
+          [overlay.locator(".workbench-composer"), 884],
+          [
+            overlay
+              .locator('[data-slot="transcript-item"]')
+              .filter({ has: overlay.getByText("Hello from the drop-down", { exact: true }) }),
+            816,
+          ],
+          [
+            overlay.locator('[data-slot="transcript-item"]').filter({
+              has: overlay.getByText("Reply from the shared Cake Chat.", { exact: true }),
+            }),
+            816,
+          ],
         ] as const) {
-          const column = overlay.locator(selector);
           await expect
             .poll(() =>
               column.evaluate((element) => {

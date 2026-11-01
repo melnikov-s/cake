@@ -270,9 +270,14 @@ export default (pi) => {
       await redirectInput.pressSequentially(redirect.href);
       await expect(redirectInput).toHaveValue(redirect.href);
       await page.getByRole("button", { name: "Continue", exact: true }).click();
-      await expect(
-        page.getByText('Signed in to MCP server "oauth" (1 tools).', { exact: true }),
-      ).toBeVisible();
+      const signedIn = page.getByText('Signed in to MCP server "oauth" (1 tools).', {
+        exact: true,
+      });
+      await expect(signedIn).toBeVisible();
+      // Extension notifications remain until the user dismisses them. Clear the
+      // completed sign-in before returning to the compact remote composer.
+      await signedIn.click();
+      await expect(signedIn).toHaveCount(0);
       expect(await readFile(join(agentDir, "mcp-auth.json"), "utf8")).toContain("fixture-token");
       await page.getByRole("button", { name: "Back to chat", exact: true }).click();
 
@@ -317,7 +322,7 @@ export default (pi) => {
       await page.getByRole("button", { name: "Send", exact: true }).click();
       await expect(page.getByText("Fixture session ready", { exact: true })).toBeVisible();
       expect(errors).toEqual([]);
-      if (remote) expect(await readdir(localHome).catch(() => [])).toEqual([]);
+      if (remote) expect(await readdir(localHome)).toEqual(["logs"]);
     } finally {
       await application.close();
       if (backendTimeout) clearTimeout(backendTimeout);

@@ -217,7 +217,7 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.workspaces["set-utility-model"]({ model }),
           options,
         ).then((response) => response.state),
-      setCakeChatPreferences: (preferences, options, companion) =>
+      setCakeChatPreferences: (preferences, options, companion = false) =>
         execute(
           "workspaces.set-cake-chat-preferences",
           (client) => client.workspaces["set-cake-chat-preferences"]({ preferences, companion }),

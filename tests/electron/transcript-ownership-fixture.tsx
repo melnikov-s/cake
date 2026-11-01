@@ -217,37 +217,39 @@ let liveTimer: ReturnType<typeof setInterval> | undefined;
 function render() {
   flushSync(() =>
     root.render(
-      <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
-        {chatMode ? (
-          <Chat
-            store={store}
-            transcriptBehavior={
-              widget
-                ? {
-                    messageReferenceSessionId: session.sessionId,
-                    inlineWidgets: fixture.root.inlineWidgetStore,
-                    inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
-                  }
-                : undefined
-            }
-            compact={chatMode === "compact"}
-            embedded={withUpdates && chatMode === "compact"}
-          />
-        ) : (
-          <ChatTranscript
-            store={store}
-            behavior={
-              widget
-                ? {
-                    messageReferenceSessionId: session.sessionId,
-                    inlineWidgets: fixture.root.inlineWidgetStore,
-                    inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
-                  }
-                : undefined
-            }
-            footer={<div>Activity revision {revision}</div>}
-          />
-        )}
+      <StoreProvider store={fixture.root}>
+        <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
+          {chatMode ? (
+            <Chat
+              store={store}
+              transcriptBehavior={
+                widget
+                  ? {
+                      messageReferenceSessionId: session.sessionId,
+                      inlineWidgets: fixture.root.inlineWidgetStore,
+                      inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
+                    }
+                  : undefined
+              }
+              compact={chatMode === "compact"}
+              embedded={withUpdates && chatMode === "compact"}
+            />
+          ) : (
+            <ChatTranscript
+              store={store}
+              behavior={
+                widget
+                  ? {
+                      messageReferenceSessionId: session.sessionId,
+                      inlineWidgets: fixture.root.inlineWidgetStore,
+                      inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
+                    }
+                  : undefined
+              }
+              footer={<div>Activity revision {revision}</div>}
+            />
+          )}
+        </StoreProvider>
       </StoreProvider>,
     ),
   );

@@ -73,9 +73,12 @@ test("crash diagnostics cover DOM and native overlays, reach both consoles, and 
       ),
     ).toBe(true);
   } finally {
-    await application.evaluate(() =>
-      Reflect.get(globalThis, "rendererCrashCover")?.webContents.close(),
-    );
+    await application.evaluate(({ BrowserWindow }) => {
+      Reflect.get(globalThis, "rendererCrashCover")?.webContents.close();
+      // This test deliberately disposed the renderer with about:blank. There is
+      // no save observer left to acknowledge a normal window-close request.
+      for (const window of BrowserWindow.getAllWindows()) window.destroy();
+    });
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
   }

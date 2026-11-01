@@ -225,7 +225,7 @@ button.onclick = async () => {
     for (const index of [0, 1, 4]) {
       const trigger = disclosures
         .nth(index)
-        .getByRole("button", { name: "Inline visualization Expand", exact: true });
+        .getByRole("button", { name: "Inline visualization Expand Old version", exact: true });
       await expect(trigger).toHaveAttribute("aria-expanded", "false");
       await trigger.click();
     }

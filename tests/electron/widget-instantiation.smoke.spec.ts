@@ -134,7 +134,7 @@ for (const language of ["html", "react"] as const) {
           .getByRole("button", { name: /Reusable checklist copy/ })
           .click();
         return page
-          .getByRole("dialog", { name: "Reusable checklist copy", exact: true })
+          .getByRole("complementary", { name: "Reusable checklist copy", exact: true })
           .locator(`[data-artifact-id="${instanceId}"] iframe`)
           .first();
       };
@@ -142,6 +142,7 @@ for (const language of ["html", "react"] as const) {
       const drawing = iframe.contentFrame();
       await expect(drawing.getByRole("heading", { name: "Independent checklist" })).toBeVisible();
       await expect(drawing.getByText("Independent item", { exact: true })).toBeVisible();
+      await expect(drawing.locator("html")).toHaveAttribute("data-cake-widget-ready", "true");
       const src = await iframe.getAttribute("src");
       await drawing.getByRole("checkbox").click();
       await expect(drawing.getByRole("checkbox")).toBeChecked();

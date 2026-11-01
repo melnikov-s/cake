@@ -318,7 +318,8 @@ test("separate Node backend serves a real leased code-server workbench to remote
       ).length,
     ).toBeGreaterThanOrEqual(2);
     expect(await app.evaluate(() => Reflect.get(globalThis, "nativeEditorViolations"))).toEqual([]);
-    expect(await readdir(localHome).catch(() => [])).toEqual([]);
+    // Remote desktop diagnostics are local; backend agent/editor state is not.
+    expect(await readdir(localHome)).toEqual(["logs"]);
     expect(await readFile(join(project, "hello.ts"), "utf8")).toContain("remoteValue");
     if (!state) throw new Error("Missing leased editor address");
     await application.close();
@@ -336,9 +337,7 @@ test("separate Node backend serves a real leased code-server workbench to remote
         state: { tabs: ["hello.ts"], text: expect.stringContaining("editedRemotely") },
       });
     expect((await editorState(second))?.url).not.toBe(state.url);
-    expect(
-      await readdir(join(directory, "observer-backend-must-not-exist")).catch(() => []),
-    ).toEqual([]);
+    expect(await readdir(join(directory, "observer-backend-must-not-exist"))).toEqual(["logs"]);
   } finally {
     await observer?.close();
     await application?.close();

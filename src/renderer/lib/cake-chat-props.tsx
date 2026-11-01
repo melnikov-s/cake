@@ -31,6 +31,7 @@ export function cakeChatPropsFor(root: RootStore, session: CakeChatSessionStore,
         sideChat={session.conversationSessionStore.sideChatStore}
       />
     ),
+    showContextUsage: !overlay,
     parkComposerFocusWhileDictating: !overlay,
     transcriptTransition: {
       ready:

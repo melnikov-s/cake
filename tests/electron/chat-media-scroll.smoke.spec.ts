@@ -57,7 +57,10 @@ async function startProbe(page: Page) {
           const block = scroller.querySelector('[data-diagram="pele"]');
           if (block) {
             if (block.querySelector("svg.pele")) result.diagramFrames++;
-            else result.loadingFrames++;
+            else {
+              result.loadingFrames++;
+              window.dispatchEvent(new Event("transcript-diagram-loading-painted"));
+            }
           }
           if (
             [...scroller.querySelectorAll("img")].some(
@@ -177,8 +180,9 @@ for (const media of ["diagram", "image", "combined"] as const) {
       await expect(transcript.locator('[aria-label="Conversation"]')).toBeVisible();
       // Async row growth must not re-render inside ResizeObserver delivery.
       await recordRendererErrors(page);
-      // Delay only worker transport, not Pele, native layout or measurement.
-      // This guarantees coverage of initially-loading and loaded diagrams.
+      // Gate only worker transport on a painted loading sample, not elapsed
+      // time. Pele, native layout and measurement remain real, and every
+      // traversal must still cover both loading and loaded diagrams.
       await page.evaluate(() => {
         const NativeWorker = window.Worker;
         window.Worker = class extends NativeWorker {
@@ -187,7 +191,11 @@ for (const media of ["diagram", "image", "combined"] as const) {
             if (options?.name === "cake-diagram") {
               const postMessage = this.postMessage.bind(this);
               this.postMessage = (message: unknown) => {
-                setTimeout(() => postMessage(message), 100);
+                window.addEventListener(
+                  "transcript-diagram-loading-painted",
+                  () => postMessage(message),
+                  { once: true },
+                );
               };
             }
           }

@@ -98,17 +98,20 @@ export function createTranscriptScrollOwner(
   // A range commit inserts real rows using estimated sizes first. Its padding
   // is not authoritative until Virtuoso measures those rows. Compensating the
   // intermediate geometry can move the range again and unmount our anchor.
-  const measuredRows = new WeakSet<HTMLElement>();
+  const measuredRows = new Set<string>();
   const measuring = () => {
     let pending = false;
     for (const element of scroller.querySelectorAll<HTMLElement>(
       '[aria-label="Conversation"] > [data-known-size]',
     )) {
-      if (element.offsetHeight === Number(element.dataset.knownSize)) measuredRows.add(element);
-      else if (!measuredRows.has(element)) pending = true;
+      const key = element.querySelector<HTMLElement>(rowSelector)?.dataset.transcriptItemKey;
+      if (!key) continue;
+      if (element.offsetHeight === Number(element.dataset.knownSize)) measuredRows.add(key);
+      else if (!measuredRows.has(key)) pending = true;
     }
     // Resizes of already measured rows are real layout changes, not mount-time
-    // estimates. Compensate those immediately, before their next measurement.
+    // estimates, including a virtual remount that starts with a loading body.
+    // Compensate those immediately, before their next measurement.
     return pending;
   };
   const gap = () => scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;

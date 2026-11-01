@@ -65,16 +65,13 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
   // pending comment with no conversation Store to reopen.
   const sidecar = SessionManager.create(
     project,
-    cakeWorkspaceSessionDirectory(
-      project,
-      join(
-        cakeHome,
-        "pi",
-        "review-sessions",
-        digestKey(project),
-        digestKey(sessionId),
-        digestKey("existing-side-chat"),
-      ),
+    join(
+      cakeHome,
+      "pi",
+      "review-sessions",
+      digestKey(project),
+      digestKey(sessionId),
+      digestKey("existing-side-chat"),
     ),
   );
   sidecar.appendMessage({ role: "user", content: "Compare the two approaches", timestamp: 0 });
@@ -439,7 +436,7 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
     await sideChatsButton.click();
     const sideChatsList = page.getByRole("dialog", { name: "Open side chats" });
     // Discussion catalogs carry thread metadata; the live sidecar owns its transcript.
-    await sideChatsList.getByRole("button", { name: /Side chat/ }).click();
+    await sideChatsList.getByRole("button", { name: /Compare the two approaches/ }).click();
     const existingSideChat = page.getByRole("complementary", { name: "Side chat" });
     await expect(existingSideChat).toBeVisible();
     await expect(

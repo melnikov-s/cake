@@ -10,7 +10,7 @@ import { emitRendererEvent, installLocalModelHttpGuard } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
-const sessionId = "selection-tour";
+const sessionId = "c08076de-555a-4e06-8957-02c9ef4f6740";
 
 async function fixture() {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-selection-pills-"));
@@ -141,10 +141,38 @@ async function fixture() {
     .click();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(search).toBeHidden();
+  // Observe the real companion's resets, without replacing or suppressing events.
+  // DOM tabs can mount before the active-editor notification reaches Cake.
+  await page.evaluate((workspacePath) => {
+    Reflect.set(window, "selectionResetRevision", 0);
+    if (!window.cake) throw new Error("Missing native RPC transport");
+    window.cake.rpc.subscribe((message) => {
+      if (!message || typeof message !== "object" || Reflect.get(message, "_tag") !== "Chunk")
+        return;
+      const values: unknown = Reflect.get(message, "values");
+      if (!Array.isArray(values)) return;
+      for (const event of values) {
+        if (
+          event &&
+          typeof event === "object" &&
+          Reflect.get(event, "type") === "embedded-editor-selection-cleared" &&
+          Reflect.get(event, "workspacePath") === workspacePath
+        )
+          Reflect.set(
+            window,
+            "selectionResetRevision",
+            Number(Reflect.get(window, "selectionResetRevision")) + 1,
+          );
+      }
+    });
+  }, project);
+  const selectionResetRevision = () =>
+    page.evaluate(() => Number(Reflect.get(window, "selectionResetRevision")));
   await command("vscode.enter");
   await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible({
     timeout: 20_000,
   });
+  await expect.poll(selectionResetRevision).toBeGreaterThan(0);
   const pills = page.locator('[aria-label="Editor selections"]');
   const open = async (path = "src/a.ts", line = 100, extra: JsonObject = {}) => {
     await command("vscode.open", { path, line, endLine: line + 2, ...extra });
@@ -161,6 +189,7 @@ async function fixture() {
     command,
     pills,
     open,
+    selectionResetRevision,
     close: async () => {
       await application.close();
       server.closeAllConnections();
@@ -247,8 +276,10 @@ test("switching files and showing the same document in two editors retains one p
 test("a user-selected source opens on click, appears in the sent message, and leaves the composer", async () => {
   const h = await fixture();
   try {
+    const beforeOpen = await h.selectionResetRevision();
     await h.open("src/b.ts", 20);
     await expect.poll(() => editorState(h.application)).toMatchObject({ tabs: ["b.ts"] });
+    await expect.poll(h.selectionResetRevision).toBeGreaterThan(beforeOpen);
     await emitRendererEvent(h.application, {
       type: "embedded-editor-selection",
       workspacePath: h.project,
@@ -256,7 +287,9 @@ test("a user-selected source opens on click, appears in the sent message, and le
       startLine: 3,
       endLine: 4,
     });
-    const attachment = h.page.getByRole("button", { name: "src/a.ts#L4-L5", exact: true });
+    const attachment = h.page
+      .locator("form")
+      .getByRole("button", { name: "src/a.ts#L4-L5", exact: true });
     await expect(attachment).toBeVisible();
     const source = h.page.getByRole("button", {
       name: "Open src/a.ts#L4-L5",

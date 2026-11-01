@@ -140,7 +140,11 @@ for (const state of ["default", "project", "reference"]) {
       await expect(card).not.toContainText("cake-session-message");
       const message = card.locator("..");
       const actions = message.locator('[data-slot="message-actions"]');
-      await expect(actions.getByRole("button")).toHaveCount(2);
+      await expect(actions.getByRole("button")).toHaveCount(state === "reference" ? 2 : 1);
+      if (state === "reference")
+        await expect(
+          actions.getByRole("button", { name: "Reply to message", exact: true }),
+        ).toBeVisible();
       const copy = actions.getByRole("button", { name: "Copy response", exact: true });
       await copy.focus();
       await expect(copy).toBeFocused();

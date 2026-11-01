@@ -15,7 +15,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
-  const sessionId = "file-link-session";
+  const sessionId = "7a4eb006-211d-42c9-8023-7ce16414e89c";
   const reviewThreadId = "vscode-annotation-thread";
   const timestamp = new Date(0).toISOString();
   const imageData = Buffer.from(
@@ -26,16 +26,13 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
   const reviewDirectory = join(cakeHome, "state", "reviews", digest(project), digest(sessionId));
   // A code-review thread is an ordinary side chat: its transcript is a Pi sidecar.
   const sidecarSessionId = "vscode-annotation-sidecar";
-  const sidecarDirectory = cakeWorkspaceSessionDirectory(
-    project,
-    join(
-      cakeHome,
-      "pi",
-      "review-sessions",
-      digest(project),
-      digest(sessionId),
-      digest(reviewThreadId),
-    ),
+  const sidecarDirectory = join(
+    cakeHome,
+    "pi",
+    "review-sessions",
+    digest(project),
+    digest(sessionId),
+    digest(reviewThreadId),
   );
   const sidecarFile = join(sidecarDirectory, `1970-01-01T00-00-00-000Z_${sidecarSessionId}.jsonl`);
 
@@ -129,7 +126,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
             {
               type: "text",
               text:
-                'Phase 4 — Model references ([`src/modelMeta.ts#L1`](src/modelMeta.ts#L1)) is done. Read [the website](https://example.com/docs "Authored title") or [this session](cake://session/file-link-session).\n\n' +
+                `Phase 4 — Model references ([\`src/modelMeta.ts#L1\`](src/modelMeta.ts#L1)) is done. Read [the website](https://example.com/docs "Authored title") or [this session](cake://session/${sessionId}).\n\n` +
                 "The model metadata lives alongside the application contract so every caller can inspect the same provider and model identity. The desktop presents this source through the embedded editor while the conversation remains authoritative in Pi. Review the associated definitions before changing the configuration, and keep the current chat draft when moving between the editor and agent views. ".repeat(
                   14,
                 ),
@@ -181,8 +178,8 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(page.getByRole("tooltip")).toHaveText("https://example.com/docs");
     const sessionLink = page.getByRole("link", { name: "this session" });
     await sessionLink.hover();
-    await expect(sessionLink).toHaveAccessibleDescription("cake://session/file-link-session");
-    await expect(page.getByRole("tooltip")).toHaveText("cake://session/file-link-session");
+    await expect(sessionLink).toHaveAccessibleDescription(`cake://session/${sessionId}`);
+    await expect(page.getByRole("tooltip")).toHaveText(`cake://session/${sessionId}`);
     const presentation = (element: HTMLElement) => {
       const style = getComputedStyle(element);
       return { color: style.color, decoration: style.textDecorationLine };
@@ -424,7 +421,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       await expect(page.getByText("Why is this exported?", { exact: true })).toBeVisible();
     };
     await expectSelectionHeader();
-    await page.getByRole("button", { name: "Project chat" }).click();
+    await page.getByRole("button", { name: "Project chat", exact: true }).click();
     expect(await clickVsCodeTitleAction("Toggle Chat Sidebar")).toBe(true);
     await expect.poll(() => hasVsCodeTitleAction("Back to Agent")).toBe(true);
     await toggleIdeViaMenu();
@@ -618,7 +615,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await resizeHandle.press("Home");
     await expect(resizeHandle).toHaveAttribute("aria-valuenow", "320");
     await expectSelectionHeader();
-    await page.getByRole("button", { name: "Project chat" }).click();
+    await page.getByRole("button", { name: "Project chat", exact: true }).click();
     await expect(drawerInput).toHaveValue("Chat from the IDE drawer");
 
     await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());

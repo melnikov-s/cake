@@ -180,6 +180,7 @@ test("opens retained historical subagent conversations at exact original respons
       version: 9,
       data: {
         ...defaultApplicationState(),
+        trustedProjectPaths: [project],
         projects: [
           {
             path: project,

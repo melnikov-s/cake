@@ -13,18 +13,31 @@ import {
 import type { Client } from "../../../src/renderer/client/Client";
 import { AppNotifications } from "../../../src/renderer/components/app-notifications";
 import { Chat } from "../../../src/renderer/components/chat";
+import { cakeChatPropsFor } from "../../../src/renderer/lib/cake-chat-props";
 import type { RootStore } from "../../../src/renderer/stores/RootStore";
 import { StoreProvider } from "r-state-tree/react";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 afterEach(cleanup);
 
-const Surface = observer(function Surface({ root }: { root: RootStore }) {
+const Surface = observer(function Surface({
+  root,
+  overlay = false,
+}: {
+  root: RootStore;
+  overlay?: boolean;
+}) {
   const chat = root.cakeChatCollectionStore.registry.find(CAKE_CHAT_SESSION_ID);
   return (
     <StoreProvider store={root}>
       <AppNotifications />
-      {chat && <Chat store={chat.conversationSessionStore.chatStore} embedded />}
+      {chat && (
+        <Chat
+          store={chat.conversationSessionStore.chatStore}
+          {...cakeChatPropsFor(root, chat, overlay)}
+          embedded
+        />
+      )}
     </StoreProvider>
   );
 });
@@ -46,6 +59,16 @@ function overlayFixture(startScreenCapture?: Client["electron"]["startScreenCapt
       .conversationSessionStore.composerStore.draftStore;
   return { fixture, draft, [Symbol.dispose]: () => fixture[Symbol.dispose]() };
 }
+
+it("keeps context browsing in the main chat but omits it from the drop-down composer", () => {
+  using view = overlayFixture();
+  const rendered = render(<Surface root={view.fixture.root} />);
+  expect(screen.getByRole("button", { name: "Browse context" })).toBeDefined();
+  rendered.rerender(<Surface root={view.fixture.root} overlay />);
+  expect(screen.queryByRole("button", { name: "Browse context" })).toBeNull();
+  expect(screen.getByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
+  rendered.unmount();
+});
 
 it("attaches another app's selection to the Cake Chat draft as a removable chip", async () => {
   using view = overlayFixture();

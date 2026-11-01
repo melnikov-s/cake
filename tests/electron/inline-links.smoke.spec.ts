@@ -115,7 +115,9 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByRole("link", { name: "this session", exact: true })).toBeVisible();
       await artifact.press("Enter");
       await expect(page.getByRole("tooltip")).not.toBeAttached();
-      await expect(page.getByLabel("Search artifact library")).toBeVisible();
+      await expect(
+        page.getByRole("complementary", { name: "Collaboration requirements", exact: true }),
+      ).toBeVisible();
       await expect(
         page.getByRole("heading", { name: "Collaboration requirements", exact: true }).first(),
       ).toBeVisible();

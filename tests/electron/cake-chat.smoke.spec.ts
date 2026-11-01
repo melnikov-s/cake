@@ -65,8 +65,13 @@ test("permanent Cake Chat retains its input, history and settings across restart
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
-    const parsed: unknown = JSON.parse(body);
-    const summary = JSON.stringify(parsed).includes("You write the memory of Cake Chat");
+    const parsed: { messages: { role: string; content: unknown }[] } = JSON.parse(body);
+    // Compaction shares ordinary system instructions; identify its actual task.
+    const summary = parsed.messages.some(
+      ({ role, content }) =>
+        role === "user" &&
+        /Compaction: (?:compress message|merge lines) \d/.test(JSON.stringify(content)),
+    );
     if (summary) summaryBodies.push(body);
     if (!summary) {
       requests.push(parsed);
@@ -155,11 +160,17 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
     let input = page.getByRole("combobox", { name: "Message Cake Chat" });
     await expect(input).toBeVisible();
-    const inspectButton = page.getByRole("button", { name: "Browse context", exact: true });
+    const toolbar = page.locator('[data-slot="composer-toolbar"]');
+    const inspectButton = toolbar.getByRole("button", { name: "Browse context", exact: true });
     await expect(inspectButton).toBeVisible();
     const inspectBounds = await inspectButton.boundingBox();
+    const toolbarBounds = await toolbar.boundingBox();
     expect(inspectBounds!.x).toBeGreaterThan(900);
-    expect(inspectBounds!.y).toBeLessThan(70);
+    // Context usage belongs beside submit in the composer, not the former header.
+    expect(inspectBounds!.y).toBeGreaterThanOrEqual(toolbarBounds!.y);
+    expect(inspectBounds!.y + inspectBounds!.height).toBeLessThanOrEqual(
+      toolbarBounds!.y + toolbarBounds!.height,
+    );
     await inspectButton.click();
     await expect(page.getByText("No assembled context yet.", { exact: true })).toBeVisible();
     expect(requests).toHaveLength(0);

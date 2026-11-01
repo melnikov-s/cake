@@ -130,10 +130,10 @@ export const IdeWorkspace = observer(function IdeWorkspace({
           <header
             className={cn(
               "flex select-none items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 [-webkit-app-region:drag]",
-              contextualAnchor ? "min-h-[52px] py-2" : "h-10",
+              contextualAnchor ? "min-h-[52px] flex-wrap py-2" : "h-10",
             )}
           >
-            <div className="min-w-0 flex-1">
+            <div className={cn("min-w-0 flex-1", contextualAnchor && "basis-48")}>
               <strong className="block truncate text-xs font-semibold text-foreground">
                 {contextualAnchor ? "Chat about selection" : sessionTitle}
               </strong>
@@ -143,7 +143,12 @@ export const IdeWorkspace = observer(function IdeWorkspace({
                 </p>
               ) : null}
             </div>
-            <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
+            <div
+              className={cn(
+                "flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]",
+                contextualAnchor && "max-w-full flex-wrap",
+              )}
+            >
               {headerActions}
               {contextualAnchor ? (
                 <Button variant="ghost" size="sm" onClick={closeContext}>

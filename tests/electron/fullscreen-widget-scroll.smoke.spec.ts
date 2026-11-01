@@ -50,9 +50,12 @@ for (const kind of ["widget", "html"] as const) {
       });
       try {
         const page = await app.firstWindow();
-        await page.getByRole("button", { name: "Trust and continue", exact: true }).click();
+        await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
         await expect(page.getByText("Opening session", { exact: true })).not.toBeVisible();
-        const inline = page.locator('[data-slot="artifact-disclosure"]').first();
+        const transcript = page
+          .locator('.transcript:not([data-slot="content-transition-outgoing"] *)')
+          .first();
+        const inline = transcript.locator('[data-slot="artifact-disclosure"]').first();
         const inlineFrame = inline.locator("iframe");
         await expect(inlineFrame).toBeVisible();
         if (kind === "widget")
@@ -69,12 +72,23 @@ for (const kind of ["widget", "html"] as const) {
             .getByRole("dialog", { name: "Artifacts", exact: true })
             .getByRole("button", { name: /Inline visualization/ })
             .click();
+          await page
+            .getByRole("complementary", { name: "Inline visualization", exact: true })
+            .getByRole("button", { name: "View Inline visualization fullscreen" })
+            .click();
         } else {
           const expand = inline.getByRole("button", {
             name: "View Inline visualization fullscreen",
           });
-          await expand.focus();
-          await expand.press("Enter");
+          // Read the artifact header before activating it. A tall inline frame starts
+          // below the fold; scrolling a click target during activation can change the virtual range.
+          await expect(async () => {
+            const bounds = (await transcript.boundingBox())!;
+            await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+            await page.mouse.wheel(0, -100000);
+            await expect(expand).toBeInViewport({ ratio: 1, timeout: 1000 });
+          }).toPass({ timeout: 20_000 });
+          await expand.click();
         }
         const surface = page.getByRole("dialog", { name: "Inline visualization", exact: true });
         const iframe = surface.locator("iframe");

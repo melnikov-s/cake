@@ -7,6 +7,11 @@ export function FatalErrorSurface({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     const surface = dialog.current;
     surface?.showModal();
+    // React autofocus runs before showModal(), while an existing modal makes
+    // this subtree inert. Focus the recovery action after entering the top layer.
+    surface
+      ?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+      ?.focus({ preventScroll: true });
     return () => surface?.close();
   }, []);
   return createPortal(

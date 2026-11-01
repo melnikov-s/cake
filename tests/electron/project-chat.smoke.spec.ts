@@ -29,14 +29,13 @@ test("Project Chat isolates history and restores its root workspace, while globa
     for await (const chunk of request) body += chunk;
     const latest = JSON.stringify(JSON.parse(body).messages.at(-1)?.content);
     const summary = /Compaction: (?:compress message|merge lines)/.test(latest);
-    const attribution = body.includes("Assign the LAST user message to one existing to-do");
-    if (attribution) attributions.push(body);
-    else if (!summary) requests.push(body);
-    const content = attribution
-      ? JSON.stringify({ todoId: null })
-      : summary
-        ? "talk: project guidance discussed"
-        : `Reply ${requests.length}`;
+    if (!summary) requests.push(body);
+    const turnId = [...latest.matchAll(/<cake-turn id=\\"([^\\"]+)\\"\/>/g)].at(-1)?.[1];
+    if (!summary && turnId) attributions.push(turnId);
+    const content = summary
+      ? "talk: project guidance discussed"
+      : `Reply ${requests.length}` +
+        (turnId ? `<cake-todo>${JSON.stringify({ turnId, todoId: null })}</cake-todo>` : "");
     const chunk = (delta: object, finish_reason: string | null) =>
       `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
     response.writeHead(200, { "content-type": "text/event-stream" });
@@ -316,6 +315,9 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await input.press("Enter");
     await expect(page.getByText("Reply 2", { exact: true })).toBeVisible();
     await expect.poll(() => attributions.length).toBeGreaterThanOrEqual(2);
+    expect(requests).toHaveLength(2);
+    expect(new Set(attributions).size).toBe(attributions.length);
+    await expect(transcript()).not.toContainText("cake-todo");
     expect(requests[1]).toContain("PROJECT_PRIVATE");
     expect(requests[1]).toContain("PROJECT_SKILL_BODY");
     expect(requests[1]).not.toContain("GLOBAL_PRIVATE");

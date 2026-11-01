@@ -367,6 +367,8 @@ test("remote Pi Browser Mode controls desktop Chromium and previews backend loca
         second.locator(".transcript").getByText("Browser fixture existing session"),
       ).toBeVisible();
       const secondAddress = second.getByLabel("Browser address");
+      if (!(await secondAddress.isVisible()))
+        await second.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
       await expect(secondAddress).toBeVisible();
       await secondAddress.fill(`http://[::1]:${sourcePort}/`);
       await secondAddress.press("Enter");
@@ -388,9 +390,8 @@ test("remote Pi Browser Mode controls desktop Chromium and previews backend loca
       // Pi transcodes the real PNG tool image to JPEG for the fixture provider.
       const screenshotImage = /data:image\/jpeg;base64,([A-Za-z0-9+/=]+)/.exec(requests[5]!)?.[1];
       expect(screenshotImage?.length).toBeGreaterThan(100_000);
-      expect(await readdir(join(root, "desktop-must-not-start-backend")).catch(() => [])).toEqual(
-        [],
-      );
+      // The desktop owns diagnostics, never backend agent or application state.
+      expect(await readdir(join(root, "desktop-must-not-start-backend"))).toEqual(["logs"]);
       // Original owner disconnect: the stale local bridge cannot continue to serve app content.
       await page.close();
       const oldOrigin = new URL(loaded!.url);

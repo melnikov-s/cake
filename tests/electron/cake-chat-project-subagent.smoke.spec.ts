@@ -1,4 +1,5 @@
 import { createServer, type ServerResponse } from "node:http";
+import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -17,7 +18,7 @@ function reply(response: ServerResponse, content: string | { name: string; argum
         tool_calls: [
           {
             index: 0,
-            id: "fixture-call",
+            id: randomUUID(),
             type: "function",
             function: { name: content.name, arguments: JSON.stringify(content.arguments) },
           },
@@ -311,15 +312,16 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     await expect(
       panel.locator('[data-slot="message-label"]').filter({ hasText: /^You$/ }),
     ).toHaveCount(1);
-    await expect(
-      panel
-        .locator('[data-slot="message-content"]')
-        .filter({ hasText: /^# Recheck the \*\*current default\*\*$/ }),
-    ).toHaveText("# Recheck the **current default**");
-    await expect(panel.getByRole("heading", { name: "Recheck the current default" })).toHaveCount(
-      0,
-    );
+    const humanFollowUp = panel.getByRole("heading", {
+      name: "Recheck the current default",
+      exact: true,
+    });
+    await expect(humanFollowUp).toBeVisible();
+    await expect(humanFollowUp.locator('[data-streamdown="strong"]')).toHaveText("current default");
     await page.reload();
+    await page.locator(".transcript").evaluate((element) => {
+      element.scrollTop = 0;
+    });
     await expect(log).toBeVisible({ timeout: 20_000 });
     await log.locator(":scope > summary").click();
     await log.getByRole("button", { name: "Open subagent chat" }).first().click();
@@ -341,19 +343,17 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     const report = page
       .locator('[data-slot="subagent-report"]')
       .filter({ has: page.getByRole("heading", { name: "Game-development workflow comparison" }) });
-    await expect(
-      report.getByRole("heading", { name: "Subagent complete", exact: true }),
-    ).toBeVisible({ timeout: 20_000 });
+    await expect(report.getByText("Completed", { exact: true })).toBeVisible({ timeout: 20_000 });
     const assignment = report.getByRole("button", { name: "Assignment details" });
     await expect(assignment).toHaveAttribute("aria-expanded", "false");
-    const details = report.locator("[hidden]");
-    await expect(details).toHaveText(/Compare Godot and Three.js game-development workflows/);
+    const details = report
+      .locator("p")
+      .filter({ hasText: /^Compare Godot and Three\.js game-development workflows$/ });
+    await expect(details).not.toBeVisible();
     await assignment.focus();
     await assignment.press("Enter");
     await expect(assignment).toHaveAttribute("aria-expanded", "true");
-    await expect(
-      report.getByText("Compare Godot and Three.js game-development workflows", { exact: true }),
-    ).toBeVisible();
+    await expect(details).toBeVisible();
     await assignment.press("Space");
     await expect(assignment).toHaveAttribute("aria-expanded", "false");
     await expect(report.locator('[data-slot="message-content"]')).toHaveText(

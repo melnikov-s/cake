@@ -307,21 +307,37 @@ export async function prepareBrowserVisual(page: Page, scenario: string, state =
       await page.getByRole("button", { name: "1 artifacts" }).click();
       await page.getByRole("button", { name: /Mobile layout sample/ }).click();
       await expect(page.getByRole("heading", { name: "Supporting pane" })).toBeVisible();
-      const panel = page.getByRole("complementary", { name: "Artifact", exact: true });
-      // A short phone pane must not shrink content rows and paint code over history.
+      const panel = page.getByRole("complementary", {
+        name: "Mobile layout sample",
+        exact: true,
+      });
+      await panel.getByRole("button", { name: "Close Mobile layout sample", exact: true }).click();
+      await expect(input).toBeVisible();
+
+      // Revision history belongs to the explicit library, not the selected-artifact pane.
+      await page.getByRole("button", { name: "1 artifacts" }).click();
+      await page.getByRole("button", { name: "Browse all artifacts", exact: true }).click();
+      await page
+        .getByRole("navigation", { name: "Artifact lineages", exact: true })
+        .getByRole("button", { name: /Mobile layout sample/ })
+        .click();
+      const history = page.getByRole("heading", { name: "Revision history", exact: true });
+      await expect(history).toBeVisible();
+      // A short phone detail must not shrink content rows and paint code over history.
       await expect
         .poll(async () => {
-          const code = await panel.locator("pre").first().boundingBox();
-          const history = await panel
-            .getByRole("heading", { name: "Revision history", exact: true })
+          const code = await page
+            .locator('[data-artifact-id="mobile-layout-sample"] pre')
+            .first()
             .boundingBox();
-          return code && history ? history.y - (code.y + code.height) : -Infinity;
+          const historyBounds = await history.boundingBox();
+          return code && historyBounds ? historyBounds.y - (code.y + code.height) : -Infinity;
         })
         .toBeGreaterThanOrEqual(0);
-      const revision = panel.getByRole("combobox", { name: "Selected artifact revision" });
+      const revision = page.getByRole("combobox", { name: "Selected artifact revision" });
       await revision.scrollIntoViewIfNeeded();
       await expect(revision).toBeInViewport();
-      await panel.getByRole("button", { name: "Close Artifact", exact: true }).click();
+      await page.getByRole("button", { name: "Close all artifacts", exact: true }).click();
       await expect(input).toBeVisible();
       await page.getByRole("button", { name: "1 artifacts" }).click();
       await page.getByRole("button", { name: /Mobile layout sample/ }).click();
@@ -420,7 +436,6 @@ async function prepareSidebarDefaults(page: Page, state: string) {
       sessionStorage.setItem(key, JSON.stringify(saved));
     }, state === "restored-closed");
     await page.reload();
-    await expect(headerToggle).toBeAttached();
     if (phone) {
       await expect(sidebar).toBeHidden();
       await expect(cakeChat).toBeVisible();
@@ -436,6 +451,9 @@ async function prepareSidebarDefaults(page: Page, state: string) {
       if (state === "restored-closed") await expect(sidebar).toBeHidden();
       else await expect(sidebar).toBeVisible();
     }
+    // Settings intentionally replaces conversation navigation with Back to chat.
+    // Check the shared toggle after returning to its owning conversation surface.
+    await expect(headerToggle).toBeAttached();
   }
 
   if (!(await sidebar.isVisible())) await headerToggle.click();

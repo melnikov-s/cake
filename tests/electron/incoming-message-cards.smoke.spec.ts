@@ -152,7 +152,9 @@ for (const theme of ["dark", "light"] as const)
       await expect(titleLink).toBeFocused();
       await sourceToggle.focus();
       await sourceToggle.press("Enter");
-      const rail = page.getByTitle("Show in To-do: Fix the flaky build").last();
+      const rail = page
+        .getByRole("button", { name: "Show in To-do: Fix the flaky build", exact: true })
+        .last();
       const doneStatus = rail.locator("..").getByRole("img", { name: "Done", exact: true });
       await rail.click();
       const panel = page.getByRole("complementary", { name: "To-do" });
@@ -165,9 +167,17 @@ for (const theme of ["dark", "light"] as const)
       await toggle(batch).click();
       await expect(batch.getByText(/Draft ready for review/).last()).toBeVisible();
       await toggle(batch).click();
-      await toggle(report).click();
+      await toggle(report).hover();
+      // The report may already be expanded after navigating the other cards.
+      // Establish a collapsed start before exercising its keyboard interaction.
+      if ((await toggle(report).getAttribute("aria-expanded")) === "true")
+        await toggle(report).press("Enter");
+      await expect(toggle(report)).toHaveAttribute("aria-expanded", "false");
+      await toggle(report).press("Enter");
+      await expect(toggle(report)).toHaveAttribute("aria-expanded", "true");
       await expect(report.getByRole("button", { name: "Assignment details" })).toBeVisible();
-      await toggle(report).click();
+      await toggle(report).press("Enter");
+      await expect(toggle(report)).toHaveAttribute("aria-expanded", "false");
       await page.reload();
       await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
       await expect(report).toBeVisible();

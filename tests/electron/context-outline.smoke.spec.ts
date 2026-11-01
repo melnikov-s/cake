@@ -26,7 +26,7 @@ for (const scope of ["global", "project-chat"] as const) {
     const closeProvider = await openRequestInspectorFixture(
       { cakeHome, project },
       {
-        contextLimitTokens: 12_000,
+        contextLimitTokens: 14_000,
         beforeResponse: async (body) => {
           if (
             body.includes("Compaction: compress message") ||

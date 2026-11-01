@@ -29,16 +29,15 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     let body = "";
     for await (const chunk of request) body += chunk;
     const input = JSON.parse(body) as Request;
-    const instructions = input.messages.find((message) => message.role === "system")?.content;
     const utility =
-      typeof instructions === "string" &&
-      (instructions.includes("Order these open to-dos") ||
-        instructions.includes("Update the current to-do description"));
+      body.includes("Order these open to-dos") ||
+      body.includes("Update the current to-do description using the new final report.");
     if (!utility) requests.push(input);
     const user = latestUser(input);
     const marker = utility
       ? "utility"
-      : (/(?:CREATE_LINKED|RESOLVE_LINKED|LINK_SOURCE|INPUT_[A-Z_]+)/.exec(user)?.[0] ?? "request");
+      : (user.match(/(?:CREATE_LINKED|RESOLVE_LINKED|LINK_SOURCE|INPUT_[A-Z_]+)/g)?.at(-1) ??
+        "request");
     if (marker === "INPUT_HOLD")
       await new Promise<void>((done) => {
         releaseWork = done;
@@ -88,7 +87,9 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
         typeof content === "string"
           ? content
           : (content?.map((part) => ("text" in part ? part.text : "")).join("") ?? "");
-      const context = JSON.parse(raw);
+      const contextMatch = /<context>\n([\s\S]*?)\n<\/context>/.exec(raw);
+      if (!contextMatch) throw new Error("Utility request lacks its context envelope");
+      const context = JSON.parse(contextMatch[1]!);
       const result = Array.isArray(context)
         ? JSON.stringify(context.map((item: { id: string }) => item.id))
         : context.currentDescription;
@@ -391,14 +392,17 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await expect(reviewPills).toHaveCount(1);
     await send("INPUT_UNCHANGED");
     const unchanged = requests.find((request) => latestUser(request).includes("INPUT_UNCHANGED"));
-    expect(unchanged && latestUser(unchanged)).toContain("Project Chat user changes");
-    expect(unchanged && latestUser(unchanged)).toContain(reviewId);
-    await expect(reviewPills).toHaveCount(2);
+    expect(unchanged && latestUser(unchanged)).not.toContain("Project Chat user changes");
+    expect(unchanged && JSON.stringify(unchanged.messages)).toContain(reviewId);
+    await expect(reviewPills).toHaveCount(1);
+    await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
     await expect(panel).toBeVisible();
     const requestsBeforeDeselection = requests.length;
     await reviewTitle.click();
+    await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
+    await reviewTitle.click();
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
-    await expect(reviewPills).toHaveCount(2);
+    await expect(reviewPills).toHaveCount(1);
     expect(requests.length).toBe(requestsBeforeDeselection);
     await reviewTitle.click();
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
@@ -431,7 +435,7 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
         .getByText("Review conversations", { exact: true }),
     ).toBeVisible();
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
-    await expect(reviewPills).toHaveCount(2);
+    await expect(reviewPills).toHaveCount(1);
     const linked = panel
       .locator("[data-todo-id]")
       .filter({ has: page.getByRole("link", { name: "First implementation", exact: true }) });
@@ -508,7 +512,10 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await expect(
       page.getByRole("button", { name: "To-do · Implement startup improvement", exact: true }),
     ).toHaveCount(1);
-    await expect(reviewPills).toHaveCount(2);
+    await page.locator(".transcript").evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await expect(reviewPills).toHaveCount(1);
     await expect(
       panel.getByRole("button", { name: "Review conversations", exact: true }),
     ).toBeVisible(); // Source-only discussion stays open, despite resolved source work.
@@ -535,6 +542,24 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     );
     expect(resolveRequest && latestUser(resolveRequest)).toContain("First implementation");
     expect(resolveRequest && latestUser(resolveRequest)).toContain("SessionState");
+    const sentContent = resolveRequest!.messages.findLast(
+      (message) => message.role === "user",
+    )!.content;
+    const sentText =
+      typeof sentContent === "string"
+        ? sentContent
+        : (sentContent
+            ?.flatMap((part) =>
+              "text" in part && typeof part.text === "string" ? [part.text] : [],
+            )
+            .join("\n") ?? "");
+    const sentContext = JSON.parse(sentText.split("\n")[2]!) as {
+      selection: { state: string; description: string };
+    };
+    expect(sentContext.selection).toMatchObject({
+      state: "open",
+      description: "Implement startup improvement.",
+    });
     await panel.getByRole("link", { name: "Investigation report" }).click();
     await expect(page.getByText("Implementation report", { exact: true })).toBeVisible();
     await returnToTodos();
@@ -547,24 +572,47 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     if ((await restoredDone.getAttribute("aria-expanded")) !== "true") await restoredDone.click();
     await expect(linkedTitle).toHaveAttribute("aria-pressed", "false");
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
-    await expect(reviewPills).toHaveCount(2);
+    await page.locator(".transcript").evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await expect(reviewPills).toHaveCount(1);
     const linkedPill = page.getByRole("button", {
       name: "To-do · Implement startup improvement",
       exact: true,
+    });
+    await page.locator(".transcript").evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
     });
     await expect(linkedPill).toHaveCount(1);
     await expect(page.getByLabel("Next message context")).toHaveCount(0);
     expect(requests.length).toBe(requestsBeforeReload);
     await linkedPill.click();
     const context = page.locator(`#${await linkedPill.getAttribute("aria-controls")}`);
-    await expect(context).toContainText('"state": "open"');
-    await expect(context).toContainText("Implement startup improvement.");
+    await expect(context).toContainText('Selected to-do: "Implement startup improvement".');
+    await expect(context).toContainText('Session "First implementation" resolved.');
     await expect(context).not.toContainText("<system-reminder>");
     await linkedPill.click();
-    // A real interview comes from a loaded producer. Reload may release the resolved
-    // session; opening its existing report re-establishes that observation without a turn.
+    // Resolved sessions cannot produce interviews. Explicitly restore the producer,
+    // without reopening its completed to-do or sending another model turn.
     await linked.getByRole("link", { name: "First implementation", exact: true }).click();
+    const resolvedLane = page.getByRole("region", { name: "Resolved sessions" });
+    const resolvedToggle = page.getByRole("button", { name: "Expand Resolved", exact: true });
+    if (await resolvedToggle.count()) await resolvedToggle.click();
+    const resolvedProject = resolvedLane
+      .getByRole("button", { name: "Expand Project resolved", exact: true })
+      .and(resolvedLane.locator("[aria-expanded]"));
+    if (await resolvedProject.count()) await resolvedProject.click();
+    await resolvedLane
+      .locator('.session-item[data-session-id="linked-a"]')
+      .getByRole("button", { name: "Restore First implementation", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Ask session assistant", exact: true }),
+    ).toBeVisible();
     await returnToTodos();
+    await expect(
+      panel.getByRole("button", { name: "Reopen: Implement startup improvement", exact: true }),
+    ).toBeVisible();
     await emitRendererEvent(app, {
       type: "interview-requested",
       requestId: randomUUID(),
@@ -583,6 +631,7 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
       },
     });
     await expect(linked.getByRole("img", { name: "Waiting for your answer" })).toBeVisible();
+    expect(requests.length).toBe(requestsBeforeReload);
   } finally {
     releaseWork?.();
     await app?.close();

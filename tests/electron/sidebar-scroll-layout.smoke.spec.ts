@@ -158,9 +158,33 @@ test("sidebar updates preserve row motion and highlights without reserving colla
           if (stableBounds) expect(bounds).toEqual(stableBounds);
           stableBounds = bounds;
         }
-        expect(
-          await page.evaluate(() => Reflect.get(window, "sidebarReorders").length),
-        ).toBeGreaterThan(0);
+        // Date ordering is creation-based: renaming alone must not move rows.
+        expect(await page.evaluate(() => Reflect.get(window, "sidebarReorders"))).toEqual([]);
+        // Create a real reorder explicitly, then ensure unrelated updates leave
+        // its held animation alone instead of relying on obsolete activity sorting.
+        await target
+          .getByRole("button", { name: "Change session labels. Current labels: Unlabelled" })
+          .click();
+        await page.getByRole("checkbox", { name: "Feature", exact: true }).click();
+        await page.keyboard.press("Escape");
+        await sidebar.getByRole("button", { name: "Project actions for project" }).click();
+        await page.getByRole("menuitemradio", { name: "By label", exact: true }).click();
+        await expect
+          .poll(() => page.evaluate(() => Reflect.get(window, "sidebarReorders").length))
+          .toBeGreaterThan(0);
+        await targetButton.focus();
+        await emitRendererEvent(application, {
+          type: "project-session-control-requested",
+          sessionId: ids[0]!,
+          controlRequestId: randomUUID(),
+          invocation: {
+            _tag: "InvokeAppControl",
+            command: "sessions.rename",
+            input: { sessionId: targetId!, title: "Updated sidebar title 3" },
+          },
+        });
+        await expect(target.locator(".session-title")).toHaveText("Updated sidebar title 3");
+        await expect(targetButton).toBeFocused();
         expect(
           await page.evaluate(() => Reflect.get(window, "sidebarReorderCancellations")),
         ).toEqual([]);

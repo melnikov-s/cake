@@ -148,6 +148,14 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(page.getByRole("button", { name: "Open Browser Mode" })).toBeVisible({
       timeout: 20_000,
     });
+    await expect
+      .poll(async () => {
+        await page.locator(".transcript").evaluate((element) => {
+          element.scrollTop = 0;
+        });
+        return page.getByText("main#seeded", { exact: true }).isVisible();
+      })
+      .toBe(true);
     await expect(page.getByText("main#seeded", { exact: true })).toBeVisible();
     await expect(page.getByText(/cake-browser-attachment/)).toHaveCount(0);
     // Warm both sessions so switching exercises the synchronous hydrated-session path.
@@ -340,26 +348,26 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(tableCopy).toHaveCount(1);
     await expect(tableExpand).toHaveCount(1);
     await composer.hover();
-    await expect(tableActions).toHaveCSS("opacity", "0");
+    await expect(tableActions).toHaveCSS("opacity", "1");
     await table.hover();
     await expect(tableActions).toHaveCSS("opacity", "1");
     await composer.hover();
-    await expect(tableActions).toHaveCSS("opacity", "0");
+    await expect(tableActions).toHaveCSS("opacity", "1");
 
-    // Pointer focus after using Copy must not pin either control on screen.
+    // Shared Markdown tables keep actions painted, including after pointer use.
     await table.hover();
     await tableCopy.click();
     await table.getByRole("button", { name: "Markdown", exact: true }).click();
     await composer.hover();
-    await expect(tableActions).toHaveCSS("opacity", "0");
+    await expect(tableActions).toHaveCSS("opacity", "1");
 
-    // Keyboard users can still reveal and operate the otherwise hidden controls.
+    // Keyboard users can operate the same persistently visible controls.
     await tableCopy.focus();
     await page.keyboard.press("Tab");
     await expect(tableExpand).toBeFocused();
     await expect(tableActions).toHaveCSS("opacity", "1");
     await composer.click();
-    await expect(tableActions).toHaveCSS("opacity", "0");
+    await expect(tableActions).toHaveCSS("opacity", "1");
     await table.hover();
     await tableExpand.click();
     const tableFullscreen = page.getByRole("dialog", { name: "Table", exact: true });
@@ -412,6 +420,14 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
       .windows()
       .find((window) => window !== page && window.url().includes("index.html"));
     if (!second) throw new Error("Second desktop window missing");
+    await expect
+      .poll(async () => {
+        await second.locator(".transcript").evaluate((element) => {
+          element.scrollTop = 0;
+        });
+        return second.locator(".transcript").getByText("Test the app", { exact: true }).isVisible();
+      })
+      .toBe(true);
     await expect(second.locator(".transcript").getByText("Test the app")).toBeVisible();
     const secondAddress = second.getByLabel("Browser address");
     if (!(await secondAddress.isVisible()))

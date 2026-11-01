@@ -11,8 +11,9 @@ export type ProjectOpenResult =
       kind: "new-session";
       sessionId?: string;
       stagedSession: boolean;
+      restoring?: boolean;
     }
-  | { path: string; kind: "project"; sessionId?: string };
+  | { path: string; kind: "project"; sessionId?: string; restoring?: boolean };
 
 export interface ProjectOpenStoreProps {
   operations: SessionOperationCoordinatorStore;
@@ -28,6 +29,7 @@ interface PendingProjectInspection {
   newSession: boolean;
   stagedSession: boolean;
   sessionId?: string;
+  restoring?: boolean;
 }
 
 /** Owns Project selection, inspection, trust authorization, and latest-open policy. */
@@ -104,6 +106,7 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
       newSession: input.newSession,
       sessionId: input.sessionId,
       stagedSession: input.stagedSession,
+      restoring: true,
     });
   }
 
@@ -139,7 +142,12 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
 
   async inspectPath(
     path: string,
-    options: { newSession?: boolean; sessionId?: string; stagedSession?: boolean } = {},
+    options: {
+      newSession?: boolean;
+      sessionId?: string;
+      stagedSession?: boolean;
+      restoring?: boolean;
+    } = {},
   ) {
     this.pickerRevision += 1;
     const revision = ++this.openRevision;
@@ -157,6 +165,7 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
       newSession: options.newSession ?? false,
       stagedSession: options.stagedSession ?? false,
       sessionId: options.sessionId,
+      restoring: options.restoring,
     };
     try {
       const inspection = await this.client.workspaces.inspect(
@@ -233,6 +242,7 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
         kind: "new-session",
         sessionId: pending.sessionId,
         stagedSession: pending.stagedSession,
+        restoring: pending.restoring,
       });
       return;
     }
@@ -241,6 +251,7 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
       path: inspectedPath,
       kind: "project",
       sessionId: pending.sessionId,
+      restoring: pending.restoring,
     });
   }
 

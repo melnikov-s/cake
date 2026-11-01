@@ -110,7 +110,7 @@ for (const theme of ["light", "dark"] as const) {
       const menu = page.getByRole("dialog", { name: "Artifacts", exact: true });
       await menu.getByRole("button", { name: /Coordinator report/ }).click();
       await expect(pane).toBeVisible();
-      expect((await pane.boundingBox())!.width).toBe(paneWidth);
+      await expect.poll(async () => (await pane.boundingBox())?.width).toBe(paneWidth);
       await expect(page.getByRole("searchbox", { name: "Search to-dos" })).not.toBeAttached();
       await page.setViewportSize({ width: 700, height: 900 });
       await expect(layout).toHaveAttribute("data-presentation", "replacement");

@@ -77,11 +77,14 @@ for (const theme of ["light", "dark"] as const) {
         "true",
       );
 
+      await frame.getByRole("button", { name: "Hide evidence" }).click();
+      const inlineSrc = await iframe.getAttribute("src");
       await page.getByRole("button", { name: "View A prompt through Cake fullscreen" }).click();
       const full = page
         .getByRole("dialog", { name: "A prompt through Cake", exact: true })
         .locator('iframe[title="A prompt through Cake"]');
       await expect(full).toBeVisible();
+      await expect(full).toHaveAttribute("src", inlineSrc!);
       const box = await full.boundingBox();
       expect(box!.width).toBeGreaterThan(1200);
       expect(box!.height).toBeGreaterThan(700);
@@ -96,10 +99,12 @@ for (const theme of ["light", "dark"] as const) {
       expect(overflow).toBe(false);
       await page.getByRole("button", { name: "Exit fullscreen A prompt through Cake" }).click();
       await expect(page.getByRole("dialog")).toHaveCount(0);
-      await expect(frame.getByRole("button", { name: "01 Compose" })).toHaveAttribute(
+      await expect(iframe).toHaveAttribute("src", inlineSrc!);
+      await expect(frame.getByRole("button", { name: "04 Run" })).toHaveAttribute(
         "aria-pressed",
         "true",
       );
+      await expect(frame.getByText("src/services/pi/PiSessions.ts:596–598")).toBeVisible();
     } finally {
       await app.close();
       await rm(root, { recursive: true, force: true });

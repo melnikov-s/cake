@@ -820,6 +820,7 @@ export class RootStore extends Store<{
       startCakeChat: (prompt) => this.navigationStore.startCakeChat(prompt),
       presentationSession: () =>
         this.projectWorkbenchStore.activeSession?.isForkPreview ? undefined : this.workspaceSession,
+      canRestorePresentation: () => !this.appShellStore.coveringSurface,
       presentationProjectPath: () => this.workspaceProjectPath,
       originatingDirectory: () => {
         const active = this.appShellStore.activeConversation;

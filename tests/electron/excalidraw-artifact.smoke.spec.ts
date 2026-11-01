@@ -230,6 +230,10 @@ test("installed Excalidraw edits shared live state and reopens retained output w
         .getByRole("dialog", { name: "Artifacts", exact: true })
         .getByRole("button", { name: /Captured widget fixture/ })
         .click();
+      await page
+        .getByRole("complementary", { name: "Captured widget fixture", exact: true })
+        .getByRole("button", { name: "View Captured widget fixture fullscreen" })
+        .click();
       return page
         .getByRole("dialog", { name: "Captured widget fixture", exact: true })
         .locator("iframe")
@@ -438,7 +442,7 @@ test("installed Excalidraw edits shared live state and reopens retained output w
     // Open another ordinary instance BEFORE publishing; neither may need manual revision selection.
     const paneIframe = await openArtifact();
     await expect(paneIframe.contentFrame().locator(".excalidraw canvas").first()).toBeVisible();
-    // Menu opening is already fullscreen and uses one live browsing context.
+    // Expanding the menu-selected pane preserves its live browsing context.
     const paneSource = await paneIframe.getAttribute("src");
     if (!paneSource) throw new Error("Missing compiled pane widget URL");
     await expect(page.locator('iframe[title="Captured widget fixture"]')).toHaveCount(2);

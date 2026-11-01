@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
-import { Effect } from "effect";
+import { Effect, Exit, Scope } from "effect";
 import { connectClient } from "../integration/fixtures/network-client";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
@@ -205,6 +205,8 @@ test("remote Electron loads backend widgets and companion actions, then Pi revie
     output += chunk.toString();
   });
   const timeout = setTimeout(() => server.kill("SIGKILL"), 65_000);
+  // Compiled document capabilities belong to this RPC connection, including during native capture.
+  const widgetScope = await Effect.runPromise(Scope.make());
   try {
     const url = await new Promise<string>((done, reject) => {
       server.stdout.on("data", (chunk: Buffer) => {
@@ -224,22 +226,20 @@ test("remote Electron loads backend widgets and companion actions, then Pi revie
     await mkdir(presentation, { recursive: true });
     await writeFile(join(presentation, "window-state.json"), windowState({ project, sessionId }));
     const compiled = await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { client } = yield* connectClient(url);
-          return yield* client["widgets.compile-inline-widget"]({
-            language: "react",
-            capability: "display",
-            source: `import React, { useState, useEffect } from "react";
+      Effect.gen(function* () {
+        const { client } = yield* connectClient(url);
+        return yield* client["widgets.compile-inline-widget"]({
+          language: "react",
+          capability: "display",
+          source: `import React, { useState, useEffect } from "react";
 export default function RemoteWidget() {
   const [count, setCount] = useState(0);
   const [settled, setSettled] = useState(false);
   useEffect(() => { const timer = setTimeout(() => setSettled(true), 300); return () => clearTimeout(timer); }, []);
   return <main style={{ background: settled ? 'rgb(0,220,220)' : 'rgb(255,165,0)', minHeight: 430 }}><h1>{settled ? 'REMOTE SETTLED' : 'WAITING'}</h1><button onClick={() => setCount(count + 1)}>Remote count {count}</button></main>;
 }`,
-          });
-        }),
-      ),
+        });
+      }).pipe(Scope.provide(widgetScope)),
     );
     const application = await electron.launch({
       args: [repositoryRoot],
@@ -348,6 +348,7 @@ export default function RemoteWidget() {
       await application.close();
     }
   } finally {
+    await Effect.runPromise(Scope.close(widgetScope, Exit.void));
     clearTimeout(timeout);
     server.kill("SIGTERM");
     await new Promise<void>((done) => server.once("exit", () => done()));
