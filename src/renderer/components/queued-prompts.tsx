@@ -16,6 +16,11 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
   const [fullscreenPromptId, setFullscreenPromptId] = useState<string>();
   const fullscreenPrompt = store.queuedPrompts.find((entry) => entry.id === fullscreenPromptId);
   const scheduled = store.scheduledMessageInteraction;
+  const showCategoryHeaders =
+    Number(store.queuedPrompts.some((entry) => entry.state === "steering")) +
+      Number(store.queuedPrompts.some((entry) => entry.state === "queued")) +
+      Number(scheduled.messages.length > 0) >
+    1;
   if (store.queuedPrompts.length === 0 && scheduled.messages.length === 0) return null;
   return (
     <>
@@ -40,9 +45,11 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                   "border-t border-border pt-2",
               )}
             >
-              <div className="px-2 text-xs font-medium text-muted-foreground">
-                {state === "steering" ? "Steering" : "Queued"}
-              </div>
+              {showCategoryHeaders && (
+                <div className="px-2 text-xs font-medium text-muted-foreground">
+                  {state === "steering" ? "Steering" : "Queued"}
+                </div>
+              )}
               {entries.map((entry, index) => {
                 const label =
                   entry.text ||

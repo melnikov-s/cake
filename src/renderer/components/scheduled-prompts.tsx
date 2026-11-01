@@ -14,7 +14,8 @@ import {
 
 /**
  * Scheduled messages as the last group of the pending list, after steering and queued items.
- * A summary row shows the count and the next countdown; it expands to one row per schedule.
+ * With other pending types, a summary row expands to one row per schedule.
+ * Schedules alone show their rows without a redundant category summary.
  */
 export const ScheduledGroup = observer(function ScheduledGroup({
   store,
@@ -28,7 +29,7 @@ export const ScheduledGroup = observer(function ScheduledGroup({
   const next = messages[0];
   if (!next) return null;
   const fullscreen = messages.find((message) => message.id === fullscreenId);
-  const expanded = store.isExpanded(othersPending);
+  const expanded = !othersPending || store.isExpanded(othersPending);
   const nextRemaining = store.remainingMs(next.sendAt);
   const repeating = store.repeatingCount;
   return (
@@ -37,35 +38,37 @@ export const ScheduledGroup = observer(function ScheduledGroup({
       aria-label="Scheduled"
       className={cn("flex shrink-0 flex-col gap-1", othersPending && "border-t border-border pt-2")}
     >
-      <Button
-        variant="ghost"
-        className="h-auto min-h-[30px] w-full flex-wrap justify-start gap-1.5 rounded-sm py-1 pr-1 pl-2 text-left text-xs font-normal whitespace-normal hover:bg-muted/40"
-        aria-expanded={expanded}
-        title={describeScheduledSend(next)}
-        onClick={() => store.toggleExpanded(othersPending)}
-      >
-        <ClockIcon />
-        <span className="font-medium text-foreground">{messages.length} scheduled</span>
-        <span aria-hidden="true">·</span>
-        <span role="timer" className="font-mono tabular-nums">
-          {nextRemaining === 0 ? "sending…" : `next in ${formatCountdown(nextRemaining)}`}
-        </span>
-        {repeating > 0 && (
-          <>
-            <span aria-hidden="true">·</span>
-            <span className="inline-flex items-center gap-1">
-              <RepeatIcon size={11} />
-              {repeating} repeating
-            </span>
-          </>
-        )}
-        <span
-          aria-hidden="true"
-          className={cn("ml-auto grid h-[22px] w-6 place-items-center", expanded && "rotate-180")}
+      {othersPending && (
+        <Button
+          variant="ghost"
+          className="h-auto min-h-[30px] w-full flex-wrap justify-start gap-1.5 rounded-sm py-1 pr-1 pl-2 text-left text-xs font-normal whitespace-normal hover:bg-muted/40"
+          aria-expanded={expanded}
+          title={describeScheduledSend(next)}
+          onClick={() => store.toggleExpanded(othersPending)}
         >
-          <ChevronDownIcon />
-        </span>
-      </Button>
+          <ClockIcon />
+          <span className="font-medium text-foreground">{messages.length} scheduled</span>
+          <span aria-hidden="true">·</span>
+          <span role="timer" className="font-mono tabular-nums">
+            {nextRemaining === 0 ? "sending…" : `next in ${formatCountdown(nextRemaining)}`}
+          </span>
+          {repeating > 0 && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="inline-flex items-center gap-1">
+                <RepeatIcon size={11} />
+                {repeating} repeating
+              </span>
+            </>
+          )}
+          <span
+            aria-hidden="true"
+            className={cn("ml-auto grid h-[22px] w-6 place-items-center", expanded && "rotate-180")}
+          >
+            <ChevronDownIcon />
+          </span>
+        </Button>
+      )}
       {expanded &&
         messages.map((message) => {
           const remaining = store.remainingMs(message.sendAt);

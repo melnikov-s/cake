@@ -85,9 +85,7 @@ it("shows a Cake Chat's own recurring check-in in its pending list and cancels i
 
   // Nothing is steering or queued, so the scheduled group is expanded.
   const group = await screen.findByRole("group", { name: "Scheduled" });
-  expect(within(group).getByRole("button", { name: /1 scheduled/ }).textContent).toBe(
-    "1 scheduled·next in 3:00·1 repeating",
-  );
+  expect(within(group).queryByRole("button", { name: /1 scheduled/ })).toBeNull();
   const [row] = within(group).getAllByRole("listitem");
   expect(row?.textContent).toBe("Check the PR status and report progress.every 3min 3:00");
   expect(row?.title).toBe(

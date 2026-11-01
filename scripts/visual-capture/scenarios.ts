@@ -4895,7 +4895,8 @@ const scheduledPromptsScenario: VisualCaptureScenario = {
   async prepare(page, state) {
     await cakeChatScenario.prepare(page, "default");
     const group = page.getByRole("group", { name: "Scheduled" });
-    await expect(group.getByRole("button", { name: /2 scheduled/ })).toBeVisible();
+    await expect(group.getByRole("listitem")).toHaveCount(2);
+    await expect(group.getByRole("button", { name: /2 scheduled/ })).toHaveCount(0);
     if (state !== "idle") {
       const input = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
       await input.fill("Review the implementation while I queue follow-up instructions.");
@@ -4903,7 +4904,13 @@ const scheduledPromptsScenario: VisualCaptureScenario = {
       await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
       await input.fill("Then rebase onto main and rerun the focused tests.");
       await page.getByRole("button", { name: "Send", exact: true }).click();
-      // Input sent while the agent runs waits as steering; schedules follow it, collapsed.
+      await expect(group.getByRole("button", { name: /2 scheduled/ })).toBeVisible();
+      // Follow-ups queue by default; explicitly steer this one for the mixed-lane capture.
+      await page
+        .getByRole("button", {
+          name: "Send now as steering: Then rebase onto main and rerun the focused tests.",
+        })
+        .click();
       await expect(page.getByRole("group", { name: "Steering" }).getByRole("listitem")).toHaveCount(
         1,
       );

@@ -23,7 +23,40 @@ afterEach(cleanup);
 // snapshots. Pi queue execution/abort/command semantics stay in service tests.
 describe("Prompt queue workflow", () => {
   it.each(["steering", "queued"] as const)(
-    "shows only populated lane headings and removes empty chrome when cancelling %s first",
+    "omits headings for one or several %s items, including type transitions",
+    (lane) => {
+      using fixture = renderQueue([], {});
+      expect(screen.queryByRole("list", { name: "Queued prompts" })).toBeNull();
+      const first = queuePart(1, "First message", { lane });
+      const second = queuePart(2, "Second message", { lane });
+      const otherLane = lane === "queued" ? "steering" : "queued";
+      const other = queuePart(3, "Other type", { lane: otherLane });
+      const expectSingleType = (texts: string[]) => {
+        const list = screen.getByRole("list", { name: "Queued prompts" });
+        expect(within(list).queryByText("Queued", { exact: true })).toBeNull();
+        expect(within(list).queryByText("Steering", { exact: true })).toBeNull();
+        expect(queuedTexts()).toEqual(texts);
+      };
+
+      fixture.publish([first]);
+      expectSingleType([first.text]);
+      fixture.publish([first, second]);
+      expectSingleType([first.text, second.text]);
+      fixture.publish([first, second, other]);
+      const list = screen.getByRole("list", { name: "Queued prompts" });
+      expect(within(list).getByText("Queued", { exact: true })).toBeDefined();
+      expect(within(list).getByText("Steering", { exact: true })).toBeDefined();
+      fixture.publish([first, second]);
+      expectSingleType([first.text, second.text]);
+      fixture.publish([other]);
+      expectSingleType([other.text]);
+      fixture.publish([]);
+      expect(screen.queryByRole("list", { name: "Queued prompts" })).toBeNull();
+    },
+  );
+
+  it.each(["steering", "queued"] as const)(
+    "labels mixed lanes and hides the remaining heading when cancelling %s first",
     async (removeFirst) => {
       const steering = queuePart(1, "Steer this", { lane: "steering" });
       const queued = queuePart(2, "Do this later");
@@ -61,7 +94,7 @@ describe("Prompt queue workflow", () => {
       expect(screen.queryByRole("group", { name: removedLabel })).toBeNull();
       expect(within(list).queryByText(removedLabel, { exact: true })).toBeNull();
       const group = screen.getByRole("group", { name: remainingLabel });
-      expect(within(group).getByText(remainingLabel, { exact: true })).toBeDefined();
+      expect(within(group).queryByText(remainingLabel, { exact: true })).toBeNull();
       expect(within(list).getAllByRole("group")).toHaveLength(1);
       expect(group.classList.contains("border-t")).toBe(false);
       expect(group.classList.contains("pt-2")).toBe(false);

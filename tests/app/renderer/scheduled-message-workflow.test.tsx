@@ -109,6 +109,76 @@ afterEach(() => {
 });
 
 describe("Scheduled message workflow", () => {
+  it.each([
+    { lanes: ["queued"] },
+    { lanes: ["steering"] },
+    { lanes: ["steering", "queued"] },
+  ] as const)(
+    "shows category labels only while schedules coexist with $lanes",
+    async ({ lanes }) => {
+      using fixture = renderQueue([], {});
+      const catalog = fixture.models.scheduledMessageCatalog(queueSessionId);
+      let revision = 0;
+      const first = { ...scheduled, targetSessionId: queueSessionId };
+      const second = {
+        ...first,
+        id: "6f0e3c43-9d0a-4f4e-8a55-0d5a3b7c2a11",
+        text: "Another scheduled message",
+      };
+      const publishSchedules = (messages: ScheduledMessage[]) =>
+        act(() =>
+          applyScheduledMessageUpdate(catalog, {
+            _tag: "Snapshot",
+            revision: ++revision,
+            messages,
+          }),
+        );
+      const expectSchedulesOnly = (count: number) => {
+        const group = screen.getByRole("group", { name: "Scheduled" });
+        expect(within(group).queryByRole("button", { name: /\d+ scheduled/ })).toBeNull();
+        expect(within(group).getAllByRole("listitem")).toHaveLength(count);
+        expect(
+          within(group).getAllByRole("button", { name: /^Cancel scheduled message:/ }),
+        ).toHaveLength(count);
+      };
+
+      expect(screen.queryByRole("list", { name: "Queued prompts" })).toBeNull();
+      publishSchedules([first]);
+      expectSchedulesOnly(1);
+      publishSchedules([first, second]);
+      expectSchedulesOnly(2);
+      const parts = lanes.map((lane, index) => queuePart(index + 1, `Message ${index}`, { lane }));
+      fixture.publish(parts);
+      const pending = screen.getByRole("list", { name: "Queued prompts" });
+      for (const lane of lanes) {
+        expect(
+          within(pending).getByText(lane === "queued" ? "Queued" : "Steering", { exact: true }),
+        ).toBeDefined();
+      }
+      const summary = within(pending).getByRole("button", { name: /2 scheduled/ });
+      expect(summary.ariaExpanded).toBe("false");
+      await fixture.user.click(summary);
+      expect(summary.ariaExpanded).toBe("true");
+      await fixture.user.click(summary);
+      expect(summary.ariaExpanded).toBe("false");
+      publishSchedules([]);
+      expect(screen.queryByRole("group", { name: "Scheduled" })).toBeNull();
+      for (const lane of lanes) {
+        const heading = within(pending).queryByText(lane === "queued" ? "Queued" : "Steering", {
+          exact: true,
+        });
+        expect(Boolean(heading)).toBe(lanes.length > 1);
+      }
+      publishSchedules([first, second]);
+      fixture.publish([]);
+      expectSchedulesOnly(2);
+      publishSchedules([first]);
+      expectSchedulesOnly(1);
+      publishSchedules([]);
+      expect(screen.queryByRole("list", { name: "Queued prompts" })).toBeNull();
+    },
+  );
+
   it("schedules a follow-up from Chat, counts down, and removes it after cancellation", async () => {
     using fixture = renderScheduled();
     await fixture.user.type(screen.getByRole("combobox"), "/schedule 2m Check the build");
@@ -121,10 +191,7 @@ describe("Scheduled message workflow", () => {
     expect(within(pendingList).queryByText("Queued", { exact: true })).toBeNull();
     expect(list.classList.contains("border-t")).toBe(false);
     expect(list.classList.contains("pt-2")).toBe(false);
-    expect(within(list).getByRole("button", { name: /1 scheduled/ })).toMatchObject({
-      ariaExpanded: "true",
-    });
-    expect(within(list).getByText("next in 2:00")).toBeDefined();
+    expect(within(list).queryByRole("button", { name: /1 scheduled/ })).toBeNull();
     expect(within(list).getByText("Check the build")).toBeDefined();
     expect(within(list).getByText("in 2:00")).toBeDefined();
     expect(screen.getByRole<HTMLTextAreaElement>("combobox").value).toBe("");
