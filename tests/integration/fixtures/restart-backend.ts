@@ -196,18 +196,37 @@ try {
                 Stream.runHead,
               );
               yield* handle.prompt("Keep the parent busy while the worker completes");
-              yield* coordinator.storage.list().pipe(
-                Effect.flatMap((records) =>
-                  records.some(
+              const completed = yield* coordinator.storage.list().pipe(
+                Effect.flatMap((records) => {
+                  const record = records.find(
                     (worker) =>
-                      worker.status === "complete" && worker.completionDisposition === "notifying",
-                  )
-                    ? Effect.void
-                    : Effect.fail("waiting for durable pending report"),
-                ),
+                      worker.status === "complete" && worker.completionDisposition === "notified",
+                  );
+                  return record
+                    ? Effect.succeed(record)
+                    : Effect.fail("waiting for durable queued report");
+                }),
                 Effect.retry(Schedule.spaced("10 millis")),
                 Effect.timeout("15 seconds"),
               );
+              const parentSnapshot = yield* handle.snapshot();
+              assert.equal(parentSnapshot.streaming, true);
+              const parentIntent = yield* (yield* RuntimeRecoveryStorage).get(sessionId);
+              assert.ok(
+                parentIntent?.inputs.some(
+                  (input) =>
+                    input.turnId === completed.completionId &&
+                    input.delivery === "follow-up" &&
+                    input.internal?._tag === "SubagentCompletion",
+                ),
+              );
+              // Admission acknowledges a report before the busy parent consumes it.
+              // Inject a lost acknowledgement on disk, rather than racing the transient
+              // notifying state, so restart must deduplicate the already-queued report.
+              yield* coordinator.storage.update({
+                ...completed,
+                completionDisposition: "notifying",
+              });
               console.log("restart-fixture-report-pending");
             }
             console.log("restart-fixture-accepted");

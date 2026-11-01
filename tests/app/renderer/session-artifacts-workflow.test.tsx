@@ -211,6 +211,13 @@ function renderSessionArtifacts(
 }
 
 beforeEach(() => {
+  // jsdom has no atomic move API; Electron covers retained DOM/iframe identity.
+  Object.defineProperty(Element.prototype, "moveBefore", {
+    configurable: true,
+    value(this: Element, node: Node, child: Node | null) {
+      this.insertBefore(node, child);
+    },
+  });
   vi.stubGlobal("PointerEvent", MouseEvent);
   Object.defineProperty(SVGElement.prototype, "getBBox", {
     configurable: true,
@@ -230,6 +237,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   Reflect.deleteProperty(SVGElement.prototype, "getBBox");
+  Reflect.deleteProperty(Element.prototype, "moveBefore");
   vi.unstubAllGlobals();
 });
 
@@ -319,7 +327,7 @@ describe("Session artifact workflows", () => {
     expect(screen.getAllByText("Family report content r1")).toHaveLength(1);
   });
 
-  it("follows publication updates in fullscreen while deliberate library history selections stay pinned", async () => {
+  it("follows publication updates from the accessory pane into fullscreen while deliberate library history selections stay pinned", async () => {
     let latest = 1;
     const summary = () => ({
       ...reportSummary(),
@@ -359,6 +367,11 @@ describe("Session artifact workflows", () => {
         name: /Family report/,
       }),
     );
+    const panel = await screen.findByRole("complementary", { name: "Family report" });
+    await within(panel).findByText("Family report content r1");
+    await fixture.user.click(
+      within(panel).getByRole("button", { name: "View Family report fullscreen" }),
+    );
     const surface = await screen.findByRole("dialog", { name: "Family report" });
     await within(surface).findByText("Family report content r1");
     latest = 2;
@@ -367,6 +380,7 @@ describe("Session artifact workflows", () => {
     await fixture.user.click(
       within(surface).getByRole("button", { name: "Exit fullscreen Family report" }),
     );
+    await fixture.user.click(within(panel).getByRole("button", { name: "Close Family report" }));
     await browseReport(fixture);
     await fixture.user.selectOptions(
       screen.getByRole("combobox", { name: "Selected artifact revision" }),
@@ -659,7 +673,7 @@ describe("Session artifact workflows", () => {
     ).toBeDefined();
     expect(screen.queryByText("Explanation r1")).toBeNull();
   });
-  it("opens a sole linked artifact fullscreen and reopens its catalog after closing", async () => {
+  it("opens a sole linked artifact in the accessory pane and reopens its catalog after closing", async () => {
     await using fixture = renderSessionArtifacts();
     await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
     const popup = await screen.findByRole("dialog", { name: "Artifacts" });
@@ -667,9 +681,9 @@ describe("Session artifact workflows", () => {
     expect(within(list).getAllByRole("button")).toHaveLength(1);
     await fixture.user.click(within(list).getByRole("button", { name: /Family report/ }));
     expect(await screen.findByText("Family report content r2")).toBeDefined();
-    expect(screen.getByRole("dialog", { name: "Family report" })).toBeDefined();
+    expect(screen.getByRole("complementary", { name: "Family report" })).toBeDefined();
     expect(screen.queryByRole("textbox", { name: "Search artifact library" })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Exit fullscreen Family report" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Close Family report" }));
     await fixture.user.click(screen.getByRole("button", { name: "1 artifacts" }));
     const reopenedPopup = await screen.findByRole("dialog", { name: "Artifacts" });
     const reopenedList = within(reopenedPopup).getByRole("navigation", { name: "Artifact list" });
@@ -730,7 +744,7 @@ describe("Session artifact workflows", () => {
     expect(await screen.findByText("No artifacts yet.")).toBeDefined();
   });
 
-  it("opens the family link's pinned revision directly in fullscreen", async () => {
+  it("opens the family link's pinned revision in the accessory pane and preserves it in fullscreen", async () => {
     const pinned = {
       ...effective(1),
       latestRevision: effective(2).latestRevision,
@@ -749,6 +763,11 @@ describe("Session artifact workflows", () => {
     });
     await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
     await fixture.user.click(await screen.findByRole("button", { name: /Family report/ }));
+    const panel = await screen.findByRole("complementary", { name: "Family report" });
+    expect(await within(panel).findByText("Family report content r1")).toBeDefined();
+    await fixture.user.click(
+      within(panel).getByRole("button", { name: "View Family report fullscreen" }),
+    );
     const surface = await screen.findByRole("dialog", { name: "Family report" });
     expect(await within(surface).findByText("Family report content r1")).toBeDefined();
   });

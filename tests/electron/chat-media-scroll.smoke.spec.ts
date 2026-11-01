@@ -103,7 +103,7 @@ for (const media of ["diagram", "image", "combined"] as const) {
       JSON.stringify({
         schemaVersion: 1,
         projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-        trustedProjectPaths: [],
+        trustedProjectPaths: [project],
       }),
     );
     const entries: unknown[] = [

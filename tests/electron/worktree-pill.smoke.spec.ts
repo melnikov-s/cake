@@ -51,7 +51,7 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
 
@@ -261,7 +261,7 @@ test("keeps target-warning tooltips and merges directly while preserving dirty t
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
 
@@ -426,7 +426,7 @@ test("lands new commits from an already-landed worktree before resolving it", as
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
 

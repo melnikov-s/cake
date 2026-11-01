@@ -213,7 +213,12 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
                   <span className="grid min-w-0 gap-0.5">
                     <span className="truncate font-medium">{choice.label}</span>
                     {choice.description && (
-                      <span className="truncate text-xs font-normal text-muted-foreground">
+                      <span
+                        className={cn(
+                          "truncate text-xs font-normal",
+                          active?.id === choice.id ? "text-foreground" : "text-muted-foreground",
+                        )}
+                      >
                         {choice.description}
                       </span>
                     )}

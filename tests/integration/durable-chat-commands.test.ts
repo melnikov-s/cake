@@ -99,7 +99,10 @@ it("expands built-in namespaced skills with the same Pi envelope and arguments",
   const commands = await f.open();
   const expanded = await commands.expand("/skill:cake:prototype-ui prototype the settings screen");
   expect(expanded).toContain('<skill name="cake:prototype-ui"');
-  expect(expanded).toContain("Build one interactive widget with five distinct prototypes");
+  expect(expanded).toContain(
+    "Honor explicit HTML requests. Prefer `html.present` for static HTML/CSS mockups",
+  );
+  expect(expanded).toContain("### Present five alternatives in one widget");
   expect(expanded).toContain("</skill>\n\nprototype the settings screen");
   expect(commands.instructions()).toContain("cake:prototype-ui");
   await commands.reload();

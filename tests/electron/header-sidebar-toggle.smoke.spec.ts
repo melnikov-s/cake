@@ -31,7 +31,7 @@ test("header sidebar toggle only appears when the sidebar is collapsed", async (
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
 

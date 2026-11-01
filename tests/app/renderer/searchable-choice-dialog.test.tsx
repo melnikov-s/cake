@@ -12,6 +12,27 @@ const choices = Array.from({ length: 125 }, (_, index) => ({
 }));
 
 describe("Searchable choice dialog presentation", () => {
+  it("keeps the selected description readable as the active row changes", () => {
+    render(
+      <SearchableChoiceDialog
+        title="Choose"
+        searchLabel="Search choices"
+        choices={() => [
+          { id: "first", label: "First", description: "First description" },
+          { id: "second", label: "Second", description: "Second description" },
+        ]}
+        onSelect={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const first = screen.getByText("First description");
+    const second = screen.getByText("Second description");
+    expect(first.classList.contains("text-foreground")).toBe(true);
+    expect(second.classList.contains("text-muted-foreground")).toBe(true);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
+    expect(first.classList.contains("text-muted-foreground")).toBe(true);
+    expect(second.classList.contains("text-foreground")).toBe(true);
+  });
   it("keeps urgent draft updates out of the results render and prevents selecting stale results", async () => {
     let ready = false;
     let finish!: () => void;

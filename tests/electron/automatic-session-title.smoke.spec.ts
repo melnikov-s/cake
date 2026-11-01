@@ -43,7 +43,7 @@ for (const draft of [false, true]) {
         let body = "";
         for await (const data of request) body += data;
         response.writeHead(200, { "content-type": "text/event-stream" });
-        if (body.includes("Create a concise title for a coding-agent session")) {
+        if (body.includes("Title this coding-agent session")) {
           titleRequests.push(body);
           titleResponse = response;
         } else if (body.includes("Choose up to three labels")) {
@@ -150,7 +150,8 @@ for (const draft of [false, true]) {
         }
         expect(titleRequests).toHaveLength(1);
         const request = JSON.parse(titleRequests[0]!);
-        expect(request.max_tokens ?? request.max_completion_tokens).toBe(2_048);
+        // Utility completions use the configured model's own output limit.
+        expect(request.max_tokens ?? request.max_completion_tokens).toBe(8_192);
         titleResponse!.end(
           chunk({ role: "assistant", content: "Fix automatic session titles" }) +
             chunk({}, "stop") +

@@ -49,7 +49,7 @@ test("navigates session history with back, forward, and resolve", async () => {
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
   await Promise.all([

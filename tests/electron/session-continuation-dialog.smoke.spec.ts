@@ -59,7 +59,7 @@ test("forks sessions across working directories", async () => {
           },
         },
       ],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

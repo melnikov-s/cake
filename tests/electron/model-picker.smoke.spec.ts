@@ -34,7 +34,7 @@ test("deferred model picker opens by keyboard and mouse with catalog, search, pr
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
       modelPresets: [
         {
           id: "00000000-0000-4000-8000-000000000001",

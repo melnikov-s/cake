@@ -63,7 +63,7 @@ test("shows compacted historical work in place, muted and expandable", async () 
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
   const entries = [

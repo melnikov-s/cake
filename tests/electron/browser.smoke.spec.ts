@@ -45,7 +45,7 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
   const persistedBrowserContext = `<cake-browser-attachment>${JSON.stringify({

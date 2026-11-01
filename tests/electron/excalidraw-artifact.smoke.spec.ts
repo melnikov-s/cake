@@ -97,7 +97,7 @@ test("installed Excalidraw edits shared live state and reopens retained output w
   ]);
   await writeFile(
     join(cakeHome, "state", "application.json"),
-    JSON.stringify({ schemaVersion: 1, projects: [], trustedProjectPaths: [] }),
+    JSON.stringify({ schemaVersion: 1, projects: [], trustedProjectPaths: [project] }),
   );
   await seedCakeChatHistory(
     cakeHome,

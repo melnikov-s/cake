@@ -62,7 +62,9 @@ describe("Cake-owned prompt catalog", () => {
     ])
       expect(widget).toContain(fact);
     for (const fact of [
-      "Read `widget.md` before preparing the brief",
+      "Read `widget.md` before preparing this workflow's brief",
+      "Honor explicit HTML requests. Prefer `html.present` for static HTML/CSS mockups",
+      "Use `widgets.present` only when the request needs meaningful interactive behavior",
       "use live host CSS variables throughout, never frozen screenshot colors",
       "expectedStateVersion",
       "artifacts.selection.capture",
@@ -70,7 +72,12 @@ describe("Cake-owned prompt catalog", () => {
       "never fall back to all five or latest source",
     ])
       expect(skill).toContain(fact);
-    expect(Buffer.byteLength(skill)).toBeLessThan(6_900);
+    const approach = skill.slice(
+      skill.indexOf("## Choose the rendering approach"),
+      skill.indexOf("## Optional interactive saved-choice/source-handoff workflow"),
+    );
+    expect(Buffer.byteLength(approach)).toBeLessThan(3_000);
+    expect(Buffer.byteLength(skill.replace(approach, ""))).toBeLessThan(6_900);
     expect(Buffer.byteLength(widget)).toBeLessThan(6_100);
   });
 

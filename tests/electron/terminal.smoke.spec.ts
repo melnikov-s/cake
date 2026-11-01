@@ -40,7 +40,7 @@ test("Quake terminal runs a shell and retains tabs when a Project Session is res
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

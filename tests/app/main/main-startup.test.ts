@@ -64,6 +64,7 @@ vi.mock("../../../src/config/CakePaths", () => ({
 }));
 vi.mock("../../../src/services/diagnostics/BackendLoggingLive", () => ({
   makeBackendLoggingLive: vi.fn(() => Layer.empty),
+  makeShutdownLogWriter: vi.fn(() => vi.fn()),
 }));
 vi.mock("../../../src/services/pi/PiPaths", () => ({
   piAgentDirectory: vi.fn(() => "/isolated/pi"),

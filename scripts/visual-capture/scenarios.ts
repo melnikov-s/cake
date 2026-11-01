@@ -794,7 +794,7 @@ const conversationEntryScenario: VisualCaptureScenario = {
         projects: [
           { path: paths.project, name: "Project", addedAt: timestamp, lastOpenedAt: timestamp },
         ],
-        trustedProjectPaths: [],
+        trustedProjectPaths: [paths.project],
       }),
     );
     await writeFile(
@@ -916,7 +916,7 @@ const modelPickerScenario: VisualCaptureScenario = {
         projects: [
           { path: paths.project, name: "Project", addedAt: timestamp, lastOpenedAt: timestamp },
         ],
-        trustedProjectPaths: [],
+        trustedProjectPaths: [paths.project],
         modelPresets: [
           {
             id: "00000000-0000-4000-8000-000000000001",
@@ -1575,7 +1575,7 @@ async function seedArtifactScenario(
           lastOpenedAt: timestamp,
         },
       ],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [paths.project],
     }),
   );
   await writeFile(
@@ -2119,7 +2119,7 @@ const cakePromptsSettingsScenario: VisualCaptureScenario = {
             lastOpenedAt: timestamp,
           },
         ],
-        trustedProjectPaths: [],
+        trustedProjectPaths: [paths.project],
       }),
     );
   },
@@ -5505,7 +5505,7 @@ const newSessionScenario: VisualCaptureScenario = {
             lastOpenedAt: timestamp,
           },
         ],
-        trustedProjectPaths: [],
+        trustedProjectPaths: [paths.project],
       }),
     );
   },
@@ -5550,7 +5550,7 @@ const sessionSearchScenario: VisualCaptureScenario = {
           { path: paths.project, name: "Cake", addedAt: timestamp, lastOpenedAt: timestamp },
           { path: website, name: "Website", addedAt: timestamp, lastOpenedAt: timestamp },
         ],
-        trustedProjectPaths: [],
+        trustedProjectPaths: [paths.project, website],
       }),
     );
     for (const [index, title] of [
@@ -6001,7 +6001,7 @@ export const sessionPluginsScenario: VisualCaptureScenario = {
         data: {
           globalSessionLabels: [],
           unreadSessionIds: [],
-          trustedProjectPaths: [],
+          trustedProjectPaths: [paths.project],
           fastModeSessionIds: [],
           modelPresets: [],
           sessionPluginSharedState: [],

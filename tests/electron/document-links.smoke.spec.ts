@@ -34,7 +34,7 @@ test("architecture citations with heading anchors open their workspace document"
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

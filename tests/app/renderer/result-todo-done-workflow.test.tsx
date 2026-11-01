@@ -544,20 +544,28 @@ it.each(chats)(
       };
       await repair(A);
       await waitFor(() =>
-        expect(screen.getAllByTitle("Show in To-do: Research options")).toHaveLength(1),
+        expect(
+          screen.getAllByRole("button", { name: "Show in To-do: Research options" }),
+        ).toHaveLength(1),
       );
-      expect(screen.queryByTitle("Show in To-do: Fix the build")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Show in To-do: Fix the build" })).toBeNull();
       await repair(B);
       await waitFor(() =>
-        expect(screen.getAllByTitle("Show in To-do: Research options")).toHaveLength(2),
+        expect(
+          screen.getAllByRole("button", { name: "Show in To-do: Research options" }),
+        ).toHaveLength(2),
       );
     } finally {
       await engine.close();
     }
-    expect(screen.getAllByTitle("Show in To-do: Research options")).toHaveLength(2);
-    expect(screen.getAllByTitle("Show in To-do: Fix the build")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Show in To-do: Research options" })).toHaveLength(
+      2,
+    );
+    expect(screen.getAllByRole("button", { name: "Show in To-do: Fix the build" })).toHaveLength(1);
     const messageCount = f.view.container.querySelectorAll("[data-part-id]").length;
-    await f.user.click(screen.getAllByTitle("Show in To-do: Research options")[0]!);
+    await f.user.click(
+      screen.getAllByRole("button", { name: "Show in To-do: Research options" })[0]!,
+    );
     expect(screen.getByRole("complementary", { name: "To-do" })).toBeDefined();
     expect(f.mutateUser).not.toHaveBeenCalled();
     expect(f.chat.todos.selectedItem).toBeUndefined();
@@ -570,12 +578,18 @@ it.each(chats)(
         status: "Ready for review",
       }),
     );
-    expect(screen.getAllByTitle("Show in To-do: Startup findings")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Show in To-do: Startup findings" })).toHaveLength(
+      2,
+    );
     await f.clickPane("Mark done", "Startup findings");
-    for (const heading of screen.getAllByTitle("Show in To-do: Startup findings"))
+    for (const heading of screen.getAllByRole("button", {
+      name: "Show in To-do: Startup findings",
+    }))
       expect(within(heading.parentElement!).getByRole("img", { name: "Done" })).toBeDefined();
     expect(f.view.container.querySelectorAll("[data-part-id]")).toHaveLength(messageCount);
-    expect(screen.getAllByTitle("Show in To-do: Startup findings")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Show in To-do: Startup findings" })).toHaveLength(
+      2,
+    );
 
     // The very same durable projection must not enable task sections in an ordinary session.
     f.view.unmount();
@@ -632,8 +646,12 @@ it.each(chats)(
   "groups consecutive incoming work by task and updates the existing rail after agent edits and session completion in %s",
   async (kind) => {
     await using f = await renderChat(kind);
-    expect(screen.getAllByTitle("Show in To-do: Fix the build")).toHaveLength(1);
-    expect(screen.getAllByTitle("Show in To-do: Research options")).toHaveLength(1);
+    // The Benchmark notice separates the source card from its exact original.
+    // Keep both contiguous sections rather than regrouping the transcript.
+    expect(screen.getAllByRole("button", { name: "Show in To-do: Fix the build" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Show in To-do: Research options" })).toHaveLength(
+      1,
+    );
     const count = f.view.container.querySelectorAll("[data-part-id]").length;
     await f.commit(
       projectTodos.update(f.scope, {
@@ -643,13 +661,15 @@ it.each(chats)(
         status: "Ready for review",
       }),
     );
-    expect(screen.getByTitle("Show in To-do: Research engine options")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Show in To-do: Research engine options" }),
+    ).toBeDefined();
     await f.commit(projectTodos.completeResolved(f.scope, [f.items.sessionTodo]));
     expect((await f.read(f.items.sessionTodo.id)).completion?.by).toBe("sessions");
     expect(await f.paneState("Fix the build")).toBe("done");
     await f.clickPane("Reopen", "Fix the build");
     expect((await f.read(f.items.sessionTodo.id)).state).toBe("open");
-    expect(screen.getAllByTitle("Show in To-do: Fix the build")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Show in To-do: Fix the build" })).toHaveLength(2);
     expect(f.view.container.querySelectorAll("[data-part-id]")).toHaveLength(count);
   },
 );

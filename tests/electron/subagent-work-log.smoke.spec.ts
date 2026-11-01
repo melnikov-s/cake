@@ -416,7 +416,7 @@ test("never restores an interrupted subagent as running", async () => {
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

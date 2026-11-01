@@ -664,7 +664,9 @@ it("toggles Project Chat to-dos in the existing side pane, selects/deselects, co
     await f.user.click(select);
     await waitFor(() => expect(select.getAttribute("aria-pressed")).toBe("true"));
     await f.user.click(within(panel).getByRole("button", { name: `Mark done: ${item.title}` }));
-    await waitFor(() => expect(within(panel).getByText("No active to-dos.")).toBeTruthy());
+    await waitFor(() =>
+      expect(within(panel).queryByRole("list", { name: "Active to-dos" })).toBeNull(),
+    );
     expect(toggle.textContent).toBe("0");
     await f.user.click(within(panel).getByRole("button", { name: "Done (2)" }));
     await f.user.click(within(panel).getByRole("button", { name: `Reopen: ${item.title}` }));

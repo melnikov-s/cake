@@ -217,7 +217,7 @@ reply({ ready: true });
             lastOpenedAt: new Date(0).toISOString(),
           },
         ],
-        trustedProjectPaths: [],
+        trustedProjectPaths: [project],
       }),
     );
 

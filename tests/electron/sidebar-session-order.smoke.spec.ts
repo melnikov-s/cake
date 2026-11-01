@@ -40,7 +40,7 @@ for (const resolveSelected of [true, false]) {
             lastOpenedAt: new Date(0).toISOString(),
           },
         ],
-        trustedProjectPaths: [],
+        trustedProjectPaths: [project],
       }),
     );
     for (const [index, id] of ids.entries()) {

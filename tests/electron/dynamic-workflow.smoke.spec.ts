@@ -35,7 +35,7 @@ test("inspects workflow details and preserves native project composer input in a
       projects: [
         { path: project, name: "Workflow project", addedAt: timestamp, lastOpenedAt: timestamp },
       ],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

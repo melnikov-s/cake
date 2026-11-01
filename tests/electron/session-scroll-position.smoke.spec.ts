@@ -252,7 +252,7 @@ for (const scenario of [
       JSON.stringify({
         schemaVersion: 1,
         projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-        trustedProjectPaths: [],
+        trustedProjectPaths: [project],
       }),
     );
     await Promise.all([

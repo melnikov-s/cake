@@ -37,7 +37,7 @@ test("resolves and restores the selected project session in the desktop sidebar"
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

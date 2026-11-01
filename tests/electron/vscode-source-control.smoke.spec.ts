@@ -61,7 +61,7 @@ test("workspace changes use Source Control, committed files fall back to the fil
         addedAt: timestamp,
         lastOpenedAt: timestamp,
       })),
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project, external],
     }),
   );
   await writeFile(

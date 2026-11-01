@@ -123,11 +123,13 @@ it("renders authoritative live and replayed reports as Markdown subagent respons
     const response = view.container.querySelector('[data-slot="subagent-report"]')!;
     expect(response).not.toBeNull();
     expect(response.getAttribute("aria-label")).toBe("Subagent complete");
-    expect(
-      within(response as HTMLElement).getByRole("button", {
-        name: researchOrigin.task,
-      }).textContent,
-    ).toBe(`${researchOrigin.task}Completed`);
+    const header = response.querySelector<HTMLElement>('[data-slot="response-header"]')!;
+    expect(within(header).getByRole("button", { name: researchOrigin.task })).toHaveProperty(
+      "ariaExpanded",
+      "true",
+    );
+    expect(within(header).getByText(researchOrigin.task)).toBeDefined();
+    expect(within(header).getByText("Completed")).toBeDefined();
     const details = within(response as HTMLElement).getByRole("button", {
       name: "Assignment details",
     });
