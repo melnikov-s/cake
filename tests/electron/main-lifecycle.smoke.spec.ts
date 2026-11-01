@@ -23,7 +23,11 @@ test("main Effect runtime starts with bounded memory and finalizes before Electr
   const childProcess = application.process();
   try {
     const page = await application.firstWindow();
-    await expect(page.locator("body")).toBeVisible({ timeout: 20_000 });
+    // The document body precedes renderer bootstrap and its save/close observer.
+    // This test measures normal initialized startup and orderly shutdown.
+    await expect(page.getByRole("heading", { name: "What should we build?" })).toBeVisible({
+      timeout: 20_000,
+    });
     const memory = await application.evaluate(() => process.memoryUsage());
     await test.info().attach("startup-memory", {
       body: JSON.stringify(memory),

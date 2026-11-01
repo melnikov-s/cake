@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -7,11 +7,14 @@ const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 test("disconnected diagnostic pipes do not interrupt the hidden desktop app", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-stdio-errors-"));
+  const home = join(temporaryRoot, "home");
+  await mkdir(home);
   const application = await electron.launch({
     args: [repositoryRoot],
     cwd: repositoryRoot,
     env: {
       ...process.env,
+      HOME: home,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: join(temporaryRoot, "user-data"),
       CAKE_HOME: join(temporaryRoot, "cake-home"),
@@ -23,6 +26,7 @@ test("disconnected diagnostic pipes do not interrupt the hidden desktop app", as
   try {
     const page = await application.firstWindow();
     await page.getByRole("button", { name: "One-off chat", exact: true }).click();
+    await page.getByRole("button", { name: "Trust and continue", exact: true }).click();
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await application.evaluate(({ dialog }) => {

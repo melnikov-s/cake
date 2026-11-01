@@ -691,6 +691,8 @@ export class VsCodeServerRuntime {
           delete env.ELECTRON_RUN_AS_NODE;
           return env;
         })(),
+        // Own the server and its wrapper/extension-host descendants as one group.
+        detached: process.platform !== "win32",
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
@@ -720,7 +722,7 @@ export class VsCodeServerRuntime {
       if (this.disposed) throw new Error("The VS Code runtime has been disposed");
     } catch (error) {
       child.removeListener("exit", exitHandler);
-      child.kill();
+      stopServerProcess(child);
       throw error;
     }
     // Startup readiness is detected from these streams. Pause them only after
@@ -784,7 +786,7 @@ export class VsCodeServerRuntime {
       this.servers.delete(instance.workspacePath);
     }
     instance.child.removeAllListeners("exit");
-    instance.child.kill();
+    stopServerProcess(instance.child);
   }
 
   /** Localhost-only relay for companion extension traffic. The extension posts hello/activity here. */
@@ -1131,6 +1133,19 @@ function postJsonResponse(
   });
 }
 
+function stopServerProcess(child: ChildProcess) {
+  if (process.platform === "win32" || child.pid === undefined) {
+    child.kill();
+    return;
+  }
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch (error) {
+    // The group may already have exited after reporting a startup failure.
+    if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+  }
+}
+
 function waitForServerStart(
   child: ChildProcess,
   timeout: number,
@@ -1158,7 +1173,7 @@ function waitForServerStart(
     };
     const onAbort = () => {
       cleanup();
-      child.kill();
+      stopServerProcess(child);
       reject(signal?.reason);
     };
     function cleanup() {

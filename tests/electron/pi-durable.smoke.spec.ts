@@ -17,7 +17,10 @@ test("Pi Durable's Node SQLite adapter persists and reopens inside hidden Electr
     },
   });
   try {
-    await app.firstWindow();
+    const page = await app.firstWindow();
+    await expect(page.getByRole("heading", { name: "What should we build?" })).toBeVisible({
+      timeout: 20_000,
+    });
     const result = await app.evaluate(
       async (_electron, { storageUrl, durableUrl, modelsUrl, contextUrl, file }) => {
         // Playwright's evaluated function has no dynamic-import callback. Node's

@@ -92,6 +92,39 @@ describe("VsCodeServerRuntime startup", () => {
     if (root) await rm(root, { recursive: true, force: true });
   });
 
+  it.skipIf(process.platform === "win32")(
+    "releases the server's wrapper and extension hosts with its owned process group",
+    async () => {
+      root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
+      const child = Object.assign(new EventEmitter(), {
+        pid: 900_001,
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        kill: vi.fn(() => true),
+      });
+      const spawnServer = vi.fn(() => {
+        queueMicrotask(() => child.stdout.write("HTTP server listening on http://127.0.0.1\n"));
+        return child;
+      });
+      const kill = vi.spyOn(process, "kill").mockReturnValue(true);
+      try {
+        runtime = createRuntime({ root, spawnServer: spawnServer as never });
+        const instance = await runtime.startServer(root, "/fake/code-server");
+        expect(spawnServer).toHaveBeenCalledWith(
+          "/fake/code-server",
+          expect.any(Array),
+          expect.objectContaining({ detached: true }),
+        );
+        runtime.releaseServer(instance);
+        expect(kill).toHaveBeenCalledExactlyOnceWith(-child.pid, "SIGTERM");
+        expect(child.kill).not.toHaveBeenCalled();
+        expect(runtime["servers"].size).toBe(0);
+      } finally {
+        kill.mockRestore();
+      }
+    },
+  );
+
   it("kills a spawned server when startup is canceled", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
     const companionSource = "module.exports = {};\n";
