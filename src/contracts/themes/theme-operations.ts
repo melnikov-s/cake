@@ -21,7 +21,7 @@ export const ThemeState = Schema.Struct({
   systemColorScheme: ColorScheme,
   lightTheme: ColorThemeChoice,
   darkTheme: ColorThemeChoice,
-  effective: Schema.Struct({ ...ThemeSummary.fields, saved: Schema.Boolean }),
+  effective: ThemeSummary,
 });
 export interface ThemeState extends Schema.Schema.Type<typeof ThemeState> {}
 
@@ -44,7 +44,7 @@ export interface ThemeApplyInput extends Schema.Schema.Type<typeof ThemeApplyInp
 const commonGuidance = [
   "Uses the existing persisted appearance catalog in the Cake window showing the calling chat. Requires a connected eligible desktop window; never edit settings files.",
   "Use exact choice IDs from list/read/add, not display names. Custom names may repeat; add creates a new ID and never overwrites a theme. Only saved themes can be read or applied.",
-  "State reports saved Light/Dark slots, appearance (Light/Dark/System), OS scheme, and the effective live theme. UI previews, if any, are marked saved:false. Cake and embedded editors use the existing shared live theme projection; this is not an editor-render acknowledgement.",
+  "State reports saved Light/Dark slots, appearance (Light/Dark/System), OS scheme, and the effective live theme. Cake and embedded editors use the existing shared live theme projection; this is not an editor-render acknowledgement.",
   "A persistence failure is not success and can leave live in-memory changes. Read back before retrying; add always creates a new theme.",
 ];
 

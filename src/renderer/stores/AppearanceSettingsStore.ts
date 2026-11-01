@@ -50,15 +50,6 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
     ];
   }
 
-  /** The tool catalog excludes transient, unsaved UI previews. */
-  get savedColorThemes(): readonly ColorThemeOption[] {
-    return this.colorThemes.filter(
-      (option) =>
-        option.choice.startsWith("bundled:") ||
-        this.importedThemes.some((theme) => option.choice === `imported:${theme.id}`),
-    );
-  }
-
   get themeState(): ThemeState {
     const active = this.activeColorTheme;
     const option = this.colorThemes.find((option) => option.theme === active);
@@ -74,20 +65,19 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
         choice,
         name: option?.name ?? (mode === "light" ? "Cake Light" : "Cake Dark"),
         type: mode,
-        saved: this.savedColorThemes.some((theme) => theme.choice === choice),
       },
     };
   }
 
   listSavedThemes() {
     return {
-      themes: this.savedColorThemes.map(({ choice, name, type }) => ({ choice, name, type })),
+      themes: this.colorThemes.map(({ choice, name, type }) => ({ choice, name, type })),
       state: this.themeState,
     };
   }
 
   readSavedTheme(choice: ColorThemeChoice) {
-    const theme = this.savedColorThemes.find((option) => option.choice === choice);
+    const theme = this.colorThemes.find((option) => option.choice === choice);
     if (!theme)
       throw new Error(`Unknown saved theme: ${choice}. Use themes.list for exact choice IDs.`);
     return { theme, state: this.themeState };

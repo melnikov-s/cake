@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Schema } from "effect";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { observer } from "r-state-tree/react";
@@ -148,7 +149,7 @@ describe("theme gateway workflows", () => {
             appearance: "dark",
             lightTheme: before.state.lightTheme,
             darkTheme: choice,
-            effective: { choice, saved: true },
+            effective: { choice },
           },
         });
         expect(document.documentElement.style.getPropertyValue("--background")).toBe("#191322");
@@ -255,7 +256,7 @@ describe("theme gateway workflows", () => {
     expect(h.saved()).toBeUndefined();
   });
 
-  it("requires exact saved IDs and explicit application semantics, excluding unsaved previews", async () => {
+  it("requires exact saved IDs and explicit application semantics", async () => {
     using h = fixture();
     const before = await h.list();
     await expect(h.call("themes.read", { choice: "Halloween" })).rejects.toThrow();
@@ -266,28 +267,37 @@ describe("theme gateway workflows", () => {
     await expect(
       h.call("themes.apply", { choice: "bundled:nord", application: "now", invented: true }),
     ).rejects.toThrow();
-    await act(async () => {
-      h.root.settingsStore.appearance.previewTheme = {
-        id: "preview",
-        name: "Preview",
-        type: "dark",
-        colors: {},
-        tokenColors: [],
-        semanticTokenColors: {},
-        semanticHighlighting: true,
-      };
-      h.root.settingsStore.appearance.previewChoice = "imported:preview";
-    });
-    expect((await h.list()).themes).toEqual(before.themes);
-    expect((await h.list()).state.effective).toMatchObject({
-      choice: "imported:preview",
-      saved: false,
-    });
-    await expect(h.read("imported:preview")).rejects.toThrow(/Unknown saved theme/);
+    await expect(h.read("imported:missing")).rejects.toThrow(/Unknown saved theme/);
+    expect(await h.list()).toEqual(before);
     expect((await h.apply("bundled:nord", "now")).state.effective).toMatchObject({
       choice: "bundled:nord",
-      saved: true,
     });
+  });
+
+  it("reads immediately imported Settings themes through the same catalog without changing inactive appearance", async () => {
+    using h = fixture({ global: true });
+    await h.appearance("light");
+    const before = await h.list();
+    const content = JSON.stringify({ ...palette.theme, name: "Settings import" });
+    const file = new File([content], "settings-theme.json", { type: "application/json" });
+    Object.defineProperty(file, "text", { value: async () => content });
+    await userEvent.setup().upload(screen.getByLabelText("Import VS Code theme"), file);
+    const imported = (await h.list()).themes.find((theme) => theme.name === "Settings import");
+    if (!imported) throw new Error("Settings import was not added to the shared theme catalog");
+    const readback = await h.read(imported.choice);
+    expect(readback.theme.theme).toMatchObject({
+      name: "Settings import",
+      colors: palette.theme.colors,
+    });
+    expect(readback.state).toMatchObject({
+      appearance: "light",
+      lightTheme: before.state.lightTheme,
+      darkTheme: imported.choice,
+      effective: before.state.effective,
+    });
+    expect(screen.getByRole("status").textContent).toContain("when Dark mode is active");
+    expect((await h.apply(imported.choice, "now")).state.effective.choice).toBe(imported.choice);
+    expect(currentEditorTheme()).toMatchObject({ name: "Settings import" });
   });
 
   it("does not acknowledge a mutation until persistence completes, and surfaces storage failures", async () => {
