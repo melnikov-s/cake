@@ -5,21 +5,30 @@ export function transcriptTaskSections(
   items: readonly TranscriptItem[],
   linkedTodo?: (item: TranscriptItem) => string | undefined,
 ) {
+  let discussion: string | undefined;
   let current: string | undefined;
   let startIndex = 0;
   const sections = items.map((item, index) => {
     const previous = current;
     const linked = linkedTodo?.(item);
-    if (item.kind === "text" && item.role === "user") {
+    const incoming =
+      (item.kind === "text" &&
+        Boolean(item.crossSession || item.subagentReport || item.agentSource)) ||
+      (item.kind === "tool" && Boolean(item.messageReference));
+    const human = item.kind === "text" && item.role === "user" && !incoming;
+    if (human) {
       // Neither queued nor unresolved human input inherits the preceding task.
-      current =
+      discussion =
         item.deliveryState || item.taskAttributionPending
           ? undefined
           : item.taskTodoId === undefined
             ? linked
             : (item.taskTodoId ?? undefined);
-    } else if (linked) current = linked;
-    if (item.kind === "skill") current = undefined;
+    }
+    if (item.kind === "skill") discussion = undefined;
+    // A source card owns only its row, not the next conversational response.
+    // Unknown/ambiguous sources interrupt the rail rather than borrowing its identity.
+    current = !human && (incoming || linked) ? linked : discussion;
     if (current !== previous) startIndex = index;
     return { todoId: current, start: Boolean(current && current !== previous), startIndex };
   });

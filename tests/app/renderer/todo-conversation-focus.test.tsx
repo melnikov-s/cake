@@ -234,6 +234,120 @@ for (const global of [false, true]) {
   });
 }
 
+it("interrupts source rows without changing the discussion or borrowing pane selection", async () => {
+  const sourceA = "20000000-0000-4000-8000-000000000011";
+  const sourceB = "20000000-0000-4000-8000-000000000012";
+  using fixture = createRendererStoreFixture();
+  applySnapshot(fixture.models.cakeChatTodos, {
+    todos: {
+      ...emptyProjectTodos(),
+      items: [
+        {
+          ...todo(a, "Task A"),
+          associations: [{ kind: "session", sessionId: sourceA, title: "Source A" }],
+        },
+        {
+          ...todo(b, "Task B"),
+          associations: [{ kind: "session", sessionId: sourceB, title: "Source B" }],
+        },
+      ],
+    },
+  });
+  const session = fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID);
+  const report: UiPart = {
+    id: "b-report",
+    entryId: "b-report",
+    kind: "text",
+    role: "user",
+    text: "B findings",
+    status: "complete",
+    crossSession: {
+      version: 1,
+      messageId: "10000000-0000-4000-8000-000000000001",
+      threadId: "10000000-0000-4000-8000-000000000001",
+      sequence: 1,
+      expectsResponse: false,
+      sender: { sessionId: sourceB, title: "Source B", kind: "project-session" },
+    },
+  };
+  const parts: UiPart[] = [
+    user("a-discussion", a),
+    answer("a-answer"),
+    report,
+    {
+      id: "b-card",
+      kind: "tool",
+      name: "cake",
+      input: "",
+      state: "success",
+      messageReference: `cake://session/${sourceB}?message=original`,
+    },
+    {
+      id: "unknown-report",
+      kind: "text",
+      role: "assistant",
+      text: "Unassigned findings",
+      status: "complete",
+      agentSource: { title: "Unknown source", href: "cake://session/untracked" },
+    },
+    answer("a-continuation"),
+    {
+      id: "matching-report",
+      kind: "text",
+      role: "assistant",
+      text: "A findings",
+      status: "complete",
+      agentSource: { title: "Source A", href: `cake://session/${sourceA}` },
+    },
+    answer("a-after-matching"),
+  ];
+  parts.forEach((part) => applyPartUpdate(session.model.parts, part, CAKE_CHAT_SESSION_ID));
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <ChatTranscript
+        store={session.conversationSessionStore.chatStore}
+        behavior={{ todos: session.todos }}
+        virtualized={false}
+      />
+    </StoreProvider>,
+  );
+  try {
+    const u = userEvent.setup();
+    const row = (id: string) =>
+      view.container.querySelector(`[data-transcript-anchor-id="${id}"]`)!;
+    const rail = (id: string) => row(id).querySelector('[data-slot="margin-rail"]');
+    const headings = () => screen.getAllByRole("button", { name: /^Task [AB]$/ });
+    expect(session.todos.selectedItem).toBeUndefined();
+    expect(headings().map((h) => h.textContent)).toEqual(["Task A", "Task B", "Task A"]);
+    expect(rail("b-report")).not.toBeNull();
+    expect(row("b-report").textContent).toContain("Task B");
+    expect(row("b-report").textContent).not.toContain("Task A");
+    expect(rail("b-card")).not.toBeNull();
+    expect(rail("unknown-report")).toBeNull();
+    expect(rail("a-continuation")).not.toBeNull();
+    expect(row("a-continuation").textContent).toContain("Task A");
+    expect(rail("matching-report")).not.toBeNull();
+    expect(rail("a-after-matching")).not.toBeNull();
+
+    // A collapsed unrelated to-do row never joins the surrounding A rail.
+    await u.click(screen.getByRole("button", { name: "Task B" }));
+    expect(rail("b-report")).toBeNull();
+    expect(view.container.querySelector('[data-transcript-anchor-id="b-card"]')).toBeNull();
+    expect(screen.getByText("a-continuation")).toBeDefined();
+    expect(rail("a-continuation")).not.toBeNull();
+    await u.click(screen.getAllByRole("button", { name: "Task A" })[0]!);
+    expect(screen.queryByText("a-answer")).toBeNull();
+    expect(screen.getByText("a-after-matching")).toBeDefined();
+    expect(screen.getByText("Unknown source")).toBeDefined();
+    await u.click(screen.getByRole("button", { name: "Task B" }));
+    expect(rail("b-card")).not.toBeNull();
+    expect(session.todos.selectedItem).toBeUndefined();
+    expect(session.model.uiParts.map((part) => part.id)).toEqual(parts.map((part) => part.id));
+  } finally {
+    view.unmount();
+  }
+});
+
 it("keeps ordinary Project Sessions outside to-do folding", () => {
   using fixture = createRendererStoreFixture({
     projects: [

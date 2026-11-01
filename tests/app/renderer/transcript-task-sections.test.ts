@@ -5,6 +5,7 @@ import { messageSnapshots } from "../../../src/renderer/reducers/SessionPartRedu
 import { transcriptTaskSections } from "../../../src/renderer/lib/transcript-task-sections";
 import { groupTranscriptParts } from "../../../src/renderer/components/chat-transcript-items";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
+import { researchOrigin } from "../../fixtures/subagent-report";
 
 function user(id: string, todoId?: string | null): Extract<UiPart, { kind: "text" }> {
   return {
@@ -69,6 +70,7 @@ it("uses known incoming associations once per switch and lets explicit human att
     answer("a-answer"),
     answer("incoming-b"),
     answer("incoming-b-followup"),
+    answer("discussion-continuation"),
     user("back-to-a", "A"),
     answer("a-return-answer"),
     user("casual", null),
@@ -87,6 +89,7 @@ it("uses known incoming associations once per switch and lets explicit human att
     "B",
     "A",
     "A",
+    "A",
     undefined,
     undefined,
   ]);
@@ -94,6 +97,89 @@ it("uses known incoming associations once per switch and lets explicit human att
     "A",
     "B",
     "A",
+  ]);
+});
+
+const incomingReports: UiPart[] = [
+  {
+    ...user("session-report"),
+    crossSession: {
+      version: 1,
+      messageId: "10000000-0000-4000-8000-000000000001",
+      threadId: "10000000-0000-4000-8000-000000000001",
+      sequence: 1,
+      expectsResponse: false,
+      sender: { sessionId: "source", title: "Source", kind: "project-session" },
+    },
+  },
+  { ...user("worker-report"), subagentReport: researchOrigin },
+  {
+    ...user("agent-update"),
+    agentSource: { title: "Source", href: "cake://session/source" },
+  },
+  {
+    id: "source-card",
+    kind: "tool",
+    name: "cake",
+    input: "",
+    state: "success",
+    messageReference: "cake://session/source?message=original",
+  },
+];
+
+it.each(incomingReports)("isolates $id from the conversational topic", (report) => {
+  const items = groupTranscriptParts([
+    user("a", "A"),
+    answer("a-answer"),
+    report,
+    answer("a-continuation"),
+  ]);
+  for (const sourceTodo of ["A", "B", undefined]) {
+    const sections = transcriptTaskSections(items, (item) =>
+      item.id === report.id ? sourceTodo : undefined,
+    ).sections;
+    expect(sections.map((s) => s.todoId)).toEqual(["A", "A", sourceTodo, "A"]);
+    expect(sections.map((s) => s.start)).toEqual([
+      true,
+      false,
+      sourceTodo === "B",
+      sourceTodo !== "A",
+    ]);
+    expect(sections.map((s) => s.startIndex)).toEqual(
+      sourceTodo === "A" ? [0, 0, 0, 0] : [0, 0, 2, 3],
+    );
+  }
+});
+
+it("keeps multiple unrelated and unassigned reports out of the surrounding discussion", () => {
+  const items = groupTranscriptParts([
+    user("a", "A"),
+    ...incomingReports,
+    answer("a-continuation"),
+    user("unassigned", null),
+    {
+      ...user("later-report"),
+      agentSource: { title: "Source", href: "cake://session/source" },
+    },
+    answer("unassigned-continuation"),
+  ]);
+  const sources = new Map([
+    ["session-report", "B"],
+    ["worker-report", "C"],
+    ["source-card", "B"],
+    ["later-report", "B"],
+  ]);
+  const sections = transcriptTaskSections(items, (item) => sources.get(item.id)).sections;
+  expect(sections.map((s) => s.todoId)).toEqual([
+    "A",
+    "B",
+    "C",
+    undefined,
+    "B",
+    "A",
+    undefined,
+    "B",
+    undefined,
   ]);
 });
 
