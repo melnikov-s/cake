@@ -85,6 +85,7 @@ export function createTranscriptScrollOwner(
   // The last scrollTop this owner wrote or observed. Any other position was
   // caused by someone else: the reader, or the browser clamping.
   let knownTop = scroller.scrollTop;
+  let knownViewportHeight = scroller.clientHeight;
   let touchY: number | undefined;
 
   const measurable = () => scroller.isConnected && scroller.clientHeight > 0;
@@ -213,8 +214,18 @@ export function createTranscriptScrollOwner(
     if (!pendingMeasurements) anchor = findAnchor();
   };
 
+  // Removing selection chrome grows the viewport before Virtuoso publishes the
+  // expanded sections' height. That exact browser clamp is not an upward gesture.
+  const observeViewport = () => {
+    const growth = scroller.clientHeight - knownViewportHeight;
+    knownViewportHeight = scroller.clientHeight;
+    if (following && growth > 0 && Math.abs(knownTop - scroller.scrollTop - growth) <= endTolerance)
+      knownTop = scroller.scrollTop;
+  };
+
   const reconcile = () => {
     if (covered || !measurable()) return;
+    observeViewport();
     const pendingMeasurements = measuring();
     if (positioning()) {
       knownTop = scroller.scrollTop;
@@ -253,6 +264,7 @@ export function createTranscriptScrollOwner(
 
   const handleScroll = () => {
     if (covered || !measurable()) return;
+    observeViewport();
     if (scroller.scrollTop === knownTop || positioning() || pendingBottom !== undefined) {
       reconcile();
       return;
@@ -322,13 +334,15 @@ export function createTranscriptScrollOwner(
     touchY = undefined;
   };
 
-  // Opening a response is a reading action, not new chat output. Capture before
-  // React expands it (including asynchronously loaded originals), so resize
-  // reconciliation preserves the visible header instead of pinning its bottom.
+  // Opening a response or toggling a task stretch is a reading action, not
+  // new output. Capture before React changes its body so resize reconciliation
+  // preserves the visible heading instead of pinning the bottom.
   const handleDisclosureClick = (event: MouseEvent) => {
     if (
       !(event.target instanceof Element) ||
-      !event.target.closest('[data-slot="response-disclosure"][aria-expanded="false"]')
+      !event.target.closest(
+        '[data-slot="response-disclosure"][aria-expanded="false"], [data-slot="task-section-disclosure"]',
+      )
     )
       return;
     cancelReveal();

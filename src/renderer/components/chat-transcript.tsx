@@ -175,15 +175,16 @@ export const ChatTranscript = observer(function ChatTranscript({
         return visibleGroupParts.length > 0 ? [{ ...item, parts: visibleGroupParts }] : [];
       })
     : groupedParts;
-  const items: TranscriptItem[] = [
+  const allItems: TranscriptItem[] = [
     ...visibleGroupedParts,
     ...(hasWorkLogChanges ? [{ kind: "changed-files" as const, id: "changed-files" }] : []),
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
-  const itemKeys = transcriptItemKeys(items);
+  const allItemKeys = transcriptItemKeys(allItems);
+  const selectedMessageId = store.transcriptInteraction.selectedMessageId;
   const taskSections =
     (isCakeChatSessionId(store.id) || cakeChatSideChatParentId(store.id)) && behavior.todos
-      ? transcriptTaskSections(items, (item) => {
+      ? transcriptTaskSections(allItems, (item) => {
           const origin =
             item.kind === "tool" && item.messageReference
               ? referenceTodoOrigin(item.messageReference)
@@ -194,9 +195,47 @@ export const ChatTranscript = observer(function ChatTranscript({
           return linked?.length === 1 ? linked[0]?.id : undefined;
         })
       : undefined;
+  // Keep every section heading in chronology, even when its body is folded.
+  // Filtering the view avoids zero-height rows in the virtualizer.
+  const sectionViews = taskSections?.sections.map((section) => {
+    const todoId = section.todoId;
+    if (!todoId || !behavior.todos?.value?.items.some((todo) => todo.id === todoId))
+      return undefined;
+    const key = JSON.stringify([store.id, allItemKeys[section.startIndex], todoId]);
+    return {
+      ...section,
+      key,
+      expanded: behavior.todos.transcriptSectionExpanded(key, todoId),
+    };
+  });
+  const selectedHiddenSection = selectedMessageId
+    ? sectionViews?.[
+        allItems.findIndex((item) =>
+          "parts" in item
+            ? item.parts.some((part) => part.id === selectedMessageId)
+            : item.id === selectedMessageId,
+        )
+      ]
+    : undefined;
+  const revealSectionKey =
+    selectedHiddenSection && !selectedHiddenSection.expanded
+      ? selectedHiddenSection.key
+      : undefined;
+  // Message links and keyboard navigation must still reveal folded messages.
+  useLayoutEffect(() => {
+    if (revealSectionKey) behavior.todos?.expandTranscriptSection(revealSectionKey);
+  }, [behavior.todos, revealSectionKey]);
+  const visibleIndices = allItems.flatMap((_, index) => {
+    const section = sectionViews?.[index];
+    return !section || section.start || section.expanded ? [index] : [];
+  });
+  const items = visibleIndices.map((index) => allItems[index]!);
+  const itemKeys = visibleIndices.map((index) => allItemKeys[index]!);
+  const visibleSectionViews = visibleIndices.map((index) => sectionViews?.[index]);
   // Loading/changed-files rows can disappear during submission. Use the last
   // content row as the durable destination while the virtual range settles.
-  const lastItemKey = itemKeys[visibleGroupedParts.length - 1];
+  const lastItemKey =
+    allItemKeys[visibleIndices.findLast((index) => index < visibleGroupedParts.length) ?? -1];
   useLayoutEffect(() => {
     const owner = scrollOwner.current;
     if (!owner || scrolledForSentMessage.current === sentMessageRevision) return;
@@ -226,7 +265,6 @@ export const ChatTranscript = observer(function ChatTranscript({
     [behavior, sideChat, store],
   );
   const messageSelection = store.transcriptInteraction.messageSelection;
-  const selectedMessageId = store.transcriptInteraction.selectedMessageId;
   const selectedItemIndex = selectedMessageId
     ? items.findIndex((item) =>
         item.kind === "side-chat-import" ||
@@ -426,7 +464,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         changedFilesOpen={changedFilesOpen}
         loadingStartedAt={loadingStartedAt}
         loadingLabel={loadingLabel}
-        taskSection={taskSections?.sections[index]}
+        taskSection={visibleSectionViews[index]}
       />
     </ArtifactTranscriptContext>
   );

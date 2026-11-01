@@ -48,11 +48,19 @@ export class ProjectTodosStore extends Store<{
   doneExpanded = false;
   snoozedExpanded = true;
   inspectedItemId: string | undefined;
+  /** Window-local presentation only; never written into messages or to-do metadata. */
+  transcriptSections: Record<string, boolean> = {};
   busy = false;
   error: string | undefined;
 
   constructor(props: ProjectTodosStore["props"]) {
     super(props);
+    this.reaction(
+      () => this.selectedItem?.id,
+      () => {
+        this.transcriptSections = {};
+      },
+    );
     this.reaction(
       () => this.source?.owner.todoCreationRevision ?? 0,
       (revision, previous) => {
@@ -253,6 +261,21 @@ export class ProjectTodosStore extends Store<{
       _tag: "Select",
       selectedId: this.value?.selectedId === item.id ? null : item.id,
     });
+  }
+  clearSelection() {
+    return this.mutate({ _tag: "Select", selectedId: null });
+  }
+  transcriptSectionExpanded(key: string, todoId: string) {
+    return this.transcriptSections[key] ?? (!this.selectedItem || this.selectedItem.id === todoId);
+  }
+  expandTranscriptSection(key: string) {
+    this.transcriptSections = { ...this.transcriptSections, [key]: true };
+  }
+  toggleTranscriptSection(key: string, todoId: string) {
+    this.transcriptSections = {
+      ...this.transcriptSections,
+      [key]: !this.transcriptSectionExpanded(key, todoId),
+    };
   }
   /** User done/reopen from the pane or a result message; reported to the agent as a user change. */
   setDone(item: ProjectTodo) {

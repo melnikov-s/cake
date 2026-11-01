@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
-import { CheckIcon, CircleIcon } from "./icons";
+import { CheckIcon, ChevronIcon, CircleIcon, InspectIcon } from "./icons";
+import { IconButton } from "./icon-button";
 
 /** An unbordered task heading above the section's message rule. */
 export function MarginRail({
@@ -8,39 +9,50 @@ export function MarginRail({
   done,
   start,
   onOpen,
+  expanded,
+  onToggle,
 }: {
   title: string;
   done: boolean;
   start: boolean;
   onOpen(): void;
+  expanded: boolean;
+  onToggle(): void;
 }) {
   return (
     <>
-      <div
-        data-slot="margin-rail"
-        aria-hidden="true"
-        className={cn(
-          "pointer-events-none -left-3 border-l border-border",
-          start
-            ? "relative col-start-1 row-start-2 -mb-5 in-[.chat-layout-compact]:-mb-3.5"
-            : "absolute inset-y-0",
-        )}
-      />
+      {expanded && (
+        <div
+          data-slot="margin-rail"
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none -left-3 border-l border-border",
+            start
+              ? "relative col-start-1 row-start-2 -mb-5 in-[.chat-layout-compact]:-mb-3.5"
+              : "absolute inset-y-0",
+          )}
+        />
+      )}
       {start && (
         <div
           data-slot="task-section-label"
           // Keep a modest outdent from the message column, bounded by the
           // transcript inset when the pane is narrow.
-          className="col-start-1 row-start-1 mb-3 ml-[clamp(-6rem,calc((100%_-_100cqw)/2_+_1.5rem),-0.75rem)] min-w-0"
+          className="col-start-1 row-start-1 mb-3 ml-[clamp(-6rem,calc((100%_-_100cqw)/2_+_1.5rem),-0.75rem)] flex min-w-0 items-start gap-1"
         >
           <Button
+            data-slot="task-section-disclosure"
             variant="ghost"
             size="sm"
-            onClick={onOpen}
-            title={`Show in To-do: ${title}`}
+            onClick={onToggle}
+            title={title}
+            aria-expanded={expanded}
             aria-description={done ? "Done" : "Open"}
             className="h-auto max-w-full items-start justify-start gap-2 whitespace-normal px-1 py-1 text-left leading-snug"
           >
+            <ChevronIcon
+              className={cn("mt-1 shrink-0 text-muted-foreground", !expanded && "-rotate-90")}
+            />
             {done ? (
               <span className="mt-0.5 shrink-0 text-success [&_svg]:size-3.5">
                 <CheckIcon />
@@ -52,6 +64,9 @@ export function MarginRail({
             )}
             <span className="min-w-0 wrap-anywhere">{title}</span>
           </Button>
+          <IconButton tooltip={`Show in To-do: ${title}`} onClick={onOpen}>
+            <InspectIcon />
+          </IconButton>
         </div>
       )}
     </>

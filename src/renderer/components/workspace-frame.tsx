@@ -19,6 +19,7 @@ export const WorkspaceFrame = observer(function WorkspaceFrame({
 } & Pick<
   ComponentProps<typeof BrowserWorkspace>,
   | "headerActions"
+  | "conversationHeader"
   | "projectComposerHeader"
   | "projectComposerContent"
   | "projectComposerLeadingAccessory"

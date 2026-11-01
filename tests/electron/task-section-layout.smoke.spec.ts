@@ -43,7 +43,10 @@ for (const theme of ["dark", "light"] as const)
       // Includes real geometry checks for the border gap at A → B → A.
       await scenario.prepare(page, "return");
       const transcript = page.locator(".transcript").last();
-      const title = transcript.getByTitle(`Show in To-do: ${longTitle}`);
+      const title = transcript.getByRole("button", {
+        name: `Show in To-do: ${longTitle}`,
+        exact: true,
+      });
       const label = title.locator('xpath=ancestor::*[@data-slot="task-section-label"]');
       const row = title.locator('xpath=ancestor::*[@data-slot="transcript-item"]');
       // Resize in both directions without remounting; long headings

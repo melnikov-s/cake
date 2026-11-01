@@ -10,6 +10,7 @@ import { CakeChatPaneHeader, type CakeChatOverlayChrome } from "./cake-chat-pane
 import { ConversationActivity } from "./conversation-activity";
 import { SessionAssistant } from "./session-assistant";
 import { ProjectChatHeaderLink } from "./project-chat-header-link";
+import { ProjectTodoSelectionBar } from "./project-todo-selection-bar";
 
 export const CakeChatSurface = observer(function CakeChatSurface({
   overlay,
@@ -80,6 +81,12 @@ export const CakeChatSurface = observer(function CakeChatSurface({
       store={cakeChatCollection.sessionLayoutStore}
       findSession={(sessionId) => cakeChatCollection.registry.find(sessionId)}
       chatProps={cakeChatProps}
+      wrapPane={(session, conversation) => (
+        <div className="flex h-full min-h-0 min-w-0 flex-col">
+          <ProjectTodoSelectionBar todos={session.todos} />
+          <div className="min-h-0 flex-1">{conversation}</div>
+        </div>
+      )}
       title={(sessionId) =>
         cakeChatCollection.summaries.find((summary) => summary.sessionId === sessionId)?.title ??
         "New chat"

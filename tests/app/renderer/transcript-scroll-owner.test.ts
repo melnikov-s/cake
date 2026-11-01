@@ -180,9 +180,11 @@ describe("transcript scroll owner following", () => {
   let scroller: HTMLDivElement;
   let owner: ReturnType<typeof createTranscriptScrollOwner>;
   let contentHeight: number;
+  let viewportHeight: number;
 
   beforeEach(() => {
     contentHeight = 4_000;
+    viewportHeight = 600;
     scroller = document.createElement("div");
     const content = document.createElement("div");
     const row = document.createElement("div");
@@ -198,12 +200,12 @@ describe("transcript scroll owner following", () => {
     document.body.append(scroller);
     let scrollTop = 0;
     Object.defineProperties(scroller, {
-      clientHeight: { value: 600 },
+      clientHeight: { get: () => viewportHeight },
       scrollHeight: { get: () => contentHeight },
       scrollTop: {
         get: () => scrollTop,
         set: (value: number) => {
-          scrollTop = Math.max(0, Math.min(value, contentHeight - 600));
+          scrollTop = Math.max(0, Math.min(value, contentHeight - viewportHeight));
         },
       },
     });
@@ -253,6 +255,19 @@ describe("transcript scroll owner following", () => {
     scroller.dispatchEvent(new Event("scroll"));
     grow(200);
     expect(scroller.scrollTop).toBe(3_200);
+  });
+
+  it("holds the reading position for both task-stretch disclosure directions", () => {
+    const trigger = disclosure();
+    trigger.dataset.slot = "task-section-disclosure";
+    trigger.click();
+    grow(200);
+    expect(scroller.scrollTop).toBe(3_400);
+    owner.scrollToBottomForSentMessage();
+    trigger.setAttribute("aria-expanded", "true");
+    trigger.click();
+    grow(200);
+    expect(scroller.scrollTop).toBe(3_600);
   });
 
   it("preserves following for collapse and unrelated disclosures", () => {
@@ -334,6 +349,26 @@ describe("transcript scroll owner following", () => {
     scroller.dispatchEvent(new Event("scroll"));
     grow(200);
     expect(scroller.scrollTop).toBe(3_399);
+  });
+
+  it("keeps following when selection chrome disappears before expanded sections are measured", () => {
+    expect(scroller.scrollTop).toBe(3_400);
+    viewportHeight += 33;
+    // Native layout clamps against the old total, then the virtualizer adds rows.
+    scroller.scrollTop = contentHeight;
+    contentHeight += 252;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(3_619);
+    contentHeight += 100;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(3_719);
+  });
+
+  it("does not follow an upward reader movement while the viewport stays the same", () => {
+    scroller.scrollTop -= 33;
+    contentHeight += 252;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(3_367);
   });
 
   it("keeps following through a browser clamp when content shrinks", () => {

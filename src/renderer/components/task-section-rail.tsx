@@ -6,10 +6,14 @@ export const TaskSectionRail = observer(function TaskSectionRail({
   todoId,
   start,
   todos,
+  expanded,
+  onToggle,
 }: {
   todoId: string;
   start: boolean;
   todos: ProjectTodosStore;
+  expanded: boolean;
+  onToggle(): void;
 }) {
   const item = todos.value?.items.find((todo) => todo.id === todoId);
   if (!item) return null;
@@ -19,6 +23,8 @@ export const TaskSectionRail = observer(function TaskSectionRail({
       done={item.state === "done"}
       start={start}
       onOpen={() => todos.reveal(item)}
+      expanded={expanded}
+      onToggle={onToggle}
     />
   );
 });

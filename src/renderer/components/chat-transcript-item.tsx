@@ -26,7 +26,7 @@ interface ChatTranscriptItemProps {
   changedFilesOpen: boolean;
   loadingStartedAt: number | undefined;
   loadingLabel: string | undefined;
-  taskSection?: { todoId: string | undefined; start: boolean };
+  taskSection?: { todoId: string | undefined; start: boolean; key: string; expanded: boolean };
 }
 
 function sameParts(left: readonly UiPart[], right: readonly UiPart[]) {
@@ -93,10 +93,17 @@ export const ChatTranscriptItem = memo(
             todoId={taskSection.todoId}
             start={taskSection.start}
             todos={behavior.todos}
+            expanded={taskSection.expanded}
+            onToggle={() =>
+              behavior.todos?.toggleTranscriptSection(taskSection.key, taskSection.todoId!)
+            }
           />
         )}
-        <div className="col-start-1 row-start-2 min-w-0">
-          {item.kind === "side-chat-import" ? (
+        <div
+          hidden={taskSection && !taskSection.expanded}
+          className="col-start-1 row-start-2 min-w-0"
+        >
+          {taskSection && !taskSection.expanded ? null : item.kind === "side-chat-import" ? (
             <SideChatImportGroup group={item} behavior={behavior} />
           ) : item.kind === "activity-group" ? (
             <ActivityGroup groupId={item.id} parts={item.parts} behavior={behavior} />
@@ -140,6 +147,8 @@ export const ChatTranscriptItem = memo(
   (previous, next) =>
     previous.taskSection?.todoId === next.taskSection?.todoId &&
     previous.taskSection?.start === next.taskSection?.start &&
+    previous.taskSection?.key === next.taskSection?.key &&
+    previous.taskSection?.expanded === next.taskSection?.expanded &&
     previous.itemKey === next.itemKey &&
     previous.index === next.index &&
     previous.selected === next.selected &&

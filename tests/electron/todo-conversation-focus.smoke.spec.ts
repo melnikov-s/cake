@@ -1,0 +1,166 @@
+import { createHash } from "node:crypto";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { _electron as electron, expect, test } from "@playwright/test";
+import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+
+const repository = resolve(import.meta.dirname, "../..");
+const titleA = "Investigate slow project startup and repeated configuration reads";
+const titleB = "Improve project navigation";
+
+for (const global of [false, true])
+  test(`to-do disclosures and header selection context (${global ? "Cake Chat" : "Project Chat"})`, async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-todo-focus-"));
+    const paths = {
+      cakeHome: join(root, "cake"),
+      project: join(root, "project"),
+      userData: join(root, "user-data"),
+    };
+    const scenario = findVisualCaptureScenario("project-chat-task-rails")!;
+    await scenario.seed(paths, "dark");
+    if (global) {
+      const file = join(paths.cakeHome, "state", "application.json");
+      const application = JSON.parse(await readFile(file, "utf8"));
+      application.data.cakeChatTodos = application.data.projects[0].todos;
+      await writeFile(file, JSON.stringify(application));
+      const hash = createHash("sha256").update(paths.project).digest("hex");
+      await cp(
+        join(paths.cakeHome, "pi", "project-chats", hash),
+        join(paths.cakeHome, "pi", "global-chat"),
+        { recursive: true },
+      );
+    }
+    const app = await electron.launch({
+      args: [repository],
+      cwd: repository,
+      env: {
+        ...process.env,
+        CAKE_ELECTRON_SMOKE: "1",
+        CAKE_HOME: paths.cakeHome,
+        CAKE_ELECTRON_USER_DATA: paths.userData,
+        PI_CODING_AGENT_DIR: join(paths.cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
+      },
+    });
+    try {
+      const page = await app.firstWindow();
+      if (global) {
+        await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+        await expect(page.getByRole("combobox", { name: "Message Cake Chat" })).toBeVisible();
+      } else await scenario.prepare(page, "wide");
+      await page.setViewportSize({ width: 1800, height: 3000 });
+      const pane = page.locator('[data-slot="session-pane"]');
+      const transcript = pane.locator(".transcript").last();
+      await pane.getByRole("button", { name: "To-do", exact: true }).click();
+      const panel = page.getByRole("complementary", { name: "To-do" });
+      const selectA = panel.getByRole("button", { name: titleA, exact: true });
+      const selectB = panel.getByRole("button", { name: titleB, exact: true });
+      const headingsA = transcript.getByRole("button", { name: titleA, exact: true });
+      const headingB = transcript.getByRole("button", { name: titleB, exact: true });
+      const bar = pane.locator('[data-slot="selection-bar"]');
+      const clear = bar.getByRole("button", { name: "Clear to-do selection" });
+      await expect(bar).toHaveCount(0);
+      await selectA.click();
+      await expect(selectA).toHaveAttribute("aria-pressed", "true");
+      await expect(bar).toContainText(`Currently selected:${titleA}`);
+      await expect(headingsA).toHaveCount(2);
+      await expect(headingsA.nth(0)).toHaveAttribute("aria-expanded", "true");
+      await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "true");
+      await expect(headingB).toHaveAttribute("aria-expanded", "false");
+      const casual = transcript.getByText("Thanks. What does ⌘K open?", { exact: true });
+      await expect(casual).toBeVisible();
+      await expect(
+        casual
+          .locator('xpath=ancestor::*[@data-slot="transcript-item"]')
+          .locator('[data-slot="margin-rail"]'),
+      ).toHaveCount(0);
+      // Headings are native keyboard disclosures; folding one repeat leaves the other alone.
+      await headingsA.nth(1).press("Enter");
+      await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "false");
+      await expect(headingsA.nth(0)).toHaveAttribute("aria-expanded", "true");
+      await headingB.press("Space");
+      await expect(headingB).toHaveAttribute("aria-expanded", "true");
+      await selectB.click();
+      await expect(headingsA.nth(0)).toHaveAttribute("aria-expanded", "false");
+      await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "false");
+      await expect(headingB).toHaveAttribute("aria-expanded", "true");
+      await selectB.click();
+      await expect(bar).toHaveCount(0);
+      await expect(headingsA.nth(0)).toHaveAttribute("aria-expanded", "true");
+      await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "true");
+      await selectA.click();
+      await clear.press("Enter");
+      await expect(selectA).toHaveAttribute("aria-pressed", "false");
+      await expect(bar).toHaveCount(0);
+      await expect(headingB).toHaveAttribute("aria-expanded", "true");
+      // Clear has no replacement/send/wake, and the draft remains editable.
+      const composer = page.getByRole("combobox", {
+        name: global ? "Message Cake Chat" : "Message Project Chat",
+      });
+      await composer.click();
+      await composer.pressSequentially("Keep this unsent draft.");
+      await expect(composer).toBeFocused();
+      await expect(composer).toHaveText("Keep this unsent draft.");
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await selectA.click();
+      for (const width of [1800, 900, 600, 1800]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await expect(clear).toBeVisible();
+        await expect(async () => {
+          const header = (await pane.locator('[data-slot="workspace-header"]').boundingBox())!;
+          const bounds = (await bar.boundingBox())!;
+          const x = (await clear.boundingBox())!;
+          expect(Math.abs(bounds.y - header.y - header.height)).toBeLessThanOrEqual(1);
+          expect(x.x + x.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+          expect(await pane.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+            true,
+          );
+        }).toPass();
+      }
+      await transcript.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      await expect(casual).toBeVisible();
+      await expect
+        .poll(() =>
+          transcript.evaluate(
+            (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+          ),
+        )
+        .toBeLessThanOrEqual(1);
+      const casualY = (await casual.boundingBox())!.y;
+      const barY = (await bar.boundingBox())!.y;
+      await clear.click();
+      await expect(bar).toHaveCount(0);
+      // The bottom-following reader stays with the unassigned tail when folded
+      // content above it expands and the header bar disappears.
+      await expect(async () => {
+        expect(Math.abs((await casual.boundingBox())!.y - casualY)).toBeLessThanOrEqual(2);
+      }).toPass();
+      expect(barY).toBeGreaterThan(0);
+      await expect(headingB).toHaveAttribute("aria-expanded", "true");
+      // Real domain mutations invalidate both context and visual focus.
+      await selectA.click();
+      await panel.getByRole("button", { name: `Mark done: ${titleA}`, exact: true }).click();
+      await expect(bar).toHaveCount(0);
+      await expect(selectB).toHaveAttribute("aria-pressed", "false");
+      await selectB.click();
+      await expect(bar).toBeVisible();
+      await panel
+        .locator('[data-todo-id="00000000-0000-4000-8000-000000000012"]')
+        .click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Snooze", exact: true }).click();
+      await page.getByRole("menuitem", { name: "1 day", exact: true }).click();
+      await expect(bar).toHaveCount(0);
+      await expect(selectB).toHaveAttribute("aria-pressed", "false");
+      expect(
+        await app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows().every((window) => !window.isVisible()),
+        ),
+      ).toBe(true);
+    } finally {
+      await app.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });

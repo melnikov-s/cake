@@ -2527,7 +2527,7 @@ const projectChatTodos: VisualCaptureScenario = {
       new Date(0).toISOString(),
     );
     const file = join(paths.cakeHome, "state", "application.json");
-    const state = JSON.parse(await readFile(file, "utf8"));
+    const state = JSON.parse(await readFile(file, "utf8")).data;
     const selectedId = "00000000-0000-4000-8000-000000000011";
     const sessionDirectory = workspaceSessionDirectory(
       paths.project,
@@ -2789,7 +2789,7 @@ const projectChatTaskRails: VisualCaptureScenario = {
   name: "project-chat-task-rails",
   description:
     "Unbordered task headings, separated message rules, pane inspection and wide widget rule breaks",
-  states: ["wide", "narrow", "widget", "return", "pane"],
+  states: ["wide", "narrow", "widget", "return", "pane", "focused", "focused-return"],
   async seed(paths, theme) {
     await projectChatTodos.seed(paths, theme);
     const file = join(paths.cakeHome, "state", "application.json");
@@ -2865,7 +2865,7 @@ const projectChatTaskRails: VisualCaptureScenario = {
     const row = page
       .getByText("Investigate slow project startup.", { exact: true })
       .locator('xpath=ancestor::*[@data-slot="transcript-item"]');
-    const first = row.getByTitle(`Show in To-do: ${taskTitle}`);
+    const first = row.getByRole("button", { name: `Show in To-do: ${taskTitle}`, exact: true });
     await expect(first).toBeVisible();
     // Headings stay above the rule at every pane width, including wrapping
     // titles and narrower accessory layouts.
@@ -2907,7 +2907,9 @@ const projectChatTaskRails: VisualCaptureScenario = {
       await page
         .getByText("Back to startup—compare a cold launch too.", { exact: true })
         .scrollIntoViewIfNeeded();
-      const returned = page.getByTitle(`Show in To-do: ${taskTitle}`).last();
+      const returned = page
+        .getByRole("button", { name: `Show in To-do: ${taskTitle}`, exact: true })
+        .last();
       await expect(returned).toBeVisible();
       const returnedRow = returned.locator('xpath=ancestor::*[@data-slot="transcript-item"]');
       const previousRow = returnedRow.locator("xpath=../preceding-sibling::*[1]");
@@ -2917,7 +2919,7 @@ const projectChatTaskRails: VisualCaptureScenario = {
       const nextBounds = (await nextRail.boundingBox())!;
       expect(nextBounds.y - previousBounds.y - previousBounds.height).toBeGreaterThanOrEqual(32);
     }
-    if (state === "pane") {
+    if (state === "pane" || state === "focused" || state === "focused-return") {
       await first.click();
       const pane = page.getByRole("complementary", { name: "To-do" });
       await expect(pane).toBeVisible();
@@ -2925,11 +2927,23 @@ const projectChatTaskRails: VisualCaptureScenario = {
         "aria-pressed",
         "false",
       );
+      if (state === "focused" || state === "focused-return") {
+        await pane.getByRole("button", { name: taskTitle, exact: true }).click();
+        await expect(page.getByRole("button", { name: "Clear to-do selection" })).toBeVisible();
+        await transcript.evaluate((element) => {
+          element.scrollTop = 0;
+        });
+        if (state === "focused-return") {
+          await transcript.hover({ position: { x: 10, y: 100 } });
+          await page.mouse.wheel(0, 10000);
+          await expect(transcript.getByText("The command menu.", { exact: true })).toBeVisible();
+        }
+      }
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },
-  region: (page) => page.locator('[data-slot="side-chat-layout"]'),
+  region: (page) => page.locator('[data-slot="session-pane"]'),
 };
 
 const pdfTaskSwitch: VisualCaptureScenario = {
@@ -2967,7 +2981,12 @@ const pdfTaskSwitch: VisualCaptureScenario = {
       .first()
       .click();
     const transcript = page.locator(".transcript").last();
-    await expect(transcript.getByTitle("Show in To-do: Fix PDF auto-fit behavior")).toHaveCount(1);
+    await expect(
+      transcript.getByRole("button", {
+        name: "Show in To-do: Fix PDF auto-fit behavior",
+        exact: true,
+      }),
+    ).toHaveCount(1);
     const followup = transcript
       .getByText("yes, check that too", { exact: true })
       .locator('xpath=ancestor::*[@data-slot="transcript-item"]');

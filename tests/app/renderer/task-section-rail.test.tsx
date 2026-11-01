@@ -33,9 +33,15 @@ it("updates a section's title and completion live and inspects it without select
   const view = render(
     <StoreProvider store={fixture.root}>
       <section aria-label="Conversation section">
-        <TaskSectionRail todoId={item.id} start todos={store} />
+        <TaskSectionRail todoId={item.id} start todos={store} expanded onToggle={() => {}} />
         <p>Relevant conversation</p>
-        <TaskSectionRail todoId={item.id} start={false} todos={store} />
+        <TaskSectionRail
+          todoId={item.id}
+          start={false}
+          todos={store}
+          expanded
+          onToggle={() => {}}
+        />
         <p>Follow-up</p>
       </section>
       <ProjectTodosPanel store={store} />
@@ -43,8 +49,10 @@ it("updates a section's title and completion live and inspects it without select
   );
   try {
     const section = screen.getByRole("region", { name: "Conversation section" });
-    expect(within(section).getAllByRole("button")).toHaveLength(1);
-    expect(within(section).getByRole("button").getAttribute("aria-description")).toBe("Open");
+    expect(within(section).getAllByRole("button")).toHaveLength(2);
+    expect(
+      within(section).getByRole("button", { name: item.title }).getAttribute("aria-description"),
+    ).toBe("Open");
     act(() =>
       applySnapshot(fixture.models.projects, {
         projects: [
@@ -63,9 +71,13 @@ it("updates a section's title and completion live and inspects it without select
         projects: [project({ ...item, state: "done", status: "Verified", revision: 2 })],
       }),
     );
-    expect(within(section).getByRole("button").getAttribute("aria-description")).toBe("Done");
-    expect(within(section).getAllByRole("button")).toHaveLength(1);
-    await userEvent.setup().click(within(section).getByRole("button", { name: item.title }));
+    expect(
+      within(section).getByRole("button", { name: item.title }).getAttribute("aria-description"),
+    ).toBe("Done");
+    expect(within(section).getAllByRole("button")).toHaveLength(2);
+    await userEvent
+      .setup()
+      .click(within(section).getByRole("button", { name: `Show in To-do: ${item.title}` }));
     const doneItems = screen.getByRole("list", { name: "Done to-dos" });
     expect(
       within(doneItems).getByRole("button", { name: item.title }).getAttribute("aria-pressed"),

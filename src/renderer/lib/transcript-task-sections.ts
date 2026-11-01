@@ -6,7 +6,8 @@ export function transcriptTaskSections(
   linkedTodo?: (item: TranscriptItem) => string | undefined,
 ) {
   let current: string | undefined;
-  const sections = items.map((item) => {
+  let startIndex = 0;
+  const sections = items.map((item, index) => {
     const previous = current;
     const linked = linkedTodo?.(item);
     if (item.kind === "text" && item.role === "user") {
@@ -19,7 +20,8 @@ export function transcriptTaskSections(
             : (item.taskTodoId ?? undefined);
     } else if (linked) current = linked;
     if (item.kind === "skill") current = undefined;
-    return { todoId: current, start: Boolean(current && current !== previous) };
+    if (current !== previous) startIndex = index;
+    return { todoId: current, start: Boolean(current && current !== previous), startIndex };
   });
   return { sections };
 }

@@ -29,6 +29,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   projectChat,
   sideChat,
   headerActions,
+  conversationHeader,
   projectComposerHeader,
   projectComposerContent,
   projectComposerLeadingAccessory,
@@ -47,6 +48,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   sideChat: SideChatStore;
   /** Session-scoped controls shown in the chat sidebar header, such as the side chats menu. */
   headerActions?: ReactNode;
+  conversationHeader?: ReactNode;
   projectComposerHeader?: ReactNode;
   projectComposerContent?: ReactNode;
   projectComposerLeadingAccessory?: ComponentProps<typeof Chat>["composerLeadingAccessory"];
@@ -146,6 +148,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
               ) : null}
             </div>
           </header>
+          {!contextualAnchor && conversationHeader}
           <div className="min-h-0 flex-1">{conversation}</div>
         </>
       }

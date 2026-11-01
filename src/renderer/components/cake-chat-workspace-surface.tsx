@@ -6,6 +6,7 @@ import { SessionAssistant } from "./session-assistant";
 import { WorkspaceFrame } from "./workspace-frame";
 import { CakeChatWorkspaceControls } from "./cake-chat-workspace-controls";
 import { ConversationActivity } from "./conversation-activity";
+import { ProjectTodoSelectionBar } from "./project-todo-selection-bar";
 
 export const CakeChatWorkspaceSurface = observer(function CakeChatWorkspaceSurface({
   session,
@@ -54,6 +55,7 @@ export const CakeChatWorkspaceSurface = observer(function CakeChatWorkspaceSurfa
             (chat) => chat.sessionId === session.sessionId,
           )?.title ?? "Cake Chat"
         }
+        conversationHeader={<ProjectTodoSelectionBar todos={session.todos} />}
         transcriptBehavior={cakeChatTranscriptBehaviorFor(root, session)}
       />
     </StoreProvider>
