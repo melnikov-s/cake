@@ -796,6 +796,36 @@ describe("ApplicationStorage", () => {
   );
 
   it.effect(
+    "preserves an explicitly cleared selection across owner recreation and repeated storage reload with other open items",
+    () =>
+      withStorage({}, (storage) => {
+        const owner = ApplicationState.layer.pipe(
+          Layer.provide(Layer.succeed(ApplicationStorage)(storage)),
+        );
+        return Effect.gen(function* () {
+          const cleared = yield* Effect.gen(function* () {
+            yield* (yield* ApplicationState).initialize();
+            yield* upsertProject("/project", "Project");
+            const first = yield* projectTodos.create("/project", {
+              title: "First",
+              description: "Open work.",
+            });
+            yield* projectTodos.create("/project", { title: "Second", description: "Also open." });
+            yield* projectTodos.mutateUser("/project", { _tag: "Select", selectedId: first.id });
+            return yield* projectTodos.mutateUser("/project", { _tag: "Select", selectedId: null });
+          }).pipe(Effect.provide(owner, { local: true }));
+          assert.equal(cleared.selectedId, null);
+          yield* Effect.gen(function* () {
+            yield* (yield* ApplicationState).initialize();
+            assert.deepEqual(yield* projectTodos.list("/project"), cleared);
+          }).pipe(Effect.provide(owner, { local: true }));
+          assert.deepEqual((yield* storage.load()).state.projects[0]?.todos, cleared);
+          assert.deepEqual((yield* storage.load()).state.projects[0]?.todos, cleared);
+        });
+      }),
+  );
+
+  it.effect(
     "repairs a current-version persisted done selection before publication and durably keeps it cleared on reload",
     () =>
       withStorage({}, (storage, controls) => {

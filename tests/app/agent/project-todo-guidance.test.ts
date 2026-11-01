@@ -19,6 +19,7 @@ const unused = async () => {
 };
 const registry = new CakeOperationRegistry(
   createProjectTodoOperations({
+    select: unused,
     list: unused,
     read: unused,
     create: unused,

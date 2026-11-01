@@ -11,6 +11,7 @@ import {
   ProjectTodoReceipt,
   ProjectTodoSnooze,
   ProjectTodoUnsnooze,
+  ProjectTodoSelection,
   PROJECT_TODO_AUTO_COMPLETION_RULE,
   PROJECT_TODO_CLOSING_RULE,
   PROJECT_TODO_CREATION_RULE,
@@ -86,6 +87,27 @@ export function createProjectTodoOperations(
     ...(includeDetail ? { detail: await control.read(item.id, signal) } : null),
   });
   return [
+    {
+      command: "todos.select",
+      topic: "todos",
+      summary: "Select optional next-message context, or clear it with selectedId=null.",
+      guidance: [
+        "Pass an active to-do ID in this chat's list, or null to deselect without choosing a replacement. Selecting the same ID is idempotent, not a toggle. Only explicit selection chooses an item; completion and snoozing clear it without replacement.",
+        "Selection does not send a message, change transcript attribution or needs attention, or start/resolve work. Existing panel and next-message consumption rules still apply.",
+      ],
+      inputSchema: ProjectTodoSelection,
+      outputSchema: ProjectTodoSelection,
+      examples: [
+        { input: { selectedId: "00000000-0000-4000-8000-000000000001" } },
+        { input: { selectedId: null } },
+      ],
+      result: "Persisted selectedId, or null; no automatic replacement.",
+      execute: async (input, context) =>
+        control.select(
+          await Schema.decodeUnknownPromise(ProjectTodoSelection)(input),
+          context.signal,
+        ),
+    },
     {
       command: "todos.list",
       topic: "todos",

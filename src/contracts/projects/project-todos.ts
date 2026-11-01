@@ -244,10 +244,13 @@ export const ProjectTodoSnooze = Schema.Struct({
 });
 export const ProjectTodoUnsnooze = Schema.Struct({ id: identity, expectedRevision: revision });
 
+export const ProjectTodoSelection = Schema.Struct({ selectedId: Schema.NullOr(identity) });
+export interface ProjectTodoSelection extends Schema.Schema.Type<typeof ProjectTodoSelection> {}
+
 export const ProjectTodoUserMutation = Schema.TaggedUnion({
   Snooze: ProjectTodoSnooze.fields,
   Unsnooze: ProjectTodoUnsnooze.fields,
-  Select: { selectedId: Schema.NullOr(identity) },
+  Select: ProjectTodoSelection.fields,
   SetState: { id: identity, expectedRevision: revision, state: ProjectTodo.fields.state },
   SetAttention: {
     id: identity,
@@ -316,6 +319,7 @@ export const ProjectTodoReceipt = Schema.Struct({
 });
 
 export interface ProjectTodoControl {
+  select(input: ProjectTodoSelection, signal: AbortSignal): Promise<ProjectTodoSelection>;
   list(input: ProjectTodoListInput, signal: AbortSignal): Promise<ProjectTodoList>;
   read(id: string, signal: AbortSignal): Promise<ProjectTodoDetail>;
   create(input: ProjectTodoCreate, signal: AbortSignal): Promise<ProjectTodo>;

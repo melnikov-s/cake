@@ -130,6 +130,7 @@ const CAKE_CHAT_OPERATIONS = [
   "todos.create",
   "todos.update",
   "todos.update-many",
+  "todos.select",
   "todos.snooze",
   "todos.unsnooze",
   "models.list",
@@ -601,6 +602,13 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           },
       // Project Chat keeps its Project's list; global Cake Chat keeps its own separate list.
       projectTodos: {
+        select: (input, signal) =>
+          run(
+            projectTodos
+              .mutateUser(todoScope, { _tag: "Select", ...input })
+              .pipe(Effect.map(({ selectedId }) => ({ selectedId }))),
+            { signal },
+          ),
         list: (input, signal) => run(projectTodoAssociations.list(todoScope, input), { signal }),
         read: (id, signal) => run(projectTodoAssociations.read(todoScope, id), { signal }),
         create: (input, signal) =>

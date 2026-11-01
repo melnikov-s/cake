@@ -160,6 +160,34 @@ const worker: SubagentRecord = {
   pendingInputs: [],
 };
 
+it.effect("linked session resolution clears selection without selecting other open work", () => {
+  const f = fixture();
+  return Effect.gen(function* () {
+    yield* upsertProject(project, "Project");
+    const selected = yield* todos.create(project, {
+      title: "Linked work",
+      description: "Awaiting resolution.",
+      associations: [link(a)],
+    });
+    const other = yield* todos.create(project, {
+      title: "Other open work",
+      description: "Still needs review.",
+      needsAttention: true,
+      attentionReason: "Review the findings",
+    });
+    yield* todos.mutateUser(project, { _tag: "Select", selectedId: selected.id });
+    f.resolved.add(a);
+    yield* completeLinked(project);
+    expect((yield* todos.read(project, selected.id)).completion?.by).toBe("sessions");
+    expect((yield* todos.list(project)).selectedId).toBeNull();
+    expect(yield* todos.read(project, other.id)).toEqual(other);
+    yield* completeLinked(project);
+    expect((yield* todos.list(project)).selectedId).toBeNull();
+    yield* todos.mutateUser(project, { _tag: "Select", selectedId: other.id });
+    expect((yield* todos.list(project)).selectedId).toBe(other.id);
+  }).pipe(Effect.provide(f.layer));
+});
+
 it.effect.each([false, true])(
   "validates public subagent handles, parent and project ownership without acquiring workers (released=%s)",
   (released) => {
@@ -244,6 +272,7 @@ it.effect(
         Effect.runPromise(effect.pipe(Effect.provide(context)));
       const registry = new CakeOperationRegistry(
         createProjectTodoOperations({
+          select: (input) => run(todos.mutateUser(project, { _tag: "Select", ...input })),
           list: (input) => run(controls.list(project, input)),
           read: (id) => run(controls.read(project, id)),
           create: (input) => run(controls.create(project, input)),
@@ -659,6 +688,12 @@ it.effect(
       const run = <A, E>(effect: Effect.Effect<A, E, ApplicationState>) =>
         Effect.runPromise(effect.pipe(Effect.provide(context)));
       const control: ProjectTodoControl = {
+        select: (input) =>
+          run(
+            todos
+              .mutateUser(project, { _tag: "Select", ...input })
+              .pipe(Effect.map(({ selectedId }) => ({ selectedId }))),
+          ),
         list: (input) =>
           run(
             todos.list(project).pipe(

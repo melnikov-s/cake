@@ -8,7 +8,7 @@ import {
   type ProjectTodoControl,
 } from "../../contracts/projects/project-todos";
 import * as associations from "../projects/projectTodoAssociations";
-import { scopeForChat } from "../projects/projectTodos";
+import { mutateUser, scopeForChat } from "../projects/projectTodos";
 
 export type DiscussionTodoServices =
   | ApplicationState
@@ -25,6 +25,13 @@ export const configuration = Effect.fn("DiscussionTodos.configuration")(function
   const application = yield* ApplicationState;
   const run = makePiCallbackExecutor(yield* Effect.context<DiscussionTodoServices>());
   const projectTodos: ProjectTodoControl = {
+    select: (input, signal) =>
+      run(
+        mutateUser(scope, { _tag: "Select", ...input }).pipe(
+          Effect.map(({ selectedId }) => ({ selectedId })),
+        ),
+        { signal },
+      ),
     list: (input, signal) => run(associations.list(scope, input), { signal }),
     read: (id, signal) => run(associations.read(scope, id), { signal }),
     create: (input, signal) => run(associations.create(scope, input), { signal }),

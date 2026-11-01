@@ -243,6 +243,7 @@ describe("Project Chat to-do authority", () => {
       return Effect.gen(function* () {
         yield* upsertProject(project, "Project");
         const item = yield* create();
+        const other = yield* todos.create(project, { title: "Other", description: "Still open." });
         yield* todos.mutateUser(project, { _tag: "Select", selectedId: item.id });
         yield* todos.update(project, {
           id: item.id,
@@ -275,6 +276,10 @@ describe("Project Chat to-do authority", () => {
         ).toBe("Failure");
         yield* todos.update(project, { id: item.id, expectedRevision: 2, state: "open" });
         expect((yield* todos.list(project)).selectedId).toBeNull();
+        expect(yield* todos.read(project, other.id)).toEqual(other);
+        expect(f.persisted()?.projects[0]?.todos?.selectedId).toBeNull();
+        yield* todos.mutateUser(project, { _tag: "Select", selectedId: other.id });
+        expect((yield* todos.list(project)).selectedId).toBe(other.id);
       }).pipe(Effect.provide(f.layer));
     },
   );
@@ -647,6 +652,9 @@ it.effect(
 
 it("exposes exact Project Chat controls and conflict-safe lifecycle help", () => {
   const operations = createProjectTodoOperations({
+    select: async () => {
+      throw new Error("Unused");
+    },
     list: async () => {
       throw new Error("Unused");
     },
@@ -664,6 +672,7 @@ it("exposes exact Project Chat controls and conflict-safe lifecycle help", () =>
     },
   });
   expect(operations.map((item) => item.command)).toEqual([
+    "todos.select",
     "todos.list",
     "todos.read",
     "todos.create",
@@ -833,6 +842,7 @@ it("explains redundant state in compact update receipts", async () => {
     throw new Error("Unused");
   };
   const update = createProjectTodoOperations({
+    select: unused,
     list: unused,
     read: unused,
     create: unused,

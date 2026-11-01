@@ -286,6 +286,7 @@ describe("permanent Cake Chat", () => {
           })
           .map((definition) => definition.command);
         expect(commands?.filter((command) => command.startsWith("todos."))).toEqual([
+          "todos.select",
           "todos.list",
           "todos.read",
           "todos.create",
@@ -387,6 +388,19 @@ describe("permanent Cake Chat", () => {
             todoSignal,
           ),
         );
+        for (const [control, id] of [
+          [todoControl, todo.id],
+          [globalTodos, globalTodo.id],
+        ] as const) {
+          expect(
+            yield* Effect.promise(() => control.select({ selectedId: id }, todoSignal)),
+          ).toEqual({ selectedId: id });
+          expect(
+            yield* Effect.promise(() => control.select({ selectedId: null }, todoSignal)),
+          ).toEqual({ selectedId: null });
+        }
+        expect(prompt()).toContain('"selectedId":null');
+        expect(globalPrompt()).toContain('"selectedId":null');
         expect(globalPrompt()).toContain(globalTodo.id);
         expect(global.runtime.cakeChatTodos?.().map((item) => item.id)).toEqual([globalTodo.id]);
         expect(options.runtime.cakeChatTodos?.().map((item) => item.id)).toEqual([todo.id]);

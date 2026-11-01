@@ -291,6 +291,7 @@ it.effect(
         Effect.runPromise(effect.pipe(Effect.provide(app)));
       const registry = new CakeOperationRegistry(
         createProjectTodoOperations({
+          select: (input) => run(todos.mutateUser(scope, { _tag: "Select", ...input })),
           list: async () => {
             throw new Error("Registry list is not used here");
           },

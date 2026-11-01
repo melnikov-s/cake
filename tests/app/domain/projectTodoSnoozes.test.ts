@@ -418,6 +418,7 @@ it.effect(
         Effect.runPromise(effect.pipe(Effect.provide(context)));
       const registry = new CakeOperationRegistry(
         createProjectTodoOperations({
+          select: (input) => run(todos.mutateUser(project, { _tag: "Select", ...input })),
           list: (input) => run(controls.list(project, input)),
           read: (id) => run(controls.read(project, id)),
           create: (input) => run(controls.create(project, input)),

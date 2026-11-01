@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type Locator } from "@playwright/test";
@@ -157,6 +157,21 @@ test("to-do text selection and copying do not activate rows or their controls", 
       await unchanged();
       await clearSelection();
     }
+    // Clicking an already selected row clears durable next-message context.
+    const savedSelection = async () =>
+      JSON.parse(await readFile(join(cakeHome, "state", "application.json"), "utf8")).data
+        .projects[0].todos.selectedId;
+    await action.click();
+    await expect(action).toHaveAttribute("aria-pressed", "true");
+    await action.click();
+    await expect(action).toHaveAttribute("aria-pressed", "false");
+    await expect.poll(savedSelection).toBeNull();
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await expect(action).toHaveAttribute("aria-pressed", "false");
+    await page.reload();
+    await toggle.click();
+    await expect(action).toHaveAttribute("aria-pressed", "false");
+    await expect.poll(savedSelection).toBeNull();
     // Intentional clicks and native keyboard activation retain their semantics.
     await prose.click();
     await expect(action).toBeFocused();
@@ -171,7 +186,10 @@ test("to-do text selection and copying do not activate rows or their controls", 
     await expect(done).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(link).toBeFocused();
+    await action.click();
+    await expect(action).toHaveAttribute("aria-pressed", "true");
     await done.click();
+    await expect.poll(savedSelection).toBeNull();
     await expect(toggle).toHaveText("0");
     await panel.getByRole("button", { name: "Done (1)" }).click();
     await expect(action).toHaveAttribute("aria-disabled", "true");

@@ -151,6 +151,35 @@ it.effect.each([false, true])(
       expect(prepared.selection?.id).toBe(original.id);
       yield* todos.consumeSelection(prepared);
       expect((yield* todos.list(scope)).selectedId).toBeNull();
+      // Tool selection is explicit and idempotent; null never picks another open item.
+      const select = (selectedId: string | null) =>
+        call(() => registry.invoke({ command: "todos.select", input: { selectedId } }, execution));
+      expect((yield* select(added.id)).structuredContent).toEqual({
+        command: "todos.select",
+        result: { selectedId: added.id },
+      });
+      const selected = yield* todos.list(scope);
+      yield* select(added.id);
+      expect(yield* todos.list(scope)).toEqual(selected);
+      expect((yield* select(null)).structuredContent).toEqual({
+        command: "todos.select",
+        result: { selectedId: null },
+      });
+      const cleared = yield* todos.list(scope);
+      yield* select(null);
+      expect(yield* todos.list(scope)).toEqual(cleared);
+      yield* call(() =>
+        sibling.projectTodos.update({ id: added.id, expectedRevision: 0, status: "Ready" }, signal),
+      );
+      expect((yield* todos.list(scope)).selectedId).toBeNull();
+      expect(yield* todos.read(scope, original.id)).toMatchObject({ state: "open", revision: 1 });
+      expect((yield* select(other.id).pipe(Effect.exit))._tag).toBe("Failure");
+      expect((yield* todos.list(scope)).selectedId).toBeNull();
+      // Done items cannot supply context.
+      expect((yield* select(linked.id).pipe(Effect.exit))._tag).toBe("Failure");
+      expect((yield* todos.list(scope)).selectedId).toBeNull();
+      yield* select(original.id);
+      expect((yield* todos.list(scope)).selectedId).toBe(original.id);
       expect(yield* todos.read(otherScope, other.id)).toEqual(other);
       expect(yield* configuration(sessionId)).toBeUndefined();
     }).pipe(Effect.provide(layer));
