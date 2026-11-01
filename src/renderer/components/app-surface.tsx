@@ -18,7 +18,11 @@ export const AppSurface = observer(function AppSurface({ browserMode }: { browse
     case "artifact-library":
       return <ArtifactLibrarySurface />;
     case "cake-chat":
-      return <CakeChatSurface />;
+      return root.appShellStore.workspace === "project-sessions" ? (
+        <ProjectConversationSurface browserMode={browserMode} />
+      ) : (
+        <CakeChatSurface />
+      );
     case "workbench":
       return root.projectWorkbenchStore.activeSession ? (
         <ProjectConversationSurface browserMode={browserMode} />

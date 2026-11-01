@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import type { StoreSnapshot } from "r-state-tree";
+import { migrateProjectChatLayout } from "./migrate-project-chat-layout";
 
 const legacyConversationSchema = Schema.Struct({
   kind: Schema.Literals(["project-session", "cake-chat"]),
@@ -43,9 +44,10 @@ function seedLayout(snapshot: StoreSnapshot | undefined, sessionId: string): Sto
  * Retain layouts and both kinds of history. Only seed a missing layout from the old shell;
  * if old identities disagree, the focused pane wins. Never persist shell session IDs again.
  */
-export function migrateNavigation(snapshot: StoreSnapshot): StoreSnapshot {
+function migrateNavigationV2(snapshot: StoreSnapshot): StoreSnapshot {
   const shell = child(snapshot, "appShellStore");
-  if (!shell || shell.state.navigationVersion === 2) return snapshot;
+  if (!shell || shell.state.navigationVersion === 2 || shell.state.navigationVersion === 3)
+    return snapshot;
   // Startup-only decoding: malformed legacy navigation fails restoration rather than
   // silently choosing a different conversation. The rest of the Store snapshot is unchanged.
   const { selection, activeConversation } = Schema.decodeUnknownSync(legacyNavigationSchema)(
@@ -92,4 +94,8 @@ export function migrateNavigation(snapshot: StoreSnapshot): StoreSnapshot {
     children: shell.children,
   };
   return { ...snapshot, children };
+}
+
+export function migrateNavigation(snapshot: StoreSnapshot): StoreSnapshot {
+  return migrateProjectChatLayout(migrateNavigationV2(snapshot));
 }

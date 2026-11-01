@@ -562,7 +562,9 @@ is a refactoring signal, not precedent.
   list; lifecycle user-change reminders reach it only for sessions it links. The renderer
   projects it from the application-state stream into `CakeChatTodoList`.
 - **Conversation navigation**: pane layouts own the focused session and pane-local
-  histories within the Project Session and Cake Chat/Project Chat workspaces.
+  histories within the Project Session/Project Chat and global Cake Chat workspaces.
+  Permanent Project Chat uses the shared Project Session split layout while retaining
+  its canonical Cake Chat identity, registry, transcript, draft and accessory panes.
   `AppShellStore` owns the selected workspace and optional Settings/artifact-library
   cover; its visible selection and retained conversation are derived from that
   workspace's focused pane, never separately persisted session identities.
@@ -570,7 +572,9 @@ is a refactoring signal, not precedent.
   history and pane-local history remain distinct; covering/uncovering a workspace
   does not create a visit. The renderer navigation snapshot v1 → v2 migration
   retains existing layouts (their focus wins over conflicting old shell IDs) and
-  seeds only missing layouts from old shell selection before mounting.
+  seeds only missing layouts from old shell selection before mounting. Navigation
+  v2 → v3 moves the selected permanent Project Chat into the shared layout without
+  changing its conversation identity or discarding the retained Project pane history.
 - **Agent session navigation** uses `sessions.open` through the invoking renderer’s
   existing application-control gateway and `NavigationStore`. Project Session targets
   are validated against the catalog; ordinary focused-pane/history policy applies,

@@ -137,7 +137,7 @@ describe("WindowStatePersistence", () => {
     expect(JSON.parse(JSON.stringify(payload))).toEqual(payload);
     expect(payload).toMatchObject({
       children: {
-        appShellStore: { state: { navigationVersion: 2, workspace: "project-sessions" } },
+        appShellStore: { state: { navigationVersion: 3, workspace: "project-sessions" } },
         sessionLayoutStore: { state: { layout: { history: [sessionId], historyCursor: 0 } } },
         sessionRegistry: {
           children: {

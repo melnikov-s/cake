@@ -2,7 +2,10 @@ import type { Project } from "../models/Project";
 import type { CakeChatTodoList } from "../models/CakeChatTodoList";
 import { Store, child, createStore, observable } from "r-state-tree";
 import { settledSessionActivity, type SessionActivity } from "../lib/session-activity";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  isProjectChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import type {
   ChatConfiguration,
   ModelPreset,
@@ -49,6 +52,8 @@ export interface CakeChatCollectionStoreProps {
   defaultConfiguration?(): ChatConfiguration | undefined;
   openModelPresetSettings?(): void;
 
+  projectChatLayout(): SessionLayoutStore;
+  selectedProjectChatId(): string | undefined;
   isSelected(): boolean;
 }
 
@@ -100,7 +105,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       tools: this.props.tools,
       pendingSessions: () => this.pendingSessions,
       operations: this.operations,
-      isVisible: (sessionId) => this.sessionLayoutStore.hasSession(sessionId),
+      isVisible: (sessionId) => this.layoutFor(sessionId).hasSession(sessionId),
       modelPresets: this.props.modelPresets,
       openModelPresetSettings: this.props.openModelPresetSettings,
     });
@@ -110,9 +115,15 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     return ClientContext.consume(this)!;
   }
 
-  /** Cake Chat selection is the dedicated layout's focused session; no second persisted ID exists. */
+  /** Permanent Project Chats share the Project Session pane layout, retaining Cake Chat identity. */
+  layoutFor(sessionId: string) {
+    return isProjectChatSessionId(sessionId)
+      ? this.props.projectChatLayout()
+      : this.sessionLayoutStore;
+  }
+
   get sessionId() {
-    return this.sessionLayoutStore.focusedSessionId;
+    return this.props.selectedProjectChatId() ?? this.sessionLayoutStore.focusedSessionId;
   }
 
   get hasMoreResolvedSessions() {
@@ -359,8 +370,9 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
 
   private selectSession(sessionId: string) {
     this.selectionRevision += 1;
-    if (this.sessionLayoutStore.layout) this.sessionLayoutStore.showSession(sessionId);
-    else this.sessionLayoutStore.ensureSession(sessionId, this.hydrationPaneId);
+    const layout = this.layoutFor(sessionId);
+    if (layout.layout) layout.showSession(sessionId);
+    else layout.ensureSession(sessionId, this.hydrationPaneId);
   }
 
   private reconcileAuthoritativeSessions() {

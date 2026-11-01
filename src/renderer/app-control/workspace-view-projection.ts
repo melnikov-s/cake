@@ -43,7 +43,7 @@ export async function inspectWorkspaceView(
   if (mode !== "browser" && mode !== "vscode") return undefined;
   const layout =
     active.kind === "cake-chat"
-      ? capabilities.cakeChatCollectionStore.sessionLayoutStore
+      ? capabilities.cakeChatCollectionStore.layoutFor(active.sessionId)
       : capabilities.sessionLayoutStore;
   const paneId = layout.paneForSession(active.sessionId)?.paneId;
   const identity = { sessionId: active.sessionId, ...(paneId ? { paneId } : null) };

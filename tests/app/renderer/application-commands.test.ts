@@ -99,7 +99,7 @@ describe("Application command registry", () => {
     expect(root.appShellStore.surface).toBe("cake-chat");
     const snapshot = toSnapshot(root);
     expect(snapshot.children?.appShellStore).toMatchObject({
-      state: { navigationVersion: 2, workspace: "cake-chat" },
+      state: { navigationVersion: 3, workspace: "cake-chat" },
     });
     expect(snapshot.children?.navigationStore).toMatchObject({ state: {} });
   });

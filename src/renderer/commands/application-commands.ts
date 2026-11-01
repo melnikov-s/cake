@@ -101,13 +101,15 @@ export function createApplicationCommandRegistry(owners: {
       run: () => owners.workbench().commandPaneStore.toggle("tree"),
     },
     "split-right": {
-      enabled: projectSelected,
+      enabled: () =>
+        owners.shell().workspace === "project-sessions" && !owners.shell().coveringSurface,
       run: () => {
         owners.navigation().splitFocusedSession("x");
       },
     },
     "split-down": {
-      enabled: projectSelected,
+      enabled: () =>
+        owners.shell().workspace === "project-sessions" && !owners.shell().coveringSurface,
       run: () => {
         owners.navigation().splitFocusedSession("y");
       },

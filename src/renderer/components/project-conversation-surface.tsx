@@ -13,6 +13,10 @@ import { ProjectComposerAccessory } from "./project-composer-accessory";
 import { ProjectComposerHeader } from "./project-composer-header";
 import { ProjectPaneHeader } from "./project-pane-header";
 import { SessionForkStatus } from "./session-fork-status";
+import { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
+import { CakeChatPaneHeader } from "./cake-chat-pane-header";
+import { ProjectTodoSelectionBar } from "./project-todo-selection-bar";
+import { cakeChatPropsFor } from "../lib/cake-chat-props";
 
 export const ProjectConversationSurface = observer(function ProjectConversationSurface({
   browserMode,
@@ -119,16 +123,39 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
   return (
     <ConversationSplitLayout
       store={root.sessionLayoutStore}
-      findSession={(sessionId) => store.sessionRegistry.findSession(sessionId)}
-      chatProps={projectChatProps}
+      findSession={(sessionId) =>
+        root.cakeChatCollectionStore.registry.find(sessionId) ??
+        store.sessionRegistry.findSession(sessionId)
+      }
+      chatProps={(session) =>
+        session instanceof CakeChatSessionStore
+          ? cakeChatPropsFor(root, session)
+          : projectChatProps(session)
+      }
+      wrapPane={(session, conversation) =>
+        session instanceof CakeChatSessionStore ? (
+          <div className="flex h-full min-h-0 min-w-0 flex-col">
+            <ProjectTodoSelectionBar todos={session.todos} />
+            <div className="min-h-0 flex-1">{conversation}</div>
+          </div>
+        ) : (
+          conversation
+        )
+      }
       title={(sessionId) =>
         store.sessionRegistry.forkPreviewTitle(sessionId) ??
         root.sessionCatalogStore.find(sessionId)?.title ??
+        root.cakeChatCollectionStore.summaries.find((chat) => chat.sessionId === sessionId)
+          ?.title ??
         "New chat"
       }
       titleLeading={(sessionId) => (
         <ProjectChatHeaderLink
-          projectPath={root.sessionCatalogStore.find(sessionId)?.projectPath}
+          projectPath={
+            root.sessionCatalogStore.find(sessionId)?.projectPath ??
+            root.cakeChatCollectionStore.summaries.find((chat) => chat.sessionId === sessionId)
+              ?.projectPath
+          }
         />
       )}
       loadingLabel="Opening session"
@@ -142,9 +169,13 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
           <SidebarNavigationControls header />
         ) : null
       }
-      renderHeader={(pane, session) => (
-        <ProjectPaneHeader pane={pane} session={session} browserMode={browserMode} />
-      )}
+      renderHeader={(pane, session) =>
+        session instanceof CakeChatSessionStore ? (
+          <CakeChatPaneHeader pane={pane} session={session} />
+        ) : (
+          <ProjectPaneHeader pane={pane} session={session} browserMode={browserMode} />
+        )
+      }
       onFocus={(paneId) => root.navigationStore.focusSessionPane(paneId)}
       onSplit={(axis) => root.navigationStore.splitFocusedSession(axis)}
       onClose={(paneId) => root.navigationStore.closeSessionPane(paneId)}

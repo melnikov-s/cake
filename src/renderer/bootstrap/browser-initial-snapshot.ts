@@ -24,7 +24,7 @@ export function browserInitialSnapshot(
         ...shell,
         state: {
           ...shell?.state,
-          navigationVersion: 2,
+          navigationVersion: 3,
           workspace: "cake-chat",
           coveringSurface: undefined,
         },

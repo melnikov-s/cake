@@ -25,7 +25,7 @@ const layout = (sessionId: string) =>
 
 // Persistence/bootstrap has no GUI trigger. Exercise migration through the real mounted Root;
 // visible restored-surface journeys are in app-shell-navigation-workflow.test.tsx.
-describe("navigation snapshot v1 -> v2", () => {
+describe("navigation snapshot migrations", () => {
   it.each(["project-session", "cake-chat"] as const)(
     "persisted-window restore derives %s from the pane when old shell identities disagree",
     (kind) => {
@@ -60,7 +60,7 @@ describe("navigation snapshot v1 -> v2", () => {
       expect(focusedLayout.focusedSessionHistory).toEqual(["older", "pane-current"]);
       expect(toSnapshot(fixture.root).children.appShellStore).toEqual(
         store({
-          navigationVersion: 2,
+          navigationVersion: 3,
           workspace: kind === "project-session" ? "project-sessions" : "cake-chat",
           coveringSurface: undefined,
           sessionHistory: visits,
@@ -102,6 +102,36 @@ describe("navigation snapshot v1 -> v2", () => {
       expect(restored.root.cakeChatCollectionStore.sessionId).toBe(active.sessionId);
     },
   );
+
+  it("moves a restored permanent Project Chat into the shared layout without changing its identity", () => {
+    const sessionId = `project-chat:${"a".repeat(64)}`;
+    const saved = store(
+      {},
+      {
+        appShellStore: store({
+          navigationVersion: 2,
+          workspace: "cake-chat",
+          coveringSurface: "settings",
+        }),
+        sessionLayoutStore: layout("regular"),
+        cakeChatCollectionStore: store({}, { sessionLayoutStore: layout(sessionId) }),
+      },
+    );
+    const migrated = migrateNavigation(saved);
+    expect(migrateNavigation(migrated)).toBe(migrated);
+    using fixture = createRendererStoreFixture({ snapshot: migrated });
+    expect(fixture.root.appShellStore.activeConversation).toEqual(
+      conversation("cake-chat", sessionId),
+    );
+    expect(fixture.root.appShellStore.selection).toEqual({ kind: "settings" });
+    expect(fixture.root.sessionLayoutStore.focusedSessionHistory).toEqual([
+      "older",
+      "regular",
+      sessionId,
+    ]);
+    expect(fixture.root.cakeChatCollectionStore.sessionLayoutStore.panes).toHaveLength(0);
+    expect(fixture.root.sessionLayoutStore.canSplit).toBe(true);
+  });
 
   it("seeds a missing Project Session layout, while home retains its inactive pane history", () => {
     const active = conversation("project-session", "restored");

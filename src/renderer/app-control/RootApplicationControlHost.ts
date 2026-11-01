@@ -106,7 +106,7 @@ export function createRootApplicationControlHost(
       sessionLayout: (source) => {
         const layout =
           source?.kind === "cake-chat"
-            ? capabilities.cakeChatCollectionStore.sessionLayoutStore
+            ? capabilities.cakeChatCollectionStore.layoutFor(source.sessionId)
             : capabilities.sessionLayoutStore;
         const relativeSessionId =
           source?.sessionId && layout.hasSession(source.sessionId)
@@ -313,12 +313,11 @@ export function createRootApplicationControlHost(
     presentation: {
       splitView: (source, direction) => {
         const axis = direction === "right" ? "x" : "y";
-        if (source.kind === "cake-chat") return undefined;
         const pane = capabilities.sessionLayoutStore.paneForSession(source.sessionId);
         if (!pane) return undefined;
         capabilities.navigationStore.focusSessionPane(pane.paneId);
         const split = capabilities.navigationStore.splitFocusedSession(axis);
-        return split ? { kind: source.kind, ...split } : undefined;
+        return split ? { kind: "project-session", ...split } : undefined;
       },
       showNotification: (input) => capabilities.notificationStore.enqueue(input),
       showAgentAction: ({ source, message, targetSessionId, targetKind, coalesceKey }) => {

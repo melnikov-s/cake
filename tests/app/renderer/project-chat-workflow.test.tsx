@@ -81,6 +81,9 @@ async function fixture(
     async () => undefined,
   );
   const chatOpen = vi.fn<Client["cakeChats"]["open"]>(async () => undefined);
+  const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+    TurnId.make("00000000-0000-4000-8000-000000000001"),
+  );
   const f = createRendererStoreFixture({
     projects,
     sessions: [
@@ -94,7 +97,9 @@ async function fixture(
     client: {
       electron: { setFullscreenSurfaceOpen },
       cakeChats: { open: chatOpen, setUnread: async () => undefined },
+      sessionChats: { prompt },
       projectSessions: { open: async () => undefined },
+      workspaces: { loadStagedSlashCommands: async () => [] },
       projectTodos: mutateTodos ? { mutateUser: mutateTodos } : {},
       browser: {
         open: browserOpen,
@@ -171,6 +176,7 @@ async function fixture(
     },
     setFullscreenSurfaceOpen,
     chatOpen,
+    prompt,
     browserOpen,
     editorOpen,
     terminalOpen,
@@ -233,6 +239,107 @@ it("shows the owning project artwork in Project Chat and reuses the chat and pan
   );
   expect(f.chatOpen).not.toHaveBeenCalled();
 });
+
+it.each(["Split right", "Split down"])(
+  "opens Project Chat in shared panes with %s and preserves routing on focus, switching and close",
+  async (direction) => {
+    using f = await fixture();
+    await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+    const pane = () =>
+      document.querySelector<HTMLElement>(
+        `[data-slot="session-pane"][data-session-id="${projectId}"]`,
+      )!;
+    const input = within(pane()).getByRole("combobox", { name: "Message Project Chat" });
+    await f.user.type(input, "Project Chat draft");
+    await f.user.click(within(pane()).getByRole("button", { name: "To-do" }));
+    expect(within(pane()).getByRole("complementary", { name: "To-do" })).toBeTruthy();
+    f.publish(
+      projectId,
+      [
+        {
+          id: "entry-project-answer-text-0",
+          entryId: "project-answer",
+          renderKey: "assistant-project-answer-text-0",
+          kind: "text",
+          role: "assistant",
+          text: "Only Project Chat sees this",
+          status: "complete",
+        },
+      ],
+      false,
+    );
+    expect(
+      f.root.cakeChatCollectionStore.registry.find(projectId)!.conversationSessionStore.chatStore
+        .parts,
+    ).toContainEqual(expect.objectContaining({ text: "Only Project Chat sees this" }));
+    await f.user.click(within(pane()).getByRole("button", { name: direction }));
+    expect(document.querySelectorAll('[data-slot="session-pane"]')).toHaveLength(2);
+    expect(
+      f.root.cakeChatCollectionStore.registry.find(projectId)!.conversationSessionStore.chatStore
+        .parts,
+    ).toContainEqual(expect.objectContaining({ text: "Only Project Chat sees this" }));
+    const other = () =>
+      document.querySelector<HTMLElement>('[data-slot="session-pane"][data-focused="true"]')!;
+    expect(other()).not.toBe(pane());
+    await f.user.type(
+      within(other()).getByRole("combobox", { name: "Message" }),
+      "New session draft",
+    );
+    await f.user.click(screen.getByRole("button", { name: /^task(?: |$)/ }));
+    await waitFor(() => expect(other().dataset.sessionId).toBe("task"));
+    expect(
+      f.root.sessionRegistry.findSession("task")!.conversationSessionStore.chatStore.parts,
+    ).toEqual([]);
+    // Opening the same canonical Project Chat focuses its existing pane, not a duplicate.
+    await f.user.click(
+      within(other()).getByRole("button", { name: "Go to Project Chat for zombies" }),
+    );
+    expect(document.querySelectorAll('[data-slot="session-pane"]')).toHaveLength(2);
+    expect(pane().dataset.focused).toBe("true");
+    expect(within(pane()).getByRole("combobox", { name: "Message Project Chat" })).toHaveProperty(
+      "value",
+      "Project Chat draft",
+    );
+    expect(within(pane()).getByRole("complementary", { name: "To-do" })).toBeTruthy();
+    expect(f.root.appShellStore.activeConversation).toEqual({
+      kind: "cake-chat",
+      sessionId: projectId,
+    });
+    expect(f.root.sessionRegistry.findSession(projectId)).toBeUndefined();
+    expect(
+      f.root.cakeChatCollectionStore.registry.observationTargets.some(
+        (target) => target.sessionId === projectId,
+      ),
+    ).toBe(true);
+    await f.user.click(within(pane()).getByRole("button", { name: "Close pane" }));
+    expect(document.querySelectorAll('[data-slot="session-pane"]')).toHaveLength(1);
+    expect(
+      document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+    ).toBe("task");
+    await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+    expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toHaveProperty(
+      "value",
+      "Project Chat draft",
+    );
+    await f.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() =>
+      expect(f.prompt).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: projectId, text: "Project Chat draft" }),
+        expect.anything(),
+      ),
+    );
+    await f.user.click(screen.getByRole("button", { name: /^task(?: |$)/ }));
+    const taskInput = await screen.findByRole("combobox", { name: "Message" });
+    await f.user.type(taskInput, "Task-only input");
+    await f.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() =>
+      expect(f.prompt).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: "task", text: "Task-only input" }),
+        expect.anything(),
+      ),
+    );
+  },
+);
 
 function createTodoRuntime() {
   return ManagedRuntime.make(

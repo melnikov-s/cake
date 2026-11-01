@@ -1,4 +1,5 @@
 import { Store, observable, snapshot } from "r-state-tree";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
 
 export type AppSurface = "workbench" | "cake-chat" | "artifact-library" | "settings";
@@ -31,7 +32,7 @@ const sameSessionEntry = (left: SessionHistoryEntry, right: SessionHistoryEntry)
   left.kind === right.kind && left.sessionId === right.sessionId;
 
 export class AppShellStore extends Store<AppShellStoreProps> {
-  @snapshot readonly navigationVersion = 2;
+  @snapshot readonly navigationVersion = 3;
   @snapshot workspace: ConversationWorkspace = "home";
   @snapshot coveringSurface: "settings" | "artifact-library" | undefined;
 
@@ -39,7 +40,13 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     if (this.workspace === "home") return undefined;
     const sessionId = this.props.focusedSessionId(this.workspace);
     return sessionId
-      ? { kind: this.workspace === "cake-chat" ? "cake-chat" : "project-session", sessionId }
+      ? {
+          kind:
+            this.workspace === "cake-chat" || isCakeChatSessionId(sessionId)
+              ? "cake-chat"
+              : "project-session",
+          sessionId,
+        }
       : undefined;
   }
 
@@ -141,7 +148,10 @@ export class AppShellStore extends Store<AppShellStoreProps> {
    * The cursor commits only when the actual target selection lands.
    */
   prepareProjectSessionTraversal(sessionId: string, direction: -1 | 1) {
-    const entry = { kind: "project-session", sessionId } as const;
+    const entry: SessionHistoryEntry = {
+      kind: isCakeChatSessionId(sessionId) ? "cake-chat" : "project-session",
+      sessionId,
+    };
     const cursor = this.historyCursorInDirection(direction, entry);
     this.pendingTraversal = cursor === undefined ? undefined : { entry, cursor };
   }
