@@ -122,6 +122,11 @@ export const CaptureArrowIcon = () => (
     <path d="M5 19 19 5M9 5h10v10" />
   </Icon>
 );
+export const ReplyIcon = () => (
+  <Icon>
+    <path d="m9 5-6 6 6 6M3 11h10a7 7 0 0 1 7 7v1" />
+  </Icon>
+);
 export const UndoIcon = () => (
   <Icon>
     <path d="m8 4-5 5 5 5M3 9h11a6 6 0 0 1 0 12" />

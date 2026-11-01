@@ -68,7 +68,10 @@ for (const theme of ["dark", "light"] as const)
       const actions = source.locator('[data-slot="message-actions"]');
       const copy = actions.getByRole("button", { name: "Copy message", exact: true });
       const fullscreen = source.getByRole("button", { name: /^View message fullscreen:/ });
-      await expect(actions.getByRole("button")).toHaveCount(1);
+      await expect(actions.getByRole("button")).toHaveCount(2);
+      await expect(
+        actions.getByRole("button", { name: "Reply to message", exact: true }),
+      ).toBeAttached();
       const geometry = await source.evaluate((element) => {
         const box = (selector: string) =>
           element.querySelector(selector)!.getBoundingClientRect().toJSON();

@@ -26,6 +26,7 @@ import {
   ClockIcon,
   CopyIcon,
   ForkIcon,
+  ReplyIcon,
   TreeIcon,
 } from "@/components/ui/icons";
 import { AnnotationItemPopover } from "./annotation-item-popover";
@@ -86,6 +87,7 @@ export const ChatTextMessage = forwardRef<
     contentRef?: RefObject<HTMLDivElement | null>;
     children?: ReactNode;
     messageActions?: ReactNode;
+    onReply?(entryId: string): void;
     fullscreen?: ComponentProps<typeof Message>["fullscreen"];
     onMouseEnter?: MouseEventHandler<HTMLElement>;
     onMouseLeave?: MouseEventHandler<HTMLElement>;
@@ -105,6 +107,7 @@ export const ChatTextMessage = forwardRef<
     contentRef,
     children,
     messageActions,
+    onReply,
     fullscreen,
     onMouseEnter,
     onMouseLeave,
@@ -117,6 +120,23 @@ export const ChatTextMessage = forwardRef<
   },
   ref,
 ) {
+  const replyAction =
+    onReply && part.entryId && !part.draft && part.status !== "streaming" ? (
+      <IconButton
+        tooltip="Reply to message"
+        ariaLabel="Reply to message"
+        onClick={() => onReply(part.entryId!)}
+      >
+        <ReplyIcon />
+      </IconButton>
+    ) : undefined;
+  const actions =
+    messageActions || replyAction ? (
+      <>
+        {messageActions}
+        {replyAction}
+      </>
+    ) : undefined;
   const report = part.subagentReport;
   const crossSession = useMemo(
     () => (part.crossSession ? crossSessionPresentation(part.text, part.crossSession) : undefined),
@@ -181,7 +201,7 @@ export const ChatTextMessage = forwardRef<
       aria-label={report ? subagentReportHeading(report) : undefined}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      actions={!part.crossSession && !report && !agentSource ? messageActions : undefined}
+      actions={!part.crossSession && !report && !agentSource ? actions : undefined}
       fullscreen={fullscreen}
       className={cn(
         assistant || report || part.crossSession || agentSource
@@ -212,6 +232,7 @@ export const ChatTextMessage = forwardRef<
           originals={content ? sources : undefined}
           todo={todo}
           messageActions={messageActions}
+          replyAction={replyAction}
         >
           {report && <SubagentReportAssignment key={part.id} report={report} />}
           {content}
@@ -315,6 +336,9 @@ export function captureTranscriptSelection(
 export interface ChatTranscriptBehavior {
   /** Addressable session identity used for exact attachment-reference links. */
   messageReferenceSessionId?: string;
+  /** Permanent chat surfaces opt in; Chat supplies the draft/focus callback. */
+  canReplyToMessage?: boolean;
+  onReplyToMessage?(entryId: string): void;
   /** Project root used to present workspace files without machine-specific prefixes. */
   workspacePath?: string;
   onFork?(entryId: string): void;
@@ -478,6 +502,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       ref={messageRef}
       part={part}
       contentRef={contentRef}
+      onReply={behavior.onReplyToMessage}
       onOpenSourceLocation={behavior.openSourceLocation}
       omitArtifactEmbeds={publishedArtifactReferences}
       todo={

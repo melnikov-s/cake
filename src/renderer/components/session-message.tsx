@@ -26,6 +26,7 @@ export const SessionMessage = observer(function SessionMessage({
   onToggle,
   todo,
   messageActions,
+  replyAction,
   children,
 }: {
   source?: { sessionId?: string; title?: string; href?: string };
@@ -43,6 +44,7 @@ export const SessionMessage = observer(function SessionMessage({
   onToggle?(): void;
   todo?: ResultTodoLink;
   messageActions?: ReactNode;
+  replyAction?: ReactNode;
   children?: ReactNode;
 }) {
   const actions = useMarkdownLinkActions();
@@ -94,6 +96,7 @@ export const SessionMessage = observer(function SessionMessage({
         <>
           {messageActions}
           {sources[0] && <MessageSourceCopy store={sources[0]} />}
+          {replyAction}
         </>
       }
       fullscreen={{

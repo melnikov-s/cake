@@ -127,6 +127,9 @@ composes the sidebar, primary workspace, authoritative Chat drawer and terminal 
 Use it for immersive workspace modes rather than rebuilding layout/resize behavior.
 Every conversation surface uses [`Chat`](../../src/renderer/components/chat.tsx)
 and [`ChatStore`](../../src/renderer/stores/ChatStore.ts).
+Permanent Project Chat and global Cake Chat opt into a shared `IconButton` reply action
+beside message copy: it appends a readable persisted-entry reference to the existing draft
+and focuses its new final line. Regular Project Sessions and nested chats do not opt in.
 
 ## Conversation and media
 

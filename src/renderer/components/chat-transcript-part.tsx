@@ -73,6 +73,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     return (
       <ChatTextMessage
         part={part}
+        onReply={behavior.onReplyToMessage}
         onOpenSourceLocation={behavior.openSourceLocation}
         workerTask={
           worker && worker.parentSessionId === behavior.subagents?.parentSessionId
@@ -89,6 +90,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     return (
       <ChatTextMessage
         part={part}
+        onReply={behavior.onReplyToMessage}
         onOpenSourceLocation={behavior.openSourceLocation}
         reportSource={{
           href: behavior.messageReferenceSessionId
@@ -119,6 +121,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
           ...part,
           renderAs: userMessageDisplaysAsMarkdown ? "markdown" : undefined,
         }}
+        onReply={behavior.onReplyToMessage}
         onOpenSourceLocation={behavior.openSourceLocation}
       >
         <div className="ml-auto flex min-h-[30px] items-center gap-2" aria-label="User actions">

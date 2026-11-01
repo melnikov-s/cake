@@ -1,3 +1,7 @@
+import {
+  SESSION_ASSISTANT_ID,
+  isCakeChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { editorLocationFromPath } from "../../contracts/editor/editor-location";
 import type { RootStore } from "../stores/RootStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
@@ -12,6 +16,8 @@ export function cakeChatTranscriptBehaviorFor(
     (chat) => chat.sessionId === session.sessionId,
   )?.projectPath;
   return {
+    canReplyToMessage:
+      session.sessionId !== SESSION_ASSISTANT_ID && isCakeChatSessionId(session.sessionId),
     workspacePath: projectPath,
     messageReferenceSessionId: session.sessionId,
     messageComments: session.messageCommentsStore,

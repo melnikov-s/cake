@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
+import { flushSync } from "react-dom";
 import { cn } from "@/lib/utils";
 import { AnnotationSummary } from "@/components/annotation-summary";
 import { ContextInspector } from "./context-inspector";
@@ -459,7 +460,30 @@ export const Chat = observer(function Chat({
       >
         <ChatTranscript
           store={store}
-          behavior={transcriptBehavior}
+          behavior={
+            transcriptBehavior?.canReplyToMessage && composerVisible
+              ? {
+                  ...transcriptBehavior,
+                  onReplyToMessage: (entryId) => {
+                    const draft = store.draft;
+                    const separation =
+                      !draft || draft.endsWith("\n\n") ? "" : draft.endsWith("\n") ? "\n" : "\n\n";
+                    // A blank line ends the Markdown quote before the user starts typing.
+                    flushSync(() =>
+                      store.setDraft(`${draft}${separation}> replying to message: ${entryId}\n\n`),
+                    );
+                    requestAnimationFrame(() => {
+                      const input = composerInputRef.current;
+                      if (!input) return;
+                      // Reply is an explicit writing action, like clicking the input itself.
+                      input.focus();
+                      input.setSelectionRange(input.value.length, input.value.length);
+                      input.scrollTop = input.scrollHeight;
+                    });
+                  },
+                }
+              : transcriptBehavior
+          }
           empty={empty}
           footer={footer}
           error={error}
