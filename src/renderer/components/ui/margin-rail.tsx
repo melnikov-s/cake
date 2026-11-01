@@ -26,7 +26,7 @@ export function MarginRail({
           data-slot="margin-rail"
           aria-hidden="true"
           className={cn(
-            "pointer-events-none -left-3 border-l border-border",
+            "pointer-events-none -left-3 border-l-4 border-border",
             start
               ? "relative col-start-1 row-start-2 -mb-5 in-[.chat-layout-compact]:-mb-3.5"
               : "absolute inset-y-0",
