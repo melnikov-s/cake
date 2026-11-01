@@ -1,7 +1,54 @@
 import { expect, it } from "vitest";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { queuedPrompts } from "../../../src/renderer/lib/queued-prompts";
 import { researchOrigin } from "../../fixtures/subagent-report";
 import { queuePart } from "./prompt-queue-workflow-fixture";
+
+it("attributes every typed nonhuman source without treating noneditable human inputs as agents", () => {
+  type TextPart = Extract<UiPart, { kind: "text" }>;
+  const internalKinds = [
+    "SubagentCompletion",
+    "AgentUpdate",
+    "UpdateBatch",
+    "WorkboardDelivery",
+  ] as const;
+  const internal = internalKinds.map((kind, index): TextPart => {
+    const part = queuePart(index + 1, "No sender name in this text");
+    return { ...part, queuedInput: { ...part.queuedInput!, internal: kind } };
+  });
+  const report: TextPart = { ...queuePart(5, "Report"), subagentReport: researchOrigin };
+  const update: TextPart = {
+    ...queuePart(6, "Update"),
+    agentSource: { title: "Reviewer", href: "cake://session/reviewer" },
+  };
+  const routed = queuePart(7, "From Cake Chat", { agent: true });
+  const cakeChat: TextPart = {
+    ...routed,
+    crossSession: {
+      ...routed.crossSession!,
+      sender: { ...routed.crossSession!.sender, kind: "cake-chat" },
+    },
+  };
+  const human = queuePart(8, "Background subagent complete: I typed this myself");
+  const command = queuePart(9, "/compact", { command: "compact" });
+  const extension = { ...queuePart(10, "Unattributed extension input"), queuedInput: undefined };
+  expect(
+    queuedPrompts([...internal, report, update, cakeChat, human, command, extension]).map(
+      (row) => row.provenance,
+    ),
+  ).toEqual([
+    "agent",
+    "agent",
+    "automatic",
+    "automatic",
+    "agent",
+    "agent",
+    "agent",
+    undefined,
+    undefined,
+    undefined,
+  ]);
+});
 
 it("shares queue identity, payload and editability rules across conversation owners", () => {
   const human = queuePart(1, "**First**", { markdown: true });
@@ -55,6 +102,15 @@ it("shares queue identity, payload and editability rules across conversation own
     renderUserMessageAsMarkdown: true,
     attachments: [],
   });
+  expect(rows.map((row) => row.provenance)).toEqual([
+    undefined,
+    undefined,
+    "agent",
+    undefined,
+    undefined,
+    undefined,
+    "agent",
+  ]);
   expect(rows[2]!.source).toEqual(agent.crossSession);
   expect(rows[3]!.command).toBe("compact");
   expect(rows[5]!.scheduled).toEqual(scheduled.scheduled);

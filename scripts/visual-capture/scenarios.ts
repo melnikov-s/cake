@@ -5136,6 +5136,59 @@ const queuedPromptsScenario: VisualCaptureScenario = {
       : page.locator("body"),
 };
 
+const queuedAgentPromptsScenario: VisualCaptureScenario = {
+  ...assistantMarkdownCode,
+  name: "queued-agent-prompts",
+  description: "Typed agent provenance aligned with human queue edit controls",
+  states: ["default"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const directory = join(paths.project, ".pi", "extensions");
+    await mkdir(directory, { recursive: true });
+    const message = encodeCrossSessionMessage("Background subagent complete: Read-only research", {
+      version: 1,
+      messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
+      threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
+      sequence: 1,
+      expectsResponse: false,
+      sender: { kind: "project-session", sessionId: "reviewer", title: "Reviewer" },
+    });
+    // The same real Pi extension boundary used by queued-messages.smoke.spec.ts.
+    await writeFile(
+      join(directory, "queue-fixture.ts"),
+      `export default function(pi) { pi.registerCommand("fixture-agent", { description: "Queue the agent fixture", handler: async () => { pi.sendUserMessage(${JSON.stringify(message)}, { deliverAs: "followUp" }); } }); }`,
+    );
+    return openRequestInspectorFixture(paths, { holdResponse: true });
+  },
+  async prepare(page) {
+    await assistantMarkdownCode.prepare(page, "default");
+    const input = page.getByRole("combobox", { name: "Message", exact: true });
+    const send = async (text: string) => {
+      await input.fill(text);
+      await input.press("Enter");
+      await expect(input).toHaveValue("");
+    };
+    await send("Review the implementation while I queue follow-ups.");
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+    await send("/fixture-agent");
+    const queue = page.getByRole("list", { name: "Queued prompts" });
+    const indicator = queue.getByRole("img", { name: "Agent-generated message" });
+    await expect(indicator).toBeVisible();
+    await send("Please check the queued follow-up controls.");
+    await expect(queue.getByRole("listitem")).toHaveCount(2);
+    const edit = queue.getByRole("button", { name: /^Edit queued prompt:/ });
+    const agentBounds = await indicator.boundingBox();
+    const editBounds = await edit.boundingBox();
+    expect(agentBounds).not.toBeNull();
+    expect(editBounds).not.toBeNull();
+    expect(agentBounds!.x).toBe(editBounds!.x);
+    expect(agentBounds!.width).toBe(editBounds!.width);
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator(".workbench-composer"),
+};
+
 const scheduledPromptsScenario: VisualCaptureScenario = {
   name: "scheduled-prompts",
   description:
@@ -6563,6 +6616,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   cakeChatArtifactScenario,
   contextOutlineScenario,
   queuedPromptsScenario,
+  queuedAgentPromptsScenario,
   scheduledPromptsScenario,
   taskInputAttachmentsScenario,
   cakeChatSidebarUnread,

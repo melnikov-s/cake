@@ -19,6 +19,16 @@ export function queuedPrompts(parts: readonly UiPart[]): QueuedPrompt[] {
               part.queuedInput?.renderUserMessageAsMarkdown ?? part.renderAs === "markdown",
             state: part.deliveryState,
             source: part.crossSession,
+            provenance:
+              part.crossSession ||
+              part.subagentReport ||
+              part.agentSource ||
+              part.queuedInput?.internal === "SubagentCompletion" ||
+              part.queuedInput?.internal === "AgentUpdate"
+                ? "agent"
+                : part.queuedInput?.internal
+                  ? "automatic"
+                  : undefined,
             scheduled: part.scheduled,
             automatic: Boolean(part.queuedInput?.internal || part.subagentReport),
             editable:

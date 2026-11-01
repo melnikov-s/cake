@@ -2,7 +2,15 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { FullscreenMessage } from "@/components/fullscreen-message";
 import { Button } from "@/components/ui/button";
-import { ChatIcon, ClockIcon, EditIcon, RemoveIcon } from "@/components/ui/icons";
+import {
+  BotIcon,
+  ChatIcon,
+  ClockIcon,
+  ContextIcon,
+  EditIcon,
+  RemoveIcon,
+} from "@/components/ui/icons";
+import { IconIndicator } from "@/components/ui/icon-indicator";
 import { IconButton } from "@/components/ui/icon-button";
 import { ReorderControls } from "@/components/ui/reorder-controls";
 import { ScheduledGroup } from "@/components/scheduled-prompts";
@@ -155,7 +163,17 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                               Send as steering
                             </Button>
                           )}
-                        {entry.editable !== false && store.canEditQueuedPrompt && (
+                        {entry.provenance ? (
+                          <IconIndicator
+                            label={
+                              entry.provenance === "agent"
+                                ? "Agent-generated message"
+                                : "Automatic message"
+                            }
+                          >
+                            {entry.provenance === "agent" ? <BotIcon /> : <ContextIcon />}
+                          </IconIndicator>
+                        ) : entry.editable !== false && store.canEditQueuedPrompt ? (
                           <IconButton
                             disabled={entry.pending}
                             tooltip="Edit"
@@ -164,7 +182,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                           >
                             <EditIcon />
                           </IconButton>
-                        )}
+                        ) : null}
                         {store.canRemoveQueuedPrompt && (
                           <IconButton
                             disabled={entry.pending}

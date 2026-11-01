@@ -23,6 +23,60 @@ afterEach(cleanup);
 // snapshots. Pi queue execution/abort/command semantics stay in service tests.
 describe("Prompt queue workflow", () => {
   it.each(["steering", "queued"] as const)(
+    "shows typed provenance in the read-only action slot for %s items",
+    (lane) => {
+      const text = "Background subagent complete: Audit";
+      const report = queuePart(1, text, { lane, report: true });
+      const human = queuePart(2, text, { lane });
+      const routed = queuePart(3, "Review result", { lane, agent: true });
+      const update = {
+        ...queuePart(4, "Sender-authored update", { lane }),
+        agentSource: { title: "Reviewer", href: "cake://session/reviewer" },
+      };
+      Object.assign(update.queuedInput!, { internal: "AgentUpdate" });
+      const automatic = queuePart(5, "Workboard entries #1", { lane });
+      Object.assign(automatic.queuedInput!, { internal: "WorkboardDelivery" });
+      const scheduled = {
+        ...queuePart(6, "Scheduled by me", { lane }),
+        scheduled: {
+          version: 1 as const,
+          id: "10000000-0000-4000-8000-000000000001",
+          createdAt: "2026-01-01T00:00:00Z",
+          sendAt: "2026-01-02T00:00:00Z",
+        },
+      };
+      using fixture = renderQueue([report, human, routed, update, automatic, scheduled], {});
+      const rows = within(screen.getByRole("list", { name: "Queued prompts" })).getAllByRole(
+        "listitem",
+      );
+      for (const index of [0, 2, 3]) {
+        const indicator = within(rows[index]!).getByRole("img", {
+          name: "Agent-generated message",
+        });
+        expect(indicator.title).toBe("Agent-generated message");
+        expect(indicator.closest("button")).toBeNull();
+        expect(indicator.nextElementSibling?.getAttribute("aria-label")).toBe(
+          `Cancel ${lane === "steering" ? "steering" : "queued message"}: ${[report, human, routed, update][index]!.text}`,
+        );
+        expect(
+          within(rows[index]!).queryByRole("button", { name: /^Edit queued prompt:/ }),
+        ).toBeNull();
+      }
+      expect(within(rows[1]!).queryByRole("img")).toBeNull();
+      expect(
+        within(rows[1]!).getByRole("button", { name: `Edit queued prompt: ${text}` }),
+      ).toBeDefined();
+      expect(within(rows[4]!).getByRole("img", { name: "Automatic message" }).title).toBe(
+        "Automatic message",
+      );
+      expect(within(rows[5]!).queryByRole("img", { name: "Agent-generated message" })).toBeNull();
+      fixture.publish([human]);
+      expect(screen.queryByRole("img", { name: "Agent-generated message" })).toBeNull();
+      expect(screen.getByRole("button", { name: `Edit queued prompt: ${text}` })).toBeDefined();
+    },
+  );
+
+  it.each(["steering", "queued"] as const)(
     "omits headings for one or several %s items, including type transitions",
     (lane) => {
       using fixture = renderQueue([], {});

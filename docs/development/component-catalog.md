@@ -252,6 +252,8 @@ its `showIcon` option adds a decorative inline link affordance without changing 
 wrapping. Markdown text links and artifact references use it; linked images do not.
 Destination tooltips appear on hover or keyboard focus and dismiss with Escape.
 
+[`IconIndicator`](../../src/renderer/components/ui/icon-indicator.tsx) displays a read-only icon in the same square slot as `IconButton`, with an accessible image label and native tooltip, without button semantics.
+
 [`icons.tsx`](../../src/renderer/components/ui/icons.tsx) is the sole icon authority.
 Inspect [`components/ai-elements/`](../../src/renderer/components/ai-elements/)
 for existing conversation, Markdown, code, tool and source surfaces.

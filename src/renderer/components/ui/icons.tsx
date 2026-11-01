@@ -214,6 +214,14 @@ export const MergeResolveIcon = () => (
     <path d="m12 18 2.2 2.2L20 14.5" />
   </Icon>
 );
+export const BotIcon = () => (
+  <Icon>
+    <rect x="4" y="7" width="16" height="13" rx="3" />
+    <path d="M12 3v4M1 12v4M23 12v4M9 16h6" />
+    <circle cx="8.5" cy="12" r=".75" fill="currentColor" />
+    <circle cx="15.5" cy="12" r=".75" fill="currentColor" />
+  </Icon>
+);
 export const ChatIcon = ({ size = 16 }: { size?: number }) => (
   <Icon size={size}>
     <path d="M20 15a3 3 0 0 1-3 3H8l-5 3 1.7-5.1A7 7 0 0 1 4 13V8a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" />

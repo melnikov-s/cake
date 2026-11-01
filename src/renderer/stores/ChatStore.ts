@@ -45,6 +45,8 @@ export interface QueuedPrompt {
   pending?: boolean;
   state: "queued" | "steering";
   source?: Extract<UiPart, { kind: "text" }>["crossSession"];
+  /** Typed authorship for the read-only queue indicator; never inferred from text/editability. */
+  provenance?: "agent" | "automatic";
   scheduled?: Extract<UiPart, { kind: "text" }>["scheduled"];
   /** Cake admitted it for someone else (a worker report, batched updates, Workboard entries). */
   automatic?: boolean;
