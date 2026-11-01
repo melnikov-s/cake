@@ -3,6 +3,32 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { parseVisualCaptureArguments } from "../../scripts/visual-capture/arguments";
+import { captureVisual } from "../../scripts/visual-capture/capture";
+
+for (const [scenario, state] of [
+  ["incoming-report-recap", "fullscreen"],
+  ["session-messages", "default"],
+  ["session-messages", "project"],
+] as const) {
+  test(`${scenario} retains its ${state} visual workflow`, async () => {
+    const outputRoot = await mkdtemp(join(tmpdir(), "cake-message-scenario-"));
+    try {
+      await captureVisual(
+        parseVisualCaptureArguments([
+          scenario,
+          "--state",
+          state,
+          "--output",
+          join(outputRoot, "message.png"),
+          "--no-build",
+        ]),
+      );
+    } finally {
+      await rm(outputRoot, { recursive: true, force: true });
+    }
+  });
+}
 
 const repository = resolve(import.meta.dirname, "../..");
 for (const theme of ["dark", "light"] as const)

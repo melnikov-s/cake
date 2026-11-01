@@ -130,7 +130,9 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
               type: "text",
               text:
                 'Phase 4 — Model references ([`src/modelMeta.ts#L1`](src/modelMeta.ts#L1)) is done. Read [the website](https://example.com/docs "Authored title") or [this session](cake://session/file-link-session).\n\n' +
-                "The model metadata lives alongside the application contract so every caller can inspect the same provider and model identity. The desktop presents this source through the embedded editor while the conversation remains authoritative in Pi. Review the associated definitions before changing the configuration, and keep the current chat draft when moving between the editor and agent views.",
+                "The model metadata lives alongside the application contract so every caller can inspect the same provider and model identity. The desktop presents this source through the embedded editor while the conversation remains authoritative in Pi. Review the associated definitions before changing the configuration, and keep the current chat draft when moving between the editor and agent views. ".repeat(
+                  14,
+                ),
             },
           ],
           api: "anthropic-messages",

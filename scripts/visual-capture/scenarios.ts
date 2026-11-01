@@ -3775,7 +3775,7 @@ const reportHeadersScenario: VisualCaptureScenario = {
                   {
                     type: "text",
                     text: durableInputText(
-                      `Background subagent ${status}: ${origin.task}\n\n## Bottom line\n\nThe report remains readable.`,
+                      `Background subagent ${status}: ${origin.task}\n\n## Bottom line\n\nThe report remains readable.\n\n${"The detailed findings preserve the evidence and verification for review. ".repeat(75)}`,
                       [],
                       true,
                       false,
@@ -3810,12 +3810,21 @@ const reportHeadersScenario: VisualCaptureScenario = {
     await expect(page.locator('[data-slot="subagent-report"]').first()).toBeVisible({
       timeout: 20_000,
     });
-    if (["completed", "failed", "collapsed"].includes(state)) {
-      await page.locator(".transcript").evaluate((element) => element.scrollTo(0, 0));
-    }
-    await expect(card).toHaveCount(1);
-    await card.scrollIntoViewIfNeeded();
+    // Long report bodies put intermediate cards outside the virtualized range.
+    const transcript = page.locator(".transcript");
+    await transcript.evaluate((element) => element.scrollTo(0, 0));
+    await expect
+      .poll(
+        async () => {
+          if (await card.count()) return true;
+          await transcript.evaluate((element) => element.scrollBy(0, 400));
+          return false;
+        },
+        { intervals: [100] },
+      )
+      .toBe(true);
     const disclosure = card.locator('[data-slot="response-disclosure"]');
+    await disclosure.scrollIntoViewIfNeeded();
     await expect(disclosure).toHaveAttribute("title", title);
     if (state === "collapsed") await disclosure.click();
     await expect(disclosure).toHaveAttribute(
@@ -3942,7 +3951,11 @@ const incomingTaskSectionsScenario: VisualCaptureScenario = {
             content: [
               {
                 type: "text",
-                text: "## Build fixed\n\nThe flaky `pnpm test` step now waits for the server port. Three clean CI runs in a row.\n\n```ts\nconst ready = true;\n```",
+                text:
+                  "## Build fixed\n\nThe flaky `pnpm test` step now waits for the server port. Three clean CI runs in a row.\n\n```ts\nconst ready = true;\n```\n\n" +
+                  "The server readiness check completed before the test step in every verified CI run. ".repeat(
+                    65,
+                  ),
               },
             ],
           },
@@ -4270,6 +4283,7 @@ const sessionMessagesScenario: VisualCaptureScenario = {
     await expect(
       page.getByRole("region", { name: "Message from another session" }).first(),
     ).toBeVisible();
+    await expect(page.getByRole("button", { name: /^View message fullscreen:/ })).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Cake · response mode", exact: true }),
     ).toBeVisible();
@@ -4306,7 +4320,11 @@ const incomingReportRecapScenario: VisualCaptureScenario = {
         content: [
           {
             type: "text",
-            text: "## Proposed plan\n\nThe plan is ready for **review**, not approval.\n\n- Preserve source identity and Markdown.\n- Keep history and to-dos intact.\n\n```ts\nconst merged = false;\n```\n\nFixture only; no code changed and nothing merged.",
+            text:
+              "## Proposed plan\n\nThe plan is ready for **review**, not approval.\n\n- Preserve source identity and Markdown.\n- Keep history and to-dos intact.\n\n```ts\nconst merged = false;\n```\n\nFixture only; no code changed and nothing merged.\n\n" +
+              "Review the original findings and verification before deciding whether to proceed. ".repeat(
+                65,
+              ),
           },
         ],
       },
@@ -4385,6 +4403,11 @@ const incomingReportRecapScenario: VisualCaptureScenario = {
       await disclosure.click();
       await expect(page.getByRole("heading", { name: "Proposed plan" })).toBeVisible();
     } else if (state === "fullscreen") {
+      // The source stays lazy until opened; its full length enables text fullscreen.
+      await expect(page.getByRole("button", { name: /^View message fullscreen:/ })).toHaveCount(0);
+      await disclosure.click();
+      await expect(page.getByRole("heading", { name: "Proposed plan" })).toBeVisible();
+      await disclosure.click();
       await page.getByRole("button", { name: /^View message fullscreen:/ }).click();
       await expect(page.getByRole("heading", { name: "Proposed plan" })).toBeVisible();
     }

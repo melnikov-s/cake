@@ -84,7 +84,7 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
               type: "text",
               text: [
                 "| Layer | Status |\n| - | - |\n| Browser | **Running** |",
-                "The browser keeps running while fullscreen content is displayed. ".repeat(12),
+                "The browser keeps running while fullscreen content is displayed. ".repeat(85),
               ].join("\n\n"),
             },
           ],

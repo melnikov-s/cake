@@ -32,7 +32,7 @@ for (const { theme, standalone, godot } of scenarios) {
       : [
           "```mermaid",
           "graph TD",
-          `%% ${"A detailed pipeline description. ".repeat(20)}`,
+          `%% ${"A detailed pipeline description. ".repeat(160)}`,
           "  A[Cake application] --> B[Pi agent engine]",
           "  B --> C[Renderer presentation] --> D[SVG output]",
           "  D --> E[Authored foreground] --> F[Named color]",
