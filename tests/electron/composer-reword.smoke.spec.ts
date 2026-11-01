@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { _electron as electron, expect, test, type Locator } from "@playwright/test";
 import { callRpcHarness, openRpcHarness } from "./rpc-harness";
 import { windowState } from "../fixtures/window-state";
 
@@ -21,6 +21,41 @@ function completion(text: string) {
   return `${chunk({ role: "assistant", content: text }, null)}${chunk({}, "stop")}data: [DONE]\n\n`;
 }
 
+async function expectQuickReplyLayout(dialog: Locator, trigger: Locator, viewportHeight: number) {
+  await expect(async () => {
+    const bounds = (await dialog.boundingBox())!;
+    const bubble = dialog.locator('[data-slot="message-content"]');
+    const content = (await bubble.boundingBox())!;
+    const anchor = (await trigger.boundingBox())!;
+    expect(
+      Math.abs(bounds.height - Math.min(content.height, 288, viewportHeight * 0.6)),
+    ).toBeLessThanOrEqual(1);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(anchor.x);
+    expect(bounds.y).toBeGreaterThanOrEqual(8);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewportHeight - 8);
+    expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    );
+    expect(
+      await bubble.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return [style.paddingTop, style.paddingBottom, style.paddingLeft, style.paddingRight];
+      }),
+    ).toEqual(["10px", "10px", "12px", "12px"]);
+    // The portal is only an anchor/scroll boundary; the message owns the visible shell.
+    expect(
+      await dialog.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return [
+          style.borderBottomWidth,
+          style.backdropFilter,
+          style.getPropertyValue("--tw-ring-shadow"),
+        ];
+      }),
+    ).toEqual(["0px", "none", expect.stringMatching(/^0 0 0 calc\(0px /)]);
+  }).toPass({ timeout: 5_000 });
+}
+
 test("rewords composer text and opens the focused session assistant", async () => {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-composer-reword-smoke-"));
@@ -35,6 +70,7 @@ test("rewords composer text and opens the focused session assistant", async () =
   ]);
 
   const prompts: string[] = [];
+  let assistantReply = "Assistant ready";
   let holdNextAssistantRequest = true;
   let releaseAssistantRequest: (() => void) | undefined;
   const server = createServer(async (request, response) => {
@@ -52,7 +88,7 @@ test("rewords composer text and opens the focused session assistant", async () =
     const rewritten = summary
       ? "work: companion discussed the selected text"
       : assistantRequest
-        ? "Assistant ready"
+        ? assistantReply
         : body.includes("Make this terse")
           ? "Terse request"
           : "Clear request";
@@ -140,6 +176,7 @@ test("rewords composer text and opens the focused session assistant", async () =
   let application = await launch();
   try {
     const page = await application.firstWindow();
+    await page.emulateMedia({ colorScheme: "light" });
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await composer.fill("Before rough ramble after");
@@ -224,6 +261,12 @@ test("rewords composer text and opens the focused session assistant", async () =
     await expect(
       quickAssistant.getByRole("button", { name: "View response fullscreen" }),
     ).toHaveCount(0);
+    await expectQuickReplyLayout(
+      quickAssistant,
+      assistantTrigger,
+      await page.evaluate(() => innerHeight),
+    );
+    await quickAssistant.screenshot({ path: test.info().outputPath("quick-reply-short.png") });
     const responseBox = (await quickAssistant.boundingBox())!;
     expect(responseBox.x + responseBox.width).toBeLessThan(triggerBox.x);
     await expect(composer).toHaveValue("Before rough ramble after!");
@@ -277,6 +320,51 @@ test("rewords composer text and opens the focused session assistant", async () =
     expect(prompts[3]).toContain("Entered context");
     expect(prompts[3]).not.toContain("Before rough ramble after!");
     expect(JSON.parse(prompts[3]!).model).toBe("reword-model");
+
+    // Exercise wrapping and the capped, scrollable reply at a narrower window size.
+    await reopened.keyboard.press("Escape");
+    await reopened.setViewportSize({ width: 900, height: 700 });
+    const reopenedTrigger = reopened.getByRole("button", { name: "Ask session assistant" });
+    const replyDialog = reopened.getByRole("dialog", { name: "Quick session assistant" });
+    for (const [name, reply, theme] of [
+      ["greeting-light", "Hey! Going well—good to see you. How’s your day going?", "light"],
+      ["greeting-dark", "Hey! Going well—good to see you. How’s your day going?", "dark"],
+      [
+        "multiline",
+        Array.from(
+          { length: 24 },
+          (_, i) => `Reply line ${i + 1}: Here is a longer explanation.`,
+        ).join("\n\n"),
+        "dark",
+      ],
+      ["unbroken", "Long reply: " + "abcdefghij".repeat(100), "dark"],
+    ] as const) {
+      await reopened.emulateMedia({ colorScheme: theme });
+      assistantReply = reply;
+      await reopenedTrigger.click();
+      const input = replyDialog.getByLabel("Ask session assistant");
+      await expect(input).toBeFocused();
+      await input.fill(`Show ${name}`);
+      await input.press("Enter");
+      await expect(replyDialog.getByText(reply.split("\n")[0]!)).toBeVisible();
+      await expectQuickReplyLayout(replyDialog, reopenedTrigger, 700);
+      if (name === "multiline") {
+        const transcript = replyDialog.locator(".transcript");
+        expect(
+          await transcript.evaluate((element) => element.scrollHeight > element.clientHeight),
+        ).toBe(true);
+        await transcript.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
+        await expect(replyDialog.getByText("Reply line 24:", { exact: false })).toBeInViewport();
+      }
+      await replyDialog.screenshot({ path: test.info().outputPath(`quick-reply-${name}.png`) });
+      if (name.startsWith("greeting"))
+        await reopened.getByRole("combobox", { name: "Message", exact: true }).click();
+      else await reopened.keyboard.press("Escape");
+      await expect(replyDialog).toHaveCount(0);
+      if (!name.startsWith("greeting")) await expect(reopenedTrigger).toBeFocused();
+    }
   } finally {
     await application.close();
     server.close();

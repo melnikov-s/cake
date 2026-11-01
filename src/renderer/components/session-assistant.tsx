@@ -95,7 +95,8 @@ export const SessionAssistant = observer(function SessionAssistant({
               ? "w-fit overflow-visible border-0 bg-transparent shadow-none"
               : "w-[min(22rem,calc(100vw-24px))]",
             quickResponse &&
-              "w-[min(19rem,calc(100vw-24px))] max-w-[min(22rem,calc(100vw-24px))] rounded-2xl [&_[aria-label=Conversation]]:p-0",
+              // The message owns the bubble shell; transcript row/footer spacing is for full chats.
+              "w-[min(19rem,calc(100vw-24px))] max-w-[min(22rem,calc(100vw-24px))] rounded-2xl ring-0 backdrop-blur-none [&_[aria-label=Conversation]]:p-0 [&_[data-slot=transcript-item]]:pb-0 [&_[data-slot=transcript-footer]]:pb-0",
           )}
         >
           {processing ? (
