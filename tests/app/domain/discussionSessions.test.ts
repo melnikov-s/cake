@@ -6,7 +6,7 @@ import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktre
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
-import { Effect, Layer, Scope, Stream } from "effect";
+import { Effect, Layer, Logger, Scope, Stream } from "effect";
 import { describe, expect } from "vitest";
 import * as discussionSessions from "../../../src/domain/discussion-sessions/discussionSessions";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
@@ -16,6 +16,7 @@ import {
 } from "../../../src/services/discussion-sessions/DiscussionSessionEnvironment";
 import {
   makeCakeSessionRuntimesLayer,
+  PiSessionError,
   type CakeSessionRuntimesAdapter,
   type CakeSessionRuntimeSetup,
 } from "../../../src/services/pi/CakeSessionRuntimes";
@@ -72,41 +73,14 @@ const cakeChatAnchor = {
   entryId: "entry-assistant-2",
 };
 
-const cakeChatParts: ConversationSnapshot["parts"] = [
-  { id: "user-1", kind: "text", role: "user", text: "Which tasks are open?", status: "complete" },
-  {
-    id: "assistant-1",
-    kind: "text",
-    role: "assistant",
-    text: "Two tasks are open.",
-    status: "complete",
-  },
-  {
-    id: "tool-1",
-    kind: "tool",
-    toolCallId: "call-1",
-    name: "cake",
-    input: {},
-    state: "complete",
-  } as unknown as ConversationSnapshot["parts"][number],
-  { id: "user-2", kind: "text", role: "user", text: "Compare them.", status: "complete" },
-  {
-    id: "assistant-2",
-    kind: "text",
-    role: "assistant",
-    entryId: "entry-assistant-2",
-    text: "The first is larger.",
-    status: "complete",
-  },
-  { id: "user-3", kind: "text", role: "user", text: "Later question", status: "complete" },
-];
-
 const makeLayer = (
   options: {
     readonly persistedSidecar?: boolean;
     readonly cakeChat?: boolean;
     /** Cake Chat forks natively into this Durable conversation instead of refusing. */
     readonly durableFork?: number;
+    readonly forkFailure?: string;
+    readonly forkSessionId?: string;
     readonly backendControl?: boolean;
     readonly mergeBusy?: "parent" | "source";
     readonly mergeQueued?: "parent" | "source";
@@ -149,8 +123,10 @@ const makeLayer = (
     parentSessionId: options.cakeChat ? CAKE_CHAT_SESSION_ID : "parent-1",
     ...(options.persistedSidecar
       ? {
-          sidecarSessionId: "persisted-sidecar",
-          sidecarSessionFile: "/cake/reviews/thread-1/persisted-sidecar.jsonl",
+          sidecarSessionId: options.cakeChat ? cakeChatSideChatSessionId(7) : "persisted-sidecar",
+          ...(options.cakeChat
+            ? {}
+            : { sidecarSessionFile: "/cake/reviews/thread-1/persisted-sidecar.jsonl" }),
         }
       : {}),
     pendingParts: [
@@ -179,7 +155,7 @@ const makeLayer = (
   let preparedContexts = 0;
   let parentIndexRefreshes = 0;
   const createdRecords: Array<{ workingDirectory: string; parentSessionId: string }> = [];
-  const branchContexts: unknown[] = [];
+  const linkedSidecars: string[] = [];
   const runtime = (options: CakeSessionRuntimeSetup): CakeSessionRuntime => {
     const sessionId = options.sessionId ?? "generated";
     const sessionFile = options.auxiliary
@@ -209,7 +185,6 @@ const makeLayer = (
           }),
       snapshot: async () => ({
         ...makeSnapshot(sessionId, sessionFile),
-        parts: sessionId === CAKE_CHAT_SESSION_ID ? cakeChatParts : [],
         streaming:
           mergeOptions.mergeBusy === (sessionId === CAKE_CHAT_SESSION_ID ? "parent" : "source"),
       }),
@@ -271,9 +246,13 @@ const makeLayer = (
         if (sessionId !== CAKE_CHAT_SESSION_ID)
           return { sessionId: "fork", sessionFile: "/fork.jsonl", artifactPointers: [] };
         forkedEntries.push(entryId);
-        if (durableFork === undefined) throw new Error("Durable fork is unavailable");
+        if (entryId !== cakeChatAnchor.entryId)
+          throw new Error("That Cake Chat message is no longer available");
+        if (mergeOptions.forkFailure) throw new Error(mergeOptions.forkFailure);
+        if (durableFork === undefined && mergeOptions.forkSessionId === undefined)
+          throw new Error("Durable fork is unavailable");
         return {
-          sessionId: cakeChatSideChatSessionId(durableFork),
+          sessionId: mergeOptions.forkSessionId ?? cakeChatSideChatSessionId(durableFork ?? 7),
           sessionFile: "/cake/cake-chat/coordinator.sqlite",
           artifactPointers: [],
         };
@@ -318,6 +297,7 @@ const makeLayer = (
     ensure: () => Effect.succeed(record),
     linkSidecar: (current, sidecar) =>
       Effect.sync(() => {
+        linkedSidecars.push(sidecar.sessionId);
         record = { ...current, sidecarSessionId: sidecar.sessionId };
         if (sidecar.sessionFile !== undefined)
           record = { ...record, sidecarSessionFile: sidecar.sessionFile };
@@ -340,10 +320,6 @@ const makeLayer = (
     prepareParentContext: () =>
       Effect.sync(() => {
         preparedContexts += 1;
-      }),
-    prepareCakeChatBranchContext: (_record, messages) =>
-      Effect.sync(() => {
-        branchContexts.push(messages);
       }),
     refreshParentIndex: () =>
       Effect.sync(() => {
@@ -447,7 +423,7 @@ const makeLayer = (
     preparedContexts: () => preparedContexts,
     parentIndexRefreshes: () => parentIndexRefreshes,
     createdRecords,
-    branchContexts,
+    linkedSidecars,
     forkedEntries,
     importedHistories,
     historyMessages,
@@ -498,7 +474,7 @@ describe("Cake Chat side-chat merge", () => {
       assert.deepEqual(result, { importedMessages: 2 });
       assert.deepEqual(fixture.importedHistories, [
         {
-          sourceSessionId: "persisted-sidecar",
+          sourceSessionId: cakeChatSideChatSessionId(7),
           inputReferenceIds: [],
           messages: fixture.historyMessages,
           threadId: "thread-1",
@@ -547,12 +523,12 @@ describe("Cake Chat side-chat merge", () => {
       yield* discussionSessions.merge(target);
       assert.deepEqual(fixture.forwardedInputs, [
         {
-          owner: "persisted-sidecar",
+          owner: cakeChatSideChatSessionId(7),
           refs: mergeReferences.slice(0, 20),
           recipient: CAKE_CHAT_SESSION_ID,
         },
         {
-          owner: "persisted-sidecar",
+          owner: cakeChatSideChatSessionId(7),
           refs: mergeReferences.slice(20),
           recipient: CAKE_CHAT_SESSION_ID,
         },
@@ -611,8 +587,10 @@ describe("Cake Chat side chats", () => {
 
       const sessionId = cakeChatSideChatSessionId(7);
       assert.deepEqual(fixture.forkedEntries, ["entry-assistant-2"]);
-      // No text copy: the fork already holds Cake Chat's exact context.
-      assert.deepEqual(fixture.branchContexts, []);
+      assert.deepEqual(fixture.createdRecords, [
+        { workingDirectory: "/home", parentSessionId: CAKE_CHAT_SESSION_ID },
+      ]);
+      assert.deepEqual(fixture.linkedSidecars, [sessionId]);
       assert.equal(fixture.record().sidecarSessionId, sessionId);
       // The fork lives in Cake Chat's database, never a Discussion transcript file.
       assert.equal(fixture.record().sidecarSessionFile, undefined);
@@ -631,55 +609,133 @@ describe("Cake Chat side chats", () => {
     }).pipe(Effect.provide(fixture.layer));
   });
 
-  it.effect("branches a copied-context side chat with only parent to-do controls", () => {
-    const fixture = makeLayer({ cakeChat: true });
-    return Effect.gen(function* () {
-      yield* assembleCakeChat;
-      const accepted = yield* discussionSessions.startCakeChatSideChat(
-        { anchor: cakeChatAnchor, text: "Why is it larger?" },
-        "/home",
-      );
-      yield* Effect.yieldNow;
+  const assertNoStartedDiscussion = (fixture: ReturnType<typeof makeLayer>) => {
+    assert.deepEqual(fixture.createdRecords, []);
+    assert.deepEqual(fixture.linkedSidecars, []);
+    assert.equal(fixture.record().sidecarSessionId, undefined);
+    assert.equal(
+      fixture.options.some((options) => options.auxiliary),
+      false,
+    );
+    assert.deepEqual(fixture.prompts, []);
+  };
 
-      assert.deepEqual(fixture.createdRecords, [
-        { workingDirectory: "/home", parentSessionId: CAKE_CHAT_SESSION_ID },
-      ]);
-      // Cake Chat could not fork, so the side chat falls back to copied context.
-      assert.deepEqual(fixture.forkedEntries, ["entry-assistant-2"]);
-      // Tool activity and messages after the branch point stay out of the context.
-      assert.deepEqual(fixture.branchContexts, [
-        [
-          { role: "user", text: "Which tasks are open?" },
-          { role: "assistant", text: "Two tasks are open." },
-          { role: "user", text: "Compare them." },
-          { role: "assistant", text: "The first is larger." },
-        ],
-      ]);
-      const sidecar = fixture.options.find((options) => options.auxiliary);
-      assert.deepEqual(sidecar?.tools, ["cake"]);
-      assert.ok(sidecar?.projectTodos);
-      assert.equal(sidecar?.globalControl, undefined);
-      assert.equal(fixture.prompts.at(-1)?.[0], "Why is it larger?");
-      assert.equal(accepted.thread.parentSessionId, CAKE_CHAT_SESSION_ID);
-      // The branch context is frozen: no Project Session parent projection is read.
-      assert.equal(fixture.preparedContexts(), 0);
-    }).pipe(Effect.provide(fixture.layer));
-  });
+  for (const entryId of [undefined, "", "   "]) {
+    it.effect(
+      `rejects a missing or blank entry ID (${JSON.stringify(entryId)}) before forking`,
+      () => {
+        const fixture = makeLayer({ cakeChat: true, durableFork: 7 });
+        return Effect.gen(function* () {
+          yield* assembleCakeChat;
+          const error = yield* discussionSessions
+            .startCakeChatSideChat({ anchor: { ...cakeChatAnchor, entryId }, text: "Hi" }, "/home")
+            .pipe(Effect.flip);
+          assert.equal(error.operation, "start");
+          assert.match(error.message, /no entry to branch from/);
+          assert.deepEqual(fixture.forkedEntries, []);
+          assertNoStartedDiscussion(fixture);
+        }).pipe(Effect.provide(fixture.layer));
+      },
+    );
+  }
 
-  it.effect(
-    "rejects a branch message that is no longer in Cake Chat without storing a thread",
-    () => {
-      const fixture = makeLayer({ cakeChat: true });
+  for (const entryId of ["invalid", "999999"]) {
+    it.effect(`surfaces a rejected entry ID (${entryId}) without storing a discussion`, () => {
+      const fixture = makeLayer({ cakeChat: true, durableFork: 7 });
       return Effect.gen(function* () {
         yield* assembleCakeChat;
         const error = yield* discussionSessions
-          .startCakeChatSideChat(
-            { anchor: { ...cakeChatAnchor, messageId: "gone", entryId: "gone" }, text: "Hi" },
-            "/home",
-          )
+          .startCakeChatSideChat({ anchor: { ...cakeChatAnchor, entryId }, text: "Hi" }, "/home")
           .pipe(Effect.flip);
-        assert.equal(error.message, "That Cake Chat message is no longer available");
+        assert.match(error.message, /Could not create a native Cake Chat side chat/);
+        assert.deepEqual(fixture.forkedEntries, [entryId]);
+        assertNoStartedDiscussion(fixture);
+      }).pipe(Effect.provide(fixture.layer));
+    });
+  }
+
+  it.effect("reports fork failure safely and retains its real cause in backend logs", () => {
+    const cause = "SQLITE_BUSY at /private/coordinator.sqlite";
+    const fixture = makeLayer({ cakeChat: true, forkFailure: cause });
+    const logs: unknown[] = [];
+    return Effect.gen(function* () {
+      yield* assembleCakeChat;
+      const error = yield* discussionSessions
+        .startCakeChatSideChat({ anchor: cakeChatAnchor, text: "Hi" }, "/home")
+        .pipe(Effect.flip);
+      assert.equal(error.operation, "start");
+      assert.equal(
+        error.message,
+        "Could not create a native Cake Chat side chat. Try again from a completed reply.",
+      );
+      assert.ok(
+        logs.some(
+          (message) =>
+            Array.isArray(message) &&
+            message.some((part) => part instanceof PiSessionError && part.message === cause),
+        ),
+      );
+      assert.deepEqual(fixture.forkedEntries, [cakeChatAnchor.entryId]);
+      assertNoStartedDiscussion(fixture);
+    }).pipe(
+      Effect.provide(fixture.layer),
+      Effect.provide(Logger.layer([Logger.make(({ message }) => logs.push(message))])),
+    );
+  });
+
+  it.effect("reports an unavailable parent runtime without storing a discussion", () => {
+    const fixture = makeLayer({ cakeChat: true, durableFork: 7 });
+    return Effect.gen(function* () {
+      const error = yield* discussionSessions
+        .startCakeChatSideChat({ anchor: cakeChatAnchor, text: "Hi" }, "/home")
+        .pipe(Effect.flip);
+      assert.match(error.message, /Could not create a native Cake Chat side chat/);
+      assert.deepEqual(fixture.forkedEntries, []);
+      assertNoStartedDiscussion(fixture);
+    }).pipe(Effect.provide(fixture.layer));
+  });
+
+  for (const forkSessionId of ["regular-pi-fork", ""]) {
+    it.effect(`rejects a non-Durable fork result (${JSON.stringify(forkSessionId)})`, () => {
+      const fixture = makeLayer({ cakeChat: true, forkSessionId });
+      return Effect.gen(function* () {
+        yield* assembleCakeChat;
+        const error = yield* discussionSessions
+          .startCakeChatSideChat({ anchor: cakeChatAnchor, text: "Hi" }, "/home")
+          .pipe(Effect.flip);
+        assert.equal(
+          error.message,
+          "Cake Chat did not return a native Durable side chat. No discussion was created.",
+        );
+        assert.deepEqual(fixture.forkedEntries, [cakeChatAnchor.entryId]);
+        assertNoStartedDiscussion(fixture);
+      }).pipe(Effect.provide(fixture.layer));
+    });
+  }
+
+  it.effect(
+    "leaves stored non-Durable conversations untouched instead of recreating a sidecar",
+    () => {
+      const fixture = makeLayer({ cakeChat: true, persistedSidecar: true });
+      Object.assign(fixture.record(), {
+        sidecarSessionId: "copied-context-sidecar",
+        sidecarSessionFile: "/cake/reviews/thread-1/copied-context-sidecar.jsonl",
+      });
+      const stored = { ...fixture.record() };
+      return Effect.gen(function* () {
+        const error = yield* discussionSessions
+          .observe({
+            workingDirectory: "/home",
+            parentSessionId: CAKE_CHAT_SESSION_ID,
+            threadId: "thread-1",
+          })
+          .pipe(Effect.flip);
+        assert.match(error.message, /no native Durable conversation/);
+        assert.deepEqual(fixture.record(), stored);
         assert.deepEqual(fixture.createdRecords, []);
+        assert.deepEqual(fixture.linkedSidecars, []);
+        assert.deepEqual(fixture.options, []);
+        assert.deepEqual(fixture.prompts, []);
       }).pipe(Effect.provide(fixture.layer));
     },
   );

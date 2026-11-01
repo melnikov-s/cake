@@ -1,5 +1,5 @@
 import { Context, Layer, Schema, type Effect } from "effect";
-import type { ReviewParentContext, SideChatContextMessage } from "../pi/runtime/sidecar-runtime";
+import type { ReviewParentContext } from "../pi/runtime/sidecar-runtime";
 import type { DiscussionAnchor } from "../../contracts/discussion-sessions/discussion-session-data";
 
 export interface DiscussionSessionRecord {
@@ -68,14 +68,6 @@ export interface DiscussionSessionEnvironmentService {
   readonly prepareParentContext: (
     record: DiscussionSessionRecord,
     parent: ReviewParentContext,
-  ) => Effect.Effect<void, DiscussionSessionEnvironmentError>;
-  /**
-   * Writes the Cake Chat conversation through a side chat's branch point once,
-   * when the side chat starts; the sidecar's system prompt inlines it.
-   */
-  readonly prepareCakeChatBranchContext: (
-    record: DiscussionSessionRecord,
-    messages: ReadonlyArray<SideChatContextMessage>,
   ) => Effect.Effect<void, DiscussionSessionEnvironmentError>;
   readonly refreshParentIndex: (
     record: DiscussionSessionRecord,

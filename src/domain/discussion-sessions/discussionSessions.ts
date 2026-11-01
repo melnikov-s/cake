@@ -1,7 +1,7 @@
 import * as discussionTodos from "./discussionTodos";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
-import { Effect, Option, Schema, Stream } from "effect";
+import { Effect, Schema, Stream } from "effect";
 import type { DiscussionCatalogUpdate } from "../../contracts/application/catalog-data";
 import {
   CAKE_CHAT_SESSION_ID,
@@ -194,8 +194,8 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
         ),
         // The projection points at a stable path, so refreshing it never
         // requires rebuilding the runtime. A parent that cannot be read right
-        // now leaves the previous projection in place. A Cake Chat side chat's
-        // branch context is captured once when it starts.
+        // now leaves the previous projection in place. A Cake Chat side chat
+        // inherits its context through its native Durable fork.
         Effect.andThen(
           (isCakeChatSideChat(record)
             ? Effect.void
@@ -235,6 +235,12 @@ const sideChatConfiguration = Effect.fn("DiscussionSessions.sideChatConfiguratio
   // its branch point; its host grants only parent-list to-dos and interviews.
   if (cakeChatSideChatConversationId(record.sidecarSessionId) !== undefined)
     return { systemPrompt: "", tools: [] };
+  if (isCakeChatSideChat(record))
+    return yield* new DiscussionSessionError({
+      operation: "acquire",
+      message:
+        "This Cake Chat side chat has no native Durable conversation. Start a new side chat from the parent message.",
+    });
   const environment = yield* DiscussionSessionEnvironment;
   const systemPrompt = yield* environment.sidecarSystemPrompt(record).pipe(asError("acquire"));
   const todos = yield* discussionTodos
@@ -242,7 +248,7 @@ const sideChatConfiguration = Effect.fn("DiscussionSessions.sideChatConfiguratio
     .pipe(asError("acquire"));
   return {
     systemPrompt: [systemPrompt, todos?.systemPrompt].filter(Boolean).join("\n\n"),
-    tools: isCakeChatSideChat(record) ? ["cake"] : ["read", "grep", "find", "ls"],
+    tools: ["read", "grep", "find", "ls"],
     projectTodos: todos?.projectTodos,
     allowedCakeOperations: todos
       ? [
@@ -439,11 +445,9 @@ export const start = Effect.fn("DiscussionSessions.start")(function* (
 /**
  * Branches a side chat from one Cake Chat message. Cake Chat forks its Durable
  * conversation after that exchange, so the side chat continues from Cake Chat's
- * exact model context (and its provider prompt cache). When Cake Chat cannot
- * fork there, the conversation text through that message is copied into the
- * side chat's instructions instead. Either way the branch point is resolved
- * before the thread is stored, so a missing message never leaves an empty
- * thread behind.
+ * exact model context (and its provider prompt cache). A native Durable fork is
+ * required before storing a thread; a failed fork never creates a copy-backed
+ * or empty discussion.
  */
 export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChatSideChat")(
   function* (input: CakeChatSideChatStartInput, workingDirectory: string, connectionId?: number) {
@@ -455,74 +459,43 @@ export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChat
         operation: "start",
         message: "A Cake Chat side chat must branch from a message",
       });
-    const sessions = yield* CakeSessionRuntimes;
-    const environment = yield* DiscussionSessionEnvironment;
     const entryId = input.anchor.entryId;
-    const forked = entryId
-      ? yield* Effect.scoped(
-          sessions
-            .acquireSession(parentSessionId)
-            .pipe(Effect.flatMap((handle) => handle.fork(entryId, "Side chat"))),
-        ).pipe(
-          Effect.map((fork) => fork.sessionId),
-          Effect.catch((error) =>
-            Effect.logWarning(
-              "Cake Chat side chat falls back to copied context",
-              error.message,
-            ).pipe(Effect.as(undefined)),
-          ),
-        )
-      : undefined;
-    if (forked && cakeChatSideChatConversationId(forked) !== undefined) {
-      const record = yield* environment
-        .create(workingDirectory, parentSessionId, input.anchor)
-        .pipe(asError("start"));
-      const linked = yield* environment
-        .linkSidecar(record, { sessionId: forked })
-        .pipe(asError("start"));
-      return yield* deliverFirstPrompt(linked, input, connectionId);
-    }
-    const snapshot = yield* Effect.scoped(
-      sessions.acquireSession(parentSessionId).pipe(Effect.flatMap((handle) => handle.snapshot())),
-    ).pipe(asError("start"));
-    const messages = cakeChatBranchMessages(snapshot.parts, input.anchor);
-    if (!messages)
+    if (!entryId?.trim())
       return yield* new DiscussionSessionError({
         operation: "start",
-        message: "That Cake Chat message is no longer available",
+        message: "That Cake Chat message has no entry to branch from. Choose a completed reply.",
+      });
+    const sessions = yield* CakeSessionRuntimes;
+    const environment = yield* DiscussionSessionEnvironment;
+    const forked = yield* Effect.scoped(
+      sessions
+        .acquireSession(parentSessionId)
+        .pipe(Effect.flatMap((handle) => handle.fork(entryId, "Side chat"))),
+    ).pipe(
+      Effect.tapError((error) => Effect.logWarning("Could not fork a Cake Chat side chat", error)),
+      Effect.mapError(
+        () =>
+          new DiscussionSessionError({
+            operation: "start",
+            message:
+              "Could not create a native Cake Chat side chat. Try again from a completed reply.",
+          }),
+      ),
+    );
+    if (cakeChatSideChatConversationId(forked.sessionId) === undefined)
+      return yield* new DiscussionSessionError({
+        operation: "start",
+        message: "Cake Chat did not return a native Durable side chat. No discussion was created.",
       });
     const record = yield* environment
       .create(workingDirectory, parentSessionId, input.anchor)
       .pipe(asError("start"));
-    yield* environment.prepareCakeChatBranchContext(record, messages).pipe(asError("start"));
-    return yield* deliverFirstPrompt(record, input, connectionId);
+    const linked = yield* environment
+      .linkSidecar(record, { sessionId: forked.sessionId })
+      .pipe(asError("start"));
+    return yield* deliverFirstPrompt(linked, input, connectionId);
   },
 );
-
-const BranchTextPart = Schema.Struct({
-  id: Schema.String,
-  kind: Schema.Literal("text"),
-  role: Schema.Literals(["user", "assistant"]),
-  text: Schema.String,
-  entryId: Schema.optional(Schema.String),
-});
-const decodeBranchTextPart = Schema.decodeUnknownOption(BranchTextPart);
-
-/** User and assistant text through the anchored message, or undefined when it is gone. */
-const cakeChatBranchMessages = (
-  parts: ReadonlyArray<unknown>,
-  anchor: { readonly messageId?: string; readonly entryId?: string },
-) => {
-  const messages: Array<{ role: "user" | "assistant"; text: string }> = [];
-  for (const candidate of parts) {
-    const part = Option.getOrUndefined(decodeBranchTextPart(candidate));
-    if (!part) continue;
-    messages.push({ role: part.role, text: part.text });
-    if (part.id === anchor.messageId || (anchor.entryId && part.entryId === anchor.entryId))
-      return messages;
-  }
-  return undefined;
-};
 
 /** Import historical dialogue without submitting a request or changing thread lifecycle. */
 export const merge = Effect.fn("DiscussionSessions.merge")(function* (
