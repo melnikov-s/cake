@@ -40,7 +40,7 @@ import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import { durableContextMetadata } from "./durable-context-metadata";
 import { createDurableChatMemory, type DurableMemoryOptions } from "./durable-chat-memory";
 import { withoutDurableInputPresentation } from "./durable-input-presentation";
-import { DurableMemoryError, durableMemoryWork } from "./durable-memory-work";
+import { MemorySummaryError, memoryWork } from "../opt-memory/memory-work";
 import { durableModelFacade } from "./durable-model-facade";
 import { reportSlowCakeToolExecution } from "../pi/runtime/cake-tool-timing";
 import { durableContextInspection } from "./durable-context-inspection";
@@ -158,7 +158,7 @@ export async function openDurableChatEngine(options: {
     budget?: number,
     batch: Parameters<typeof memory.synchronize>[3] = {},
   ) => {
-    const work = batch.work ?? durableMemoryWork(signal);
+    const work = batch.work ?? memoryWork(signal);
     signal = work.signal;
     const result = worker.then(() => {
       signal.throwIfAborted();
@@ -187,14 +187,14 @@ export async function openDurableChatEngine(options: {
     if (closing.signal.aborted || foreground > 0 || maintenance || pendingCutoff === undefined)
       return;
     let consumed = false;
-    let work: ReturnType<typeof durableMemoryWork> | undefined;
+    let work: ReturnType<typeof memoryWork> | undefined;
     maintenance = (async () => {
       if ((await harness.snapshot(LiveDoc, root.id, BACKGROUND_CONTEXT))?.run) return;
       const cutoff = pendingCutoff;
       pendingCutoff = undefined;
       consumed = true;
       maintenanceAbort = new AbortController();
-      work = durableMemoryWork(AbortSignal.any([closing.signal, maintenanceAbort.signal]));
+      work = memoryWork(AbortSignal.any([closing.signal, maintenanceAbort.signal]));
       if (foreground === 0 && !(await harness.snapshot(LiveDoc, root.id, BACKGROUND_CONTEXT))?.run)
         await index(work.signal, cutoff, undefined, { work });
     })()
@@ -202,7 +202,7 @@ export async function openDurableChatEngine(options: {
         if (!closing.signal.aborted && !maintenanceAbort?.signal.aborted)
           options.onReport(
             new Error(
-              `Cake Chat incremental memory maintenance paused: ${error instanceof DurableMemoryError ? error.reason : "preparation-failed"}; ${JSON.stringify(work?.metrics())}. Originals and committed progress are preserved.`,
+              `Cake Chat incremental memory maintenance paused: ${error instanceof MemorySummaryError ? error.reason : "preparation-failed"}; ${JSON.stringify(work?.metrics())}. Originals and committed progress are preserved.`,
             ),
           );
       })
@@ -216,7 +216,7 @@ export async function openDurableChatEngine(options: {
     streamSimple(model, request, streamOptions) {
       const stream = createAssistantMessageEventStream();
       let preparing = true;
-      let preparationWork: ReturnType<typeof durableMemoryWork> | undefined;
+      let preparationWork: ReturnType<typeof memoryWork> | undefined;
       foreground += 1;
       maintenanceAbort?.abort();
       void (async () => {
@@ -322,7 +322,7 @@ export async function openDurableChatEngine(options: {
         const reset = async (reason: "limit" | "cache-cold" | "cache-unknown" | "overflow") => {
           const readyOnly = reason === "cache-cold" || reason === "cache-unknown";
           preparing = true;
-          preparationWork ??= durableMemoryWork(signal);
+          preparationWork ??= memoryWork(signal);
           const context = withAbortSignal(preparationWork.signal, BACKGROUND_CONTEXT);
           preparationWork.signal.throwIfAborted();
           if (input === undefined)
@@ -559,7 +559,7 @@ export async function openDurableChatEngine(options: {
           // In particular its subsequently committed assistant error must not
           // immediately replay the same expensive work in the background.
           if (preparing) pendingCutoff = undefined;
-          const failure = error instanceof DurableMemoryError ? error.reason : "preparation-failed";
+          const failure = error instanceof MemorySummaryError ? error.reason : "preparation-failed";
           if (preparing && !aborted)
             options.onReport(
               new Error(

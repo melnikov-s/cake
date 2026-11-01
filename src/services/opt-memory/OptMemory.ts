@@ -10,9 +10,10 @@ import type {
 } from "../../contracts/memory/opt-memory-data";
 
 /**
- * Persistence/provider boundary for reusable OptMem. No Layer is wired in the review skeleton.
+ * Persistence/provider boundary for reusable OptMem. makeOptMemoryLive supplies the
+ * shared per-automation note store; Durable uses the same tree with its SDK adapter.
  *
- * Extract the existing binary-tree compaction into this directory. Durable chat keeps
+ * The binary-tree compaction lives in this directory. Durable chat keeps
  * its original-entry selection, SQLite document/entry adapter, current prompt policy,
  * context handoff, exact recall and public Zoom presentation. It calls the extracted
  * core rather than retaining a second implementation of the compaction algorithm.

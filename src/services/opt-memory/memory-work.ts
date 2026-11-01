@@ -1,12 +1,21 @@
 import { Schema } from "effect";
-import {
-  awaitWithContext,
-  BACKGROUND_CONTEXT,
-  withAbortSignal,
-} from "@earendil-works/chord/context";
+/** The reusable core has no SDK context. Wait for either an adapter request or
+ * its lifecycle cancellation, removing the listener when the request settles. */
+export async function abortableMemoryTask<A>(task: Promise<A>, signal: AbortSignal): Promise<A> {
+  signal.throwIfAborted();
+  const result = Promise.withResolvers<A>();
+  const abort = () => result.reject(signal.reason);
+  signal.addEventListener("abort", abort, { once: true });
+  task.then(result.resolve, result.reject);
+  try {
+    return await result.promise;
+  } finally {
+    signal.removeEventListener("abort", abort);
+  }
+}
 
-export class DurableMemoryError extends Schema.TaggedError<DurableMemoryError>()(
-  "DurableMemoryError",
+export class MemorySummaryError extends Schema.TaggedError<MemorySummaryError>()(
+  "MemorySummaryError",
   { reason: Schema.Literals(["completion-failed", "empty-summary"]) },
 ) {}
 
@@ -14,7 +23,7 @@ export class DurableMemoryError extends Schema.TaggedError<DurableMemoryError>()
  * on Stop, foreground preemption or closure; successful nodes commit independently.
  * A completion failure is per node: the index stores a verbatim excerpt instead,
  * so one unsummarizable message can never stall memory or wedge the chat. */
-export function durableMemoryWork(signal: AbortSignal) {
+export function memoryWork(signal: AbortSignal) {
   let calls = 0;
   const started = Date.now();
   return {
@@ -26,17 +35,14 @@ export function durableMemoryWork(signal: AbortSignal) {
       // Release the serialized owner even if an external callback ignores cancellation.
       // The abandoned callback cannot commit nodes: only synchronize owns persistence.
       try {
-        const result = await awaitWithContext(
-          operation(signal),
-          withAbortSignal(signal, BACKGROUND_CONTEXT),
-        );
+        const result = await abortableMemoryTask(operation(signal), signal);
         signal.throwIfAborted();
         return result;
       } catch {
         signal.throwIfAborted();
-        throw new DurableMemoryError({ reason: "completion-failed" });
+        throw new MemorySummaryError({ reason: "completion-failed" });
       }
     },
   };
 }
-export type DurableMemoryWork = ReturnType<typeof durableMemoryWork>;
+export type MemoryWork = ReturnType<typeof memoryWork>;

@@ -18,8 +18,8 @@ import {
   createDurableChatMemory,
   type DurableMemoryOptions,
 } from "../../../../src/services/pi-durable/durable-chat-memory";
-import { durableMemoryWork } from "../../../../src/services/pi-durable/durable-memory-work";
-import { MEMORY_INPUT_BYTES } from "../../../../src/services/pi-durable/durable-memory-policy";
+import { memoryWork } from "../../../../src/services/opt-memory/memory-work";
+import { MEMORY_INPUT_BYTES } from "../../../../src/services/opt-memory/memory-policy";
 import { encodeScheduledMessage } from "../../../../src/contracts/conversations/scheduled-message-envelope";
 import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
 
@@ -441,7 +441,7 @@ it("accepts exactly 512 UTF-8 bytes and enforces that bound on both leaves and m
 it("finishes a catch-up across more than 32 model calls while preserving every original", async () => {
   const f = await fixture();
   for (let i = 0; i < 40; i += 1) await f.append(`RAW_${i} `.repeat(100));
-  const work = durableMemoryWork(signal());
+  const work = memoryWork(signal());
   const view = await f.memory.synchronize(work.signal, undefined, undefined, { work });
   expect(view.sourceCount).toBe(40);
   expect(work.metrics().calls).toBeGreaterThan(32);
@@ -457,7 +457,7 @@ it("allows a completion to run past the former work and call deadlines", async (
     return controller.signal;
   });
   try {
-    const work = durableMemoryWork(signal());
+    const work = memoryWork(signal());
     const pending = work.complete(
       () => new Promise((resolve) => setTimeout(() => resolve("complete summary"), 180_000)),
     );
@@ -472,7 +472,7 @@ it("allows a completion to run past the former work and call deadlines", async (
 
 it("releases a non-cooperative completion when its lifecycle owner cancels", async () => {
   const cancellation = new AbortController();
-  const work = durableMemoryWork(cancellation.signal);
+  const work = memoryWork(cancellation.signal);
   const started = Promise.withResolvers<AbortSignal>();
   const pending = work.complete((signal) => {
     started.resolve(signal);
