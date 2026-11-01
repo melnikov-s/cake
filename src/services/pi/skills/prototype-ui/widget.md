@@ -1,6 +1,8 @@
 # Five-prototype widget contract
 
-This file is for the widget specialist. Implement the parent brief as one React artifact widget containing five complete UI prototypes.
+This file is for the widget specialist only when the parent has chosen the optional persistent five-option chooser and selected-source handoff workflow in `SKILL.md`. It does not apply to static HTML/CSS comparisons or interactive prototypes that do not need that workflow. Honor explicit HTML requests; use `html.present` for static comparisons, with the user's choice expressed in chat rather than saved artifact state.
+
+For this richer workflow, implement the parent brief as one React artifact widget containing five complete UI prototypes.
 
 ## Presentation
 
