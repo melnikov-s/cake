@@ -101,6 +101,26 @@ describe("VS Code color data import", () => {
     },
   );
 
+  it.each(["light", "dark"] as const)(
+    "keeps worktree status colors fixed while importing %s git decoration colors",
+    (type) => {
+      const theme = parse(
+        JSON.stringify({
+          type,
+          colors: {
+            "gitDecoration.addedResourceForeground": "#ff0000",
+            "gitDecoration.stageModifiedResourceForeground": "#ebcb8b",
+          },
+        }),
+      );
+      const tokens = cakeThemeTokens(theme);
+      expect(tokens["--worktree-open"]).toBeUndefined();
+      expect(tokens["--worktree-merged"]).toBeUndefined();
+      expect(tokens["--success"]).toBe("#ff0000");
+      expect(editorThemeSettings(theme)["workbench.colorCustomizations"]).toEqual(theme.colors);
+    },
+  );
+
   it("infers light/dark from the editor canvas when type is missing", () => {
     expect(parse('{"colors":{"editor.background":"#fff"}}').type).toBe("light");
     expect(parse('{"colors":{"editor.background":"#111"}}').type).toBe("dark");

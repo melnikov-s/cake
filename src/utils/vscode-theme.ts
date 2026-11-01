@@ -122,8 +122,6 @@ export function cakeThemeTokens(theme: ImportedColorTheme) {
     attention: ["editorWarning.foreground"],
     warning: ["editorWarning.foreground"],
     destructive: ["errorForeground", "editorError.foreground"],
-    "worktree-open": ["gitDecoration.addedResourceForeground"],
-    "worktree-merged": ["gitDecoration.stageModifiedResourceForeground"],
     selection: ["editor.selectionBackground"],
   };
   for (const [role, keys] of Object.entries(roles)) {

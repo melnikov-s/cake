@@ -11,7 +11,9 @@ let appliedTokens: string[] = [];
 
 /** Window-scoped DOM projection of AppearanceSettingsStore, not a persistence authority. */
 export function applyDocumentTheme(choice: AppearanceMode, custom?: ImportedColorTheme) {
-  for (const token of appliedTokens) document.documentElement.style.removeProperty(token);
+  // Worktree status colors belong to Cake's light/dark CSS, never to a theme.
+  for (const token of [...appliedTokens, "--worktree-open", "--worktree-merged"])
+    document.documentElement.style.removeProperty(token);
   const tokens = custom ? cakeThemeTokens(custom) : {};
   appliedTokens = Object.keys(tokens);
   for (const [token, value] of Object.entries(tokens))
