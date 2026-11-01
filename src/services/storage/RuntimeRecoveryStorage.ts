@@ -23,7 +23,12 @@ export const RuntimeRecoveryRecord = Schema.Struct({
   sessionId: Schema.String,
   workingDirectory: Schema.String,
   sessionDirectory: Schema.String,
-  profile: Schema.Literals(["ProjectSession", "CakeChatSession", "SubagentSession"]),
+  profile: Schema.Literals([
+    "ProjectSession",
+    "CakeChatSession",
+    "SubagentSession",
+    "AutomationSession",
+  ]),
   transcriptPersisted: Schema.Boolean,
   inputs: Schema.Array(RuntimeRecoveryInput),
   state: Schema.Literals(["active", "blocked", "complete", "failed", "stopped"]),

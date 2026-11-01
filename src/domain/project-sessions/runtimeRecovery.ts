@@ -10,8 +10,8 @@ export const initialize = Effect.fn("RuntimeRecovery.initialize")(function* () {
   const storage = yield* RuntimeRecoveryStorage;
   const availableLocations = yield* locations();
   for (const record of yield* storage.list()) {
-    // Private workers are restored by their handle/capability owner before parent turns.
-    if (record.profile === "SubagentSession") continue;
+    // Private workers and automations are restored by their owning workflow.
+    if (record.profile === "SubagentSession" || record.profile === "AutomationSession") continue;
     if (!["active", "blocked", "stopped"].includes(record.state) || record.inputs.length === 0)
       continue;
     // Durable owns stopped coordinator queues and does not need a new admission.

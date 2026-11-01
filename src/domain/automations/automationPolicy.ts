@@ -18,24 +18,26 @@ export type AutomationAdmissionDecision =
   | { readonly action: "skip"; readonly reason: string }
   | { readonly action: "block"; readonly reason: string };
 
-/**
- * REVIEW SKELETON ONLY. Not connected to runtime callers.
- * The backend admission operation applies this policy while serializing admission per automation.
- * Paused automatic triggers are skipped without replay; manual triggers remain possible.
- * Suspended/archived definitions block execution; overlap is scoped to automationId.
- */
+/** The caller serializes this decision with recording the accepted occurrence. */
 export function decideAdmission(input: AutomationAdmissionInput): AutomationAdmissionDecision {
-  throw new Error(
-    `Automation ${input.source} admission is not implemented: contract review skeleton`,
-  );
+  if (input.state._tag === "archived")
+    return { action: "block", reason: "This automation is archived. Restore it before running." };
+  if (input.state._tag === "suspended") return { action: "block", reason: input.state.reason };
+  if (input.state._tag === "paused" && input.source !== "manual")
+    return { action: "skip", reason: "This automation is paused." };
+  if (input.runningSessions === 0 || input.overlap === "parallel") return { action: "start" };
+  if (input.overlap === "queue") return { action: "queue" };
+  return { action: "skip", reason: "An existing session of this automation is still running." };
 }
 
-/**
- * REVIEW SKELETON ONLY. Source kinds come from authoritative session/family metadata,
- * not renderer state, creator links, or a missing parent ID. All supplied filters intersect.
- */
+/** Source kind comes from authoritative session/family metadata. All filters intersect. */
 export function matchesEvent(filter: AutomationEventFilter, event: AutomationSourceEvent): boolean {
-  throw new Error(
-    `Automation event matching (${filter.event}, ${event.event}) is not implemented: contract review skeleton`,
+  return (
+    filter.event === event.event &&
+    filter.sessionKinds.includes(event.sourceKind) &&
+    (filter.scope._tag !== "Global" || event.projectPath === undefined) &&
+    (filter.scope._tag !== "Project" || filter.scope.projectPath === event.projectPath) &&
+    (filter.sessionId === undefined || filter.sessionId === event.sourceSessionId) &&
+    (filter.contentContains === undefined || event.text?.includes(filter.contentContains) === true)
   );
 }

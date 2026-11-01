@@ -77,6 +77,7 @@ import type { ConversationResponseMode } from "../../contracts/conversations/res
 import type { PiTurnResult } from "../../contracts/pi/turn-result-data";
 
 const PiSessionCapabilityProfile = Schema.TaggedUnion({
+  AutomationSession: {},
   ProjectSession: {},
   CakeChatSession: {},
   DiscussionSession: {},
@@ -490,7 +491,7 @@ const validateProfile = Effect.fn("CakeSessionRuntimes.validateProfile")(functio
   const profile = decoded._tag;
   const runtime = options.runtime;
   const valid =
-    (profile === "ProjectSession" &&
+    ((profile === "ProjectSession" || profile === "AutomationSession") &&
       !runtime.auxiliary &&
       !runtime.globalControl &&
       !runtime.sessionControl) ||
@@ -625,7 +626,11 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               const activityTiming: SharedRuntime["activityTiming"] = { startedAt: undefined };
               const turnResults = new Map<string, PiTurnResult>();
               const initialTranscriptPersisted = yield* Deferred.make<void>();
-              if (key.options.profile._tag === "ProjectSession" && key.options.runtime.newSession)
+              if (
+                (key.options.profile._tag === "ProjectSession" ||
+                  key.options.profile._tag === "AutomationSession") &&
+                key.options.runtime.newSession
+              )
                 yield* Deferred.await(initialTranscriptPersisted).pipe(
                   Effect.andThen(key.options.onSessionChanged ?? Effect.void),
                   Effect.orDie,
@@ -1142,7 +1147,11 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               Exit.isFailure(exit) ? Scope.close(turnScope, Exit.void) : Effect.void,
             ),
           );
-          if (options.profile._tag === "ProjectSession" && options.runtime.newSession) {
+          if (
+            (options.profile._tag === "ProjectSession" ||
+              options.profile._tag === "AutomationSession") &&
+            options.runtime.newSession
+          ) {
             // A new identity becomes discoverable at the first durable message, not
             // turn acceptance. Handled commands can finish without a conversation;
             // failed preparation must fail creation rather than leave a ghost identity.
