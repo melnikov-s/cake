@@ -47,6 +47,7 @@ function renderNavigation(
   open: Client["projectSessions"]["open"] = async () => undefined,
   navigationSessions = sessions,
   lookup?: Client["projectSessions"]["lookup"],
+  projectChats = false,
 ) {
   const fixture = createRendererStoreFixture({
     projects,
@@ -62,6 +63,20 @@ function renderNavigation(
       },
     },
   });
+  if (projectChats)
+    applySnapshot(fixture.models.cakeChatCatalog, {
+      loaded: true,
+      sessions: projects.map((project, index) => ({
+        sessionId: `project-chat:${String(index + 1).repeat(64)}`,
+        projectPath: project.path,
+        title: `${project.name} / Project Chat`,
+        createdAt: project.addedAt,
+        modifiedAt: project.lastOpenedAt,
+        messageCount: 0,
+        resolved: false,
+        unread: false,
+      })),
+    });
   let revision = 0;
   const publish = (id: string, streaming = false) =>
     applyConversationUpdate(
@@ -91,6 +106,16 @@ function renderNavigation(
     user: userEvent.setup(),
     async hydrate(id: string) {
       await act(async () => publish(id));
+    },
+    async hydrateProjectChat(index: number) {
+      const sessionId = `project-chat:${String(index + 1).repeat(64)}`;
+      await act(async () =>
+        applyConversationUpdate(fixture.models.cakeChatConversation(sessionId), {
+          _tag: "Snapshot",
+          revision: ++revision,
+          snapshot: { ...snapshot(sessionId), sessionFile: `/${sessionId}.sqlite` },
+        }),
+      );
     },
     async failHydration(id: string, message: string) {
       await act(async () => {
@@ -146,6 +171,10 @@ function renderNavigation(
 }
 beforeEach(() => {
   vi.stubGlobal("PointerEvent", MouseEvent);
+  Object.defineProperty(SVGElement.prototype, "getScreenCTM", {
+    configurable: true,
+    value: () => null,
+  });
   Object.defineProperty(SVGElement.prototype, "getBBox", {
     configurable: true,
     value: () => ({ x: 0, y: 0, width: 24, height: 24 }),
@@ -163,6 +192,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  Reflect.deleteProperty(SVGElement.prototype, "getScreenCTM");
   Reflect.deleteProperty(SVGElement.prototype, "getBBox");
   Reflect.deleteProperty(HTMLElement.prototype, "animate");
   vi.unstubAllGlobals();
@@ -196,6 +226,38 @@ function pressActiveSessionShortcut(direction: "next" | "previous") {
 }
 
 describe("Project navigation workflow", () => {
+  it("reveals a newly hydrated Project Chat when switching projects in a split without another interaction", async () => {
+    using fixture = renderNavigation(undefined, sessions, undefined, true);
+    const matchMedia = window.matchMedia;
+    vi.stubGlobal("matchMedia", (query: string) => ({ ...matchMedia(query), matches: false }));
+    const exits: Animation[] = [];
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      value: function (this: HTMLElement) {
+        const animation = { cancel: vi.fn(), onfinish: null } as unknown as Animation;
+        if (this.dataset.slot === "content-transition-outgoing") exits.push(animation);
+        return animation;
+      },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Split right" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Open Project Chat for beta" }));
+    await fixture.hydrateProjectChat(1);
+    await fixture.user.click(screen.getByRole("button", { name: "Open Project Chat for gamma" }));
+    const live = document.querySelectorAll<HTMLElement>(
+      '[data-slot="chat"] > [data-slot="content-transition"] > [data-slot="content-transition-live"]',
+    )[1]!;
+    await act(async () => {
+      for (const exit of exits) exit.onfinish?.call(exit, {} as AnimationPlaybackEvent);
+    });
+    expect(live.classList.contains("opacity-0")).toBe(true);
+    await fixture.hydrateProjectChat(2);
+    await waitFor(() => expect(live.classList.contains("opacity-0")).toBe(false));
+    expect(live.hasAttribute("aria-hidden")).toBe(false);
+    expect(live.inert).toBe(false);
+    expect(document.querySelectorAll('[data-slot="session-pane"]')).toHaveLength(2);
+    expect(screen.getByPlaceholderText("Ask Cake to work in alpha…")).toBeDefined();
+  });
+
   it("keeps a newer split-pane selection when an earlier session open finishes", async () => {
     const opening = deferred<void>();
     const open = vi.fn<Client["projectSessions"]["open"]>(() => opening.promise);
