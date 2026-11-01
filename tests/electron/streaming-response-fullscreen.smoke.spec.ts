@@ -6,13 +6,17 @@ import { join, resolve } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
+import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
 import { CAKE_TITLE_BAR_HEIGHT } from "../../src/services/electron/Electron";
+import { emitRendererEvent } from "./main-harness";
 
 const repository = resolve(import.meta.dirname, "../..");
 const partial = "Streaming fullscreen response. ".repeat(180);
 const ending = "Final persisted content is still in the reader.";
+const firstTodo = "00000000-0000-4000-8000-000000000011";
+const selectedTodo = "00000000-0000-4000-8000-000000000012";
 const chunk = (delta: object, finish_reason: string | null = null) =>
   `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
 
@@ -25,9 +29,18 @@ for (const surface of ["project", "global", "session"] as const) {
     const agentDir = join(cakeHome, "pi");
     const userData = join(temporary, "user-data");
     const responses: ServerResponse[] = [];
+    const turnIds: string[] = [];
     const server = createServer(async (request, response) => {
       // Consume the request before starting our explicitly controlled stream.
-      await request.toArray();
+      const body = JSON.parse(Buffer.concat(await request.toArray()).toString()) as {
+        messages: Array<{ role: string; content: string | Array<{ text?: string }> | null }>;
+      };
+      const content = body.messages.findLast((message) => message.role === "user")?.content;
+      const wire =
+        typeof content === "string"
+          ? content
+          : (content?.map((part) => part.text ?? "").join("\n") ?? "");
+      turnIds.push([...wire.matchAll(/cake-turn id="([^"]+)"/g)].at(-1)?.[1] ?? "");
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.flushHeaders();
       responses.push(response);
@@ -79,6 +92,18 @@ for (const surface of ["project", "global", "session"] as const) {
                 name: "Fullscreen project",
                 addedAt: new Date(0).toISOString(),
                 lastOpenedAt: new Date(0).toISOString(),
+                todos: {
+                  ...emptyProjectTodos(),
+                  items: [firstTodo, selectedTodo].map((id, index) => ({
+                    id,
+                    title: index === 0 ? "Earlier task" : "Current task",
+                    description: "Fullscreen regression task",
+                    status: "",
+                    state: "open",
+                    revision: 0,
+                    associations: [],
+                  })),
+                },
               },
             ],
             trustedProjectPaths: [project],
@@ -146,6 +171,10 @@ for (const surface of ["project", "global", "session"] as const) {
               : "Message",
         exact: true,
       });
+      if (surface === "project") {
+        await page.getByRole("button", { name: "To-do", exact: true }).click();
+        await page.getByRole("button", { name: "Current task", exact: true }).click();
+      }
       const reader = page.getByRole("dialog", { name: "Cake", exact: true });
       const modifier = process.platform === "darwin" ? "Meta" : "Alt";
       for (const entry of ["keyboard", "message"] as const) {
@@ -168,6 +197,10 @@ for (const surface of ["project", "global", "session"] as const) {
           message.evaluate((node) => node.closest("[data-part-id]")?.getAttribute("data-part-id"));
         const liveId = await partId();
         expect(liveId).toBeTruthy();
+        // Admission consumes next-message selection. Pick another task while the
+        // reply is unresolved; final attribution must not dismiss its reader.
+        if (surface === "project")
+          await page.getByRole("button", { name: "Current task", exact: true }).click();
         if (entry === "keyboard") {
           // No hovered message: exercise App's latest-response selection, not the message's local reader.
           await page.mouse.move(1, 1);
@@ -191,12 +224,29 @@ for (const surface of ["project", "global", "session"] as const) {
         expect(Math.abs(close!.y + close!.height / 2 - CAKE_TITLE_BAR_HEIGHT / 2)).toBeLessThan(1);
         await expect(reader).toContainText(partial.trim());
         const readerNode = await reader.elementHandle();
+        await emitRendererEvent(app, {
+          type: "notification",
+          tone: "info",
+          title: "Background activity",
+          message: `Fullscreen stays on ${entry}`,
+        });
+        await expect(page.getByText(`Fullscreen stays on ${entry}`, { exact: true })).toBeVisible();
+        expect(await readerNode!.evaluate((node) => node.isConnected)).toBe(true);
         response.write(chunk({ content: ending }));
+        if (surface === "project") {
+          expect(turnIds[count]).toBeTruthy();
+          response.write(
+            chunk({
+              content: `<cake-todo>${JSON.stringify({ turnId: turnIds[count], todoId: firstTodo })}</cake-todo>`,
+            }),
+          );
+        }
         response.end(chunk({}, "stop") + "data: [DONE]\n\n");
         // Wait for the real persisted projection, not merely a final streamed delta.
         await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
-        await expect.poll(partId).not.toBe(liveId);
         await expect(reader).toBeVisible();
+        if (surface !== "project" || entry !== "keyboard")
+          await expect.poll(partId).not.toBe(liveId);
         await expect(reader).toContainText(ending);
         expect(await readerNode!.evaluate((node) => node.isConnected)).toBe(true);
         if (entry === "keyboard") await page.keyboard.press("Escape");

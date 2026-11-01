@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { VirtuosoMockContext } from "react-virtuoso";
 import { applySnapshot } from "r-state-tree";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import * as projectTodos from "../../../src/domain/projects/projectTodos";
@@ -164,7 +165,9 @@ async function fixture(
             openExternalUrl: () => undefined,
           }}
         >
-          <App />
+          <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+            <App />
+          </VirtuosoMockContext.Provider>
         </MarkdownLinkProvider>
       </StoreProvider>
     </StoreProvider>,
@@ -599,6 +602,114 @@ it("toggles Project Chat to-dos in the existing side pane, selects/deselects, co
     await runtime.dispose();
   }
 });
+
+it.each(["response", "table"] as const)(
+  "keeps the selected fullscreen %s through background Project Chat activity",
+  async (surface) => {
+    const first = "00000000-0000-4000-8000-000000000001";
+    const second = "00000000-0000-4000-8000-000000000002";
+    using f = await fixture(undefined, [
+      {
+        ...projectRecord({ path: "/zombies", name: "zombies" }),
+        todos: {
+          ...emptyProjectTodos(),
+          selectedId: second,
+          items: [first, second].map((id) => ({
+            id,
+            title: `Task ${id}`,
+            description: "A tracked task",
+            status: "",
+            state: "open" as const,
+            revision: 0,
+            associations: [],
+          })),
+        },
+      },
+    ]);
+    const input: UiPart = {
+      id: "input",
+      kind: "text",
+      role: "user",
+      text: "Earlier task",
+      status: "complete",
+    };
+    const answer: UiPart = {
+      id: "answer",
+      kind: "text",
+      role: "assistant",
+      text: `${"Selected answer. ".repeat(340)}\n\n| Selected content | Value |\n| --- | --- |\n| Original table | Retained |`,
+      status: "complete",
+    };
+    act(() =>
+      f.root.cakeChatCollectionStore.registry
+        .load(projectId)
+        .conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+          kind: "top",
+        }),
+    );
+    f.publish(projectId, [input, answer], false);
+    await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+    await f.user.click(screen.getByRole("button", { name: "To-do" }));
+    const title = surface === "response" ? "Cake" : "Table";
+    await f.user.click(await screen.findByRole("button", { name: `View ${surface} fullscreen` }));
+    const reader = screen.getByRole("dialog", { name: title });
+    // Attribution arrives with a transcript refresh, not a user navigation or dismissal.
+    f.publish(projectId, [{ ...input, taskTodoId: first }, answer], false);
+    expect(screen.getByRole("dialog", { name: title })).toBe(reader);
+    // A catalog reconciliation, to-do revision and another streaming reply must
+    // not navigate away or replace the content that the user chose.
+    act(() => {
+      applySnapshot(f.models.cakeChatCatalog, {
+        loaded: true,
+        sessions: [
+          chatSummary(CAKE_CHAT_SESSION_ID),
+          chatSummary(projectId, "/zombies", "2026-01-03T00:00:00Z"),
+          chatSummary(otherId, "/finance"),
+        ],
+      });
+      applyProjectCatalogUpdate(f.models.projects, {
+        _tag: "Event",
+        revision: 1,
+        event: {
+          _tag: "Upserted",
+          project: {
+            ...projectRecord({ path: "/zombies", name: "zombies" }),
+            todos: {
+              ...emptyProjectTodos(),
+              selectedId: second,
+              items: [first, second].map((id) => ({
+                id,
+                title: `Updated task ${id}`,
+                description: "Updated in background",
+                status: "Working",
+                state: "open",
+                revision: 1,
+                associations: [],
+              })),
+            },
+          },
+        },
+      });
+    });
+    f.publish(
+      projectId,
+      [
+        { ...input, taskTodoId: first },
+        answer,
+        { ...answer, id: "later", text: "A different streaming answer.", status: "streaming" },
+      ],
+      true,
+    );
+    expect(screen.getByRole("dialog", { name: title })).toBe(reader);
+    expect(within(reader).getByText("Original table")).toBeTruthy();
+    expect(reader.textContent).not.toContain("A different streaming answer.");
+    expect(f.setFullscreenSurfaceOpen.mock.calls.map(([, open]) => open)).toEqual([true]);
+    await f.user.click(within(reader).getByRole("button", { name: `Exit fullscreen ${title}` }));
+    expect(screen.queryByRole("dialog", { name: title })).toBeNull();
+    // Folding is deferred, not overridden: the attributed answer folds on exit.
+    expect(screen.queryByRole("button", { name: `View ${surface} fullscreen` })).toBeNull();
+  },
+);
 
 it.each([projectId, CAKE_CHAT_SESSION_ID, "task"])(
   "keeps the latest-response fullscreen reader on its completed message in %s",

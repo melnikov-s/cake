@@ -1,4 +1,12 @@
-import { useEffect, useId, useRef, type ComponentProps, type ReactNode } from "react";
+import {
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
@@ -6,6 +14,7 @@ import { CloseIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { FullscreenSurfaceStore } from "../stores/FullscreenSurfaceStore";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
+import { FullscreenTranscriptContext } from "./fullscreen-transcript-context";
 
 export function FullscreenSurface({
   children,
@@ -28,6 +37,8 @@ export function FullscreenSurface({
   >;
 }) {
   const fullscreenSurfaces = useStore(FullscreenSurfaceStore);
+  const transcript = useContext(FullscreenTranscriptContext);
+  useLayoutEffect(() => transcript?.retain(), [transcript]);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);

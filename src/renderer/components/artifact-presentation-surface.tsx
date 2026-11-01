@@ -5,7 +5,6 @@ import { RootStore } from "../stores/RootStore";
 import { projectTranscriptBehaviorFor } from "../lib/project-transcript-behavior";
 import { cakeChatTranscriptBehaviorFor } from "../lib/cake-chat-transcript-behavior";
 import { InlineArtifactContext } from "./inline-artifact-context";
-import { ArtifactTranscriptContext } from "./artifact-transcript-context";
 import { ArtifactPresentationChatContext } from "./artifact-presentation-chat-context";
 import { FullscreenSurface } from "./fullscreen-surface";
 import { WorkspacePanelToggle } from "./ui/workspace-panel-toggle";
@@ -29,8 +28,6 @@ export const ArtifactPresentationSurface = observer(function ArtifactPresentatio
 }) {
   const root = useStore(RootStore);
   const inline = useContext(InlineArtifactContext);
-  const transcript = useContext(ArtifactTranscriptContext);
-  useLayoutEffect(() => transcript?.retain(), [transcript]);
   // ChatStore IDs can be display-only (for example private workers). Only a
   // canonical conversation identity can scope artifact access and input context.
   const ownerId = inline

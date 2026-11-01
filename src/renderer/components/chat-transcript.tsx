@@ -18,7 +18,7 @@ import {
 import { AnnotationDraftPopover } from "@/components/annotation-draft-popover";
 import { ChatTranscriptFooter } from "./chat-transcript-footer";
 import { ConversationMarkdownProvider } from "./conversation-markdown-provider";
-import { ArtifactTranscriptContext } from "./artifact-transcript-context";
+import { FullscreenTranscriptContext } from "./fullscreen-transcript-context";
 import { TranscriptScroller } from "./transcript-scroller";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -103,16 +103,17 @@ export const ChatTranscript = observer(function ChatTranscript({
     [behavior.inlineArtifactPreviews, store],
   );
   const sideChat = useContext(SideChatContext);
-  const [presentedArtifacts, setPresentedArtifacts] = useState(0);
-  const artifactTranscript = useMemo(
+  const [presentedFullscreens, setPresentedFullscreens] = useState(0);
+  const fullscreenTranscript = useMemo(
     () => ({
       retain() {
-        setPresentedArtifacts((count) => count + 1);
-        return () => setPresentedArtifacts((count) => count - 1);
+        setPresentedFullscreens((count) => count + 1);
+        return () => setPresentedFullscreens((count) => count - 1);
       },
     }),
     [],
   );
+  const uncoveredExpansion = useRef(new Map<string, boolean>());
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -197,7 +198,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       : undefined;
   // Keep every section heading in chronology, even when its body is folded.
   // Filtering the view avoids zero-height rows in the virtualizer.
-  const sectionViews = taskSections?.sections.map((section) => {
+  const sectionViews = taskSections?.sections.map((section, index) => {
     const todoId = section.todoId;
     if (!todoId || !behavior.todos?.value?.items.some((todo) => todo.id === todoId))
       return undefined;
@@ -205,8 +206,18 @@ export const ChatTranscript = observer(function ChatTranscript({
     return {
       ...section,
       key,
-      expanded: behavior.todos.transcriptSectionExpanded(key, todoId),
+      // Defer covered folding changes, including newly attributed sections.
+      // Expanding previously hidden rows can also virtualize away the owner.
+      expanded:
+        (presentedFullscreens ? uncoveredExpansion.current.get(allItemKeys[index]!) : undefined) ??
+        behavior.todos.transcriptSectionExpanded(key, todoId),
     };
+  });
+  useLayoutEffect(() => {
+    if (presentedFullscreens || !taskSections) return;
+    uncoveredExpansion.current = new Map(
+      allItemKeys.map((key, index) => [key, sectionViews?.[index]?.expanded ?? true]),
+    );
   });
   const selectedHiddenSection = selectedMessageId
     ? sectionViews?.[
@@ -241,9 +252,9 @@ export const ChatTranscript = observer(function ChatTranscript({
     if (!owner || scrolledForSentMessage.current === sentMessageRevision) return;
     if (virtualized && lastItemKey !== undefined && !virtuosoRef.current) return;
     scrolledForSentMessage.current = sentMessageRevision;
-    // The side chat may follow this send, but its covered transcript must keep
-    // the row that owns the live fullscreen artifact mounted.
-    if (presentedArtifacts) return;
+    // Side chat may follow this send, but its covered transcript must keep
+    // the row that owns fullscreen mounted.
+    if (presentedFullscreens) return;
     owner.scrollToBottomForSentMessage(
       virtualized && lastItemKey !== undefined
         ? {
@@ -253,7 +264,7 @@ export const ChatTranscript = observer(function ChatTranscript({
           }
         : undefined,
     );
-  }, [lastItemKey, scroller, sentMessageRevision, virtualized, presentedArtifacts]);
+  }, [lastItemKey, scroller, sentMessageRevision, virtualized, presentedFullscreens]);
   const isArriving = useArrivals(itemKeys, store.id);
   const transcriptBehavior = useMemo<CanonicalTranscriptBehavior>(
     () => ({
@@ -324,12 +335,12 @@ export const ChatTranscript = observer(function ChatTranscript({
   }, [navigationItemIndex, restoredMessageItemIndex, restoredScrollPosition]);
   const selecting = selectedMessageId !== undefined;
   useLayoutEffect(
-    () => scrollOwner.current?.setSelecting(selecting || presentedArtifacts > 0),
-    [scroller, selecting, presentedArtifacts],
+    () => scrollOwner.current?.setSelecting(selecting || presentedFullscreens > 0),
+    [scroller, selecting, presentedFullscreens],
   );
   useLayoutEffect(
-    () => scrollOwner.current?.setCovered(presentedArtifacts > 0),
-    [scroller, presentedArtifacts],
+    () => scrollOwner.current?.setCovered(presentedFullscreens > 0),
+    [scroller, presentedFullscreens],
   );
   // The selection is identified by its stable item key, never by its index, so
   // arriving or streaming messages cannot retarget a reveal.
@@ -462,7 +473,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     </>
   );
   const renderItem = (item: TranscriptItem, index: number) => (
-    <ArtifactTranscriptContext key={itemKeys[index]} value={artifactTranscript}>
+    <FullscreenTranscriptContext key={itemKeys[index]} value={fullscreenTranscript}>
       <ChatTranscriptItem
         itemKey={itemKeys[index] ?? item.id}
         item={item}
@@ -477,7 +488,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         loadingLabel={loadingLabel}
         taskSection={visibleSectionViews[index]}
       />
-    </ArtifactTranscriptContext>
+    </FullscreenTranscriptContext>
   );
   return (
     <ConversationMarkdownProvider
