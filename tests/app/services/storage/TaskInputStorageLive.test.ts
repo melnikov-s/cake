@@ -28,7 +28,10 @@ import {
 } from "../../../../src/services/pi/runtime/session-projection";
 import type { Attachment } from "../../../../src/contracts/conversations/session-contract";
 import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
-import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  cakeChatSideChatSessionId,
+} from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import { projectChatSessionId } from "../../../../src/domain/cake-chats/cakeChatLocations";
 
 const owner = "00000000-0000-4000-8000-000000000001";
@@ -85,25 +88,37 @@ describe("task-input isolation", () => {
     ),
   );
 
-  it.effect.each(["../escape", "project-chat:../escape", "project-chat:abc", "not-a-session"])(
-    "rejects invalid task-input session identities: %s",
-    (sessionId) =>
-      fixture(() =>
-        Effect.gen(function* () {
-          const storage = yield* TaskInputStorage;
-          const result = yield* Effect.result(
-            storage.isolate(sessionId, [{ kind: "text", name: "Notes", text: "private" }]),
-          );
-          expect(result).toMatchObject({
-            _tag: "Failure",
-            failure: { _tag: "AttachmentUploadError", operation: "sessionId" },
-          });
-          expect(yield* storage.isRecipient(sessionId)).toBe(false);
-        }),
-      ),
+  it.effect.each([
+    "../escape",
+    "project-chat:../escape",
+    "project-chat:abc",
+    "not-a-session",
+    `${CAKE_CHAT_SESSION_ID}:side-chat:../escape`,
+    `${CAKE_CHAT_SESSION_ID}:side-chat:0`,
+    `${projectChatSessionId("/project")}:side-chat:invalid`,
+  ])("rejects invalid task-input session identities: %s", (sessionId) =>
+    fixture(() =>
+      Effect.gen(function* () {
+        const storage = yield* TaskInputStorage;
+        const result = yield* Effect.result(
+          storage.isolate(sessionId, [{ kind: "text", name: "Notes", text: "private" }]),
+        );
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "AttachmentUploadError", operation: "sessionId" },
+        });
+        expect(yield* storage.isRecipient(sessionId)).toBe(false);
+      }),
+    ),
   );
 
-  it.effect("keeps Cake Chat annotations inline, exactly as Project Sessions admit them", () =>
+  it.effect.each([
+    owner,
+    CAKE_CHAT_SESSION_ID,
+    projectChatSessionId("/project"),
+    cakeChatSideChatSessionId(2),
+    cakeChatSideChatSessionId(3, projectChatSessionId("/project")),
+  ])("keeps annotations inline when admitting them to %s", (sessionId) =>
     fixture(() =>
       Effect.gen(function* () {
         const annotation: Attachment = {
@@ -125,7 +140,7 @@ describe("task-input isolation", () => {
         // Other originals are still isolated behind references; order is preserved.
         expect(coordinator[0]).toMatchObject({ kind: "input", name: "Notes" });
         expect(coordinator[1]).toEqual(annotation);
-        expect(yield* prepareTaskInputs(target, false, [annotation])).toEqual([
+        expect(yield* prepareTaskInputs(sessionId, false, [annotation])).toEqual([
           expect.objectContaining(annotation),
         ]);
       }),

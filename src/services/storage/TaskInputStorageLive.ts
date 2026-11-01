@@ -7,7 +7,10 @@ import type {
 } from "../../contracts/conversations/attachment-reference-control";
 import { Clock, Effect, Layer, Option, Schema, Semaphore } from "effect";
 import { attachmentSchema, type Attachment } from "../../contracts/conversations/session-contract";
-import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  cakeChatSideChatConversationId,
+  isCakeChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import {
   TaskInputReference,
   MAX_PASTED_TEXT_BYTES,
@@ -15,10 +18,15 @@ import {
 import { AttachmentUploadError } from "../../contracts/filesystem/attachment-uploads-errors";
 import { TaskInputStorage } from "./TaskInputStorage";
 
-// Project Chats have stable non-UUID addresses. Keep every accepted key path-safe.
+// Permanent chats and their Durable side chats have non-UUID addresses.
+// Keep every accepted key path-safe.
 const SessionKey = Schema.Union([
   Schema.String.check(Schema.isUUID()),
-  Schema.String.check(Schema.makeFilter(isCakeChatSessionId)),
+  Schema.String.check(
+    Schema.makeFilter(
+      (value) => isCakeChatSessionId(value) || cakeChatSideChatConversationId(value) !== undefined,
+    ),
+  ),
 ]);
 const StoredInput = Schema.Struct({
   ownerSessionId: Schema.String,

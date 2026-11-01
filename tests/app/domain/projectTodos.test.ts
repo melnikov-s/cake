@@ -22,7 +22,10 @@ import {
   projectTodoReceipt,
   splitProjectTodoReminder,
 } from "../../../src/contracts/projects/project-todo-context";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  cakeChatSideChatSessionId,
+} from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { ApplicationWriteError } from "../../../src/contracts/storage/application-storage-errors";
@@ -35,6 +38,23 @@ import { addReferenceNotifications } from "../../../src/contracts/conversations/
 import { createProjectTodoOperations } from "../../../src/domain/projects/project-todo-operations";
 
 const project = "/project";
+
+it.effect.each([CAKE_CHAT_SESSION_ID, projectChatSessionId(project)])(
+  "does not treat a side-chat follow-up as a parent to-do context submission (%s)",
+  (parent) => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const item = yield* create();
+      yield* todos.mutateUser(project, { _tag: "Select", selectedId: item.id });
+      const side = cakeChatSideChatSessionId(2, parent);
+      expect(yield* todos.prepareForChat(side, "Check this annotation")).toEqual({
+        text: "Check this annotation",
+      });
+      expect((yield* todos.list(project)).selectedId).toBe(item.id);
+    }).pipe(Effect.provide(f.layer));
+  },
+);
 
 it.effect(
   "persists first-class subagent associations, exposes them in context and keeps public identities type-scoped",

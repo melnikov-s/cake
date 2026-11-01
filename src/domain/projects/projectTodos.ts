@@ -9,7 +9,10 @@ import {
 } from "../../contracts/cake-chats/session-digest-reminder";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import type { ApplicationState as ApplicationStateValue } from "../../contracts/application/application-data";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  isProjectChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { ProjectError } from "../../contracts/projects/project-error";
 import {
   CAKE_CHAT_TODO_SCOPE,
@@ -543,7 +546,7 @@ export const prepareUserContext = Effect.fn("ProjectTodos.prepareUserContext")(f
 /** The to-do list owned by a permanent chat, if that chat keeps one. */
 export const scopeForChat = Effect.fn("ProjectTodos.scopeForChat")(function* (sessionId: string) {
   if (sessionId === CAKE_CHAT_SESSION_ID) return CAKE_CHAT_TODO_SCOPE;
-  if (!sessionId.startsWith("project-chat:")) return undefined;
+  if (!isProjectChatSessionId(sessionId)) return undefined;
   const application = yield* ApplicationState;
   const project = application
     .snapshot()

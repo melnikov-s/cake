@@ -29,6 +29,9 @@ export function nestedTranscriptBehaviorFor(
   const workspacePath = discussion?.thread.workingDirectory ?? workerContext?.workspacePath;
   return {
     todos: parent.todos,
+    // Selection annotations use this chat's composer. Do not inherit
+    // messageComments: secondary chats cannot create nested side chats.
+    showSelectionContextMenu: parent.showSelectionContextMenu,
     workspacePath,
     messageReferenceSessionId: discussion?.sessionId,
     inlineWidgets: root.inlineWidgetStore,
