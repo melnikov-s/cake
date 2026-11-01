@@ -91,6 +91,7 @@ async function fixture(
         sessionId: "task",
         projectPath: "/zombies",
         workingDirectory: taskWorkingDirectory,
+        createdAt: "2026-01-03T00:00:00Z",
         modifiedAt: "2026-01-03T00:00:00Z",
       }),
     ],
@@ -891,7 +892,7 @@ it("gives global and project chats their own Browser destinations and returns to
   expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
 });
 
-it("orders Activity by the Project Chat's own timestamp, not its task sessions", async () => {
+it("keeps Activity in creation order through task and Project Chat message updates", async () => {
   using f = await fixture();
   await f.user.click(screen.getByRole("button", { name: "Show activity" }));
   const rows = () =>
@@ -905,6 +906,7 @@ it("orders Activity by the Project Chat's own timestamp, not its task sessions",
         sessionSummary({
           sessionId: "task",
           projectPath: "/zombies",
+          createdAt: "2026-01-03T00:00:00Z",
           modifiedAt: "2026-01-05T00:00:00Z",
         }),
       ],
@@ -922,5 +924,5 @@ it("orders Activity by the Project Chat's own timestamp, not its task sessions",
       ],
     }),
   );
-  expect(rows().indexOf(projectId)).toBeLessThan(rows().indexOf("task"));
+  expect(rows().indexOf("task")).toBeLessThan(rows().indexOf(projectId));
 });

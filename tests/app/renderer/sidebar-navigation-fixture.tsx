@@ -28,6 +28,7 @@ export function sidebarSummary(
   return sessionSummary({
     sessionId,
     projectPath: "/cake",
+    createdAt: new Date(Date.UTC(2026, 0, day)).toISOString(),
     modifiedAt: new Date(Date.UTC(2026, 0, day)).toISOString(),
     ...extra,
   });

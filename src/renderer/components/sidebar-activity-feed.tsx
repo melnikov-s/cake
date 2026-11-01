@@ -1,5 +1,5 @@
 import { observer } from "r-state-tree/react";
-import { compareSessionSummariesByActivity } from "../../utils/session-summary-order";
+import { compareSessionSummariesByCreation } from "../../utils/session-summary-order";
 import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
 import type { AppShellStore } from "../stores/AppShellStore";
 import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore";
@@ -55,28 +55,21 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
   const entries = [
     ...sessionList.activeProjectSessionFamilies.map((family) => ({
       kind: "family" as const,
-      modifiedAt: family.latestModifiedAt,
-      working: family.working,
+      sessionId: family.rootSessionId,
+      createdAt: family.createdAt,
       family,
     })),
     ...sessionList.activeCakeChatSessions.map((summary) => ({
       kind: "project-chat" as const,
-      modifiedAt: summary.modifiedAt,
-      working: summary.working,
+      sessionId: summary.sessionId,
+      createdAt: summary.createdAt,
       summary,
     })),
-  ].sort(
-    (left, right) =>
-      Number(right.working) - Number(left.working) ||
-      compareSessionSummariesByActivity(left, right) ||
-      (left.kind === "family" ? left.family.rootSessionId : left.summary.sessionId).localeCompare(
-        right.kind === "family" ? right.family.rootSessionId : right.summary.sessionId,
-      ),
-  );
+  ].sort(compareSessionSummariesByCreation);
   const groups = new Map<string, typeof entries>();
   for (const entry of entries) {
-    // Working family blocks lead; idle drafts share ordinary chronological day groups.
-    const key = entry.working ? "working" : dayKey(entry.modifiedAt);
+    // Group by creation too: ordinary activity must not move a row between days.
+    const key = dayKey(entry.createdAt);
     const group = groups.get(key) ?? [];
     group.push(entry);
     groups.set(key, group);
@@ -90,7 +83,7 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
       {[...groups.entries()].map(([key, group]) => (
         <section key={key}>
           <h2 className="px-2 pb-1.5 text-sm font-medium text-muted-foreground">
-            {key === "working" ? "Working" : dayLabel(group[0]!.modifiedAt, store.now)}
+            {dayLabel(group[0]!.createdAt, store.now)}
           </h2>
           <AnimatedList className="flex flex-col gap-1 pl-2">
             {group.map((entry) => {

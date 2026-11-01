@@ -26,6 +26,7 @@ const initialSessions = ["newer", "previous", "older", "oldest"].map((sessionId,
   sessionSummary({
     sessionId,
     projectPath,
+    createdAt: new Date(Date.UTC(2026, 0, 4 - index)).toISOString(),
     modifiedAt: new Date(Date.UTC(2026, 0, 4 - index)).toISOString(),
   }),
 );
@@ -198,7 +199,7 @@ for (const kind of ["project-session"] as const) {
       fixture.publishActivity(true, startedAt);
       expect(timestamp().textContent).toBe("Working 1m 5s");
       expect(timestamp().getAttribute("datetime")).toBe(new Date(startedAt).toISOString());
-      expect(fixture.order()[0]).toBe("previous");
+      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
       expect(vi.getTimerCount()).toBe(baselineTimers + 1);
       act(() => vi.advanceTimersByTime(2_000));
       expect(timestamp().textContent).toBe("Working 1m 7s");
@@ -252,7 +253,7 @@ for (const kind of ["project-session"] as const) {
       },
     );
 
-    it("moves selected inactive rows with recency without changing selection identity", async () => {
+    it("keeps selected inactive rows in creation order when message timestamps change", async () => {
       using fixture = renderOrdering();
       await fixture.openSession("previous");
       fixture.publish(
@@ -262,10 +263,10 @@ for (const kind of ["project-session"] as const) {
             : session,
         ),
       );
-      expect(fixture.order()).toEqual(["previous", "newer", "older", "oldest"]);
+      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
       expect(fixture.selected()).toBe("previous");
       await fixture.openSession("older");
-      expect(fixture.order()).toEqual(["previous", "newer", "older", "oldest"]);
+      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
       expect(fixture.selected()).toBe("older");
     });
   });

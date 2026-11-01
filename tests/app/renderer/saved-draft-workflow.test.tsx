@@ -480,7 +480,7 @@ describe("Saved Draft workflows", () => {
   });
 
   it.each([fixtureTimestamp, "2026-02-02T00:00:00.000Z"])(
-    "keeps the selected conversation identity while catalog takeover reorders its paginated sidebar row (%s)",
+    "keeps selection when activation unpins an older draft regardless of its message timestamp (%s)",
     async (modifiedAt) => {
       const drafts = fakeSavedDrafts();
       const title = "Duplicate title";
@@ -499,6 +499,7 @@ describe("Saved Draft workflows", () => {
             title: `Recent Pi session ${index}`,
             // Real lightweight Pi entries need not have inspected messages.
             messageCount: 0,
+            createdAt: "2026-02-01T00:00:00.000Z",
             modifiedAt: "2026-02-01T00:00:00.000Z",
           }),
         ),
@@ -514,13 +515,11 @@ describe("Saved Draft workflows", () => {
       expect(rowIds().sort()).toEqual([sessionId, otherId]);
       expect(screen.getByText(/This saved Draft may already have started/)).toBeDefined();
 
-      // Recent authority remains visible; older authority follows normal pagination.
+      // Activation removes draft pinning; creation date, not activity, sets pagination.
       fixture.publishCatalog(title, modifiedAt);
-      if (modifiedAt === fixtureTimestamp) {
-        expect(rowIds()).toEqual([otherId]);
-        expect(screen.getByText(/This saved Draft may already have started/)).toBeDefined();
-        await fixture.user.click(sidebar().getByRole("button", { name: "Show more" }));
-      }
+      expect(rowIds()).toEqual([otherId]);
+      expect(screen.getByText(/This saved Draft may already have started/)).toBeDefined();
+      await fixture.user.click(sidebar().getByRole("button", { name: "Show more" }));
       expect(rowIds().sort()).toEqual([sessionId, otherId]);
       await act(async () => held.release());
       await waitFor(() => expect(input()).toBeDefined());

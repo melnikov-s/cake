@@ -301,10 +301,14 @@ describe("Session catalog lifecycle workflows", () => {
     expect(setSessionUnread.mock.calls.map(([, unread]) => unread)).toEqual([true]);
   });
 
-  it("moves an unopened session up when its background turn settles, ignoring stale times", async () => {
+  it("keeps an unopened session in creation order when its background turn settles", async () => {
     using fixture = await renderCatalog({
       sessions: [
-        summary("newer", { title: "Newer", modifiedAt: "2026-01-02T00:00:00.000Z" }),
+        summary("newer", {
+          title: "Newer",
+          createdAt: "2026-01-02T00:00:00.000Z",
+          modifiedAt: "2026-01-02T00:00:00.000Z",
+        }),
         summary("background", { title: "Background", modifiedAt: "2026-01-01T00:00:00.000Z" }),
       ],
     });
@@ -319,12 +323,11 @@ describe("Session catalog lifecycle workflows", () => {
         revision,
         event: { _tag: "ActivityChanged", sessionId: "background", running: false, modifiedAt },
       });
-    // The settle event alone carries the new transcript time; no Upsert or open is needed.
+    // Settlement updates transcript time without moving an existing row.
     await settled(2, "2026-01-03T00:00:00.000Z");
-    expect(order()).toEqual(["background", "newer"]);
-    // A late event observed before a newer write must not move the row back.
+    expect(order()).toEqual(["newer", "background"]);
     await settled(3, "2026-01-01T12:00:00.000Z");
-    expect(order()).toEqual(["background", "newer"]);
+    expect(order()).toEqual(["newer", "background"]);
   });
 
   it("shows background child activity without opening it, then clears it on settlement", async () => {
@@ -517,7 +520,7 @@ describe("Session catalog lifecycle workflows", () => {
     },
   );
 
-  it("pins saved drafts above newer sessions but keeps zero-message Pi sessions in activity order", async () => {
+  it("pins saved drafts above newer sessions and keeps zero-message Pi sessions in creation order", async () => {
     const draft: SavedDraft = {
       sessionId: "draft",
       projectPath,
@@ -549,8 +552,8 @@ describe("Session catalog lifecycle workflows", () => {
       });
     expect(rows().map((row) => row.textContent)).toEqual([
       expect.stringContaining("Saved plan"),
-      expect.stringContaining("Recent conversation"),
       expect.stringContaining("Empty Pi session"),
+      expect.stringContaining("Recent conversation"),
     ]);
     await fixture.publish([
       summary("empty-pi", {

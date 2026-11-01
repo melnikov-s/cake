@@ -22,7 +22,7 @@ function chunk(content: string, finishReason: string | null = null) {
 for (const [title, activityOrdering] of [
   ["session shortcuts respect Project focus and restore cross-project navigation on exit", false],
   [
-    "activity completion reorders rows while preserving the selected conversation and composer",
+    "activity and completion keep rows stable while preserving the selected conversation and composer",
     true,
   ],
 ] as const) {
@@ -129,8 +129,8 @@ async function verifyNavigation(activityOrdering: boolean) {
         .join("\n") + "\n",
     );
     if (activityOrdering) {
-      // Opening the selected runtime can write configuration. Keep the idle row
-      // newer even after that write, so this genuinely tests working-first grouping.
+      // Deliberately disagree with creation order: file activity must not affect
+      // the deterministic identity tie-break for these equally old sessions.
       const modifiedAt = new Date(id === "alpha-idle" ? "2100-01-01T00:00:00.000Z" : timestamp);
       await utimes(file, modifiedAt, modifiedAt);
     }
@@ -179,7 +179,7 @@ async function verifyNavigation(activityOrdering: boolean) {
       await expect
         .poll(() => row("alpha-worker").locator("time").textContent())
         .not.toBe(firstElapsed);
-      await expect.poll(alphaOrder).toEqual(["alpha-worker", "alpha-idle"]);
+      await expect.poll(alphaOrder).toEqual(["alpha-idle", "alpha-worker"]);
       await expect(row("alpha-worker")).toHaveAttribute("data-navigation-active", "true");
       await expect(pane).toHaveAttribute("data-session-id", "alpha-worker");
       await row("alpha-idle").locator(".session-row").click();
@@ -195,7 +195,7 @@ async function verifyNavigation(activityOrdering: boolean) {
       await expect(composer).toBeFocused();
       await page.keyboard.type("Keep this unsent draft");
       await expect(composer).toHaveValue("Keep this unsent draft");
-      // Completion returns the background row to live recency without navigating to it.
+      // Background completion changes status, not row order or navigation.
       streams[0]!.end(chunk("Finished.", "stop") + "data: [DONE]\n\n");
       await expect(row("alpha-worker").locator('[aria-label="Running"]')).toHaveCount(0);
       await expect(row("alpha-worker").locator("time")).not.toContainText("Working");
@@ -204,7 +204,7 @@ async function verifyNavigation(activityOrdering: boolean) {
       await expect(pane).toHaveAttribute("data-session-id", "alpha-idle");
       await expect(composer).toBeFocused();
       await expect(composer).toHaveValue("Keep this unsent draft");
-      // The selected row also rejoins live recency when it stops; selection never pins it.
+      // Selected completion likewise leaves order, focus and the unsent draft intact.
       streams[1]!.end(chunk("Finished.", "stop") + "data: [DONE]\n\n");
       await expect(row("alpha-idle").locator('[aria-label="Running"]')).toHaveCount(0);
       await expect.poll(alphaOrder).toEqual(["alpha-idle", "alpha-worker"]);

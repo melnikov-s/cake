@@ -1,7 +1,10 @@
 import { Store, computed, observable, snapshot, type ReadonlySignal } from "r-state-tree";
 import type { CakeChatCatalogQuery } from "../../contracts/cake-chats/cake-chat-data";
 import type { ProjectSessionCatalogQuery } from "../../contracts/project-sessions/project-session-data";
-import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
+import {
+  compareSessionSummariesByCreation,
+  compareSessionSummariesForSidebar,
+} from "../../utils/session-summary-order";
 import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
@@ -9,11 +12,6 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
 
 type ProjectSession = ReturnType<SessionCatalogStore["projectSessions"]>[number];
-
-interface FamilyActivity {
-  modifiedAt: string;
-  active: boolean;
-}
 
 interface ProjectSessionRoots {
   byId: ReadonlyMap<string, ProjectSession>;
@@ -68,7 +66,6 @@ export class SidebarSessionListStore extends Store<{
   get activeProjectSessionFamilies() {
     const sessions = this.props.catalog.activeSessions;
     const byId = new Map(sessions.map((session) => [session.sessionId, session]));
-    const activities = this.familyActivities(byId);
     const roots = sessions.filter(
       (session) =>
         !session.familyParentSessionId ||
@@ -83,19 +80,11 @@ export class SidebarSessionListStore extends Store<{
         .sort((left, right) => (left.familyChildOrder ?? 0) - (right.familyChildOrder ?? 0));
       return [session, ...children.flatMap(flatten)];
     };
-    return roots
-      .map((root) => ({
-        rootSessionId: root.sessionId,
-        latestModifiedAt: activities.get(root.sessionId)!.modifiedAt,
-        working: activities.get(root.sessionId)!.active,
-        sessions: flatten(root),
-      }))
-      .sort(
-        (left, right) =>
-          Number(right.working) - Number(left.working) ||
-          right.latestModifiedAt.localeCompare(left.latestModifiedAt) ||
-          left.rootSessionId.localeCompare(right.rootSessionId),
-      );
+    return roots.sort(compareSessionSummariesByCreation).map((root) => ({
+      rootSessionId: root.sessionId,
+      createdAt: root.createdAt,
+      sessions: flatten(root),
+    }));
   }
 
   get activeCakeChatSessions() {
@@ -105,16 +94,7 @@ export class SidebarSessionListStore extends Store<{
         (session) =>
           !session.resolved && session.projectPath !== undefined && session.messageCount > 0,
       )
-      .map((session) => ({
-        ...session,
-        working: isActiveSessionActivity(this.props.cakeChat().activityFor(session.sessionId)),
-      }))
-      .sort(
-        (left, right) =>
-          Number(right.working) - Number(left.working) ||
-          right.modifiedAt.localeCompare(left.modifiedAt) ||
-          left.sessionId.localeCompare(right.sessionId),
-      );
+      .sort(compareSessionSummariesByCreation);
   }
 
   projectSessions(projectPath: string, resolved = false, includeCollapsed = false) {
@@ -216,6 +196,7 @@ export class SidebarSessionListStore extends Store<{
     const sessions = this.props
       .cakeChat()
       .summaries.filter((session) => session.resolved === resolved);
+    if (!resolved) return sessions.sort(compareSessionSummariesByCreation);
     return sessions.sort(
       (left, right) =>
         compareSessionSummariesForSidebar(
@@ -373,29 +354,19 @@ export class SidebarSessionListStore extends Store<{
         session.familyParentSessionId === session.sessionId ||
         !byId.has(session.familyParentSessionId),
     );
-    // Compute each family's activity once, not on every sort comparison. Both
-    // full and paginated rows consume the same reactive ordering projection.
-    const activities = this.familyActivities(byId);
-    const latestActivity = (session: ProjectSession) =>
-      activities.get(session.sessionId)!.modifiedAt;
+    // Only resolved history follows activity. Active roots keep their creation
+    // order, including when a descendant starts working or receives a message.
+    const modifiedDates = resolved ? this.familyModifiedDates(byId) : undefined;
+    const latestActivity = (session: ProjectSession) => modifiedDates!.get(session.sessionId)!;
     const compareByDate = (left: (typeof roots)[number], right: (typeof roots)[number]) =>
-      compareSessionSummariesForSidebar(
-        {
-          modifiedAt: latestActivity(left),
-          draft: left.draft,
-          working: activities.get(left.sessionId)!.active,
-        },
-        {
-          modifiedAt: latestActivity(right),
-          draft: right.draft,
-          working: activities.get(right.sessionId)!.active,
-        },
-      ) || left.sessionId.localeCompare(right.sessionId);
+      resolved
+        ? compareSessionSummariesForSidebar(
+            { modifiedAt: latestActivity(left), draft: left.draft },
+            { modifiedAt: latestActivity(right), draft: right.draft },
+          ) || left.sessionId.localeCompare(right.sessionId)
+        : Number(Boolean(right.draft)) - Number(Boolean(left.draft)) ||
+          compareSessionSummariesByCreation(left, right);
     roots.sort((left, right) => {
-      const workingOrder =
-        Number(activities.get(right.sessionId)!.active) -
-        Number(activities.get(left.sessionId)!.active);
-      if (workingOrder) return workingOrder;
       if (this.projectSessionSort(projectPath) === "date") return compareByDate(left, right);
       const labelOrder = new Map(
         this.metadata.projectLabels(projectPath).map((label, index) => [label.id, index]),
@@ -409,27 +380,23 @@ export class SidebarSessionListStore extends Store<{
     return { byId, roots };
   }
 
-  private familyActivities(byId: ReadonlyMap<string, ProjectSession>) {
-    const activeIds = this.metadata.activeSessionIds;
-    const activities = new Map<string, FamilyActivity>();
-    const visit = (session: ProjectSession): FamilyActivity => {
-      const known = activities.get(session.sessionId);
+  private familyModifiedDates(byId: ReadonlyMap<string, ProjectSession>) {
+    const dates = new Map<string, string>();
+    const visit = (session: ProjectSession): string => {
+      const known = dates.get(session.sessionId);
       if (known) return known;
       let modifiedAt = session.modifiedAt;
-      let active = !session.resolved && activeIds.has(session.sessionId);
       for (const id of session.familyChildSessionIds ?? []) {
         const child = byId.get(id);
         if (!child) continue;
-        const activity = visit(child);
-        if (activity.modifiedAt > modifiedAt) modifiedAt = activity.modifiedAt;
-        active ||= activity.active;
+        const childModifiedAt = visit(child);
+        if (childModifiedAt > modifiedAt) modifiedAt = childModifiedAt;
       }
-      const activity = { modifiedAt, active };
-      activities.set(session.sessionId, activity);
-      return activity;
+      dates.set(session.sessionId, modifiedAt);
+      return modifiedAt;
     };
     for (const session of byId.values()) visit(session);
-    return activities;
+    return dates;
   }
 
   private limitKey(groupKey: string, resolved: boolean) {

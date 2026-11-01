@@ -1,3 +1,13 @@
+/** Stable newest-created-first order; activity and catalog arrival order never move rows. */
+export function compareSessionSummariesByCreation(
+  left: { createdAt: string; sessionId: string },
+  right: { createdAt: string; sessionId: string },
+): number {
+  return (
+    right.createdAt.localeCompare(left.createdAt) || left.sessionId.localeCompare(right.sessionId)
+  );
+}
+
 /** Minimal shape of a session summary needed to determine sidebar list order. */
 interface OrderableSessionSummary {
   modifiedAt: string;
@@ -15,8 +25,8 @@ export function compareSessionSummariesForSidebar(
   return compareSessionSummariesByActivity(left, right);
 }
 
-/** Pure latest-activity order (newest first) used by the Activity feed; drafts are not pinned. */
-export function compareSessionSummariesByActivity(
+/** Latest-activity order (newest first) for recency-based catalogs and resolved history. */
+function compareSessionSummariesByActivity(
   left: Pick<OrderableSessionSummary, "modifiedAt">,
   right: Pick<OrderableSessionSummary, "modifiedAt">,
 ): number {
