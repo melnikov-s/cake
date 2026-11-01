@@ -32,7 +32,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
       open: store.doneExpanded,
       toggle: () => store.toggleDone(),
     },
-  ];
+  ].filter((section) => section.items.length > 0);
   return (
     <div className="h-full overflow-y-auto px-3 pb-4 pt-4">
       {store.error && (
@@ -69,24 +69,20 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
             open={section.open}
             onClick={section.toggle}
           />
-          {section.open &&
-            (section.items.length ? (
-              <AnimatedList
-                as="ul"
-                aria-label={`${section.title} to-dos`}
-                className="mt-2 space-y-2"
-              >
-                {section.items.map((item) => (
-                  <ProjectTodoItem key={item.id} item={item} store={store} />
-                ))}
-              </AnimatedList>
-            ) : (
-              <p className="px-2 py-3 text-xs text-muted-foreground">
-                {searching ? "No matching to-dos." : `No ${section.title.toLowerCase()} to-dos.`}
-              </p>
-            ))}
+          {section.open && (
+            <AnimatedList as="ul" aria-label={`${section.title} to-dos`} className="mt-2 space-y-2">
+              {section.items.map((item) => (
+                <ProjectTodoItem key={item.id} item={item} store={store} />
+              ))}
+            </AnimatedList>
+          )}
         </section>
       ))}
+      {attentionItems.length === 0 && sections.length === 0 && (
+        <p role="status" className="px-2 py-3 text-xs text-muted-foreground">
+          {searching ? "No matching to-dos." : "No to-dos."}
+        </p>
+      )}
     </div>
   );
 });

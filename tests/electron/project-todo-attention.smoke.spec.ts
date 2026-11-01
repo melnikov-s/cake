@@ -119,7 +119,9 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await expect(category("Active").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
     await expect(action).toHaveText(title);
     await expect(action).toHaveAttribute("aria-pressed", "true");
-    await expect(panel.getByText("Nothing needs your attention.")).toBeVisible();
+    await expect(panel.getByRole("region", { name: "Needs attention", exact: true })).toHaveCount(
+      0,
+    );
     await row.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Restore needs attention", exact: true }).click();
     await expect(action).toHaveText(reason);

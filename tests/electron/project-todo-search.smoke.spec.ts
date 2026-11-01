@@ -42,6 +42,10 @@ for (const theme of ["light", "dark"] as const) {
 
       await expect(panel.getByRole("combobox", { name: "Sort to-dos" })).toHaveCount(0);
       await expect(selected).toHaveAttribute("aria-pressed", "true");
+      await expect(panel.getByRole("region", { name: "Needs attention", exact: true })).toHaveCount(
+        0,
+      );
+      await expect(panel.getByRole("region", { name: "Snoozed", exact: true })).toHaveCount(0);
       // The input-blocked navigation task takes precedence over the ready startup report.
       await expect
         .poll(() =>
@@ -91,12 +95,14 @@ for (const theme of ["light", "dark"] as const) {
         await expect(search).toHaveValue("");
 
         await search.pressSequentially("not a real task");
-        await expect(panel.getByRole("status")).toContainText("No matching to-dos");
+        await expect(panel.getByRole("status")).toHaveText("No matching to-dos.");
+        await expect(panel.getByRole("region")).toHaveCount(0);
         await clear.click();
         await expect(selected).toHaveAttribute("aria-pressed", "true");
 
         await search.pressSequentially("PRIORITIES");
-        await expect(panel.getByRole("status")).toHaveText("No matching active to-dos.");
+        await expect(panel.getByRole("region", { name: "Active", exact: true })).toHaveCount(0);
+        await expect(panel.getByRole("status")).toHaveCount(0);
         const done = panel.getByRole("button", { name: "Done (1)" });
         await expect(done).toBeVisible();
         if ((await done.getAttribute("aria-expanded")) !== "true") await done.click();

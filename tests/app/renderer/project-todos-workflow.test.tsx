@@ -224,35 +224,56 @@ function renderTodos(
   };
 }
 
-it("renders Needs attention and its separator only when the displayed attention list is nonempty", async () => {
+it("renders only nonempty categories with separators between visible sections and preserves disclosure across filtering", async () => {
   using fixture = renderTodos(false, { todos: emptyProjectTodos(), sessions: [] });
-  const active = () => screen.getByRole("region", { name: "Active" });
-  const expectNoAttention = () => {
-    expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
-    expect(screen.queryByText("Nothing needs your attention.")).toBeNull();
-    expect(active().className).not.toMatch(/\b(mt-4|border-t|pt-2)\b/);
-    expect(
-      screen.getAllByRole("region").map((region) => region.getAttribute("aria-label")),
-    ).toEqual(["Active", "Snoozed", "Done"]);
-    expect(screen.getByRole("region", { name: "Snoozed" }).className).toContain("border-t");
-  };
-  expectNoAttention();
+  const categories = ["Needs attention", "Active", "Snoozed", "Done"];
+  const visibleCategories = () =>
+    screen.queryAllByRole("region").map((region) => region.getAttribute("aria-label"));
+  expect(visibleCategories()).toEqual([]);
+  expect(screen.getByRole("status").textContent).toBe("No to-dos.");
 
-  const items = [
+  const items: ProjectTodo[] = [
     { ...todo(100), needsAttention: true, attentionReason: "Review the findings" },
-    { ...todo(101), title: "Continue implementation" },
+    todo(101),
+    { ...todo(102), snoozedUntil: "2099-01-01T00:00:00.000Z" },
+    { ...todo(103), state: "done" },
   ];
   await fixture.updateTodos({ ...emptyProjectTodos(), items });
+  expect(visibleCategories()).toEqual(categories);
+  expect(screen.queryByRole("status")).toBeNull();
   expect(screen.getByRole("heading", { name: "Needs attention 1" })).toBeDefined();
-  expect(active().className).toContain("border-t");
+  for (const category of categories.slice(1)) {
+    expect(screen.getByRole("region", { name: category }).className).toContain("border-t");
+    expect(screen.getByRole("button", { name: `${category} (1)` })).toBeDefined();
+  }
+  await fixture.user.click(screen.getByRole("button", { name: "Active (1)" }));
   const search = screen.getByRole("searchbox", { name: "Search to-dos" });
-  await fixture.user.type(search, "Continue");
-  expectNoAttention();
-  expect(screen.getByRole("button", { name: "Continue implementation" })).toBeDefined();
-  expect(fixture.todos().items).toEqual(items);
+  for (const [index, category] of categories.entries()) {
+    await fixture.user.clear(search);
+    await fixture.user.type(search, items[index]!.title);
+    expect(visibleCategories()).toEqual([category]);
+    expect(screen.getByRole("region", { name: category }).className).not.toMatch(
+      /\b(mt-4|border-t|pt-2)\b/,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+  }
   await fixture.user.clear(search);
-  expect(screen.getByRole("heading", { name: "Needs attention 1" })).toBeDefined();
-  expect(active().className).toContain("border-t");
+  await fixture.user.type(search, "no such task");
+  expect(visibleCategories()).toEqual([]);
+  expect(screen.getByRole("status").textContent).toBe("No matching to-dos.");
+  await fixture.user.clear(search);
+  expect(visibleCategories()).toEqual(categories);
+  expect(screen.getByRole("button", { name: "Active (1)" }).getAttribute("aria-expanded")).toBe(
+    "false",
+  );
+  expect(screen.queryByRole("list", { name: "Active to-dos" })).toBeNull();
+  await fixture.user.click(screen.getByRole("button", { name: "Active (1)" }));
+  expect(screen.getByRole("button", { name: items[1]!.title })).toBeDefined();
+  expect(fixture.todos().items).toEqual(items);
+  expect(fixture.mutations).toEqual([]);
+  await fixture.updateTodos(emptyProjectTodos());
+  expect(visibleCategories()).toEqual([]);
+  expect(screen.getByRole("status").textContent).toBe("No to-dos.");
 });
 
 it("shows action-first requests, dismisses without selection/lifecycle effects, restores, and hides retained reasons from search", async () => {
@@ -266,7 +287,15 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
     ],
   };
   using fixture = renderTodos(false, {
-    todos: { ...emptyProjectTodos(), items: [item, todo(101)] },
+    todos: {
+      ...emptyProjectTodos(),
+      items: [
+        item,
+        todo(101),
+        { ...todo(102), snoozedUntil: "2099-01-01T00:00:00.000Z" },
+        { ...todo(103), state: "done" },
+      ],
+    },
     sessions: [],
   });
   const attention = () => screen.getByRole("list", { name: "Needs attention to-dos" });
@@ -309,8 +338,8 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
   expect(within(attention()).getByText(item.attentionReason)).toBeDefined();
   expect(fixture.todos().selectedId).toBe(selection);
   await fixture.user.click(screen.getByRole("button", { name: "Active (1)" }));
-  await fixture.user.click(screen.getByRole("button", { name: "Done (0)" }));
-  expect(screen.getByRole("button", { name: "Snoozed (0)" }).getAttribute("aria-expanded")).toBe(
+  await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
+  expect(screen.getByRole("button", { name: "Snoozed (1)" }).getAttribute("aria-expanded")).toBe(
     "true",
   );
   expect(within(attention()).getByText(item.attentionReason)).toBeDefined();
@@ -658,9 +687,8 @@ it("filters titles and descriptions without changing selection or the authoritat
   expect(screen.queryByRole("button", { name: "Follow up" })).toBeNull();
   await fixture.user.clear(search);
   await fixture.user.type(search, "Report delivered");
-  expect(
-    within(screen.getByRole("region", { name: "Active" })).getByText("No matching to-dos."),
-  ).toBeDefined();
+  expect(screen.queryByRole("region", { name: "Active" })).toBeNull();
+  expect(screen.getByRole("status").textContent).toBe("No matching to-dos.");
   await fixture.user.click(screen.getByRole("button", { name: "Clear search to-dos" }));
   expect(title().getAttribute("aria-pressed")).toBe("true");
   expect(screen.getByRole("button", { name: "Follow up" })).toBeDefined();
@@ -673,9 +701,8 @@ it("keeps matching done items grouped and preserves disclosure and done/reopen a
   const search = screen.getByRole("searchbox", { name: "Search to-dos" });
   await fixture.user.click(screen.getByRole("button", { name: "Mark done: Follow up" }));
   await fixture.user.type(search, "STEP");
-  expect(
-    within(screen.getByRole("region", { name: "Active" })).getByText("No matching to-dos."),
-  ).toBeDefined();
+  expect(screen.queryByRole("region", { name: "Active" })).toBeNull();
+  expect(screen.queryByRole("status")).toBeNull();
   const done = screen.getByRole("button", { name: "Done (1)" });
   expect(done.getAttribute("aria-expanded")).toBe("false");
   await fixture.user.click(done);
@@ -696,9 +723,9 @@ it("keeps matching done items grouped and preserves disclosure and done/reopen a
   );
   await fixture.user.clear(search);
   await fixture.user.type(search, "no such task");
-  expect(
-    within(screen.getByRole("region", { name: "Active" })).getByText("No matching to-dos."),
-  ).toBeDefined();
+  expect(screen.queryByRole("region", { name: "Active" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Done" })).toBeNull();
+  expect(screen.getByRole("status").textContent).toBe("No matching to-dos.");
   await fixture.user.click(screen.getByRole("button", { name: "Clear search to-dos" }));
   expect(screen.getByRole("list", { name: "Done to-dos" })).toBeDefined();
   expect(screen.getByRole("list", { name: "Active to-dos" })).toBeDefined();
