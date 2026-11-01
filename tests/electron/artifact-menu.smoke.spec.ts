@@ -37,6 +37,35 @@ for (const theme of ["light", "dark"] as const) {
       await page.setViewportSize({ width: 1600, height: 1000 });
       await scenario.prepare(page, "default");
       const pane = page.getByRole("complementary", { name: "Coordinator report", exact: true });
+      const expectHeaderAlignment = async () => {
+        const geometry = await pane.locator("header").evaluate((header) => {
+          const bounds = header.getBoundingClientRect();
+          const centerY = bounds.y + header.clientHeight / 2;
+          const title = header.querySelector("strong")!.getBoundingClientRect();
+          return {
+            titleOffset: title.y + title.height / 2 - centerY,
+            actions: Array.from(header.querySelectorAll("button"), (button) => {
+              const box = button.getBoundingClientRect();
+              const icon = button.querySelector("svg")!.getBoundingClientRect();
+              return {
+                width: box.width,
+                height: box.height,
+                buttonOffset: box.y + box.height / 2 - centerY,
+                iconOffset: icon.y + icon.height / 2 - centerY,
+              };
+            }),
+          };
+        });
+        expect(Math.abs(geometry.titleOffset)).toBeLessThan(0.5);
+        expect(geometry.actions).toHaveLength(2);
+        for (const action of geometry.actions) {
+          expect(action.width).toBe(geometry.actions[0]!.width);
+          expect(action.height).toBe(action.width);
+          expect(Math.abs(action.buttonOffset)).toBeLessThan(0.5);
+          expect(Math.abs(action.iconOffset)).toBeLessThan(0.5);
+        }
+      };
+      await expectHeaderAlignment();
       const layout = page.locator('[data-slot="side-chat-layout"]').first();
       await expect(layout).toHaveAttribute("data-presentation", "side-by-side");
       await expect(page.getByRole("separator", { name: "Resize side chat" })).toBeVisible();
@@ -85,6 +114,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByRole("searchbox", { name: "Search to-dos" })).not.toBeAttached();
       await page.setViewportSize({ width: 700, height: 900 });
       await expect(layout).toHaveAttribute("data-presentation", "replacement");
+      await expectHeaderAlignment();
       await pane.getByRole("button", { name: "View Coordinator report fullscreen" }).click();
       expect(await surface.boundingBox()).toEqual({ x: 0, y: 0, width: 700, height: 900 });
       await surface.getByRole("button", { name: "Exit fullscreen Coordinator report" }).click();
