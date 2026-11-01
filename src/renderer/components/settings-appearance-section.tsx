@@ -2,8 +2,8 @@ import { observer } from "r-state-tree/react";
 import { Select } from "./ui/select";
 import { Button } from "./ui/button";
 import { FilePicker } from "./ui/file-picker";
-import { ThemePreviewCard } from "./ui/theme-preview-card";
-import { useSystemColorTheme } from "../lib/resolved-color-theme";
+import { SegmentedControlButton, SegmentedControlGroup } from "./ui/segmented-control";
+import { SettingsThemeGallery } from "./settings-theme-gallery";
 import { SettingsToggle } from "./settings/settings-toggle";
 import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
 
@@ -12,7 +12,6 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
 }: {
   appearance: AppearanceSettingsStore;
 }) {
-  const systemTheme = useSystemColorTheme();
   const selected = appearance.selectedThemeChoice;
   return (
     <section className="grid gap-1.5" aria-labelledby="appearance-title">
@@ -21,42 +20,19 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
       </h2>
       <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
         <div id="setting-theme" className="grid scroll-mt-8 gap-3 px-3.5 py-3">
-          <h3 className="text-xs font-medium text-foreground">Theme</h3>
-          <div
-            role="group"
-            aria-label="Color theme"
-            className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13rem),1fr))] gap-3"
-          >
-            {(["system", "light", "dark"] as const).map((choice) => (
-              <ThemePreviewCard
-                key={choice}
-                name={choice === "system" ? "System" : choice === "light" ? "Light" : "Dark"}
-                theme={choice === "system" ? systemTheme : choice}
-                selected={selected === choice}
-                onSelect={() => appearance.previewSelection(choice)}
-              />
+          <SegmentedControlGroup aria-label="Appearance mode" className="w-fit">
+            {(["light", "dark", "system"] as const).map((mode) => (
+              <SegmentedControlButton
+                key={mode}
+                active={appearance.theme === mode}
+                onClick={() => appearance.setTheme(mode)}
+              >
+                {mode === "system" ? "Follow System" : mode === "light" ? "Light" : "Dark"}
+              </SegmentedControlButton>
             ))}
-            {appearance.importedThemes.map((theme) => (
-              <ThemePreviewCard
-                key={theme.id}
-                name={theme.name}
-                theme={theme}
-                selected={selected === `imported:${theme.id}`}
-                onSelect={() => appearance.previewSelection(`imported:${theme.id}`)}
-              />
-            ))}
-            {appearance.previewTheme ? (
-              <ThemePreviewCard
-                name={appearance.previewTheme.name}
-                theme={appearance.previewTheme}
-                selected={selected === `imported:${appearance.previewTheme.id}`}
-                onSelect={() => {
-                  if (appearance.previewTheme)
-                    appearance.previewSelection(`imported:${appearance.previewTheme.id}`);
-                }}
-              />
-            ) : null}
-          </div>
+          </SegmentedControlGroup>
+          <SettingsThemeGallery appearance={appearance} mode="light" />
+          <SettingsThemeGallery appearance={appearance} mode="dark" />
           <div className="flex flex-wrap items-center gap-2">
             <FilePicker
               disabled={appearance.importing}
@@ -91,7 +67,7 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
             </Select>
           ) : null}
           {appearance.previewChoice !== undefined || appearance.themeSource ? (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2 shadow-xs">
               {appearance.previewChoice !== undefined ? (
                 <span role="status" className="mr-auto text-xs text-muted-foreground">
                   Preview: {appearance.previewName}

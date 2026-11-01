@@ -153,7 +153,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       page.getByRole("region", { name: "Safety & privacy" }).getByLabel("Default project trust"),
     ).toBeVisible();
     await page.getByRole("button", { name: "Appearance" }).click();
-    await expect(page.getByRole("button", { name: "System theme", exact: true })).toHaveAttribute(
+    await expect(page.getByRole("button", { name: "Follow System", exact: true })).toHaveAttribute(
       "aria-pressed",
       "true",
     );

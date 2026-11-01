@@ -85,13 +85,21 @@ for (const initialTheme of ["dark", "light"] as const) {
         await page.getByRole("button", { name: /^Appearance/ }).click();
         await page
           .getByRole("button", {
-            name: `${theme === "system" ? "System" : theme === "light" ? "Light" : "Dark"} theme`,
+            name: theme === "system" ? "Follow System" : theme === "light" ? "Light" : "Dark",
             exact: true,
           })
           .click();
-        await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+        if (theme !== "system") {
+          await page
+            .getByRole("button", {
+              name: `Cake ${theme === "light" ? "Light" : "Dark"} theme`,
+              exact: true,
+            })
+            .click();
+          await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+        }
         await page.getByRole("button", { name: "Back to chat", exact: true }).click();
-        await expect(page.getByLabel("Color theme", { exact: true })).toHaveCount(0);
+        await expect(page.getByLabel("Appearance mode", { exact: true })).toHaveCount(0);
       };
       await setTheme(opposite);
       await expectTheme(opposite);
@@ -129,6 +137,7 @@ for (const initialTheme of ["dark", "light"] as const) {
         await expectTheme(theme);
       }
       // Import JSONC and a sibling include as data; the running workbench keeps its identity.
+      await page.emulateMedia({ colorScheme: initialTheme });
       const imported = vscodeColorThemeFixture(initialTheme);
       const sourceDirectory = join(directory, "theme-source");
       await mkdir(join(sourceDirectory, "themes"), { recursive: true });
@@ -169,6 +178,14 @@ for (const initialTheme of ["dark", "light"] as const) {
         theme: initialTheme,
         background: imported.colors["editor.background"],
       });
+      await page.emulateMedia({ colorScheme: opposite });
+      await expectTheme(opposite);
+      await page.emulateMedia({ colorScheme: initialTheme });
+      await expect.poll(editorState).toMatchObject({
+        id: editorId,
+        theme: initialTheme,
+        background: imported.colors["editor.background"],
+      });
       await setTheme("light");
       await expect
         .poll(editorState)
@@ -184,6 +201,24 @@ for (const initialTheme of ["dark", "light"] as const) {
       await expectTheme("dark");
       // Returning to the retained native view must not need a reload or app restart.
       expect((await editorState())?.id).toBe(editorId);
+      await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+      await page.getByRole("button", { name: /^Appearance/ }).click();
+      await page.getByRole("button", { name: "Light", exact: true }).click();
+      await page.getByRole("button", { name: "Solarized Light theme", exact: true }).click();
+      await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+      await page.getByRole("button", { name: "Dark theme", exact: true }).click();
+      await page.getByRole("button", { name: "Nord theme", exact: true }).click();
+      await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+      await page.getByRole("button", { name: "Follow System", exact: true }).click();
+      await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+      for (const theme of ["light", "dark", "light"] as const) {
+        await page.emulateMedia({ colorScheme: theme });
+        await expect.poll(editorState).toMatchObject({
+          id: editorId,
+          theme,
+          background: theme === "light" ? "#fdf6e3" : "#2e3440",
+        });
+      }
     } finally {
       await application.close();
       await rm(directory, { recursive: true, force: true });

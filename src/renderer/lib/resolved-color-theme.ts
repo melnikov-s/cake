@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import type {
   EditorColorTheme,
   ImportedColorTheme,
-  ThemeChoice,
+  AppearanceMode,
 } from "../../contracts/themes/color-theme";
 import { cakeThemeTokens } from "../../utils/vscode-theme";
 
@@ -10,15 +10,14 @@ let importedTheme: ImportedColorTheme | undefined;
 let appliedTokens: string[] = [];
 
 /** Window-scoped DOM projection of AppearanceSettingsStore, not a persistence authority. */
-export function applyDocumentTheme(choice: ThemeChoice, custom?: ImportedColorTheme) {
+export function applyDocumentTheme(choice: AppearanceMode, custom?: ImportedColorTheme) {
   for (const token of appliedTokens) document.documentElement.style.removeProperty(token);
   const tokens = custom ? cakeThemeTokens(custom) : {};
   appliedTokens = Object.keys(tokens);
   for (const [token, value] of Object.entries(tokens))
     document.documentElement.style.setProperty(token, value);
   importedTheme = custom;
-  document.documentElement.dataset.theme =
-    custom?.type ?? (choice.startsWith("imported:") ? "system" : choice);
+  document.documentElement.dataset.theme = custom?.type ?? choice;
   notifyThemeChanged();
 }
 

@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { AppearanceMode, ColorThemeChoice } from "../themes/color-theme";
 import { cakeHotkeyActionIds, cakeSettingsSectionIds } from "./cake-settings-data";
 
 const CakeSettingsSectionId = Schema.Literals(cakeSettingsSectionIds);
@@ -8,12 +9,9 @@ export const CakeSettingsGetInput = Schema.Struct({
 });
 
 const AppearanceChanges = Schema.Struct({
-  theme: Schema.optionalKey(
-    Schema.Union([
-      Schema.Literals(["system", "light", "dark"]),
-      Schema.TemplateLiteral(["imported:", Schema.String]),
-    ]),
-  ),
+  theme: Schema.optionalKey(AppearanceMode),
+  lightTheme: Schema.optionalKey(ColorThemeChoice),
+  darkTheme: Schema.optionalKey(ColorThemeChoice),
   projectAvatarsEnabled: Schema.optionalKey(Schema.Boolean),
   sessionAvatarsEnabled: Schema.optionalKey(Schema.Boolean),
   sidebarCharactersEnabled: Schema.optionalKey(Schema.Boolean),

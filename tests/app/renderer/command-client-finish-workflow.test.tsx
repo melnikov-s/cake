@@ -68,25 +68,29 @@ describe("Application command to renderer workflows", () => {
       saving = fixture
         .begin("settings.window.update", {
           section: "appearance",
-          changes: { theme: "dark", sidebarCharactersEnabled: true },
+          changes: {
+            theme: "dark",
+            darkTheme: "bundled:solarized-dark",
+            sidebarCharactersEnabled: true,
+          },
         })
         .then((result) => {
           completed = true;
           return result;
         });
     });
-    expect(screen.getByRole("button", { name: "Dark theme" }).getAttribute("aria-pressed")).toBe(
-      "true",
-    );
+    expect(screen.getByRole("button", { name: "Dark" }).getAttribute("aria-pressed")).toBe("true");
     expect(
       screen.getByRole("switch", { name: "Show session characters" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "Solarized Dark theme" }).getAttribute("aria-pressed"),
     ).toBe("true");
     expect(flush).toHaveBeenCalledOnce();
     expect(completed).toBe(false);
     await act(async () => persisted.resolve());
     expect(await saving).toMatchObject({ ok: true, scope: "window", settings: { theme: "dark" } });
-    await fixture.user.click(screen.getByRole("button", { name: "Light theme" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Apply theme" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Light" }));
     await fixture.user.click(screen.getByRole("switch", { name: "Show session characters" }));
     expect(await fixture.invoke("settings.window.get", { section: "appearance" })).toMatchObject({
       ok: true,
@@ -95,9 +99,7 @@ describe("Application command to renderer workflows", () => {
     await expect(
       fixture.invoke("settings.window.update", { section: "appearance", changes: {} }),
     ).rejects.toThrow();
-    expect(screen.getByRole("button", { name: "Light theme" }).getAttribute("aria-pressed")).toBe(
-      "true",
-    );
+    expect(screen.getByRole("button", { name: "Light" }).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("coalesces committed rename receipts, lets the user view the target, and suppresses Cake Chat coordination receipts without suppressing its own actions", async () => {

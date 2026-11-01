@@ -284,8 +284,7 @@ test("separate Node backend serves a real leased code-server workbench to remote
       .toContain("editedRemotely");
     await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
     await page.getByRole("button", { name: /^Appearance/ }).click();
-    await page.getByRole("button", { name: "Light theme", exact: true }).click();
-    await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+    await page.getByRole("button", { name: "Light", exact: true }).click();
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await expect
       .poll(() =>

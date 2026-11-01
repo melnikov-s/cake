@@ -206,6 +206,8 @@ export class SettingsStore extends Store<SettingsStoreProps> {
         section,
         settings: {
           theme: this.appearance.theme,
+          lightTheme: this.appearance.lightTheme,
+          darkTheme: this.appearance.darkTheme,
           projectAvatarsEnabled: this.appearance.projectAvatarsEnabled,
           sessionAvatarsEnabled: this.appearance.sessionAvatarsEnabled,
           sidebarCharactersEnabled: this.appearance.sidebarCharactersEnabled,
@@ -240,6 +242,10 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     if (input.section === "appearance") {
       const changes = input.changes;
       if (changes.theme !== undefined) this.appearance.setTheme(changes.theme);
+      if (changes.lightTheme !== undefined)
+        this.appearance.setPreferredTheme("light", changes.lightTheme);
+      if (changes.darkTheme !== undefined)
+        this.appearance.setPreferredTheme("dark", changes.darkTheme);
       if (changes.projectAvatarsEnabled !== undefined)
         this.appearance.setProjectAvatarsEnabled(changes.projectAvatarsEnabled);
       if (changes.sessionAvatarsEnabled !== undefined)

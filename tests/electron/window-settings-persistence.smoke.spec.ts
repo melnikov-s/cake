@@ -55,9 +55,8 @@ for (const action of ["close", "quit"] as const) {
       });
       await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
       await page.getByRole("button", { name: /^Appearance/ }).click();
-      // Native card interaction, not direct Store mutation.
-      await page.getByRole("button", { name: "Dark theme", exact: true }).click();
-      await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+      // Native mode control, not direct Store mutation.
+      await page.getByRole("button", { name: "Dark", exact: true }).click();
       const closed =
         action === "quit" ? application.waitForEvent("close") : page.waitForEvent("close");
       await application
@@ -80,9 +79,10 @@ for (const action of ["close", "quit"] as const) {
       application = await launch();
       const restored = await application.firstWindow();
       await restored.getByRole("button", { name: /^Appearance/ }).click({ timeout: 20_000 });
-      await expect(
-        restored.getByRole("button", { name: "Dark theme", exact: true }),
-      ).toHaveAttribute("aria-pressed", "true");
+      await expect(restored.getByRole("button", { name: "Dark", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     } finally {
       await application.close().catch(() => undefined);
       await rm(temporaryRoot, { recursive: true, force: true });

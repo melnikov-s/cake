@@ -35,7 +35,14 @@ export const ImportedColorTheme = Schema.Struct({
 });
 export interface ImportedColorTheme extends Schema.Schema.Type<typeof ImportedColorTheme> {}
 export type EditorColorTheme = "light" | "dark" | ImportedColorTheme;
-export type ThemeChoice = "system" | "light" | "dark" | `imported:${string}`;
+export type ColorScheme = "light" | "dark";
+export const AppearanceMode = Schema.Literals(["system", "light", "dark"]);
+export type AppearanceMode = Schema.Schema.Type<typeof AppearanceMode>;
+export const ColorThemeChoice = Schema.Union([
+  Schema.TemplateLiteral(["bundled:", Schema.NonEmptyString]),
+  Schema.TemplateLiteral(["imported:", Schema.NonEmptyString]),
+]);
+export type ColorThemeChoice = Schema.Schema.Type<typeof ColorThemeChoice>;
 
 /** The source may have comments/trailing commas; includes are resolved only in the chosen file set. */
 export const VsCodeThemeSource = Schema.Struct({

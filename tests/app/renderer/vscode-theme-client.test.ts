@@ -25,7 +25,7 @@ afterEach(() => {
 it.each(["light", "dark", "system", "imported:ocean"] as const)(
   "acquires and presents new/reopened native editors with Cake's effective %s theme",
   async (preference) => {
-    if (preference === "imported:ocean") applyDocumentTheme(preference, ocean);
+    if (preference === "imported:ocean") applyDocumentTheme("dark", ocean);
     else document.documentElement.dataset.theme = preference;
     let systemDark = false;
     vi.stubGlobal("matchMedia", () => ({ matches: systemDark }));

@@ -2221,37 +2221,78 @@ const themeGalleryScenario: VisualCaptureScenario = {
     });
     await expect(page.getByText(`Preview: ${theme.name}`)).toBeVisible();
     await page.getByRole("button", { name: "Apply theme", exact: true }).click();
-    await page
-      .getByRole("button", { name: state === "light" ? "Light theme" : "Dark theme", exact: true })
-      .click();
-    await page.getByRole("button", { name: "Apply theme", exact: true }).click();
-    if (state === "preview")
-      await page.getByRole("button", { name: "Sea glass theme", exact: true }).click();
     for (const [name, color] of [
       ["Light", "rgb(160, 17, 31)"],
       ["Dark", "rgb(249, 117, 131)"],
     ] as const) {
-      const builtin = page.getByRole("button", { name: `${name} theme`, exact: true });
+      const gallery = page.getByRole("button", { name: `${name} theme`, exact: true });
+      if ((await gallery.getAttribute("aria-expanded")) === "false") await gallery.click();
+      const builtin = page.getByRole("button", { name: `Cake ${name} theme`, exact: true });
       await expect(
         builtin.locator("code span[style]").filter({ hasText: "const" }).first(),
       ).toHaveCSS("color", color);
-    }
-    for (const type of ["light", "dark"] as const) {
-      const imported = vscodeColorThemeFixture(type);
+      const imported = vscodeColorThemeFixture(name === "Light" ? "light" : "dark");
       const scene = page
         .getByRole("button", { name: `${imported.name} theme`, exact: true })
         .locator('[data-slot="theme-preview-scene"]');
       await expect(scene).toHaveCSS(
         "background-color",
-        type === "light" ? "rgb(255, 248, 232)" : "rgb(16, 37, 43)",
+        name === "Light" ? "rgb(255, 248, 232)" : "rgb(16, 37, 43)",
       );
       await expect(
         scene.locator("code span[style]").filter({ hasText: "const" }).first(),
-      ).toHaveCSS("color", type === "light" ? "rgb(131, 85, 181)" : "rgb(199, 146, 234)");
+      ).toHaveCSS("color", name === "Light" ? "rgb(131, 85, 181)" : "rgb(199, 146, 234)");
     }
+    const mode = state === "light" ? "Light" : "Dark";
+    await page.getByRole("button", { name: mode, exact: true }).click();
+    await page.getByRole("button", { name: `Cake ${mode} theme`, exact: true }).click();
+    await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+    if (state === "preview")
+      await page.getByRole("button", { name: "Sea glass theme", exact: true }).click();
+    await page.getByRole("button", { name: "Follow System", exact: true }).scrollIntoViewIfNeeded();
     await page.mouse.move(1, 1);
   },
   region: cakePromptsSettingsScenario.region,
+};
+
+const bundledColorThemeScenario: VisualCaptureScenario = {
+  name: "bundled-color-theme",
+  description: "Bundled popular and macOS-inspired palettes on the real Cake conversation",
+  states: [
+    "solarized-light",
+    "solarized-dark",
+    "lifted-graphite",
+    "macos-vibrancy",
+    "soft-slate",
+    "twilight-steel",
+    "warm-titanium",
+  ],
+  seed: assistantMarkdownCode.seed,
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Appearance", exact: true }).click();
+    const names: Record<string, string> = {
+      "solarized-light": "Solarized Light",
+      "solarized-dark": "Solarized Dark",
+      "lifted-graphite": "Lifted macOS Graphite",
+      "macos-vibrancy": "macOS Vibrancy",
+      "soft-slate": "Soft Slate",
+      "twilight-steel": "Twilight Steel",
+      "warm-titanium": "Warm Titanium",
+    };
+    await page
+      .getByRole("button", { name: state === "solarized-light" ? "Light" : "Dark", exact: true })
+      .click();
+    await page.getByRole("button", { name: `${names[state]} theme`, exact: true }).click();
+    await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await expect(
+      page.locator('[data-streamdown="code-block-body"] span[style]').first(),
+    ).toBeVisible();
+    await page.mouse.move(1, 1);
+  },
+  region: assistantMarkdownCode.region,
 };
 
 const projectChatSidebar: VisualCaptureScenario = {
@@ -6136,6 +6177,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   appearanceSettingsScenario,
   importedColorThemeScenario,
   themeGalleryScenario,
+  bundledColorThemeScenario,
   browserSharingScenario,
   projectCustomInstructionsScenario,
   newSessionScenario,

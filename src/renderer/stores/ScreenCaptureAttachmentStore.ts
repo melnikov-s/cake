@@ -67,14 +67,11 @@ export class ScreenCaptureAttachmentStore extends Store<{
   private get destinations(): Omit<CaptureRouting, "defaultDestination"> {
     const sidebar = this.props.sidebar();
     const settings = this.props.settings();
+    const customTheme = settings.activeCustomTheme;
     return {
       appearance: {
-        theme:
-          settings.activeImportedTheme?.type ??
-          (settings.selectedThemeChoice === "light" || settings.selectedThemeChoice === "dark"
-            ? settings.selectedThemeChoice
-            : "system"),
-        importedTheme: settings.activeImportedTheme,
+        theme: customTheme?.type ?? settings.activeAppearanceMode,
+        importedTheme: customTheme,
         projectAvatarsEnabled: settings.projectAvatarsEnabled,
         sessionAvatarsEnabled: settings.sessionAvatarsEnabled,
         sidebarCharactersEnabled: settings.sidebarCharactersEnabled,

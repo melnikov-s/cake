@@ -1,5 +1,11 @@
 import { observable, snapshot, Store } from "r-state-tree";
-import type { ImportedColorTheme, ThemeChoice } from "../../contracts/themes/color-theme";
+import type {
+  AppearanceMode,
+  ColorScheme,
+  ColorThemeChoice,
+  ImportedColorTheme,
+} from "../../contracts/themes/color-theme";
+import { bundledColorThemes, type ColorThemeOption } from "../../utils/bundled-color-themes";
 import { parseVsCodeTheme } from "../../utils/vscode-theme";
 import type {
   WorkLogViewMode,
@@ -8,10 +14,14 @@ import type {
 
 /** Owns window appearance and shared work-log presentation preferences. */
 export class AppearanceSettingsStore extends Store<Record<string, never>> {
-  @snapshot theme: ThemeChoice = "system";
+  @snapshot theme: AppearanceMode = "system";
+  @snapshot lightTheme: ColorThemeChoice = "bundled:cake-light";
+  @snapshot darkTheme: ColorThemeChoice = "bundled:cake-dark";
   @snapshot importedThemes: ImportedColorTheme[] = observable([]);
+  systemColorScheme: ColorScheme = "light";
+  galleryMode: ColorScheme | "closed" | undefined = undefined;
   previewTheme: ImportedColorTheme | undefined = undefined;
-  previewChoice: ThemeChoice | undefined = undefined;
+  previewChoice: ColorThemeChoice | undefined = undefined;
   importError: string | undefined = undefined;
   importing = false;
   themeSource: ReadonlyMap<string, string> | undefined = undefined;
@@ -23,26 +33,61 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
   @snapshot workLogViewMode: WorkLogViewMode = "auto";
   @snapshot workLogsExpansion: WorkLogsExpansion = "collapsed";
 
-  get selectedThemeChoice() {
-    return this.previewChoice ?? this.theme;
+  get colorThemes(): readonly ColorThemeOption[] {
+    return [
+      ...bundledColorThemes,
+      ...[...this.importedThemes, ...(this.previewTheme ? [this.previewTheme] : [])].map(
+        (theme): ColorThemeOption => ({
+          choice: `imported:${theme.id}`,
+          name: theme.name,
+          type: theme.type,
+          theme,
+        }),
+      ),
+    ];
   }
 
-  get activeImportedTheme() {
-    if (this.previewTheme && this.selectedThemeChoice === `imported:${this.previewTheme.id}`)
-      return this.previewTheme;
-    return this.importedThemes.find((theme) => `imported:${theme.id}` === this.selectedThemeChoice);
+  get resolvedMode(): ColorScheme {
+    return this.theme === "system" ? this.systemColorScheme : this.theme;
+  }
+
+  preferredTheme(mode: ColorScheme) {
+    return mode === "light" ? this.lightTheme : this.darkTheme;
+  }
+
+  get selectedThemeChoice() {
+    return this.previewChoice ?? this.preferredTheme(this.resolvedMode);
+  }
+
+  get activeColorTheme() {
+    return this.colorThemes.find((theme) => theme.choice === this.selectedThemeChoice)?.theme;
+  }
+
+  get activeCustomTheme() {
+    const theme = this.activeColorTheme;
+    return theme === "light" || theme === "dark" ? undefined : theme;
+  }
+
+  get activeAppearanceMode(): AppearanceMode {
+    if (!this.previewChoice) return this.theme;
+    const theme = this.activeColorTheme;
+    return theme === "light" || theme === "dark" ? theme : (theme?.type ?? this.theme);
   }
 
   get previewName() {
-    const choice = this.selectedThemeChoice;
-    if (choice === "system") return "System";
-    if (choice === "light") return "Light";
-    if (choice === "dark") return "Dark";
-    return this.activeImportedTheme?.name;
+    return this.colorThemes.find((theme) => theme.choice === this.previewChoice)?.name;
   }
 
-  previewSelection(theme: ThemeChoice) {
-    this.previewChoice = theme;
+  setSystemColorScheme(scheme: ColorScheme) {
+    this.systemColorScheme = scheme;
+  }
+
+  browseThemes(mode: ColorScheme) {
+    this.galleryMode = (this.galleryMode ?? this.resolvedMode) === mode ? "closed" : mode;
+  }
+
+  previewSelection(choice: ColorThemeChoice) {
+    this.previewChoice = choice;
   }
 
   async importThemeFiles(files: readonly File[]) {
@@ -87,6 +132,7 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
         crypto.randomUUID(),
       );
       this.previewChoice = `imported:${this.previewTheme.id}`;
+      this.galleryMode = this.previewTheme.type;
     } catch (error) {
       this.importError = error instanceof Error ? error.message : String(error);
     }
@@ -94,10 +140,11 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
 
   applyPreview() {
     if (!this.previewChoice) return;
+    const option = this.colorThemes.find((theme) => theme.choice === this.previewChoice);
+    if (!option) return;
     if (this.previewTheme && this.previewChoice === `imported:${this.previewTheme.id}`)
       this.importedThemes.push(this.previewTheme);
-    this.theme = this.previewChoice;
-    this.cancelPreview();
+    this.setPreferredTheme(option.type, this.previewChoice);
   }
 
   cancelPreview() {
@@ -113,13 +160,23 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
     const index = this.importedThemes.findIndex((theme) => `imported:${theme.id}` === choice);
     if (index < 0) return;
     this.importedThemes.splice(index, 1);
-    if (choice === this.theme) this.setTheme("system");
-    else this.cancelPreview();
+    if (choice === this.lightTheme) this.lightTheme = "bundled:cake-light";
+    if (choice === this.darkTheme) this.darkTheme = "bundled:cake-dark";
+    this.cancelPreview();
   }
 
-  setTheme(theme: ThemeChoice) {
+  setTheme(theme: AppearanceMode) {
     this.cancelPreview();
     this.theme = theme;
+    this.galleryMode = theme === "system" ? undefined : theme;
+  }
+
+  setPreferredTheme(mode: ColorScheme, choice: ColorThemeChoice) {
+    if (!this.colorThemes.some((option) => option.choice === choice && option.type === mode))
+      throw new Error(`Choose an available ${mode} theme.`);
+    if (mode === "light") this.lightTheme = choice;
+    else this.darkTheme = choice;
+    this.cancelPreview();
   }
 
   setProjectAvatarsEnabled(enabled: boolean) {

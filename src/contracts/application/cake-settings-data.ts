@@ -1,4 +1,4 @@
-import type { ThemeChoice } from "../themes/color-theme";
+import type { AppearanceMode, ColorThemeChoice } from "../themes/color-theme";
 export const cakeSettingsSectionIds = ["appearance", "editor", "hotkeys"] as const;
 export type CakeSettingsSectionId = (typeof cakeSettingsSectionIds)[number];
 
@@ -37,7 +37,9 @@ export const cakeHotkeyActionIds = [
 export type CakeHotkeyActionId = (typeof cakeHotkeyActionIds)[number];
 
 interface CakeAppearanceSettings {
-  readonly theme: ThemeChoice;
+  readonly theme: AppearanceMode;
+  readonly lightTheme: ColorThemeChoice;
+  readonly darkTheme: ColorThemeChoice;
   readonly projectAvatarsEnabled: boolean;
   readonly sessionAvatarsEnabled: boolean;
   readonly sidebarCharactersEnabled: boolean;

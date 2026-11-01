@@ -1,16 +1,21 @@
 import { useEffect, useLayoutEffect } from "react";
-import { applyDocumentTheme } from "../lib/resolved-color-theme";
+import { applyDocumentTheme, useSystemColorTheme } from "../lib/resolved-color-theme";
 import type { RootStore } from "../stores/RootStore";
 
 export function useAppDocument(root: RootStore) {
   const settings = root.settingsStore;
   const extensionUi = root.extensionUiStore;
-  const customTheme = settings.appearance.activeImportedTheme;
-  const themeChoice = settings.appearance.selectedThemeChoice;
+  const appearance = settings.appearance;
+  const systemTheme = useSystemColorTheme();
   useLayoutEffect(() => {
-    applyDocumentTheme(themeChoice, customTheme);
+    appearance.setSystemColorScheme(systemTheme);
+  }, [appearance, systemTheme]);
+  const mode = appearance.activeAppearanceMode;
+  const customTheme = appearance.activeCustomTheme;
+  useLayoutEffect(() => {
+    applyDocumentTheme(mode, customTheme);
     return () => applyDocumentTheme("system");
-  }, [themeChoice, customTheme]);
+  }, [mode, customTheme]);
   useEffect(() => {
     document.title = extensionUi.title ? `${extensionUi.title} · Cake` : "Cake";
   }, [extensionUi.title]);
