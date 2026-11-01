@@ -186,8 +186,14 @@ export function renderSubagentActivity(options: {
           )}
           <SideChatLayout
             store={session.conversationSessionStore.sideChatStore}
-            renderChat={(chat) => (
-              <Chat store={chat} embedded compact composerFocusEnabled={false} />
+            renderChat={(chat, composerHeader) => (
+              <Chat
+                store={chat}
+                composerHeader={composerHeader}
+                embedded
+                compact
+                composerFocusEnabled={false}
+              />
             )}
           >
             <Chat

@@ -16,7 +16,7 @@ export function SidePanel({
   className?: string;
   children: ReactNode;
   headerActions?: ReactNode;
-  onClose(): void;
+  onClose?(): void;
 }) {
   return (
     <aside
@@ -33,9 +33,11 @@ export function SidePanel({
           {eyebrow && <p className="mt-0.5 truncate text-xs text-muted-foreground">{eyebrow}</p>}
         </div>
         {headerActions}
-        <IconButton tooltip={`Close ${title}`} ariaLabel={`Close ${title}`} onClick={onClose}>
-          <CloseIcon size={14} />
-        </IconButton>
+        {onClose && (
+          <IconButton tooltip={`Close ${title}`} ariaLabel={`Close ${title}`} onClick={onClose}>
+            <CloseIcon size={14} />
+          </IconButton>
+        )}
       </header>
       <div className="h-full min-h-0 min-w-0 overflow-hidden">{children}</div>
     </aside>

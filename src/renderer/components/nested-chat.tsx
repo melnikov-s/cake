@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import type { ChatTranscriptBehavior } from "./chat-transcript";
 import type { ChatStore } from "../stores/ChatStore";
@@ -10,11 +11,13 @@ import { BlockingInterviews } from "./blocking-interviews";
 export const NestedChat = observer(function NestedChat({
   store,
   parentBehavior,
+  composerHeader,
   composerFocusEnabled = true,
   compact = true,
 }: {
   store: ChatStore;
   parentBehavior?: ChatTranscriptBehavior;
+  composerHeader?: ReactNode;
   composerFocusEnabled?: boolean;
   compact?: boolean;
 }) {
@@ -25,6 +28,7 @@ export const NestedChat = observer(function NestedChat({
       store={store}
       embedded
       compact={compact}
+      composerHeader={composerHeader}
       composerFocusEnabled={composerFocusEnabled}
       transcriptBehavior={behavior}
       composerContent={

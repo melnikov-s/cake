@@ -3,6 +3,8 @@ import { observer } from "r-state-tree/react";
 import { AccessoryPanelLayout } from "@/components/ui/accessory-panel-layout";
 import { SidePanel } from "@/components/ui/side-panel";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
+import { CloseIcon } from "@/components/ui/icons";
 import { Callout } from "@/components/ui/callout";
 import { SearchInput } from "@/components/ui/search-input";
 import type { ChatStore } from "../stores/ChatStore";
@@ -21,7 +23,7 @@ export const SideChatLayout = observer(function SideChatLayout({
 }: {
   store: SideChatStore;
   children: ReactNode;
-  renderChat(store: ChatStore): ReactNode;
+  renderChat(store: ChatStore, composerHeader: ReactNode): ReactNode;
   /** Workspace chat drawers keep the conversation visible without clearing the to-do selection. */
   hideTodos?: boolean;
   /** Fullscreen already hosts this artifact; do not recursively render it in its chat drawer. */
@@ -32,6 +34,33 @@ export const SideChatLayout = observer(function SideChatLayout({
       ? undefined
       : store.target;
   const model = target?.model?.();
+  // Read-only conversations and non-chat panels retain their header controls.
+  const dockActions = Boolean(target?.chatStore?.composerVisible);
+  const mergeAction = target?.merge && (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={target.merge.disabled}
+      onClick={() => void target.merge?.run()}
+    >
+      {target.merge.label}
+    </Button>
+  );
+  const composerHeader = dockActions && target && (
+    <div
+      data-slot="side-chat-actions"
+      className="flex shrink-0 items-center justify-end gap-3 px-3 py-2"
+    >
+      {mergeAction}
+      <IconButton
+        tooltip={`Close ${target.title}`}
+        ariaLabel={`Close ${target.title}`}
+        onClick={() => store.close()}
+      >
+        <CloseIcon size={14} />
+      </IconButton>
+    </div>
+  );
   return (
     <SideChatContext.Provider value={store}>
       <AccessoryPanelLayout
@@ -47,7 +76,7 @@ export const SideChatLayout = observer(function SideChatLayout({
             <SidePanel
               title={target.title}
               eyebrow={target.eyebrow?.()}
-              onClose={() => store.close()}
+              onClose={dockActions ? undefined : () => store.close()}
               headerActions={
                 target.todos ? (
                   <SearchInput
@@ -59,16 +88,7 @@ export const SideChatLayout = observer(function SideChatLayout({
                 ) : (
                   <>
                     {model && <ModelSummary {...model} className="max-w-[65%]" />}
-                    {target.merge && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={target.merge.disabled}
-                        onClick={() => void target.merge?.run()}
-                      >
-                        {target.merge.label}
-                      </Button>
-                    )}
+                    {!dockActions && mergeAction}
                   </>
                 )
               }
@@ -79,7 +99,7 @@ export const SideChatLayout = observer(function SideChatLayout({
                   {target.todos ? (
                     <ProjectTodosPanel store={target.todos} />
                   ) : (
-                    renderChat(target.chatStore)
+                    renderChat(target.chatStore, composerHeader)
                   )}
                 </div>
               </div>

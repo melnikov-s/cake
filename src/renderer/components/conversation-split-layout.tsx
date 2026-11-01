@@ -83,9 +83,10 @@ export function ConversationSplitLayout<T extends PrimarySessionStore>({
           <WorkflowConversationLayout stores={workflows}>
             <SideChatLayout
               store={session.conversationSessionStore.sideChatStore}
-              renderChat={(sideChatStore) => (
+              renderChat={(sideChatStore, composerHeader) => (
                 <NestedChat
                   store={sideChatStore}
+                  composerHeader={composerHeader}
                   composerFocusEnabled={store.focusedPaneId === pane.paneId}
                   parentBehavior={props.transcriptBehavior}
                 />

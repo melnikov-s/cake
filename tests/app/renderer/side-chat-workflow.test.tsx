@@ -136,7 +136,9 @@ function renderSideChats(
   const view = render(
     <SideChatLayout
       store={session.conversationSessionStore.sideChatStore}
-      renderChat={(chat) => <Chat store={chat} embedded composerFocusEnabled={false} />}
+      renderChat={(chat, composerHeader) => (
+        <Chat store={chat} composerHeader={composerHeader} embedded composerFocusEnabled={false} />
+      )}
     >
       <SideChatsMenu store={session} />
       <Chat

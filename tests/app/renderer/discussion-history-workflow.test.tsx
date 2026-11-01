@@ -46,7 +46,14 @@ const Surface = observer(function Surface({ chat }: { chat: CakeChatSessionStore
       <SideChatsMenu store={chat} />
       <SideChatLayout
         store={chat.conversationSessionStore.sideChatStore}
-        renderChat={(store) => <Chat store={store} embedded composerFocusEnabled={false} />}
+        renderChat={(store, composerHeader) => (
+          <Chat
+            store={store}
+            composerHeader={composerHeader}
+            embedded
+            composerFocusEnabled={false}
+          />
+        )}
       >
         <Chat
           store={chat.conversationSessionStore.chatStore}

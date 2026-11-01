@@ -82,7 +82,13 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
     <SideChatLayout
       store={sideChat}
       hideTodos
-      renderChat={(store) => <NestedChat store={store} parentBehavior={transcriptBehavior} />}
+      renderChat={(store, composerHeader) => (
+        <NestedChat
+          store={store}
+          composerHeader={composerHeader}
+          parentBehavior={transcriptBehavior}
+        />
+      )}
     >
       <Chat
         className="h-full"

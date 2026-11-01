@@ -252,6 +252,14 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
       name: selection ? "Reply to selection side chat" : "Reply to side chat",
     });
     const streamedAnswer = sideChat.getByText("Side chat streamed answer", { exact: false });
+    const actionRow = sideChat.locator('[data-slot="side-chat-actions"]');
+    const close = actionRow.getByRole("button", { name: "Close Side chat" });
+    await expect(close).toBeVisible();
+    const actionBounds = await actionRow.boundingBox();
+    const composerBounds = await sideChat.locator('[data-slot="composer-input"]').boundingBox();
+    expect(actionBounds).not.toBeNull();
+    expect(composerBounds).not.toBeNull();
+    expect(actionBounds!.y + actionBounds!.height).toBeLessThanOrEqual(composerBounds!.y);
 
     await expect.poll(() => responses.length).toBe(1);
     const sideChatResponse = responses[0]!;
@@ -303,6 +311,23 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
         ),
       )
       .toBeLessThanOrEqual(1);
+
+    // The actions stay with the composer, not with the scrolling messages.
+    const dockedBounds = await actionRow.boundingBox();
+    expect(
+      await transcript.evaluate((element) => element.scrollHeight > element.clientHeight),
+    ).toBe(true);
+    await transcript.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBe(0);
+    expect(await actionRow.boundingBox()).toEqual(dockedBounds);
+    await expect(close).toBeInViewport();
+    await sideChatInput.focus();
+    await page.keyboard.press("Shift+Tab");
+    await expect(close).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(sideChat).toHaveCount(0);
   } finally {
     for (const response of responses) response.end();
     await application.close();

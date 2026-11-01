@@ -81,8 +81,12 @@ export const IdeWorkspace = observer(function IdeWorkspace({
     <SideChatLayout
       store={sideChat}
       hideTodos
-      renderChat={(sideChatStore) => (
-        <NestedChat store={sideChatStore} parentBehavior={transcriptBehavior} />
+      renderChat={(sideChatStore, composerHeader) => (
+        <NestedChat
+          store={sideChatStore}
+          composerHeader={composerHeader}
+          parentBehavior={transcriptBehavior}
+        />
       )}
     >
       {contextualChat ? (

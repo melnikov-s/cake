@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { observer } from "r-state-tree/react";
@@ -36,7 +36,14 @@ const Surface = observer(function Surface({
       <SideChatsMenu store={chat} />
       <SideChatLayout
         store={chat.conversationSessionStore.sideChatStore}
-        renderChat={(store) => <Chat store={store} embedded composerFocusEnabled={false} />}
+        renderChat={(store, composerHeader) => (
+          <Chat
+            store={store}
+            composerHeader={composerHeader}
+            embedded
+            composerFocusEnabled={false}
+          />
+        )}
       >
         <Chat
           store={chat.conversationSessionStore.chatStore}
@@ -183,7 +190,13 @@ it("merges an idle side chat explicitly, keeps it usable, and reports repeated i
     </VirtuosoMockContext.Provider>,
   );
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "Merge into main chat" }));
+  const panel = screen.getByRole("complementary", { name: "Side chat" });
+  const actionRow = panel.querySelector<HTMLElement>(
+    '[data-slot="composer-dock"] [data-slot="side-chat-actions"]',
+  );
+  expect(actionRow).not.toBeNull();
+  expect(within(actionRow!).getByRole("button", { name: "Close Side chat" })).toBeDefined();
+  await user.click(within(actionRow!).getByRole("button", { name: "Merge into main chat" }));
   expect(merge).toHaveBeenCalledTimes(1);
   expect(merge.mock.calls[0]![0]).toEqual({
     parentSessionId: CAKE_CHAT_SESSION_ID,

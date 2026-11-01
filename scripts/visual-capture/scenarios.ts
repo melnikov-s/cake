@@ -5,7 +5,10 @@ import {
   MESSAGE_BOARD_FIXTURE_ID,
 } from "../../tests/fixtures/message-board.ts";
 import { defaultApplicationState } from "../../src/contracts/application/application-data.ts";
-import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity.ts";
+import {
+  CAKE_CHAT_SESSION_ID,
+  cakeChatSideChatSessionId,
+} from "../../src/contracts/cake-chats/cake-chat-identity.ts";
 import { openRequestInspectorFixture } from "./request-inspector-fixture.ts";
 import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders.ts";
 import {
@@ -27,6 +30,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { homedir } from "node:os";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
   Harness,
@@ -270,6 +274,105 @@ const assistantMarkdownCode: VisualCaptureScenario = {
       .locator('[data-slot="message-content"]');
     return dialog.or(message).last();
   },
+};
+
+const sideChatActions: VisualCaptureScenario = {
+  ...assistantMarkdownCode,
+  name: "side-chat-actions",
+  description: "Side-chat merge and close actions docked above the follow-up composer",
+  states: ["default"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const directory = join(paths.cakeHome, "pi", "global-chat");
+    await seedDurableChat(directory, ["Hello", "How can I help?"]);
+    const storage = await openNodeSqliteStorage(join(directory, "coordinator.sqlite"));
+    const harness = await Harness.open(
+      storage,
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    try {
+      const root = await harness.root(BACKGROUND_CONTEXT);
+      const entries = await root.entries({ order: "descending" }, 1, undefined, BACKGROUND_CONTEXT);
+      const at = entries.items[0]!.id;
+      const fork = await root.fork(at, { ownership: { kind: "ownerless" } }, BACKGROUND_CONTEXT);
+      await fork.commit(async (tx) => {
+        await tx.appendEntry(UserEntry, fork.id, {
+          model: [{ role: "user", content: [{ type: "text", text: "hi" }], timestamp: 2 }],
+        });
+        await tx.appendEntry(AssistantEntry, fork.id, {
+          model: [
+            {
+              role: "assistant",
+              content: [{ type: "text", text: "Hi! What’s on your mind?" }],
+              timestamp: 3,
+              api: "anthropic-messages",
+              provider: "anthropic",
+              model: "visual-fixture",
+              stopReason: "stop",
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              },
+            },
+          ],
+        });
+      }, BACKGROUND_CONTEXT);
+      const recordDirectory = join(
+        paths.cakeHome,
+        "state",
+        "reviews",
+        sha256(homedir()),
+        sha256(CAKE_CHAT_SESSION_ID),
+      );
+      await mkdir(recordDirectory, { recursive: true });
+      const timestamp = new Date(0).toISOString();
+      await writeFile(
+        join(recordDirectory, `${sha256("visual-side-chat")}.json`),
+        JSON.stringify({
+          id: "visual-side-chat",
+          workspacePath: homedir(),
+          sessionId: CAKE_CHAT_SESSION_ID,
+          agentSessionId: cakeChatSideChatSessionId(fork.id),
+          anchor: {
+            path: `session:${CAKE_CHAT_SESSION_ID}/message/${at}`,
+            view: "message",
+            messageId: String(at),
+            entryId: String(at),
+            start: { diffLine: 0 },
+            end: { diffLine: 0 },
+            selectedText: "",
+            contextBefore: "",
+            contextAfter: "",
+            diff: "",
+          },
+          pendingComments: [],
+          status: "open",
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }),
+      );
+    } finally {
+      await harness.close(BACKGROUND_CONTEXT);
+      await storage.close(BACKGROUND_CONTEXT);
+    }
+  },
+  async prepare(page) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await page.getByRole("button", { name: "Side chats, 1 open" }).click();
+    await page.getByRole("dialog", { name: "Open side chats" }).getByRole("button").click();
+    const panel = page.getByRole("complementary", { name: "Side chat", exact: true });
+    await expect(panel.getByText("Hi! What’s on your mind?")).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Merge into main chat" })).toBeEnabled();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.getByRole("complementary", { name: "Side chat", exact: true }),
 };
 
 const toastNotificationsScenario: VisualCaptureScenario = {
@@ -6184,6 +6287,7 @@ const assistantStandaloneDiagram: VisualCaptureScenario = {
 };
 
 export const visualCaptureScenarios: VisualCaptureScenario[] = [
+  sideChatActions,
   assistantStandaloneDiagram,
   rendererCrash,
   workflowChoiceScenario,
