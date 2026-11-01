@@ -14,6 +14,8 @@ import type { ProjectSessionResolutionDomainFailure } from "../../contracts/proj
 import type {
   CaptureRouting,
   CaptureResult,
+  CaptureCompletion,
+  CaptureAnnotationColor,
   ScreenCaptureSettings,
   ScreenCaptureSnapshot,
 } from "../../contracts/desktop/screen-capture-data";
@@ -125,14 +127,17 @@ interface ElectronCommands {
   startScreenCapture(
     routing: CaptureRouting,
     options?: ClientCommandOptions,
-  ): Promise<CaptureResult | undefined>;
+  ): Promise<CaptureCompletion>;
   screenCaptureState(options?: ClientCommandOptions): Promise<ScreenCaptureSnapshot>;
   copyScreenCapture(
     capture: { image: string; annotationText: string },
     options?: ClientCommandOptions,
   ): Promise<void>;
   finishScreenCapture(
-    capture?: { image: string; annotationText: string; destination: CaptureResult["destination"] },
+    capture:
+      | { image: string; annotationText: string; destination: CaptureResult["destination"] }
+      | undefined,
+    annotationColor: CaptureAnnotationColor,
     options?: ClientCommandOptions,
   ): Promise<void>;
   chooseProject(options?: ClientCommandOptions): Promise<string | undefined>;

@@ -159,10 +159,10 @@ describe("Native screen capture lifetime", () => {
             visibleOnFullScreen: true,
           });
         }
-        if (outcome === "finish") capture.finish(window.webContents.id);
+        if (outcome === "finish") capture.finish(window.webContents.id, undefined, "yellow");
         else if (outcome === "abort") controller.abort();
         else window.destroy();
-        expect(await running).toEqual({});
+        expect(await running).toEqual({ annotationColor: "yellow" });
         expect(window.isDestroyed()).toBe(true);
       }
     } finally {
@@ -191,12 +191,17 @@ describe("Native screen capture lifetime", () => {
       height: 1200,
       maxDimension: 1024,
     });
-    capture.finish(window.webContents.id, {
-      image: "data:image/png;base64,composed",
-      annotationText: "1. First\n   second",
-      destination: { kind: "project-session", sessionId: "beta" },
-    });
+    capture.finish(
+      window.webContents.id,
+      {
+        image: "data:image/png;base64,composed",
+        annotationText: "1. First\n   second",
+        destination: { kind: "project-session", sessionId: "beta" },
+      },
+      "cyan",
+    );
     expect(await running).toEqual({
+      annotationColor: "cyan",
       capture: {
         data: Buffer.from("resized").toString("base64"),
         annotationText: "1. First\n   second",
@@ -221,8 +226,8 @@ describe("Native screen capture lifetime", () => {
     });
     expect(window.isDestroyed()).toBe(false);
     expect(() => capture.state(window.webContents.id)).not.toThrow();
-    capture.finish(window.webContents.id);
-    expect(await running).toEqual({});
+    capture.finish(window.webContents.id, undefined, "yellow");
+    expect(await running).toEqual({ annotationColor: "yellow" });
     capture.stop();
   });
   it("allows new sessions only in an offered Project and returns the chosen route", async () => {
@@ -231,18 +236,27 @@ describe("Native screen capture lifetime", () => {
     const window = await created;
     expect(capture.state(window.webContents.id).routing).toEqual(captureRouting);
     expect(() =>
-      capture.finish(window.webContents.id, {
+      capture.finish(
+        window.webContents.id,
+        {
+          image: "data:image/png;base64,new",
+          annotationText: "1. First\n   second",
+          destination: { kind: "new-session", projectPath: "/unavailable" },
+        },
+        "yellow",
+      ),
+    ).toThrow("available screenshot destination");
+    capture.finish(
+      window.webContents.id,
+      {
         image: "data:image/png;base64,new",
         annotationText: "1. First\n   second",
-        destination: { kind: "new-session", projectPath: "/unavailable" },
-      }),
-    ).toThrow("available screenshot destination");
-    capture.finish(window.webContents.id, {
-      image: "data:image/png;base64,new",
-      annotationText: "1. First\n   second",
-      destination: { kind: "new-session", projectPath: "/other" },
-    });
+        destination: { kind: "new-session", projectPath: "/other" },
+      },
+      "yellow",
+    );
     expect(await running).toEqual({
+      annotationColor: "yellow",
       capture: {
         data: Buffer.from("resized").toString("base64"),
         annotationText: "1. First\n   second",
@@ -260,12 +274,12 @@ describe("Native screen capture lifetime", () => {
       capture.start(owner, captureRouting, new AbortController().signal),
     ).rejects.toThrow("already open");
     controller.abort();
-    expect(await running).toEqual({});
+    expect(await running).toEqual({ annotationColor: "yellow" });
     expect(window.isDestroyed()).toBe(true);
     const retry = startOverlay(capture, owner);
     const next = await retry.created;
-    capture.finish(next.webContents.id);
-    expect(await retry.running).toEqual({});
+    capture.finish(next.webContents.id, undefined, "yellow");
+    expect(await retry.running).toEqual({ annotationColor: "yellow" });
     capture.stop();
   });
   it("creates no overlay when cancelled during screen acquisition", async () => {
@@ -281,7 +295,7 @@ describe("Native screen capture lifetime", () => {
     const running = capture.start(owner, captureRouting, controller.signal);
     controller.abort();
     resolve([]);
-    expect(await running).toEqual({});
+    expect(await running).toEqual({ annotationColor: "yellow" });
     expect(native.windows).toHaveLength(1);
     capture.stop();
   });
@@ -291,7 +305,7 @@ describe("Native screen capture lifetime", () => {
     expect(requestCapture).toHaveBeenCalledWith(owner);
     const { running, created } = startOverlay(capture, owner);
     (await created).destroy();
-    expect(await running).toEqual({});
+    expect(await running).toEqual({ annotationColor: "yellow" });
     native.registered.set("OtherShortcut", () => {});
     capture.stop();
     expect([...native.registered.keys()]).toEqual(["OtherShortcut"]);
@@ -308,7 +322,7 @@ describe("Native screen capture lifetime", () => {
     const running = capture.start(owner, captureRouting, new AbortController().signal);
     capture.stop();
     resolve([]);
-    expect(await running).toEqual({});
+    expect(await running).toEqual({ annotationColor: "yellow" });
     expect(native.windows).toHaveLength(1);
   });
   it("keeps the working shortcut when a replacement is unavailable", () => {

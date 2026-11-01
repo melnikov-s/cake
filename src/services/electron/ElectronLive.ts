@@ -656,7 +656,11 @@ const makeElectronService = (
     finishScreenCapture: Effect.fn("Electron.finishScreenCapture")((connectionId, request) =>
       Effect.try({
         try: () => {
-          capture.finish(requireRendererConnection(connectionId).id, request.capture);
+          capture.finish(
+            requireRendererConnection(connectionId).id,
+            request.capture,
+            request.annotationColor,
+          );
           return {};
         },
         catch: electronError,

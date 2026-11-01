@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type Page } from "@playwright/test";
@@ -68,9 +68,12 @@ test("captures and annotates through the hidden native overlay into the existing
         Object.assign(globalThis, { captureFailures: failures, captureDialogs: dialogs });
         const bitmap = Buffer.alloc(2400 * 1200 * 4);
         for (let index = 0; index < bitmap.length; index += 4) {
-          bitmap[index] = 90;
-          bitmap[index + 1] = 100;
-          bitmap[index + 2] = 110;
+          const x = (index / 4) % 2400;
+          const y = Math.floor(index / 4 / 2400);
+          const shade = x < 800 ? 255 : x < 1600 ? 0 : 110;
+          bitmap[index] = y < 300 ? 90 : shade;
+          bitmap[index + 1] = y < 300 ? 100 : shade;
+          bitmap[index + 2] = y < 300 ? 110 : shade;
           bitmap[index + 3] = 255;
         }
         const image = nativeImage.createFromBitmap(bitmap, { width: 2400, height: 1200 });
@@ -147,6 +150,27 @@ test("captures and annotates through the hidden native overlay into the existing
     };
     let overlay = await begin();
     const toolbar = overlay.getByRole("toolbar", { name: "Screen capture tools" });
+    const colorTrigger = overlay.getByRole("button", { name: "Annotation color", exact: true });
+    await colorTrigger.click();
+    const colors = overlay.getByRole("menu", { name: "Annotation color" });
+    await expect(colors.getByRole("menuitemradio")).toHaveCount(6);
+    await expect(colors.getByRole("menuitemradio", { name: "yellow" })).toBeFocused();
+    await overlay.keyboard.press("ArrowDown");
+    await overlay.keyboard.press("Enter");
+    await expect(colorTrigger.locator("[data-annotation-color]")).toHaveAttribute(
+      "data-annotation-color",
+      "red",
+    );
+    await expect(colors).toHaveCount(0);
+    await colorTrigger.click();
+    await colors.getByRole("menuitemradio", { name: "cyan" }).click();
+    await colorTrigger.click();
+    await overlay.keyboard.press("Escape");
+    await expect(colorTrigger).toBeFocused();
+    await expect(colors).toHaveCount(0);
+    await colorTrigger.click();
+    await overlay.getByRole("button", { name: "Crop", exact: true }).click();
+    await expect(colors).toHaveCount(0);
     const toolbarBounds = (await toolbar.boundingBox())!;
     expect(toolbarBounds.width).toBeLessThan(600);
     expect(toolbarBounds.height).toBeLessThan(50);
@@ -212,6 +236,14 @@ test("captures and annotates through the hidden native overlay into the existing
       }),
     ]);
     await expect.poll(() => application.windows().length).toBe(1);
+    await expect
+      .poll(async () => {
+        const saved = JSON.parse(await readFile(join(userData, "window-state.json"), "utf8"));
+        return saved.data.children.screenCaptureStore.state.annotationColor;
+      })
+      .toBe("cyan");
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Back to chat" })).toBeVisible();
     await page.getByRole("button", { name: "Back to chat" }).click();
     await expect(composer).toHaveValue("Keep this draft");
     await expect(page.getByRole("button", { name: /^View Screenshot-/ })).toHaveCount(0);
@@ -238,6 +270,10 @@ test("captures and annotates through the hidden native overlay into the existing
         overlay.locator("canvas").evaluate((canvas) => (canvas as HTMLCanvasElement).width),
       )
       .toBe(2400);
+    await expect(overlay.locator("[data-annotation-color]")).toHaveAttribute(
+      "data-annotation-color",
+      "cyan",
+    );
     await installCaptureMicrophone(overlay);
     await overlay.getByRole("button", { name: "Annotate", exact: true }).click();
     const bounds = (await overlay.locator("canvas").boundingBox())!;
@@ -333,6 +369,29 @@ test("captures and annotates through the hidden native overlay into the existing
     await expect(
       overlay.getByRole("button", { name: "Edit annotation 2", exact: true }),
     ).toHaveCount(1);
+    // Repaint identical annotations under hostile light/dark/custom chrome tokens.
+    const painted = await overlay
+      .locator("canvas")
+      .evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
+    for (const theme of ["light", "dark"]) {
+      await overlay.evaluate((theme) => {
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.setProperty("--accent", "#665544");
+        document.documentElement.style.setProperty(
+          "--background",
+          theme === "light" ? "#ffffff" : "#000000",
+        );
+        document.documentElement.style.setProperty("--foreground", "#665544");
+      }, theme);
+      // Changing color then restoring it forces a real canvas repaint.
+      await overlay.getByRole("button", { name: "Annotation color", exact: true }).click();
+      await overlay.getByRole("menuitemradio", { name: "red" }).click();
+      await overlay.getByRole("button", { name: "Annotation color", exact: true }).click();
+      await overlay.getByRole("menuitemradio", { name: "cyan" }).click();
+      expect(
+        await overlay.locator("canvas").evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL()),
+      ).toBe(painted);
+    }
     await application.evaluate(({ clipboard }) => {
       const previous = {
         text: clipboard.readText(),
@@ -379,7 +438,14 @@ test("captures and annotates through the hidden native overlay into the existing
       const { width, height } = image.getSize();
       let annotated = 0;
       let chrome = 0;
+      let cyan = 0;
+      let black = 0;
+      let white = 0;
       for (let index = 0; index < bitmap.length; index += 4) {
+        if (bitmap[index] === 255 && bitmap[index + 1] === 217 && bitmap[index + 2] === 0) cyan++;
+        if (bitmap[index] === 0 && bitmap[index + 1] === 0 && bitmap[index + 2] === 0) black++;
+        if (bitmap[index] === 255 && bitmap[index + 1] === 255 && bitmap[index + 2] === 255)
+          white++;
         if (
           bitmap[index] !== bitmap[0] ||
           bitmap[index + 1] !== bitmap[1] ||
@@ -389,10 +455,13 @@ test("captures and annotates through the hidden native overlay into the existing
           if (index < width * Math.floor(height / 4) * 4) chrome += 1;
         }
       }
-      return { annotated, chrome };
+      return { annotated, chrome, cyan, black, white };
     }, source!);
     expect(pixels.annotated).toBeGreaterThan(100);
     expect(pixels.chrome).toBe(0);
+    expect(pixels.cyan).toBeGreaterThan(100);
+    expect(pixels.black).toBeGreaterThan(100);
+    expect(pixels.white).toBeGreaterThan(100);
     await expect(composer).toHaveValue(
       /Keep this draft\n\nScreenshot-[^\n]+\n1\. Look here\n {3}Second line\n2\. Freehand note/,
     );

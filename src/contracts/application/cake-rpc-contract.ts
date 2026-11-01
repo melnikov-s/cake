@@ -8,7 +8,8 @@ import {
   CaptureImage,
   CaptureDestination,
   CaptureRouting,
-  CaptureResult,
+  CaptureCompletion,
+  CaptureAnnotationColor,
   ScreenCaptureSettings,
   ScreenCaptureSnapshot,
 } from "../desktop/screen-capture-data";
@@ -440,6 +441,7 @@ export const cakeRpcPayloadSchemas = {
   "screen-capture-state": Schema.Struct({}),
   "copy-screen-capture": Schema.Struct({ image: CaptureImage, annotationText: Schema.String }),
   "finish-screen-capture": Schema.Struct({
+    annotationColor: CaptureAnnotationColor,
     capture: Schema.optionalKey(
       Schema.Struct({
         image: CaptureImage,
@@ -901,7 +903,7 @@ export const cakeRpcSuccessSchemas = {
   "configure-cake-chat-overlay": Schema.Struct({}),
   "hide-cake-chat-overlay": Schema.Struct({}),
   "show-main-window": Schema.Struct({}),
-  "start-screen-capture": Schema.Struct({ capture: Schema.optionalKey(CaptureResult) }),
+  "start-screen-capture": CaptureCompletion,
   "screen-capture-state": ScreenCaptureSnapshot,
   "copy-screen-capture": Schema.Struct({}),
   "finish-screen-capture": Schema.Struct({}),

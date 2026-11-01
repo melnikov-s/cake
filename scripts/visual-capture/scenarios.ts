@@ -1230,6 +1230,7 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
     "annotate",
     "annotation-input",
     "annotation-details",
+    "color-picker",
   ],
   environment: (paths) => ({
     CAKE_SMOKE_DICTATION_HELPER: join(paths.userData, "capture-dictation"),
@@ -1278,9 +1279,12 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
         });
         const bitmap = Buffer.alloc(size.width * size.height * 4);
         for (let index = 0; index < bitmap.length; index += 4) {
-          bitmap[index] = 90;
-          bitmap[index + 1] = 100;
-          bitmap[index + 2] = 110;
+          const x = (index / 4) % size.width;
+          const y = Math.floor(index / 4 / size.width);
+          const shade = x < size.width / 3 ? 255 : x < (size.width * 2) / 3 ? 0 : 110;
+          bitmap[index] = y < size.height / 4 ? 90 : shade;
+          bitmap[index + 1] = y < size.height / 4 ? 100 : shade;
+          bitmap[index + 2] = y < size.height / 4 ? 110 : shade;
           bitmap[index + 3] = 255;
         }
         const image = nativeImage.createFromBitmap(bitmap, size);
@@ -1318,7 +1322,10 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
       }
     }
     const annotationState =
-      state === "annotate" || state === "annotation-input" || state === "annotation-details";
+      state === "annotate" ||
+      state === "annotation-input" ||
+      state === "annotation-details" ||
+      state === "color-picker";
     if (annotationState) {
       await installCaptureMicrophone(overlay);
       await overlay.getByRole("button", { name: "Annotate", exact: true }).click();
@@ -1346,6 +1353,12 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
         await overlay.getByRole("button", { name: "Edit annotation 1", exact: true }).click();
         await expect(overlay.getByRole("dialog", { name: "Annotation details" })).toBeVisible();
       }
+    }
+    if (state === "color-picker") {
+      await overlay.getByRole("button", { name: "Annotation color", exact: true }).click();
+      await overlay.getByRole("menuitemradio", { name: "cyan" }).click();
+      await overlay.getByRole("button", { name: "Annotation color", exact: true }).click();
+      await expect(overlay.getByRole("menu", { name: "Annotation color" })).toBeVisible();
     }
     await overlay.waitForFunction(() => document.fonts.status === "loaded");
     await overlay.mouse.move(1, 1);

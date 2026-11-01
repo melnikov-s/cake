@@ -28,6 +28,8 @@ See `AGENTS.md` for renderer implementation rules.
 
 [FilePicker](../../src/renderer/components/ui/file-picker.tsx) opens a native file or folder chooser and supplies only user-selected `File` data. It supports JSON/JSONC source sets for theme imports.
 
+[`AnnotationColorPicker`](../../src/renderer/components/ui/annotation-color-picker.tsx) is a compact dot trigger and preset-dot popover for image annotations. Its explicit image colors are independent of Cake's theme; screenshot preferences own the selected value.
+
 `PopoverContent` accepts `initialFocusSelector` to prefer an input over toolbar controls once an opening is visible, without refocusing on content updates. `dismissOnEscapeCapture` lets an explicit-dismissal popup handle Escape before an input consumes it.
 
 [`ContextMenu`](../../src/renderer/components/ui/context-menu.tsx) composes `Popover` and `Button` for pointer/keyboard context actions, expandable submenus and in-place interactive panels.

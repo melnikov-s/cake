@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Schema } from "effect";
 import {
   CaptureRouting,
-  type CaptureResult,
+  type CaptureCompletion,
 } from "../../../src/contracts/desktop/screen-capture-data";
 import {
   TurnId,
@@ -150,16 +150,22 @@ afterEach(() => {
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
-const captured: CaptureResult = {
-  data: png,
-  annotationText: "",
-  destination: { kind: "project-session", sessionId: "alpha" },
+const captured: CaptureCompletion = {
+  annotationColor: "yellow",
+  capture: {
+    data: png,
+    annotationText: "",
+    destination: { kind: "project-session", sessionId: "alpha" },
+  },
 };
 describe("Screen capture attachment workflow", () => {
   it("sends the numbered plain text and matching screenshot once through the existing composer", async () => {
     using fixture = renderCapture(async () => ({
       ...captured,
-      annotationText: "1. Arrow note\n   continued\n2. Freehand note",
+      capture: {
+        ...captured.capture!,
+        annotationText: "1. Arrow note\n   continued\n2. Freehand note",
+      },
     }));
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
     expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
@@ -179,7 +185,10 @@ describe("Screen capture attachment workflow", () => {
   it("includes an unsent chat outside the Pi catalog and defaults to its existing draft", async () => {
     const start = vi.fn<Client["electron"]["startScreenCapture"]>(async (routing) => {
       Schema.decodeUnknownSync(CaptureRouting)(routing);
-      return { data: png, annotationText: "", destination: routing.defaultDestination };
+      return {
+        annotationColor: routing.annotationColor,
+        capture: { data: png, annotationText: "", destination: routing.defaultDestination },
+      };
     });
     using fixture = renderCapture(start, true);
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
@@ -196,7 +205,9 @@ describe("Screen capture attachment workflow", () => {
   it.each(["projected", "pending"] as const)(
     "groups unsent destinations by their %s Managed Worktree Project without duplicating listed sessions",
     async (source) => {
-      const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => undefined);
+      const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => ({
+        annotationColor: "yellow",
+      }));
       using fixture = renderCapture(start);
       const worktree = {
         projectPath: "/project",
@@ -249,7 +260,9 @@ describe("Screen capture attachment workflow", () => {
   );
 
   it("uses sidebar Project order and session order with the same identity presentation facts", async () => {
-    const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => undefined);
+    const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => ({
+      annotationColor: "yellow",
+    }));
     using fixture = renderCapture(start);
     act(() => {
       fixture.root.projectCatalogStore.move("/other", "/project", "before");
@@ -284,7 +297,9 @@ describe("Screen capture attachment workflow", () => {
   });
 
   it("includes collapsed family descendants before unsent pane destinations", async () => {
-    const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => undefined);
+    const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => ({
+      annotationColor: "yellow",
+    }));
     using fixture = renderCapture(start);
     act(() => {
       applySnapshot(fixture.models.sessionCatalog, {
@@ -324,9 +339,12 @@ describe("Screen capture attachment workflow", () => {
 
   it("offers catalog sessions, defaults to the last chat, and routes to a different chosen session", async () => {
     const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => ({
-      data: png,
-      annotationText: "1. Chosen session note",
-      destination: { kind: "project-session", sessionId: "beta" },
+      annotationColor: "yellow",
+      capture: {
+        data: png,
+        annotationText: "1. Chosen session note",
+        destination: { kind: "project-session", sessionId: "beta" },
+      },
     }));
     using fixture = renderCapture(start);
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
@@ -358,9 +376,12 @@ describe("Screen capture attachment workflow", () => {
 
   it("opens an unloaded catalog session in another Project before attaching", async () => {
     using fixture = renderCapture(async () => ({
-      data: png,
-      annotationText: "1. Other project note",
-      destination: { kind: "project-session", sessionId: "gamma" },
+      annotationColor: "yellow",
+      capture: {
+        data: png,
+        annotationText: "1. Other project note",
+        destination: { kind: "project-session", sessionId: "gamma" },
+      },
     }));
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
     expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
@@ -378,9 +399,12 @@ describe("Screen capture attachment workflow", () => {
 
   it("creates a fresh session with the attachment in the chosen Project without sending", async () => {
     using fixture = renderCapture(async () => ({
-      data: png,
-      annotationText: "1. New session note",
-      destination: { kind: "new-session", projectPath: "/other" },
+      annotationColor: "yellow",
+      capture: {
+        data: png,
+        annotationText: "1. New session note",
+        destination: { kind: "new-session", projectPath: "/other" },
+      },
     }));
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
     expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
@@ -412,8 +436,8 @@ describe("Screen capture attachment workflow", () => {
   });
 
   it("pins the destination at activation even if navigation changes before capture completes", async () => {
-    let complete!: (value: CaptureResult) => void;
-    const result = new Promise<CaptureResult>((resolve) => {
+    let complete!: (value: CaptureCompletion) => void;
+    const result = new Promise<CaptureCompletion>((resolve) => {
       complete = resolve;
     });
     using fixture = renderCapture(async () => result);
@@ -425,7 +449,7 @@ describe("Screen capture attachment workflow", () => {
   });
 
   it("leaves the existing draft untouched when the native experience is cancelled", async () => {
-    using fixture = renderCapture(async () => undefined);
+    using fixture = renderCapture(async () => ({ annotationColor: "yellow" }));
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
     await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
     expect(screen.queryByRole("button", { name: /^View Screenshot-/ })).toBeNull();
@@ -445,8 +469,8 @@ describe("Screen capture attachment workflow", () => {
   });
 
   it("does not attach a finished capture to a chat resolved during capture", async () => {
-    let complete!: (value: CaptureResult) => void;
-    const result = new Promise<CaptureResult>((resolve) => {
+    let complete!: (value: CaptureCompletion) => void;
+    const result = new Promise<CaptureCompletion>((resolve) => {
       complete = resolve;
     });
     using fixture = renderCapture(async () => result);
@@ -463,7 +487,7 @@ describe("Screen capture attachment workflow", () => {
   });
 
   it("configures the resized-image limit and disables the global shortcut through Settings", async () => {
-    using fixture = renderCapture(async () => undefined);
+    using fixture = renderCapture(async () => ({ annotationColor: "yellow" }));
     await fixture.user.selectOptions(screen.getByLabelText("Maximum image dimension"), "1024");
     await waitFor(() =>
       expect(fixture.configureScreenCapture).toHaveBeenLastCalledWith(

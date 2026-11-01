@@ -72,9 +72,7 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
           onMove={(point) => store.move(point)}
           onEnd={(point) => store.end(point)}
           onAbandon={() => store.abandonDrag()}
-          onPalette={(palette) => {
-            store.palette = palette;
-          }}
+          color={store.annotationColor}
           onError={(error) => {
             store.error = error instanceof Error ? error.message : String(error);
           }}
@@ -116,6 +114,8 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
       )}
       <CaptureToolbar
         mode={store.mode}
+        color={store.annotationColor}
+        onColor={(color) => store.selectColor(color)}
         busy={store.busy || !snapshot}
         canUndo={store.drawings.length > 0}
         copied={store.copied}

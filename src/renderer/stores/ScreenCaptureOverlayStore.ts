@@ -11,7 +11,10 @@ import {
   type ScreenCaptureSnapshot,
 } from "../../contracts/desktop/screen-capture-data";
 import type { Client } from "../client/Client";
-import type { CapturePalette } from "../screen-capture/render-capture";
+import {
+  DEFAULT_CAPTURE_ANNOTATION_COLOR,
+  type CaptureAnnotationColor,
+} from "../../utils/capture-annotation-colors";
 import { DictationStore } from "./DictationStore";
 import { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
 
@@ -25,7 +28,7 @@ export class ScreenCaptureOverlayStore extends Store<{
     drawings: readonly CaptureDrawing[],
     rect: CaptureRect | undefined,
     maxDimension: number,
-    palette: CapturePalette,
+    color: CaptureAnnotationColor,
   ): Promise<string>;
 }> {
   snapshot: ScreenCaptureSnapshot | undefined;
@@ -42,7 +45,13 @@ export class ScreenCaptureOverlayStore extends Store<{
   copied = false;
   cancelled = false;
   error: string | undefined;
-  palette: CapturePalette = { ink: "", background: "", foreground: "" };
+  annotationColor: CaptureAnnotationColor = DEFAULT_CAPTURE_ANNOTATION_COLOR;
+
+  selectColor(color: CaptureAnnotationColor) {
+    if (this.busy || this.cancelled) return;
+    this.annotationColor = color;
+    this.copied = false;
+  }
 
   @child get speechPreferences(): SpeechInputSettingsStore {
     return createStore(SpeechInputSettingsStore);
@@ -59,6 +68,7 @@ export class ScreenCaptureOverlayStore extends Store<{
       const snapshot = await this.props.client.screenCaptureState({ signal: this.signal });
       if (!this.signal.aborted) {
         this.snapshot = snapshot;
+        this.annotationColor = snapshot.routing.annotationColor;
         this.destination = snapshot.routing.defaultDestination;
         const voice = snapshot.routing.dictation;
         const recognition = voice.recognition;
@@ -206,7 +216,7 @@ export class ScreenCaptureOverlayStore extends Store<{
         drawings,
         rect,
         this.snapshot.maxDimension,
-        this.palette,
+        this.annotationColor,
       );
       if (this.signal.aborted || this.cancelled) return;
       if (copy) {
@@ -215,6 +225,7 @@ export class ScreenCaptureOverlayStore extends Store<{
       } else {
         await this.props.client.finishScreenCapture(
           { image, annotationText, destination },
+          this.annotationColor,
           { signal: this.signal },
         );
       }
@@ -228,7 +239,9 @@ export class ScreenCaptureOverlayStore extends Store<{
     if (this.cancelled) return;
     this.cancelled = true;
     try {
-      await this.props.client.finishScreenCapture(undefined, { signal: this.signal });
+      await this.props.client.finishScreenCapture(undefined, this.annotationColor, {
+        signal: this.signal,
+      });
     } catch (error) {
       if (!this.signal.aborted) {
         this.cancelled = false;

@@ -16,6 +16,8 @@ import {
   type CaptureDestination,
   type CaptureRouting,
   type CaptureResult,
+  type CaptureCompletion,
+  type CaptureAnnotationColor,
   type ScreenCaptureSettings,
   type ScreenCaptureSnapshot,
 } from "../../contracts/desktop/screen-capture-data";
@@ -40,7 +42,9 @@ export class ScreenCaptureWindow {
   private stopped = false;
   private overlay: BrowserWindow | undefined;
   private snapshot: ScreenCaptureSnapshot | undefined;
-  private complete: ((capture?: CaptureResult) => void) | undefined;
+  private complete:
+    | ((capture?: CaptureResult, annotationColor?: CaptureAnnotationColor) => void)
+    | undefined;
 
   constructor(private readonly options: CaptureWindowOptions) {}
 
@@ -85,9 +89,9 @@ export class ScreenCaptureWindow {
     owner: BrowserWindow,
     routing: CaptureRouting,
     signal: AbortSignal,
-  ): Promise<{ capture?: CaptureResult }> {
+  ): Promise<CaptureCompletion> {
     if (this.stopped) throw new Error("Screen capture has shut down");
-    if (signal.aborted) return {};
+    if (signal.aborted) return { annotationColor: routing.annotationColor };
     if (this.capturing) throw new Error("A screen capture is already open");
     this.capturing = true;
     const onAbort = () => this.complete?.();
@@ -109,7 +113,8 @@ export class ScreenCaptureWindow {
         thumbnailSize: { width, height },
         fetchWindowIcons: false,
       });
-      if (this.stopped || signal.aborted || owner.isDestroyed()) return {};
+      if (this.stopped || signal.aborted || owner.isDestroyed())
+        return { annotationColor: routing.annotationColor };
       const source = sources.find((entry) => entry.display_id === String(display.id));
       if (!source || source.thumbnail.isEmpty())
         throw new Error("Screen capture is unavailable. Check Cake's screen-recording permission.");
@@ -152,10 +157,10 @@ export class ScreenCaptureWindow {
         overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
       overlay.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
       overlay.webContents.on("will-navigate", (event) => event.preventDefault());
-      const result = new Promise<{ capture?: CaptureResult }>((resolve) => {
-        this.complete = (capture) => {
+      const result = new Promise<CaptureCompletion>((resolve) => {
+        this.complete = (capture, annotationColor = routing.annotationColor) => {
           this.complete = undefined;
-          resolve(capture ? { capture } : {});
+          resolve(capture ? { annotationColor, capture } : { annotationColor });
         };
         overlay.on("closed", () => this.complete?.());
         overlay.webContents.on("render-process-gone", () => this.complete?.());
@@ -217,7 +222,8 @@ export class ScreenCaptureWindow {
 
   finish(
     senderId: number,
-    capture?: { image: string; annotationText: string; destination: CaptureDestination },
+    capture: { image: string; annotationText: string; destination: CaptureDestination } | undefined,
+    annotationColor: CaptureAnnotationColor,
   ) {
     const snapshot = this.state(senderId);
     let data: string | undefined;
@@ -240,6 +246,7 @@ export class ScreenCaptureWindow {
       data && capture
         ? { data, annotationText: capture.annotationText, destination: capture.destination }
         : undefined,
+      annotationColor,
     );
   }
 

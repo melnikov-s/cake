@@ -10,8 +10,9 @@ import {
   captureMarker,
   loadCaptureImage,
   paintCapture,
-  type CapturePalette,
+  paintCaptureSelection,
 } from "../../screen-capture/render-capture";
+import type { CaptureAnnotationColor } from "../../../utils/capture-annotation-colors";
 import { Button } from "./button";
 import { cn } from "../../lib/utils";
 
@@ -29,7 +30,7 @@ export function CaptureCanvas({
   onMove,
   onEnd,
   onAbandon,
-  onPalette,
+  color,
   onError,
 }: {
   image: string;
@@ -42,14 +43,14 @@ export function CaptureCanvas({
   onMove(point: CapturePoint): void;
   onEnd(point: CapturePoint): void;
   onAbandon(): void;
-  onPalette(palette: CapturePalette): void;
+  color: CaptureAnnotationColor;
   onError(error: unknown): void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [loaded, setLoaded] = useState<HTMLImageElement>();
   const activePointer = useRef<number | undefined>(undefined);
-  const callbacks = useRef({ onMove, onEnd, onAbandon, onPalette, onError });
-  callbacks.current = { onMove, onEnd, onAbandon, onPalette, onError };
+  const callbacks = useRef({ onMove, onEnd, onAbandon, onError });
+  callbacks.current = { onMove, onEnd, onAbandon, onError };
   useEffect(() => {
     // Losing pointer capture only changes event routing. Keep the gesture until release
     // or an actual pointercancel, including when the pointer ends over the toolbar.
@@ -101,21 +102,16 @@ export function CaptureCanvas({
     canvas.height = loaded.naturalHeight;
     const context = canvas.getContext("2d");
     if (!context) return;
-    const style = getComputedStyle(canvas);
-    const palette = {
-      ink: style.color,
-      background: style.backgroundColor,
-      foreground: getComputedStyle(canvas.parentElement ?? canvas).color,
-    };
-    callbacks.current.onPalette(palette);
-    paintCapture(context, loaded, drawings, palette);
+    paintCapture(context, loaded, drawings, color);
     if (selection) {
-      context.strokeStyle = palette.ink;
-      context.lineWidth = 2 * Math.max(1, canvas.width / canvas.getBoundingClientRect().width);
-      context.setLineDash([6 * context.lineWidth, 3 * context.lineWidth]);
-      context.strokeRect(selection.x, selection.y, selection.width, selection.height);
+      paintCaptureSelection(
+        context,
+        selection,
+        color,
+        Math.max(1, Math.max(canvas.width, canvas.height) / 1800),
+      );
     }
-  }, [loaded, drawings, selection]);
+  }, [loaded, drawings, selection, color]);
   return (
     <div className="relative h-full w-full">
       <canvas
@@ -129,7 +125,7 @@ export function CaptureCanvas({
         }
         data-slot="capture-canvas"
         className={cn(
-          "block h-full w-full touch-none bg-background text-accent",
+          "block h-full w-full touch-none",
           mode === "crop" ? "cursor-crosshair" : "cursor-cell",
           disabled && "pointer-events-none",
         )}

@@ -7,10 +7,39 @@ import {
   type CaptureRect,
 } from "../../contracts/desktop/screen-capture-data";
 
-export interface CapturePalette {
-  readonly ink: string;
-  readonly background: string;
-  readonly foreground: string;
+import {
+  captureAnnotationInk,
+  type CaptureAnnotationColor,
+} from "../../utils/capture-annotation-colors";
+
+/** Solid two-tone halo survives both light/dark imagery and PNG export/downsampling. */
+function strokeAnnotation(
+  context: CanvasRenderingContext2D,
+  color: CaptureAnnotationColor,
+  unit: number,
+) {
+  for (const [ink, width] of [
+    ["#ffffff", 9],
+    ["#000000", 6],
+    [captureAnnotationInk[color], 3],
+  ] as const) {
+    context.strokeStyle = ink;
+    context.lineWidth = width * unit;
+    context.stroke();
+  }
+}
+
+export function paintCaptureSelection(
+  context: CanvasRenderingContext2D,
+  selection: CaptureRect,
+  color: CaptureAnnotationColor,
+  unit: number,
+) {
+  context.beginPath();
+  context.rect(selection.x, selection.y, selection.width, selection.height);
+  context.setLineDash([12 * unit, 6 * unit]);
+  strokeAnnotation(context, color, unit);
+  context.setLineDash([]);
 }
 
 /** Shared by raster export and accessible marker hit targets, in screenshot pixels. */
@@ -37,7 +66,7 @@ export function paintCapture(
   context: CanvasRenderingContext2D,
   image: HTMLImageElement,
   drawings: readonly CaptureDrawing[],
-  palette: CapturePalette,
+  color: CaptureAnnotationColor,
   region?: CaptureRect,
 ) {
   context.clearRect(0, 0, image.naturalWidth, image.naturalHeight);
@@ -48,9 +77,6 @@ export function paintCapture(
   context.lineJoin = "round";
   context.font = `600 ${16 * unit}px system-ui`;
   for (const { drawing, number } of numberedCaptureDrawings(drawings, region)) {
-    context.strokeStyle = palette.ink;
-    context.shadowColor = palette.background;
-    context.shadowBlur = 3 * unit;
     context.beginPath();
     if (drawing.kind === "freehand") {
       context.moveTo(drawing.points[0]!.x, drawing.points[0]!.y);
@@ -69,8 +95,7 @@ export function paintCapture(
         drawing.end.y - 14 * unit * Math.sin(angle + Math.PI / 6),
       );
     }
-    context.stroke();
-    context.shadowBlur = 0;
+    strokeAnnotation(context, color, unit);
     const { x, y, radius } = captureMarker(
       captureDrawingAnchor(drawing),
       image.naturalWidth,
@@ -79,10 +104,10 @@ export function paintCapture(
     );
     context.beginPath();
     context.arc(x, y, radius, 0, Math.PI * 2);
-    context.fillStyle = palette.background;
+    context.fillStyle = "#ffffff";
     context.fill();
-    context.stroke();
-    context.fillStyle = palette.foreground;
+    strokeAnnotation(context, color, unit);
+    context.fillStyle = "#000000";
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.fillText(String(number), x, y, radius * 1.6);
@@ -104,7 +129,7 @@ export async function renderCaptureImage(
   drawings: readonly CaptureDrawing[],
   rect: CaptureRect | undefined,
   maxDimension: number,
-  palette: CapturePalette,
+  color: CaptureAnnotationColor,
 ): Promise<string> {
   const image = await loadCaptureImage(data);
   const source = document.createElement("canvas");
@@ -112,7 +137,7 @@ export async function renderCaptureImage(
   source.height = image.naturalHeight;
   const context = source.getContext("2d");
   if (!context) throw new Error("Canvas rendering is unavailable");
-  paintCapture(context, image, drawings, palette, rect);
+  paintCapture(context, image, drawings, color, rect);
   const region = rect ?? { x: 0, y: 0, width: source.width, height: source.height };
   const output = document.createElement("canvas");
   const size = captureOutputSize(region.width, region.height, maxDimension);

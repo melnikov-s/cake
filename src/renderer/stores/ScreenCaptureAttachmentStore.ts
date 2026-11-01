@@ -1,3 +1,7 @@
+import {
+  DEFAULT_CAPTURE_ANNOTATION_COLOR,
+  type CaptureAnnotationColor,
+} from "../../utils/capture-annotation-colors";
 import { speechRecognitionSettings } from "../../utils/speech-input-settings";
 import type { DictationStore } from "./DictationStore";
 import { Store, snapshot, untracked } from "r-state-tree";
@@ -40,6 +44,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
   cakeChatCatalog: CakeChatCatalog;
   navigation(): NavigationStore;
 }> {
+  @snapshot annotationColor: CaptureAnnotationColor = DEFAULT_CAPTURE_ANNOTATION_COLOR;
   @snapshot shortcut = DEFAULT_CAPTURE_SHORTCUT;
   @snapshot maxDimension = DEFAULT_CAPTURE_MAX_DIMENSION;
   @snapshot private lastTarget: WindowConversationSelection | undefined;
@@ -69,6 +74,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
     const settings = this.props.settings();
     const customTheme = settings.activeCustomTheme;
     return {
+      annotationColor: this.annotationColor,
       appearance: {
         theme: customTheme?.type ?? settings.theme,
         importedTheme: customTheme,
@@ -261,11 +267,14 @@ export class ScreenCaptureAttachmentStore extends Store<{
     }
     this.busy = true;
     try {
-      const result = await this.props.client.startScreenCapture(
+      const completion = await this.props.client.startScreenCapture(
         { ...choices, defaultDestination },
         { signal: this.signal },
       );
-      if (this.signal.aborted || !result) return;
+      if (this.signal.aborted) return;
+      this.annotationColor = completion.annotationColor;
+      const result = completion.capture;
+      if (!result) return;
       const target = await this.prepareDestination(result.destination);
       if (this.signal.aborted) return;
       const draft = this.findDraft(target);

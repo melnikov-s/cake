@@ -67,6 +67,51 @@ function draw(store: ScreenCaptureOverlayStore) {
 }
 
 describe("Screen capture overlay", () => {
+  it.each(["light", "dark"] as const)(
+    "picks explicit annotation ink in %s and passes it to copy/export and cancellation",
+    async (theme) => {
+      const renderImage = vi.fn<ScreenCaptureOverlayStore["props"]["renderImage"]>(
+        async () => "data:image/png;base64,color",
+      );
+      using fixture = await renderOverlay(renderImage, {
+        ...captureRouting,
+        annotationColor: "pink",
+        appearance: { ...captureRouting.appearance, theme },
+      });
+      const trigger = screen.getByRole("button", { name: "Annotation color" });
+      expect(
+        trigger.querySelector("[data-annotation-color]")?.getAttribute("data-annotation-color"),
+      ).toBe("pink");
+      await fixture.user.click(trigger);
+      expect(screen.getAllByRole("menuitemradio")).toHaveLength(6);
+      expect(screen.getByRole("menuitemradio", { name: "pink" }).getAttribute("aria-checked")).toBe(
+        "true",
+      );
+      await fixture.user.click(screen.getByRole("menuitemradio", { name: "cyan" }));
+      expect(screen.queryByRole("menu", { name: "Annotation color" })).toBeNull();
+      expect(
+        trigger.querySelector("[data-annotation-color]")?.getAttribute("data-annotation-color"),
+      ).toBe("cyan");
+      await fixture.user.click(screen.getByRole("button", { name: "Copy image and text" }));
+      expect(renderImage).toHaveBeenLastCalledWith(
+        snapshot.image,
+        [],
+        undefined,
+        snapshot.maxDimension,
+        "cyan",
+      );
+      await fixture.user.click(trigger);
+      await fixture.user.keyboard("{Escape}");
+      expect(fixture.finishScreenCapture).not.toHaveBeenCalled();
+      await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
+        undefined,
+        "cyan",
+        expect.anything(),
+      );
+    },
+  );
+
   it("uses sidebar project icons and session rows, keeps selection and creates a chat in a Project", async () => {
     using fixture = await renderOverlay();
     const picker = screen.getByRole("button", { name: "Screenshot destination" });
@@ -101,6 +146,7 @@ describe("Screen capture overlay", () => {
         annotationText: "",
         destination: { kind: "new-session", projectPath: "/project" },
       },
+      "yellow",
       expect.anything(),
     );
   });
@@ -133,6 +179,7 @@ describe("Screen capture overlay", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
     expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
       expect.objectContaining({ destination: { kind: "project-session", sessionId: "child" } }),
+      "yellow",
       expect.anything(),
     );
   });
@@ -179,6 +226,7 @@ describe("Screen capture overlay", () => {
           annotationText: "1. First line\n   Second line",
           destination: captureRouting.defaultDestination,
         },
+        "yellow",
         expect.anything(),
       );
       expect(fixture.store.dictationStore.enabled).toBe(false);
@@ -237,6 +285,7 @@ describe("Screen capture overlay", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
     expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
       expect.objectContaining({ annotationText: "1. Edited" }),
+      "yellow",
       expect.anything(),
     );
   });
@@ -252,7 +301,11 @@ describe("Screen capture overlay", () => {
     expect(fixture.store.drawings.map((drawing) => drawing.label)).toEqual(["Keep"]);
     expect(fixture.finishScreenCapture).not.toHaveBeenCalled();
     await fixture.user.keyboard("{Escape}");
-    expect(fixture.finishScreenCapture).toHaveBeenCalledWith(undefined, expect.anything());
+    expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
+      undefined,
+      "yellow",
+      expect.anything(),
+    );
   });
 
   it("copies image plus numbered text, commits open input and reports clipboard failure without closing", async () => {
@@ -290,6 +343,7 @@ describe("Screen capture overlay", () => {
     await act(async () => complete("data:image/png;base64,late"));
     expect(fixture.finishScreenCapture).toHaveBeenCalledExactlyOnceWith(
       undefined,
+      "yellow",
       expect.anything(),
     );
   });
@@ -309,6 +363,7 @@ describe("Screen capture overlay", () => {
         annotationText: "",
         destination: captureRouting.defaultDestination,
       },
+      "yellow",
       expect.anything(),
     );
   });

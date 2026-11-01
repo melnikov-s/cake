@@ -4,6 +4,11 @@ import { ProjectIcon, SessionLabel } from "../application/application-data";
 import { WorktreeRecord } from "../worktrees/managed-worktree-data";
 import { ImportedColorTheme } from "../themes/color-theme";
 
+import { CAPTURE_ANNOTATION_COLORS } from "../../utils/capture-annotation-colors";
+
+export const CaptureAnnotationColor = Schema.Literals(CAPTURE_ANNOTATION_COLORS);
+export type CaptureAnnotationColor = Schema.Schema.Type<typeof CaptureAnnotationColor>;
+
 export const DEFAULT_CAPTURE_SHORTCUT = "Mod+Shift+6";
 export const DEFAULT_CAPTURE_MAX_DIMENSION = 2048;
 
@@ -47,6 +52,7 @@ export const CaptureSessionOption = Schema.Struct({
 });
 export interface CaptureSessionOption extends Schema.Schema.Type<typeof CaptureSessionOption> {}
 export const CaptureRouting = Schema.Struct({
+  annotationColor: CaptureAnnotationColor,
   projects: Schema.Array(
     Schema.Struct({
       path: Schema.String,
@@ -80,6 +86,13 @@ export const CaptureResult = Schema.Struct({
   destination: CaptureDestination,
 });
 export interface CaptureResult extends Schema.Schema.Type<typeof CaptureResult> {}
+
+/** Preferences return even when the overlay is cancelled, for the owner's window snapshot. */
+export const CaptureCompletion = Schema.Struct({
+  annotationColor: CaptureAnnotationColor,
+  capture: Schema.optionalKey(CaptureResult),
+});
+export interface CaptureCompletion extends Schema.Schema.Type<typeof CaptureCompletion> {}
 
 export const CaptureImage = Schema.String.check(Schema.isMaxLength(48_000_000));
 export const ScreenCaptureSnapshot = Schema.Struct({

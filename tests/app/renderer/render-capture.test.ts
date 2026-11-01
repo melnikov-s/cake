@@ -5,7 +5,15 @@ import {
   numberedCaptureDrawings,
   type CaptureDrawing,
 } from "../../../src/contracts/desktop/screen-capture-data";
-import { captureMarker, paintCapture } from "../../../src/renderer/screen-capture/render-capture";
+import {
+  CAPTURE_ANNOTATION_COLORS,
+  captureAnnotationInk,
+} from "../../../src/utils/capture-annotation-colors";
+import {
+  captureMarker,
+  paintCapture,
+  paintCaptureSelection,
+} from "../../../src/renderer/screen-capture/render-capture";
 
 const drawings: CaptureDrawing[] = [
   {
@@ -26,6 +34,43 @@ const drawings: CaptureDrawing[] = [
 ];
 
 describe("numbered screenshot export", () => {
+  it.each(CAPTURE_ANNOTATION_COLORS)(
+    "paints %s arrows, freehand, numbered markers and crop with solid white/black halos",
+    (color) => {
+      const strokes: { ink: string | CanvasGradient | CanvasPattern; width: number }[] = [];
+      const context = {
+        clearRect: vi.fn(),
+        drawImage: vi.fn(),
+        beginPath: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        arc: vi.fn(),
+        fill: vi.fn(),
+        fillText: vi.fn(),
+        rect: vi.fn(),
+        setLineDash: vi.fn(),
+        stroke(this: CanvasRenderingContext2D) {
+          strokes.push({ ink: this.strokeStyle, width: this.lineWidth });
+        },
+      } as unknown as CanvasRenderingContext2D;
+      const image = document.createElement("img");
+      Object.defineProperties(image, {
+        naturalWidth: { value: 1200 },
+        naturalHeight: { value: 800 },
+      });
+      paintCapture(context, image, drawings, color);
+      paintCaptureSelection(context, { x: 10, y: 10, width: 100, height: 100 }, color, 1);
+      expect(strokes).toEqual(
+        Array.from({ length: 5 }, () => [
+          { ink: "#ffffff", width: 9 },
+          { ink: "#000000", width: 6 },
+          { ink: captureAnnotationInk[color], width: 3 },
+        ]).flat(),
+      );
+      expect(context.fillStyle).toBe("#000000");
+      expect(context.setLineDash).toHaveBeenLastCalledWith([]);
+    },
+  );
   it("preserves multiline text, blank lines, drawing order and numbering for both tools", () => {
     expect(captureAnnotationText(drawings)).toBe(
       "1. First\n     indented\n   \n   last\n2. Second",
@@ -62,11 +107,7 @@ describe("numbered screenshot export", () => {
       naturalWidth: { value: 1200 },
       naturalHeight: { value: 800 },
     });
-    paintCapture(context, image, drawings, {
-      ink: "blue",
-      background: "white",
-      foreground: "black",
-    });
+    paintCapture(context, image, drawings, "yellow");
     expect(vi.mocked(context.fillText).mock.calls.map(([text]) => text)).toEqual(["1", "2"]);
     expect(context.lineTo).toHaveBeenCalledWith(700, 500);
     expect(context.lineTo).toHaveBeenCalledWith(600, 400);

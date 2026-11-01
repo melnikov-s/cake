@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import type { CaptureMode } from "../../../contracts/desktop/screen-capture-data";
+import type { CaptureAnnotationColor } from "../../../utils/capture-annotation-colors";
+import { AnnotationColorPicker } from "./annotation-color-picker";
 import { FloatingToolbar } from "./floating-toolbar";
 import { IconButton } from "./icon-button";
 import {
@@ -16,6 +18,8 @@ import {
 /** Compact movable capture controls, outside the exported canvas. */
 export function CaptureToolbar({
   mode,
+  color,
+  onColor,
   busy,
   canUndo,
   copied,
@@ -27,6 +31,8 @@ export function CaptureToolbar({
   onCancel,
 }: {
   mode: CaptureMode;
+  color: CaptureAnnotationColor;
+  onColor(color: CaptureAnnotationColor): void;
   busy: boolean;
   canUndo: boolean;
   copied: boolean;
@@ -75,6 +81,7 @@ export function CaptureToolbar({
       >
         <EditIcon />
       </IconButton>
+      <AnnotationColorPicker value={color} onChange={onColor} disabled={busy} />
       <IconButton tooltip="Undo drawing" disabled={busy || !canUndo} onClick={onUndo}>
         <UndoIcon />
       </IconButton>

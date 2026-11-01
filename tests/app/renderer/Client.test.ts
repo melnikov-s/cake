@@ -216,6 +216,7 @@ describe("Client transport and device integration", () => {
       () => client.electron.chooseProject(),
       () =>
         client.electron.startScreenCapture({
+          annotationColor: "yellow",
           projects: [],
           cakeChats: [],
           defaultDestination: { kind: "cake-chat", sessionId: "session" },
@@ -239,7 +240,7 @@ describe("Client transport and device integration", () => {
         }),
       () => client.electron.configureScreenCapture({ shortcut: "Mod+Shift+6", maxDimension: 2048 }),
       () => client.electron.screenCaptureState(),
-      () => client.electron.finishScreenCapture(),
+      () => client.electron.finishScreenCapture(undefined, "yellow"),
       () =>
         client.electron.copyScreenCapture({
           image: "data:image/png;base64,png",

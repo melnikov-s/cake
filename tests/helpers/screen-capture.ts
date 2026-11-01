@@ -20,6 +20,7 @@ export function captureSession(
 }
 
 export const captureRouting: CaptureRouting = {
+  annotationColor: "yellow",
   appearance: {
     theme: "dark",
     projectAvatarsEnabled: true,
