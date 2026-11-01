@@ -2169,23 +2169,27 @@ const appearanceSettingsScenario: VisualCaptureScenario = {
 
 const importedColorThemeScenario: VisualCaptureScenario = {
   name: "imported-color-theme",
-  description: "Imported VS Code palettes on Appearance preview and conversation surfaces",
-  states: ["light-preview", "dark-preview", "light-chat", "dark-chat"],
+  description: "Imported VS Code palettes on Appearance settings and conversation surfaces",
+  states: ["light-settings", "dark-settings", "light-chat", "dark-chat"],
   seed: assistantMarkdownCode.seed,
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await page.getByRole("button", { name: "Appearance", exact: true }).click();
     const theme = vscodeColorThemeFixture(state.startsWith("light") ? "light" : "dark");
+    await page
+      .getByRole("button", { name: theme.type === "light" ? "Light" : "Dark", exact: true })
+      .click();
     await page.getByLabel("Import VS Code theme", { exact: true }).setInputFiles({
       name: "color-theme.json",
       mimeType: "application/json",
       buffer: Buffer.from(JSON.stringify(theme)),
     });
-    await expect(page.getByText(`Preview: ${theme.name}`)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: `${theme.name} theme`, exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme.type);
     if (state.endsWith("chat")) {
-      await page.getByRole("button", { name: "Apply theme", exact: true }).click();
       await page.getByRole("button", { name: "Back to chat", exact: true }).click();
       const token = page
         .locator('[data-streamdown="code-block-body"] span[style]')
@@ -2207,20 +2211,20 @@ const importedColorThemeScenario: VisualCaptureScenario = {
 const themeGalleryScenario: VisualCaptureScenario = {
   name: "theme-gallery",
   description:
-    "Visual Cake theme cards with independent light/dark palettes and live preview actions",
-  states: ["light", "dark", "preview"],
+    "Visual Cake theme cards with independent saved light/dark palettes and immediate selection",
+  states: ["light", "dark", "inactive-selection"],
   seed: assistantMarkdownCode.seed,
   async prepare(page, state) {
-    await importedColorThemeScenario.prepare(page, "dark-preview");
-    await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+    await importedColorThemeScenario.prepare(page, "dark-settings");
     const theme = vscodeColorThemeFixture("light");
     await page.getByLabel("Import VS Code theme", { exact: true }).setInputFiles({
       name: "paper.json",
       mimeType: "application/json",
       buffer: Buffer.from(JSON.stringify(theme)),
     });
-    await expect(page.getByText(`Preview: ${theme.name}`)).toBeVisible();
-    await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: `${theme.name} theme`, exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     for (const [name, color] of [
       ["Light", "rgb(160, 17, 31)"],
       ["Dark", "rgb(249, 117, 131)"],
@@ -2246,10 +2250,14 @@ const themeGalleryScenario: VisualCaptureScenario = {
     const mode = state === "light" ? "Light" : "Dark";
     await page.getByRole("button", { name: mode, exact: true }).click();
     await page.getByRole("button", { name: `Cake ${mode} theme`, exact: true }).click();
-    await page.getByRole("button", { name: "Apply theme", exact: true }).click();
-    if (state === "preview")
-      await page.getByRole("button", { name: "Sea glass theme", exact: true }).click();
-    await page.getByRole("button", { name: "Follow System", exact: true }).scrollIntoViewIfNeeded();
+    if (state === "inactive-selection") {
+      await page.getByRole("button", { name: "Light theme", exact: true }).click();
+      await page.getByRole("button", { name: "Warm paper theme", exact: true }).click();
+      await expect(page.getByRole("status")).toHaveText(
+        "This theme will apply when Light mode is active.",
+      );
+    }
+    await page.getByRole("button", { name: "System", exact: true }).scrollIntoViewIfNeeded();
     await page.mouse.move(1, 1);
   },
   region: cakePromptsSettingsScenario.region,
@@ -2285,7 +2293,6 @@ const bundledColorThemeScenario: VisualCaptureScenario = {
       .getByRole("button", { name: state === "solarized-light" ? "Light" : "Dark", exact: true })
       .click();
     await page.getByRole("button", { name: `${names[state]} theme`, exact: true }).click();
-    await page.getByRole("button", { name: "Apply theme", exact: true }).click();
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await expect(
       page.locator('[data-streamdown="code-block-body"] span[style]').first(),

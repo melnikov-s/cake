@@ -1,6 +1,5 @@
 import { observer } from "r-state-tree/react";
 import { Select } from "./ui/select";
-import { Button } from "./ui/button";
 import { FilePicker } from "./ui/file-picker";
 import { SegmentedControlButton, SegmentedControlGroup } from "./ui/segmented-control";
 import { SettingsThemeGallery } from "./settings-theme-gallery";
@@ -12,7 +11,6 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
 }: {
   appearance: AppearanceSettingsStore;
 }) {
-  const selected = appearance.selectedThemeChoice;
   return (
     <section className="grid gap-1.5" aria-labelledby="appearance-title">
       <h2 id="appearance-title" className="px-0.5 text-xs font-semibold text-foreground">
@@ -27,7 +25,7 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
                 active={appearance.theme === mode}
                 onClick={() => appearance.setTheme(mode)}
               >
-                {mode === "system" ? "Follow System" : mode === "light" ? "Light" : "Dark"}
+                {mode === "system" ? "System" : mode === "light" ? "Light" : "Dark"}
               </SegmentedControlButton>
             ))}
           </SegmentedControlGroup>
@@ -47,17 +45,12 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
             >
               Import theme folder
             </FilePicker>
-            {selected.startsWith("imported:") && !appearance.themeSource ? (
-              <Button variant="ghost" size="sm" onClick={() => appearance.removeImportedTheme()}>
-                Remove theme
-              </Button>
-            ) : null}
           </div>
           {appearance.themeSource && appearance.themeEntries.length > 1 ? (
             <Select
               aria-label="Theme source"
               value={appearance.selectedEntry}
-              onChange={(event) => appearance.previewEntry(event.target.value)}
+              onChange={(event) => appearance.importEntry(event.target.value)}
             >
               {appearance.themeEntries.map((path) => (
                 <option key={path} value={path}>
@@ -66,24 +59,13 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
               ))}
             </Select>
           ) : null}
-          {appearance.previewChoice !== undefined || appearance.themeSource ? (
-            <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2 shadow-xs">
-              {appearance.previewChoice !== undefined ? (
-                <span role="status" className="mr-auto text-xs text-muted-foreground">
-                  Preview: {appearance.previewName}
-                </span>
-              ) : null}
-              <Button
-                size="sm"
-                disabled={appearance.previewChoice === undefined}
-                onClick={() => appearance.applyPreview()}
-              >
-                Apply theme
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => appearance.cancelPreview()}>
-                Cancel
-              </Button>
-            </div>
+          {appearance.selectionMessage ? (
+            <p
+              role="status"
+              className="sticky bottom-0 z-10 rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground shadow-xs"
+            >
+              {appearance.selectionMessage}
+            </p>
           ) : null}
           {appearance.importError ? (
             <p role="alert" className="text-xs text-destructive">

@@ -7,7 +7,7 @@ import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenario
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 for (const hostTheme of ["light", "dark"] as const) {
-  test(`theme favorites follow the OS, preview by keyboard, and save only Apply (${hostTheme})`, async () => {
+  test(`theme slots save immediately by keyboard, follow the OS, and persist (${hostTheme})`, async () => {
     test.setTimeout(90_000);
     const directory = await mkdtemp(join(tmpdir(), "cake-theme-gallery-"));
     const paths = {
@@ -60,15 +60,14 @@ for (const hostTheme of ["light", "dark"] as const) {
       await paper.press("Enter");
       await expect(paper).toHaveAttribute("aria-pressed", "true");
       await expect(page.locator("html")).toHaveCSS("--background", "#fff8e8");
-      await page.getByRole("button", { name: "Cancel", exact: true }).click();
+      await page.getByRole("button", { name: "Cake Light theme", exact: true }).click();
       await paper.focus();
       await paper.press("Space");
-      await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+      await expect(page.locator("html")).toHaveCSS("--background", "#fff8e8");
       await page.getByRole("button", { name: "Dark", exact: true }).click();
       await page.getByRole("button", { name: "Warm Titanium theme", exact: true }).click();
       await expect(page.locator("html")).toHaveCSS("--background", "#242321");
-      await page.getByRole("button", { name: "Apply theme", exact: true }).click();
-      await page.getByRole("button", { name: "Follow System", exact: true }).click();
+      await page.getByRole("button", { name: "System", exact: true }).click();
       for (const mode of ["light", "dark", "light"] as const) {
         await page.emulateMedia({ colorScheme: mode });
         await expect(page.locator("html")).toHaveAttribute("data-theme", mode);
@@ -77,18 +76,50 @@ for (const hostTheme of ["light", "dark"] as const) {
           mode === "light" ? "#fff8e8" : "#242321",
         );
       }
-      // OS changes must not override a forced mode; browsing its other favorite does not save.
+      // Save each inactive slot in System without changing the effective appearance.
+      for (const mode of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme: mode });
+        const inactive = mode === "light" ? "Dark" : "Light";
+        const gallery = page.getByRole("button", { name: `${inactive} theme`, exact: true });
+        if ((await gallery.getAttribute("aria-expanded")) === "false") await gallery.click();
+        await page.getByRole("button", { name: `Cake ${inactive} theme`, exact: true }).click();
+        await expect(page.getByRole("status")).toHaveText(
+          `This theme will apply when ${inactive} mode is active.`,
+        );
+        await expect(page.getByRole("button", { name: "System", exact: true })).toHaveAttribute(
+          "aria-pressed",
+          "true",
+        );
+        await expect(page.locator("html")).toHaveCSS(
+          "--background",
+          mode === "light" ? "#fff8e8" : "#242321",
+        );
+        await page
+          .getByRole("button", {
+            name: mode === "light" ? "Warm Titanium theme" : "Warm paper theme",
+            exact: true,
+          })
+          .click();
+      }
+      // OS changes and inactive selections must not override a forced mode.
       await page.getByRole("button", { name: "Light", exact: true }).click();
       await page.emulateMedia({ colorScheme: "dark" });
       await expect(page.locator("html")).toHaveCSS("--background", "#fff8e8");
       await page.getByRole("button", { name: "Dark theme", exact: true }).click();
       await page.getByRole("button", { name: "Nord theme", exact: true }).click();
-      await expect(page.locator("html")).toHaveCSS("--background", "#2e3440");
+      await expect(page.locator("html")).toHaveCSS("--background", "#fff8e8");
+      await expect(page.getByRole("status")).toHaveText(
+        "This theme will apply when Dark mode is active.",
+      );
+      await expect(page.getByRole("button", { name: "Nord theme", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
       await application.close();
       const saved = JSON.parse(await readFile(join(paths.userData, "window-state.json"), "utf8"))
         .data.children.settingsStore.children.appearance.state;
       expect(saved.theme).toBe("light");
-      expect(saved.darkTheme).toBe("bundled:warm-titanium");
+      expect(saved.darkTheme).toBe("bundled:nord");
       expect(
         saved.importedThemes.find(
           (theme: { id: string }) => `imported:${theme.id}` === saved.lightTheme,
@@ -105,10 +136,11 @@ for (const hostTheme of ["light", "dark"] as const) {
       ).toHaveAttribute("aria-pressed", "true");
       await expect(page.locator("html")).toHaveCSS("--background", "#fff8e8");
       await page.getByRole("button", { name: "Dark", exact: true }).click();
-      await expect(
-        page.getByRole("button", { name: "Warm Titanium theme", exact: true }),
-      ).toHaveAttribute("aria-pressed", "true");
-      await expect(page.locator("html")).toHaveCSS("--background", "#242321");
+      await expect(page.getByRole("button", { name: "Nord theme", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await expect(page.locator("html")).toHaveCSS("--background", "#2e3440");
     } finally {
       await application.close().catch(() => undefined);
       await rm(directory, { recursive: true, force: true });

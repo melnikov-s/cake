@@ -10,7 +10,7 @@ export function useAppDocument(root: RootStore) {
   useLayoutEffect(() => {
     appearance.setSystemColorScheme(systemTheme);
   }, [appearance, systemTheme]);
-  const mode = appearance.activeAppearanceMode;
+  const mode = appearance.theme;
   const customTheme = appearance.activeCustomTheme;
   useLayoutEffect(() => {
     applyDocumentTheme(mode, customTheme);

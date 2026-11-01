@@ -70,7 +70,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
     const customTheme = settings.activeCustomTheme;
     return {
       appearance: {
-        theme: customTheme?.type ?? settings.activeAppearanceMode,
+        theme: customTheme?.type ?? settings.theme,
         importedTheme: customTheme,
         projectAvatarsEnabled: settings.projectAvatarsEnabled,
         sessionAvatarsEnabled: settings.sessionAvatarsEnabled,

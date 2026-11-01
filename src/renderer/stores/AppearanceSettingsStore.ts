@@ -20,13 +20,13 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
   @snapshot importedThemes: ImportedColorTheme[] = observable([]);
   systemColorScheme: ColorScheme = "light";
   galleryMode: ColorScheme | "closed" | undefined = undefined;
-  previewTheme: ImportedColorTheme | undefined = undefined;
-  previewChoice: ColorThemeChoice | undefined = undefined;
+  selectedMode: ColorScheme | undefined = undefined;
   importError: string | undefined = undefined;
   importing = false;
   themeSource: ReadonlyMap<string, string> | undefined = undefined;
   themeEntries: string[] = observable([]);
   selectedEntry = "";
+  importedEntries = new Map<string, ColorThemeChoice>();
   @snapshot projectAvatarsEnabled = true;
   @snapshot sessionAvatarsEnabled = true;
   @snapshot sidebarCharactersEnabled = false;
@@ -36,14 +36,12 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
   get colorThemes(): readonly ColorThemeOption[] {
     return [
       ...bundledColorThemes,
-      ...[...this.importedThemes, ...(this.previewTheme ? [this.previewTheme] : [])].map(
-        (theme): ColorThemeOption => ({
-          choice: `imported:${theme.id}`,
-          name: theme.name,
-          type: theme.type,
-          theme,
-        }),
-      ),
+      ...this.importedThemes.map((theme): ColorThemeOption => ({
+        choice: `imported:${theme.id}`,
+        name: theme.name,
+        type: theme.type,
+        theme,
+      })),
     ];
   }
 
@@ -55,12 +53,9 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
     return mode === "light" ? this.lightTheme : this.darkTheme;
   }
 
-  get selectedThemeChoice() {
-    return this.previewChoice ?? this.preferredTheme(this.resolvedMode);
-  }
-
   get activeColorTheme() {
-    return this.colorThemes.find((theme) => theme.choice === this.selectedThemeChoice)?.theme;
+    const choice = this.preferredTheme(this.resolvedMode);
+    return this.colorThemes.find((theme) => theme.choice === choice)?.theme;
   }
 
   get activeCustomTheme() {
@@ -68,14 +63,10 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
     return theme === "light" || theme === "dark" ? undefined : theme;
   }
 
-  get activeAppearanceMode(): AppearanceMode {
-    if (!this.previewChoice) return this.theme;
-    const theme = this.activeColorTheme;
-    return theme === "light" || theme === "dark" ? theme : (theme?.type ?? this.theme);
-  }
-
-  get previewName() {
-    return this.colorThemes.find((theme) => theme.choice === this.previewChoice)?.name;
+  get selectionMessage() {
+    if (!this.selectedMode || this.selectedMode === this.resolvedMode) return undefined;
+    const label = this.selectedMode === "light" ? "Light" : "Dark";
+    return `This theme will apply when ${label} mode is active.`;
   }
 
   setSystemColorScheme(scheme: ColorScheme) {
@@ -86,13 +77,11 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
     this.galleryMode = (this.galleryMode ?? this.resolvedMode) === mode ? "closed" : mode;
   }
 
-  previewSelection(choice: ColorThemeChoice) {
-    this.previewChoice = choice;
-  }
-
   async importThemeFiles(files: readonly File[]) {
     if (this.importing) return;
-    this.cancelPreview();
+    this.themeSource = undefined;
+    this.themeEntries.splice(0);
+    this.importedEntries.clear();
     this.importing = true;
     this.importError = undefined;
     try {
@@ -112,7 +101,7 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
       if (!this.themeEntries.length)
         throw new Error("Choose a VS Code color-theme JSON/JSONC file or folder.");
       const entry = this.themeEntries[0];
-      if (entry) this.previewEntry(entry);
+      if (entry) this.importEntry(entry);
     } catch (error) {
       this.importError = error instanceof Error ? error.message : String(error);
     } finally {
@@ -120,53 +109,39 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
     }
   }
 
-  previewEntry(entry: string) {
+  importEntry(entry: string) {
     this.selectedEntry = entry;
-    this.previewTheme = undefined;
-    this.previewChoice = undefined;
     this.importError = undefined;
     try {
-      this.previewTheme = parseVsCodeTheme(
-        entry,
-        this.themeSource ?? new Map(),
-        crypto.randomUUID(),
-      );
-      this.previewChoice = `imported:${this.previewTheme.id}`;
-      this.galleryMode = this.previewTheme.type;
+      const savedChoice = this.importedEntries.get(entry);
+      const savedTheme = this.colorThemes.find((option) => option.choice === savedChoice);
+      if (savedTheme) {
+        this.setPreferredTheme(savedTheme.type, savedTheme.choice);
+        this.galleryMode = savedTheme.type;
+        return;
+      }
+      const theme = parseVsCodeTheme(entry, this.themeSource ?? new Map(), crypto.randomUUID());
+      const choice: ColorThemeChoice = `imported:${theme.id}`;
+      this.importedThemes.push(theme);
+      this.importedEntries.set(entry, choice);
+      this.setPreferredTheme(theme.type, choice);
+      this.galleryMode = theme.type;
     } catch (error) {
       this.importError = error instanceof Error ? error.message : String(error);
     }
   }
 
-  applyPreview() {
-    if (!this.previewChoice) return;
-    const option = this.colorThemes.find((theme) => theme.choice === this.previewChoice);
-    if (!option) return;
-    if (this.previewTheme && this.previewChoice === `imported:${this.previewTheme.id}`)
-      this.importedThemes.push(this.previewTheme);
-    this.setPreferredTheme(option.type, this.previewChoice);
-  }
-
-  cancelPreview() {
-    this.previewChoice = undefined;
-    this.previewTheme = undefined;
-    this.themeSource = undefined;
-    this.themeEntries.splice(0);
-    this.importError = undefined;
-  }
-
-  removeImportedTheme() {
-    const choice = this.selectedThemeChoice;
+  removeImportedTheme(choice: ColorThemeChoice) {
     const index = this.importedThemes.findIndex((theme) => `imported:${theme.id}` === choice);
     if (index < 0) return;
     this.importedThemes.splice(index, 1);
     if (choice === this.lightTheme) this.lightTheme = "bundled:cake-light";
     if (choice === this.darkTheme) this.darkTheme = "bundled:cake-dark";
-    this.cancelPreview();
+    this.selectedMode = undefined;
   }
 
   setTheme(theme: AppearanceMode) {
-    this.cancelPreview();
+    this.selectedMode = undefined;
     this.theme = theme;
     this.galleryMode = theme === "system" ? undefined : theme;
   }
@@ -176,7 +151,7 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
       throw new Error(`Choose an available ${mode} theme.`);
     if (mode === "light") this.lightTheme = choice;
     else this.darkTheme = choice;
-    this.cancelPreview();
+    this.selectedMode = mode;
   }
 
   setProjectAvatarsEnabled(enabled: boolean) {

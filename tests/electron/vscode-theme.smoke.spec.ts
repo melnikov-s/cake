@@ -85,7 +85,7 @@ for (const initialTheme of ["dark", "light"] as const) {
         await page.getByRole("button", { name: /^Appearance/ }).click();
         await page
           .getByRole("button", {
-            name: theme === "system" ? "Follow System" : theme === "light" ? "Light" : "Dark",
+            name: theme === "system" ? "System" : theme === "light" ? "Light" : "Dark",
             exact: true,
           })
           .click();
@@ -96,7 +96,6 @@ for (const initialTheme of ["dark", "light"] as const) {
               exact: true,
             })
             .click();
-          await page.getByRole("button", { name: "Apply theme", exact: true }).click();
         }
         await page.getByRole("button", { name: "Back to chat", exact: true }).click();
         await expect(page.getByLabel("Appearance mode", { exact: true })).toHaveCount(0);
@@ -166,12 +165,13 @@ for (const initialTheme of ["dark", "light"] as const) {
           .getByLabel("Import VS Code theme", { exact: true })
           .setInputFiles([entryPath, basePath]);
       }
-      await expect(page.getByText(`Preview: ${imported.name}`)).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: `${imported.name} theme`, exact: true }),
+      ).toHaveAttribute("aria-pressed", "true");
       await expect(page.locator("html")).toHaveCSS(
         "--background",
         imported.colors["editor.background"],
       );
-      await page.getByRole("button", { name: "Apply theme", exact: true }).click();
       await page.getByRole("button", { name: "Back to chat", exact: true }).click();
       await expect.poll(editorState, { timeout: 25_000 }).toMatchObject({
         id: editorId,
@@ -205,12 +205,17 @@ for (const initialTheme of ["dark", "light"] as const) {
       await page.getByRole("button", { name: /^Appearance/ }).click();
       await page.getByRole("button", { name: "Light", exact: true }).click();
       await page.getByRole("button", { name: "Solarized Light theme", exact: true }).click();
-      await page.getByRole("button", { name: "Apply theme", exact: true }).click();
       await page.getByRole("button", { name: "Dark theme", exact: true }).click();
       await page.getByRole("button", { name: "Nord theme", exact: true }).click();
-      await page.getByRole("button", { name: "Apply theme", exact: true }).click();
-      await page.getByRole("button", { name: "Follow System", exact: true }).click();
+      await expect(page.getByRole("status")).toHaveText(
+        "This theme will apply when Dark mode is active.",
+      );
+      await expect(page.locator("html")).toHaveCSS("--background", "#FDF6E3");
       await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+      await expect
+        .poll(editorState)
+        .toMatchObject({ id: editorId, theme: "light", background: "#fdf6e3" });
+      await setTheme("system");
       for (const theme of ["light", "dark", "light"] as const) {
         await page.emulateMedia({ colorScheme: theme });
         await expect.poll(editorState).toMatchObject({

@@ -1,9 +1,9 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { observer } from "r-state-tree/react";
 import { useAppDocument } from "../../../src/renderer/hooks/use-app-document";
@@ -14,8 +14,8 @@ const DocumentTheme = observer(function DocumentTheme({ root }: { root: RootStor
   return null;
 });
 
-function themeFile(content: string) {
-  const file = new File([content], "ocean.json", { type: "application/json" });
+function themeFile(content: string, name = "ocean.json") {
+  const file = new File([content], name, { type: "application/json" });
   Object.defineProperty(file, "text", { value: async () => content });
   return file;
 }
@@ -80,7 +80,10 @@ function renderAppearanceSettings(snapshot?: StoreSnapshot, customIcon = false) 
   };
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe("Appearance settings workflow", () => {
   it.each([false, true])(
@@ -156,7 +159,7 @@ describe("Appearance settings workflow", () => {
     expect(sessions.getAttribute("aria-checked")).toBe("true");
   });
 
-  it("previews, cancels, applies and restores imported color data through the window snapshot", async () => {
+  it("immediately saves and restores imported color data through the window snapshot", async () => {
     let saved: StoreSnapshot;
     const theme = JSON.stringify({
       name: "Ocean",
@@ -167,15 +170,9 @@ describe("Appearance settings workflow", () => {
     {
       using fixture = renderAppearanceSettings();
       await fixture.user.click(screen.getByRole("button", { name: "Dark" }));
-      const picker = screen.getByLabelText("Import VS Code theme");
-      await fixture.user.upload(picker, themeFile(theme));
-      expect(await screen.findByText("Preview: Ocean")).toBeTruthy();
+      await fixture.user.upload(screen.getByLabelText("Import VS Code theme"), themeFile(theme));
+      expect(await screen.findByRole("button", { name: "Ocean theme" })).toBeTruthy();
       expect(document.documentElement.style.getPropertyValue("--background")).toBe("#102030");
-      await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
-      expect(document.documentElement.dataset.theme).toBe("dark");
-      expect(document.documentElement.style.getPropertyValue("--background")).toBe("");
-      await fixture.user.upload(picker, themeFile(theme));
-      await fixture.user.click(await screen.findByRole("button", { name: "Apply theme" }));
       expect(screen.getByRole("button", { name: "Ocean theme" }).getAttribute("aria-pressed")).toBe(
         "true",
       );
@@ -189,12 +186,41 @@ describe("Appearance settings workflow", () => {
       "true",
     );
     expect(document.documentElement.style.getPropertyValue("--background")).toBe("#102030");
-    await restored.user.click(screen.getByRole("button", { name: "Remove theme" }));
+    await restored.user.click(screen.getByRole("button", { name: "Remove dark theme" }));
     expect(
       screen.getByRole("button", { name: "Cake Dark theme" }).getAttribute("aria-pressed"),
     ).toBe("true");
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.style.getPropertyValue("--background")).toBe("");
+  });
+
+  it("saves JSONC source entries with sibling includes without duplicating them on reselection", async () => {
+    using fixture = renderAppearanceSettings();
+    await fixture.user.click(screen.getByRole("button", { name: "Dark" }));
+    await fixture.user.upload(screen.getByLabelText("Import VS Code theme"), [
+      themeFile(
+        '// Theme data\n{"name":"Paper","type":"light","include":"./base.json"}',
+        "paper.jsonc",
+      ),
+      themeFile('{"name":"Ocean","type":"dark","include":"./base.json"}', "ocean.json"),
+      themeFile('{"colors":{"editor.background":"#102030"}}', "base.json"),
+    ]);
+    expect(await screen.findByRole("button", { name: "Paper theme" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe(
+      "This theme will apply when Light mode is active.",
+    );
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("");
+    const source = screen.getByRole("combobox", { name: "Theme source" });
+    await fixture.user.selectOptions(source, "ocean.json");
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#102030");
+    await fixture.user.selectOptions(source, "paper.jsonc");
+    expect(screen.getAllByRole("button", { name: "Paper theme" })).toHaveLength(1);
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    await fixture.user.selectOptions(source, "ocean.json");
+    expect(screen.getAllByRole("button", { name: "Ocean theme" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Ocean theme" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
   });
 
   it("shows invalid import errors and leaves the current preference intact", async () => {
@@ -203,97 +229,150 @@ describe("Appearance settings workflow", () => {
     await fixture.user.upload(screen.getByLabelText("Import VS Code theme"), themeFile("{"));
     expect((await screen.findByRole("alert")).textContent).toContain("Invalid JSON");
     expect(document.documentElement.dataset.theme).toBe("light");
-    expect(screen.getByRole("button", { name: "Apply theme" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Light" }).getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("saves independent light/dark favorites, cancels previews and restores only applied choices", async () => {
-    let previewSnapshot: StoreSnapshot;
-    let appliedSnapshot: StoreSnapshot;
+  it("immediately saves independent light/dark choices and restores the explicit appearance mode", async () => {
+    let saved: StoreSnapshot;
     {
       using fixture = renderAppearanceSettings();
       await fixture.user.click(screen.getByRole("button", { name: "Light" }));
       await fixture.user.click(screen.getByRole("button", { name: "Solarized Light theme" }));
       expect(document.documentElement.style.getPropertyValue("--background")).toBe("#FDF6E3");
-      await fixture.user.click(screen.getByRole("button", { name: "Apply theme" }));
       await fixture.user.click(screen.getByRole("button", { name: "Dark" }));
       await fixture.user.click(screen.getByRole("button", { name: "Warm Titanium theme" }));
       expect(document.documentElement.style.getPropertyValue("--background")).toBe("#242321");
-      await fixture.user.click(screen.getByRole("button", { name: "Apply theme" }));
-      appliedSnapshot = fixture.savedSnapshot();
-      await fixture.user.click(screen.getByRole("button", { name: "Nord theme" }));
-      expect(screen.getByRole("status").textContent).toBe("Preview: Nord");
-      previewSnapshot = fixture.savedSnapshot();
-      await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
-      expect(document.documentElement.style.getPropertyValue("--background")).toBe("#242321");
-      await fixture.user.click(screen.getByRole("button", { name: "Light" }));
-      expect(document.documentElement.style.getPropertyValue("--background")).toBe("#FDF6E3");
-      expect(
-        screen.getByRole("button", { name: "Solarized Light theme" }).getAttribute("aria-pressed"),
-      ).toBe("true");
-      await fixture.user.click(screen.getByRole("button", { name: "Follow System" }));
-      expect(document.documentElement.style.getPropertyValue("--background")).toBe("#FDF6E3");
+      saved = fixture.savedSnapshot();
     }
-    for (const saved of [appliedSnapshot, previewSnapshot]) {
-      using restored = renderAppearanceSettings(saved);
-      expect(document.documentElement.style.getPropertyValue("--background")).toBe("#242321");
-      expect(
-        screen.getByRole("button", { name: "Warm Titanium theme" }).getAttribute("aria-pressed"),
-      ).toBe("true");
-      await restored.user.click(screen.getByRole("button", { name: "Light" }));
-      expect(
-        screen.getByRole("button", { name: "Solarized Light theme" }).getAttribute("aria-pressed"),
-      ).toBe("true");
-    }
+    using restored = renderAppearanceSettings(saved);
+    expect(screen.getByRole("button", { name: "Dark" }).getAttribute("aria-pressed")).toBe("true");
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#242321");
+    expect(
+      screen.getByRole("button", { name: "Warm Titanium theme" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    await restored.user.click(screen.getByRole("button", { name: "Light" }));
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#FDF6E3");
+    expect(
+      screen.getByRole("button", { name: "Solarized Light theme" }).getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
-  it("can edit the inactive mode's favorite without changing appearance mode", async () => {
+  it.each(["light", "dark"] as const)(
+    "saves the inactive slot without changing explicit %s appearance",
+    async (activeMode) => {
+      using fixture = renderAppearanceSettings();
+      const label = activeMode === "light" ? "Light" : "Dark";
+      const inactiveLabel = activeMode === "light" ? "Dark" : "Light";
+      const choice = activeMode === "light" ? "Twilight Steel" : "Solarized Light";
+      const background = activeMode === "light" ? "#1c2430" : "#FDF6E3";
+      await fixture.user.click(screen.getByRole("button", { name: label }));
+      const gallery = screen.getByRole("button", { name: `${inactiveLabel} theme` });
+      await fixture.user.click(gallery);
+      expect(gallery.getAttribute("aria-expanded")).toBe("true");
+      await fixture.user.click(gallery);
+      expect(gallery.getAttribute("aria-expanded")).toBe("false");
+      await fixture.user.click(gallery);
+      await fixture.user.click(screen.getByRole("button", { name: `${choice} theme` }));
+      expect(screen.getByRole("status").textContent).toBe(
+        `This theme will apply when ${inactiveLabel} mode is active.`,
+      );
+      expect(screen.getByText(`Saved: ${choice}`)).toBeTruthy();
+      expect(screen.getByText(`Saved: Cake ${label} · Active`)).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: `${choice} theme` }).getAttribute("aria-pressed"),
+      ).toBe("true");
+      expect(document.documentElement.dataset.theme).toBe(activeMode);
+      expect(document.documentElement.style.getPropertyValue("--background")).toBe("");
+      expect(screen.getByRole("button", { name: label }).getAttribute("aria-pressed")).toBe("true");
+      await fixture.user.click(screen.getByRole("button", { name: inactiveLabel }));
+      expect(document.documentElement.style.getPropertyValue("--background")).toBe(background);
+      expect(screen.queryByRole("status")).toBeNull();
+    },
+  );
+
+  it("defaults to System, saves the inactive slot, and follows live OS changes after restoration", async () => {
+    let dark = false;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", () => ({
+      get matches() {
+        return dark;
+      },
+      addEventListener: (_event: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
+    }));
+    const setOS = (scheme: "light" | "dark") =>
+      act(() => {
+        dark = scheme === "dark";
+        for (const listener of listeners) listener();
+      });
+    let saved: StoreSnapshot;
+    {
+      using fixture = renderAppearanceSettings();
+      expect(screen.getByRole("button", { name: "System" }).getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+      await fixture.user.click(screen.getByRole("button", { name: "Solarized Light theme" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Dark theme" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Nord theme" }));
+      expect(document.documentElement.style.getPropertyValue("--background")).toBe("#FDF6E3");
+      expect(screen.getByRole("status").textContent).toBe(
+        "This theme will apply when Dark mode is active.",
+      );
+      expect(screen.getByRole("button", { name: "System" }).getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+      setOS("dark");
+      expect(document.documentElement.style.getPropertyValue("--background")).toBe("#2e3440");
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.getByText("Saved: Nord · Active")).toBeTruthy();
+      await fixture.user.click(screen.getByRole("button", { name: "Light theme" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Cake Light theme" }));
+      expect(screen.getByRole("status").textContent).toBe(
+        "This theme will apply when Light mode is active.",
+      );
+      expect(document.documentElement.style.getPropertyValue("--background")).toBe("#2e3440");
+      saved = fixture.savedSnapshot();
+    }
+    using restored = renderAppearanceSettings(saved);
+    expect(screen.getByRole("button", { name: "System" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#2e3440");
+    setOS("light");
+    expect(document.documentElement.dataset.theme).toBe("system");
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("");
+    await restored.user.click(screen.getByRole("button", { name: "Dark" }));
+    setOS("dark");
+    setOS("light");
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#2e3440");
+  });
+
+  it("imports an inactive theme without switching mode and can select saved imports again without duplication", async () => {
     using fixture = renderAppearanceSettings();
     await fixture.user.click(screen.getByRole("button", { name: "Light" }));
-    const gallery = screen.getByRole("button", { name: "Dark theme" });
-    await fixture.user.click(gallery);
-    expect(gallery.getAttribute("aria-expanded")).toBe("true");
-    await fixture.user.click(gallery);
-    expect(gallery.getAttribute("aria-expanded")).toBe("false");
-    await fixture.user.click(gallery);
-    await fixture.user.click(screen.getByRole("button", { name: "Twilight Steel theme" }));
-    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#1c2430");
-    await fixture.user.click(screen.getByRole("button", { name: "Apply theme" }));
-    expect(document.documentElement.dataset.theme).toBe("light");
+    const picker = screen.getByLabelText("Import VS Code theme");
+    await fixture.user.upload(
+      picker,
+      themeFile(
+        JSON.stringify({
+          name: "Ocean",
+          type: "dark",
+          colors: { "editor.background": "#102030" },
+        }),
+      ),
+    );
+    expect(await screen.findByRole("button", { name: "Ocean theme" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe(
+      "This theme will apply when Dark mode is active.",
+    );
     expect(document.documentElement.style.getPropertyValue("--background")).toBe("");
     expect(screen.getByRole("button", { name: "Light" }).getAttribute("aria-pressed")).toBe("true");
     await fixture.user.click(screen.getByRole("button", { name: "Dark" }));
-    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#1c2430");
-  });
-
-  it("compares saved imports by mode and applies one again without duplicating it", async () => {
-    using fixture = renderAppearanceSettings();
-    const picker = screen.getByLabelText("Import VS Code theme");
-    for (const [name, type, background] of [
-      ["Ocean", "dark", "#102030"],
-      ["Paper", "light", "#fff8e8"],
-    ] as const) {
-      await fixture.user.click(
-        screen.getByRole("button", { name: type === "light" ? "Light" : "Dark" }),
-      );
-      await fixture.user.upload(
-        picker,
-        themeFile(JSON.stringify({ name, type, colors: { "editor.background": background } })),
-      );
-      await fixture.user.click(await screen.findByRole("button", { name: "Apply theme" }));
-    }
-    expect(screen.getByRole("button", { name: "Paper theme" }).getAttribute("aria-pressed")).toBe(
-      "true",
-    );
-    await fixture.user.click(screen.getByRole("button", { name: "Dark" }));
     expect(document.documentElement.style.getPropertyValue("--background")).toBe("#102030");
     await fixture.user.click(screen.getByRole("button", { name: "Cake Dark theme" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#102030");
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("");
     await fixture.user.click(screen.getByRole("button", { name: "Ocean theme" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Apply theme" }));
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#102030");
     expect(screen.getAllByRole("button", { name: "Ocean theme" })).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "Ocean theme" }).getAttribute("aria-pressed")).toBe(
-      "true",
-    );
   });
 });
