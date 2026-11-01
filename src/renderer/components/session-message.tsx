@@ -132,13 +132,13 @@ export const SessionMessage = observer(function SessionMessage({
               />
             </Button>
             <div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-2 pr-2 pl-8">
-              <span className="max-w-[45%] min-w-[3em] shrink text-sm font-medium">
+              <span className="max-w-[45%] min-w-0 shrink text-sm font-medium">
                 {href && actions ? (
                   <MarkdownLink
                     href={href}
                     showIcon={false}
                     title={reference ? "Open the original message" : "Open source conversation"}
-                    className="pointer-events-auto max-w-full text-inherit decoration-transparent hover:decoration-current"
+                    className="pointer-events-auto block max-w-full truncate text-inherit decoration-transparent hover:decoration-current"
                   >
                     {title}
                   </MarkdownLink>

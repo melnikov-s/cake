@@ -45,6 +45,7 @@ import { durableInputText } from "../../src/services/pi-durable/durable-input-pr
 import { ChatMetadataDoc } from "../../src/services/pi-durable/durable-chat-metadata.ts";
 import { TaskAttributionDoc } from "../../src/services/pi-durable/durable-task-attribution.ts";
 import { investigatorOrigin, investigatorMarkdown } from "../../tests/fixtures/subagent-report.ts";
+import { subagentTaskTitle } from "../../src/contracts/subagents/subagent-presentation.ts";
 import { expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type { VisualCaptureTheme } from "./arguments.ts";
 import type { CakeArtifactV1 } from "../../src/contracts/artifacts/artifact-contract.ts";
@@ -3730,6 +3731,170 @@ const subagentReportsScenario: VisualCaptureScenario = {
         }),
 };
 
+const reportHeaderTitle =
+  "Read-only research: why would Cake sessions.list take over a minute? User screenshot investigation and findings";
+const reportHeaderCases = [
+  ["completed", "complete", undefined, reportHeaderTitle, "Completed"],
+  ["failed", "error", undefined, reportHeaderTitle, "Failed"],
+  ["failed-start", "error", "start", reportHeaderTitle, "Failed to start"],
+  ["aborted", "aborted", undefined, "UnbrokenTitle".repeat(12), "Aborted"],
+  ["queued", "queued", undefined, reportHeaderTitle, "Queued"],
+  ["running", "running", undefined, reportHeaderTitle, "Running"],
+] as const;
+
+const reportHeadersScenario: VisualCaptureScenario = {
+  name: "report-headers",
+  description: "Long linked report titles stay contained beside status and fullscreen controls",
+  states: [...reportHeaderCases.map(([state]) => state), "collapsed"],
+  async seed(paths, theme) {
+    await cakeChatScenario.seed(paths, theme);
+    const storage = await openNodeSqliteStorage(
+      join(paths.cakeHome, "pi", "global-chat", "coordinator.sqlite"),
+    );
+    const harness = await Harness.open(
+      storage,
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    try {
+      const root = await harness.root(BACKGROUND_CONTEXT);
+      await root.commit(async (tx) => {
+        for (const [index, [, status, failurePhase, title]] of reportHeaderCases.entries()) {
+          const origin = {
+            ...investigatorOrigin,
+            handleId: `10000000-0000-4000-8000-${String(index + 10).padStart(12, "0")}`,
+            task: `${title}\n\nKeep the full assignment inspectable.`,
+            status,
+            ...(failurePhase ? { failurePhase } : {}),
+          };
+          await tx.appendEntry(UserEntry, root.id, {
+            model: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: durableInputText(
+                      `Background subagent ${status}: ${origin.task}\n\n## Bottom line\n\nThe report remains readable.`,
+                      [],
+                      true,
+                      false,
+                      origin,
+                    ),
+                  },
+                ],
+                timestamp: index + 10,
+              },
+            ],
+          });
+        }
+      }, BACKGROUND_CONTEXT);
+    } finally {
+      await harness.close(BACKGROUND_CONTEXT);
+      await storage.close(BACKGROUND_CONTEXT);
+    }
+  },
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    const [, , , task, badge] =
+      reportHeaderCases.find(([name]) => name === state) ?? reportHeaderCases[0];
+    // Worker display titles are intentionally capped independently of CSS truncation.
+    const title = subagentTaskTitle(task);
+    const card = page
+      .locator('[data-slot="session-message"]')
+      .filter({
+        has: page.getByRole("button", { name: title, exact: true }),
+      })
+      .filter({ has: page.getByText(badge, { exact: true }) });
+    await expect(page.locator('[data-slot="subagent-report"]').first()).toBeVisible({
+      timeout: 20_000,
+    });
+    if (["completed", "failed", "collapsed"].includes(state)) {
+      await page.locator(".transcript").evaluate((element) => element.scrollTo(0, 0));
+    }
+    await expect(card).toHaveCount(1);
+    await card.scrollIntoViewIfNeeded();
+    const disclosure = card.locator('[data-slot="response-disclosure"]');
+    await expect(disclosure).toHaveAttribute("title", title);
+    if (state === "collapsed") await disclosure.click();
+    await expect(disclosure).toHaveAttribute(
+      "aria-expanded",
+      state === "collapsed" ? "false" : "true",
+    );
+    const link = card.getByRole("link", { name: title, exact: true });
+    await expect(link).toHaveAttribute("href", /cake:\/\/subagent\//);
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await disclosure.focus();
+    const geometry = await link.evaluate((element) => {
+      const header = element.closest('[data-slot="response-header"]')!;
+      const status = element.parentElement!.nextElementSibling!;
+      const bounds = element.getBoundingClientRect();
+      const row = header.getBoundingClientRect();
+      const badge = status.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        top: bounds.top,
+        bottom: bounds.bottom,
+        right: bounds.right,
+        rowTop: row.top,
+        rowBottom: row.bottom,
+        badgeLeft: badge.left,
+        badgeTop: badge.top,
+        badgeBottom: badge.bottom,
+        badgeRight: badge.right,
+        height: bounds.height,
+        lineHeight: parseFloat(style.lineHeight),
+        textOverflow: style.textOverflow,
+        clipped: element.scrollWidth > element.clientWidth,
+      };
+    });
+    expect(geometry.top).toBeGreaterThanOrEqual(geometry.rowTop);
+    expect(geometry.bottom).toBeLessThanOrEqual(geometry.rowBottom);
+    expect(geometry.height).toBeLessThanOrEqual(geometry.lineHeight + 1);
+    expect(geometry.right).toBeLessThanOrEqual(geometry.badgeLeft);
+    expect(geometry.badgeTop).toBeGreaterThanOrEqual(geometry.rowTop);
+    expect(geometry.badgeBottom).toBeLessThanOrEqual(geometry.rowBottom);
+    expect(geometry.textOverflow).toBe("ellipsis");
+    expect(geometry.clipped).toBe(true);
+    const fullscreen = card.getByRole("button", { name: `View message fullscreen: ${title}` });
+    await expect(fullscreen).toBeVisible();
+    const fullscreenBounds = (await fullscreen.boundingBox())!;
+    expect(fullscreenBounds.x).toBeGreaterThanOrEqual(geometry.badgeRight);
+    expect(fullscreenBounds.y).toBeGreaterThanOrEqual(geometry.rowTop - 1);
+    expect(fullscreenBounds.y + fullscreenBounds.height).toBeLessThanOrEqual(
+      geometry.rowBottom + 1,
+    );
+    await fullscreen.click();
+    const reader = page.getByRole("dialog", { name: title, exact: true });
+    await expect(reader).toContainText("The report remains readable.");
+    await reader.getByRole("button", { name: `Exit fullscreen ${title}` }).click();
+    await expect(disclosure).toHaveAttribute(
+      "aria-expanded",
+      state === "collapsed" ? "false" : "true",
+    );
+    if (state !== "collapsed") {
+      await card.getByRole("button", { name: "Assignment details" }).click();
+      await expect(
+        card.getByText(`${task}\n\nKeep the full assignment inspectable.`, { exact: true }),
+      ).toBeVisible();
+      await card.getByRole("button", { name: "Assignment details" }).click();
+    }
+    await card.evaluate((element) =>
+      element.scrollIntoView({ block: "center", behavior: "instant" }),
+    );
+    await disclosure.focus();
+    await page.mouse.move(1, 1);
+  },
+  region: (page, state) => {
+    const [, , , , badge] =
+      reportHeaderCases.find(([name]) => name === state) ?? reportHeaderCases[0];
+    return page
+      .locator('[data-slot="session-message"]')
+      .filter({ has: page.getByText(badge, { exact: true }) });
+  },
+};
+
 const resultTodoSessionId = "3d4e5f6a-7b8c-4d9e-8f01-2a3b4c5d6e71";
 const resultTodoNoticeSessionId = "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b82";
 
@@ -6354,6 +6519,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   cakeChatConversationScenario,
   cakeChatOverlayScenario,
   subagentReportsScenario,
+  reportHeadersScenario,
   incomingTaskSectionsScenario,
   cakeChatArtifactScenario,
   contextOutlineScenario,
