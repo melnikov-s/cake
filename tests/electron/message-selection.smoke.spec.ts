@@ -254,6 +254,20 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
         : ["Add annotation", "Chat about this"];
       Menu.buildFromTemplate = (template) => {
         const menu = buildFromTemplate(template);
+        for (const label of ["Add annotation", "Chat about this"]) {
+          const icon = menu.items.find((candidate) => candidate.label === label)?.icon;
+          if (!icon || icon.isEmpty()) throw new Error(`Expected ${label} menu icon`);
+          const size = icon.getSize();
+          if (size.width !== 16 || size.height !== 16)
+            throw new Error(`Expected ${label} icon to occupy a 16-point menu slot`);
+          if (!icon.getScaleFactors().includes(2))
+            throw new Error(`Expected ${label} icon to supply a Retina representation`);
+          const retina = icon.toPNG({ scaleFactor: 2 });
+          if (retina.readUInt32BE(16) !== 32 || retina.readUInt32BE(20) !== 32)
+            throw new Error(`Expected ${label} icon to contain 32×32 Retina pixels`);
+          if (process.platform === "darwin" && !icon.isTemplateImage())
+            throw new Error(`Expected ${label} icon to adapt to native menu appearance`);
+        }
         menu.popup = (options) => {
           const nextLabel = labels.shift();
           const item = menu.items.find((candidate) => candidate.label === nextLabel);

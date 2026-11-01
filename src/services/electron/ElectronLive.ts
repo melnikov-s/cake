@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Effect, Layer, Queue, Stream } from "effect";
 import {
   BrowserWindow,
@@ -54,7 +55,10 @@ type IconMenuEntry = Omit<MenuItemConstructorOptions, "icon" | "label" | "role" 
 };
 
 const iconMenuEntry = ({ icon: iconPath, ...entry }: IconMenuEntry) => {
-  const icon = nativeImage.createFromPath(iconPath);
+  // These catalog icons are rasterized at 2x for a 16-point native menu slot.
+  // Supply the scale explicitly: asset bundling hashes names, so Electron cannot
+  // infer Retina density from an @2x filename or discover sibling representations.
+  const icon = nativeImage.createFromBuffer(readFileSync(iconPath), { scaleFactor: 2 });
   icon.setTemplateImage(true);
   return { ...entry, icon } satisfies MenuItemConstructorOptions;
 };
