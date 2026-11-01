@@ -6,6 +6,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
+import { shutdownDiagnostics, shutdownResource } from "../../diagnostics/shutdown-diagnostics";
 import type { ProjectTodo } from "../../../contracts/projects/project-todos";
 import type { IdleCompactionResult } from "../../../contracts/project-sessions/session-compaction";
 import { internalInputEntryType } from "./internal-input-projection";
@@ -1132,7 +1133,9 @@ export async function createCakeSessionRuntime(
     async abort(stop) {
       pendingStop = stop;
       try {
-        await turnController.abort();
+        await shutdownDiagnostics.promise("pi.turn.abort", shutdownResource(cakeSessionId), () =>
+          turnController.abort(),
+        );
       } finally {
         pendingStop = undefined;
       }
@@ -1171,27 +1174,36 @@ export async function createCakeSessionRuntime(
     dispose() {
       if (disposed) return disposePromise;
       disposed = true;
-      turnController.dispose();
-      continuations.dispose();
-      projection.dispose();
-      recovery.dispose();
-      resources.dispose();
-      unsubscribe();
-      disposePromise = (async () => {
+      const resource = shutdownResource(cakeSessionId);
+      shutdownDiagnostics.sync("pi.localCleanup", resource, () => {
+        turnController.dispose();
+        continuations.dispose();
+        projection.dispose();
+        recovery.dispose();
+        resources.dispose();
+        unsubscribe();
+      });
+      disposePromise = shutdownDiagnostics.promise("pi.dispose", resource, async () => {
         try {
-          await session.abort();
+          await shutdownDiagnostics.promise("pi.abort", resource, () => session.abort());
           // An already-running reload owns its own shutdown. Let it retire
           // before shutting down the final extension runtime.
-          await resources.drainReloads();
+          await shutdownDiagnostics.promise("pi.drainReloads", resource, () =>
+            resources.drainReloads(),
+          );
         } finally {
           try {
-            await shutdownCakeSessionExtensions(session);
+            await shutdownDiagnostics.promise("pi.extensions.shutdown", resource, () =>
+              shutdownCakeSessionExtensions(session),
+            );
           } finally {
-            session.dispose();
-            await settingsManager.flush();
+            shutdownDiagnostics.sync("pi.session.dispose", resource, () => session.dispose());
+            await shutdownDiagnostics.promise("pi.settings.flush", resource, () =>
+              settingsManager.flush(),
+            );
           }
         }
-      })();
+      });
       return disposePromise;
     },
   };

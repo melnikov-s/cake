@@ -1,5 +1,9 @@
 import type { Event } from "electron";
 import { Cause, Effect, Option, Queue, Stream } from "effect";
+import {
+  shutdownDiagnostics,
+  type ShutdownRecord,
+} from "../services/diagnostics/shutdown-diagnostics";
 import { releaseConnectionResources } from "../domain/clients/clientConnectionResources";
 import { DesktopSharing } from "../services/electron/DesktopSharing";
 import { Electron } from "../services/electron/Electron";
@@ -22,6 +26,7 @@ interface MainApplicationElectron {
 
 export interface MainApplicationOptions {
   readonly application: MainApplicationElectron;
+  readonly shutdownLog?: (record: ShutdownRecord) => void;
   readonly platform?: NodeJS.Platform;
   readonly reportDefect?: (cause: Cause.Cause<unknown>) => void;
   readonly initializeNativeProtocols?: () => void;
@@ -31,6 +36,7 @@ export interface MainApplicationOptions {
 /** Owns native startup and shutdown after main.ts has synchronously claimed the profile lock. */
 export const MainApplication = Effect.fn("MainApplication")(function* ({
   application,
+  shutdownLog,
   platform = process.platform,
   reportDefect,
   initializeNativeProtocols = () => {
@@ -98,10 +104,13 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
         Effect.forkScoped,
       );
 
-      yield* Effect.addFinalizer(() => electron.stop());
+      yield* Effect.addFinalizer(() =>
+        shutdownDiagnostics.effect("electron.stop", undefined, electron.stop()),
+      );
       const shutdownRequested = yield* Queue.unbounded<void>();
       const onBeforeQuit = (event: Event) => {
         event.preventDefault();
+        if (shutdownLog) shutdownDiagnostics.start(shutdownLog);
         Queue.offerUnsafe(shutdownRequested, undefined);
       };
       yield* Effect.acquireRelease(
@@ -169,10 +178,17 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
       let readyToQuit = false;
       while (!readyToQuit) {
         yield* Queue.take(shutdownRequested);
-        readyToQuit = yield* electron.prepareToQuit();
+        readyToQuit = yield* shutdownDiagnostics.effect(
+          "electron.prepareToQuit",
+          undefined,
+          electron.prepareToQuit(),
+        );
+        if (!readyToQuit) shutdownDiagnostics.finish("cancelled");
       }
       yield* Effect.logInfo("Cake main application stopping");
     }),
   );
-  return yield* program.pipe(Effect.tapCause((cause) => Effect.sync(() => reportDefect?.(cause))));
+  return yield* shutdownDiagnostics
+    .effect("main.applicationScope", undefined, program)
+    .pipe(Effect.tapCause((cause) => Effect.sync(() => reportDefect?.(cause))));
 });

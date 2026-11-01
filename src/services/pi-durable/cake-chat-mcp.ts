@@ -11,6 +11,7 @@ import {
   type Tool as McpTool,
 } from "@earendil-works/pi-mcp";
 import { execFile } from "node:child_process";
+import { shutdownDiagnostics, shutdownResource } from "../diagnostics/shutdown-diagnostics";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -197,7 +198,8 @@ export class CakeChatMcp {
     if (this.closed) return Promise.reject(new Error("Cake Chat MCP access has closed"));
     const existing = this.connections.get(server.name);
     if (existing) return existing;
-    const connecting = (async () => {
+    const resource = shutdownResource(`${this.options.cwd}\0${server.name}`);
+    const connecting = shutdownDiagnostics.promise("durable.mcp.initialize", resource, async () => {
       const client = new McpClient({
         name: "cake-chat",
         version: "1.0.0",
@@ -212,7 +214,9 @@ export class CakeChatMcp {
         );
         return { client, tools };
       } catch (error) {
-        await client.close().catch(() => undefined);
+        await shutdownDiagnostics
+          .promise("durable.mcp.failedConnect.close", resource, () => client.close())
+          .catch(() => undefined);
         if (error instanceof McpAuthRequiredError)
           throw new Error(
             `MCP server "${server.name}" requires OAuth sign-in, which Cake Chat cannot perform. Sign in from a Project Session with /mcp, or delegate this lookup to a project subagent.`,
@@ -222,7 +226,7 @@ export class CakeChatMcp {
           cause: error,
         });
       }
-    })();
+    });
     this.connections.set(server.name, connecting);
     connecting
       .then(({ client }) =>
@@ -314,12 +318,24 @@ export class CakeChatMcp {
 
   async close() {
     this.closed = true;
-    const connections = [...this.connections.values()];
+    const connections = [...this.connections.entries()];
     this.connections.clear();
     await Promise.all(
-      connections.map((connection) =>
-        connection.then(({ client }) => client.close()).catch(() => undefined),
-      ),
+      connections.map(([name, connection]) => {
+        const resource = shutdownResource(`${this.options.cwd}\0${name}`);
+        return shutdownDiagnostics
+          .promise("durable.mcp.close", resource, async () => {
+            const { client } = await shutdownDiagnostics.promise(
+              "durable.mcp.awaitInitialization",
+              resource,
+              () => connection,
+            );
+            await shutdownDiagnostics.promise("durable.mcp.client.close", resource, () =>
+              client.close(),
+            );
+          })
+          .catch(() => undefined);
+      }),
     );
   }
 }

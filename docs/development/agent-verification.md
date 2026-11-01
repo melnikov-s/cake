@@ -124,6 +124,71 @@ kill can lose the pending batch. Log-directory/write failures warn on the consol
 rather than stopping Cake. New logging code requires a rebuilt/restarted host;
 it cannot recover diagnostics from earlier runs that did not retain them.
 
+### Shutdown diagnostics
+
+Electron's next quit attempt writes `Cake shutdown` records to the terminal and
+`$CAKE_HOME/logs/desktop-shutdown.log` (default
+`~/.cake/logs/desktop-shutdown.log`). This is a shutdown-only companion to
+`desktop.log`, with the same 5 MiB file / three-backup retention. It appends across
+relaunches. Entries are synchronous: a `started` record is on disk before entering
+the corresponding wait, without requiring the runtime logger to flush or close.
+This protects against a force-killed process, not power loss / OS crash (`fsync`
+is not promised). File failures warn once and leave console diagnostics available.
+
+Records include ISO timestamps, a process-run UUID, operation IDs, safe hashed
+resource identifiers and elapsed milliseconds. They contain no raw session IDs,
+paths, server names, Git arguments, tool inputs/outputs or error bodies. Match
+`run` + `id` between start and completion/failure/interruption. Resource hashes
+correlate session phases; operation IDs distinguish concurrent waits on the same
+resource. An initial `pending` snapshot includes work already outstanding when
+quit was requested; its elapsed time includes pre-quit work. Every ten seconds an
+unreferenced timer reports the **current pending set**, not the last phase entered.
+Snapshots list at most 50 operations plus total/omitted counts; subsequent operation
+starts and settlements are individual records. Nested durations overlap; do not
+sum them. No instrumentation timer exists during normal operation, and cancelled
+quit stops reporting until the next attempt.
+
+Instrumented boundaries:
+
+- `electron.prepareToQuit`, `main.applicationScope`, `electron.stop`, and
+  `main.runtime.dispose`: native preparation, application-scope finalization and
+  backend graph disposal.
+- `runtime.release` / `runtime.onRelease`: each session's lease cleanup, including
+  callbacks after runtime disposal.
+- `pi.localCleanup`, `pi.turn.abort`, `pi.abort`, `pi.drainReloads`,
+  `pi.extensions.shutdown`, `pi.session.dispose`, `pi.settings.flush`: regular Pi
+  session teardown, rather than one aggregate dispose wait.
+- `durable.publication`, `durable.sideChat.publication`, `durable.engine.close`,
+  `durable.harness.close`, `durable.memory.maintenance`, `durable.memory.worker`:
+  publication, SDK close and Cake-owned memory drains. Harness close starts before
+  the memory drains; both can appear pending concurrently.
+- `durable.tool.*`: each outstanding Cake-registered Durable tool execution,
+  including executions begun before quit. `durable.mcp.*` separates initialization,
+  awaiting initialization and each client's close (including failed-connect cleanup).
+- `git.run`: each outstanding Git Service runner call, identified by hashed working
+  directory and operation ID, without command arguments or output.
+
+Visibility limits: a pending scope/dispose label is an enclosing operation, not
+proof that it caused the hang. Child records provide the narrower boundary when
+available. Uninstrumented finalizers/Effect fiber interruption can still leave
+only a scope label. Pi owns regular-session abort internals, extension handler
+ordering, MCP startup/transports and SDK tool joins; Cake sees `pi.abort` or
+`pi.extensions.shutdown`, not each private handler/server wait. Durable Harness
+internals (scheduler joins, tool-result commits and storage close) remain one SDK
+close boundary; individual Cake tool _execution_ records do not imply result
+publication has finished. Pending Git/MCP activity is diagnostic context, not proof
+that shutdown is awaiting that activity. Synchronous event-loop blockage prevents
+periodic snapshots, but the last synchronous pre-wait records remain available.
+
+These diagnostics do not introduce deadlines, cancel work, force exit or change
+quit policy. Rebuild/redeploy and restart the desktop host to activate them; do
+not quit a user's running instance for verification. After the next naturally
+occurring hang, retain `desktop-shutdown.log` and backups before rotation, group
+by the latest `run`, and inspect the last pending snapshot plus later starts and
+settlements. Compare with `desktop.log` for existing failure details. Remote
+Electron records only its local desktop teardown, not the separate server's
+shutdown. No live quit/hang reproduction is implied by in-process test coverage.
+
 ### Debugging discipline
 
 - Reproduce a reported UI defect in the smallest real Electron fixture before refactoring shared abstractions.

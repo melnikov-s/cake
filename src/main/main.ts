@@ -39,7 +39,11 @@ import { piAgentDirectory } from "../services/pi/PiPaths";
 import { MainApplication } from "./MainApplication";
 import { makeMainLive } from "./MainLive";
 import { BootstrapLive } from "./BootstrapLive";
-import { makeBackendLoggingLive } from "../services/diagnostics/BackendLoggingLive";
+import {
+  makeBackendLoggingLive,
+  makeShutdownLogWriter,
+} from "../services/diagnostics/BackendLoggingLive";
+import { shutdownDiagnostics } from "../services/diagnostics/shutdown-diagnostics";
 import { installStdioErrorHandlers } from "./stdio-errors";
 import { reportMainFailure } from "./report-main-failure";
 import { installProcessErrorHandlers } from "./process-errors";
@@ -114,6 +118,7 @@ function startMain() {
     Effect.andThen(
       MainApplication({
         application: app,
+        shutdownLog: makeShutdownLogWriter(paths.logs, "desktop"),
         initializeDeveloperTools,
         initializeNativeProtocols: () => {
           const endpoint = selectedHost.kind === "remote" ? selectedHost.url : undefined;
@@ -139,7 +144,9 @@ function startMain() {
       if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause))
         await reportMainFailure(Cause.pretty(exit.cause));
       try {
-        await mainRuntime.dispose();
+        await shutdownDiagnostics.promise("main.runtime.dispose", undefined, () =>
+          mainRuntime.dispose(),
+        );
       } catch (defect) {
         exitCode = 1;
         console.error("[cake.main] ManagedRuntime finalization failed", defect);
@@ -147,6 +154,7 @@ function startMain() {
           defect instanceof Error ? (defect.stack ?? defect.message) : String(defect),
         );
       } finally {
+        shutdownDiagnostics.finish(exitCode === 0 ? "completed" : "failed");
         app.exit(exitCode);
       }
     });

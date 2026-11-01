@@ -1,5 +1,10 @@
 import { createInMemoryTransportPair } from "@earendil-works/pi-mcp/testing";
-import type { JsonRpcMessage } from "@earendil-works/pi-mcp";
+import type { JsonRpcMessage, McpTransport } from "@earendil-works/pi-mcp";
+import {
+  shutdownDiagnostics,
+  shutdownResource,
+  type ShutdownRecord,
+} from "../../../../src/services/diagnostics/shutdown-diagnostics";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -46,6 +51,7 @@ const gateway: CakeChatMcpServer = {
 const open: CakeChatMcp[] = [];
 const cleanup: string[] = [];
 afterEach(async () => {
+  shutdownDiagnostics.finish("cancelled");
   await Promise.all(open.splice(0).map((mcp) => mcp.close()));
   await Promise.all(cleanup.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
@@ -64,6 +70,69 @@ function mcp(calls: unknown[] = []) {
 }
 
 describe("Cake Chat MCP access", () => {
+  it.each(["success", "failure"] as const)(
+    "identifies stalled initialization and individual client close (%s), preserving swallowed-close policy",
+    async (outcome) => {
+      const startup = Promise.withResolvers<McpTransport>();
+      const release = Promise.withResolvers<void>();
+      const closeEntered = Promise.withResolvers<void>();
+      const transport = await fakeServer([]);
+      const close = transport.close.bind(transport);
+      transport.close = async () => {
+        closeEntered.resolve();
+        await release.promise;
+        await close();
+        if (outcome === "failure") throw new Error("PRIVATE close error");
+      };
+      const instance = new CakeChatMcp([gateway], {
+        cwd: "/private/workspace",
+        createTransport: () => startup.promise,
+      });
+      open.push(instance);
+      const discovery = instance.search(undefined, undefined);
+      const closing = instance.close();
+      const records: ShutdownRecord[] = [];
+      shutdownDiagnostics.start((record) => records.push(record));
+      const resource = shutdownResource(`/private/workspace\0${gateway.name}`);
+      expect(records.at(-1)?.pending).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ operation: "durable.mcp.initialize", resource }),
+          expect.objectContaining({ operation: "durable.mcp.awaitInitialization", resource }),
+          expect.objectContaining({ operation: "durable.mcp.close", resource }),
+        ]),
+      );
+      startup.resolve(transport);
+      await closeEntered.promise;
+      expect(records).toContainEqual(
+        expect.objectContaining({
+          event: "completed",
+          operation: "durable.mcp.awaitInitialization",
+        }),
+      );
+      expect(records).toContainEqual(
+        expect.objectContaining({
+          event: "started",
+          operation: "durable.mcp.client.close",
+          resource,
+        }),
+      );
+      expect(records).not.toContainEqual(
+        expect.objectContaining({ event: "completed", operation: "durable.mcp.close" }),
+      );
+      release.resolve();
+      await discovery;
+      await expect(closing).resolves.toBeUndefined();
+      expect(records).toContainEqual(
+        expect.objectContaining({
+          event: outcome === "success" ? "completed" : "failed",
+          operation: "durable.mcp.client.close",
+          resource,
+        }),
+      );
+      expect(JSON.stringify(records)).not.toMatch(/PRIVATE|\/private|gateway.invalid|tool-gateway/);
+    },
+  );
+
   it("discovers servers, searches tools and hides tools the config hides", async () => {
     const { instance, connections } = mcp();
     expect(instance.list()).toEqual([{ server: "tool-gateway", transport: "http" }]);

@@ -3,6 +3,10 @@ import type { Event } from "electron";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer } from "effect";
 import { describe, expect, vi } from "vitest";
+import {
+  shutdownDiagnostics,
+  type ShutdownRecord,
+} from "../../../src/services/diagnostics/shutdown-diagnostics";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { DesktopSharing } from "../../../src/services/electron/DesktopSharing";
 import { MainApplication } from "../../../src/main/MainApplication";
@@ -155,6 +159,58 @@ describe("MainApplication", () => {
           expect(lifecycle.canRewordSelection()).toBe(mode !== "local-unconfigured");
           application.requestQuit();
           yield* Fiber.join(fiber);
+        }
+      }),
+  );
+
+  it.effect(
+    "records quit before waiting for window saves and observes preparation and scope cleanup",
+    () =>
+      Effect.gen(function* () {
+        const application = new TestApplication();
+        const saving = yield* Deferred.make<boolean>();
+        const entered = yield* Deferred.make<void>();
+        const records: ShutdownRecord[] = [];
+        const stop = vi.fn();
+        const fiber = yield* MainApplication({
+          application,
+          initializeNativeProtocols: () => {},
+          shutdownLog: (record) => records.push(record),
+        }).pipe(
+          Effect.provide(
+            testLayer({
+              stop,
+              prepareToQuit: () =>
+                Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(saving))),
+            }),
+          ),
+          Effect.forkChild,
+        );
+        try {
+          yield* Effect.promise(() => application.waitForListener("before-quit"));
+          application.requestQuit();
+          expect(records[0]).toMatchObject({ event: "started", operation: "shutdown" });
+          expect(records[1]?.pending).toContainEqual(
+            expect.objectContaining({ operation: "main.applicationScope" }),
+          );
+          yield* Deferred.await(entered);
+          expect(records).toContainEqual(
+            expect.objectContaining({ event: "started", operation: "electron.prepareToQuit" }),
+          );
+          expect(stop).not.toHaveBeenCalled();
+          yield* Deferred.succeed(saving, true);
+          yield* Fiber.join(fiber);
+          for (const operation of [
+            "electron.prepareToQuit",
+            "electron.stop",
+            "main.applicationScope",
+          ])
+            expect(records).toContainEqual(
+              expect.objectContaining({ event: "completed", operation }),
+            );
+          expect(stop).toHaveBeenCalledOnce();
+        } finally {
+          shutdownDiagnostics.finish("completed");
         }
       }),
   );

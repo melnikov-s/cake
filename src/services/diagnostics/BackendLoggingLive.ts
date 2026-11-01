@@ -1,9 +1,57 @@
 import { Cause, Effect, FileSystem, Logger, Path, Semaphore } from "effect";
+import { appendFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { join } from "node:path";
+import type { ShutdownRecord } from "./shutdown-diagnostics";
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_RECORD_BYTES = 64 * 1024;
 const BACKUPS = 3;
 const sdkTimingWarnings = new Set<unknown>(["Slow Cake operation", "Slow Cake tool execution"]);
+
+/**
+ * Shutdown-only companion to the batched operational logger. Synchronous append
+ * completes before entering each wait, even when the runtime logger is closing.
+ * Separate files avoid racing the asynchronous logger's writes/rotation.
+ * This survives process kill, not an OS crash or power loss (no fsync guarantee).
+ */
+export const makeShutdownLogWriter = (
+  directory: string,
+  host: "desktop" | "server",
+  options?: { readonly maxFileBytes?: number; readonly console?: Pick<Console, "info" | "warn"> },
+): ((record: ShutdownRecord) => void) => {
+  const target = options?.console ?? console;
+  const file = join(directory, `${host}-shutdown.log`);
+  const maxBytes = options?.maxFileBytes ?? MAX_FILE_BYTES;
+  let warned = false;
+  return (record) => {
+    const line = `${JSON.stringify(record)}\n`;
+    try {
+      target.info("Cake shutdown", record);
+    } catch {
+      // A closed terminal must not prevent disk diagnostics.
+    }
+    try {
+      mkdirSync(directory, { recursive: true, mode: 0o700 });
+      if (Buffer.byteLength(line) > Math.min(MAX_RECORD_BYTES, maxBytes))
+        throw new Error("Shutdown diagnostic record exceeds size limit");
+      if (existsSync(file) && statSync(file).size + Buffer.byteLength(line) > maxBytes) {
+        for (let index = BACKUPS; index >= 1; index--) {
+          const source = index === 1 ? file : `${file}.${index - 1}`;
+          const destination = `${file}.${index}`;
+          if (!existsSync(source)) continue;
+          rmSync(destination, { force: true });
+          renameSync(source, destination);
+        }
+      }
+      appendFileSync(file, line, { mode: 0o600 });
+    } catch {
+      if (!warned) {
+        warned = true;
+        target.warn("Cake shutdown file logging unavailable; continuing with console diagnostics");
+      }
+    }
+  };
+};
 
 /** Host-owned operational logs, separate from Pi's transcript authority. */
 export const makeBackendLoggingLive = (

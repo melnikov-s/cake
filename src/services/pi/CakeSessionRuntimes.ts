@@ -1,4 +1,5 @@
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
+import { shutdownDiagnostics, shutdownResource } from "../diagnostics/shutdown-diagnostics";
 import type { IdleCompactionResult } from "../../contracts/project-sessions/session-compaction";
 import { sessionDigestReceiptIds } from "../../contracts/cake-chats/session-digest-reminder";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
@@ -714,8 +715,20 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 catch: (cause) => cause,
               }).pipe(
                 Effect.orDie,
-                Effect.ensuring((key.options.onRelease ?? Effect.void).pipe(Effect.orDie)),
+                Effect.ensuring(
+                  shutdownDiagnostics.effect(
+                    "runtime.onRelease",
+                    shutdownResource(shared.runtime.sessionId),
+                    (key.options.onRelease ?? Effect.void).pipe(Effect.orDie),
+                  ),
+                ),
                 Effect.ensuring(PubSub.shutdown(shared.events)),
+                (work) =>
+                  shutdownDiagnostics.effect(
+                    "runtime.release",
+                    shutdownResource(shared.runtime.sessionId),
+                    work,
+                  ),
               ),
           ),
       });

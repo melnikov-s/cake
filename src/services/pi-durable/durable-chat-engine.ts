@@ -30,6 +30,7 @@ import {
   type Tx,
 } from "@earendil-works/pi-durable";
 import { Schema } from "effect";
+import { shutdownDiagnostics } from "../diagnostics/shutdown-diagnostics";
 import { isContextOverflow } from "@earendil-works/pi-durable-ai/utils/overflow";
 import { anthropicCacheEstimate, durableCacheEvidence } from "./durable-cache-evidence";
 import { ChatMetadataDoc } from "./durable-chat-metadata";
@@ -112,6 +113,7 @@ export const markSystemCarried = async (tx: Tx, conversationId: ConversationId) 
  * active prefix until cache uncertainty/expiry or the configured context limit. */
 export async function openDurableChatEngine(options: {
   storage: Storage;
+  shutdownResource?: string;
   models: Models;
   registry: Registry;
   agent?: AgentChange;
@@ -845,10 +847,17 @@ export async function openDurableChatEngine(options: {
         unsubscribe();
         // Mark the Harness closing first: a cancelled preparation must preserve
         // its request checkpoint, not settle it as an ordinary model error.
-        const closed = harness.close(BACKGROUND_CONTEXT);
+        const resource = options.shutdownResource;
+        const closed = shutdownDiagnostics.promise("durable.harness.close", resource, () =>
+          harness.close(BACKGROUND_CONTEXT),
+        );
         closing.abort();
-        await maintenance;
-        await worker;
+        await shutdownDiagnostics.promise(
+          "durable.memory.maintenance",
+          resource,
+          () => maintenance,
+        );
+        await shutdownDiagnostics.promise("durable.memory.worker", resource, () => worker);
         await closed;
       },
     };

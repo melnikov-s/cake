@@ -37,6 +37,8 @@ import type {
   CakeModelLaunch,
 } from "../../contracts/model-presets/cake-model-selection";
 import { CakeOperationRegistry } from "../pi/runtime/cake-operation-registry";
+import { shutdownDiagnostics, shutdownResource } from "../diagnostics/shutdown-diagnostics";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
 import { cakeToolDescription, cakeToolEnvelopeSchema } from "../../contracts/agent/cake-operation";
 import { applyPiSetting, projectPiSettings } from "../pi/runtime/settings-translation";
 import { projectSessionEntries } from "../pi/runtime/session-projection";
@@ -385,7 +387,7 @@ export async function createDurableCakeChatRuntime(
   await mkdir(dirname(sessionFile), { recursive: true });
   const storage = await openNodeSqliteStorage(sessionFile);
   // Direct quick-check tools. No edit/write: project changes belong to Project Sessions.
-  const tools = [
+  const tools: ToolRegistration[] = [
     cake,
     zoom,
     date,
@@ -395,7 +397,19 @@ export async function createDurableCakeChatRuntime(
     createCakeChatMcpTool(mcp),
   ];
   registry.install(
-    defineExtension({ name: "cake-coordinator", tools, sections: [presetContextSection] }),
+    defineExtension({
+      name: "cake-coordinator",
+      tools: tools.map((tool) => ({
+        ...tool,
+        execute: (args, api, context) =>
+          shutdownDiagnostics.promise(
+            `durable.tool.${tool.name}`,
+            shutdownResource(sessionId),
+            () => tool.execute(args, api, context),
+          ),
+      })),
+      sections: [presetContextSection],
+    }),
   );
   let publishing: Promise<void> | undefined;
   let publishAgain = false;
@@ -444,6 +458,7 @@ export async function createDurableCakeChatRuntime(
   const newCoordinator = !(await storage.conversation(ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT));
   const engine = await openDurableChatEngine({
     storage,
+    shutdownResource: shutdownResource(sessionId),
     models,
     registry,
     settings: sdkSettings,
@@ -946,11 +961,12 @@ export async function createDurableCakeChatRuntime(
     navigate: unsupported,
     async dispose() {
       disposed = true;
-      await publishing;
+      const resource = shutdownResource(sessionId);
+      await shutdownDiagnostics.promise("durable.publication", resource, () => publishing);
       try {
-        await engine.close();
+        await shutdownDiagnostics.promise("durable.engine.close", resource, () => engine.close());
       } finally {
-        await mcp.close();
+        await shutdownDiagnostics.promise("durable.mcp.closeAll", resource, () => mcp.close());
       }
     },
   };

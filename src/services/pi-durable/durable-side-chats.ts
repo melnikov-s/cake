@@ -1,4 +1,5 @@
 import { copyJson } from "@earendil-works/chord";
+import { shutdownDiagnostics, shutdownResource } from "../diagnostics/shutdown-diagnostics";
 import { TaskAttributionDoc } from "./durable-task-attribution";
 import type { CakeOperationRegistry } from "../pi/runtime/cake-operation-registry";
 import type { PresetContext } from "../../contracts/model-presets/preset-context";
@@ -455,7 +456,11 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         interviews.delete(conversation.id);
         opened.delete(conversation.id);
         unsubscribe();
-        await publishing;
+        await shutdownDiagnostics.promise(
+          "durable.sideChat.publication",
+          shutdownResource(sessionId),
+          () => publishing,
+        );
       },
     };
     let publishing: Promise<void> | undefined;
