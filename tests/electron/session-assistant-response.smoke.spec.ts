@@ -136,9 +136,13 @@ test("companion replies persist, support reading and links, and dismiss without 
     await expect(input).toBeFocused();
     await expect(full.getByText("Find the plan", { exact: true })).toBeVisible();
     await input.pressSequentially("Continue the plan");
-    await expect(input).toHaveValue("Continue the plan");
-    await expect(full.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    await input.press("Enter");
+    await input.press("Shift+Enter");
+    await input.pressSequentially("Second line");
+    await expect(input).toHaveValue("Continue the plan\nSecond line");
+    const send = full.getByRole("button", { name: "Send", exact: true });
+    await expect(send).toBeEnabled();
+    await send.click();
+    await expect(input).toHaveValue("");
     await expect(full.getByText("First streamed words", { exact: true })).toBeVisible();
     const close = full.getByRole("button", { name: "Close companion", exact: true });
     await close.focus();

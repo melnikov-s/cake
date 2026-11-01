@@ -5529,7 +5529,7 @@ const dictationInputScenario: VisualCaptureScenario = {
 
 const compactComposerScenario: VisualCaptureScenario = {
   name: "compact-composer",
-  description: "Shared quick-assistant and annotation composer centerlines and native expansion",
+  description: "Shared Companion and annotation composer centerlines and native expansion",
   states: [
     "placeholder",
     "text",
@@ -5537,10 +5537,25 @@ const compactComposerScenario: VisualCaptureScenario = {
     "annotation-placeholder",
     "annotation-text",
     "annotation-multiline",
+    "companion-placeholder",
+    "companion-text",
+    "companion-multiline",
+    "companion-narrow-multiline",
   ],
   environment: dictationInputScenario.environment,
   async seed(paths, theme) {
     await dictationInputScenario.seed(paths, theme);
+    // Composer fixtures exercise writing controls, not project trust/model onboarding.
+    const stateFile = join(paths.cakeHome, "state", "application.json");
+    const state = JSON.parse(await readFile(stateFile, "utf8"));
+    await writeFile(
+      stateFile,
+      JSON.stringify({
+        ...state,
+        trustedProjectPaths: [paths.project],
+        utilityModel: { provider: "conversation-visual", modelId: "fixture", thinkingLevel: "off" },
+      }),
+    );
     const directory = workspaceSessionDirectory(
       paths.project,
       join(paths.cakeHome, "pi", "sessions"),
@@ -5613,27 +5628,51 @@ const compactComposerScenario: VisualCaptureScenario = {
         clientY: rect.y + rect.height / 2,
       });
     } else {
-      await page.getByRole("button", { name: "Ask session assistant", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Ask session assistant", exact: true })
+        .click({ button: state.startsWith("companion-") ? "right" : "left" });
     }
     const dialog = page.getByRole("dialog", {
-      name: annotation ? "Add annotation" : "Quick session assistant",
+      name: annotation
+        ? "Add annotation"
+        : state.startsWith("companion-")
+          ? "Session assistant chat"
+          : "Quick session assistant",
       exact: true,
     });
     const input = dialog.getByRole(annotation ? "textbox" : "combobox", {
-      name: annotation ? "Annotation comment" : "Ask session assistant",
+      name: annotation
+        ? "Annotation comment"
+        : state.startsWith("companion-")
+          ? "Message session assistant"
+          : "Ask session assistant",
       exact: true,
     });
     await input.fill("");
     await expect(input).toBeFocused();
-    const contentState = state.replace("annotation-", "");
+    const contentState = state.replace(/^(annotation|companion)-(narrow-)?/, "");
     if (contentState === "text") await input.pressSequentially("whats the difference between this");
     if (contentState === "multiline")
       await input.fill("First line\nSecond line\nThird line\nFourth line");
+    if (state === "companion-narrow-multiline") {
+      if (!application) throw new Error("Companion requires Electron");
+      // The desktop window's normal minimum is wider; exercise the popover's viewport clamp.
+      await application.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0]!;
+        window.setMinimumSize(320, 320);
+        window.setContentSize(320, 750);
+      });
+      await page.waitForFunction(() => window.innerWidth === 320);
+    }
     await page.mouse.move(1, 1);
   },
   region: (page, state) =>
     page.getByRole("dialog", {
-      name: state.startsWith("annotation-") ? "Add annotation" : "Quick session assistant",
+      name: state.startsWith("annotation-")
+        ? "Add annotation"
+        : state.startsWith("companion-")
+          ? "Session assistant chat"
+          : "Quick session assistant",
       exact: true,
     }),
 };

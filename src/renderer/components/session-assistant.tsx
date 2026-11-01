@@ -150,7 +150,8 @@ export const SessionAssistant = observer(function SessionAssistant({
               parkComposerFocusWhileDictating={false}
               compact
               embedded
-              className="[&_[data-slot=message]]:gap-1.5 [&_[data-slot=message-content]]:rounded-lg [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-label]]:text-xs [&_form]:rounded-lg [&_form]:p-2 [&_textarea]:min-h-9 [&_textarea]:py-1.5"
+              inlineComposer
+              className="[&_[data-slot=message]]:gap-1.5 [&_[data-slot=message-content]]:rounded-lg [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-label]]:text-xs [&_form]:rounded-lg [&_form]:border [&_form]:bg-composer [&_form]:p-2 [&_textarea]:min-h-9 [&_textarea]:px-2 [&_textarea]:py-1.5 [&_textarea]:text-sm"
               error={store.error ? { message: store.error, title: "Assistant failed" } : undefined}
               empty={
                 <div className="grid h-full place-items-center p-5 text-center text-xs leading-relaxed text-muted-foreground">
