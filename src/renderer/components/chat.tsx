@@ -3,6 +3,7 @@ import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import { AnnotationSummary } from "@/components/annotation-summary";
 import { ContextInspector } from "./context-inspector";
+import { ContextUsageButton } from "./ui/context-usage-button";
 import { ChatComposer } from "@/components/chat-composer";
 import { ChatComposerInput } from "@/components/chat-composer-input";
 import type { ComposerFocusHandle } from "./slash-command-combobox";
@@ -38,6 +39,20 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
   const usage = store.usage;
   const cache = store.promptCache.prediction;
   const { anchor, hide, show } = useTooltip();
+  if (store.estimatedContextUsage) {
+    return (
+      <ContextUsageButton
+        total={usage?.context?.tokens ?? undefined}
+        limit={usage?.context?.contextWindow}
+        cacheState={cache?.state ?? "unknown"}
+        detail={
+          usage?.context?.tokens == null
+            ? "Context usage is unavailable from the side-chat runtime."
+            : "Estimated active model context, including inherited context when present. Not cumulative billed tokens."
+        }
+      />
+    );
+  }
   if (!usage) return null;
   const context = usage.context;
   const percent =

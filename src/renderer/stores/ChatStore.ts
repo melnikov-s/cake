@@ -107,6 +107,7 @@ export interface ChatStoreProps {
   focusRequestRevision?(): number;
   usage?(): ConversationSnapshot["usage"];
   contextInspector?: ContextInspectorStore;
+  estimatedContextUsage?: boolean;
   promptCacheModel?(): { provider: string; modelId: string } | undefined;
   queuedPrompts?(): readonly QueuedPrompt[];
   steerQueuedPrompt?(id: string): void | Promise<void>;
@@ -472,6 +473,10 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   get usage() {
     return this.props.usage?.();
+  }
+
+  get estimatedContextUsage() {
+    return this.props.estimatedContextUsage ?? false;
   }
   get error() {
     if (this.enterContinuationError)

@@ -296,6 +296,11 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
     finish(followUpResponse);
     await expect(sideChat.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
 
+    const contextUsage = sideChat.getByRole("img", { name: "Context usage" });
+    await expect(contextUsage).toBeVisible();
+    await expect(contextUsage).toContainText("/4.1k");
+    await expect(contextUsage).toHaveAttribute("aria-description", /of 4,096 tokens/);
+
     // Settling the turn must not blank the transcript: the latest answer stays
     // in the side chat's viewport next to the composer.
     await expect(sideChatInput).toBeVisible();

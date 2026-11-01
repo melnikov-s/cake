@@ -100,6 +100,7 @@ export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
       },
       configuration: {},
       chat: {
+        estimatedContextUsage: true,
         history: this.history,
         commands: () => [],
         placeholder: () => "Ask a follow-up…",

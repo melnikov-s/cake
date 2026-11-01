@@ -56,6 +56,7 @@ type ConfigurationCapabilities = Omit<
 
 interface ConversationChatCapabilities {
   contextUsage?: boolean;
+  estimatedContextUsage?: boolean;
   history?: ChatStoreProps["history"];
   commands(): ConversationSnapshot["commands"];
   placeholder(): string;
@@ -287,6 +288,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       history: capabilities.history,
       usage: () => this.model.usage,
       contextInspector: capabilities.contextUsage ? this.contextInspectorStore : undefined,
+      estimatedContextUsage: capabilities.estimatedContextUsage,
       promptCacheModel: () =>
         this.model.model
           ? { provider: this.model.model.provider, modelId: this.model.model.modelId }

@@ -137,12 +137,12 @@ function renderHistory(
     tree: [],
   };
   let revision = 0;
-  const publish = (parts: UiPart[]) =>
+  const publish = (parts: UiPart[], update: Partial<ConversationSnapshot> = {}) =>
     act(() =>
       applyConversationUpdate(model, {
         _tag: "Snapshot",
         revision: ++revision,
-        snapshot: { ...snapshot, parts },
+        snapshot: { ...snapshot, parts, ...update },
       }),
     );
   publish([recent]);
@@ -176,6 +176,41 @@ function renderHistory(
 }
 
 afterEach(cleanup);
+
+it.each(scopes)(
+  "shows %s side-chat active context/window, live changes, unavailable state and reopening",
+  async (_scope, parentSessionId) => {
+    using fixture = renderHistory(parentSessionId, async () => ({ parts: [] }));
+    const user = userEvent.setup();
+    const usage = (tokens: number | null, contextWindow: number) => ({
+      tokens: { input: 500_000, output: 10_000, cacheRead: 0, cacheWrite: 0, total: 510_000 },
+      cost: 1,
+      context: {
+        tokens,
+        contextWindow,
+        percent: tokens === null ? null : (tokens / contextWindow) * 100,
+      },
+    });
+    const indicator = () => fixture.panel.getByRole("img", { name: "Context usage" });
+    expect(indicator().textContent).toBe("Context unavailable");
+    fixture.publish([recent], { usage: usage(28_200, 300_000) });
+    expect(indicator().textContent).toBe("≈28.2k/300k");
+    expect(indicator().getAttribute("aria-description")).toContain("28,200 of 300,000");
+    expect(indicator().querySelector("svg")).toBeTruthy();
+    // The parent retains its existing inspectable main-chat control.
+    expect(screen.getByRole("button", { name: "Browse context" })).toBeTruthy();
+    fixture.publish([recent], { usage: usage(31_000, 64_000) });
+    expect(indicator().textContent).toBe("≈31k/64k");
+    fixture.publish([recent], { usage: usage(null, 64_000) });
+    expect(indicator().textContent).toBe("Context unavailable");
+    fixture.publish([recent], { usage: usage(32_000, 64_000) });
+    await user.click(screen.getByRole("button", { name: "Close Side chat" }));
+    await user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+    await user.click(await screen.findByRole("button", { name: /Side chat Working/ }));
+    const reopened = within(screen.getByRole("complementary", { name: "Side chat" }));
+    expect(reopened.getByRole("img", { name: "Context usage" }).textContent).toBe("≈32k/64k");
+  },
+);
 
 it.each(scopes)(
   "pages %s side-chat originals in order, retries and keeps loaded history through live rollover",

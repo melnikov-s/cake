@@ -21,6 +21,7 @@ import {
   type Storage,
   type Tx,
 } from "@earendil-works/pi-durable";
+import { estimateContextTokens } from "@earendil-works/pi-durable-ai/utils/estimate";
 import { randomUUID } from "node:crypto";
 import {
   CAKE_CHAT_SESSION_ID,
@@ -272,6 +273,11 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         throw new Error("Transcript queries are unavailable in Cake Chat side chats");
       },
       async snapshot() {
+        // Durable's next-request context is fork-aware (unlike ownEntries) and
+        // applies resets/edits. Its latest applicable request usage plus trailing
+        // estimates describes active context, not UsageDoc's lifetime billing.
+        const active = await conversation.context(BACKGROUND_CONTEXT).catch(() => undefined);
+        const contextTokens = active ? estimateContextTokens(active.messages).tokens : undefined;
         return conversation.commit(async (tx) => {
           const page = await readDurableOriginalPage(
             ownEntries(
@@ -358,7 +364,20 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
             piSettings: projectPiSettings(host.settings),
             diagnostics: [],
             commands: [],
-            usage: { tokens, cost: sums.reduce((sum, use) => sum + use.cost.total, 0) },
+            usage: {
+              tokens,
+              cost: sums.reduce((sum, use) => sum + use.cost.total, 0),
+              context: selected
+                ? {
+                    tokens: contextTokens ?? null,
+                    contextWindow: selected.contextWindow,
+                    percent:
+                      contextTokens === undefined
+                        ? null
+                        : (contextTokens / selected.contextWindow) * 100,
+                  }
+                : undefined,
+            },
             compatibility: { resources: [], diagnostics: [] },
             extensionUi: { statuses: [] },
             tree: [],
