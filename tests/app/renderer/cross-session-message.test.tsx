@@ -46,6 +46,43 @@ function renderPersisted(content: string) {
 // and Root/Models/Stores in chat-workspace-finish-workflow.test.tsx. Keep these
 // presentation/encoding variants without fake navigation or catalog callbacks.
 describe("cross-session message presentation", () => {
+  it.each([4_999, 5_000, 5_001])(
+    "uses the text body threshold, excluding transport metadata (%s)",
+    (length) => {
+      renderPersisted(encodeCrossSessionMessage("A".repeat(length), metadata));
+      expect(
+        Boolean(screen.queryByRole("button", { name: "View message fullscreen: API review" })),
+      ).toBe(length > 5_000);
+    },
+  );
+
+  it.each([4_999, 5_000, 5_001])(
+    "uses the same threshold for assistant posts and worker progress (%s)",
+    (length) => {
+      const part = {
+        id: "post",
+        kind: "text" as const,
+        role: "assistant" as const,
+        text: "A".repeat(length),
+        status: "complete" as const,
+      };
+      const view = render(<ChatTextMessage part={{ ...part, crossSession: metadata }} />);
+      expect(
+        Boolean(screen.queryByRole("button", { name: "View message fullscreen: API review" })),
+      ).toBe(length > 5_000);
+      view.rerender(
+        <ChatTextMessage
+          part={{
+            ...part,
+            agentSource: { title: "Worker progress", href: "cake://session/worker" },
+          }}
+        />,
+      );
+      expect(
+        Boolean(screen.queryByRole("button", { name: "View message fullscreen: Worker progress" })),
+      ).toBe(length > 5_000);
+    },
+  );
   it("does not infer attribution from report-like prose", () => {
     render(
       <ChatTextMessage

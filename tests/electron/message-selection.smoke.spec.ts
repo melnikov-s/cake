@@ -40,7 +40,7 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
     "```",
     "",
     "The unconfigured state stays empty.",
-    "The configuration is explicit and remains inspectable throughout the session. ".repeat(8),
+    "The configuration is explicit and remains inspectable throughout the session. ".repeat(70),
   ].join("\n");
   await Promise.all([
     mkdir(userData, { recursive: true }),
@@ -58,7 +58,7 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
   // A persisted discussion is backed by its real Pi sidecar, not an orphaned

@@ -4,6 +4,7 @@ import { MarkdownLink, useMarkdownLinkActions } from "./ai-elements/markdown";
 import { Message } from "./ai-elements/message";
 import type { CrossSessionBadge } from "../lib/cross-session-presentation";
 import { markdownSummary } from "../lib/message-summary";
+import { canFullscreenText } from "../lib/text-fullscreen";
 import { cn } from "../lib/utils";
 import type { MessageReferencePreviewStore } from "../stores/MessageReferencePreviewStore";
 import { MessageSourceBody, MessageSourceCopy, OriginalResponse } from "./message-source-body";
@@ -71,6 +72,15 @@ export const SessionMessage = observer(function SessionMessage({
     } else if (onToggle) onToggle();
     else setLocalOpen(!localOpen);
   };
+  // Source pages carry the full length, even when the current page is short.
+  // Unopened sources stay lazy; eligibility becomes known when they are read.
+  const canOpenFullscreen = canFullscreenText(
+    (preview?.length ?? 0) +
+      [...sources, ...originals].reduce(
+        (length, store) => length + (store.page?.totalChars ?? 0),
+        0,
+      ),
+  );
   const opening = markdownSummary(preview || sources.find((store) => store.page)?.page?.text || "");
   // A preview that restates the title adds nothing; show what follows it.
   const summary = opening?.startsWith(title)
@@ -99,10 +109,14 @@ export const SessionMessage = observer(function SessionMessage({
           {replyAction}
         </>
       }
-      fullscreen={{
-        label: `View message fullscreen: ${title}`,
-        onClick: () => setFullscreen(true),
-      }}
+      fullscreen={
+        canOpenFullscreen
+          ? {
+              label: `View message fullscreen: ${title}`,
+              onClick: () => setFullscreen(true),
+            }
+          : undefined
+      }
     >
       <div
         data-slot="session-message-card"

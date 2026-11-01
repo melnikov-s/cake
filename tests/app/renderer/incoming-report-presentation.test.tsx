@@ -47,6 +47,66 @@ const assistant = (text: string): AssistantMessage => ({
 });
 afterEach(cleanup);
 
+it.each(["receipt", "digest"] as const)(
+  "applies the source-text threshold after lazy loading a %s",
+  async (delivery) => {
+    for (const length of [4_999, 5_000, 5_001]) {
+      const source = SessionManager.inMemory("/producer");
+      const entryId = source.appendMessage(assistant("A".repeat(length)));
+      const ref = readMessageReference(source, { entryId }).message.ref;
+      const parent = SessionManager.inMemory("/project");
+      parent.appendMessage({
+        role: "user",
+        timestamp: 1,
+        content:
+          delivery === "receipt"
+            ? encodeCrossSessionMessage(appendMessageReferences(protectedResponseNotice, [ref]), {
+                ...metadata,
+                sender: { ...sender, sessionId: source.getSessionId() },
+              })
+            : formatSessionDigestReminder({
+                lines: [
+                  {
+                    reference: "producer",
+                    sessionId: source.getSessionId(),
+                    title,
+                    summary: "Ready for review",
+                    status: "completed",
+                    kind: "ready",
+                    decisions: ["review"],
+                    resultMessageRef: ref,
+                  },
+                ],
+                receiptIds: ["receipt"],
+              })!,
+      });
+      const inspect = vi.fn(
+        async (request: { entryId?: string; offset?: number; maxChars?: number }) =>
+          readMessageReference(source, { ...request, maxChars: 4_999 }),
+      );
+      using fixture = renderChatSurface({
+        parts: projectSessionEntries(parent.getEntries()),
+        client: { sessionChats: { inspect } },
+      });
+      const card = screen.getByRole("region", { name: "Message from another session" });
+      const toggle = within(card).getByRole("button", { name: title });
+      const action = { name: `View message fullscreen: ${title}` };
+      expect(within(card).queryByRole("button", action)).toBeNull();
+      expect(inspect).not.toHaveBeenCalled();
+      await fixture.user.click(toggle);
+      await within(card).findByText("A".repeat(4_999));
+      expect(Boolean(within(card).queryByRole("button", action))).toBe(length > 5_000);
+      if (length > 4_999) {
+        await fixture.user.click(within(card).getByRole("button", { name: "Next" }));
+        await within(card).findByText("A".repeat(length - 4_999));
+        expect(Boolean(within(card).queryByRole("button", action))).toBe(length > 5_000);
+      }
+      await fixture.user.click(toggle);
+      expect(Boolean(within(card).queryByRole("button", action))).toBe(length > 5_000);
+    }
+  },
+);
+
 it("retries a complete fullscreen original without changing a collapsed inline receipt", async () => {
   const source = SessionManager.inMemory("/producer");
   const text =
@@ -84,6 +144,13 @@ it("retries a complete fullscreen original without changing a collapsed inline r
   const toggle = within(card).getByRole("button", { name: title });
   expect(toggle.getAttribute("aria-expanded")).toBe("false");
   expect(inspect).not.toHaveBeenCalled();
+  // Exact references stay lazy; read the length before offering text fullscreen.
+  expect(
+    within(card).queryByRole("button", { name: `View message fullscreen: ${title}` }),
+  ).toBeNull();
+  await fixture.user.click(toggle);
+  await within(card).findByRole("heading", { name: "Complete original" });
+  await fixture.user.click(toggle);
   await fixture.user.click(
     within(card).getByRole("button", { name: `View message fullscreen: ${title}` }),
   );

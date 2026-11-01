@@ -173,7 +173,7 @@ describe("exact response presentation", () => {
       within(batch)
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label")),
-    ).toEqual(titles.flatMap((title) => [title, `View message fullscreen: ${title}`]));
+    ).toEqual(titles);
     expect(
       within(batch).getAllByRole("region", { name: "Message from another session" }),
     ).toHaveLength(3);
@@ -548,7 +548,6 @@ describe("exact response presentation", () => {
 
       null,
       "Copy response",
-      "View message fullscreen: Delegated review",
     ]);
     const original = () => screen.getByRole("button", { name: "Original response" });
     await user.click(message.getByRole("button", { name: "Copy response" }));
@@ -759,12 +758,7 @@ describe("exact response presentation", () => {
         } else {
           expect(
             message.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
-          ).toEqual([
-            "Producer session",
-            null,
-            "Copy response",
-            "View message fullscreen: Producer session",
-          ]);
+          ).toEqual(["Producer session", null, "Copy response"]);
           await user.click(message.getByRole("button", { name: "Copy response" }));
           expect(await navigator.clipboard.readText()).toBe(links);
         }

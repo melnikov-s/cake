@@ -11,7 +11,7 @@ import { windowState } from "../fixtures/window-state";
 import { CAKE_TITLE_BAR_HEIGHT } from "../../src/services/electron/Electron";
 
 const repository = resolve(import.meta.dirname, "../..");
-const partial = "Streaming fullscreen response. ".repeat(24);
+const partial = "Streaming fullscreen response. ".repeat(180);
 const ending = "Final persisted content is still in the reader.";
 const chunk = (delta: object, finish_reason: string | null = null) =>
   `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;

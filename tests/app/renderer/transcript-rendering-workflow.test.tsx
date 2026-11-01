@@ -38,6 +38,30 @@ afterEach(() => {
 // fullscreen readers belong to message-selection/side-chat-streaming Electron
 // suites. This suite does not fabricate those layout or native-event contracts.
 describe("Projected transcript rendering workflows", () => {
+  it.each([4_999, 5_000, 5_001])(
+    "offers ordinary text fullscreen only above 5,000 characters (%s)",
+    (length) => {
+      const part = { ...answer, text: "A".repeat(length), status: "streaming" as const };
+      using fixture = renderTranscriptRendering([part], { streaming: true });
+      expect(Boolean(screen.queryByRole("button", { name: "View response fullscreen" }))).toBe(
+        length > 5_000,
+      );
+      fixture.publish([{ ...part, status: "complete" }]);
+      expect(Boolean(screen.queryByRole("button", { name: "View response fullscreen" }))).toBe(
+        length > 5_000,
+      );
+    },
+  );
+
+  it("updates fullscreen eligibility when streaming crosses the fixed threshold", () => {
+    using fixture = renderTranscriptRendering(
+      [{ ...answer, text: "A".repeat(5_000), status: "streaming" }],
+      { streaming: true },
+    );
+    expect(screen.queryByRole("button", { name: "View response fullscreen" })).toBeNull();
+    fixture.publish([{ ...answer, text: "A".repeat(5_001), status: "streaming" }], true);
+    expect(screen.getByRole("button", { name: "View response fullscreen" })).toBeDefined();
+  });
   it("does not execute settled message rendering when another message streams", () => {
     // The real assistant renderer calls this hook on every execution. Observe it
     // call-through without replacing the renderer, hooks, or observer memo object;
@@ -296,9 +320,9 @@ describe("Projected transcript rendering workflows", () => {
   it("uses only the diagram toolbar fullscreen for a lone diagram, but retains the response reader for mixed content", async () => {
     installDiagramMeasurement();
     vi.stubGlobal("Worker", DiagramTestWorker);
-    const code = `graph TD\n%% ${"Pipeline details. ".repeat(40)}\nA[Start] --> B[Finish]`;
+    const code = `graph TD\n%% ${"Pipeline details. ".repeat(300)}\nA[Start] --> B[Finish]`;
     const text = `\`\`\`mermaid\n${code}\n\`\`\``;
-    expect(text.length).toBeGreaterThan(500);
+    expect(text.length).toBeGreaterThan(5_000);
     using fixture = renderTranscriptRendering([{ ...answer, text }], {
       client: { electron: { setFullscreenSurfaceOpen: async () => undefined } },
     });
@@ -328,10 +352,10 @@ describe("Projected transcript rendering workflows", () => {
       id: "live-response",
       entryId: undefined,
       renderKey: "assistant-response-text-0",
-      text: "A live response. ".repeat(32).slice(0, 500),
+      text: "A live response. ".repeat(320).slice(0, 5_001),
       status: "streaming",
     };
-    using fixture = renderTranscriptRendering([{ ...answer, text: "S".repeat(499) }, live], {
+    using fixture = renderTranscriptRendering([{ ...answer, text: "S".repeat(5_000) }, live], {
       streaming: true,
       client: { electron: { setFullscreenSurfaceOpen: setOpen } },
     });
@@ -348,7 +372,7 @@ describe("Projected transcript rendering workflows", () => {
       text: `${live.text}Done.`,
       status: "complete" as const,
     };
-    fixture.publish([{ ...answer, text: "S".repeat(499) }, completed]);
+    fixture.publish([{ ...answer, text: "S".repeat(5_000) }, completed]);
     expect(screen.getByRole("dialog", { name: "Cake" })).toBe(reader);
     expect(reader.textContent).toContain("Done.");
     expect(setOpen.mock.calls.map(([, open]) => open)).toEqual([true]);

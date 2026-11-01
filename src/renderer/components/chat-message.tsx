@@ -55,6 +55,7 @@ import { crossSessionPresentation } from "../lib/cross-session-presentation";
 import type { MessageReferencePreviewStore } from "../stores/MessageReferencePreviewStore";
 import type { ResultTodoLink } from "./result-todo-done";
 import { resultTodoOrigin } from "../lib/result-todo-origin";
+import { canFullscreenText } from "../lib/text-fullscreen";
 
 export function chatWorkIsActive(
   parts: UiPart[],
@@ -250,8 +251,6 @@ export const ChatTextMessage = forwardRef<
   );
 });
 
-const ASSISTANT_FULLSCREEN_MIN_CHARACTERS = 500;
-
 function textOffset(container: Node, node: Node, offset: number) {
   const range = document.createRange();
   range.selectNodeContents(container);
@@ -403,9 +402,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
     ? behavior.store.messageSources.filter((source) => source.props.partId === part.id)
     : [];
   const canOpenFullscreen =
-    !part.crossSession &&
-    part.text.length >= ASSISTANT_FULLSCREEN_MIN_CHARACTERS &&
-    !isStandaloneDiagram(part.text);
+    !part.crossSession && canFullscreenText(part.text.length) && !isStandaloneDiagram(part.text);
   const openFullscreen = useCallback(() => {
     if (canOpenFullscreen) setFullscreen(true);
   }, [canOpenFullscreen]);
