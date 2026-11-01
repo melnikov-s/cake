@@ -264,6 +264,17 @@ export const ChatTranscript = observer(function ChatTranscript({
     }),
     [behavior, sideChat, store],
   );
+  // The composer already responds to the newest conversational text. Find it
+  // before utility/loading rows and regardless of entry id or streaming status.
+  const latestMessageId = visibleGroupedParts.findLast(
+    (item) =>
+      item.kind === "text" &&
+      (item.role === "user" || Boolean(item.text) || Boolean(item.subagentReport)),
+  )?.id;
+  const latestMessageBehavior = useMemo<CanonicalTranscriptBehavior>(
+    () => ({ ...transcriptBehavior, onReplyToMessage: undefined }),
+    [transcriptBehavior],
+  );
   const messageSelection = store.transcriptInteraction.messageSelection;
   const selectedItemIndex = selectedMessageId
     ? items.findIndex((item) =>
@@ -460,7 +471,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         errorFollowsUser={errorNoticeFollowsUser(items, index)}
         selected={index === selectedItemIndex}
         parts={parts}
-        behavior={transcriptBehavior}
+        behavior={item.id === latestMessageId ? latestMessageBehavior : transcriptBehavior}
         changedFilesOpen={changedFilesOpen}
         loadingStartedAt={loadingStartedAt}
         loadingLabel={loadingLabel}

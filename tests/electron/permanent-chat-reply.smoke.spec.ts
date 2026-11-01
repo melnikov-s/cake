@@ -192,6 +192,15 @@ for (const theme of ["dark", "light"] as const)
             .click();
         const input = page.getByRole("combobox", { name: `Message ${surface}`, exact: true });
         await expect(input).toBeVisible();
+        // Initial positioning is at the newest answer, where the ordinary
+        // composer already provides the response action.
+        const newest = page.locator("[data-part-id]").filter({
+          has: page.getByText(/^Later answer 9\./),
+        });
+        await expect(newest).toBeVisible();
+        await expect(
+          newest.getByRole("button", { name: "Reply to message", exact: true }),
+        ).toHaveCount(0);
         const id = entryIds.get(surface)!;
         const original = page.locator(`[data-part-id="entry-${id}-text-0"] article`).first();
         const reply = original.getByRole("button", { name: "Reply to message", exact: true });
@@ -255,6 +264,20 @@ for (const theme of ["dark", "light"] as const)
           `replying to message: ${id}`,
         ]);
         await expect(sentMessage.getByText("Keyboard reply", { exact: true })).toBeVisible();
+        const received = page.locator("[data-part-id]").filter({
+          has: page.getByText("Reply received.", { exact: true }),
+        });
+        await expect(received).toBeVisible();
+        await expect(
+          received.getByRole("button", { name: "Reply to message", exact: true }),
+        ).toHaveCount(0);
+        // The sent prompt is older once the new response arrives.
+        await expect(
+          sentMessage.locator("xpath=ancestor::article").getByRole("button", {
+            name: "Reply to message",
+            exact: true,
+          }),
+        ).toBeAttached();
       }
     } finally {
       await app?.close();
