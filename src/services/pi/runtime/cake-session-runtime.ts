@@ -291,6 +291,7 @@ export interface CakeSessionRuntime {
   compact(instructions?: string): Promise<void>;
   compactMemory?(): Promise<void>;
   compactIfIdle?(instructions?: string): Promise<IdleCompactionResult>;
+  toolCompactIfIdle?(): Promise<IdleCompactionResult>;
   queueCommand(command: string, onSettled?: () => void): Promise<QueuedSessionCommandReceipt>;
   inspectSession(query: SessionInspectionQuery): Promise<JsonValue>;
   /** `stop` attributes a deliberate stop; omitted, the abort reads as an interruption. */
@@ -583,17 +584,7 @@ export async function createCakeSessionRuntime(
       if (name === "compact") {
         await turnController.compact(command.slice("/compact".length).trim() || undefined);
       } else if (name === "toolcompact") {
-        const entry = session.sessionManager
-          .getBranch()
-          .findLast(
-            (entry) =>
-              entry.type === "message" &&
-              entry.message.role === "assistant" &&
-              entry.message.stopReason === "stop" &&
-              entry.message.content.some((block) => block.type === "text" && block.text.trim()),
-          );
-        if (!entry) throw new Error("Tool compaction requires a completed assistant response");
-        await continuations.toolCompact(entry.id);
+        await toolCompactLatest();
       } else {
         if (!resources.commandCatalog().some((item) => item.name === name))
           throw new Error(`Command /${name} is no longer available`);
@@ -618,6 +609,20 @@ export async function createCakeSessionRuntime(
     handleSettledTurn: recovery.handleSettledTurn,
     reportAgentAction: capabilities.reportAgentAction,
   });
+
+  const toolCompactLatest = async () => {
+    const entry = session.sessionManager
+      .getBranch()
+      .findLast(
+        (entry) =>
+          entry.type === "message" &&
+          entry.message.role === "assistant" &&
+          entry.message.stopReason === "stop" &&
+          entry.message.content.some((block) => block.type === "text" && block.text.trim()),
+      );
+    if (!entry) throw new Error("Tool compaction requires a completed assistant response");
+    await continuations.toolCompact(entry.id);
+  };
 
   let initialTranscriptPublished = !options.newSession;
   let automaticTitleForNextMessage = true;
@@ -991,6 +996,7 @@ export async function createCakeSessionRuntime(
     },
     compact: turnController.compact,
     compactIfIdle: turnController.compactIfIdle,
+    toolCompactIfIdle: () => turnController.toolCompactIfIdle(toolCompactLatest),
     async queueCommand(command, onSettled) {
       const name = command.slice(1).split(/\s/, 1)[0];
       if (

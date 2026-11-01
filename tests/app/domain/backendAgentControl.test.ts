@@ -46,7 +46,10 @@ import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { SavedDraftStorage } from "../../../src/services/storage/SavedDraftStorage";
 import { backendAgentTools } from "../../../src/contracts/application/backend-agent-tools";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
-import { projectCakeOperations } from "../../../src/layers/CakeOperations";
+import {
+  coordinatorCakeOperations,
+  projectCakeOperations,
+} from "../../../src/layers/CakeOperations";
 import { setCakeChatPreferences, upsertProject } from "../../../src/domain/application/application";
 import { defaultCakeChatPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
 import { createGlobalControlOperations } from "../../../src/domain/application/cake-global-control-operations";
@@ -125,6 +128,7 @@ const summary = (id: string) => ({
 
 const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChats = false) {
   const compactions: Array<{ sessionId: string; instructions?: string }> = [];
+  const toolCompactions: string[] = [];
   const compactFailures = new Set<string>();
   const compacted = new Set<string>();
   const compactStarted = yield* Deferred.make<void>();
@@ -279,6 +283,14 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
             );
             if (pauseMessage) await Effect.runPromise(Deferred.await(messageRelease));
             if (failedTurns.has(sessionId)) throw new Error("Model failed after admission");
+          },
+          toolCompactIfIdle: async () => {
+            toolCompactions.push(sessionId);
+            Deferred.doneUnsafe(compactStarted, Effect.void);
+            if (pauseCompaction) await Effect.runPromise(Deferred.await(compactRelease));
+            if (compactFailures.has(sessionId))
+              throw new Error("Tool compaction navigation failed");
+            return { status: "compacted" };
           },
           compactIfIdle: async (instructions) => {
             compactions.push({
@@ -486,6 +498,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     context,
     storedSchedules: () => storedSchedules,
     compactions,
+    toolCompactions,
     compactFailures,
     compactStarted,
     compactRelease,
@@ -575,6 +588,34 @@ it.effect(
       expect(f.restored()).toBe(0);
       expect(f.saveCount()).toBe(0);
     }),
+);
+
+it.effect("tool compaction routes from Project Session controls and awaits actual completion", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    f.pauseCompaction();
+    const operation = yield* f
+      .call("sessions.tool-compact", { sessionId: "00000022" })
+      .pipe(Effect.forkScoped);
+    yield* Deferred.await(f.compactStarted);
+    expect(operation.pollUnsafe()).toBeUndefined();
+    expect(f.toolCompactions).toEqual([target]);
+    expect((yield* f.direct("sessions.tool-compact", {}).pipe(Effect.result))._tag).toBe("Failure");
+    expect(f.compactions).toEqual([]);
+    yield* Deferred.succeed(f.compactRelease, undefined);
+    expect(yield* Fiber.join(operation)).toMatchObject({
+      ok: true,
+      command: "sessions.tool-compact",
+      results: [{ reference: "00000022", sessionId: target, status: "compacted" }],
+    });
+    expect(yield* f.call("sessions.tool-compact", { sessionId: "missing" })).toMatchObject({
+      ok: false,
+      results: [{ status: "invalid" }],
+    });
+    expect(f.requestCalls).toEqual([]);
+    expect(f.restored()).toBe(0);
+    expect(f.saveCount()).toBe(0);
+  }),
 );
 
 it.effect(
@@ -1663,6 +1704,152 @@ const cakeControl = Effect.fn("BackendAgentControlTest.cakeControl")(function* (
   assert.ok(options.runtime.globalControl);
   return options.runtime.globalControl;
 });
+
+it.effect("permanent Project Chat and global Cake Chat discover and execute tool compaction", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture(true);
+    for (const sessionId of [projectChatSessionId("/project"), CAKE_CHAT_SESSION_ID]) {
+      const options = yield* cakeChatRuntime
+        .acquireOptions({
+          configuration: {
+            location: { workingDirectory: "/home", sessionDirectory: "/cake/global" },
+            agentDirectory: "/cake",
+          },
+          target: { sessionId, tools: backendAgentTools() },
+          newSession: false,
+        })
+        .pipe(Effect.provide(f.context));
+      const control = options.runtime.globalControl;
+      assert.ok(control);
+      const allowed = options.runtime.allowedCakeOperations;
+      expect(allowed).toContain("sessions.tool-compact");
+      const registry = new CakeOperationRegistry(
+        coordinatorCakeOperations(options.runtime)({
+          sessionId,
+          resolveModel: () => ({
+            provider: "test",
+            modelId: "test",
+            thinkingLevel: "off",
+            fastMode: false,
+          }),
+          setModel: async () => {},
+          info: async () => ({}),
+          usage: async () => ({}),
+          contextStatus: async () => ({}),
+          compact: async () => ({}),
+        }),
+      );
+      expect(registry.topicHelp("sessions")).toContain("sessions.tool-compact");
+      expect(registry.operationHelp("sessions.tool-compact")).toContain("sessionId");
+      const call = (sessionId: string) =>
+        Effect.promise(() =>
+          registry.invoke(
+            { command: "sessions.tool-compact", input: { sessionId } },
+            { signal: signal(), toolCallId: "compact", runtime: {} },
+          ),
+        );
+      const help = yield* Effect.promise(() =>
+        registry.invoke(
+          { command: "sessions.tool-compact.help" },
+          { signal: signal(), toolCallId: "help", runtime: {} },
+        ),
+      );
+      expect(JSON.stringify(help)).toContain("sessionId");
+      expect(f.toolCompactions).toHaveLength(sessionId === CAKE_CHAT_SESSION_ID ? 2 : 0);
+      expect((yield* call("00000022")).details).toMatchObject({
+        result: { ok: true, results: [{ sessionId: target, status: "compacted" }] },
+      });
+      expect((yield* call("missing")).details).toMatchObject({
+        result: { ok: false, results: [{ status: "invalid" }] },
+      });
+      f.protect();
+      expect((yield* call(target)).details).toMatchObject({ result: { ok: true } });
+    }
+    expect(f.toolCompactions).toEqual([target, target, target, target]);
+    expect(f.compactions).toEqual([]);
+    expect(f.requestCalls).toEqual([]);
+  }),
+);
+
+it.effect(
+  "tool compaction shares project authorization and skips busy targets without queuing",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture(true);
+      const project = f.state().projects[0];
+      assert.ok(project);
+      yield* Context.get(f.context, ApplicationState).transact((state) =>
+        Effect.succeed({
+          ...state,
+          projects: [...state.projects, { ...project, path: "/other", name: "Other" }],
+        }),
+      );
+      f.sessionsByDirectory.set("/other", [third]);
+      f.sessionsByDirectory.set("/project", [source, target]);
+      const projectChat = {
+        kind: "cake-chat" as const,
+        sessionId: projectChatSessionId("/project"),
+        title: "Project Chat",
+      };
+      for (const sender of [caller, projectChat]) {
+        expect(
+          yield* f.direct("sessions.tool-compact", { sessionId: third }, sender),
+        ).toMatchObject({
+          ok: false,
+          results: [{ status: "unauthorized" }],
+        });
+      }
+      const global = {
+        kind: "cake-chat" as const,
+        sessionId: CAKE_CHAT_SESSION_ID,
+        title: "Cake Chat",
+      };
+      f.deny("/other");
+      expect(yield* f.direct("sessions.tool-compact", { sessionId: third }, global)).toMatchObject({
+        ok: false,
+        results: [{ status: "unauthorized" }],
+      });
+      yield* f.direct("sessions.context", { sessionId: target });
+      f.active.add(target);
+      expect(
+        yield* f.direct("sessions.tool-compact", { sessionId: target }, projectChat),
+      ).toMatchObject({
+        ok: false,
+        results: [{ status: "busy" }],
+      });
+      expect(f.toolCompactions).toEqual([]);
+      f.active.delete(target);
+      f.resolve();
+      expect(
+        yield* f.direct("sessions.tool-compact", { sessionId: target }, projectChat),
+      ).toMatchObject({
+        ok: true,
+        results: [{ status: "compacted" }],
+      });
+      f.compactFailures.add(target);
+      expect(
+        yield* f.direct("sessions.tool-compact", { sessionId: target }, projectChat),
+      ).toMatchObject({
+        ok: false,
+        results: [{ status: "failed", message: "Tool compaction navigation failed" }],
+      });
+      f.sessionsByDirectory.delete("/other");
+      f.sessionsByDirectory.set("/allowed", [third]);
+      yield* Context.get(f.context, ApplicationState).transact((state) =>
+        Effect.succeed({
+          ...state,
+          projects: [...state.projects, { ...project, path: "/allowed", name: "Allowed" }],
+        }),
+      );
+      expect(yield* f.direct("sessions.tool-compact", { sessionId: third }, global)).toMatchObject({
+        ok: true,
+        results: [{ sessionId: third, status: "compacted" }],
+      });
+      expect(f.compactions).toEqual([]);
+      expect(f.requestCalls).toEqual([]);
+      expect(f.restored()).toBe(0);
+    }),
+);
 
 const batchRegistry = Effect.fn("BackendAgentControlTest.batchRegistry")(function* (
   f: Effect.Success<ReturnType<typeof fixture>>,

@@ -79,6 +79,7 @@ export interface CakeSessionRuntimeTurnController {
   ) => Promise<void>;
   readonly compact: (instructions?: string) => Promise<void>;
   readonly compactIfIdle: (instructions?: string) => Promise<IdleCompactionResult>;
+  readonly toolCompactIfIdle: (compact: () => Promise<void>) => Promise<IdleCompactionResult>;
   readonly queueCommand: (
     command: string,
     onSettled?: () => void,
@@ -784,6 +785,38 @@ export function createCakeSessionRuntimeTurnController(input: {
     return listQueuedMessages();
   };
 
+  const runIdleCompaction = async (
+    compact: () => Promise<IdleCompactionResult>,
+  ): Promise<IdleCompactionResult> => {
+    assertActive();
+    if (
+      promptOperations > 0 ||
+      session.isStreaming ||
+      isCompacting() ||
+      session.isBashRunning ||
+      commandRunning ||
+      restoringRun ||
+      rebuildingQueue ||
+      handingOff ||
+      flushingHeldQueue ||
+      compactionQueue.length > 0 ||
+      session.getSteeringMessages().length > 0 ||
+      session.getFollowUpMessages().length > 0
+    )
+      return { status: "busy" };
+    // Reserve synchronously before the first await. New normal inputs use the
+    // existing held-input lane until maintenance and snapshot publication settle.
+    commandRunning = true;
+    idleCompactionActive = true;
+    try {
+      return await compact();
+    } finally {
+      commandRunning = false;
+      idleCompactionActive = false;
+      void flushCompactionQueue();
+    }
+  };
+
   return {
     compactionQueuedMessages: () => compactionQueue.map((item) => item.text),
     handoffActive: () => handingOff,
@@ -873,45 +906,27 @@ export function createCakeSessionRuntimeTurnController(input: {
     },
     editMessage,
     compact: (instructions) => runCompact(instructions),
-    async compactIfIdle(instructions) {
-      assertActive();
-      if (
-        promptOperations > 0 ||
-        session.isStreaming ||
-        isCompacting() ||
-        session.isBashRunning ||
-        commandRunning ||
-        restoringRun ||
-        rebuildingQueue ||
-        handingOff ||
-        flushingHeldQueue ||
-        compactionQueue.length > 0 ||
-        session.getSteeringMessages().length > 0 ||
-        session.getFollowUpMessages().length > 0
-      )
-        return { status: "busy" };
-      // Reserve synchronously before the first await. New normal inputs use the
-      // existing held-input lane until this operation settles. Pi compact()
-      // aborts first, so never call it on an active/preparing/queued turn.
-      commandRunning = true;
-      idleCompactionActive = true;
-      try {
-        await runCompact(instructions);
+    compactIfIdle: (instructions) =>
+      runIdleCompaction(async () => {
+        try {
+          // Pi compact() aborts first; only enter after reserving an idle target.
+          await runCompact(instructions);
+          return { status: "compacted" };
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            (error.message === "Already compacted" ||
+              error.message === "Nothing to compact (session too small)")
+          )
+            return { status: "unchanged" };
+          throw error;
+        }
+      }),
+    toolCompactIfIdle: (compact) =>
+      runIdleCompaction(async () => {
+        await compact();
         return { status: "compacted" };
-      } catch (error) {
-        if (
-          error instanceof Error &&
-          (error.message === "Already compacted" ||
-            error.message === "Nothing to compact (session too small)")
-        )
-          return { status: "unchanged" };
-        throw error;
-      } finally {
-        commandRunning = false;
-        idleCompactionActive = false;
-        void flushCompactionQueue();
-      }
-    },
+      }),
     async queueCommand(command, onSettled) {
       assertActive();
       const itemId = randomUUID();

@@ -228,6 +228,22 @@ deduplicated across calls: unchanged history is a Pi no-op; later history can be
 compacted again. Existing `context.compact` and explicit queued slash commands
 retain their behavior.
 
+`sessions.tool-compact` is a separate backend operation with required `sessionId`,
+registered in backend discovery/decoding and the permanent-chat allowed-operation
+list, not merely the window-only `sessions.queue-command` surface. Project
+Sessions, permanent Project Chat and global Cake Chat use the same target resolution,
+authorization and maintenance acquisition as ordinary targeted compaction. Its
+`toolCompactIfIdle` adapter shares the idle reservation and runtime lifetime above,
+but calls the existing runtime continuation (`appendToolCompactedBranch` followed
+by Pi `navigateTree` with `summarize: false`), never `AgentSession.compact`.
+It selects the latest completed assistant text response on the active branch and
+replays dialogue only, preserving canonical system configuration and the original
+inspectable history in the same Pi tree. `compacted` is returned only after the
+branch is persisted, navigation succeeds and the snapshot is published; no completed
+response or cancelled navigation fails. Busy means skipped without abort or queue
+admission. Repeated explicit calls create new branches; this is not idempotent or
+automatically scheduled. Permanent chats are callers, not tool-compaction targets.
+
 Maintenance acquisition may load resolved history in an available checkout, but
 skips legacy child-resolution migration and never restores a retired worktree.
 Drafts and retired/missing checkouts return unavailable. No direct JSONL rewrites,

@@ -528,12 +528,14 @@ export const invoke: (
             ...(yield* completionInbox.update(caller.sessionId, invocation.arguments)),
           });
         case "sessions.compact":
-        case "sessions.compact-batch": {
+        case "sessions.compact-batch":
+        case "sessions.tool-compact": {
           const input = invocation.arguments;
           const results = yield* sessionCompaction.compact(
             "sessionIds" in input ? input.sessionIds : [input.sessionId],
-            input.instructions,
+            "instructions" in input ? input.instructions : undefined,
             caller,
+            command === "sessions.tool-compact" ? "tools" : "normal",
           );
           return toJsonValue({
             ok: results.every(

@@ -148,6 +148,7 @@ describe("Project Session operation capabilities", () => {
       "sessions.list",
       "sessions.compact",
       "sessions.compact-batch",
+      "sessions.tool-compact",
       "sessions.open",
       "sessions.history",
       "sessions.cancel-queued",

@@ -3,6 +3,7 @@ import { Schema } from "effect";
 const reference = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const instructions = Schema.optionalKey(Schema.String.check(Schema.isMaxLength(20_000)));
 export const SessionCompactInput = Schema.Struct({ sessionId: reference, instructions });
+export const SessionToolCompactInput = Schema.Struct({ sessionId: reference });
 export const SessionCompactBatchInput = Schema.Struct({
   sessionIds: Schema.Array(reference).check(Schema.isMinLength(1), Schema.isMaxLength(100)),
   instructions,
@@ -34,7 +35,7 @@ export interface SessionCompactionResult extends Schema.Schema.Type<
 > {}
 export const SessionCompactionOutput = Schema.Struct({
   ok: Schema.Boolean,
-  command: Schema.Literals(["sessions.compact", "sessions.compact-batch"]),
+  command: Schema.Literals(["sessions.compact", "sessions.compact-batch", "sessions.tool-compact"]),
   results: Schema.Array(SessionCompactionResult),
 });
 
@@ -46,6 +47,21 @@ const sessionCompactionGuidance = [
   "For user-requested to-do cleanup, todos.list/read exposes state and associations. Select the requested items (done is not session resolution), collect kind: session sessionIds and session identities in cake://session links, then call sessions.compact-batch. Report missing links and per-session outcomes; never close to-dos or compact merely because they are done.",
 ];
 export const sessionCompactionDefinitions = [
+  {
+    command: "sessions.tool-compact",
+    topic: "sessions",
+    summary:
+      "Create a dialogue-only continuation of an authorized idle Project Session, preserving original history.",
+    guidance: [
+      "Only on a user request. Supply an explicit Project Session identity or discovered suffix, not a title. Targets the latest completed assistant text response on the active branch; no completed response is a failure.",
+      "Distinct from sessions.compact: reuses existing tool compaction, without a model summary. Replays user-authored input and assistant text, removing tool calls/results, reasoning, injected reminders and coordination. The Session ID stays stable and the original branch remains inspectable through sessions.history/tree/compactions.",
+      "Project Chat and Project Session callers stay within their project; global Cake Chat may target authorized projects. Resolved history requires an available checkout. Drafts and retired/missing worktrees are unavailable; nothing is restored or resolved.",
+      "Busy targets return busy, never aborted or queued. compacted means the dialogue branch was persisted, Pi navigation completed and the snapshot was published, not merely admitted. Failures return failed. Once started, the runtime is retained until completion even if the caller disconnects. No automatic retries; repeated calls create another branch.",
+    ],
+    inputSchema: SessionToolCompactInput,
+    examples: [{ input: { sessionId: "target-session-id" } }],
+    result: "One canonical per-target outcome; ok only when tool compaction completed.",
+  },
   {
     command: "sessions.compact",
     topic: "sessions",

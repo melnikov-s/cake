@@ -1,5 +1,6 @@
 import { Effect, Option, Schema } from "effect";
 import { AppWorkspaceView } from "../../contracts/application/app-workspace-view";
+import { SessionCompactionOutput } from "../../contracts/project-sessions/session-compaction";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
@@ -122,6 +123,10 @@ export const safeCoordinatorProjection = Effect.fn("CakeChats.safeCoordinatorPro
         },
       };
     }
+    // Compaction receipts are closed maintenance metadata, not transcript content.
+    // Generic recipient redaction would erase their outcome and add an invalid title.
+    const compaction = Schema.decodeUnknownOption(SessionCompactionOutput)(value);
+    if (Option.isSome(compaction)) return compaction.value;
     const inputs = yield* TaskInputStorage;
     const pointer = Schema.decodeUnknownOption(SessionPointer)(value);
     if (Option.isSome(pointer) && (yield* inputs.isRecipient(pointer.value.sessionId))) {

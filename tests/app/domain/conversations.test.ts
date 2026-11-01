@@ -76,6 +76,7 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): CakeSessi
   compact: () => Effect.void,
   compactMemory: () => Effect.die("Unexpected compactMemory"),
   compactIfIdle: () => Effect.die("Unexpected compactIfIdle"),
+  toolCompactIfIdle: () => Effect.die("Unexpected toolCompactIfIdle"),
   rename: () => Effect.void,
   fork: () => Effect.die("Unexpected fork"),
   toolCompact: () => Effect.die("Unexpected toolCompact"),

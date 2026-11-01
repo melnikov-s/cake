@@ -265,6 +265,7 @@ export interface CakeSessionHandle {
   readonly compactIfIdle: (
     instructions?: string,
   ) => Effect.Effect<IdleCompactionResult, PiSessionError>;
+  readonly toolCompactIfIdle: () => Effect.Effect<IdleCompactionResult, PiSessionError>;
   readonly rename: (name: string, onlyIfUnnamed?: boolean) => Effect.Effect<void, PiSessionError>;
   readonly fork: (
     entryId: string,
@@ -1515,6 +1516,14 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               if (!runtime.compactIfIdle)
                 throw new Error("Idle-only compaction is unavailable for this runtime");
               return runtime.compactIfIdle(instructions);
+            }).pipe(Effect.uninterruptible);
+          }),
+          toolCompactIfIdle: Effect.fn("CakeSessionRuntimes.toolCompactIfIdle")(function* () {
+            if ((yield* Ref.get(shared.activeTurns)).size > 0) return { status: "busy" as const };
+            return yield* call("toolCompactIfIdle", (runtime) => {
+              if (!runtime.toolCompactIfIdle)
+                throw new Error("Idle-only tool compaction is unavailable for this runtime");
+              return runtime.toolCompactIfIdle();
             }).pipe(Effect.uninterruptible);
           }),
           rename: (name, onlyIfUnnamed) =>

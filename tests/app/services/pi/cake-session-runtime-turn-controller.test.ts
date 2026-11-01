@@ -277,6 +277,33 @@ describe("CakeSessionRuntime turn controller", () => {
     controller.dispose();
   });
 
+  it("idle tool compaction holds new input until completion, never invoking normal Pi compaction", async () => {
+    const gate = deferred();
+    const { controller, session } = createFixture();
+    const compact = vi.fn(async () => gate.promise);
+    const operation = controller.toolCompactIfIdle(compact);
+    expect(controller.idleCompactionActive()).toBe(true);
+    expect(await controller.toolCompactIfIdle(compact)).toEqual({ status: "busy" });
+    const prompt = controller.prompt("Next", "prompt", []);
+    await Promise.resolve();
+    expect(session.prompt).not.toHaveBeenCalled();
+    expect(compact).toHaveBeenCalledOnce();
+    expect(session.abort).not.toHaveBeenCalled();
+    expect(session.compact).not.toHaveBeenCalled();
+    gate.resolve();
+    expect(await operation).toEqual({ status: "compacted" });
+    await prompt;
+    expect(session.prompt).toHaveBeenCalledOnce();
+    expect(controller.idleCompactionActive()).toBe(false);
+    await expect(
+      controller.toolCompactIfIdle(async () => {
+        throw new Error("Navigation cancelled");
+      }),
+    ).rejects.toThrow("Navigation cancelled");
+    expect(controller.idleCompactionActive()).toBe(false);
+    controller.dispose();
+  });
+
   it("idle-only compaction refuses active, compacting, shell and queued sessions without calling Pi", async () => {
     for (const overrides of [
       { isStreaming: true },
@@ -287,6 +314,9 @@ describe("CakeSessionRuntime turn controller", () => {
     ]) {
       const { controller, session } = createFixture(overrides);
       expect(await controller.compactIfIdle()).toEqual({ status: "busy" });
+      const compact = vi.fn(async () => undefined);
+      expect(await controller.toolCompactIfIdle(compact)).toEqual({ status: "busy" });
+      expect(compact).not.toHaveBeenCalled();
       expect(session.compact).not.toHaveBeenCalled();
       expect(session.abort).not.toHaveBeenCalled();
       controller.dispose();
@@ -300,6 +330,9 @@ describe("CakeSessionRuntime turn controller", () => {
     });
     const prompt = controller.prompt("Preparing", "prompt", []);
     expect(await controller.compactIfIdle()).toEqual({ status: "busy" });
+    const compact = vi.fn(async () => undefined);
+    expect(await controller.toolCompactIfIdle(compact)).toEqual({ status: "busy" });
+    expect(compact).not.toHaveBeenCalled();
     expect(session.compact).not.toHaveBeenCalled();
     gate.resolve();
     await prompt;

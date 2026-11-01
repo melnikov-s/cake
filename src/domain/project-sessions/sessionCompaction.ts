@@ -20,6 +20,7 @@ const compactOne = Effect.fn("SessionCompaction.compactOne")(function* (
   global: boolean,
   locations: readonly ProjectSessionLocation[],
   instructions: string | undefined,
+  mode: "normal" | "tools",
 ) {
   if (!global && !scope)
     return {
@@ -66,14 +67,15 @@ const compactOne = Effect.fn("SessionCompaction.compactOne")(function* (
       message: "Target has active, pending or blocked work; nothing was aborted or queued.",
     };
   const handle = yield* acquireMaintenanceTarget(location, sessionId);
-  return yield* handle.compactIfIdle(instructions);
+  return yield* mode === "tools" ? handle.toolCompactIfIdle() : handle.compactIfIdle(instructions);
 });
 
-/** User-requested maintenance only. No lifecycle transition, message admission or history edits. */
+/** User-requested maintenance only. No lifecycle transition or message admission. */
 export const compact = Effect.fn("SessionCompaction.compact")(function* (
   targets: readonly string[],
   instructions: string | undefined,
   caller: AgentControlCaller,
+  mode: "normal" | "tools" = "normal",
 ) {
   const global = caller.kind === "cake-chat" && caller.sessionId === CAKE_CHAT_SESSION_ID;
   const scope = global
@@ -132,7 +134,7 @@ export const compact = Effect.fn("SessionCompaction.compact")(function* (
       continue;
     }
     const outcome = yield* Effect.scoped(
-      compactOne(sessionId, scope, global, roster.locations, instructions),
+      compactOne(sessionId, scope, global, roster.locations, instructions, mode),
     ).pipe(
       Effect.catch((error) =>
         Effect.succeed({

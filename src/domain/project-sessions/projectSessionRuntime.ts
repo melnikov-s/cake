@@ -903,6 +903,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         invokeAppControl: async (command, input, signal) => {
           if (
             command !== "sessions.compact" &&
+            command !== "sessions.tool-compact" &&
             (backendAgentControl.handles(command) || command === "sessions.open") &&
             Schema.is(Schema.String)(input.sessionId)
           )

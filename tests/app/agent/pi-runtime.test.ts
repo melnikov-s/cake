@@ -3103,49 +3103,124 @@ describe("S1 Pi runtime", () => {
     ).toBe("Forked copy");
   });
 
-  it("tool-compacts onto a clean branch while keeping the live Pi Session identity", async () => {
+  it.each(["selected", "idle"] as const)(
+    "tool-compacts (%s) onto a clean branch while keeping the live Pi Session identity",
+    async (mode) => {
+      const directory = await createTemporaryDirectory();
+      const agentDir = join(directory, "agent");
+      const sessionDir = join(directory, "sessions");
+      const source = SessionManager.create(
+        directory,
+        cakeWorkspaceSessionDirectory(directory, sessionDir),
+      );
+      source.appendMessage({ role: "user", content: "Investigate this", timestamp: Date.now() });
+      source.appendMessage({
+        role: "assistant",
+        content: [
+          { type: "text", text: "I will inspect it." },
+          { type: "toolCall", id: "call-1", name: "read", arguments: { path: "large.ts" } },
+        ],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "fixture",
+        usage: zeroUsage,
+        stopReason: "toolUse",
+        timestamp: Date.now(),
+      });
+      source.appendMessage({
+        role: "toolResult",
+        toolCallId: "call-1",
+        toolName: "read",
+        content: [{ type: "text", text: "large tool output" }],
+        isError: false,
+        timestamp: Date.now(),
+      });
+      const assistantEntryId = source.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: "Investigation complete" }],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "fixture",
+        usage: zeroUsage,
+        stopReason: "stop",
+        timestamp: Date.now(),
+      });
+      if (mode === "idle") {
+        source.appendMessage({
+          role: "assistant",
+          content: [{ type: "text", text: "Incomplete later response" }],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "fixture",
+          usage: zeroUsage,
+          stopReason: "aborted",
+          timestamp: Date.now(),
+        });
+      }
+      const runtime = await createCakeSessionRuntime({
+        cwd: directory,
+        agentDir,
+        sessionDir,
+        sessionId: source.getSessionId(),
+        trusted: false,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      });
+      runtimes.push(runtime);
+
+      if (mode === "selected") {
+        expect(await runtime.toolCompact(assistantEntryId)).toMatchObject({
+          sessionId: source.getSessionId(),
+          sessionFile: source.getSessionFile(),
+        });
+      } else {
+        expect(await runtime.toolCompactIfIdle?.()).toEqual({ status: "compacted" });
+      }
+      const snapshot = await runtime.snapshot();
+      const persisted = SessionManager.open(
+        runtime.sessionFile,
+        cakeWorkspaceSessionDirectory(directory, sessionDir),
+        directory,
+      );
+
+      expect(runtime.sessionId).toBe(source.getSessionId());
+      expect(persisted.getEntry(assistantEntryId)).toBeDefined();
+      expect(JSON.stringify(persisted.buildSessionContext().messages)).not.toContain(
+        "large tool output",
+      );
+      expect(JSON.stringify(persisted.buildSessionContext().messages)).not.toContain("toolCall");
+      expect(JSON.stringify(persisted.buildSessionContext().messages)).not.toContain(
+        "Incomplete later response",
+      );
+      expect(
+        persisted.buildSessionContext().messages.filter((message) => message.role === "assistant"),
+      ).toHaveLength(2);
+      expect(persisted.getTree()).toHaveLength(2);
+      expect(snapshot.parts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: "text", text: "Investigation complete" }),
+        ]),
+      );
+      expect(snapshot.parts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: "tool", origin: "compacted", id: "tool-call-1" }),
+        ]),
+      );
+      expect(snapshot.tree.filter((entry) => entry.messageRole === "user")).toHaveLength(2);
+    },
+  );
+
+  it("idle tool compaction fails without a completed assistant response and leaves history alone", async () => {
     const directory = await createTemporaryDirectory();
-    const agentDir = join(directory, "agent");
     const sessionDir = join(directory, "sessions");
     const source = SessionManager.create(
       directory,
       cakeWorkspaceSessionDirectory(directory, sessionDir),
     );
-    source.appendMessage({ role: "user", content: "Investigate this", timestamp: Date.now() });
-    source.appendMessage({
-      role: "assistant",
-      content: [
-        { type: "text", text: "I will inspect it." },
-        { type: "toolCall", id: "call-1", name: "read", arguments: { path: "large.ts" } },
-      ],
-      api: "anthropic-messages",
-      provider: "anthropic",
-      model: "fixture",
-      usage: zeroUsage,
-      stopReason: "toolUse",
-      timestamp: Date.now(),
-    });
-    source.appendMessage({
-      role: "toolResult",
-      toolCallId: "call-1",
-      toolName: "read",
-      content: [{ type: "text", text: "large tool output" }],
-      isError: false,
-      timestamp: Date.now(),
-    });
-    const assistantEntryId = source.appendMessage({
-      role: "assistant",
-      content: [{ type: "text", text: "Investigation complete" }],
-      api: "anthropic-messages",
-      provider: "anthropic",
-      model: "fixture",
-      usage: zeroUsage,
-      stopReason: "stop",
-      timestamp: Date.now(),
-    });
+    source.appendMessage({ role: "user", content: "Not answered yet", timestamp: Date.now() });
     const runtime = await createCakeSessionRuntime({
       cwd: directory,
-      agentDir,
+      agentDir: join(directory, "agent"),
       sessionDir,
       sessionId: source.getSessionId(),
       trusted: false,
@@ -3153,28 +3228,21 @@ describe("S1 Pi runtime", () => {
       onEvent: () => undefined,
     });
     runtimes.push(runtime);
-
-    const compacted = await runtime.toolCompact(assistantEntryId);
-    const snapshot = await runtime.snapshot();
+    const before = SessionManager.open(
+      runtime.sessionFile,
+      cakeWorkspaceSessionDirectory(directory, sessionDir),
+      directory,
+    ).getEntries();
+    await expect(runtime.toolCompactIfIdle?.()).rejects.toThrow(
+      "requires a completed assistant response",
+    );
     const persisted = SessionManager.open(
-      compacted.sessionFile,
+      runtime.sessionFile,
       cakeWorkspaceSessionDirectory(directory, sessionDir),
       directory,
     );
-
-    expect(compacted.sessionId).toBe(source.getSessionId());
-    expect(persisted.getTree()).toHaveLength(2);
-    expect(snapshot.parts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "text", text: "Investigation complete" }),
-      ]),
-    );
-    expect(snapshot.parts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "tool", origin: "compacted", id: "tool-call-1" }),
-      ]),
-    );
-    expect(snapshot.tree.filter((entry) => entry.messageRole === "user")).toHaveLength(2);
+    expect(persisted.getTree()).toHaveLength(1);
+    expect(persisted.getEntries()).toEqual(before);
   });
 
   it("groups loaded personal and project AGENTS.md and refreshes their contents on reload", async () => {
