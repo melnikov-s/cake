@@ -1,3 +1,4 @@
+import { themeOperationDefinitions } from "../themes/theme-operations";
 import { PresetContext } from "../model-presets/preset-context";
 import { ResultDelivery, resultDeliveryGuidance } from "../conversations/result-delivery";
 import { Effect, Schema } from "effect";
@@ -77,6 +78,7 @@ const createDraftSessionArgs = Schema.Struct({
 });
 /** Data-only window controls shared by chat runtime discovery and renderer execution. */
 export const windowControlDefinitions = {
+  ...themeOperationDefinitions,
   "settings.window.get": {
     command: "settings.window.get",
     args: CakeSettingsGetInput,

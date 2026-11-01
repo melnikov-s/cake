@@ -5,6 +5,11 @@ import type {
   ColorThemeChoice,
   ImportedColorTheme,
 } from "../../contracts/themes/color-theme";
+import type {
+  ThemeAddInput,
+  ThemeApplyInput,
+  ThemeState,
+} from "../../contracts/themes/theme-operations";
 import { bundledColorThemes, type ColorThemeOption } from "../../utils/bundled-color-themes";
 import { parseVsCodeTheme } from "../../utils/vscode-theme";
 import type {
@@ -43,6 +48,69 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
         theme,
       })),
     ];
+  }
+
+  /** The tool catalog excludes transient, unsaved UI previews. */
+  get savedColorThemes(): readonly ColorThemeOption[] {
+    return this.colorThemes.filter(
+      (option) =>
+        option.choice.startsWith("bundled:") ||
+        this.importedThemes.some((theme) => option.choice === `imported:${theme.id}`),
+    );
+  }
+
+  get themeState(): ThemeState {
+    const active = this.activeColorTheme;
+    const option = this.colorThemes.find((option) => option.theme === active);
+    const mode =
+      active === "light" || active === "dark" ? active : (active?.type ?? this.resolvedMode);
+    const choice = option?.choice ?? `bundled:cake-${mode}`;
+    return {
+      appearance: this.theme,
+      systemColorScheme: this.systemColorScheme,
+      lightTheme: this.lightTheme,
+      darkTheme: this.darkTheme,
+      effective: {
+        choice,
+        name: option?.name ?? (mode === "light" ? "Cake Light" : "Cake Dark"),
+        type: mode,
+        saved: this.savedColorThemes.some((theme) => theme.choice === choice),
+      },
+    };
+  }
+
+  listSavedThemes() {
+    return {
+      themes: this.savedColorThemes.map(({ choice, name, type }) => ({ choice, name, type })),
+      state: this.themeState,
+    };
+  }
+
+  readSavedTheme(choice: ColorThemeChoice) {
+    const theme = this.savedColorThemes.find((option) => option.choice === choice);
+    if (!theme)
+      throw new Error(`Unknown saved theme: ${choice}. Use themes.list for exact choice IDs.`);
+    return { theme, state: this.themeState };
+  }
+
+  addTheme(input: ThemeAddInput) {
+    const entry = "theme" in input ? "theme.json" : input.entry;
+    const files =
+      "theme" in input
+        ? new Map([[entry, JSON.stringify(input.theme)]])
+        : new Map(Object.entries(input.files));
+    const theme = { ...parseVsCodeTheme(entry, files, crypto.randomUUID()), name: input.name };
+    this.importedThemes.push(theme);
+    return this.readSavedTheme(`imported:${theme.id}`);
+  }
+
+  applySavedTheme(input: ThemeApplyInput) {
+    const { theme } = this.readSavedTheme(input.choice);
+    const previous = this.themeState;
+    this.setPreferredTheme(theme.type, theme.choice);
+    if (input.application === "now" && this.resolvedMode !== theme.type) this.setTheme(theme.type);
+    const state = this.themeState;
+    return { theme, previous, state, visible: state.effective.choice === theme.choice };
   }
 
   get resolvedMode(): ColorScheme {

@@ -82,6 +82,7 @@ import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 import * as worktreeMerges from "../worktrees/worktreeMerges";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
 import { WorktreeLandingAgent } from "../../services/worktrees/WorktreeLandingAgent";
+import { themeOperationDefinitions } from "../../contracts/themes/theme-operations";
 import { WorktreeLandingCompletion } from "../../services/worktrees/WorktreeLandingCompletion";
 
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
@@ -94,6 +95,7 @@ import * as artifactState from "../artifacts/artifactState";
 import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 
 const CAKE_CHAT_OPERATIONS = [
+  ...Object.keys(themeOperationDefinitions),
   "html.present",
   "artifacts.link",
   "artifacts.present",

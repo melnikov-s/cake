@@ -4,6 +4,7 @@ import type {
   CakeModelSelection,
   CakeModelLaunch,
 } from "../contracts/model-presets/cake-model-selection";
+import { createCakeThemeOperations } from "../domain/application/cake-theme-operations";
 import { createCakeSettingsOperations } from "../domain/application/cake-settings-operations";
 import { createCakeWidgetPackageOperations } from "../domain/application/cake-widget-package-operations";
 import { createCakeWorkflowOperations } from "../domain/workflows/cake-workflow-operations";
@@ -91,6 +92,11 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
         : []),
       ...(!options.auxiliary && options.tools === undefined
         ? createCakeWidgetPackageOperations((command, input, signal) =>
+            bridge.api().invokeAppControl(command, input, signal),
+          )
+        : []),
+      ...(!options.auxiliary && options.tools === undefined
+        ? createCakeThemeOperations((command, input, signal) =>
             bridge.api().invokeAppControl(command, input, signal),
           )
         : []),

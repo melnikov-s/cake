@@ -142,6 +142,20 @@ export function createRootApplicationControlHost(
           source,
         ),
     },
+    themes: {
+      list: () => capabilities.settingsStore.appearance.listSavedThemes(),
+      read: (choice) => capabilities.settingsStore.appearance.readSavedTheme(choice),
+      add: async (input) => {
+        const view = capabilities.settingsStore.appearance.addTheme(input);
+        await capabilities.flushWindowState();
+        return view;
+      },
+      apply: async (input) => {
+        const view = capabilities.settingsStore.appearance.applySavedTheme(input);
+        await capabilities.flushWindowState();
+        return view;
+      },
+    },
     settings: {
       get: (section) => capabilities.settingsStore.settingsSection(section),
       update: async (input) => {

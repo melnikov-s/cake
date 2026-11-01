@@ -93,6 +93,7 @@ const cakeTopics = [
       "Inspect and configure Cake/Pi Settings, including model presets, provider logins, MCP servers, appearance, hotkeys, voice and dictation.",
     guidance: ["Start with settings.list (categories), then settings.list {category}."],
   },
+  { name: "themes", summary: "List/read, create/import, and apply saved Cake color themes." },
   { name: "interview", summary: "Gather requirements through structured user interviews." },
   {
     name: "artifacts",

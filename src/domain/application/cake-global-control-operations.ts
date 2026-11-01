@@ -10,6 +10,7 @@ import {
 import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
 import type { GlobalOperationControl } from "../../contracts/agent/cake-operation-options";
 import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
+import { createCakeThemeOperations } from "./cake-theme-operations";
 import { createCakeSettingsOperations } from "./cake-settings-operations";
 import { createSessionSendBatchOperation } from "../conversations/cake-session-batch-send-operation";
 
@@ -17,12 +18,18 @@ export function createGlobalControlOperations(
   control: GlobalOperationControl,
   resolveModel: (selection: CakeModelSelection | undefined) => ExplicitCakeModelSelection,
 ): CakeOperationDefinition[] {
-  const settings = createCakeSettingsOperations((command, input, signal) =>
-    control.invoke({ name: command, arguments: input }, signal),
-  );
+  const invoke = (
+    command: string,
+    input: Schema.Schema.Type<typeof jsonObjectSchema>,
+    signal: AbortSignal,
+  ) => control.invoke({ name: command, arguments: input }, signal);
+  const typedControls = [
+    ...createCakeSettingsOperations(invoke),
+    ...createCakeThemeOperations(invoke),
+  ];
   const operations: CakeOperationDefinition[] = control.tools.map(
     (tool) =>
-      settings.find((operation) => operation.command === tool.command) ?? {
+      typedControls.find((operation) => operation.command === tool.command) ?? {
         command: tool.command,
         canonicalSessionIds: ["sessions.reports.read", "sessions.send"].includes(tool.command),
         topic: tool.topic,

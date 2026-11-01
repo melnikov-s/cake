@@ -368,6 +368,7 @@ export const settingsElsewhere = [
     "project.settings.* (Project Session, own Project), projects.settings.* (global Cake Chat, any Project)",
   ],
   ["Appearance, VS Code, hotkeys (this window)", "settings.window.*"],
+  ["Create/import/apply color themes (this window)", "themes.list/read/add/apply"],
   [
     "Speech, dictation, host, sharing (this desktop)",
     "settings.speech.*, settings.dictation.*, settings.desktop.*",

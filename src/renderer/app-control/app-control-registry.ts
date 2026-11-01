@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import type { RegisteredControl, ControlContext, ControlScope } from "./control-definition";
 import { applicationControls } from "./application-controls";
+import { themeControls } from "./theme-controls";
 import { settingsControls } from "./settings-controls";
 import { vscodeControls } from "./vscode-controls";
 import { worktreeControls } from "./worktree-controls";
@@ -46,6 +47,7 @@ export class AppControlRegistry {
 export const appControlRegistry = new AppControlRegistry([
   ...applicationControls,
   ...settingsControls,
+  ...themeControls,
   ...vscodeControls,
   ...worktreeControls,
   ...projectControls,

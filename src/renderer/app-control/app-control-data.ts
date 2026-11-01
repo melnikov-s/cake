@@ -1,3 +1,12 @@
+import type { ColorThemeChoice } from "../../contracts/themes/color-theme";
+import type {
+  ThemeAddInput,
+  ThemeApplyInput,
+  ThemeList,
+  ThemeRead,
+  ThemeApply,
+  ThemeControlSuccess,
+} from "../../contracts/themes/theme-operations";
 import type { AppWorkspaceView } from "../../contracts/application/app-workspace-view";
 import {
   type SessionInspectionQuery,
@@ -148,6 +157,12 @@ export interface AppControlHost {
   agentSettings: {
     invoke(invocation: AgentSettingsInvocation, source?: AgentControlSource): Promise<JsonValue>;
   };
+  themes: {
+    list(): ThemeList;
+    read(choice: ColorThemeChoice): ThemeRead;
+    add(input: ThemeAddInput): Promise<ThemeRead>;
+    apply(input: ThemeApplyInput): Promise<ThemeApply>;
+  };
   settings: {
     get(section: CakeSettingsSectionId): CakeSettingsSectionView;
     update(input: CakeSettingsUpdate): Promise<CakeSettingsSectionView>;
@@ -283,6 +298,7 @@ interface CoordinationThreadView {
 }
 
 type AppControlSuccess =
+  | ThemeControlSuccess
   | { ok: true; command: "app.state"; state: AppControlState }
   | { ok: true; command: "app.user-selection"; text: string | null }
   | {
