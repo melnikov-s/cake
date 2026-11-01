@@ -1,10 +1,20 @@
 import { describe, expect } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { AutomationRecords } from "../../../src/services/automations/AutomationRecords";
+import {
+  AutomationStorage,
+  makeAutomationStorageLive,
+} from "../../../src/services/storage/AutomationStorage";
 import { it } from "@effect/vitest";
-import { DateTime, Effect, Queue, Ref, Stream } from "effect";
+import { DateTime, Effect, Layer, Queue, Ref, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import type { AutomationSchedule } from "../../../src/contracts/automations/automation-data";
 import * as worker from "../../../src/domain/automations/automationWorker";
 import { automationDefinition, automationFixture } from "../helpers/automationFixture";
+import { automationSourceFixture } from "../helpers/automationSourceFixture";
 import * as definitions from "../../../src/domain/automations/automationDefinitions";
 import * as runs from "../../../src/domain/automations/automationRuns";
 
@@ -450,12 +460,172 @@ describe("automation triggers and recovery", () => {
       }).pipe(Effect.provide(f.context));
     }),
   );
-  it.todo("persists definitions, queued occurrences and session links across restart");
-  it.todo("uses existing Pi recovery outcomes rather than blindly rerunning interrupted work");
-  it.todo(
-    "emits response-completed only for a successful final reply, never tools or intermediate text",
+  it.effect("persists definitions, queued occurrences and session links across restart", () =>
+    Effect.gen(function* () {
+      const f = yield* automationFixture();
+      yield* Effect.gen(function* () {
+        const a = yield* definitions.create({
+          definition: automationDefinition({ overlap: "queue" }),
+          initialState: "active",
+        });
+        yield* runs.trigger(a.id);
+        const first = yield* Queue.take(f.started);
+        const queued = yield* runs.trigger(a.id);
+        const checkpoint = f.records.snapshot();
+        const directory = yield* Effect.acquireRelease(
+          Effect.promise(() => mkdtemp(join(tmpdir(), "cake-automation-storage-"))),
+          (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+        );
+        const storage = makeAutomationStorageLive(directory).pipe(
+          Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
+        );
+        yield* Effect.gen(function* () {
+          yield* (yield* AutomationStorage).save(checkpoint);
+        }).pipe(Effect.provide(storage));
+        const restored = yield* Effect.gen(function* () {
+          const records = yield* AutomationRecords;
+          yield* records.initialize();
+          return records.snapshot();
+        }).pipe(Effect.provide(Layer.fresh(AutomationRecords.layer.pipe(Layer.provide(storage)))));
+        expect(restored.automations).toEqual(checkpoint.automations);
+        expect(restored.occurrences).toEqual(checkpoint.occurrences);
+        expect(restored.runs).toEqual(checkpoint.runs);
+        yield* runs.cancelQueued(queued.occurrenceId);
+        yield* f.complete(first.sessionId);
+        yield* waitForSettlement(f, first.sessionId);
+      }).pipe(Effect.provide(f.context));
+    }),
   );
-  it.todo("emits user-message-received only for genuine user input, not internal notices");
+  it.effect(
+    "uses existing Pi recovery outcomes rather than blindly rerunning interrupted work",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* automationFixture();
+        const checkpoint = yield* Effect.gen(function* () {
+          const a = yield* definitions.create({
+            definition: automationDefinition(),
+            initialState: "active",
+          });
+          yield* runs.trigger(a.id);
+          const started = yield* Queue.take(f.started);
+          const saved = f.records.snapshot();
+          yield* f.complete(started.sessionId);
+          yield* waitForSettlement(f, started.sessionId);
+          return saved;
+        }).pipe(Effect.provide(f.context));
+        const interrupted = checkpoint.runs[0];
+        expect(interrupted).toBeDefined();
+        if (!interrupted) return;
+        for (const state of ["blocked", "complete"] as const) {
+          const restarted = yield* automationFixture({
+            ledger: checkpoint,
+            recovery: [
+              {
+                sessionId: interrupted.sessionId,
+                workingDirectory: interrupted.workingDirectory,
+                sessionDirectory: interrupted.sessionDirectory,
+                profile: "AutomationSession",
+                transcriptPersisted: true,
+                inputs: [],
+                state,
+                issue: "An unfinished tool needs review",
+              },
+            ],
+          });
+          yield* worker.recover().pipe(Effect.provide(restarted.context));
+          expect(restarted.captured).toHaveLength(0);
+          expect(restarted.records.snapshot().runs[0]?.status._tag).toBe(
+            state === "blocked" ? "failed" : "completed",
+          );
+          expect(restarted.records.snapshot().automations[0]?.state._tag).toBe("active");
+        }
+      }),
+  );
+  it.effect(
+    "emits response-completed only for a successful final reply, never tools or intermediate text",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* automationSourceFixture();
+        const settled = f.options.onTurnSettled;
+        expect(settled).toBeDefined();
+        if (!settled) return;
+        for (const stopReason of ["toolUse", "length", "error", "aborted"])
+          yield* settled({
+            sessionId: "source",
+            turnId: "turn",
+            outcome: "complete",
+            result: {
+              stopReason,
+              entryId: `entry-${stopReason}`,
+              text: "Not a successful final response",
+            },
+          });
+        yield* settled({
+          sessionId: "source",
+          turnId: "turn",
+          outcome: "failed",
+          result: { stopReason: "stop", entryId: "failed", text: "A failed final response" },
+        });
+        expect(f.events).toHaveLength(0);
+        yield* settled({
+          sessionId: "source",
+          turnId: "turn",
+          outcome: "complete",
+          result: { stopReason: "stop", entryId: "final", text: "The final response" },
+        });
+        expect(f.events).toHaveLength(1);
+        expect(f.events[0]).toMatchObject({
+          event: "assistant-response-completed",
+          sourceSessionId: "source",
+          sourceMessageId: "final",
+          text: "The final response",
+          sourceKind: "standalone-project-session",
+        });
+      }),
+  );
+  it.effect("emits user-message-received only for genuine user input, not internal notices", () =>
+    Effect.gen(function* () {
+      const f = yield* automationSourceFixture();
+      const admit = f.options.admitTurn;
+      expect(admit).toBeDefined();
+      if (!admit) return;
+      yield* admit(
+        {
+          turnId: "notice",
+          text: "Notice",
+          delivery: "prompt",
+          internal: { _tag: "UpdateBatch", notices: [] },
+        },
+        Effect.void,
+      );
+      yield* admit(
+        {
+          turnId: "board",
+          text: "Workboard",
+          delivery: "prompt",
+          internal: { _tag: "WorkboardDelivery", boardId: "board", sequences: [1] },
+        },
+        Effect.void,
+      );
+      expect(f.events).toHaveLength(0);
+      yield* admit({ turnId: "human", text: "Do the task", delivery: "prompt" }, Effect.void);
+      yield* admit(
+        {
+          turnId: "with-context",
+          text: "Expanded context",
+          delivery: "prompt",
+          internal: {
+            _tag: "UserWithReminders",
+            text: "Expanded context",
+            userText: "My own words",
+            notices: [],
+          },
+        },
+        Effect.void,
+      );
+      expect(f.events.map((event) => event.text)).toEqual(["Do the task", "My own words"]);
+    }),
+  );
   it.effect(
     "evaluates source events without requiring a renderer to observe the source session",
     () =>

@@ -1,10 +1,13 @@
 import { messageReference } from "../../contracts/conversations/message-reference";
+import { AutomationEvents } from "../../services/automations/AutomationEvents";
+import { publishProjectSession as publishProjectAutomationEvent } from "../automations/automationSourceEvents";
 import * as sessionFamilies from "../session-families/sessionFamilies";
 import * as backendAgentControl from "../application/agentControl";
 import type { PiSettings } from "../../services/pi/PiSettings";
 import type { McpSettings } from "../../services/pi/McpSettings";
 import type { WidgetPackages } from "../../services/widgets/WidgetPackages";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import { parseScheduledMessage } from "../../contracts/conversations/scheduled-message-envelope";
 import { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
 import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import { ProjectTodoReports } from "../../services/projects/ProjectTodoReports";
@@ -152,6 +155,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const sessions = yield* CakeSessionRuntimes;
   const workflowSupervisor = yield* WorkflowSupervisor;
   const families = yield* SessionFamilyStorage;
+  const automationEvents = yield* Effect.serviceOption(AutomationEvents);
   const coordination = yield* SessionCoordination;
   const catalogs = yield* SessionCatalogChanges;
   const browser = yield* Effect.serviceOption(Browser);
@@ -342,8 +346,47 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       resolved: false,
     }),
     onTurnActivityChanged: publishActivity,
+    onSessionCreated: Option.isSome(automationEvents)
+      ? publishProjectAutomationEvent({
+          event: "session-created",
+          eventId: `created:${sessionId}`,
+          sessionId,
+          projectPath: location.projectPath,
+        }).pipe(
+          Effect.provideService(AutomationEvents, automationEvents.value),
+          Effect.provideService(SessionFamilyStorage, families),
+          Effect.tapError((error) => Effect.logWarning("Automation source event failed", error)),
+          Effect.ignore,
+        )
+      : Effect.void,
     admitTurn: (input, accept) => {
       const message = parseCrossSessionMessage(input.text);
+      const userText =
+        input.internal === undefined
+          ? input.text
+          : input.internal._tag === "UserWithReminders"
+            ? input.internal.userText
+            : undefined;
+      const sourceEvent =
+        Option.isSome(automationEvents) &&
+        userText !== undefined &&
+        !message &&
+        !parseScheduledMessage(input.text)
+          ? publishProjectAutomationEvent({
+              event: "user-message-received",
+              eventId: input.turnId,
+              sessionId,
+              projectPath: location.projectPath,
+              text: userText,
+            }).pipe(
+              Effect.provideService(AutomationEvents, automationEvents.value),
+              Effect.provideService(SessionFamilyStorage, families),
+              Effect.tapError((error) =>
+                Effect.logWarning("Automation source event failed", error),
+              ),
+              Effect.ignore,
+            )
+          : Effect.void;
       // Bind before Pi can settle a fast turn; the existing family policy still owns admission.
       const admit = message
         ? coordination
@@ -361,7 +404,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                 resolvedRoot: configuration.resolvedSessionDirectory,
               },
               input,
-              admit,
+              admit.pipe(Effect.andThen(sourceEvent)),
             )
             .pipe(
               Effect.provideService(SessionFamilyStorage, families),
@@ -372,6 +415,25 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     },
     onTurnSettled: (event) =>
       Effect.gen(function* () {
+        if (
+          Option.isSome(automationEvents) &&
+          event.outcome === "complete" &&
+          event.result?.stopReason === "stop" &&
+          event.result.entryId
+        )
+          yield* publishProjectAutomationEvent({
+            event: "assistant-response-completed",
+            eventId: `${sessionId}:${event.result.entryId}`,
+            sessionId,
+            projectPath: location.projectPath,
+            sourceMessageId: event.result.entryId,
+            text: event.result.text,
+          }).pipe(
+            Effect.provideService(AutomationEvents, automationEvents.value),
+            Effect.provideService(SessionFamilyStorage, families),
+            Effect.tapError((error) => Effect.logWarning("Automation source event failed", error)),
+            Effect.ignore,
+          );
         const boardDeliveries = (yield* families.state()).boardDeliveries ?? [];
         if (boardDeliveries.some((item) => item.turnId === event.turnId))
           yield* families.updateBoardDelivery(

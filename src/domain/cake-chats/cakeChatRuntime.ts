@@ -1,4 +1,7 @@
 import { messageReference } from "../../contracts/conversations/message-reference";
+import { AutomationEvents } from "../../services/automations/AutomationEvents";
+import { publishChat as publishChatAutomationEvent } from "../automations/automationSourceEvents";
+import { parseScheduledMessage } from "../../contracts/conversations/scheduled-message-envelope";
 import { cakeChatBuiltinSlashCommands } from "../../contracts/conversations/session-contract";
 import { agentSettingsOperations } from "../../contracts/application/agent-settings-schema";
 import { makeVscodeControl } from "../../services/pi/VscodeControlAdapter";
@@ -272,6 +275,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   });
   const vscode = yield* Effect.serviceOption(VsCodeServer);
   const families = yield* SessionFamilyStorage;
+  const automationEvents = yield* Effect.serviceOption(AutomationEvents);
   const archive = yield* SessionArchiveStorage;
   const artifactStorage = yield* Effect.serviceOption(ArtifactStorage);
   const artifactProjection = yield* Effect.serviceOption(ArtifactProjection);
@@ -375,6 +379,26 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     profile: { _tag: "CakeChatSession" },
     admitTurn: (input, accept) => {
       const message = parseCrossSessionMessage(input.text);
+      const userText =
+        input.internal === undefined
+          ? input.text
+          : input.internal._tag === "UserWithReminders"
+            ? input.internal.userText
+            : undefined;
+      const sourceEvent =
+        Option.isSome(automationEvents) &&
+        !companion &&
+        userText !== undefined &&
+        !message &&
+        !parseScheduledMessage(input.text)
+          ? publishChatAutomationEvent({
+              event: "user-message-received",
+              eventId: input.turnId,
+              sessionId: target.sessionId,
+              text: userText,
+              ...(project === undefined ? null : { projectPath: project.path }),
+            }).pipe(Effect.provideService(AutomationEvents, automationEvents.value))
+          : Effect.void;
       return coordination.checkStorage().pipe(
         Effect.andThen(
           sessionFamilies
@@ -397,10 +421,26 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               Effect.provideService(SessionArchiveStorage, archive),
             ),
         ),
+        Effect.andThen(sourceEvent),
       );
     },
     onTurnSettled: (event) =>
       Effect.gen(function* () {
+        if (
+          Option.isSome(automationEvents) &&
+          !companion &&
+          event.outcome === "complete" &&
+          event.result?.stopReason === "stop" &&
+          event.result.entryId
+        )
+          yield* publishChatAutomationEvent({
+            event: "assistant-response-completed",
+            eventId: `${target.sessionId}:${event.result.entryId}`,
+            sessionId: target.sessionId,
+            sourceMessageId: event.result.entryId,
+            text: event.result.text,
+            ...(project === undefined ? null : { projectPath: project.path }),
+          }).pipe(Effect.provideService(AutomationEvents, automationEvents.value));
         yield* coordination.settleTurn(event.turnId, event.outcome);
         const turn = (yield* families.state()).turns.find((item) => item.turnId === event.turnId);
         const text = turn ? implicitTurnResultFor(event.result, turn.senderSessionId) : undefined;

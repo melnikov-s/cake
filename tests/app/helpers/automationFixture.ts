@@ -17,6 +17,7 @@ import {
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import type { CakeSessionRuntimeOptions } from "../../../src/services/pi/runtime/cake-session-runtime";
 import { OptMemory } from "../../../src/services/opt-memory/OptMemory";
+import type { RuntimeRecoveryRecord } from "../../../src/services/storage/RuntimeRecoveryStorage";
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import { fakeRuntime, makeRuntimeRecoveryStorageTestLayer, snapshot } from "./piRuntimeFixture";
 
@@ -39,12 +40,19 @@ export const automationDefinition = (
   ...overrides,
 });
 
-export const automationFixture = Effect.fn("AutomationFixture.make")(function* () {
-  const persisted = yield* Ref.make<AutomationLedger>({
-    automations: [],
-    occurrences: [],
-    runs: [],
-  });
+export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
+  initial: {
+    readonly ledger?: AutomationLedger;
+    readonly recovery?: ReadonlyArray<RuntimeRecoveryRecord>;
+  } = {},
+) {
+  const persisted = yield* Ref.make<AutomationLedger>(
+    initial.ledger ?? {
+      automations: [],
+      occurrences: [],
+      runs: [],
+    },
+  );
   const storage = Layer.succeed(AutomationStorage, {
     load: () => Ref.get(persisted),
     save: (value) => Ref.set(persisted, value),
@@ -92,7 +100,7 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
           },
         };
       }),
-  }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
+  }).pipe(Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer(initial.recovery)));
   const resolved = yield* Ref.make<ReadonlySet<string>>(new Set());
   const archive = Layer.mock(SessionArchiveStorage, {
     recordedResolvedIds: () => Ref.get(resolved),

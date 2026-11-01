@@ -18,6 +18,18 @@ export const acceptEvent = Effect.fn("Automations.acceptEvent")(function* (
       !matchesEvent(automation.definition.trigger.filter, event)
     )
       continue;
+    // Pi recovery re-admits the same durable input identity; its occurrence records admission.
+    if (
+      records
+        .snapshot()
+        .occurrences.some(
+          (item) =>
+            item.automationId === automation.id &&
+            item.source._tag === "Event" &&
+            item.source.eventId === event.eventId,
+        )
+    )
+      continue;
     yield* trigger(automation.id, {
       _tag: "Event",
       eventId: event.eventId,

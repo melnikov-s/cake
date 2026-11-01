@@ -1,4 +1,5 @@
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
+import type { InternalInput } from "../../contracts/conversations/internal-input";
 import { shutdownDiagnostics, shutdownResource } from "../diagnostics/shutdown-diagnostics";
 import type { IdleCompactionResult } from "../../contracts/project-sessions/session-compaction";
 import { sessionDigestReceiptIds } from "../../contracts/cake-chats/session-digest-reminder";
@@ -151,6 +152,7 @@ export interface CakeSessionRuntimeAcquireOptions {
       readonly turnId: string;
       readonly text: string;
       readonly delivery: "prompt" | "steer" | "follow-up";
+      readonly internal?: InternalInput;
     },
     accept: Effect.Effect<void, PiSessionError>,
   ) => Effect.Effect<void, unknown>;
@@ -167,6 +169,8 @@ export interface CakeSessionRuntimeAcquireOptions {
   readonly onTurnActivityChanged?: Effect.Effect<void>;
   /** Publishes kind-specific catalog metadata after shared conversation mutations. */
   readonly onSessionChanged?: Effect.Effect<void, unknown>;
+  /** New regular session's first durable conversation message, never a renderer selection. */
+  readonly onSessionCreated?: Effect.Effect<void, unknown>;
 }
 
 import type { SideChatHistory, SideChatHistoryImport } from "./side-chat-history";
@@ -633,6 +637,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               )
                 yield* Deferred.await(initialTranscriptPersisted).pipe(
                   Effect.andThen(key.options.onSessionChanged ?? Effect.void),
+                  Effect.andThen(key.options.onSessionCreated ?? Effect.void),
                   Effect.orDie,
                   Effect.forkScoped,
                 );
@@ -1138,7 +1143,12 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             );
           });
           yield* (
-            options.admitTurn ? options.admitTurn({ turnId, text, delivery }, accept) : accept
+            options.admitTurn
+              ? options.admitTurn(
+                  { turnId, text, delivery, ...(internal === undefined ? null : { internal }) },
+                  accept,
+                )
+              : accept
           ).pipe(
             Effect.mapError(
               (cause) => new PiSessionError({ operation: delivery, message: String(cause) }),
