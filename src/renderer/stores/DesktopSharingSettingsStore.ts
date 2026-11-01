@@ -41,6 +41,23 @@ export class DesktopSharingSettingsStore extends Store {
   get enabled() {
     return this.state?.status === "serving";
   }
+  /** Only advertise a URL another device can use; the listener URL stays main-owned. */
+  get qrUrl() {
+    if (!this.enabled || this.pending || !this.state?.url) return undefined;
+    try {
+      const url = new URL(this.state.url);
+      if (
+        !["http:", "https:"].includes(url.protocol) ||
+        url.hostname === "localhost" ||
+        url.hostname.startsWith("127.") ||
+        url.hostname === "[::1]"
+      )
+        return undefined;
+      return this.state.url;
+    } catch {
+      return undefined;
+    }
+  }
   get pending() {
     return (
       this.busy ||

@@ -53,7 +53,7 @@ export const BrowserSharingMenu = observer(function BrowserSharingMenu() {
             {status}
           </span>
         </div>
-        <p className="break-all font-mono text-xs text-muted-foreground">
+        <p className="break-all select-text font-mono text-xs text-muted-foreground">
           {sharing.enabled
             ? (sharing.state?.url ?? `${sharing.state?.bind}:${sharing.state?.port}`)
             : `${sharing.bind}:${sharing.port}`}
@@ -63,15 +63,39 @@ export const BrowserSharingMenu = observer(function BrowserSharingMenu() {
             <Callout variant="info">
               Google sign-in required. Approved accounts have full host access.
             </Callout>
-            {sharing.enabled && sharing.state.url && (
-              <QrCode value={sharing.state.url} label="Scan to open Cake and sign in with Google" />
-            )}
           </>
         ) : (
           <Callout variant="warning">
             Anyone who can connect has full host access. Use only a trusted private network or
             authenticated HTTPS proxy. Sharing stays off at launch.
           </Callout>
+        )}
+        {sharing.qrUrl ? (
+          <div className="grid justify-items-center gap-2">
+            <QrCode
+              value={sharing.qrUrl}
+              label={
+                sharing.state?.preferences.google
+                  ? "Scan to open Cake and sign in with Google"
+                  : "Scan to open Cake"
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              {sharing.state?.preferences.publicOrigin
+                ? "Configured URL · reachability not verified"
+                : "Devices must be on the same network."}
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {pending
+              ? "Access QR code available once sharing is online."
+              : !sharing.enabled
+                ? "Sharing is off. Go online to show an access QR code."
+                : sharing.state?.url
+                  ? "This URL is local-only or unusable on another device. Set up an access URL in Connection settings."
+                  : "No access URL available. Check Connection settings."}
+          </p>
         )}
         {error && <Callout variant="error">{error}</Callout>}
         <Button

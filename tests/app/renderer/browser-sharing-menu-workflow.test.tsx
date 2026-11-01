@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import QRCode from "qrcode";
 import userEvent from "@testing-library/user-event";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NetworkIcon } from "../../../src/renderer/components/ui/icons";
@@ -60,6 +61,7 @@ it("starts from the topbar with saved preferences, prevents repeated starts and 
   expect(screen.getByText(/Anyone who can connect has full host access/)).toBeDefined();
   expect(screen.getByText(/Funnel is public: require Google sign-in/)).toBeDefined();
   expect(f.configure).not.toHaveBeenCalled();
+  expect(screen.getByText("Sharing is off. Go online to show an access QR code.")).toBeDefined();
   let finish!: (state: DesktopSharingState) => void;
   f.configure.mockImplementationOnce(
     () =>
@@ -98,6 +100,84 @@ it("starts from the topbar with saved preferences, prevents repeated starts and 
   // Settings still operates on exactly the same workflow and updates the topbar.
   await f.user.click(screen.getByRole("switch", { name: "Enable browser sharing" }));
   expect(await screen.findByRole("button", { name: "Browser sharing: Online" })).toBeDefined();
+});
+
+it.each([false, true])(
+  "shows a locally generated URL-only QR in the toolbar with Google protection=%s",
+  async (google) => {
+    const serving: DesktopSharingState = {
+      ...state("serving"),
+      preferences: google
+        ? {
+            ...preferences,
+            google: {
+              clientId: "personal.apps.googleusercontent.com",
+              allowedEmails: ["me@gmail.com"],
+            },
+          }
+        : preferences,
+    };
+    using f = setup(serving);
+    await f.user.click(screen.getByRole("button", { name: "Browser sharing: Online" }));
+    const panel = within(screen.getByRole("dialog", { name: "Browser sharing" }));
+    expect(panel.getByText(serving.url!)).toBeDefined();
+    const qr = await panel.findByRole("img", {
+      name: google ? "Scan to open Cake and sign in with Google" : "Scan to open Cake",
+    });
+    const svg = await QRCode.toString(serving.url!, {
+      type: "svg",
+      width: 224,
+      margin: 4,
+      errorCorrectionLevel: "M",
+    });
+    expect(qr.getAttribute("src")).toBe(
+      `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+    );
+    expect(panel.getByText("Configured URL · reachability not verified")).toBeDefined();
+    if (google) expect(panel.getByText(/Google sign-in required/)).toBeDefined();
+    expect(f.configure).not.toHaveBeenCalled();
+    await act(async () => {
+      f.sharing.apply(state("stopping"));
+    });
+    expect(panel.queryByRole("img")).toBeNull();
+    await act(async () => {
+      f.sharing.apply(state("disabled"));
+    });
+    expect(panel.getByText("Sharing is off. Go online to show an access QR code.")).toBeDefined();
+  },
+);
+
+it("shows a LAN access QR without requiring Google or changing settings", async () => {
+  const serving: DesktopSharingState = {
+    status: "serving",
+    bind: "192.168.1.10",
+    port: 4317,
+    preferences: { bind: "192.168.1.10", port: 4317 },
+    url: "http://192.168.1.10:4317/",
+  };
+  using f = setup(serving);
+  await f.user.click(screen.getByRole("button", { name: "Browser sharing: Online" }));
+  expect(await screen.findByRole("img", { name: "Scan to open Cake" })).toBeDefined();
+  expect(screen.getByText("Devices must be on the same network.")).toBeDefined();
+  expect(f.configure).not.toHaveBeenCalled();
+  expect(f.sharing.state?.preferences).toEqual(serving.preferences);
+});
+
+it.each([
+  undefined,
+  "http://127.0.0.1:4317/",
+  "http://127.0.0.2:4317/",
+  "http://localhost:4317/",
+  "not a URL",
+])("offers existing setup instead of a misleading QR for URL %s", async (url) => {
+  using f = setup({ ...state("serving"), url });
+  await f.user.click(screen.getByRole("button", { name: "Browser sharing: Online" }));
+  const panel = within(screen.getByRole("dialog", { name: "Browser sharing" }));
+  expect(panel.queryByRole("img")).toBeNull();
+  expect(panel.getByText(url ? /local-only or unusable/ : /No access URL available/)).toBeDefined();
+  await f.user.click(panel.getByRole("button", { name: "Connection settings" }));
+  expect(f.root.settingsStore.activePage).toBe("network");
+  expect(f.configure).not.toHaveBeenCalled();
 });
 
 it("shows failures without claiming online, allows retry and reflects authority lifecycle updates", async () => {

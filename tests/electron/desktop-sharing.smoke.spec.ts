@@ -279,6 +279,17 @@ test("Google remote access saves approved accounts and renders a URL-only QR cod
     await expect(qr).toBeVisible();
     await expect(qr).toHaveJSProperty("naturalWidth", 224);
     await expect(clientId).toBeDisabled();
+    // The Wi-Fi-style toolbar control must expose the same URL-only QR, not just Settings.
+    await page.getByRole("button", { name: "Browser sharing: Online" }).first().click();
+    const panel = page.getByRole("dialog", { name: "Browser sharing" });
+    const toolbarQr = panel.getByRole("img", { name: "Scan to open Cake and sign in with Google" });
+    await expect(toolbarQr).toBeVisible();
+    await expect(toolbarQr).toHaveJSProperty("naturalWidth", 224);
+    await expect(toolbarQr).toHaveAttribute("src", (await qr.first().getAttribute("src"))!);
+    await expect(panel).toContainText("https://laptop.tailnet.ts.net/");
+    await expect(panel).toContainText("Google sign-in required");
+    await expect(panel).toContainText("reachability not verified");
+    await page.keyboard.press("Escape");
     await accounts.fill("owner@gmail.com");
     await page.getByRole("button", { name: "Save allowed accounts" }).click();
     await expect(accounts).toHaveValue("owner@gmail.com");

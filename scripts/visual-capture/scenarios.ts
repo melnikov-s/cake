@@ -1,3 +1,4 @@
+import { createServer } from "node:net";
 import { toolCallRowsScenario } from "./tool-call-rows";
 import { provokeRendererCrash } from "../../tests/electron/renderer-crash-fixture.ts";
 import {
@@ -2265,6 +2266,46 @@ const browserSharingScenario: VisualCaptureScenario = {
             )
             .first()
         : page.locator('[data-slot="workspace-header"]'),
+};
+
+const browserSharingQrScenario: VisualCaptureScenario = {
+  name: "topbar-sharing-qr",
+  description: "Toolbar access QR with a configured Google-protected URL; no tunnel is published",
+  states: ["default"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const reserve = createServer();
+    await new Promise<void>((resolve) => reserve.listen(0, "127.0.0.1", resolve));
+    const address = reserve.address();
+    if (!address || typeof address === "string") throw new Error("Expected local TCP port");
+    await new Promise<void>((resolve) => reserve.close(() => resolve()));
+    await writeFile(
+      join(paths.userData, "desktop-sharing.json"),
+      JSON.stringify({
+        version: 1,
+        preferences: {
+          bind: "127.0.0.1",
+          port: address.port,
+          publicOrigin: "https://laptop.tailnet.ts.net",
+          google: {
+            clientId: "personal.apps.googleusercontent.com",
+            allowedEmails: ["owner@gmail.com"],
+          },
+        },
+      }),
+    );
+  },
+  async prepare(page) {
+    await browserSharingScenario.prepare(page, "open");
+    const panel = page.getByRole("dialog", { name: "Browser sharing" });
+    await panel.getByRole("button", { name: "Go online", exact: true }).click();
+    const qr = panel.getByRole("img", { name: "Scan to open Cake and sign in with Google" });
+    await expect(qr).toBeVisible();
+    await expect(qr).toHaveJSProperty("naturalWidth", 224);
+    await expect(panel.getByRole("status")).toHaveText("Online");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.getByRole("dialog", { name: "Browser sharing" }),
 };
 
 const appearanceSettingsScenario: VisualCaptureScenario = {
@@ -6627,6 +6668,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   themeGalleryScenario,
   bundledColorThemeScenario,
   browserSharingScenario,
+  browserSharingQrScenario,
   projectCustomInstructionsScenario,
   newSessionScenario,
   sessionSearchScenario,
