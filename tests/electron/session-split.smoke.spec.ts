@@ -131,12 +131,19 @@ test("splits project chats while retaining independent drafts and pane focus", a
     const projectId = await projectPane.getAttribute("data-session-id");
     expect(projectId).toMatch(/^project-chat:[a-f0-9]{64}$/);
     const projectInput = projectPane.getByLabel("Message Project Chat");
-    await projectInput.click();
+    await expect(projectInput).toBeFocused();
     await projectInput.pressSequentially("Project Chat draft");
     await expect(projectInput).toHaveValue("Project Chat draft");
     await expect(projectPane.getByRole("button", { name: "Send" })).toBeEnabled();
-    await projectPane.getByRole("button", { name: "To-do" }).click();
-    await expect(projectPane.getByRole("complementary", { name: "To-do" })).toBeVisible();
+    // Re-enter the same pane history from a regular Project Session.
+    const modifier = process.platform === "darwin" ? "Meta" : "Control";
+    await page.keyboard.press(`${modifier}+[`);
+    await expect(projectPane).toHaveCount(0);
+    await page.getByRole("button", { name: "Open Project Chat for project" }).click();
+    await expect(projectInput).toBeFocused();
+    await projectInput.press("End");
+    await page.keyboard.type(" retained");
+    await expect(projectInput).toHaveValue("Project Chat draft retained");
     await projectPane.getByRole("button", { name: "Split right" }).click();
     await expect(panes).toHaveCount(3);
     const newPane = page.locator('[data-slot="session-pane"][data-focused="true"]');
@@ -145,11 +152,17 @@ test("splits project chats while retaining independent drafts and pane focus", a
     await newInput.pressSequentially("separate Project Session draft");
     await expect(newInput).toHaveValue("separate Project Session draft");
     await expect(newPane.getByRole("button", { name: "Send" })).toBeEnabled();
+    await page.keyboard.press(`${modifier}+Alt+ArrowLeft`);
+    await expect(projectInput).toBeFocused();
+    await page.keyboard.press(`${modifier}+Alt+ArrowRight`);
+    await expect(newInput).toBeFocused();
     // Opening an already visible Project Chat focuses it instead of duplicating it.
     await page.getByRole("button", { name: "Open Project Chat for project" }).click();
     await expect(projectPane).toHaveAttribute("data-focused", "true");
-    await expect(projectInput).toHaveValue("Project Chat draft");
+    await expect(projectInput).toBeFocused();
+    await expect(projectInput).toHaveValue("Project Chat draft retained");
     await expect(panes).toHaveCount(3);
+    await projectPane.getByRole("button", { name: "To-do" }).click();
     await expect(projectPane.getByRole("complementary", { name: "To-do" })).toBeVisible();
     // Narrow panes retain the existing accessory replacement behavior; closing restores the composer.
     await projectPane.getByRole("button", { name: "Close To-do" }).click();
@@ -186,7 +199,6 @@ test("splits project chats while retaining independent drafts and pane focus", a
     await expect(panes.nth(0).getByRole("button", { name: "Send" })).toBeEnabled();
 
     // Pane commands use the selected conversation's layout, not the retained Project layout.
-    const modifier = process.platform === "darwin" ? "Meta" : "Control";
     await page.keyboard.press(`${modifier}+1`);
     await page.keyboard.press(`${modifier}+Backslash`);
     await expect(panes).toHaveCount(1);

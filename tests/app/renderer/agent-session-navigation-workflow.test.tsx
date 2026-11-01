@@ -141,6 +141,58 @@ describe("Agent session navigation workflow", () => {
     },
   );
 
+  it("requests Project Chat focus on navigation, not on delayed open completion", async () => {
+    const sessionId = `project-chat:${"a".repeat(64)}`;
+    let finishOpen!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      finishOpen = resolve;
+    });
+    const open = vi.fn<Client["cakeChats"]["open"]>(async (target) => {
+      if (target.sessionId === sessionId) await opened;
+    });
+    using fixture = renderAppShellNavigation({ cakeChats: { open } });
+    act(() => {
+      applySnapshot(fixture.models.cakeChatCatalog, {
+        loaded: true,
+        sessions: [
+          {
+            sessionId,
+            projectPath: "/alpha",
+            title: "Alpha chat",
+            createdAt: new Date(0).toISOString(),
+            modifiedAt: new Date(0).toISOString(),
+            messageCount: 0,
+            resolved: false,
+            unread: false,
+          },
+        ],
+      });
+      fixture.root.cakeChatCollectionStore.registry.load(sessionId);
+      fixture.root.navigationStore.selectCakeChat(sessionId);
+      fixture.root.sessionLayoutStore.splitFocused("alpha", "x");
+      fixture.root.navigationStore.selectProjectSession("alpha");
+    });
+    const draft =
+      fixture.root.cakeChatCollectionStore.registry.find(sessionId)!.conversationSessionStore
+        .composerStore.draftStore;
+    const before = draft.focusRequestRevision;
+    open.mockClear();
+    await fixture.user.click(screen.getByRole("button", { name: "Open Project Chat for alpha" }));
+    expect(open).toHaveBeenCalledOnce();
+    // Electron covers actual input focus; this regression owns the async request timing.
+    expect(draft.focusRequestRevision).toBe(before + 1);
+    const otherInput = screen.getByRole("combobox", { name: "Message" });
+    await fixture.user.click(otherInput);
+    await fixture.user.type(otherInput, "Keep typing here");
+    await act(async () => {
+      finishOpen();
+      await opened;
+    });
+    expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
+    expect(otherInput).toHaveProperty("value", "Keep typing here");
+    expect(draft.focusRequestRevision).toBe(before + 1);
+  });
+
   it.each(["beta", CAKE_CHAT_SESSION_ID])(
     "opens an exact original outside the visible projection for %s without switching its Pi branch",
     async (sessionId) => {

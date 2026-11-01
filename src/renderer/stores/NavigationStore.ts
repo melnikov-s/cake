@@ -440,13 +440,17 @@ export class NavigationStore extends Store<{
     this.props.shell.selectWorkspace(
       isProjectChatSessionId(sessionId) ? "project-sessions" : "cake-chat",
     );
-    await this.props.cakeChat().openSession(sessionId);
+    const collection = this.props.cakeChat();
+    if (!collection.hydrated) await collection.initialize();
+    // Opening selects the pane synchronously once initialized. Focus belongs to that
+    // navigation, not the backend completion, which may arrive after the user moves on.
+    const opening = collection.openSession(sessionId);
     this.commitCakeChatSelection(sessionId);
     this.presentation.restore();
-    this.props
-      .cakeChat()
-      .registry.find(sessionId)
+    collection.registry
+      .find(sessionId)
       ?.conversationSessionStore.composerStore.draftStore.requestFocus();
+    await opening;
   }
 
   async startCakeChat(prompt?: string) {
