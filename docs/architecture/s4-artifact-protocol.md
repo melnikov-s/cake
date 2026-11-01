@@ -35,9 +35,13 @@ by default, with a Collapse/Expand control and no separate
 Creating or updating an artifact refreshes the catalog without opening a browsing
 surface. Cake Chat and Project Session headers use the same `ArtifactCatalogMenu`
 popover. Both headers show their linked-artifact count and effective session/family
-list. Selecting a list item closes the popover and opens that artifact directly in
-fullscreen at the linked revision, with the existing conversation side chat and
-artifact context. The global artifact menu also opens selections in fullscreen.
+list. Selecting a list item or opening a prose artifact link opens only that artifact
+in the conversation’s shared resizable accessory pane, replacing to-dos or side chat
+without opening the library. Pinned/exact references retain their revision; stable
+references follow latest. The pane header’s fullscreen action expands the same live
+content, preserving scroll and iframe/editor state; exiting fullscreen returns it to
+the pane. Both views retain the existing conversation and artifact context. The global
+artifact menu outside a conversation still opens selections in fullscreen.
 The presentation belongs to its conversation and closes on navigation.
 A message sent from an artifact sets that conversation's artifact target for the
 message and subsequent messages until a new user message is sent outside that

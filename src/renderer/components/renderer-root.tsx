@@ -47,11 +47,7 @@ export const RendererRoot = observer(function RendererRoot({
                   openExternalUrl,
                   openArtifact: (reference) => {
                     const { lineageId, revision } = parseArtifactRef(reference);
-                    rootStore.navigationStore.showArtifactLibrary(
-                      activeSessionId,
-                      lineageId,
-                      revision,
-                    );
+                    rootStore.navigationStore.openArtifact(activeSessionId, lineageId, revision);
                   },
                   openSession,
                   openSubagent,
@@ -67,11 +63,7 @@ export const RendererRoot = observer(function RendererRoot({
                       store={rootStore.artifactReferencePreviewStore}
                       children={label}
                       onOpen={(lineageId, revision) =>
-                        rootStore.navigationStore.showArtifactLibrary(
-                          activeSessionId,
-                          lineageId,
-                          revision,
-                        )
+                        rootStore.navigationStore.openArtifact(activeSessionId, lineageId, revision)
                       }
                     />
                   ),

@@ -63,94 +63,98 @@ afterEach(cleanup);
 // Exercises the real host's native frame protocol, not script execution, focus,
 // or actual capture pixels. Those remain native/Electron integration concerns.
 describe("artifact widget state renderer workflow", () => {
-  it("hydrates in the hosting linked session, saves via scoped RPC, and pushes external changes without iframe reload", async () => {
-    let current: ArtifactState = { lineageId, version: 1, value: { scene: "saved" } };
-    const stateRead = vi.fn<Client["artifacts"]["stateRead"]>(async () => current);
-    const catalog = vi.fn<Client["artifacts"]["catalog"]>(async () => ({
-      items: [],
-      offset: 0,
-      limit: 50,
-      total: 0,
-      hasMore: false,
-    }));
-    const stateReplace = vi.fn<Client["artifacts"]["stateReplace"]>(async (input) => {
-      expect(input.sessionId).toBe("viewer");
-      expect(input.lineageId).toBe(lineageId);
-      expect(input.expectedVersion).toBe(current.version);
-      current = { lineageId, version: current.version + 1, value: input.value };
-      return current;
-    });
-    using fixture = createRendererStoreFixture({
-      client: {
-        inlineWidgets: { open: async () => ({ token, url: `cake-widget://document/${token}` }) },
-        artifacts: { stateRead, stateReplace, catalog },
-      },
-    });
-    await using events = artifactObserverWorkflowEvents(fixture.root);
-    using view = renderArtifactStateView(
-      <ArtifactHost
-        record={record}
-        inlineWidgets={fixture.root.inlineWidgetStore}
-        stateSessionId="viewer"
-      />,
-    );
-    await waitFor(() => expect(view.container.querySelector("iframe")).not.toBeNull());
-    expect(stateRead).toHaveBeenCalledWith({ sessionId: "viewer", lineageId }, expect.anything());
-    const frame = view.container.querySelector("iframe")!;
-    const post = vi.spyOn(frame.contentWindow!, "postMessage");
-    const src = frame.src;
-    act(() => {
-      request(frame, "artifact-state-read", { id: "read" });
-    });
-    await waitFor(() =>
-      expect(post).toHaveBeenCalledWith(
-        expect.objectContaining({
-          source: "cake-artifact-host",
-          token,
-          type: "state-result",
-          value: { id: "read", ok: true, state: current },
-        }),
-        "*",
-      ),
-    );
-    act(() => {
-      request(frame, "artifact-state-replace", {
-        id: "save",
-        expectedVersion: 1,
-        value: { scene: "edited" },
+  it.each(["workspace", "side-panel"] as const)(
+    "hydrates %s in the hosting linked session, saves via scoped RPC, and pushes external changes without iframe reload",
+    async (presentation) => {
+      let current: ArtifactState = { lineageId, version: 1, value: { scene: "saved" } };
+      const stateRead = vi.fn<Client["artifacts"]["stateRead"]>(async () => current);
+      const catalog = vi.fn<Client["artifacts"]["catalog"]>(async () => ({
+        items: [],
+        offset: 0,
+        limit: 50,
+        total: 0,
+        hasMore: false,
+      }));
+      const stateReplace = vi.fn<Client["artifacts"]["stateReplace"]>(async (input) => {
+        expect(input.sessionId).toBe("viewer");
+        expect(input.lineageId).toBe(lineageId);
+        expect(input.expectedVersion).toBe(current.version);
+        current = { lineageId, version: current.version + 1, value: input.value };
+        return current;
       });
-    });
-    await waitFor(() => expect(stateReplace).toHaveBeenCalledOnce());
-    await waitFor(() =>
-      expect(post).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "state-result",
-          value: { id: "save", ok: true, state: current },
-        }),
-        "*",
-      ),
-    );
-    current = { lineageId, version: 3, value: { scene: "agent-update" } };
-    await act(() => events.emit({ type: "artifact-state-invalidated", lineageId }));
-    expect(catalog).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(post).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "state", value: current }),
-        "*",
-      ),
-    );
-    current = { lineageId, version: 4, value: { scene: "missed-while-disconnected" } };
-    await act(() => events.emit({ type: "renderer-events-ready", channel: "artifacts" }));
-    await waitFor(() =>
-      expect(post).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "state", value: current }),
-        "*",
-      ),
-    );
-    expect(catalog).toHaveBeenCalled();
-    expect(view.container.querySelector("iframe")).toBe(frame);
-    expect(frame.src).toBe(src);
-  });
+      using fixture = createRendererStoreFixture({
+        client: {
+          inlineWidgets: { open: async () => ({ token, url: `cake-widget://document/${token}` }) },
+          artifacts: { stateRead, stateReplace, catalog },
+        },
+      });
+      await using events = artifactObserverWorkflowEvents(fixture.root);
+      using view = renderArtifactStateView(
+        <ArtifactHost
+          record={record}
+          presentation={presentation}
+          inlineWidgets={fixture.root.inlineWidgetStore}
+          stateSessionId="viewer"
+        />,
+      );
+      await waitFor(() => expect(view.container.querySelector("iframe")).not.toBeNull());
+      expect(stateRead).toHaveBeenCalledWith({ sessionId: "viewer", lineageId }, expect.anything());
+      const frame = view.container.querySelector("iframe")!;
+      const post = vi.spyOn(frame.contentWindow!, "postMessage");
+      const src = frame.src;
+      act(() => {
+        request(frame, "artifact-state-read", { id: "read" });
+      });
+      await waitFor(() =>
+        expect(post).toHaveBeenCalledWith(
+          expect.objectContaining({
+            source: "cake-artifact-host",
+            token,
+            type: "state-result",
+            value: { id: "read", ok: true, state: current },
+          }),
+          "*",
+        ),
+      );
+      act(() => {
+        request(frame, "artifact-state-replace", {
+          id: "save",
+          expectedVersion: 1,
+          value: { scene: "edited" },
+        });
+      });
+      await waitFor(() => expect(stateReplace).toHaveBeenCalledOnce());
+      await waitFor(() =>
+        expect(post).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: "state-result",
+            value: { id: "save", ok: true, state: current },
+          }),
+          "*",
+        ),
+      );
+      current = { lineageId, version: 3, value: { scene: "agent-update" } };
+      await act(() => events.emit({ type: "artifact-state-invalidated", lineageId }));
+      expect(catalog).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(post).toHaveBeenCalledWith(
+          expect.objectContaining({ type: "state", value: current }),
+          "*",
+        ),
+      );
+      current = { lineageId, version: 4, value: { scene: "missed-while-disconnected" } };
+      await act(() => events.emit({ type: "renderer-events-ready", channel: "artifacts" }));
+      await waitFor(() =>
+        expect(post).toHaveBeenCalledWith(
+          expect.objectContaining({ type: "state", value: current }),
+          "*",
+        ),
+      );
+      expect(catalog).toHaveBeenCalled();
+      expect(view.container.querySelector("iframe")).toBe(frame);
+      expect(frame.src).toBe(src);
+    },
+  );
 
   it("rejects messages from another frame or token, and reports save failure without retrying the obsolete value", async () => {
     const stateRead = vi.fn<Client["artifacts"]["stateRead"]>(async () => ({

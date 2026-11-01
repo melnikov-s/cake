@@ -74,6 +74,7 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
     ).toHaveCount(4);
     await popup.getByRole("button", { name: /S4 table/ }).click();
     await expect(popup).not.toBeAttached();
+    await page.getByRole("button", { name: "View S4 table fullscreen" }).click();
     const presentation = page.getByRole("dialog", { name: "S4 table", exact: true });
     await expect(presentation).toBeVisible();
     await expect(page.getByLabel("Search artifact library")).not.toBeAttached();
@@ -154,6 +155,7 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
     const widget = page.locator('[data-artifact-id="cake-s4-widget"]');
     await expect(widget.locator("iframe")).toBeVisible();
     await expect(widget.getByRole("button", { name: "Repair" })).not.toBeAttached();
+    await page.getByRole("button", { name: "View S4 widget fullscreen" }).click();
     const fullscreen = page.getByRole("dialog", { name: "S4 widget", exact: true });
     await expect(fullscreen.locator("iframe")).toBeVisible();
     await fullscreen.getByRole("button", { name: "Exit fullscreen S4 widget" }).click();
@@ -163,14 +165,14 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
     await expect(
       page.locator('[data-artifact-id="cake-s4-diagram"]').getByRole("img"),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Exit fullscreen S4 diagram" }).click();
+    await page.getByRole("button", { name: "Close S4 diagram", exact: true }).click();
     await artifactControl.click();
     await popup.getByRole("button", { name: /Sandboxed HTML/ }).click();
     const html = page.locator('[data-artifact-id="cake-s4-html"] iframe');
     await expect(html).toHaveAttribute("sandbox", "");
     await expect(html).toHaveAttribute("srcdoc", /default-src 'none'/);
     await expect(page.locator("body")).not.toContainText("compromised");
-    await page.getByRole("button", { name: "Exit fullscreen Sandboxed HTML", exact: true }).click();
+    await page.getByRole("button", { name: "Close Sandboxed HTML", exact: true }).click();
     await page.setViewportSize({ width: 700, height: 900 });
     await artifactControl.click();
     await expect(popup).toBeVisible();
@@ -196,7 +198,17 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
     await expect(referencePreview).toHaveAccessibleDescription("cake://artifact/cake-s4-html@r1");
     await expect(page.getByRole("tooltip")).toHaveText("cake://artifact/cake-s4-html@r1");
     await referencePreview.click();
-    await expect(page.getByLabel("Search artifact library")).toBeVisible();
+    await expect(
+      page.getByRole("complementary", { name: "Sandboxed HTML", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Search artifact library")).not.toBeAttached();
+    await page.getByRole("button", { name: "Close Sandboxed HTML", exact: true }).click();
+    await page.getByRole("button", { name: "0 artifacts" }).click();
+    await popup.getByRole("button", { name: "Browse all artifacts" }).click();
+    await page
+      .getByRole("navigation", { name: "Artifact lineages" })
+      .getByRole("button", { name: /Sandboxed HTML/ })
+      .click();
     await page.getByRole("button", { name: "Link to this session", exact: true }).click();
     await expect(page.getByRole("button", { name: "Unlink", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Pin r1", exact: true }).click();
@@ -206,7 +218,7 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
     await linkedControl.click();
     await popup.getByRole("button", { name: /Sandboxed HTML/ }).click();
     await expect(html).toBeVisible();
-    await page.getByRole("button", { name: "Exit fullscreen Sandboxed HTML", exact: true }).click();
+    await page.getByRole("button", { name: "Close Sandboxed HTML", exact: true }).click();
     await linkedControl.click();
     await popup.getByRole("button", { name: "Browse all artifacts" }).click();
     await page

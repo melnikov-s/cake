@@ -55,6 +55,9 @@ export function FullscreenSurface({
       // layout (unit tests) are treated as topmost.
       const topmost = document.elementFromPoint?.(window.innerWidth / 2, window.innerHeight / 2);
       if (topmost && surfaceRef.current && !surfaceRef.current.contains(topmost)) return;
+      // Claim this dismissal before the window-level Escape handler can close
+      // the accessory pane underneath the fullscreen surface as well.
+      event.preventDefault();
       onCloseRef.current();
     };
     document.addEventListener("keydown", onKeyDown);

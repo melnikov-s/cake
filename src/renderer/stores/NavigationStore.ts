@@ -420,12 +420,17 @@ export class NavigationStore extends Store<{
 
   openArtifact(sessionId: string | undefined, lineageId: string, revision?: number) {
     this.commands.dismiss();
+    const session = sessionId
+      ? (this.props.registry.findSession(sessionId) ??
+        this.props.cakeChat().registry.find(sessionId))
+      : undefined;
     this.props
       .artifactMenu()
       .open(
         sessionId,
         decodeArtifactLineageId(lineageId),
         revision === undefined ? undefined : decodeArtifactRevisionNumber(revision),
+        session?.conversationSessionStore.sideChatStore,
       );
   }
 

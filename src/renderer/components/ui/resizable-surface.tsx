@@ -7,9 +7,12 @@ export function ResizableSurface({
   children,
   label,
   renderExpanded,
+  fill = false,
 }: {
   children: ReactNode;
   label: string;
+  /** Fill an accessory pane instead of using an inline height/resize grip. */
+  fill?: boolean;
   renderExpanded?: (targetRef: (node: HTMLDivElement | null) => void) => ReactNode;
 }) {
   const [height, setHeight] = useState(600);
@@ -43,11 +46,15 @@ export function ResizableSurface({
     [move],
   );
   return (
-    <div className="relative min-w-0">
-      <div ref={inline} style={{ height }} />
+    <div className={fill ? "relative h-full min-h-0 min-w-0" : "relative min-w-0"}>
+      <div
+        ref={inline}
+        className={fill ? "h-full min-h-0" : undefined}
+        style={fill ? undefined : { height }}
+      />
       {createPortal(children, mount)}
       {renderExpanded?.(expandedRef)}
-      {!renderExpanded && (
+      {!fill && !renderExpanded && (
         <div className="relative h-7 border-t border-border">
           <ResizeHandle
             label={`Resize ${label}`}

@@ -9,6 +9,7 @@ import type { ChatStore } from "../stores/ChatStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { SideChatContext } from "./side-chat-context";
 import { ProjectTodosPanel } from "./project-todos-panel";
+import { ArtifactMenuSurface } from "./artifact-menu-surface";
 import { ModelSummary } from "./model-summary";
 
 export const SideChatLayout = observer(function SideChatLayout({
@@ -16,14 +17,20 @@ export const SideChatLayout = observer(function SideChatLayout({
   children,
   renderChat,
   hideTodos = false,
+  hideArtifact = false,
 }: {
   store: SideChatStore;
   children: ReactNode;
   renderChat(store: ChatStore): ReactNode;
   /** Workspace chat drawers keep the conversation visible without clearing the to-do selection. */
   hideTodos?: boolean;
+  /** Fullscreen already hosts this artifact; do not recursively render it in its chat drawer. */
+  hideArtifact?: boolean;
 }) {
-  const target = hideTodos && store.target?.todos ? undefined : store.target;
+  const target =
+    (hideTodos && store.target?.todos) || (hideArtifact && store.target?.artifact)
+      ? undefined
+      : store.target;
   const model = target?.model?.();
   return (
     <SideChatContext.Provider value={store}>
@@ -34,7 +41,9 @@ export const SideChatLayout = observer(function SideChatLayout({
         resizeLabel="Resize side chat"
         onWidthChange={(width) => store.setWidth(width)}
         panel={
-          target ? (
+          target?.artifact ? (
+            <ArtifactMenuSurface paneStore={target.artifact} />
+          ) : target ? (
             <SidePanel
               title={target.title}
               eyebrow={target.eyebrow?.()}

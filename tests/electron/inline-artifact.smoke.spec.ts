@@ -55,9 +55,9 @@ for (const theme of ["light", "dark"] as const) {
       });
       await page.getByRole("link", { name: "saved visualization" }).focus();
       await page.getByRole("link", { name: "saved visualization" }).press("Enter");
-      const pane = page.locator('[data-artifact-id="inline-visual"]');
-      await expect(page.getByLabel("Search artifact library")).toBeVisible();
-      await expect(page.getByRole("button", { name: /Historical widget widget/ })).toBeVisible();
+      const pane = page.getByRole("complementary", { name: "Inline visualization", exact: true });
+      await expect(pane).toBeVisible();
+      await expect(page.getByLabel("Search artifact library")).not.toBeAttached();
       await expect(
         page.getByText('Missing key at ["payload"]["browser"]', { exact: false }),
       ).not.toBeVisible();
@@ -68,6 +68,10 @@ for (const theme of ["light", "dark"] as const) {
           .contentFrame()
           .getByRole("heading", { name: "One artifact, two views" }),
       ).toBeVisible();
+      await pane.getByRole("button", { name: "Close Inline visualization" }).click();
+      await page.getByRole("button", { name: "1 artifacts" }).click();
+      await page.getByRole("button", { name: "Browse all artifacts" }).click();
+      await expect(page.getByRole("button", { name: /Historical widget widget/ })).toBeVisible();
       await page.getByRole("button", { name: "Close all artifacts", exact: true }).click();
       const inline = disclosures.first();
       await expect(

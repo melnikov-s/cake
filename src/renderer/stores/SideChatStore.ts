@@ -1,4 +1,5 @@
 import { Store } from "r-state-tree";
+import type { ArtifactMenuStore } from "./ArtifactMenuStore";
 import type { ThinkingLevel } from "../../contracts/conversations/session-contract";
 import type { SideChatMergeStore } from "./SideChatMergeStore";
 import type { ChatStore } from "./ChatStore";
@@ -22,8 +23,9 @@ interface SidePanelTarget {
 
 export type SideChatTarget = SidePanelTarget &
   (
-    | { readonly chatStore: ChatStore; readonly todos?: never }
-    | { readonly chatStore?: never; readonly todos: ProjectTodosStore }
+    | { readonly chatStore: ChatStore; readonly todos?: never; readonly artifact?: never }
+    | { readonly chatStore?: never; readonly todos: ProjectTodosStore; readonly artifact?: never }
+    | { readonly chatStore?: never; readonly todos?: never; readonly artifact: ArtifactMenuStore }
   );
 
 export interface SideChatStoreProps {

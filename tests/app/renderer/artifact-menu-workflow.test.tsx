@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, within, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, within, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Schema } from "effect";
 import {
@@ -15,9 +15,19 @@ import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-cha
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { TestClientOverrides } from "./test-client";
 import type { Client } from "../../../src/renderer/client/Client";
+import { applyDiscussionCatalogUpdate } from "../../../src/renderer/reducers/DiscussionReducer";
+import { applyDiscussionSessionUpdate } from "../../../src/renderer/reducers/ConversationReducer";
+import type { DiscussionThread } from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
 
 beforeEach(() => {
+  // jsdom adapter only; Electron verifies atomic iframe moves.
+  Object.defineProperty(Element.prototype, "moveBefore", {
+    configurable: true,
+    value(this: Element, node: Node, child: Node | null) {
+      this.insertBefore(node, child);
+    },
+  });
   vi.stubGlobal("PointerEvent", MouseEvent);
   Object.defineProperty(SVGElement.prototype, "getBBox", {
     configurable: true,
@@ -33,6 +43,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   Reflect.deleteProperty(SVGElement.prototype, "getBBox");
+  Reflect.deleteProperty(Element.prototype, "moveBefore");
   vi.unstubAllGlobals();
 });
 
@@ -81,49 +92,59 @@ const effective = (sessionId: string, id: string): EffectiveArtifactProjection =
   },
 });
 
-function renderArtifacts(client: TestClientOverrides = {}) {
+function renderArtifacts(
+  client: TestClientOverrides = {},
+  options?: Parameters<typeof renderAppShellNavigation>[1],
+) {
   const readExact = vi.fn<Client["artifacts"]["readExact"]>(async (id, value) =>
     revision(id, value),
   );
-  const fixture = renderAppShellNavigation({
-    ...client,
-    electron: { setFullscreenSurfaceOpen: async () => undefined, ...client.electron },
-    artifacts: {
-      catalog: async () => ({
-        items: [summary("alpha"), summary("cake"), summary("unrelated")],
-        offset: 0,
-        limit: 50,
-        total: 3,
-        hasMore: false,
-      }),
-      effective: async (sessionId) => {
-        const id =
-          sessionId === "alpha" ? "alpha" : sessionId === CAKE_CHAT_SESSION_ID ? "cake" : undefined;
-        return id ? [effective(sessionId, id), effective(sessionId, `${id}-second`)] : [];
+  const fixture = renderAppShellNavigation(
+    {
+      ...client,
+      electron: { setFullscreenSurfaceOpen: async () => undefined, ...client.electron },
+      artifacts: {
+        catalog: async () => ({
+          items: [summary("alpha"), summary("cake"), summary("unrelated")],
+          offset: 0,
+          limit: 50,
+          total: 3,
+          hasMore: false,
+        }),
+        effective: async (sessionId) => {
+          const id =
+            sessionId === "alpha"
+              ? "alpha"
+              : sessionId === CAKE_CHAT_SESSION_ID
+                ? "cake"
+                : undefined;
+          return id ? [effective(sessionId, id), effective(sessionId, `${id}-second`)] : [];
+        },
+        detail: async (id) => ({
+          lineage: summary(id),
+          links:
+            id.startsWith("alpha") || id.startsWith("cake")
+              ? [
+                  {
+                    ...effective(id.startsWith("cake") ? CAKE_CHAT_SESSION_ID : "alpha", id).link,
+                    id: `link-${id}`,
+                  },
+                ]
+              : [],
+          stableRef: summary(id).stableRef,
+        }),
+        history: async ({ lineageId }) => ({
+          items: [revision(lineageId, 2).metadata, revision(lineageId, 1).metadata],
+          offset: 0,
+          limit: 50,
+          total: 2,
+          hasMore: false,
+        }),
+        readExact,
       },
-      detail: async (id) => ({
-        lineage: summary(id),
-        links:
-          id.startsWith("alpha") || id.startsWith("cake")
-            ? [
-                {
-                  ...effective(id.startsWith("cake") ? CAKE_CHAT_SESSION_ID : "alpha", id).link,
-                  id: `link-${id}`,
-                },
-              ]
-            : [],
-        stableRef: summary(id).stableRef,
-      }),
-      history: async ({ lineageId }) => ({
-        items: [revision(lineageId, 2).metadata, revision(lineageId, 1).metadata],
-        offset: 0,
-        limit: 50,
-        total: 2,
-        hasMore: false,
-      }),
-      readExact,
     },
-  });
+    options,
+  );
   return { ...fixture, readExact };
 }
 
@@ -132,9 +153,9 @@ const openMenu = async (fixture: ReturnType<typeof renderArtifacts>) => {
   return screen.getByRole("dialog", { name: "Artifacts" });
 };
 
-describe("Artifact menu fullscreen workflow", () => {
+describe("Artifact accessory workflow", () => {
   it.each(["alpha", "cake"])(
-    "opens %s's pinned artifact directly in fullscreen with exact presentation chat context",
+    "opens %s's pinned artifact in the shared pane, expands and returns with exact chat context",
     async (id) => {
       const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
         TurnId.make(crypto.randomUUID()),
@@ -149,8 +170,13 @@ describe("Artifact menu fullscreen workflow", () => {
       await fixture.user.click(
         within(menu).getByRole("button", { name: new RegExp(`Report ${id} markdown`) }),
       );
+      const pane = await screen.findByRole("complementary", { name: `Report ${id}` });
+      expect(await within(pane).findByText(`${id} body revision 1`)).toBeDefined();
+      expect(screen.queryByRole("dialog", { name: `Report ${id}` })).toBeNull();
+      await fixture.user.click(
+        within(pane).getByRole("button", { name: `View Report ${id} fullscreen` }),
+      );
       const surface = await screen.findByRole("dialog", { name: `Report ${id}` });
-      expect(await within(surface).findByText(`${id} body revision 1`)).toBeDefined();
       expect(screen.queryByRole("dialog", { name: "Artifacts" })).toBeNull();
       expect(screen.queryByRole("textbox", { name: "Search artifact library" })).toBeNull();
       expect(fixture.readExact).toHaveBeenCalledWith(
@@ -181,23 +207,25 @@ describe("Artifact menu fullscreen workflow", () => {
       await fixture.user.click(
         within(surface).getByRole("button", { name: `Exit fullscreen Report ${id}` }),
       );
-      // Closing (even opening a different artifact) must not deliver a context change without a send.
+      expect(within(pane).getByText(`${id} body revision 1`)).toBeDefined();
+      // Expanding/returning and selecting another artifact never sends by itself.
       expect(prompt).toHaveBeenCalledTimes(2);
       const secondMenu = await openMenu(fixture);
       await fixture.user.click(
         within(secondMenu).getByRole("button", { name: new RegExp(`Report ${id}-second`) }),
       );
-      const second = await screen.findByRole("dialog", { name: `Report ${id}-second` });
+      const second = await screen.findByRole("complementary", { name: `Report ${id}-second` });
       expect(await within(second).findByText(`${id}-second body revision 1`)).toBeDefined();
-      await fixture.user.click(within(second).getByRole("button", { name: "Open chat" }));
       expect(prompt).toHaveBeenCalledTimes(2);
-      await send(second, "change this one");
+      await send(document.body, "change this one");
       await waitFor(() => expect(prompt).toHaveBeenCalledTimes(3));
       expect(prompt.mock.calls[2]![0]).toMatchObject({
         artifactPresentation: { sessionId, artifactId: `${id}-second`, revision: 1 },
       });
-      await fixture.user.keyboard("{Escape}");
-      expect(screen.queryByRole("dialog", { name: `Report ${id}-second` })).toBeNull();
+      await fixture.user.click(
+        within(second).getByRole("button", { name: `Close Report ${id}-second` }),
+      );
+      expect(screen.queryByRole("complementary", { name: `Report ${id}-second` })).toBeNull();
       expect(prompt).toHaveBeenCalledTimes(3);
       await send(document.body, "ordinary message");
       await waitFor(() => expect(prompt).toHaveBeenCalledTimes(4));
@@ -209,6 +237,91 @@ describe("Artifact menu fullscreen workflow", () => {
       expect(prompt.mock.calls[4]![0].artifactPresentation).toBeNull();
     },
   );
+
+  it("replaces side chat with an artifact and reopens the same side chat draft from its menu", async () => {
+    using fixture = renderArtifacts({}, { history: ["alpha"] });
+    const thread: DiscussionThread = {
+      id: "discussion",
+      sidecarSessionId: "sidecar",
+      parentSessionId: "alpha",
+      workingDirectory: "/alpha",
+      status: "open",
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+      anchor: {
+        path: "session:alpha",
+        view: "session",
+        start: { diffLine: 0 },
+        end: { diffLine: 0 },
+        selectedText: "",
+        contextBefore: "",
+        contextAfter: "",
+        diff: "",
+      },
+      parts: [
+        {
+          id: "question",
+          kind: "text",
+          role: "user",
+          text: "Review the report",
+          status: "complete",
+        },
+      ],
+    };
+    await act(async () => {
+      applyDiscussionSessionUpdate(
+        fixture.models.discussionConversation("sidecar", "/alpha"),
+        "sidecar",
+        {
+          _tag: "Snapshot",
+          revision: 1,
+          snapshot: {
+            identity: { _tag: "DiscussionSession", sessionId: "sidecar", parentSessionId: "alpha" },
+            conversation: {
+              sessionId: "sidecar",
+              sessionFile: "/sessions/sidecar",
+              parts: thread.parts,
+              models: [],
+              thinkingLevel: "off",
+              availableThinkingLevels: ["off"],
+              streaming: false,
+              diagnostics: [],
+              commands: [],
+              compatibility: { resources: [], diagnostics: [] },
+              extensionUi: { statuses: [] },
+              tree: [],
+            },
+          },
+        },
+      );
+      applyDiscussionCatalogUpdate(fixture.models.discussionCatalog("alpha"), "alpha", {
+        _tag: "Snapshot",
+        revision: 1,
+        parentSessionId: "alpha",
+        threads: [thread],
+      });
+    });
+    const openSideChat = async () => {
+      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+      await fixture.user.click(screen.getByRole("button", { name: /Review the report/ }));
+      return screen.getByRole("complementary", { name: "Side chat" });
+    };
+    const chat = await openSideChat();
+    await fixture.user.type(
+      within(chat).getByRole("combobox", { name: "Reply to side chat" }),
+      "Keep this draft",
+    );
+    const menu = await openMenu(fixture);
+    await fixture.user.click(within(menu).getByRole("button", { name: /Report alpha markdown/ }));
+    expect(await screen.findByRole("complementary", { name: "Report alpha" })).toBeDefined();
+    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
+    const reopened = await openSideChat();
+    expect(within(reopened).getByRole("combobox", { name: "Reply to side chat" })).toHaveProperty(
+      "value",
+      "Keep this draft",
+    );
+    expect(screen.queryByRole("complementary", { name: "Report alpha" })).toBeNull();
+  });
 
   it.each(["alpha", "cake"])("keeps %s's explicit library-browsing action", async (id) => {
     using fixture = renderArtifacts();
@@ -238,10 +351,8 @@ describe("Artifact menu fullscreen workflow", () => {
       await fixture.user.click(
         within(menu).getByRole("button", { name: new RegExp(`Report ${id} markdown`) }),
       );
-      const surface = await screen.findByRole("dialog", { name: `Report ${id}` });
-      await fixture.user.click(
-        within(surface).getByRole("button", { name: `Exit fullscreen Report ${id}` }),
-      );
+      const surface = await screen.findByRole("complementary", { name: `Report ${id}` });
+      await fixture.user.click(within(surface).getByRole("button", { name: `Close Report ${id}` }));
       expect(prompt).not.toHaveBeenCalled();
       // Only the backend's sent history can decide whether this candidate clears a target.
       const input = await screen.findByRole("combobox", { name: /^Message/ });
@@ -277,16 +388,16 @@ describe("Artifact menu fullscreen workflow", () => {
     expect(await screen.findByRole("textbox", { name: "Search artifact library" })).toBeDefined();
   });
 
-  it("closes fullscreen on conversation navigation without carrying selection into another session", async () => {
+  it("closes the artifact pane on conversation navigation without carrying selection into another session", async () => {
     using fixture = renderArtifacts();
     await fixture.user.click(screen.getByRole("button", { name: /^alpha conversation / }));
     const menu = await openMenu(fixture);
     await fixture.user.click(within(menu).getByRole("button", { name: /Report alpha markdown/ }));
-    const surface = await screen.findByRole("dialog", { name: "Report alpha" });
+    const surface = await screen.findByRole("complementary", { name: "Report alpha" });
     expect(await within(surface).findByText("alpha body revision 1")).toBeDefined();
     // Cross-conversation navigation can also originate in fullscreen side chat.
     await fixture.user.click(screen.getByRole("button", { name: "Cake Chat" }));
     expect(await screen.findByRole("button", { name: "2 artifacts" })).toBeDefined();
-    expect(screen.queryByRole("dialog", { name: "Report alpha" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Report alpha" })).toBeNull();
   });
 });

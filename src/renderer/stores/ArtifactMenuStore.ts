@@ -4,9 +4,10 @@ import type {
   ArtifactRevisionNumber,
 } from "../../contracts/artifacts/artifact-lineage";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
+import type { SideChatStore } from "./SideChatStore";
 import { ArtifactDetailStore } from "./ArtifactDetailStore";
 
-/** Window-local fullscreen selection from the artifact menus. */
+/** Window-local artifact selection, hosted in the conversation accessory or global fullscreen. */
 export class ArtifactMenuStore extends Store<{
   model: ArtifactCatalog;
   currentSessionId(): string | undefined;
@@ -15,6 +16,7 @@ export class ArtifactMenuStore extends Store<{
 }> {
   sessionId: string | undefined;
   visible = false;
+  pane: SideChatStore | undefined;
 
   constructor(props: ArtifactMenuStore["props"]) {
     super(props);
@@ -37,7 +39,10 @@ export class ArtifactMenuStore extends Store<{
     sessionId: string | undefined,
     lineageId: ArtifactLineageId,
     revision?: ArtifactRevisionNumber,
+    pane?: SideChatStore,
   ) {
+    this.pane = pane;
+    pane?.open({ key: "artifact", title: "Artifact", artifact: this });
     this.sessionId = sessionId;
     this.visible = true;
     void this.detailStore.select(lineageId, revision);
@@ -51,6 +56,8 @@ export class ArtifactMenuStore extends Store<{
   }
 
   close() {
+    if (this.pane?.target?.artifact === this) this.pane.close();
+    this.pane = undefined;
     this.visible = false;
     this.sessionId = undefined;
   }

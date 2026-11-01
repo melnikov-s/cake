@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Markdown, fencedCode } from "@/components/ai-elements/markdown";
 import { ArtifactPresentationSurface } from "./artifact-presentation-surface";
+import { SidePanel } from "./ui/side-panel";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { ResizableSurface } from "@/components/ui/resizable-surface";
 import { observer } from "r-state-tree/react";
@@ -18,7 +19,7 @@ import type { MessageBoardStore } from "../stores/MessageBoardStore";
 
 interface ArtifactHostProps {
   record: ArtifactRecord;
-  presentation?: "workspace" | "inline" | "fullscreen";
+  presentation?: "workspace" | "inline" | "fullscreen" | "side-panel";
   onClose?(): void;
   wrapContent?(content: ReactNode): ReactNode;
   inlineWidgets?: InlineWidgetStore;
@@ -41,7 +42,7 @@ export const ArtifactHost = observer(function ArtifactHost({
   const [fullscreen, setFullscreen] = useState(false);
   const closeFullscreen = () => {
     setFullscreen(false);
-    onClose?.();
+    if (presentation !== "side-panel") onClose?.();
   };
   const title = artifact.title ?? artifact.id;
 
@@ -73,6 +74,61 @@ export const ArtifactHost = observer(function ArtifactHost({
       {artifact.kind === "file" ? <FileArtifact artifact={artifact} /> : null}
     </>
   );
+
+  if (presentation === "side-panel") {
+    const canvas = artifact.kind === "widget" || artifact.kind === "html";
+    const content =
+      artifact.kind === "widget" ? (
+        <WidgetArtifact
+          artifact={artifact}
+          stateSessionId={stateSessionId}
+          inlineWidgets={inlineWidgets}
+          fill
+        />
+      ) : (
+        renderArtifact(true)
+      );
+    return (
+      <SidePanel
+        title={title}
+        onClose={() => onClose?.()}
+        headerActions={
+          <FullscreenButton
+            label={`View ${title} fullscreen`}
+            onClick={() => setFullscreen(true)}
+          />
+        }
+      >
+        <ResizableSurface
+          label={title}
+          fill
+          renderExpanded={
+            fullscreen
+              ? (targetRef) => (
+                  <ArtifactPresentationSurface
+                    record={record}
+                    sessionId={stateSessionId}
+                    onClose={closeFullscreen}
+                  >
+                    <div ref={targetRef} className="h-full min-h-0 w-full" />
+                  </ArtifactPresentationSurface>
+                )
+              : undefined
+          }
+        >
+          <article
+            className={
+              canvas ? "h-full min-h-0 overflow-hidden" : "h-full min-h-0 overflow-auto p-4"
+            }
+            data-artifact-id={artifact.id}
+            data-artifact-kind={artifact.kind}
+          >
+            {wrapContent ? wrapContent(content) : content}
+          </article>
+        </ResizableSurface>
+      </SidePanel>
+    );
+  }
 
   if (presentation === "fullscreen") {
     const content =

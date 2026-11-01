@@ -1666,6 +1666,11 @@ export default function Visual() {
         .getByRole("dialog", { name: "Artifacts", exact: true })
         .getByRole("button", { name: /Inline visualization/ })
         .click();
+      const accessory = page.getByRole("complementary", {
+        name: "Inline visualization",
+        exact: true,
+      });
+      await accessory.getByRole("button", { name: "View Inline visualization fullscreen" }).click();
       const pane = page.getByRole("dialog", { name: "Inline visualization", exact: true });
       await expect(pane).toBeVisible();
       await expect(
@@ -3827,8 +3832,8 @@ const incomingTaskSectionsScenario: VisualCaptureScenario = {
 
 const cakeChatArtifactScenario: VisualCaptureScenario = {
   name: "cake-chat-artifact",
-  description: "Cake Chat session-scoped artifacts opening directly in fullscreen",
-  states: ["default"],
+  description: "Cake Chat artifact in the shared accessory pane, with optional fullscreen",
+  states: ["default", "fullscreen"],
   async seed(paths, theme) {
     await cakeChatScenario.seed(paths, theme);
     for (const [id, sessionId] of [
@@ -3846,7 +3851,13 @@ const cakeChatArtifactScenario: VisualCaptureScenario = {
           title: id === "coordinator-report" ? "Coordinator report" : "Unrelated project report",
           payload: {
             markdown:
-              "## Session artifact\n\nThis report belongs to this conversation.\n\n- Keep the conversation visible.\n- Open the library only when browsing all artifacts.",
+              "## Session artifact\n\nThis report belongs to this conversation.\n\n- Keep the conversation visible.\n- Open the library only when browsing all artifacts.\n\n" +
+              Array.from(
+                { length: 30 },
+                (_, index) =>
+                  `### Section ${index + 1}\n\nReport details remain readable in the accessory pane and fullscreen.`,
+              ).join("\n\n") +
+              "\n\n## Report conclusion\n\nEnd of the report.",
           },
           fallback: { markdown: "A session-scoped report." },
         },
@@ -3854,7 +3865,7 @@ const cakeChatArtifactScenario: VisualCaptureScenario = {
       );
     }
   },
-  async prepare(page) {
+  async prepare(page, state) {
     await cakeChatScenario.prepare(page, "default");
     await page.getByRole("button", { name: "1 artifacts" }).click();
     const menu = page.getByRole("dialog", { name: "Artifacts", exact: true });
@@ -3862,8 +3873,15 @@ const cakeChatArtifactScenario: VisualCaptureScenario = {
       menu.getByRole("navigation", { name: "Artifact list" }).getByRole("button"),
     ).toHaveCount(1);
     await menu.getByRole("button", { name: /Coordinator report/ }).click();
-    const surface = page.getByRole("dialog", { name: "Coordinator report", exact: true });
+    const surface = page.getByRole("complementary", { name: "Coordinator report", exact: true });
     await expect(surface).toBeVisible();
+    if (state === "fullscreen") {
+      await surface.getByRole("button", { name: "View Coordinator report fullscreen" }).click();
+      await expect(
+        page.getByRole("dialog", { name: "Coordinator report", exact: true }),
+      ).toBeVisible();
+      return;
+    }
     await expect(
       surface.getByRole("heading", { name: "Session artifact", exact: true }),
     ).toBeVisible();

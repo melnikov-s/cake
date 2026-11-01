@@ -52,7 +52,7 @@ afterEach(() => {
 });
 
 // Supersedes artifact-reference-preview.test.tsx's isolated Store/client casts. These journeys
-// run Markdown -> reference preview -> real navigation/library/detail Models and Stores. Restore
+// run Markdown -> reference preview -> real accessory navigation/detail Models and Stores. Restore
 // conflicts are already covered by artifact-library-workflow.test.tsx and are not duplicated here.
 // jsdom proves service payloads/rendered results, not native links, focus or portal behavior.
 describe("Artifact reference workflow", () => {
@@ -88,18 +88,17 @@ describe("Artifact reference workflow", () => {
     expect(metadata).toHaveBeenCalledOnce();
     await fixture.user.click(screen.getByRole("link", { name: "Custom report label" }));
     expect(await screen.findByText("report content r1")).toBeDefined();
-    expect(screen.getByText("Revision 1 of 2 · Historical revision")).toBeDefined();
+    expect(screen.getByRole("complementary", { name: "Quarterly report" })).toBeDefined();
+    expect(screen.queryByRole("textbox", { name: "Search artifact library" })).toBeNull();
     expect(readExact).toHaveBeenLastCalledWith(
       "report",
       1,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    await fixture.user.selectOptions(
-      screen.getByRole("combobox", { name: "Selected artifact revision" }),
-      "2",
-    );
+    await fixture.user.click(screen.getByRole("button", { name: "Close Quarterly report" }));
+    await fixture.receiveTranscript("cake://artifact/report");
+    await fixture.user.click(await screen.findByRole("link", { name: "Quarterly report" }));
     expect(await screen.findByText("report content r2")).toBeDefined();
-    expect(screen.getByText("Revision 2 of 2 · Latest")).toBeDefined();
   });
 
   it("keeps a reference readable and able to open its exact destination after metadata fails", async () => {
@@ -117,7 +116,7 @@ describe("Artifact reference workflow", () => {
     await fixture.publishArtifactsChanged();
     await fixture.user.click(await screen.findByRole("link", { name: "Quarterly report" }));
     expect(await screen.findByText("report content r1")).toBeDefined();
-    expect(screen.getByText("Revision 1 of 2 · Historical revision")).toBeDefined();
+    expect(screen.getByRole("complementary", { name: "Quarterly report" })).toBeDefined();
   });
 
   it("refreshes external titles, keeps exact destinations pinned and rejects superseded metadata", async () => {
@@ -190,7 +189,9 @@ describe("Artifact reference workflow", () => {
       .mockRejectedValueOnce(new Error("Appendix link unavailable"))
       .mockReturnValueOnce(late.promise);
     using fixture = renderArtifactReferences(reportRef, { link });
-    await fixture.user.click(await screen.findByRole("link", { name: "Quarterly report" }));
+    await fixture.user.click(await screen.findByRole("button", { name: "0 artifacts" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browse all artifacts" }));
+    await fixture.user.click(screen.getByRole("button", { name: /Quarterly report/ }));
     await fixture.user.click(await screen.findByRole("button", { name: "Link to this session" }));
     expect(await screen.findByText("Report link unavailable")).toBeDefined();
     expect(link).toHaveBeenLastCalledWith(
