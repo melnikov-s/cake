@@ -138,9 +138,22 @@ for (const global of [false, true]) {
         }
       };
       expect(expanded()).toEqual(["true", "true", "true"]);
+      const navigation = transcript.getAllByRole("button", { name: "Show in To-do: Task A" })[0]!;
+      act(() => store.setQuery("not a matching task"));
+      await u.click(navigation);
+      expect(store.visible).toBe(true);
+      expect(store.inspectedItemId).toBe(a);
+      expect(store.query).toBe("");
+      expect(store.selectedItem).toBeUndefined();
+      expect(mutations).toEqual([]);
+      expect(expanded()).toEqual(["true", "true", "true"]);
       await u.click(headingA()[0]!);
       expect(expanded()).toEqual(["false", "true", "true"]);
       expect(transcript.queryByText("a1-answer", { exact: true })).toBeNull();
+      await u.click(navigation);
+      expect(expanded()).toEqual(["false", "true", "true"]);
+      expect(store.selectedItem).toBeUndefined();
+      expect(mutations).toEqual([]);
       expect(transcript.getByText("a2-answer", { exact: true })).toBeDefined();
       await u.click(panel.getByRole("button", { name: "Task B" }));
       expect(store.selectedItem?.id).toBe(b);
@@ -318,7 +331,11 @@ it("interrupts source rows without changing the discussion or borrowing pane sel
     const rail = (id: string) => row(id).querySelector('[data-slot="margin-rail"]');
     const headings = () => screen.getAllByRole("button", { name: /^Task [AB]$/ });
     expect(session.todos.selectedItem).toBeUndefined();
-    expect(headings().map((h) => h.textContent)).toEqual(["Task A", "Task B", "Task A"]);
+    expect(headings().map((h) => h.getAttribute("aria-label"))).toEqual([
+      "Task A",
+      "Task B",
+      "Task A",
+    ]);
     expect(rail("b-report")).not.toBeNull();
     expect(row("b-report").textContent).toContain("Task B");
     expect(row("b-report").textContent).not.toContain("Task A");

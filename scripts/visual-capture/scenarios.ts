@@ -2952,7 +2952,7 @@ const projectChatTaskRails: VisualCaptureScenario = {
   name: "project-chat-task-rails",
   description:
     "Unbordered task headings, separated message rules, pane inspection and wide widget rule breaks",
-  states: ["wide", "narrow", "widget", "return", "pane", "focused", "focused-return"],
+  states: ["wide", "narrow", "collapsed", "widget", "return", "pane", "focused", "focused-return"],
   async seed(paths, theme) {
     await projectChatTodos.seed(paths, theme);
     const file = join(paths.cakeHome, "state", "application.json");
@@ -3054,6 +3054,11 @@ const projectChatTaskRails: VisualCaptureScenario = {
     expect(await transcript.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true,
     );
+    if (state === "collapsed") {
+      const disclosure = transcript.getByRole("button", { name: taskTitle, exact: true }).first();
+      await disclosure.click();
+      await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    }
     if (state === "widget") {
       const widget = page.locator('[data-slot="artifact-disclosure"]').first();
       await widget.scrollIntoViewIfNeeded();

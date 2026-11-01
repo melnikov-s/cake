@@ -217,7 +217,7 @@ in the shared fullscreen preview; non-image attachments retain labels. Thumbnail
 are renderer presentation only: Cake Chat still admits opaque input references,
 not image payloads, to its model context.
 
-[`MarginRail`](../../src/renderer/components/ui/margin-rail.tsx) renders an unbordered task heading above its messages at every width, outdented up to 6rem from the centered message column, bounded by the transcript's safe left inset. The continuation rule begins below the complete title heading, including wrapped text, and task switches leave a gap in the rule. Rich artifact/widget rows break the rule, not the heading. Each heading is a keyboard-operable disclosure for its contiguous stretch, with `aria-expanded`. The inspect action opens the existing To-do pane without selecting next-message context.
+[`MarginRail`](../../src/renderer/components/ui/margin-rail.tsx) renders an unbordered task heading above its messages at every width, outdented up to 6rem from the centered message column, bounded by the transcript's safe left inset. The continuation rule begins below the complete title heading, including wrapped text, and task switches leave a gap in the rule. Rich artifact/widget rows break the rule, not the heading. Each heading has sibling keyboard-operable actions: the content-sized title opens the existing To-do pane without selecting next-message context or folding the conversation; the remaining space and far-right chevron toggle its contiguous stretch, with `aria-expanded`. The leading done/open status is read-only.
 
 [`SelectionBar`](../../src/renderer/components/ui/selection-bar.tsx) shows compact, truncating selection context and an accessible clear action beneath a surface header, outside its scrolling content.
 

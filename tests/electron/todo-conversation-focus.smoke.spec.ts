@@ -52,8 +52,54 @@ for (const global of [false, true])
       await page.setViewportSize({ width: 1800, height: 3000 });
       const pane = page.locator('[data-slot="session-pane"]');
       const transcript = pane.locator(".transcript").last();
-      await pane.getByRole("button", { name: "To-do", exact: true }).click();
       const panel = page.getByRole("complementary", { name: "To-do" });
+      const firstLabel = transcript.locator('[data-slot="task-section-label"]').first();
+      const title = firstLabel.getByText(titleA, { exact: true });
+      const toggle = firstLabel.getByRole("button", { name: titleA, exact: true });
+      // The actual title, not a trailing icon, reveals the existing pane without folding.
+      await title.click();
+      await expect(panel).toBeVisible();
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+      await expect(panel.getByRole("button", { name: titleA, exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      const navigation = firstLabel.getByRole("button", {
+        name: `Show in To-do: ${titleA}`,
+        exact: true,
+      });
+      await expect(navigation).toHaveText(titleA);
+      expect(await firstLabel.locator("button button, button a, a button").count()).toBe(0);
+      const chevron = toggle.locator("svg");
+      await expect(chevron).not.toHaveClass(/-rotate-90/);
+      // Blank space belongs to the sibling disclosure, not the title's hit area.
+      const labelBounds = (await firstLabel.boundingBox())!;
+      const titleBounds = (await navigation.boundingBox())!;
+      const toggleBounds = (await toggle.boundingBox())!;
+      const iconBounds = (await chevron.boundingBox())!;
+      expect(toggleBounds.x - titleBounds.x - titleBounds.width).toBeLessThanOrEqual(8);
+      expect(toggleBounds.x + toggleBounds.width).toBeCloseTo(labelBounds.x + labelBounds.width, 0);
+      expect(iconBounds.x + iconBounds.width).toBeGreaterThan(
+        labelBounds.x + labelBounds.width - 12,
+      );
+      expect(toggleBounds.width).toBeGreaterThan(40);
+      await toggle.click({ position: { x: 8, y: toggleBounds.height / 2 } });
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await expect(chevron).toHaveClass(/-rotate-90/);
+      await expect(
+        transcript.getByText("Investigate slow project startup.", { exact: true }),
+      ).toHaveCount(0);
+      // Navigation is independent even while folded and with the pane closed.
+      await pane.getByRole("button", { name: "To-do", exact: true }).click();
+      await expect(panel).toHaveCount(0);
+      await navigation.press("Enter");
+      await expect(panel).toBeVisible();
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await navigation.press("Space");
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await chevron.click();
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+      await expect(chevron).not.toHaveClass(/-rotate-90/);
       const selectA = panel.getByRole("button", { name: titleA, exact: true });
       const selectB = panel.getByRole("button", { name: titleB, exact: true });
       const headingsA = transcript.getByRole("button", { name: titleA, exact: true });

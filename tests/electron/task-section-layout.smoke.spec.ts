@@ -63,6 +63,14 @@ for (const theme of ["dark", "light"] as const)
           const paneBounds = (await transcript.boundingBox())!;
           const labelBounds = (await label.boundingBox())!;
           const rowBounds = (await row.boundingBox())!;
+          const disclosure = label.locator('[data-slot="task-section-disclosure"]');
+          const disclosureBounds = (await disclosure.boundingBox())!;
+          const titleBounds = (await title.boundingBox())!;
+          expect(disclosureBounds.x + disclosureBounds.width).toBeCloseTo(
+            labelBounds.x + labelBounds.width,
+            0,
+          );
+          expect(titleBounds.x + titleBounds.width).toBeLessThanOrEqual(disclosureBounds.x);
           const railBounds = (await row.locator('[data-slot="margin-rail"]').boundingBox())!;
           const messageBounds = (await row.locator('[data-slot="message"]').boundingBox())!;
           expect(labelBounds.x).toBeGreaterThanOrEqual(paneBounds.x);

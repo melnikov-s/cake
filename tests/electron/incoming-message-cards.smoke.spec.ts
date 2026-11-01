@@ -153,6 +153,7 @@ for (const theme of ["dark", "light"] as const)
       await sourceToggle.focus();
       await sourceToggle.press("Enter");
       const rail = page.getByTitle("Show in To-do: Fix the flaky build").last();
+      const doneStatus = rail.locator("..").getByRole("img", { name: "Done", exact: true });
       await rail.click();
       const panel = page.getByRole("complementary", { name: "To-do" });
       await expect(
@@ -160,7 +161,7 @@ for (const theme of ["dark", "light"] as const)
       ).toHaveAttribute("aria-pressed", "false");
       await panel.getByRole("button", { name: "Mark done: Fix the flaky build" }).click();
       await page.getByRole("button", { name: "Close To-do" }).click();
-      await expect(rail).toHaveAttribute("aria-description", "Done");
+      await expect(doneStatus).toBeVisible();
       await toggle(batch).click();
       await expect(batch.getByText(/Draft ready for review/).last()).toBeVisible();
       await toggle(batch).click();
@@ -171,7 +172,7 @@ for (const theme of ["dark", "light"] as const)
       await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
       await expect(report).toBeVisible();
       await expect(sourceToggle).toHaveAttribute("aria-expanded", "false");
-      await expect(rail).toHaveAttribute("aria-description", "Done");
+      await expect(doneStatus).toBeVisible();
       const titleLinkAfterReload = source.getByRole("link", {
         name: "Fix the flaky build",
         exact: true,

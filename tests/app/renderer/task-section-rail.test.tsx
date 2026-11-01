@@ -50,9 +50,7 @@ it("updates a section's title and completion live and inspects it without select
   try {
     const section = screen.getByRole("region", { name: "Conversation section" });
     expect(within(section).getAllByRole("button")).toHaveLength(2);
-    expect(
-      within(section).getByRole("button", { name: item.title }).getAttribute("aria-description"),
-    ).toBe("Open");
+    expect(within(section).getByRole("img", { name: "Open" })).toBeDefined();
     act(() =>
       applySnapshot(fixture.models.projects, {
         projects: [
@@ -71,9 +69,7 @@ it("updates a section's title and completion live and inspects it without select
         projects: [project({ ...item, state: "done", status: "Verified", revision: 2 })],
       }),
     );
-    expect(
-      within(section).getByRole("button", { name: item.title }).getAttribute("aria-description"),
-    ).toBe("Done");
+    expect(within(section).getByRole("img", { name: "Done" })).toBeDefined();
     expect(within(section).getAllByRole("button")).toHaveLength(2);
     await userEvent
       .setup()

@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
-import { CheckIcon, ChevronIcon, CircleIcon, InspectIcon } from "./icons";
+import { CheckIcon, ChevronIcon, CircleIcon } from "./icons";
 import { IconButton } from "./icon-button";
 
 /** An unbordered task heading above the section's message rule. */
@@ -38,34 +38,40 @@ export function MarginRail({
           data-slot="task-section-label"
           // Keep a modest outdent from the message column, bounded by the
           // transcript inset when the pane is narrow.
-          className="col-start-1 row-start-1 mb-3 ml-[clamp(-6rem,calc((100%_-_100cqw)/2_+_1.5rem),-0.75rem)] flex min-w-0 items-start gap-1"
+          className="col-start-1 row-start-1 mb-3 ml-[clamp(-6rem,calc((100%_-_100cqw)/2_+_1.5rem),-0.75rem)] flex min-w-0 items-start"
         >
+          <span
+            role="img"
+            aria-label={done ? "Done" : "Open"}
+            className={cn(
+              "mt-1.5 mr-2 ml-1 shrink-0 text-muted-foreground [&_svg]:size-3.5",
+              done && "text-success",
+            )}
+          >
+            {done ? <CheckIcon /> : <CircleIcon />}
+          </span>
           <Button
-            data-slot="task-section-disclosure"
             variant="ghost"
             size="sm"
-            onClick={onToggle}
-            title={title}
-            aria-expanded={expanded}
-            aria-description={done ? "Done" : "Open"}
-            className="h-auto max-w-full items-start justify-start gap-2 whitespace-normal px-1 py-1 text-left leading-snug"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpen();
+            }}
+            title={`Show in To-do: ${title}`}
+            aria-label={`Show in To-do: ${title}`}
+            className="h-auto min-w-0 justify-start whitespace-normal px-0 py-1 text-left leading-snug hover:bg-transparent hover:underline"
           >
-            <ChevronIcon
-              className={cn("mt-1 shrink-0 text-muted-foreground", !expanded && "-rotate-90")}
-            />
-            {done ? (
-              <span className="mt-0.5 shrink-0 text-success [&_svg]:size-3.5">
-                <CheckIcon />
-              </span>
-            ) : (
-              <span className="mt-0.5 shrink-0 [&_svg]:size-3.5">
-                <CircleIcon />
-              </span>
-            )}
             <span className="min-w-0 wrap-anywhere">{title}</span>
           </Button>
-          <IconButton tooltip={`Show in To-do: ${title}`} onClick={onOpen}>
-            <InspectIcon />
+          <IconButton
+            data-slot="task-section-disclosure"
+            tooltip={`${expanded ? "Collapse" : "Expand"} conversation: ${title}`}
+            ariaLabel={title}
+            aria-expanded={expanded}
+            onClick={onToggle}
+            className="flex h-auto min-h-7 w-auto min-w-7 flex-1 self-stretch items-start justify-end px-1 py-1"
+          >
+            <ChevronIcon className={cn("mt-1 shrink-0", !expanded && "-rotate-90")} />
           </IconButton>
         </div>
       )}

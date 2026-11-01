@@ -573,7 +573,7 @@ it.each(chats)(
     expect(screen.getAllByTitle("Show in To-do: Startup findings")).toHaveLength(2);
     await f.clickPane("Mark done", "Startup findings");
     for (const heading of screen.getAllByTitle("Show in To-do: Startup findings"))
-      expect(heading.getAttribute("aria-description")).toBe("Done");
+      expect(within(heading.parentElement!).getByRole("img", { name: "Done" })).toBeDefined();
     expect(f.view.container.querySelectorAll("[data-part-id]")).toHaveLength(messageCount);
     expect(screen.getAllByTitle("Show in To-do: Startup findings")).toHaveLength(2);
 
