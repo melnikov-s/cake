@@ -17,10 +17,12 @@ export function ContextMenu({
   children,
   label,
   items,
+  className,
 }: {
   children: ReactNode;
   label: string;
   items: readonly ContextMenuItem[];
+  className?: string;
 }) {
   const anchor = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -34,10 +36,12 @@ export function ContextMenu({
     <Popover open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
       <div
         ref={anchor}
+        className={className}
         tabIndex={-1}
         onContextMenu={(event) => {
           if (!items.length) return;
           event.preventDefault();
+          event.stopPropagation();
           setPoint({ x: event.clientX, y: event.clientY });
           setOpen(true);
         }}

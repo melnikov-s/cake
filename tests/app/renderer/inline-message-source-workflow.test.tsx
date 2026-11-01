@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import { StoreProvider } from "r-state-tree/react";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { renderTranscriptContent as render } from "./render-transcript-content";
 import userEvent from "@testing-library/user-event";
@@ -339,11 +340,13 @@ describe("exact response presentation", () => {
         },
       });
       const view = render(
-        <Chat
-          store={session.conversationSessionStore.chatStore}
-          compact
-          composerFocusEnabled={false}
-        />,
+        <StoreProvider store={fixture.root}>
+          <Chat
+            store={session.conversationSessionStore.chatStore}
+            compact
+            composerFocusEnabled={false}
+          />
+        </StoreProvider>,
       );
       const user = userEvent.setup();
       const disclosure = view.container.querySelector<HTMLButtonElement>(
@@ -521,11 +524,13 @@ describe("exact response presentation", () => {
     });
     const show = () =>
       render(
-        <Chat
-          store={session.conversationSessionStore.chatStore}
-          compact
-          composerFocusEnabled={false}
-        />,
+        <StoreProvider store={fixture.root}>
+          <Chat
+            store={session.conversationSessionStore.chatStore}
+            compact
+            composerFocusEnabled={false}
+          />
+        </StoreProvider>,
       );
     const user = userEvent.setup();
     let view = show();

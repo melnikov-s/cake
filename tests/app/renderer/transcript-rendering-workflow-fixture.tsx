@@ -44,15 +44,17 @@ export function renderTranscriptRendering(
     kind: "top",
   });
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
-      <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
-        <Chat
-          store={session.conversationSessionStore.chatStore}
-          compact
-          composerFocusEnabled={false}
-        />
-      </StoreProvider>
-    </VirtuosoMockContext.Provider>,
+    <StoreProvider store={fixture.root}>
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+        <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
+          <Chat
+            store={session.conversationSessionStore.chatStore}
+            compact
+            composerFocusEnabled={false}
+          />
+        </StoreProvider>
+      </VirtuosoMockContext.Provider>
+    </StoreProvider>,
   );
   return {
     user,

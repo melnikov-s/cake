@@ -142,7 +142,7 @@ and annotation comments: the same dictation slot, expanding `ComposerInput`, and
 keep voice, text and submit on one centerline. Consumers own labels, draft state,
 submission and dismissal; do not recreate the compact form in a popup.
 
-[`CopyButton`](../../src/renderer/components/ui/copy-button.tsx) copies text on demand with pending and success feedback and delegates errors to its owner. Linked-message views read the complete original across source pages without moving the displayed page.
+[`CopyButton`](../../src/renderer/components/ui/copy-button.tsx) copies text or runs an explicit clipboard action on demand with pending and success feedback and delegates errors to its owner. Linked-message views read the complete original across source pages without moving the displayed page.
 
 [`CopyReferenceButton`](../../src/renderer/components/ui/copy-reference-button.tsx) copies an
 exact attachment link with shared feedback. It never reads message bodies; the parent

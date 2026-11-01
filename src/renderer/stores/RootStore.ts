@@ -391,6 +391,10 @@ export class RootStore extends Store<{
     return Promise.resolve();
   }
 
+  copyImage(dataUrl: string) {
+    return this.client.electron.copyImage(dataUrl, { signal: this.signal });
+  }
+
   openExternalUrl(url: string) {
     return this.client.electron.openExternalUrl(url, { signal: this.signal });
   }

@@ -15,6 +15,8 @@ import { internalInputEntryType } from "../../../src/services/pi/runtime/interna
 import { MarkdownLinkProvider } from "../../../src/renderer/components/ai-elements/markdown";
 import type { TaskInputReference } from "../../../src/contracts/conversations/task-input";
 import type { Client } from "../../../src/renderer/client/Client";
+import { AttachmentReferencePreview } from "../../../src/renderer/components/attachment-reference-preview";
+import { attachmentLink } from "../../../src/contracts/conversations/message-reference";
 import { CakeChatSurface } from "../../../src/renderer/components/cake-chat-surface";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
@@ -27,7 +29,13 @@ import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+import { mockImageClipboard } from "./image-clipboard-fixture";
 
 const pixels = "cGl4ZWxz"; // base64("pixels"), the pasted file's bytes
 const imageSrc = `data:image/png;base64,${pixels}`;
@@ -127,9 +135,11 @@ function mountCakeChat(sessionId: string, client: TestClientOverrides, parts = [
   const view = render(
     <MarkdownLinkProvider actions={{ openSession, openExternalUrl: vi.fn() }}>
       <StoreProvider store={fixture.root}>
-        <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
-          <CakeChatSurface />
-        </VirtuosoMockContext.Provider>
+        <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
+          <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+            <CakeChatSurface />
+          </VirtuosoMockContext.Provider>
+        </StoreProvider>
       </StoreProvider>
     </MarkdownLinkProvider>,
   );
@@ -164,12 +174,14 @@ function mountProjectSession(client: TestClientOverrides) {
   });
   const view = render(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
-      <Chat
-        store={session.conversationSessionStore.chatStore}
-        transcriptBehavior={{ messageReferenceSessionId: sessionId }}
-        embedded
-        composerFocusEnabled={false}
-      />
+      <StoreProvider store={fixture.root}>
+        <Chat
+          store={session.conversationSessionStore.chatStore}
+          transcriptBehavior={{ messageReferenceSessionId: sessionId }}
+          embedded
+          composerFocusEnabled={false}
+        />
+      </StoreProvider>
     </VirtuosoMockContext.Provider>,
   );
   return {
@@ -207,6 +219,109 @@ async function sendScreenshot(container: HTMLElement, text: string) {
   });
   expect(pending.getAttribute("src")).toBe(imageSrc);
 }
+
+it("copies pixels directly from pasted and sent previews and reports a failed fullscreen copy", async () => {
+  const { image } = mockImageClipboard();
+  const copyImage = vi.fn<Client["electron"]["copyImage"]>().mockResolvedValue();
+  const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+    TurnId.make("10000000-0000-4000-8000-000000000001"),
+  );
+  try {
+    using chat = mountCakeChat(CAKE_CHAT_SESSION_ID, {
+      electron: { copyImage, setFullscreenSurfaceOpen: async () => {} },
+      sessionChats: { prompt },
+    });
+    const user = userEvent.setup();
+    fireEvent.paste(screen.getByRole("combobox"), {
+      clipboardData: {
+        getData: () => "",
+        files: [new File(["pixels"], "shot.png", { type: "image/png" })],
+      },
+    });
+    const preview = await screen.findByRole("button", { name: "View shot.png enlarged" });
+    image.decode.mockRejectedValueOnce(new Error("Unsupported image"));
+    fireEvent.contextMenu(preview);
+    await user.click(await screen.findByRole("menuitem", { name: "Copy image" }));
+    await screen.findByText(
+      "Could not copy image: The image is unavailable or its format cannot be decoded.",
+    );
+    expect(copyImage).not.toHaveBeenCalled();
+    fireEvent.contextMenu(preview);
+    await user.click(await screen.findByRole("menuitem", { name: "Copy image" }));
+    await waitFor(() => expect(copyImage).toHaveBeenCalledTimes(1));
+    expect(image.src).toBe(imageSrc);
+    expect(copyImage).toHaveBeenLastCalledWith("data:image/png;base64,encoded", expect.anything());
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() =>
+      expect(chat.view.container.querySelector("[data-part-id] figure img")).not.toBeNull(),
+    );
+    act(() => chat.publish([assistantPart, ...savedContextualUserMessage("", [reference])]));
+    const sent = await screen.findByRole("button", { name: "View shot.png enlarged" });
+    fireEvent.contextMenu(sent);
+    await user.click(await screen.findByRole("menuitem", { name: "Copy image" }));
+    await waitFor(() => expect(copyImage).toHaveBeenCalledTimes(2));
+    await user.click(sent);
+    copyImage.mockRejectedValueOnce(new Error("Clipboard unavailable"));
+    await user.click(screen.getByRole("button", { name: "Copy image" }));
+    await screen.findByText("Could not copy image: Clipboard unavailable");
+    expect(screen.queryByRole("button", { name: "Copied image" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Copy image" }));
+    await screen.findByRole("button", { name: "Copied image" });
+    expect(screen.queryByText("Could not copy image: Clipboard unavailable")).toBeNull();
+  } finally {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  }
+}, 15_000);
+
+it("keeps Copy image and Copy attachment link separate in the original attachment fullscreen", async () => {
+  mockImageClipboard();
+  const user = userEvent.setup();
+  const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+  const copyImage = vi.fn<Client["electron"]["copyImage"]>().mockResolvedValue();
+  using fixture = createRendererStoreFixture({
+    client: {
+      electron: { copyImage, setFullscreenSurfaceOpen: async () => {} },
+      sessionChats: {
+        readAttachment: async () => ({
+          kind: "image",
+          reference,
+          mimeType: "image/png",
+          data: pixels,
+        }),
+      },
+    },
+  });
+  const store = fixture.root.navigationStore.attachmentReferencePreview;
+  let view: ReturnType<typeof render> | undefined;
+  try {
+    await act(() => store.open(CAKE_CHAT_SESSION_ID, reference.id));
+    view = render(
+      <StoreProvider store={fixture.root}>
+        <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
+          <AttachmentReferencePreview store={store} />
+        </StoreProvider>
+      </StoreProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "Copy image" }));
+    await screen.findByRole("button", { name: "Copied image" });
+    expect(copyImage).toHaveBeenCalledExactlyOnceWith(
+      "data:image/png;base64,encoded",
+      expect.anything(),
+    );
+    expect(writeText).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Copy attachment link" }));
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(
+      attachmentLink(CAKE_CHAT_SESSION_ID, reference.id),
+    );
+    expect(copyImage).toHaveBeenCalledTimes(1);
+  } finally {
+    view?.unmount();
+    writeText.mockRestore();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  }
+});
 
 const transcriptImages = (container: HTMLElement) =>
   [...container.querySelectorAll<HTMLImageElement>("[data-part-id] figure img")].map((image) =>

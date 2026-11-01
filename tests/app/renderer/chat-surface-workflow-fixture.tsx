@@ -57,11 +57,13 @@ export function renderChatSurface(
   // Content proof only; native initial bottom alignment is covered in Electron.
   chat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
   const view = render(
-    <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
-        <WorkLogControls store={chat} />
-        <Chat store={chat} compact composerFocusEnabled={false} />
-      </VirtuosoMockContext.Provider>
+    <StoreProvider store={fixture.root}>
+      <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
+        <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+          <WorkLogControls store={chat} />
+          <Chat store={chat} compact composerFocusEnabled={false} />
+        </VirtuosoMockContext.Provider>
+      </StoreProvider>
     </StoreProvider>,
   );
   return {

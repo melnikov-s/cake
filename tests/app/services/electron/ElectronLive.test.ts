@@ -1,4 +1,7 @@
-import { ClientConnectionsLive } from "../../../../src/services/clients/ClientConnections";
+import {
+  ClientConnections,
+  ClientConnectionsLive,
+} from "../../../../src/services/clients/ClientConnections";
 import { EventEmitter } from "node:events";
 import { it } from "@effect/vitest";
 import { Context, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
@@ -19,6 +22,9 @@ const native = vi.hoisted(() => ({
   activations: [] as string[],
   confirm: vi.fn(async () => ({ response: 0 })),
   flushes: 0,
+  fromId: vi.fn(() => undefined as unknown),
+  decodeImage: vi.fn(),
+  writeImage: vi.fn(),
 }));
 vi.mock("electron", () => ({
   BrowserWindow: class extends EventEmitter {
@@ -73,12 +79,12 @@ vi.mock("electron", () => ({
     },
     setApplicationMenu: () => {},
   },
-  nativeImage: {},
-  clipboard: {},
+  nativeImage: { createFromDataURL: native.decodeImage },
+  clipboard: { writeImage: native.writeImage },
   dialog: { showMessageBox: native.confirm },
   Notification: {},
   shell: {},
-  webContents: { fromId: () => undefined },
+  webContents: { fromId: native.fromId },
 }));
 
 const live = makeElectronLive({
@@ -92,9 +98,46 @@ const live = makeElectronLive({
   Layer.provideMerge(Layer.mergeAll(ClientConnectionsLive, ClientEventsLive, ClientWorkspacesLive)),
 );
 
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  native.fromId.mockReset();
+  native.decodeImage.mockReset();
+  native.writeImage.mockReset();
+});
 
 describe("ElectronLive client state", () => {
+  it.effect("copies decoded pixels and reports native failures without writing empty images", () =>
+    Effect.gen(function* () {
+      const context = yield* Layer.build(live);
+      const service = Context.get(context, Electron);
+      const connectionId = Context.get(context, ClientConnections).desktop(42);
+      native.fromId.mockReturnValue({ id: 42, isDestroyed: () => false });
+      const image = { isEmpty: () => false };
+      native.decodeImage.mockReturnValue(image);
+      yield* service.copyImage(connectionId, { dataUrl: "data:image/png;base64,cGl4ZWxz" });
+      expect(native.decodeImage).toHaveBeenCalledWith("data:image/png;base64,cGl4ZWxz");
+      expect(native.writeImage).toHaveBeenCalledExactlyOnceWith(image);
+      native.writeImage.mockClear();
+      native.decodeImage.mockReturnValue({ isEmpty: () => true });
+      const invalid = yield* service
+        .copyImage(connectionId, { dataUrl: "invalid" })
+        .pipe(Effect.flip);
+      expect(invalid.message).toContain("could not be decoded");
+      expect(native.writeImage).not.toHaveBeenCalled();
+      native.decodeImage.mockReturnValue(image);
+      native.writeImage.mockImplementation(() => {
+        throw new Error("Clipboard unavailable");
+      });
+      const failed = yield* service.copyImage(connectionId, { dataUrl: "valid" }).pipe(Effect.flip);
+      expect(failed.message).toBe("Clipboard unavailable");
+      native.fromId.mockReturnValue(undefined);
+      const disconnected = yield* service
+        .copyImage(connectionId, { dataUrl: "valid" })
+        .pipe(Effect.flip);
+      expect(disconnected.message).toBe("Renderer connection is no longer active");
+    }),
+  );
+
   it.effect.each([
     { mode: "background", smoke: "1", activations: [] },
     { mode: "ordinary", smoke: undefined, activations: ["restore", "focus"] },

@@ -1,3 +1,5 @@
+import { useImageCopy } from "@/lib/use-image-copy";
+import { CopyButton } from "./ui/copy-button";
 import { observer } from "r-state-tree/react";
 import type { AttachmentReferencePreviewStore } from "../stores/AttachmentReferencePreviewStore";
 import { attachmentLink } from "../../contracts/conversations/message-reference";
@@ -14,6 +16,9 @@ export const AttachmentReferencePreview = observer(function AttachmentReferenceP
   store: AttachmentReferencePreviewStore;
 }) {
   const content = store.content;
+  const { copy, error: copyError } = useImageCopy(
+    content?.kind === "image" ? `data:${content.mimeType};base64,${content.data}` : "",
+  );
   if (!content || !store.sessionId) return null;
   return (
     <FullscreenSurface
@@ -25,6 +30,7 @@ export const AttachmentReferencePreview = observer(function AttachmentReferenceP
           <span className="font-mono text-xs text-muted-foreground tabular-nums">
             {content.reference.mimeType} · {content.reference.byteLength} bytes
           </span>
+          {content.kind === "image" && <CopyButton label="image" copy={copy} />}
           <CopyReferenceButton
             reference={attachmentLink(store.sessionId, content.reference.id)}
             label="attachment link"
@@ -42,7 +48,9 @@ export const AttachmentReferencePreview = observer(function AttachmentReferenceP
         ) : (
           <ReadableData value={content.text} />
         )}
-        {store.error && <Callout variant="error">{store.error}</Callout>}
+        {(copyError || store.error) && (
+          <Callout variant="error">{copyError || store.error}</Callout>
+        )}
         {content.kind === "text" && (content.offset > 0 || content.nextOffset !== null) && (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border/65 bg-muted/35 px-3 py-2">
             <Button

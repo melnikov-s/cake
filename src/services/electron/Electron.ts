@@ -64,6 +64,10 @@ export interface ElectronService {
     connectionId: number,
     request: Payload<"copy-screen-capture">,
   ) => Effect.Effect<Success<"copy-screen-capture">, ElectronError>;
+  readonly copyImage: (
+    connectionId: number,
+    request: Payload<"copy-image">,
+  ) => Effect.Effect<Success<"copy-image">, ElectronError>;
   readonly finishScreenCapture: (
     connectionId: number,
     request: Payload<"finish-screen-capture">,

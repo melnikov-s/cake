@@ -133,6 +133,7 @@ interface ElectronCommands {
     capture: { image: string; annotationText: string },
     options?: ClientCommandOptions,
   ): Promise<void>;
+  copyImage(dataUrl: string, options?: ClientCommandOptions): Promise<void>;
   finishScreenCapture(
     capture:
       | { image: string; annotationText: string; destination: CaptureResult["destination"] }

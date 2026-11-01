@@ -440,6 +440,7 @@ export const cakeRpcPayloadSchemas = {
   "start-screen-capture": CaptureRouting,
   "screen-capture-state": Schema.Struct({}),
   "copy-screen-capture": Schema.Struct({ image: CaptureImage, annotationText: Schema.String }),
+  "copy-image": Schema.Struct({ dataUrl: bounded(1, 48_000_000) }),
   "finish-screen-capture": Schema.Struct({
     annotationColor: CaptureAnnotationColor,
     capture: Schema.optionalKey(
@@ -906,6 +907,7 @@ export const cakeRpcSuccessSchemas = {
   "start-screen-capture": CaptureCompletion,
   "screen-capture-state": ScreenCaptureSnapshot,
   "copy-screen-capture": Schema.Struct({}),
+  "copy-image": Schema.Struct({}),
   "finish-screen-capture": Schema.Struct({}),
   "choose-project": cakeRpcResultSchemas["project-chosen"],
   "open-external-url": cakeRpcResultSchemas["external-url-opened"],

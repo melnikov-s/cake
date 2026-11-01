@@ -1,3 +1,4 @@
+import { StoreProvider } from "r-state-tree/react";
 /** @vitest-environment jsdom */
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -91,11 +92,13 @@ async function renderComposer(
     selection();
   }
   const view = render(
-    <Chat
-      store={session.conversationSessionStore.chatStore}
-      embedded
-      composerFocusEnabled={false}
-    />,
+    <StoreProvider store={fixture.root}>
+      <Chat
+        store={session.conversationSessionStore.chatStore}
+        embedded
+        composerFocusEnabled={false}
+      />
+    </StoreProvider>,
   );
   return {
     user: userEvent.setup(),

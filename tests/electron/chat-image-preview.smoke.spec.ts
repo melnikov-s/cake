@@ -45,7 +45,33 @@ test("opens attached images fullscreen from the uniform composer tile and from t
       PI_CODING_AGENT_SESSION_DIR: "",
     },
   });
+  let clipboardSaved = false;
   try {
+    await application.evaluate(({ clipboard }) => {
+      const previous = {
+        text: clipboard.readText(),
+        html: clipboard.readHTML(),
+        rtf: clipboard.readRTF(),
+        image: clipboard.readImage(),
+      };
+      Reflect.set(globalThis, "previousImageClipboard", previous);
+    });
+    clipboardSaved = true;
+    const assertCopiedPixels = async () => {
+      const copied = await application.evaluate(({ clipboard }) => {
+        const image = clipboard.readImage();
+        return {
+          size: image.getSize(),
+          pixels: image.toBitmap().toString("base64"),
+          text: clipboard.readText(),
+        };
+      });
+      expect(copied.size).toEqual({ width: 320, height: 20 });
+      expect(Buffer.from(copied.pixels, "base64").every((byte) => byte === 255)).toBe(true);
+      expect(copied.text).toBe("");
+    };
+    const clearClipboard = () =>
+      application.evaluate(({ clipboard }) => clipboard.writeText("not image pixels"));
     const page = await application.firstWindow();
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
@@ -85,6 +111,15 @@ test("opens attached images fullscreen from the uniform composer tile and from t
     await expect
       .poll(() => thumbnail.evaluate((image: HTMLImageElement) => image.naturalWidth))
       .toBe(320);
+    // Right-clicking a pasted preview copies pixels directly, without opening fullscreen.
+    await clearClipboard();
+    await thumbnail.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Copy image" }).click();
+    await expect
+      .poll(() => application.evaluate(({ clipboard }) => clipboard.readImage().isEmpty()))
+      .toBe(false);
+    await assertCopiedPixels();
+    await expect(page.getByRole("dialog", { name: "wide.png", exact: true })).toHaveCount(0);
     // The whole tile is the preview action, not just the thumbnail.
     await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height - 8);
     const fullscreen = page.getByRole("dialog", { name: "wide.png", exact: true });
@@ -96,6 +131,10 @@ test("opens attached images fullscreen from the uniform composer tile and from t
       "src",
       `data:image/png;base64,${imageData}`,
     );
+    await clearClipboard();
+    await fullscreen.getByRole("button", { name: "Copy image", exact: true }).click();
+    await expect(fullscreen.getByRole("button", { name: "Copied image" })).toBeVisible();
+    await assertCopiedPixels();
     await page.keyboard.press("Escape");
     await expect(fullscreen).toHaveCount(0);
     await expect(preview).toBeFocused();
@@ -118,11 +157,23 @@ test("opens attached images fullscreen from the uniform composer tile and from t
     await expect(page.getByRole("button", { name: "Create draft" })).toBeEnabled();
     await page.getByRole("button", { name: "Create draft" }).click();
     await expect(composer).toHaveCount(0);
+    await clearClipboard();
+    await preview.getByRole("img").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Copy image" }).click();
+    await expect
+      .poll(() => application.evaluate(({ clipboard }) => clipboard.readImage().isEmpty()))
+      .toBe(false);
+    await assertCopiedPixels();
     await preview.click();
     await expect(fullscreen).toBeVisible();
     await fullscreen.getByRole("button", { name: "Exit fullscreen wide.png" }).click();
     await expect(fullscreen).toHaveCount(0);
   } finally {
+    if (clipboardSaved)
+      await application.evaluate(({ clipboard }) => {
+        clipboard.write(Reflect.get(globalThis, "previousImageClipboard"));
+        Reflect.deleteProperty(globalThis, "previousImageClipboard");
+      });
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
   }

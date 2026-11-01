@@ -1,3 +1,4 @@
+import { StoreProvider } from "r-state-tree/react";
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VirtuosoMockContext } from "react-virtuoso";
@@ -102,15 +103,17 @@ export function renderConversationSession(
     kind: "top",
   });
   const view = render(
-    // Deterministic virtual-list dimensions let jsdom mount the real transcript controls;
-    // this does not replace the Chat implementation or claim native geometry/focus proof.
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
-      <Chat
-        store={session.conversationSessionStore.chatStore}
-        embedded
-        composerFocusEnabled={false}
-      />
-    </VirtuosoMockContext.Provider>,
+    <StoreProvider store={fixture.root}>
+      // Deterministic virtual-list dimensions let jsdom mount the real transcript controls; // this
+      does not replace the Chat implementation or claim native geometry/focus proof.
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+        <Chat
+          store={session.conversationSessionStore.chatStore}
+          embedded
+          composerFocusEnabled={false}
+        />
+      </VirtuosoMockContext.Provider>
+    </StoreProvider>,
   );
   return {
     sessionId,

@@ -15,6 +15,7 @@ type ElectronOperation = keyof Pick<
   | "start-screen-capture"
   | "screen-capture-state"
   | "copy-screen-capture"
+  | "copy-image"
   | "finish-screen-capture"
   | "choose-project"
   | "open-external-url"
@@ -41,6 +42,7 @@ export const ElectronRpc = RpcGroup.make(
   electronRpc("start-screen-capture"),
   electronRpc("screen-capture-state"),
   electronRpc("copy-screen-capture"),
+  electronRpc("copy-image"),
   electronRpc("finish-screen-capture"),
   electronRpc("choose-project"),
   electronRpc("open-external-url"),

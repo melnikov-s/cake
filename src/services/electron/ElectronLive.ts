@@ -653,6 +653,18 @@ const makeElectronService = (
         catch: electronError,
       }),
     ),
+    copyImage: Effect.fn("Electron.copyImage")((connectionId, request) =>
+      Effect.try({
+        try: () => {
+          requireRendererConnection(connectionId);
+          const image = nativeImage.createFromDataURL(request.dataUrl);
+          if (image.isEmpty()) throw new Error("This image could not be decoded for copying.");
+          clipboard.writeImage(image);
+          return {};
+        },
+        catch: electronError,
+      }),
+    ),
     finishScreenCapture: Effect.fn("Electron.finishScreenCapture")((connectionId, request) =>
       Effect.try({
         try: () => {

@@ -1,3 +1,5 @@
+import { StoreProvider } from "r-state-tree/react";
+import { createRendererStoreFixture } from "../../renderer-store-fixture";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Reasoning } from "../../../../../src/renderer/components/ai-elements/reasoning";
@@ -369,18 +371,21 @@ describe("Cake-owned conversation components", () => {
     expect(text).toContain("ok");
     expect(text).not.toContain("&quot;content&quot;");
 
+    using fixture = createRendererStoreFixture();
     const image = renderToStaticMarkup(
-      <Tool
-        part={{
-          id: "tool-image-result",
-          kind: "tool",
-          name: "bash",
-          input: "screenshot",
-          outputContent: [{ type: "image", data: "AA==", mimeType: "image/png" }],
-          state: "success",
-        }}
-        expansion={{ open: true, toggle: () => undefined }}
-      />,
+      <StoreProvider store={fixture.root}>
+        <Tool
+          part={{
+            id: "tool-image-result",
+            kind: "tool",
+            name: "bash",
+            input: "screenshot",
+            outputContent: [{ type: "image", data: "AA==", mimeType: "image/png" }],
+            state: "success",
+          }}
+          expansion={{ open: true, toggle: () => undefined }}
+        />
+      </StoreProvider>,
     );
     expect(image).toContain('src="data:image/png;base64,AA=="');
     expect(image).toContain("Tool output image 1");

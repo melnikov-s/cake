@@ -2,21 +2,21 @@ import { useEffect, useState } from "react";
 import { IconButton } from "./icon-button";
 import { CheckIcon, CopyIcon } from "./icons";
 
-/** Copies text on demand, reporting success only after the clipboard write completes. */
+/** Runs a clipboard action, reporting success only after the write completes. */
 export function CopyButton({
   getText,
+  copy,
   onError,
   disabled,
   label = "message",
   className,
 }: {
-  getText(): Promise<string>;
   /** Omit when a failed copy needs no explanation beyond the missing confirmation. */
   onError?(error: unknown): void;
   disabled?: boolean;
   label?: string;
   className?: string;
-}) {
+} & ({ getText(): Promise<string>; copy?: never } | { copy(): Promise<void>; getText?: never })) {
   const [copied, setCopied] = useState(false);
   const [copying, setCopying] = useState(false);
   useEffect(() => {
@@ -35,7 +35,8 @@ export function CopyButton({
         setCopied(false);
         setCopying(true);
         try {
-          await navigator.clipboard.writeText(await getText());
+          if (copy) await copy();
+          else await navigator.clipboard.writeText(await getText());
           setCopied(true);
         } catch (error) {
           onError?.(error);
