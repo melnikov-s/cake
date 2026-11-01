@@ -411,7 +411,6 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
       settings: SettingsManager.inMemory(),
       models: () => [],
       fastMode: () => false,
-      todoOperations: new CakeOperationRegistry([]),
       todoContext: () => "Shared existing list",
     });
     const sessionId = await sideChats.fork(reply.entryId);

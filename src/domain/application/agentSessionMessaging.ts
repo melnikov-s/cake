@@ -203,11 +203,22 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
     yield* coordination.close(thread);
     return fail("That session thread reached its message limit.");
   }
-  const chatTarget = isCakeChatSessionId(targetSessionId)
-    ? yield* (yield* cakeChatTargets.acquireAvailable(targetSessionId)).snapshot()
-    : undefined;
+  const sessions = yield* CakeSessionRuntimes;
+  const sideChat = yield* sessions.acquireSession(targetSessionId).pipe(
+    Effect.flatMap((handle) =>
+      handle.profile === "DiscussionSession" ? handle.snapshot() : Effect.succeed(undefined),
+    ),
+    Effect.catchTag("PiSessionError", (error) =>
+      error.operation === "acquireSession" ? Effect.succeed(undefined) : Effect.fail(error),
+    ),
+  );
+  const chatTarget =
+    sideChat ??
+    (isCakeChatSessionId(targetSessionId)
+      ? yield* (yield* cakeChatTargets.acquireAvailable(targetSessionId)).snapshot()
+      : undefined);
   const target = chatTarget
-    ? { workingDirectory: chatTarget.workspacePath, title: "Project Chat" }
+    ? { workingDirectory: chatTarget.workspacePath, title: sideChat ? "Side chat" : "Project Chat" }
     : yield* metadata.lookup({ sessionId: targetSessionId });
   if (!chatTarget) yield* projectSessions.prepareAgentCommand({ sessionId: targetSessionId });
   const status =

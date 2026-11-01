@@ -496,9 +496,7 @@ const validateProfile = Effect.fn("CakeSessionRuntimes.validateProfile")(functio
       runtime.globalControl !== undefined &&
       !runtime.auxiliary &&
       !runtime.sessionControl) ||
-    (profile === "DiscussionSession" &&
-      runtime.auxiliary === true &&
-      runtime.globalControl === undefined) ||
+    profile === "DiscussionSession" ||
     (profile === "SubagentSession" &&
       runtime.auxiliary === true &&
       runtime.globalControl === undefined &&

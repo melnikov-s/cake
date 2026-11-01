@@ -163,6 +163,11 @@ projections needed by a surface. References do not transfer ownership.
   Scheduled delivery and report outboxes retain their separately defined intents.
 - Sidecar discussions and private subagents have independent Pi transcripts.
   Parent anchors, handles, and projections do not merge transcript ownership.
+  User-created side chats inherit the originating conversation's applicable tools,
+  permissions, explicit user restrictions and live project trust. They are not read-only
+  or to-do-only workers. Parent-scoped Cake controls retain originating authority;
+  cross-conversation messages carry the side chat's own sender identity and can use
+  the explicit `parent` target. Receipts alone do not prove delivery visibility or execution.
   User-created Project Chat and Cake Chat side chats can explicitly import their new
   dialogue into the parent's Pi-owned history. Imports are attributed historical
   groups at the merge point, not replayed requests; they start no turn, execute no

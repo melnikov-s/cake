@@ -232,13 +232,16 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   configuration,
   target,
   newSession,
+  sideChatSessionId,
 }: {
+  readonly sideChatSessionId?: string;
   readonly configuration: CakeChatRuntimeConfiguration;
   readonly target: CakeChatTarget;
   readonly newSession: boolean;
 }): Effect.fn.Return<CakeSessionRuntimeAcquireOptions, never, CakeChatRuntimeServices> {
   const application = yield* ApplicationState;
   const companion = target.sessionId === SESSION_ASSISTANT_ID;
+  const senderSessionId = sideChatSessionId ?? target.sessionId;
   const models = yield* PiModels;
   const catalogs = yield* SessionCatalogChanges;
   const rendererRequests = yield* RendererRequests;
@@ -480,7 +483,9 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               ),
       sessionReferences: {
         resolve: (reference, signal) =>
-          run(sessionReferences.resolve(reference, target.sessionId), { signal }),
+          reference === "parent" && sideChatSessionId
+            ? Promise.resolve(target.sessionId)
+            : run(sessionReferences.resolve(reference, target.sessionId), { signal }),
         project: (value, signal) => run(sessionReferences.project(value), { signal }),
         ids: (signal) =>
           run(
@@ -767,10 +772,13 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                   ...invocation,
                   arguments: {
                     ...argumentsObject,
-                    sessionId: yield* sessionReferences.resolve(
-                      argumentsObject.sessionId,
-                      target.sessionId,
-                    ),
+                    sessionId:
+                      argumentsObject.sessionId === "parent" && sideChatSessionId
+                        ? target.sessionId
+                        : yield* sessionReferences.resolve(
+                            argumentsObject.sessionId,
+                            target.sessionId,
+                          ),
                   },
                 };
               const args = yield* Schema.decodeUnknownEffect(
@@ -779,7 +787,9 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               // Project Sessions reach Cake Chat by omitting sessionId; Cake Chat cannot message itself.
               if (
                 invocation.name === "sessions.send" &&
-                (args.sessionId === undefined || args.sessionId === target.sessionId)
+                (sideChatSessionId
+                  ? (args.sessionId ?? CAKE_CHAT_SESSION_ID) === senderSessionId
+                  : args.sessionId === undefined || args.sessionId === target.sessionId)
               )
                 return {
                   ok: false,
@@ -848,8 +858,15 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                   : ((yield* Effect.scoped(
                       backendAgentControl.invoke(forwarded.name, forwarded.arguments, {
                         kind: "cake-chat",
-                        sessionId: target.sessionId,
-                        title,
+                        sessionId: [
+                          "sessions.send",
+                          "sessions.reply",
+                          "sessions.thread",
+                          "sessions.close-thread",
+                        ].includes(forwarded.name)
+                          ? senderSessionId
+                          : target.sessionId,
+                        title: sideChatSessionId ? `Side chat of ${title}` : title,
                         ...(project ? { projectPath: project.path } : null),
                       }),
                     )) ??

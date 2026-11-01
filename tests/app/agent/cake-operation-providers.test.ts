@@ -95,7 +95,7 @@ describe("Backend-owned Cake operation composition", () => {
     ]);
   });
 
-  it("grants copied-context side chats only their explicit shared to-do and interview controls", async () => {
+  it("preserves an explicit shared to-do and interview control allowlist", async () => {
     const list = vi.fn(async () => ({ items: [], total: 0, offset: 0, nextOffset: null }));
     const unavailable = async () => {
       throw new Error("Unexpected mutation");

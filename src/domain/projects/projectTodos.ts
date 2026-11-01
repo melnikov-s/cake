@@ -544,7 +544,7 @@ export const prepareUserContext = Effect.fn("ProjectTodos.prepareUserContext")(f
 });
 
 /** The to-do list owned by a permanent chat, if that chat keeps one. */
-export const scopeForChat = Effect.fn("ProjectTodos.scopeForChat")(function* (sessionId: string) {
+const scopeForChat = Effect.fn("ProjectTodos.scopeForChat")(function* (sessionId: string) {
   if (sessionId === CAKE_CHAT_SESSION_ID) return CAKE_CHAT_TODO_SCOPE;
   if (!isProjectChatSessionId(sessionId)) return undefined;
   const application = yield* ApplicationState;

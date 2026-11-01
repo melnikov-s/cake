@@ -1,7 +1,14 @@
 import { copyJson } from "@earendil-works/chord";
 import { shutdownDiagnostics, shutdownResource } from "../diagnostics/shutdown-diagnostics";
 import { TaskAttributionDoc } from "./durable-task-attribution";
-import type { CakeOperationRegistry } from "../pi/runtime/cake-operation-registry";
+import { taskAttributionOperations } from "./durable-task-attribution-operations";
+import {
+  listDurableMessageReferences,
+  readDurableMessageReference,
+} from "./durable-message-references";
+import { toJsonValue } from "../../utils/to-json-value";
+import { Schema } from "effect";
+import { CakeOperationRegistry } from "../pi/runtime/cake-operation-registry";
 import type { PresetContext } from "../../contracts/model-presets/preset-context";
 import { PresetContextDoc } from "./durable-preset-context";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -77,7 +84,6 @@ export interface DurableSideChatHost {
   readonly settings: SettingsManager;
   readonly models: () => ConversationSnapshot["models"];
   readonly fastMode: () => boolean;
-  readonly todoOperations?: CakeOperationRegistry;
   readonly todoContext?: () => string;
 }
 
@@ -89,8 +95,8 @@ export interface DurableSideChats {
   preview(sessionId: string): Promise<PiSessionPreview | undefined>;
   /** The inherited tool may dispatch only to an exactly opened fork's interview capability. */
   executeInterview: ReturnType<typeof createDurableSideChatInterview>;
-  /** Only the parent's to-do registry, never its general Cake control gateway. */
-  executeTodo: ReturnType<typeof createDurableSideChatInterview>;
+  /** Dispatch with the originating authority and the opened fork's own identity. */
+  executeCake: ReturnType<typeof createDurableSideChatInterview>;
 }
 
 /**
@@ -140,7 +146,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
   const { harness, root, storage } = host;
   // Capability handles only, owned by open sidecar runtimes and removed on dispose.
   const interviews = new Map<number, ReturnType<typeof createDurableSideChatInterview>>();
-  const opened = new Set<number>();
+  const operations = new Map<number, CakeOperationRegistry>();
   /** Fork conversation and its inclusive fork point, for an ID this Cake Chat owns. */
   const resolve = async (sessionId: string | undefined) => {
     const id =
@@ -185,9 +191,9 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
     const { conversation, after } = await resolve(options.sessionId);
     const sessionId = cakeChatSideChatSessionId(conversation.id, host.parentSessionId);
     let disposed = false;
-    opened.add(conversation.id);
     let streaming = false;
     let activeTurnIds: string[] = [];
+    let agentConfiguration = await harness.snapshot(AgentDoc, conversation.id, BACKGROUND_CONTEXT);
     if (options.interviewOperations)
       interviews.set(
         conversation.id,
@@ -252,6 +258,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           { ...(model ? { model } : null), ...(thinkingLevel ? { thinkingLevel } : null) },
           BACKGROUND_CONTEXT,
         );
+      agentConfiguration = await harness.snapshot(AgentDoc, conversation.id, BACKGROUND_CONTEXT);
       publish();
     };
     const runtime: CakeSessionRuntime = {
@@ -269,8 +276,14 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       async queueCommand() {
         throw new Error("Queued Pi slash commands are available only in Project Sessions");
       },
-      async inspectSession() {
-        throw new Error("Transcript queries are unavailable in Cake Chat side chats");
+      async inspectSession(query) {
+        if (query.kind === "messages-list")
+          return toJsonValue(await listDurableMessageReferences(conversation, sessionId, query));
+        if (query.kind === "messages-read")
+          return toJsonValue(await readDurableMessageReference(conversation, sessionId, query));
+        throw new Error(
+          "Pi transcript-tree queries are available only in Project Sessions; use history or archive recall for permanent chat originals",
+        );
       },
       async snapshot() {
         // Durable's next-request context is fork-aware (unlike ownEntries) and
@@ -384,7 +397,17 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           } satisfies ConversationSnapshot;
         }, BACKGROUND_CONTEXT);
       },
-      async prompt(text, delivery, attachments, markdown = false, turnId) {
+      async prompt(
+        text,
+        delivery,
+        attachments,
+        markdown = false,
+        turnId,
+        _presentationMode,
+        _automaticTitle,
+        _responseMode,
+        internal,
+      ) {
         if (disposed) throw new Error("Cake Chat side chat has closed");
         if (
           attachments.some(
@@ -412,17 +435,17 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
                   busy,
                   undefined,
                   undefined,
-                  undefined,
+                  internal,
                   undefined,
                   false,
-                  host.todoOperations ? conversation.id : undefined,
+                  conversation.id,
                 ),
               },
               ...(first
                 ? [
                     {
                       type: "text" as const,
-                      text: `${DURABLE_SIDE_CHAT_NOTE}\n${host.todoContext?.() ?? ""}`,
+                      text: `${DURABLE_SIDE_CHAT_NOTE}\nYour parent/main conversation address is ${host.parentSessionId ?? CAKE_CHAT_SESSION_ID}. Your own messaging identity is ${sessionId}. Use cake sessions.send with input { sessionId: "parent", text: "..." } to message the parent.\n${host.todoContext?.() ?? ""}`,
                     },
                   ]
                 : []),
@@ -473,7 +496,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       async dispose() {
         disposed = true;
         interviews.delete(conversation.id);
-        opened.delete(conversation.id);
+        operations.delete(conversation.id);
         unsubscribe();
         await shutdownDiagnostics.promise(
           "durable.sideChat.publication",
@@ -482,6 +505,57 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         );
       },
     };
+    const coordinator = options.coordinator;
+    if (coordinator) {
+      operations.set(
+        conversation.id,
+        new CakeOperationRegistry(
+          [
+            ...coordinator.operations({
+              sessionId,
+              resolveModel: (selection, launch) => {
+                if (!options.resolveModelSelection)
+                  throw new Error("Model resolution is unavailable");
+                return options.resolveModelSelection(
+                  selection,
+                  agentConfiguration?.model
+                    ? {
+                        provider: agentConfiguration.model.provider,
+                        modelId: agentConfiguration.model.modelId,
+                        thinkingLevel: agentConfiguration.thinkingLevel ?? "off",
+                        fastMode: host.fastMode(),
+                      }
+                    : undefined,
+                  launch,
+                );
+              },
+              info: async () => ({
+                sessionId,
+                kind: "cake-chat",
+                sessionFile: host.sessionFile,
+                streaming,
+              }),
+              usage: async () =>
+                Schema.decodeUnknownSync(Schema.Json)((await runtime.snapshot()).usage ?? {}),
+              contextStatus: async () =>
+                Schema.decodeUnknownSync(Schema.Json)(
+                  (await runtime.snapshot()).usage?.context ?? {},
+                ),
+              compact: async () => {
+                await runtime.compact();
+                return { compacted: true };
+              },
+              setModel: (model) => runtime.applyConfiguration(model),
+            }),
+            ...taskAttributionOperations({
+              conversation: () => conversation,
+              todos: () => options.cakeChatTodos?.() ?? [],
+            }),
+          ],
+          options.sessionReferences?.project,
+        ),
+      );
+    }
     let publishing: Promise<void> | undefined;
     let publishAgain = false;
     const publish = () => {
@@ -508,13 +582,17 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
   };
 
   return {
-    async executeTodo(input, api, context) {
-      if (!opened.has(api.conversationId) || !host.todoOperations)
-        throw new Error("To-dos are unavailable in this closed or unsupported side chat");
-      const result = await host.todoOperations.invoke(input, {
+    async executeCake(input, api, context) {
+      const registry = operations.get(api.conversationId);
+      if (!registry)
+        throw new Error("Cake controls are unavailable in this closed or unsupported side chat");
+      const result = await registry.invoke(input, {
         signal: context.abortSignal ?? new AbortController().signal,
         toolCallId: api.callId,
         runtime: { sessionId: cakeChatSideChatSessionId(api.conversationId, host.parentSessionId) },
+        onUpdate: (value) => {
+          void api.details(copyJson(value), context).catch(() => undefined);
+        },
       });
       return { output: result.content, details: copyJson(result.details) };
     },

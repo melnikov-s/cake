@@ -174,8 +174,11 @@ The permanent Cake Chat can also parent Discussion Sessions, anchored to a whole
 message or a selected passage. A Cake Chat side chat is a native fork of Cake Chat's
 Durable conversation after the anchored exchange: it continues from Cake Chat's
 exact context, separately from Cake Chat, and keeps its quick-check tools. Both
-native forks and copied-context sidecars can use the actual parent's shared to-do
-list and ask interview questions; other Cake controls remain in the parent. To-do
+native forks and regular sidecars inherit their originating conversation's applicable
+permissions and tools, preserving project trust and explicit user restrictions. Their
+own identity is used for messages; parent-scoped controls retain the originating authority.
+They can address the originating conversation with `sessionId: "parent"`.
+Permanent-chat forks share the actual parent's to-do list and can ask interview questions. To-do
 changes are immediate and do not require merging the conversation. Project Chat
 side chats share the project's list; global Cake Chat side chats share its separate
 list. They do not consume the parent's selection or reminder acknowledgments.

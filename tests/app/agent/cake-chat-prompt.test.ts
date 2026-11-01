@@ -99,7 +99,9 @@ describe("Cake Chat core and task-triggered references", () => {
     expect(history).toContain("**not** Zoom's `id+n` coordinates");
     expect(history).toContain("`section=record`");
     expect(history).toContain("unchanged bounds/filters until it is null");
-    expect(history).toContain("scoped to the owning conversation and unavailable in side chats");
+    expect(history).toContain(
+      "scoped to the owning conversation, including a side chat's fork-visible history",
+    );
     expect(history).toContain("Forward exact selected inputRefs");
     expect(discovery).toContain("never reads transcript content or inspects context");
     expect(settings).toContain("never edit settings files");
@@ -152,7 +154,7 @@ describe("Cake Chat core and task-triggered references", () => {
     expect(recall).toContain("Stored truncation cannot be recovered");
     expect(recall).toContain("Image bytes and assistant reasoning are omitted");
     expect(recall).toContain("use attachment tools for attachment content");
-    expect(recall).toContain("Side chats cannot invoke these parent-conversation tools");
+    expect(recall).toContain("Side chats use their own fork-visible archive");
   });
 
   it("routes Project Chat messages once using canonical addresses without checkout archaeology", () => {

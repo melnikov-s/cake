@@ -32,6 +32,7 @@ import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLoc
 import {
   CAKE_CHAT_SESSION_ID,
   SESSION_ASSISTANT_ID,
+  cakeChatSideChatSessionId,
 } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { CakeChatDurable } from "../../../src/services/pi-durable/CakeChatDurable";
 import {
@@ -39,6 +40,7 @@ import {
   parseSessionLink,
 } from "../../../src/contracts/conversations/message-reference";
 import * as projectTodos from "../../../src/domain/projects/projectTodos";
+import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import type { SavedDraft } from "../../../src/contracts/project-sessions/saved-draft-data";
@@ -1914,6 +1916,149 @@ it.effect(
       expect(f.runtimeCreates).toEqual([source]);
       expect((yield* storage.state()).deferredReferences).toHaveLength(1);
       yield* Deferred.succeed(release, undefined);
+    }),
+);
+
+it.effect(
+  "side chats send repeated parent messages with their own identity and inherited authorization",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture(true);
+      const projectChat = projectChatSessionId("/project");
+      for (const parent of [source, projectChat, CAKE_CHAT_SESSION_ID]) {
+        const sideChatSessionId = parent === source ? third : cakeChatSideChatSessionId(7, parent);
+        const options =
+          parent === source
+            ? yield* acquireOptions({
+                location,
+                sessionId: parent,
+                newSession: false,
+                sideChatSessionId,
+              }).pipe(Effect.provide(f.context))
+            : yield* cakeChatRuntime
+                .acquireOptions({
+                  configuration: {
+                    location: {
+                      workingDirectory: parent === projectChat ? "/project" : "/home",
+                      sessionDirectory: "/cake/chat",
+                    },
+                    agentDirectory: "/cake",
+                  },
+                  target: { sessionId: parent, tools: backendAgentTools() },
+                  newSession: false,
+                  sideChatSessionId,
+                })
+                .pipe(Effect.provide(f.context));
+        const global = options.runtime.globalControl;
+        const project = options.runtime.currentSessionControl?.invokeAppControl;
+        assert.ok(global || project);
+        const invoke = (command: string, input: JsonObject) => {
+          if (global) return global.invoke({ name: command, arguments: input }, signal());
+          assert.ok(project);
+          return project(command, input, signal());
+        };
+        yield* Context.get(f.context, CakeSessionRuntimes).acquire({
+          profile: { _tag: "DiscussionSession" },
+          runtime: {
+            ...options.runtime,
+            sessionId: sideChatSessionId,
+            directSessionDir: true,
+            sessionDir: `/cake/discussions/${sideChatSessionId}`,
+          },
+        });
+        yield* sessionChats
+          .deliver(
+            {
+              sessionId: sideChatSessionId,
+              text: "User follow-up",
+              attachments: [],
+              renderUserMessageAsMarkdown: false,
+            },
+            "prompt",
+          )
+          .pipe(Effect.provide(f.context));
+        expect(yield* Queue.take(f.prompts)).toMatchObject({
+          sessionId: sideChatSessionId,
+          text: "User follow-up",
+        });
+        for (const text of ["Parent, please review", "Follow-up evidence"]) {
+          const receipt = yield* Effect.promise(() =>
+            invoke("sessions.send", {
+              sessionId: "parent",
+              text,
+              delivery: "prompt",
+              resultDelivery: "ignore",
+            }),
+          );
+          expect(receipt).toMatchObject({
+            ok: true,
+            target: { sessionId: parent },
+            transcriptDelivery: "unverified",
+            execution: "unverified",
+          });
+          const recipient = yield* Queue.take(f.prompts);
+          expect(recipient.sessionId).toBe(parent);
+          expect(parseCrossSessionMessage(recipient.text)).toMatchObject({
+            text,
+            metadata: { sender: { sessionId: sideChatSessionId } },
+          });
+        }
+        yield* f.direct(
+          "sessions.send",
+          {
+            sessionId: sideChatSessionId,
+            text: "Parent reply",
+            delivery: "prompt",
+            resultDelivery: "ignore",
+          },
+          {
+            ...caller,
+            sessionId: parent,
+            kind: parent === source ? "project-session" : "cake-chat",
+          },
+        );
+        const reply = yield* Queue.take(f.prompts);
+        expect(reply.sessionId).toBe(sideChatSessionId);
+        expect(parseCrossSessionMessage(reply.text)).toMatchObject({
+          text: "Parent reply",
+          metadata: { sender: { sessionId: parent } },
+        });
+        expect(
+          yield* f.direct(
+            "sessions.send",
+            { sessionId: sideChatSessionId, text: "Quiet parent evidence", delivery: "fyi" },
+            {
+              ...caller,
+              sessionId: parent,
+              kind: parent === source ? "project-session" : "cake-chat",
+            },
+          ),
+        ).toMatchObject({ ok: true, status: "deferred", transcriptDelivery: "pending" });
+        expect(yield* Queue.size(f.prompts)).toBe(0);
+        yield* sessionChats
+          .deliver(
+            {
+              sessionId: sideChatSessionId,
+              text: "Continue with updates",
+              attachments: [],
+              renderUserMessageAsMarkdown: false,
+            },
+            "prompt",
+          )
+          .pipe(Effect.provide(f.context));
+        const carried = yield* Queue.take(f.prompts);
+        expect(carried.sessionId).toBe(sideChatSessionId);
+        expect(carried.text).toContain("Quiet parent evidence");
+        expect(
+          yield* Effect.promise(() =>
+            invoke("sessions.send", {
+              sessionId: projectChatSessionId("/unregistered"),
+              text: "No authority",
+              delivery: "prompt",
+            }),
+          ).pipe(Effect.exit),
+        ).toMatchObject({ _tag: "Failure" });
+      }
     }),
 );
 

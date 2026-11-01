@@ -9,6 +9,7 @@ import {
   defineExtension,
   MemoryStorage,
   type Storage,
+  type Conversation,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -23,7 +24,10 @@ import { openDurableChatEngine } from "../../../../src/services/pi-durable/durab
 import { durableInputText } from "../../../../src/services/pi-durable/durable-input-presentation";
 import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
 import { researchOrigin } from "../../../fixtures/subagent-report";
-import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  cakeChatSideChatSessionId,
+} from "../../../../src/contracts/cake-chats/cake-chat-identity";
 
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
@@ -86,6 +90,58 @@ async function fixture(
       ),
   };
 }
+
+it("side-chat archive recall reads inherited and own originals, not siblings or later parent history", async () => {
+  const storage = new MemoryStorage();
+  const f = await fixture(storage);
+  const inherited = await f.append("Inherited decision");
+  const fork = await f.engine.root.fork(
+    inherited.id,
+    { ownership: { kind: "ownerless" } },
+    BACKGROUND_CONTEXT,
+  );
+  const sibling = await f.engine.root.fork(
+    inherited.id,
+    { ownership: { kind: "ownerless" } },
+    BACKGROUND_CONTEXT,
+  );
+  const append = (conversation: Conversation, content: string) =>
+    conversation.commit(
+      (tx) =>
+        tx.appendEntry(UserEntry, conversation.id, {
+          model: [{ role: "user", content, timestamp: 2 }],
+        }),
+      BACKGROUND_CONTEXT,
+    );
+  const own = await append(fork, "Side-chat decision");
+  const privateEntry = await append(sibling, "Sibling secret");
+  const later = await f.append("Later parent decision");
+  const tools = createDurableArchiveRecallTools({
+    sessionId,
+    storage,
+    sideChatEntries: async (id) => {
+      const record = await storage.conversation(id, BACKGROUND_CONTEXT);
+      if (record?.parent?.conversationId !== f.engine.root.id) throw new Error("Not authorized");
+      const conversation = await f.engine.harness.conversation(id, BACKGROUND_CONTEXT);
+      if (!conversation) throw new Error("Missing conversation");
+      return conversation.entries.bind(conversation);
+    },
+  });
+  const api = { ...f.api, conversationId: fork.id };
+  const result = await tools[0].execute({}, api, BACKGROUND_CONTEXT);
+  const text = JSON.stringify(result.output);
+  expect(text).toContain("Inherited decision");
+  expect(text).toContain("Side-chat decision");
+  const sideId = cakeChatSideChatSessionId(fork.id);
+  expect(text).toContain(sideId);
+  for (const entry of [privateEntry, later])
+    await expect(tools[1].execute({ entryId: entry.id }, api, BACKGROUND_CONTEXT)).rejects.toThrow(
+      "Original entry does not exist",
+    );
+  expect(
+    JSON.stringify((await tools[1].execute({ entryId: own.id }, api, BACKGROUND_CONTEXT)).output),
+  ).toContain("Side-chat decision");
+});
 
 it("searches originals outside memory and reads dialogue, tool arguments and failure evidence without changing the head", async () => {
   const f = await fixture();
@@ -380,11 +436,11 @@ it("rejects non-original entries, other conversations, and side-chat callers", a
   );
   const sideApi = { ...f.api, conversationId: other.id };
   await expect(f.tools[0].execute({}, sideApi, BACKGROUND_CONTEXT)).rejects.toThrow(
-    "owning Cake Chat",
+    "not authorized",
   );
   await expect(
     f.tools[1].execute({ entryId: privateEntry.id }, sideApi, BACKGROUND_CONTEXT),
-  ).rejects.toThrow("owning Cake Chat");
+  ).rejects.toThrow("not authorized");
   expect((await f.search({ query: "other conversation" })).matches).toEqual([]);
 });
 

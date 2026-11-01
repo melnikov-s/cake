@@ -75,6 +75,7 @@ const fixture = Effect.fn("UpdateBatchTest.fixture")(function* (
   const family = familyStorageHarness(settings.familyFiles);
   const board = messageBoardHarness();
   const release = yield* Deferred.make<void>();
+  const started = yield* Deferred.make<void>();
   const admitted: Array<{
     text: string;
     lane: string;
@@ -139,6 +140,7 @@ const fixture = Effect.fn("UpdateBatchTest.fixture")(function* (
               internal,
             ) => {
               admitted.push({ text, lane, internal });
+              Effect.runSync(Deferred.succeed(started, undefined));
               if (settings.hold) await Effect.runPromise(Deferred.await(release));
             },
           }),
@@ -249,6 +251,7 @@ const fixture = Effect.fn("UpdateBatchTest.fixture")(function* (
     records,
     admitted,
     release,
+    started,
     familyFiles: family.files,
     setBusy: (value: boolean) => {
       busy = value;
@@ -279,6 +282,51 @@ describe("updateBatchDueAt", () => {
 });
 
 describe("timed batch delivery", () => {
+  it.effect(
+    "delivers a passive message to an open side chat without looking it up as a Project Session",
+    () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(START);
+        const f = yield* fixture();
+        yield* f.provide(
+          Effect.gen(function* () {
+            yield* (yield* CakeSessionRuntimes).acquire({
+              profile: { _tag: "DiscussionSession" },
+              runtime: {
+                sessionId: "parent",
+                cwd: "/project",
+                agentDir: "/cake",
+                sessionDir: "/cake/discussions",
+                directSessionDir: true,
+                trusted: true,
+                requestUi: async () => undefined,
+              },
+            });
+          }),
+        );
+        yield* f.notice("Parent FYI");
+        yield* f.pass();
+        assert.equal(
+          (yield* f.batch())?.dueAt,
+          new Date(START + UPDATE_BATCH_WINDOW_MS).toISOString(),
+        );
+        const handle = yield* f.provide(
+          Effect.gen(function* () {
+            return yield* (yield* CakeSessionRuntimes).acquireSession("parent");
+          }),
+        );
+        assert.equal(handle.profile, "DiscussionSession");
+        assert.equal((yield* handle.snapshot()).streaming, false);
+        assert.deepEqual(yield* handle.currentTurnIds(), []);
+        assert.equal(f.admitted.length, 0);
+        yield* advance(UPDATE_BATCH_WINDOW_MS);
+        yield* f.pass();
+        yield* Deferred.await(f.started);
+        assert.equal(f.admitted.length, 1);
+        assert.equal(f.admitted[0]?.internal?._tag, "UpdateBatch");
+        assert.ok(f.admitted[0]?.text.includes("Parent FYI"));
+      }),
+  );
   it.effect("opens one timer on the first item and delivers everything once after 5 minutes", () =>
     Effect.gen(function* () {
       yield* TestClock.setTime(START);

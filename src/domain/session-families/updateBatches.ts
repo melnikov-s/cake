@@ -101,7 +101,7 @@ const cacheExpiry = (metadata: SessionContextMetadata | undefined, now: number) 
   return "estimatedExpiresAt" in context ? Date.parse(context.estimatedExpiresAt) : undefined;
 };
 
-/** Primary conversations only: global Cake Chat, Project Chats and Project Sessions. */
+/** Reconstruct a primary conversation when no opened Discussion runtime owns the target. */
 const acquireRecipient = Effect.fn("UpdateBatches.acquireRecipient")(function* (sessionId: string) {
   if (isCakeChatSessionId(sessionId)) return yield* chatTargets.acquireAvailable(sessionId);
   const location = yield* findLocation({ sessionId });
@@ -148,7 +148,14 @@ const deliverBatch = Effect.fn("UpdateBatches.deliverBatch")(function* (
       const presence = yield* Effect.serviceOption(CakeChatComposerPresence);
       if (Option.isSome(presence) && (yield* presence.value.holdsInterrupts(recipientSessionId)))
         return;
-      if (!isCakeChatSessionId(recipientSessionId)) {
+      const existing = yield* (yield* CakeSessionRuntimes)
+        .acquireSession(recipientSessionId)
+        .pipe(
+          Effect.catchTag("PiSessionError", (error) =>
+            error.operation === "acquireSession" ? Effect.succeed(undefined) : Effect.fail(error),
+          ),
+        );
+      if (!isCakeChatSessionId(recipientSessionId) && existing?.profile !== "DiscussionSession") {
         const location = yield* findLocation({ sessionId: recipientSessionId });
         const namespace = yield* resolutionNamespace(recipientSessionId, {
           cwd: location.workingDirectory,
@@ -157,7 +164,10 @@ const deliverBatch = Effect.fn("UpdateBatches.deliverBatch")(function* (
         });
         if (namespace !== "active") return;
       }
-      const handle = yield* acquireRecipient(recipientSessionId);
+      const handle =
+        existing?.profile === "DiscussionSession"
+          ? existing
+          : yield* acquireRecipient(recipientSessionId);
       if (batch.turnId) {
         const receipt = handle.inputReceipt ? yield* handle.inputReceipt(batch.turnId) : undefined;
         if (receipt) return yield* settleAdmittedBatch(handle, { ...batch, turnId: batch.turnId });

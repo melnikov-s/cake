@@ -288,15 +288,13 @@ export async function createDurableCakeChatRuntime(
     replay: "unsafe",
     executionMode: "sequential",
     async execute(input, api, context) {
-      // Side-chat forks inherit this tool so their request stays cache-identical to
-      // Cake Chat's, but acting as Cake Chat from a side chat would write back into it.
+      // Forks inherit the declaration, but execute with their own identity and
+      // originating conversation's controls, never the root's runtime bridge.
       if (api.conversationId !== engine.root.id) {
         const envelope = Schema.decodeUnknownOption(cakeToolEnvelopeSchema)(input);
         if (Option.isSome(envelope) && envelope.value.command === "interview.open")
           return sideChats.executeInterview(input, api, context);
-        // This separate registry contains only to-do operations. Its discovery/help paths
-        // cannot expose or invoke unrelated parent controls, including through aliases.
-        return sideChats.executeTodo(input, api, context);
+        return sideChats.executeCake(input, api, context);
       }
       const result = await operations.invoke(input, {
         signal: context.abortSignal ?? new AbortController().signal,
@@ -391,7 +389,18 @@ export async function createDurableCakeChatRuntime(
     cake,
     zoom,
     date,
-    ...createDurableArchiveRecallTools({ sessionId, storage }),
+    ...createDurableArchiveRecallTools({
+      sessionId,
+      storage,
+      sideChatEntries: async (id) => {
+        const record = await storage.conversation(id, BACKGROUND_CONTEXT);
+        if (record?.parent?.conversationId !== engine.root.id)
+          throw new Error("Archive conversation is not authorized");
+        const conversation = await engine.harness.conversation(id, BACKGROUND_CONTEXT);
+        if (!conversation) throw new Error("Archive conversation is unavailable");
+        return conversation.entries.bind(conversation);
+      },
+    }),
     createCakeChatReadTool(),
     createCakeChatBashTool(),
     createCakeChatMcpTool(mcp),
@@ -629,10 +638,6 @@ export async function createDurableCakeChatRuntime(
     settings,
     models: () => modelOptions,
     fastMode: () => fastMode,
-    todoOperations: new CakeOperationRegistry(
-      operations.definitions().filter((operation) => operation.topic === "todos"),
-      options.sessionReferences?.project,
-    ),
     todoContext: () =>
       projectTodoBaseline(
         { ...emptyProjectTodos(), items: [...(options.cakeChatTodos?.() ?? [])] },

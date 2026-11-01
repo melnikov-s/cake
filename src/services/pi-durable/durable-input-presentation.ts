@@ -202,7 +202,7 @@ const SIDE_CHAT_NOTE_TAG = "<cake-side-chat>";
  * text block after the user's first side-chat input, so the forked prefix stays the
  * exact Cake Chat context and the side chat transcript never displays it.
  */
-export const DURABLE_SIDE_CHAT_NOTE = `${SIDE_CHAT_NOTE_TAG}This is a side chat branched from Cake Chat at the message above. The parent continues separately and sees this dialogue only if the user explicitly merges it back. Discuss the conversation with the user here. The cake tool supports interview.open and todos.* on the parent's existing to-do list. To-do edits are shared immediately, even without merging this side chat. Parent selection and reminders are not consumed here. Return to the parent for session resolution and all other Cake actions.</cake-side-chat>`;
+export const DURABLE_SIDE_CHAT_NOTE = `${SIDE_CHAT_NOTE_TAG}This is a side chat branched from the permanent chat at the message above. The parent continues separately; it sees dialogue only when explicitly messaged or merged. You inherit the originating conversation's applicable tools, permissions and explicit user restrictions, not extra authority. Cake controls retain their project/trust boundaries. To-do edits share the parent's list immediately. Parent selection and reminders are not consumed here. Send receipts prove acceptance, not recipient visibility or execution.</cake-side-chat>`;
 
 type Blocks = string | ReadonlyArray<{ type: string; text?: string }>;
 

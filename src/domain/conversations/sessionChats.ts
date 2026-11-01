@@ -107,7 +107,7 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
 ) {
   const handle = yield* acquire(input.sessionId);
   const primary = handle.profile === "CakeChatSession" || handle.profile === "ProjectSession";
-  const storage = primary ? yield* SessionFamilyStorage : undefined;
+  const storage = handle.profile !== "SubagentSession" ? yield* SessionFamilyStorage : undefined;
   const admission = Effect.gen(function* () {
     if (handle.profile !== "CakeChatSession" && input.crossSession)
       yield* inheritTaskInputProtection(input.crossSession.sender.sessionId, input.sessionId).pipe(

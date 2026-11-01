@@ -1,4 +1,7 @@
-import * as discussionTodos from "./discussionTodos";
+import * as cakeChatRuntime from "../cake-chats/cakeChatRuntime";
+import * as cakeChatLocations from "../cake-chats/cakeChatLocations";
+import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
+import { cakeChatControlTools } from "../../contracts/application/window-control-definitions";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
 import { Effect, Schema, Stream } from "effect";
@@ -117,9 +120,7 @@ const refreshParentContext = Effect.fn("DiscussionSessions.refreshParentContext"
   yield* environment.prepareParentContext(record, context).pipe(asError("parentContext"));
 });
 
-type RefreshServices =
-  | Effect.Services<ReturnType<typeof refreshParentContext>>
-  | discussionTodos.DiscussionTodoServices;
+type RefreshServices = Effect.Services<ReturnType<typeof refreshParentContext>>;
 
 /**
  * Acquires the sidecar runtime for one stored Discussion Session. Cake-owned
@@ -128,24 +129,14 @@ type RefreshServices =
  * parent projection before each turn, and reopens a resolved thread when the
  * user prompts it again.
  */
-/** How one sidecar differs from the default read-only side chat runtime. */
 interface SidecarConfiguration {
-  readonly systemPrompt: string;
-  readonly tools: ReadonlyArray<string>;
-  readonly projectTodos?: CakeSessionRuntimeAcquireOptions["runtime"]["projectTodos"];
-  readonly allowedCakeOperations?: readonly string[];
-  readonly sessionControl?: CakeSessionRuntimeAcquireOptions["runtime"]["sessionControl"];
-  /** Applied on every acquisition so the sidecar follows this model. */
-  readonly model?: {
-    readonly provider: string;
-    readonly modelId: string;
-    readonly thinkingLevel: Parameters<CakeSessionHandle["setThinkingLevel"]>[0];
-  };
+  readonly runtime: CakeSessionRuntimeAcquireOptions["runtime"];
 }
 
 const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
   record: DiscussionSessionRecord,
   configuration: SidecarConfiguration,
+  sidecarSessionId: string,
 ) {
   const environment = yield* DiscussionSessionEnvironment;
   const sessions = yield* CakeSessionRuntimes;
@@ -153,33 +144,23 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
   const rendererRequests = yield* RendererRequestCoordinator;
   const run = makePiCallbackExecutor(services);
   const location = yield* environment.location(record).pipe(asError("acquire"));
-  const sidecarSessionId = record.sidecarSessionId ?? crypto.randomUUID();
   // Hooks run long after acquisition, so they re-read the stored thread each time.
   const current = Effect.suspend(() =>
     environment.get(record.workingDirectory, record.parentSessionId, record.id),
   );
   const refreshParentIndex = current.pipe(Effect.flatMap(environment.refreshParentIndex));
   const runtime = {
+    ...configuration.runtime,
     cwd: record.workingDirectory,
-    trusted: location.trusted,
-    agentDir: location.agentDirectory,
     sessionDir: location.sessionDirectory,
     directSessionDir: true,
     newSession: record.sidecarSessionId === undefined,
     sessionId: sidecarSessionId,
-    auxiliary: true,
+    auxiliary: false,
     allowBlockingUserInput: true,
     requestInterview: (interview: InterviewRecord, signal: AbortSignal) =>
       run(rendererRequests.requestInterview(sidecarSessionId, interview, signal)),
-    tools: [...configuration.tools],
-    slashCommands: [],
-    additionalSystemPrompt: configuration.systemPrompt,
-    projectTodos: configuration.projectTodos,
-    allowedCakeOperations: configuration.allowedCakeOperations,
-    requestUi: async () => undefined,
   };
-  if (configuration.sessionControl)
-    Object.assign(runtime, { sessionControl: configuration.sessionControl });
   const handle = yield* acquireConversation(sessions, {
     profile: { _tag: "DiscussionSession" },
     runtime,
@@ -210,12 +191,6 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
         Effect.andThen(accept),
       ),
   }).pipe(asError("acquire"));
-  if (configuration.model) {
-    yield* handle
-      .setModel(configuration.model.provider, configuration.model.modelId)
-      .pipe(asError("acquire"));
-    yield* handle.setThinkingLevel(configuration.model.thinkingLevel).pipe(asError("acquire"));
-  }
   if (record.sidecarSessionId !== undefined) return { record, handle };
   const snapshot = yield* handle.snapshot().pipe(asError("acquire"));
   const linked = yield* environment
@@ -226,15 +201,28 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
 
 const sideChatConfiguration = Effect.fn("DiscussionSessions.sideChatConfiguration")(function* (
   record: DiscussionSessionRecord,
-): Effect.fn.Return<
-  SidecarConfiguration,
-  DiscussionSessionError,
-  DiscussionSessionEnvironment | discussionTodos.DiscussionTodoServices
-> {
-  // A Durable fork inherits Cake Chat's exact agent (prompt, model and tools) at
-  // its branch point; its host grants only parent-list to-dos and interviews.
-  if (cakeChatSideChatConversationId(record.sidecarSessionId) !== undefined)
-    return { systemPrompt: "", tools: [] };
+) {
+  // Reuse the originating conversation's composition, not a side-chat allowlist.
+  // Controls retain parent authority; messaging carries the fork's own identity.
+  if (cakeChatSideChatConversationId(record.sidecarSessionId) !== undefined) {
+    const available = yield* Effect.serviceOption(CakeChatConfiguration);
+    if (available._tag === "None")
+      return yield* new DiscussionSessionError({
+        operation: "acquire",
+        message: "Permanent chat configuration is unavailable",
+      });
+    const configuration = available.value;
+    const location = yield* cakeChatLocations
+      .resolve(configuration.location, record.parentSessionId)
+      .pipe(asError("acquire"));
+    const options = yield* cakeChatRuntime.acquireOptions({
+      configuration: { ...configuration, location },
+      target: { sessionId: record.parentSessionId, tools: cakeChatControlTools() },
+      newSession: false,
+      sideChatSessionId: record.sidecarSessionId,
+    });
+    return { runtime: options.runtime } satisfies SidecarConfiguration;
+  }
   if (isCakeChatSideChat(record))
     return yield* new DiscussionSessionError({
       operation: "acquire",
@@ -243,35 +231,36 @@ const sideChatConfiguration = Effect.fn("DiscussionSessions.sideChatConfiguratio
     });
   const environment = yield* DiscussionSessionEnvironment;
   const systemPrompt = yield* environment.sidecarSystemPrompt(record).pipe(asError("acquire"));
-  const todos = yield* discussionTodos
-    .configuration(record.parentSessionId)
-    .pipe(asError("acquire"));
+  const locations = yield* projectSessionLocations.locations().pipe(asError("acquire"));
+  const location = locations.find((item) => item.workingDirectory === record.workingDirectory);
+  if (!location)
+    return yield* new DiscussionSessionError({
+      operation: "acquire",
+      message: "The side chat's originating project is unavailable",
+    });
+  const options = yield* acquireProjectSessionOptions({
+    location,
+    sessionId: record.parentSessionId,
+    newSession: false,
+    sideChatSessionId: record.sidecarSessionId,
+  }).pipe(asError("acquire"));
   return {
-    systemPrompt: [systemPrompt, todos?.systemPrompt].filter(Boolean).join("\n\n"),
-    tools: ["read", "grep", "find", "ls"],
-    projectTodos: todos?.projectTodos,
-    allowedCakeOperations: todos
-      ? [
-          "interview.open",
-          "todos.list",
-          "todos.read",
-          "todos.create",
-          "todos.update",
-          "todos.update-many",
-          "todos.select",
-          "todos.snooze",
-          "todos.unsnooze",
-        ]
-      : undefined,
-  };
+    runtime: {
+      ...options.runtime,
+      additionalSystemPrompt: [options.runtime.additionalSystemPrompt, systemPrompt]
+        .filter(Boolean)
+        .join("\n\n"),
+    },
+  } satisfies SidecarConfiguration;
 });
 
 /** Acquires a thread's sidecar; the parent projection is regenerated per turn, not here. */
 const prepare = Effect.fn("DiscussionSessions.prepare")(function* (
   record: DiscussionSessionRecord,
 ) {
-  const configuration = yield* sideChatConfiguration(record);
-  return yield* acquireRecord(record, configuration);
+  const sidecarSessionId = record.sidecarSessionId ?? crypto.randomUUID();
+  const configuration = yield* sideChatConfiguration({ ...record, sidecarSessionId });
+  return yield* acquireRecord(record, configuration, sidecarSessionId);
 });
 
 export const list = Effect.fn("DiscussionSessions.list")(function* (input: {

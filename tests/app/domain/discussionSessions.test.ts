@@ -32,6 +32,7 @@ import {
   cakeChatSideChatSessionId,
 } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
+import { CakeChatConfiguration } from "../../../src/services/pi-durable/CakeChatConfiguration";
 
 const makeSnapshot = (sessionId: string, sessionFile: string): ConversationSnapshot => ({
   workspacePath: "/project",
@@ -158,7 +159,7 @@ const makeLayer = (
   const linkedSidecars: string[] = [];
   const runtime = (options: CakeSessionRuntimeSetup): CakeSessionRuntime => {
     const sessionId = options.sessionId ?? "generated";
-    const sessionFile = options.auxiliary
+    const sessionFile = options.directSessionDir
       ? `${options.sessionDir}/${sessionId}.jsonl`
       : `/sessions/${sessionId}.jsonl`;
     return {
@@ -176,7 +177,7 @@ const makeLayer = (
         importedHistories.push(history);
         return { importedMessages: 2 };
       },
-      getReviewParentContext: options.auxiliary
+      getReviewParentContext: options.directSessionDir
         ? undefined
         : () => ({
             sessionId,
@@ -343,12 +344,17 @@ const makeLayer = (
   return {
     layer: Layer.mergeAll(
       WorkflowTestLive,
+      Layer.succeed(CakeChatConfiguration, {
+        location: { workingDirectory: "/home", sessionDirectory: "/cake/cake-chat" },
+        agentDirectory: "/cake",
+      }),
       makeSubagentStorageTestLayer(),
       makeCakeSessionRuntimesLayer(adapter).pipe(
         Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
       ),
       discussions,
       projectRuntime,
+      familyStorageHarness().layer,
       ...(options.mergeReferences
         ? [
             Layer.mock(TaskInputStorage, {
@@ -594,11 +600,11 @@ describe("Cake Chat side chats", () => {
       assert.equal(fixture.record().sidecarSessionId, sessionId);
       // The fork lives in Cake Chat's database, never a Discussion transcript file.
       assert.equal(fixture.record().sidecarSessionFile, undefined);
-      const sidecar = fixture.options.find((options) => options.auxiliary);
+      const sidecar = fixture.options.find((options) => options.directSessionDir);
       assert.equal(sidecar?.sessionId, sessionId);
       assert.equal(sidecar?.newSession, false);
-      assert.equal(sidecar?.globalControl, undefined);
-      assert.equal(sidecar?.additionalSystemPrompt, "");
+      assert.ok(sidecar?.globalControl);
+      assert.equal(sidecar?.auxiliary, false);
       assert.deepEqual(fixture.modelSelections.at(-1), {
         provider: "anthropic",
         modelId: "claude",
@@ -614,7 +620,7 @@ describe("Cake Chat side chats", () => {
     assert.deepEqual(fixture.linkedSidecars, []);
     assert.equal(fixture.record().sidecarSessionId, undefined);
     assert.equal(
-      fixture.options.some((options) => options.auxiliary),
+      fixture.options.some((options) => options.directSessionDir),
       false,
     );
     assert.deepEqual(fixture.prompts, []);
@@ -872,7 +878,7 @@ describe("Discussion Sessions domain", () => {
     },
   );
 
-  it.effect("starts on a constrained sidecar runtime with regenerated parent context", () => {
+  it.effect("inherits project capabilities with regenerated parent context", () => {
     const fixture = makeLayer();
     return Effect.gen(function* () {
       const accepted = yield* discussionSessions.start({
@@ -885,8 +891,11 @@ describe("Discussion Sessions domain", () => {
       assert.equal(fixture.preparedContexts(), 1);
       assert.equal(typeof accepted.thread.sidecarSessionId, "string");
       assert.equal(accepted.thread.sidecarSessionId, fixture.record().sidecarSessionId);
-      const sidecar = fixture.options.find((options) => options.auxiliary);
-      assert.deepEqual(sidecar?.tools, ["read", "grep", "find", "ls"]);
+      const sidecar = fixture.options.find((options) => options.directSessionDir);
+      assert.equal(sidecar?.tools, undefined);
+      assert.equal(sidecar?.auxiliary, false);
+      assert.ok(sidecar?.currentSessionControl?.invokeAppControl);
+      assert.equal(sidecar?.allowedCakeOperations, undefined);
       assert.equal(sidecar?.directSessionDir, true);
       assert.equal(sidecar?.globalControl, undefined);
       // The parent's Discussion catalog learns about the new sidecar right away.
@@ -927,7 +936,7 @@ describe("Discussion Sessions domain", () => {
           `${sidecarId}:remove:queued-follow-up-2`,
           `${sidecarId}:cancelSteering`,
         ]);
-        assert.equal(fixture.options.filter((options) => options.auxiliary).length, 1);
+        assert.equal(fixture.options.filter((options) => options.directSessionDir).length, 1);
       }).pipe(Effect.provide(fixture.layer));
     },
   );

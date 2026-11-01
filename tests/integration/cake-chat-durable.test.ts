@@ -1,3 +1,4 @@
+import { backendAgentTools } from "../../src/contracts/application/backend-agent-tools";
 import type { PiTurnResult } from "../../src/contracts/pi/turn-result-data";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import {
@@ -209,6 +210,7 @@ async function fixture() {
   const openSideChat = async (
     sessionId: string,
     requestInterview?: CakeSessionRuntimeSetup["requestInterview"],
+    globalControl?: CakeSessionRuntimeSetup["globalControl"],
   ) => {
     const events: ConversationSnapshot[] = [];
     const runtime = await serviceRuntime.runPromise(
@@ -220,8 +222,7 @@ async function fixture() {
         directSessionDir: true,
         newSession: false,
         sessionId,
-        auxiliary: true,
-        tools: [],
+        globalControl,
         ...(requestInterview ? { allowBlockingUserInput: true, requestInterview } : null),
         requestUi: async () => undefined,
         onEvent(event) {
@@ -1536,7 +1537,7 @@ it("forks a side chat from Cake Chat's exact provider context and leaves Cake Ch
   expect(textParts(await side.runtime.snapshot())).toHaveLength(2);
 });
 
-it("keeps side-chat forks across restart and refuses Cake controls inside them", async () => {
+it("keeps side-chat forks across restart and inherits declared Cake controls", async () => {
   const f = await fixture();
   const invoke = vi.fn<NonNullable<CakeSessionRuntimeSetup["globalControl"]>["invoke"]>(
     async () => ({ ok: true }),
@@ -1550,20 +1551,27 @@ it("keeps side-chat forks across restart and refuses Cake controls inside them",
               type: "toolCall",
               id: "cake-1",
               name: "cake",
-              arguments: { command: "sessions.create", input: {} },
+              arguments: {
+                command: "sessions.send",
+                input: { sessionId: CAKE_CHAT_SESSION_ID, text: "Message parent" },
+              },
             },
           ])
         : durableAnswer(index === 3 ? "Side answer" : "Later side answer"),
   );
-  const first = await f.open({ tools: [], invoke });
+  const controls = {
+    tools: backendAgentTools().filter((tool) => tool.command === "sessions.send"),
+    invoke,
+  };
+  const first = await f.open(controls);
   await first.runtime.prompt("Parent question", "prompt", [], false, ids.first);
   const parentParts = (await first.runtime.snapshot()).parts;
   const fork = await first.runtime.fork(
     entryOf(await first.runtime.snapshot(), "Parent answer"),
     "Side chat",
   );
-  const side = await f.openSideChat(fork.sessionId);
-  await side.runtime.prompt("Start a session", "prompt", [], false, ids.first);
+  const side = await f.openSideChat(fork.sessionId, undefined, controls);
+  await side.runtime.prompt("Message parent", "prompt", [], false, ids.first);
   // A reply without tool rounds leaves only Cake Chat's run reset before the fork point;
   // the fork still repeats that request exactly instead of re-sending the system prompt.
   const parent = f.requests[0]!;
@@ -1575,14 +1583,20 @@ it("keeps side-chat forks across restart and refuses Cake controls inside them",
   ]);
   // Session-keyed provider caches see the same identity as Cake Chat.
   expect(f.providerSessions[1]).toBe(f.providerSessions[0]);
-  expect(invoke).not.toHaveBeenCalled();
+  expect(invoke).toHaveBeenCalledWith(
+    expect.objectContaining({
+      name: "sessions.send",
+      arguments: { sessionId: CAKE_CHAT_SESSION_ID, text: "Message parent" },
+    }),
+    expect.any(AbortSignal),
+  );
   expect(f.requests[2]!.messages).toContainEqual(
     expect.objectContaining({
       role: "toolResult",
       toolName: "cake",
       content: expect.arrayContaining([
         expect.objectContaining({
-          text: expect.stringContaining("Unknown Cake command: sessions.create"),
+          text: expect.stringMatching(/"ok"\s*:\s*true/),
         }),
       ]),
     }),
@@ -1590,11 +1604,11 @@ it("keeps side-chat forks across restart and refuses Cake controls inside them",
   await side.close();
   await first.close();
 
-  const second = await f.open({ tools: [], invoke });
+  const second = await f.open(controls);
   expect((await second.runtime.snapshot()).parts).toEqual(parentParts);
-  const reopened = await f.openSideChat(fork.sessionId);
+  const reopened = await f.openSideChat(fork.sessionId, undefined, controls);
   expect(textParts(await reopened.runtime.snapshot()).filter((part) => part.text !== "")).toEqual([
-    { role: "user", text: "Start a session" },
+    { role: "user", text: "Message parent" },
     { role: "assistant", text: "Side answer" },
   ]);
   await reopened.runtime.prompt("Follow up", "prompt", [], false, ids.second);

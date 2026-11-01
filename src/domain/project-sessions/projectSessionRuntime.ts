@@ -107,7 +107,9 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   sessionId,
   newSession,
   preserveResolution = false,
+  sideChatSessionId,
 }: {
+  readonly sideChatSessionId?: string;
   readonly preserveResolution?: boolean;
   readonly location: ProjectSessionLocation;
   readonly sessionId: string;
@@ -435,7 +437,9 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       ...runtimeIntegrations,
       sessionReferences: {
         resolve: (reference, signal) =>
-          run(sessionReferences.resolve(reference, sessionId), { signal }),
+          reference === "parent" && sideChatSessionId
+            ? Promise.resolve(sessionId)
+            : run(sessionReferences.resolve(reference, sessionId), { signal }),
         project: (value, signal) => run(sessionReferences.project(value), { signal }),
         ids: (signal) =>
           run(
@@ -880,26 +884,28 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             keepBranch,
           });
         },
-        routeFamilyMessage: (command, untrustedInput, signal, senderContext) =>
-          run(
-            Effect.scoped(
-              Schema.decodeUnknownEffect(sessionFamilyMessaging.FamilyMessageInput)(
-                untrustedInput,
-              ).pipe(
-                Effect.mapError((cause) => compositionError("familyMessage", cause)),
-                Effect.tap((input) => describeMessageReferences(input.messageRefs ?? [])),
-                Effect.flatMap((input) =>
-                  sessionFamilyMessaging.route(
-                    { sessionId, location },
-                    command,
-                    input,
-                    senderContext,
+        routeFamilyMessage: sideChatSessionId
+          ? undefined
+          : (command, untrustedInput, signal, senderContext) =>
+              run(
+                Effect.scoped(
+                  Schema.decodeUnknownEffect(sessionFamilyMessaging.FamilyMessageInput)(
+                    untrustedInput,
+                  ).pipe(
+                    Effect.mapError((cause) => compositionError("familyMessage", cause)),
+                    Effect.tap((input) => describeMessageReferences(input.messageRefs ?? [])),
+                    Effect.flatMap((input) =>
+                      sessionFamilyMessaging.route(
+                        { sessionId, location },
+                        command,
+                        input,
+                        senderContext,
+                      ),
+                    ),
                   ),
                 ),
+                { signal },
               ),
-            ),
-            { signal },
-          ),
         invokeAppControl: async (command, input, signal) => {
           if (
             command !== "sessions.compact" &&
@@ -909,9 +915,14 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           )
             input = {
               ...input,
-              sessionId: await run(sessionReferences.resolve(input.sessionId, sessionId), {
-                signal,
-              }),
+              sessionId: await run(
+                input.sessionId === "parent" && sideChatSessionId
+                  ? Effect.succeed(sessionId)
+                  : sessionReferences.resolve(input.sessionId, sessionId),
+                {
+                  signal,
+                },
+              ),
             };
           await run(
             Effect.scoped(validateMessageReferenceControl({ name: command, arguments: input })),
@@ -935,8 +946,17 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     );
                     return yield* backendAgentControl.invoke(command, invocation.arguments, {
                       kind: "project-session",
-                      sessionId,
-                      title: summary?.title ?? `Project Session ${sessionId}`,
+                      sessionId:
+                        sideChatSessionId &&
+                        (command === "sessions.send" ||
+                          command === "sessions.reply" ||
+                          command === "sessions.thread" ||
+                          command === "sessions.close-thread")
+                          ? sideChatSessionId
+                          : sessionId,
+                      title: sideChatSessionId
+                        ? `Side chat of ${summary?.title ?? sessionId}`
+                        : (summary?.title ?? `Project Session ${sessionId}`),
                       projectPath: location.projectPath,
                       projectName: location.projectName,
                       workingDirectory: location.workingDirectory,

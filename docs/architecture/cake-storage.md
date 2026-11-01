@@ -461,9 +461,9 @@ conflict check, and committed readback; an unavailable operation must never sile
 fall back to the shared writer. Coding sessions can also patch their own Project via
 `project.settings.update`, whose field guidance distinguishes the two instruction scopes;
 prefer the dedicated instruction operations for their read-before-write protection.
-Global Cake Chat alone may read and patch any registered Project's settings through
+Global Cake Chat and its user-created side chats may read and patch any registered Project's settings through
 `projects.settings.get/update` with an exact `projectPath`; Project Chats, Project
-Sessions and side chats never receive this cross-Project writer. It runs the same
+Sessions and their side chats do not receive this cross-Project writer. It runs the same
 backend handler, so writes still require the Project's selected-project authorization
 (granted to every registered Project at startup and on registration).
 
@@ -570,8 +570,8 @@ originals chronologically through the SDK, including tool calls and results; rea
 exact original text by default, or a `section=record` JSON record with exact stored
 arguments, results, details, diagnostics, errors and timing where retained. A known exact
 report-message ref goes directly to `messages.read`, not Zoom/search rediscovery.
-The tools are read-only and pinned to the owning runtime's conversation/database;
-side-chat callers cannot use them. For memory-anchored searches, start with a relevant
+The tools are read-only and pinned to the owning runtime's conversation/database.
+Side chats read their fork-visible history through the SDK, not siblings or later parent entries. For memory-anchored searches, start with a relevant
 line's inclusive `fromEntryId=A` and `throughEntryId=B`, not Zoom's `id+n` coordinates;
 broaden only when that span lacks the necessary evidence.
 Search scans at most 1,000 entries per call and returns at most 20 excerpts. Continue
