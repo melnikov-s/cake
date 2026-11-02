@@ -45,6 +45,11 @@ test("separate Node backend serves a real leased code-server workbench to remote
     join(project, "hello.ts"),
     "export const remoteValue = 42;\nexport const second = 7;\n",
   );
+  // Bound TypeScript’s ancestor package discovery to this fixture.
+  await writeFile(
+    join(project, "package.json"),
+    JSON.stringify({ name: "remote-editor-fixture", private: true }),
+  );
   const timestamp = new Date(0).toISOString();
   await writeFile(
     join(home, "state", "application.json"),
@@ -104,7 +109,7 @@ test("separate Node backend serves a real leased code-server workbench to remote
     env: {
       PATH: process.env.PATH,
       HOME: directory,
-      // code-server watches temporary IPC paths; never scan the host's shared temp directory.
+      // Keep VS Code’s temporary IPC files inside the fixture.
       TMPDIR: directory,
       CAKE_HOME: home,
       PI_CODING_AGENT_DIR: join(home, "pi"),
