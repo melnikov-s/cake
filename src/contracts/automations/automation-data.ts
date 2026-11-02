@@ -105,7 +105,6 @@ const AutomationTrigger = Schema.TaggedUnion({
   Schedule: { schedule: AutomationSchedule },
   Event: { filter: AutomationEventFilter },
 });
-export type AutomationTrigger = typeof AutomationTrigger.Type;
 
 /** Fully explicit saved execution settings; no dependence on the creator's later conversation. */
 export const AutomationDefinition = Schema.Struct({

@@ -81,9 +81,6 @@ const AutomationCatalogSnapshot = Schema.Struct({
   unresolvedSessions: Schema.Array(AutomationSessionSummary),
   // Hub totals derive from these complete summaries; no separately persisted counters.
 });
-export interface AutomationCatalogSnapshot extends Schema.Schema.Type<
-  typeof AutomationCatalogSnapshot
-> {}
 export const AutomationCatalogUpdate = Schema.TaggedUnion({
   Snapshot: { snapshot: AutomationCatalogSnapshot },
   Event: {
