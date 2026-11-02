@@ -40,6 +40,15 @@ export class AutomationEditorStore extends Store {
     this.error = undefined;
   }
 
+  close() {
+    this.request?.abort();
+    this.loading = false;
+    this.automation = undefined;
+    this.definition = undefined;
+    this.creating = false;
+    this.error = undefined;
+  }
+
   async open(automationId: AutomationId) {
     this.request?.abort();
     const request = new AbortController();

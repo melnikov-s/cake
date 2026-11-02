@@ -115,12 +115,14 @@ export const AutomationDefinition = observer(function AutomationDefinition() {
         </fieldset>
       </div>
       <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-border/65 px-8 py-3">
-        {editor.creating && editor.step !== "context" && (
+        {editor.creating && (
           <Button
             variant="outline"
-            onClick={() => editor.setStep(editor.step === "task" ? "trigger" : "context")}
+            className="mr-auto"
+            disabled={editor.saving}
+            onClick={() => hub.showOverview()}
           >
-            Previous
+            Cancel
           </Button>
         )}
         {editor.creating && editor.step !== "task" ? (

@@ -92,7 +92,7 @@ export class AutomationsStore extends Store<{
   showOverview() {
     this.globalHistory = false;
     this.selectedId = undefined;
-    this.editor.creating = false;
+    this.editor.close();
     this.archiveConfirmationId = undefined;
   }
 

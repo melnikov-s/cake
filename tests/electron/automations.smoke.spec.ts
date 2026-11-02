@@ -55,6 +55,33 @@ async function launchAutomationFixture(theme: "light" | "dark" = "light") {
   }
 }
 
+test("cancels creation from every step and returns to the automation list without saving", async () => {
+  const fixture = await launchAutomationFixture();
+  const { page } = fixture;
+  try {
+    for (const advances of [0, 1, 2]) {
+      await page.getByRole("button", { name: "New automation", exact: true }).click();
+      const name = page.getByRole("textbox", { name: "Automation name", exact: true });
+      await expect(name).toHaveValue("New automation");
+      await name.fill("Discard this automation");
+      for (let step = 0; step < advances; step++)
+        await page.getByRole("button", { name: "Next", exact: true }).click();
+      const cancel = page.getByRole("button", { name: "Cancel", exact: true });
+      await expect(cancel).toBeVisible({ timeout: 3000 });
+      await cancel.click();
+      const list = page.getByRole("table", { name: "Automations", exact: true });
+      await expect(list).toBeVisible();
+      await expect(list.getByRole("button", { name: "Morning brief", exact: true })).toBeVisible();
+      await expect(
+        list.getByRole("button", { name: "Discard this automation", exact: true }),
+      ).toHaveCount(0);
+    }
+    expect(fixture.modelRequests()).toBe(0);
+  } finally {
+    await fixture.close();
+  }
+});
+
 test("creates through native inputs and model popover, runs a real Automation Session, and preserves composer focus/input", async () => {
   test.setTimeout(90000);
   const fixture = await launchAutomationFixture();

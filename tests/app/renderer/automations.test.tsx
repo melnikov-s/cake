@@ -181,6 +181,31 @@ describe("automation product workflows", () => {
     expect(fixture.models.sessionCatalog.sessions).toHaveLength(0);
   });
 
+  it.each([0, 1, 2])(
+    "cancels creation after %i steps, discards the draft, and returns to the list",
+    async (advances) => {
+      const create = vi.fn<Client["automations"]["create"]>();
+      const update = vi.fn<Client["automations"]["update"]>();
+      using fixture = setup({ client: { automations: { create, update } } });
+      await fixture.user.click(screen.getByRole("button", { name: "New automation" }));
+      const name = screen.getByRole("textbox", { name: "Automation name" });
+      await fixture.user.clear(name);
+      await fixture.user.type(name, "Discard this automation");
+      for (let step = 0; step < advances; step++)
+        await fixture.user.click(screen.getByRole("button", { name: "Next" }));
+      await fixture.user.click(screen.getByRole("button", { name: /^Cancel$/ }));
+      expect(within(table()).getByRole("button", { name: "Daily review" })).toBeTruthy();
+      expect(create).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+      await fixture.user.click(screen.getByRole("button", { name: "New automation" }));
+      expect(screen.getByRole("textbox", { name: "Automation name" })).toHaveProperty(
+        "value",
+        "New automation",
+      );
+      expect(screen.getByRole("combobox", { name: "Execution context" })).toBeTruthy();
+    },
+  );
+
   it("creates through Context, Trigger and Task with explicit model, attachment and event filters", async () => {
     let saved: Automation | undefined;
     const create = vi.fn<Client["automations"]["create"]>(async ({ definition, initialState }) => {
