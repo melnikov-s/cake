@@ -104,6 +104,8 @@ test("separate Node backend serves a real leased code-server workbench to remote
     env: {
       PATH: process.env.PATH,
       HOME: directory,
+      // code-server watches temporary IPC paths; never scan the host's shared temp directory.
+      TMPDIR: directory,
       CAKE_HOME: home,
       PI_CODING_AGENT_DIR: join(home, "pi"),
       PI_CODING_AGENT_SESSION_DIR: "",
@@ -156,6 +158,7 @@ test("separate Node backend serves a real leased code-server workbench to remote
       },
     });
     const app = application;
+    const page = await app.firstWindow();
     await app.evaluate(({ session }) => {
       const requests: { url: string; status: number }[] = [];
       Reflect.set(globalThis, "editorRequests", requests);
@@ -164,7 +167,6 @@ test("separate Node backend serves a real leased code-server workbench to remote
         (details) => requests.push({ url: details.url, status: details.statusCode }),
       );
     });
-    const page = await app.firstWindow();
     await expect(page.getByLabel("Message", { exact: true })).toBeVisible({ timeout: 25_000 });
     await app.evaluate(() => {
       const fs = process.getBuiltinModule("node:fs/promises");
