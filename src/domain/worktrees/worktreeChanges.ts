@@ -1,14 +1,24 @@
 import { Effect, FileSystem, Schema } from "effect";
 import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
-import { WorktreeChanges } from "../../contracts/worktrees/worktree-changes";
-import { Git } from "../../services/git/Git";
+import { WorktreeChanges, commitListLimit } from "../../contracts/worktrees/worktree-changes";
+import { Git, GitError } from "../../services/git/Git";
 import { parseNumstat } from "../../services/git/git-numstat";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
+import { inferBase } from "./worktreeChangesBase";
 
-/** Read-only review of the same branch range used by Managed Worktree landing. */
+/**
+ * Read-only review of HEAD against the branch it forked from. The base is inferred from the
+ * Git graph on every call (or chosen by the user for this request); Cake stores none of it.
+ */
 export const inspect = Effect.fn("WorktreeChanges.inspect")(
-  function* (workspacePath: string) {
+  function* (
+    workspacePath: string,
+    options: {
+      readonly base?: string | undefined;
+      readonly previousBase?: string | undefined;
+    },
+  ) {
     if (!(yield* (yield* ProjectAccess).isAllowed(workspacePath)))
       return yield* new ManagedWorktreeError({
         operation: "changes",
@@ -17,29 +27,35 @@ export const inspect = Effect.fn("WorktreeChanges.inspect")(
     const git = yield* Git;
     const run = (args: readonly string[]) => git.run(workspacePath, args);
     const status = yield* (yield* ManagedWorktrees).status(workspacePath);
-    const record = status?.record;
     const branch = (yield* run(["rev-parse", "--abbrev-ref", "HEAD"])).trim();
-    // Ordinary checkouts use their configured upstream. Without one, there is no
-    // separate branch baseline: do not invent a 'main' branch or count all history.
-    const base =
-      record?.baseBranch ??
-      (yield* run(["rev-parse", "--abbrev-ref", "@{upstream}"]).pipe(
-        Effect.catchTag("GitError", () => Effect.succeed("HEAD")),
-      )).trim();
-    const revisions = record?.landedSourceCommit
-      ? ["HEAD", `^${record.landedSourceCommit}`, `^${base}`]
-      : [`${base}..HEAD`];
-    const log = yield* run([
-      "log",
-      "--format=%x1e%H%x00%s%x00",
-      "--diff-merges=first-parent",
-      "--raw",
-      "--numstat",
-      "-z",
-      "--no-renames",
-      ...revisions,
-      "--",
-    ]);
+    const inferred = yield* inferBase(run, {
+      branch,
+      requested: options.base,
+      previous: options.previousBase,
+    });
+    const base = inferred.base;
+    // A landed checkpoint hides commits already delivered by a squash landing.
+    const landed = status?.record?.landedSourceCommit;
+    const revisions = base
+      ? ["HEAD", `^refs/heads/${base}`, ...(landed ? [`^${landed}`] : [])]
+      : [];
+    const totalCommits = base
+      ? Number((yield* run(["rev-list", "--count", ...revisions, "--"])).trim())
+      : 0;
+    const log = base
+      ? yield* run([
+          "log",
+          `--max-count=${commitListLimit}`,
+          "--format=%x1e%H%x00%s%x00",
+          "--diff-merges=first-parent",
+          "--raw",
+          "--numstat",
+          "-z",
+          "--no-renames",
+          ...revisions,
+          "--",
+        ])
+      : "";
     const commits = yield* Effect.try({
       try: () =>
         log
@@ -107,7 +123,10 @@ export const inspect = Effect.fn("WorktreeChanges.inspect")(
     return yield* Schema.decodeUnknownEffect(WorktreeChanges)({
       branch,
       base,
+      baseAlternatives: inferred.alternatives.map(({ branch, distance }) => ({ branch, distance })),
+      baseNote: inferred.note,
       commits: commits.map((commit) => ({ ...commit, files: withExistence(commit.files) })),
+      totalCommits,
       staged: withExistence(tracked.staged),
       unstaged: [...withExistence(tracked.unstaged), ...untracked],
     });
@@ -116,7 +135,16 @@ export const inspect = Effect.fn("WorktreeChanges.inspect")(
     (cause) =>
       new ManagedWorktreeError({
         operation: "changes",
-        message: cause instanceof Error ? cause.message : String(cause),
+        message:
+          cause instanceof GitError
+            ? `${cause.operation.split(" ").slice(0, 2).join(" ")} failed: ${cause.message}`
+            : cause instanceof Error
+              ? cause.message
+              : String(cause),
       }),
   ),
+  (effect, workspacePath) =>
+    Effect.tapError(effect, (error) =>
+      Effect.logWarning("Worktree changes failed", { workspacePath, message: error.message }),
+    ),
 );

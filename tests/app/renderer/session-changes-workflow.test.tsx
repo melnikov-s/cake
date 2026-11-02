@@ -13,6 +13,8 @@ import { sessionSummary } from "./fixtures/catalog-fixtures";
 const changes: WorktreeChanges = {
   branch: "agent/review",
   base: "main",
+  baseAlternatives: [],
+  totalCommits: 2,
   commits: [
     {
       hash: "abc1234567",
@@ -89,11 +91,24 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderChanges(data = changes) {
-  const inspectChanges = vi.fn<Client["managedWorktrees"]["inspectChanges"]>(async (path) =>
-    path === "/other"
-      ? { branch: "other", base: "main", commits: [], staged: [], unstaged: [] }
-      : data,
+function renderChanges(
+  data: Client["managedWorktrees"]["inspectChanges"] | WorktreeChanges = changes,
+) {
+  const inspectChanges = vi.fn<Client["managedWorktrees"]["inspectChanges"]>(
+    async (input, options) =>
+      input.workspacePath === "/other"
+        ? {
+            branch: "other",
+            base: "main",
+            baseAlternatives: [],
+            commits: [],
+            totalCommits: 0,
+            staged: [],
+            unstaged: [],
+          }
+        : typeof data === "function"
+          ? data(input, options)
+          : data,
   );
   const prepareFileLocation = vi.fn<Client["filesystem"]["prepareFileLocation"]>(
     async ({ location }) => ({ viewer: "vscode", location }),
@@ -123,9 +138,11 @@ function renderChanges(data = changes) {
   return { ...fixture, inspectChanges, prepareFileLocation, reveal, openSourceControl };
 }
 
-async function openChanges(fixture: ReturnType<typeof renderChanges>) {
-  const toggle = await screen.findByRole("button", { name: "Review changes · 2 commits" });
-  expect(toggle.textContent).toBe("2");
+async function openChanges(fixture: ReturnType<typeof renderChanges>, commits = 2) {
+  const toggle = await screen.findByRole("button", {
+    name: `Review changes · ${commits} commits`,
+  });
+  expect(toggle.textContent).toBe(String(commits));
   await fixture.user.click(toggle);
   return screen.findByRole("complementary", { name: "Changes" });
 }
@@ -257,5 +274,56 @@ describe("Session Changes review", () => {
       ),
     ).toBe("true");
     expect(await screen.findByRole("complementary", { name: "Changes" })).toBeDefined();
+  });
+
+  it("compares with the inferred parent and lets the user switch among tied bases", async () => {
+    const stacked: WorktreeChanges = {
+      ...changes,
+      base: "agent/parent",
+      baseAlternatives: [
+        { branch: "agent/parent", distance: 2 },
+        { branch: "main", distance: 2 },
+      ],
+    };
+    using fixture = renderChanges(async (input) =>
+      input.base === "main" ? { ...stacked, base: "main" } : stacked,
+    );
+    const pane = await openChanges(fixture);
+    const picker = within(pane).getByRole("combobox", { name: "Compare with" });
+    expect((picker as HTMLSelectElement).value).toBe("agent/parent");
+    await fixture.user.selectOptions(picker, "main");
+    await waitFor(() =>
+      expect(fixture.inspectChanges).toHaveBeenLastCalledWith(
+        { workspacePath: editorWorkingDirectory, base: "main", previousBase: "agent/parent" },
+        expect.any(Object),
+      ),
+    );
+    await waitFor(() => expect((picker as HTMLSelectElement).value).toBe("main"));
+  });
+
+  it("explains a deleted parent and a capped commit list", async () => {
+    using fixture = renderChanges({
+      ...changes,
+      baseNote: "agent/parent no longer exists",
+      totalCommits: 8156,
+    });
+    const pane = await openChanges(fixture, 8156);
+    expect(within(pane).getByText("agent/parent no longer exists")).toBeDefined();
+    expect(within(pane).getByText("Showing 2 of 8156 commits")).toBeDefined();
+  });
+
+  it("keeps a Git failure visible while a later refresh is still running", async () => {
+    let calls = 0;
+    using fixture = renderChanges(async () => {
+      // The first read fails; the refresh triggered by opening the pane never settles.
+      if (calls++ === 0) throw new Error("git log failed: stdout maxBuffer length exceeded");
+      return new Promise<never>(() => {});
+    });
+    await fixture.user.click(await screen.findByRole("button", { name: "Review changes" }));
+    const pane = await screen.findByRole("complementary", { name: "Changes" });
+    expect(
+      await within(pane).findByText("git log failed: stdout maxBuffer length exceeded"),
+    ).toBeDefined();
+    expect(calls).toBe(2);
   });
 });

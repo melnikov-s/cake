@@ -18,6 +18,8 @@ export interface SessionChangesStoreProps {
 /** One ordinary session's transient branch review, using the shared accessory slot. */
 export class SessionChangesStore extends Store<SessionChangesStoreProps> {
   data: WorktreeChanges | undefined;
+  /** The user's comparison base for this session's view; never persisted. */
+  selectedBase: string | undefined;
   loading = false;
   width = 334;
   error: string | undefined;
@@ -25,13 +27,17 @@ export class SessionChangesStore extends Store<SessionChangesStoreProps> {
   commitsExpanded = true;
   uncommittedExpanded = true;
   private request = 0;
+  private dataPath: string | undefined;
 
   constructor(props: SessionChangesStore["props"]) {
     super(props);
     this.effect(() => {
       const enabled = this.props.enabled();
-      this.props.workspacePath();
-      if (enabled) untracked(() => void this.refresh());
+      const path = this.props.workspacePath();
+      untracked(() => {
+        if (path !== this.dataPath) this.selectedBase = undefined;
+        if (enabled) void this.refresh();
+      });
     });
     this.reaction(
       () => this.props.isStreaming(),
@@ -80,18 +86,31 @@ export class SessionChangesStore extends Store<SessionChangesStoreProps> {
     this.uncommittedExpanded = !this.uncommittedExpanded;
   }
 
+  selectBase(branch: string) {
+    this.selectedBase = branch;
+    void this.refresh();
+  }
+
   /** Latest read wins; requests are cancelled with their owning session. */
   async refresh() {
     const request = ++this.request;
     const path = this.props.workspacePath();
+    const previousBase = path === this.dataPath ? this.data?.base : undefined;
     this.loading = true;
-    this.error = undefined;
     try {
-      const data = await ClientContext.consume(this)!.managedWorktrees.inspectChanges(path, {
-        signal: this.signal,
-      });
+      const data = await ClientContext.consume(this)!.managedWorktrees.inspectChanges(
+        {
+          workspacePath: path,
+          base: this.selectedBase,
+          previousBase: previousBase ?? undefined,
+        },
+        { signal: this.signal },
+      );
       if (this.signal.aborted || request !== this.request) return;
       this.data = data;
+      this.dataPath = path;
+      this.error = undefined;
+      if (this.selectedBase !== data.base) this.selectedBase = undefined;
     } catch (error) {
       if (!this.signal.aborted && request === this.request)
         this.error = describeError(error).message;

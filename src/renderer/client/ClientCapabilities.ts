@@ -319,10 +319,10 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
         ),
     },
     managedWorktrees: {
-      inspectChanges: (workspacePath, options) =>
+      inspectChanges: (input, options) =>
         execute(
           "managedWorktrees.inspectChanges",
-          (client) => client.managedWorktrees.inspectChanges({ workspacePath }),
+          (client) => client.managedWorktrees.inspectChanges(input),
           options,
         ),
       create: (input, options) =>

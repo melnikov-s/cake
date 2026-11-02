@@ -38,7 +38,11 @@ const landingRpc = <Type extends LandingOperation>(type: Type) =>
 
 export const ManagedWorktreeRpc = RpcGroup.make(
   Rpc.make("managedWorktrees.inspectChanges", {
-    payload: { workspacePath: Schema.NonEmptyString },
+    payload: {
+      workspacePath: Schema.NonEmptyString,
+      base: Schema.optional(Schema.NonEmptyString),
+      previousBase: Schema.optional(Schema.NonEmptyString),
+    },
     success: WorktreeChanges,
     error: ManagedWorktreeError,
   }),

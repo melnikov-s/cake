@@ -6,7 +6,7 @@ import { Git, GitError } from "../../../src/services/git/Git";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { parseNumstat } from "../../../src/services/git/git-numstat";
-import { changeTotals } from "../../../src/contracts/worktrees/worktree-changes";
+import { changeTotals, commitListLimit } from "../../../src/contracts/worktrees/worktree-changes";
 import type { WorktreeStatus } from "../../../src/contracts/worktrees/worktree-contract";
 
 const status: WorktreeStatus = {
@@ -38,7 +38,12 @@ function dependencies(
     staged?: string;
     unstaged?: string;
     untracked?: Record<string, Uint8Array>;
-    upstream?: string;
+    /** `for-each-ref` lines: branch, ahead, behind relative to HEAD. */
+    branches?: ReadonlyArray<readonly [string, number, number]>;
+    total?: number;
+    branch?: string;
+    reflog?: string;
+    fail?: { command: string; message: string };
   } = {},
 ) {
   const commands: string[][] = [];
@@ -47,15 +52,23 @@ function dependencies(
     Git.of({
       run: (cwd, args) => {
         commands.push([...args]);
-        if (args[0] === "rev-parse") {
-          if (args.includes("@{upstream}") && !options.upstream)
-            return Effect.fail(
-              new GitError({ operation: "run", workingDirectory: cwd, message: "No upstream" }),
-            );
-          return Effect.succeed(
-            args.includes("@{upstream}") ? (options.upstream ?? "") : "agent/review\n",
+        if (args.includes("--walk-reflogs")) return Effect.succeed(options.reflog ?? "");
+        if (options.fail && args[0] === options.fail.command)
+          return Effect.fail(
+            new GitError({
+              operation: `git ${args.join(" ")}`,
+              workingDirectory: cwd,
+              message: options.fail.message,
+            }),
           );
-        }
+        if (args[0] === "rev-parse") return Effect.succeed(`${options.branch ?? "agent/review"}\n`);
+        if (args[0] === "for-each-ref")
+          return Effect.succeed(
+            (options.branches ?? [["main", 0, 1]])
+              .map(([branch, ahead, behind]) => `${branch}\0${ahead} ${behind}\n`)
+              .join(""),
+          );
+        if (args[0] === "rev-list") return Effect.succeed(`${options.total ?? 1}\n`);
         if (args[0] === "log") return Effect.succeed(options.log ?? "");
         if (args[0] === "diff")
           return Effect.succeed(
@@ -88,113 +101,189 @@ function dependencies(
   return { layer, commands };
 }
 
-describe("Worktree Changes Git projection", () => {
-  it.effect("uses landing's target/checkpoint range and preserves every file's deltas", () =>
-    Effect.gen(function* () {
-      const fixture = dependencies({
-        status,
-        log: [
-          "\x1eabc123",
-          "Review pane",
-          "",
-          "\n:100644 000000 123 000 D",
-          "old name.ts",
-          "6\t2\tfile\tname.ts",
-          "0\t8\told name.ts",
-          "-\t-\timage.png",
-          "",
-        ].join("\0"),
-        staged: "10\t2\tREADME.md\0",
-        unstaged: "7\t1\tsrc/pane.tsx\0",
-        untracked: {
-          "new.ts": new TextEncoder().encode("one\ntwo"),
-          "new.png": new Uint8Array([1, 0, 2]),
-        },
-      });
-      const result = yield* inspect("/checkout").pipe(Effect.provide(fixture.layer));
-      expect(fixture.commands.find((args) => args[0] === "log")).toEqual(
-        expect.arrayContaining(["HEAD", "^acknowledged", "^main"]),
-      );
-      expect(result.commits).toHaveLength(1);
-      expect(result.commits[0]?.files).toEqual([
-        {
-          path: "file\tname.ts",
-          deleted: false,
-          workingTreeExists: false,
-          additions: 6,
-          deletions: 2,
-        },
-        {
-          path: "old name.ts",
-          deleted: true,
-          workingTreeExists: false,
-          additions: 0,
-          deletions: 8,
-        },
-        {
-          path: "image.png",
-          deleted: false,
-          workingTreeExists: true,
-          additions: null,
-          deletions: null,
-        },
-      ]);
-      expect(changeTotals(result.commits[0]?.files ?? [])).toEqual({
-        additions: 6,
-        deletions: 10,
-        binary: 1,
-      });
-      expect(result.staged[0]).toMatchObject({ additions: 10, deletions: 2 });
-      expect(result.unstaged).toEqual([
-        {
-          path: "src/pane.tsx",
-          deleted: false,
-          workingTreeExists: true,
-          additions: 7,
-          deletions: 1,
-        },
-        { path: "new.ts", deleted: false, workingTreeExists: true, additions: 2, deletions: 0 },
-        {
-          path: "new.png",
-          deleted: false,
-          workingTreeExists: true,
-          additions: null,
-          deletions: null,
-        },
-      ]);
-    }),
-  );
+const commitLog = (commands: string[][]) =>
+  commands.find((args) => args[0] === "log" && !args.includes("--walk-reflogs"));
 
+describe("Worktree Changes Git projection", () => {
   it.effect(
-    "returns clean/no-commit state without counting repository history when no baseline exists",
+    "excludes landed commits from the inferred range and preserves every file's deltas",
     () =>
       Effect.gen(function* () {
-        const fixture = dependencies();
-        const result = yield* inspect("/checkout").pipe(Effect.provide(fixture.layer));
-        expect(result).toEqual({
-          branch: "agent/review",
-          base: "HEAD",
-          commits: [],
-          staged: [],
-          unstaged: [],
+        const fixture = dependencies({
+          status,
+          log: [
+            "\x1eabc123",
+            "Review pane",
+            "",
+            "\n:100644 000000 123 000 D",
+            "old name.ts",
+            "6\t2\tfile\tname.ts",
+            "0\t8\told name.ts",
+            "-\t-\timage.png",
+            "",
+          ].join("\0"),
+          staged: "10\t2\tREADME.md\0",
+          unstaged: "7\t1\tsrc/pane.tsx\0",
+          untracked: {
+            "new.ts": new TextEncoder().encode("one\ntwo"),
+            "new.png": new Uint8Array([1, 0, 2]),
+          },
         });
-        expect(fixture.commands.find((args) => args[0] === "log")).toContain("HEAD..HEAD");
+        const result = yield* inspect("/checkout", {}).pipe(Effect.provide(fixture.layer));
+        expect(commitLog(fixture.commands)).toEqual(
+          expect.arrayContaining(["HEAD", "^acknowledged", "^refs/heads/main"]),
+        );
+        expect(result.commits).toHaveLength(1);
+        expect(result.commits[0]?.files).toEqual([
+          {
+            path: "file\tname.ts",
+            deleted: false,
+            workingTreeExists: false,
+            additions: 6,
+            deletions: 2,
+          },
+          {
+            path: "old name.ts",
+            deleted: true,
+            workingTreeExists: false,
+            additions: 0,
+            deletions: 8,
+          },
+          {
+            path: "image.png",
+            deleted: false,
+            workingTreeExists: true,
+            additions: null,
+            deletions: null,
+          },
+        ]);
+        expect(changeTotals(result.commits[0]?.files ?? [])).toEqual({
+          additions: 6,
+          deletions: 10,
+          binary: 1,
+        });
+        expect(result.staged[0]).toMatchObject({ additions: 10, deletions: 2 });
+        expect(result.unstaged).toEqual([
+          {
+            path: "src/pane.tsx",
+            deleted: false,
+            workingTreeExists: true,
+            additions: 7,
+            deletions: 1,
+          },
+          { path: "new.ts", deleted: false, workingTreeExists: true, additions: 2, deletions: 0 },
+          {
+            path: "new.png",
+            deleted: false,
+            workingTreeExists: true,
+            additions: null,
+            deletions: null,
+          },
+        ]);
       }),
   );
 
-  it.effect("uses the configured upstream for ordinary non-managed checkouts", () =>
+  it.effect("reviews only the working tree when no other branch is a possible parent", () =>
     Effect.gen(function* () {
-      const fixture = dependencies({ upstream: "origin/feature\n" });
-      const result = yield* inspect("/checkout").pipe(Effect.provide(fixture.layer));
-      expect(result.base).toBe("origin/feature");
-      expect(fixture.commands.find((args) => args[0] === "log")).toContain("origin/feature..HEAD");
+      // agent/child contains HEAD (behind 0): a child of this branch, never its parent.
+      const fixture = dependencies({ branches: [["agent/child", 2, 0]] });
+      const result = yield* inspect("/checkout", {}).pipe(Effect.provide(fixture.layer));
+      expect(result).toEqual({
+        branch: "agent/review",
+        base: null,
+        baseAlternatives: [],
+        commits: [],
+        totalCommits: 0,
+        staged: [],
+        unstaged: [],
+      });
+      expect(commitLog(fixture.commands)).toBeUndefined();
+    }),
+  );
+
+  it.effect("skips a nearer branch created after this one: it is a child that diverged", () =>
+    Effect.gen(function* () {
+      const fixture = dependencies({
+        branches: [
+          ["agent/child", 1, 1],
+          ["main", 0, 3],
+        ],
+        reflog: [
+          "refs/heads/agent/child@{300}",
+          "refs/heads/agent/child@{200}",
+          "refs/heads/agent/review@{100}",
+        ].join("\n"),
+      });
+      const result = yield* inspect("/checkout", {}).pipe(Effect.provide(fixture.layer));
+      expect(result.base).toBe("main");
+      expect(result.baseAlternatives).toEqual([{ branch: "main", distance: 3 }]);
+    }),
+  );
+
+  it.effect("never infers a parent for the trunk itself", () =>
+    Effect.gen(function* () {
+      const fixture = dependencies({ branch: "main", branches: [["agent/old", 0, 4]] });
+      const result = yield* inspect("/checkout", {}).pipe(Effect.provide(fixture.layer));
+      expect(result.base).toBeNull();
+      expect(fixture.commands.some((args) => args[0] === "for-each-ref")).toBe(false);
+    }),
+  );
+
+  it.effect("caps the listed commits and reports the full range size", () =>
+    Effect.gen(function* () {
+      const fixture = dependencies({
+        branches: [["main", 0, 8156]],
+        total: 8156,
+        log: "\x1eabc\0Latest\0\0",
+      });
+      const result = yield* inspect("/checkout", {}).pipe(Effect.provide(fixture.layer));
+      expect(commitLog(fixture.commands)).toContain(`--max-count=${commitListLimit}`);
+      expect(fixture.commands.find((args) => args[0] === "rev-list")).toEqual([
+        "rev-list",
+        "--count",
+        "HEAD",
+        "^refs/heads/main",
+        "--",
+      ]);
+      expect(result.totalCommits).toBe(8156);
+    }),
+  );
+
+  it.effect("names the failing Git command instead of hiding the error", () =>
+    Effect.gen(function* () {
+      const fixture = dependencies({
+        fail: { command: "log", message: "stdout maxBuffer length exceeded" },
+      });
+      const error = yield* inspect("/checkout", {}).pipe(
+        Effect.provide(fixture.layer),
+        Effect.flip,
+      );
+      expect(error.message).toBe("git log failed: stdout maxBuffer length exceeded");
+    }),
+  );
+
+  it.effect("explains when Git is too old to compare branches in one pass", () =>
+    Effect.gen(function* () {
+      const fixture = dependencies({
+        fail: { command: "for-each-ref", message: "fatal: unknown field name: ahead-behind:HEAD" },
+      });
+      const error = yield* inspect("/checkout", {}).pipe(
+        Effect.provide(fixture.layer),
+        Effect.flip,
+      );
+      expect(error.message).toBe(
+        "git for-each-ref failed: Finding the parent branch requires Git 2.41 or newer",
+      );
     }),
   );
 
   it.effect("refuses paths outside existing project access before invoking Git", () =>
     Effect.gen(function* () {
       const fixture = dependencies({ allowed: false });
-      const result = yield* inspect("/checkout").pipe(Effect.provide(fixture.layer), Effect.flip);
+      const result = yield* inspect("/checkout", {}).pipe(
+        Effect.provide(fixture.layer),
+        Effect.flip,
+      );
       expect(result.message).toContain("not selected");
       expect(fixture.commands).toEqual([]);
     }),

@@ -2,6 +2,7 @@ import { observer } from "r-state-tree/react";
 import { BranchIcon, VsCodeIcon } from "./ui/icons";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
+import { Select } from "./ui/select";
 import { LoadingState } from "./ui/loading-state";
 import { DisclosureTrigger } from "./ui/disclosure-trigger";
 import { ChangeStats } from "./ui/change-stats";
@@ -16,7 +17,7 @@ export const SessionChangesPanel = observer(function SessionChangesPanel({
   store: SessionChangesStore;
 }) {
   const data = store.data;
-  if (!data && store.loading) return <LoadingState />;
+  if (!data && store.loading && !store.error) return <LoadingState />;
   const dirty = data ? [...data.staged, ...data.unstaged] : [];
   const dirtyCount = new Set(dirty.map((file) => file.path)).size;
   return (
@@ -32,10 +33,34 @@ export const SessionChangesPanel = observer(function SessionChangesPanel({
               {data.branch}
             </span>
             <span>→</span>
-            <span className="truncate" title={data.base}>
-              {data.base}
-            </span>
+            {data.base === null ? (
+              <span className="truncate">No parent branch</span>
+            ) : data.baseAlternatives.length > 1 ? (
+              <Select
+                size="sm"
+                aria-label="Compare with"
+                className="h-6 w-auto min-w-0 truncate"
+                value={data.base}
+                onChange={(event) => store.selectBase(event.target.value)}
+              >
+                {(data.baseAlternatives.some((candidate) => candidate.branch === data.base)
+                  ? data.baseAlternatives
+                  : [{ branch: data.base }, ...data.baseAlternatives]
+                ).map(({ branch }) => (
+                  <option key={branch} value={branch}>
+                    {branch}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <span className="truncate" title={data.base}>
+                {data.base}
+              </span>
+            )}
           </div>
+          {data.baseNote && (
+            <p className="px-4 pb-2 text-xs text-muted-foreground">{data.baseNote}</p>
+          )}
           <div className="px-4 pb-4">
             <Button
               variant="outline"
@@ -52,7 +77,7 @@ export const SessionChangesPanel = observer(function SessionChangesPanel({
             open={store.commitsExpanded}
             chevronPosition="start"
             className="px-4 py-2 hover:bg-muted/55"
-            subtitle={data.commits.length}
+            subtitle={data.totalCommits}
             trailing={
               <ChangeStats {...changeTotals(data.commits.flatMap((commit) => commit.files))} />
             }
@@ -66,6 +91,11 @@ export const SessionChangesPanel = observer(function SessionChangesPanel({
               {data.commits.map((commit) => (
                 <SessionChangeCommit key={commit.hash} commit={commit} store={store} />
               ))}
+              {data.totalCommits > data.commits.length && (
+                <p className="px-4 py-2 text-xs text-muted-foreground">
+                  Showing {data.commits.length} of {data.totalCommits} commits
+                </p>
+              )}
             </div>
           )}
           <section className="mt-3 border-t border-border/75 pt-1.5">

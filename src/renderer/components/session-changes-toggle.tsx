@@ -11,7 +11,7 @@ export const SessionChangesToggle = observer(function SessionChangesToggle({
   onOpen(): void;
 }) {
   const store = session.changesStore;
-  const count = store.data?.commits.length;
+  const count = store.data?.totalCommits;
   return (
     <IconButton
       tooltip={`Review changes${count === undefined ? "" : ` · ${count} commits`}`}

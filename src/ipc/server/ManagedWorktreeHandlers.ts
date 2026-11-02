@@ -7,8 +7,10 @@ import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 
 export const managedWorktreeHandlers = ManagedWorktreeRpc.of({
-  "managedWorktrees.inspectChanges": ({ workspacePath }) =>
-    Effect.flatMap(RendererConnection, () => worktreeChanges.inspect(workspacePath)),
+  "managedWorktrees.inspectChanges": ({ workspacePath, base, previousBase }) =>
+    Effect.flatMap(RendererConnection, () =>
+      worktreeChanges.inspect(workspacePath, { base, previousBase }),
+    ),
   "managedWorktrees.observeCatalog": () =>
     Stream.unwrap(Effect.map(ManagedWorktrees, (worktrees) => worktrees.observe())),
   "managedWorktrees.observeOperations": () => Stream.unwrap(worktreeLandings.observeOperations()),

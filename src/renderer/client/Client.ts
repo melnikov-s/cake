@@ -319,7 +319,11 @@ interface WorkspaceCommands {
 }
 
 interface ManagedWorktreeCommands {
-  inspectChanges(workspacePath: string, options?: ClientCommandOptions): Promise<WorktreeChanges>;
+  /** `base` is the user's comparison choice; `previousBase` lets Git report a deleted parent. */
+  inspectChanges(
+    input: { workspacePath: string; base: string | undefined; previousBase: string | undefined },
+    options?: ClientCommandOptions,
+  ): Promise<WorktreeChanges>;
   create(
     input: {
       operationId: string;
