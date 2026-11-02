@@ -30,17 +30,9 @@ export const ProjectWorkspaceControls = observer(function ProjectWorkspaceContro
       <SessionArtifactMenu session={session} />
       <WorkspaceModeControls
         mode={mode}
-        chat={session.conversationSessionStore.chatStore}
-        treeOpen={store.commandPaneStore.pane === "tree"}
         terminalAvailable={terminal.available}
         terminalOpen={terminal.open}
         browserHost={browserMode}
-        onToggleTree={() => {
-          void store.presentationStore.backToAgent().then(() => {
-            if (store.activeSession?.presentationMode === "normal")
-              store.commandPaneStore.toggle("tree");
-          });
-        }}
         onBackToAgent={() => void store.presentationStore.backToAgent()}
         onOpenBrowser={() => void store.presentationStore.openBrowser()}
         onOpenIde={() => void store.presentationStore.openIde()}

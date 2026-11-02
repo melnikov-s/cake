@@ -86,6 +86,31 @@ afterEach(() => {
 });
 
 describe("Appearance settings workflow", () => {
+  it("saves and restores work-log view and expansion choices in the existing window snapshot", async () => {
+    let saved: StoreSnapshot;
+    {
+      using fixture = renderAppearanceSettings();
+      await fixture.user.click(screen.getByRole("button", { name: "Diff view mode" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Compact work logs" }));
+      saved = fixture.savedSnapshot();
+    }
+    using restored = renderAppearanceSettings(saved);
+    expect(
+      screen.getByRole("button", { name: "Diff view mode" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "Compact work logs" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    await restored.user.click(screen.getByRole("button", { name: "Auto view mode" }));
+    await restored.user.click(screen.getByRole("button", { name: "Collapsed work logs" }));
+    expect(
+      screen.getByRole("button", { name: "Auto view mode" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "Collapsed work logs" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
   it.each([false, true])(
     "switches only session icons and restores the saved preference (custom project icon: %s)",
     async (customIcon) => {

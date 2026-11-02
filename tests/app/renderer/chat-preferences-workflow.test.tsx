@@ -7,7 +7,7 @@ import type { DiscussionThread } from "../../../src/contracts/discussion-session
 import type { PiSettings, UiPart } from "../../../src/contracts/conversations/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";
-import { WorkLogControls } from "../../../src/renderer/components/work-log-controls";
+import { SettingsWorkLogOptions } from "../../../src/renderer/components/settings-work-log-options";
 import {
   applyConversationSnapshot,
   applyDiscussionSessionUpdate,
@@ -61,13 +61,11 @@ it("shares work-log choices and disclosure resets across parent, compact side ch
   const worker = within(screen.getByRole("region", { name: "Worker" }));
   const groups = () =>
     screen.getAllByText("Work log", { exact: true }).map((node) => node.closest("details")!);
-  const choose = async (pane: typeof parent, name: string) => {
-    await fixture.user.click(pane.getByRole("button", { name: "Work log display options" }));
+  const choose = async (name: string) => {
     await fixture.user.click(screen.getByRole("button", { name }));
-    await fixture.user.keyboard("{Escape}");
   };
   expect(groups().map((group) => group.open)).toEqual([false, false, false]);
-  await choose(worker, "Full work logs");
+  await choose("Full work logs");
   expect(groups().map((group) => group.open)).toEqual([true, true, true]);
   for (const pane of [parent, side, worker]) {
     expect(pane.getByRole("button", { name: "read shared.ts" }).getAttribute("aria-expanded")).toBe(
@@ -89,15 +87,14 @@ it("shares work-log choices and disclosure resets across parent, compact side ch
   );
   // Group overrides also reset when another chat changes the global expansion choice.
   await fixture.user.click(parent.getByText("Work log", { exact: true }));
-  await choose(worker, "Collapsed work logs");
+  await choose("Collapsed work logs");
   expect(groups().map((group) => group.open)).toEqual([false, false, false]);
-  await choose(parent, "Full work logs");
+  await choose("Full work logs");
   expect(groups().map((group) => group.open)).toEqual([true, true, true]);
   expect(side.getByRole("button", { name: "read shared.ts" }).getAttribute("aria-expanded")).toBe(
     "true",
   );
-  await choose(side, "Log view mode");
-  await fixture.user.click(worker.getByRole("button", { name: "Work log display options" }));
+  await choose("Log view mode");
   expect(screen.getByRole("button", { name: "Log view mode" }).getAttribute("aria-pressed")).toBe(
     "true",
   );
@@ -105,12 +102,7 @@ it("shares work-log choices and disclosure resets across parent, compact side ch
 
 it("applies Hide thinking to nested workers while respecting each Pi conversation's explicit setting", async () => {
   using fixture = await renderPreferences();
-  // Expansion uses the same real work-log control, not a synthetic Store mutation.
-  await fixture.user.click(
-    within(screen.getByRole("region", { name: "Worker" })).getByRole("button", {
-      name: "Work log display options",
-    }),
-  );
+  // Expansion uses the real Settings control, not a synthetic Store mutation.
   await fixture.user.click(screen.getByRole("button", { name: "Full work logs" }));
   await fixture.user.keyboard("{Escape}");
   expect(screen.getAllByText("Shared reasoning")).toHaveLength(3);
@@ -232,10 +224,10 @@ async function renderPreferences() {
   const view = render(
     <>
       <SettingsPage settings={fixture.root.settingsStore} />
+      <SettingsWorkLogOptions appearance={fixture.root.settingsStore.appearance} />
       <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
         {chats.map((chat, index) => (
           <section key={chat.id} aria-label={["Parent", "Side chat", "Worker"][index]}>
-            <WorkLogControls store={chat} />
             <Chat store={chat} compact={index > 0} embedded composerFocusEnabled={false} />
           </section>
         ))}

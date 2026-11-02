@@ -28,12 +28,10 @@ export const CakeChatWorkspaceControls = observer(function CakeChatWorkspaceCont
           onOpen={() => session.showWorkspaceChatSidebar()}
         />
       )}
-      <SideChatsMenu store={session} />
       <SessionArtifactMenu session={session} />
+      <SideChatsMenu store={session} />
       <WorkspaceModeControls
         mode={mode}
-        chat={session.conversationSessionStore.chatStore}
-        treeOpen={false}
         terminalAvailable={terminal.available}
         terminalOpen={terminal.open}
         browserHost={browserMode}

@@ -272,22 +272,26 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
     await expect.poll(() => log.locator('[data-slot="tool"]').count()).toBeGreaterThan(0);
     await expect(log.locator('[data-slot="tool"] [aria-expanded="true"]')).toHaveCount(0);
 
-    // Verify the top-right work-log display menu.
-    await page.getByRole("button", { name: "Work log display options" }).click();
-    const controls = page.getByRole("dialog");
-    await expect(controls).toBeVisible();
-    const autoBtn = controls.getByRole("button", { name: "Auto view mode" });
-    const diffBtn = controls.getByRole("button", { name: "Diff view mode" });
-    const logBtn = controls.getByRole("button", { name: "Log view mode" });
-    const collapseBtn = controls.getByRole("button", { name: "Collapsed work logs" });
-    const compactBtn = controls.getByRole("button", { name: "Compact work logs" });
-    const fullBtn = controls.getByRole("button", { name: "Full work logs" });
-
-    await expect(autoBtn).toHaveAttribute("aria-pressed", "true");
-    await expect(collapseBtn).toHaveAttribute("aria-pressed", "true");
-    await expect(compactBtn).toHaveAttribute("aria-pressed", "false");
-
-    await fullBtn.click();
+    // Work-log display choices live in Appearance and still affect this conversation.
+    const openOptions = async () => {
+      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await page.getByRole("button", { name: /^Appearance/ }).click();
+      return page.getByRole("region", { name: "Work log display options" });
+    };
+    let controls = await openOptions();
+    await expect(controls.getByRole("button", { name: "Auto view mode" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(controls.getByRole("button", { name: "Collapsed work logs" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await controls.getByRole("button", { name: "Full work logs" }).click();
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await expect(log).toHaveAttribute("open", "");
+    // Covering chat with Settings remounts its local steps disclosure.
+    await log.getByRole("button", { name: /View steps/ }).click();
     await expect
       .poll(async () => {
         const tools = await log.locator('[data-slot="tool"]').count();
@@ -295,21 +299,26 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
         return tools > 0 && expanded === tools;
       })
       .toBe(true);
-    await expect(fullBtn).toHaveAttribute("aria-pressed", "true");
 
-    await collapseBtn.click();
+    controls = await openOptions();
+    await expect(controls.getByRole("button", { name: "Full work logs" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await controls.getByRole("button", { name: "Collapsed work logs" }).click();
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await expect(log).not.toHaveAttribute("open", "");
-    await expect(collapseBtn).toHaveAttribute("aria-pressed", "true");
 
-    // Cycle view mode via shortcut Control+Shift+O
-    await page.keyboard.press("Control+Shift+O");
-    await expect(diffBtn).toHaveAttribute("aria-pressed", "true");
-
-    await page.keyboard.press("Control+Shift+O");
-    await expect(logBtn).toHaveAttribute("aria-pressed", "true");
-
-    await page.keyboard.press("Control+Shift+O");
-    await expect(autoBtn).toHaveAttribute("aria-pressed", "true");
+    // Existing shortcuts continue to update the same saved settings.
+    for (const label of ["Diff view mode", "Log view mode", "Auto view mode"]) {
+      await page.keyboard.press("Control+Shift+O");
+      controls = await openOptions();
+      await expect(controls.getByRole("button", { name: label })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    }
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

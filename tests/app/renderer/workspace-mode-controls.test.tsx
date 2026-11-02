@@ -319,8 +319,7 @@ describe("Workspace mode navigation", () => {
       expect(screen.queryByRole("button", { name: action })).toBeNull();
       const other = action === "Open VS Code" ? "Open Browser Mode" : "Open VS Code";
       expect(screen.getByRole("button", { name: other })).toBeDefined();
-      for (const name of ["Session tree", "Work log display options", "Terminal"])
-        expect(screen.getByRole("button", { name })).toBeDefined();
+      expect(screen.getByRole("button", { name: "Terminal" })).toBeDefined();
       await fixture.user.type(
         screen.getByRole("combobox", { name: "Message" }),
         "Continue in this workspace",

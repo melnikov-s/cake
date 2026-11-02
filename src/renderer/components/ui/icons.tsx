@@ -445,11 +445,6 @@ export const MoveTopIcon = () => (
     <path d="M4 10h16M9 7h6" />
   </Icon>
 );
-export const ChangesIcon = () => (
-  <Icon size={15}>
-    <path d="M4 7h10M4 17h10M17 4v6M14 7l3 3 3-3M17 14v6M14 17l3 3 3-3" />
-  </Icon>
-);
 export const TreeIcon = () => (
   <Icon size={15}>
     <circle cx="6" cy="5" r="2" />

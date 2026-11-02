@@ -2644,8 +2644,14 @@ const sidebarRowLayout: VisualCaptureScenario = {
 const projectChatHeader: VisualCaptureScenario = {
   name: "project-chat-header",
   description: "Owning Project Chat navigation beside session and Project Chat titles",
-  states: ["session", "project", "hover"],
-  seed: projectChatSidebar.seed,
+  states: ["session", "project", "hover", "settings", "split-right", "split-down"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const state = JSON.parse(await readFile(file, "utf8"));
+    state.data.projects[0].name = "cake";
+    await writeFile(file, JSON.stringify(state));
+  },
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
     const link = () =>
@@ -2659,7 +2665,25 @@ const projectChatHeader: VisualCaptureScenario = {
       await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
       await expect(link()).toBeVisible();
     }
-    if (state === "hover") {
+    if (state === "settings") {
+      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await page.getByRole("button", { name: /^Appearance/ }).click();
+      await expect(page.getByRole("region", { name: "Work log display options" })).toBeVisible();
+    } else if (state === "split-right" || state === "split-down") {
+      await page
+        .getByRole("button", {
+          name: state === "split-right" ? "Split right" : "Split down",
+          exact: true,
+        })
+        .click();
+      const panes = page.locator('[data-slot="session-pane"]');
+      await expect(panes).toHaveCount(2);
+      const first = await panes.nth(0).boundingBox();
+      const second = await panes.nth(1).boundingBox();
+      if (!first || !second) throw new Error("Split panes must be visible");
+      if (state === "split-right") expect(second.x).toBeGreaterThan(first.x);
+      else expect(second.y).toBeGreaterThan(first.y);
+    } else if (state === "hover") {
       await link().hover();
       await expect(
         page.getByRole("tooltip", { name: "Go to Project Chat for cake" }),
@@ -2667,7 +2691,10 @@ const projectChatHeader: VisualCaptureScenario = {
     } else await page.mouse.move(1, 1);
     await page.waitForFunction(() => document.fonts.status === "loaded");
   },
-  region: (page) => page.locator('[data-slot="workspace-header"]'),
+  region: (page, state) =>
+    state === "settings"
+      ? page.getByRole("region", { name: "Work log display options" })
+      : page.locator('[data-slot="workspace-header"]').first(),
 };
 
 const projectChatTodos: VisualCaptureScenario = {

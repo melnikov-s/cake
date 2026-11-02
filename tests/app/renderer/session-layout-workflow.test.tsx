@@ -357,7 +357,7 @@ describe("Session layout workflow", () => {
   it("coordinates native fullscreen state when the continuation dialog opens and closes", async () => {
     using fixture = renderLayout();
     const openDialog = async () => {
-      await fixture.user.click(screen.getByRole("button", { name: "Session tree" }));
+      await fixture.user.keyboard("{Control>}{Shift>}e{/Shift}{/Control}");
       await fixture.user.click(screen.getByRole("button", { name: "Fork from Finished work" }));
       return screen.findByRole("dialog", { name: "Fork this conversation" });
     };
@@ -384,7 +384,7 @@ describe("Session layout workflow", () => {
   it("closes only the fullscreen surface named by the host request and unregisters it before reopening", async () => {
     using fixture = renderLayout();
     const openDialog = async () => {
-      await fixture.user.click(screen.getByRole("button", { name: "Session tree" }));
+      await fixture.user.keyboard("{Control>}{Shift>}e{/Shift}{/Control}");
       await fixture.user.click(screen.getByRole("button", { name: "Fork from Finished work" }));
       return screen.findByRole("dialog", { name: "Fork this conversation" });
     };

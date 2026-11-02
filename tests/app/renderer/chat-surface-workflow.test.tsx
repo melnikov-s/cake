@@ -113,7 +113,6 @@ describe("Shared Chat surface workflows", () => {
         changedFile,
       ],
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Work log display options" }));
     await fixture.user.click(screen.getByRole("button", { name: "Diff view mode" }));
     await fixture.user.click(screen.getByRole("button", { name: "Compact work logs" }));
     const groups = screen.getAllByText("Work log", { exact: true }).map((label) => {
@@ -123,13 +122,10 @@ describe("Shared Chat surface workflows", () => {
     });
     expect(groups.map((group) => group.open)).toEqual([false, true]);
     expect(screen.getByRole("region", { name: "File changes to src/one.ts" })).toBeDefined();
-    // Dismiss the menu before using the real transcript disclosure.
-    await fixture.user.click(screen.getByRole("button", { name: "Work log display options" }));
     const summary = groups[0]!.querySelector("summary");
     if (!summary) throw new Error("Missing reasoning work log summary");
     await fixture.user.click(summary);
     expect(groups.map((group) => group.open)).toEqual([true, true]);
-    await fixture.user.click(screen.getByRole("button", { name: "Work log display options" }));
     await fixture.user.click(screen.getByRole("button", { name: "Collapsed work logs" }));
     expect(groups.map((group) => group.open)).toEqual([false, false]);
     await fixture.user.click(screen.getByRole("button", { name: "Compact work logs" }));

@@ -8,7 +8,7 @@ import {
   CropIcon,
   TerminalIcon,
 } from "@/components/ui/icons";
-import { WorkLogControls } from "@/components/work-log-controls";
+import { ToolbarGroup } from "@/components/ui/toolbar-group";
 import { RootStore } from "../stores/RootStore";
 import type { SessionPaneNode } from "../stores/SessionLayoutStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
@@ -73,8 +73,21 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
         store={paneSession}
         onOpen={() => root.navigationStore.focusCakeChatPane(pane.paneId)}
       />
-      {!overlay && (
+      {overlay ? (
         <>
+          <IconButton
+            tooltip="Capture screenshot"
+            disabled={overlay.capturing}
+            onClick={overlay.onCaptureScreenshot}
+          >
+            <CropIcon />
+          </IconButton>
+          <IconButton tooltip="Close drop-down Cake Chat" onClick={overlay.onClose}>
+            <CloseIcon />
+          </IconButton>
+        </>
+      ) : (
+        <ToolbarGroup label="Workspace tools">
           <IconButton
             tooltip="Open Browser Mode"
             hotkey="toggle-browser"
@@ -100,37 +113,21 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
               <VsCodeIcon />
             </IconButton>
           )}
-          <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
-        </>
-      )}
-      {overlay ? (
-        <>
           <IconButton
-            tooltip="Capture screenshot"
-            disabled={overlay.capturing}
-            onClick={overlay.onCaptureScreenshot}
+            data-cake-hint-key="t"
+            className="phone:hidden"
+            tooltip="Terminal"
+            hotkey="toggle-terminal"
+            disabled={!terminal.available}
+            aria-pressed={paneSession.sessionId === cakeChatCollection.sessionId && terminal.open}
+            onClick={() => {
+              root.navigationStore.focusCakeChatPane(pane.paneId);
+              void terminal.toggle();
+            }}
           >
-            <CropIcon />
+            <TerminalIcon />
           </IconButton>
-          <IconButton tooltip="Close drop-down Cake Chat" onClick={overlay.onClose}>
-            <CloseIcon />
-          </IconButton>
-        </>
-      ) : (
-        <IconButton
-          data-cake-hint-key="t"
-          className="phone:hidden"
-          tooltip="Terminal"
-          hotkey="toggle-terminal"
-          disabled={!terminal.available}
-          aria-pressed={paneSession.sessionId === cakeChatCollection.sessionId && terminal.open}
-          onClick={() => {
-            root.navigationStore.focusCakeChatPane(pane.paneId);
-            void terminal.toggle();
-          }}
-        >
-          <TerminalIcon />
-        </IconButton>
+        </ToolbarGroup>
       )}
     </>
   );

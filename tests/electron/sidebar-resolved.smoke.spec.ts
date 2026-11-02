@@ -106,9 +106,6 @@ test("resolves and restores the selected project session in the desktop sidebar"
       "Send a message to restore this session",
     );
     await expect(page.getByRole("button", { name: "Open VS Code" })).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Open workspace changes in VS Code" }),
-    ).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Terminal/ })).toHaveCount(0);
 
     const restoreAction = resolvedSession.getByRole("button", { name: /^Restore / });

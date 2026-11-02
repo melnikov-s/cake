@@ -296,9 +296,7 @@ test("separate Node backend serves a real leased code-server workbench to remote
     // Hiding presentation does not surrender its exclusive backend lease.
     await observerPage.getByRole("link", { name: "hello.ts", exact: true }).click();
     await expect(observerPage.getByText(/already open in another desktop/).first()).toBeVisible();
-    await page
-      .getByRole("button", { name: "Open workspace changes in VS Code", exact: true })
-      .click();
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+G" : "Control+Shift+G");
     await expect.poll(() => editor.locator("body").innerText()).toContain("SOURCE CONTROL");
     const requests = await app.evaluate((): { url: string; status: number }[] =>
       Reflect.get(globalThis, "editorRequests"),

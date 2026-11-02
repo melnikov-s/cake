@@ -194,8 +194,9 @@ test("workspace changes use Source Control, committed files fall back to the fil
         }
         return undefined;
       });
-    const changes = page.getByRole("button", { name: "Open workspace changes in VS Code" });
-    await expect(changes).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Open VS Code" })).toBeVisible({
+      timeout: 20_000,
+    });
     // Real RPC authorization and fullscreen reader, before any editor is started.
     await page.getByRole("link", { name: "Markdown report" }).click();
     const markdownReader = page.getByRole("dialog", { name: /project-sibling\/report\.md/ });
@@ -234,7 +235,7 @@ test("workspace changes use Source Control, committed files fall back to the fil
     await page.keyboard.press("Escape");
     await expect(externalReader).toBeHidden();
     await expect(page.getByText(/Could not open editor location/)).toHaveCount(0);
-    await changes.click();
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+G" : "Control+Shift+G");
 
     await expect
       .poll(

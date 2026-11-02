@@ -398,8 +398,6 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       ).toBeVisible();
       for (const name of [
         "0 artifacts",
-        "Session tree",
-        "Work log display options",
         "Open Browser Mode",
         "Back to agent",
         "Terminal",

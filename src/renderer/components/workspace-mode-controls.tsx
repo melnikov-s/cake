@@ -1,18 +1,14 @@
 import { observer } from "r-state-tree/react";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
-import type { ChatStore } from "../stores/ChatStore";
-import { WorkLogControls } from "./work-log-controls";
+import { ToolbarGroup } from "./ui/toolbar-group";
 import { IconButton } from "./ui/icon-button";
-import { BrowserIcon, CakeIcon, TerminalIcon, TreeIcon, VsCodeIcon } from "./ui/icons";
+import { BrowserIcon, CakeIcon, TerminalIcon, VsCodeIcon } from "./ui/icons";
 
 export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   mode,
-  chat,
-  treeOpen,
   terminalAvailable,
   terminalOpen,
   browserHost = false,
-  onToggleTree,
   ideAvailable = true,
   onBackToAgent,
   onOpenBrowser,
@@ -20,12 +16,9 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   onToggleTerminal,
 }: {
   mode: Exclude<ProjectSessionPresentationMode, "normal">;
-  chat: ChatStore;
-  treeOpen: boolean;
   terminalAvailable: boolean;
   terminalOpen: boolean;
   browserHost?: boolean;
-  onToggleTree?(): void;
   ideAvailable?: boolean;
   onBackToAgent(): void;
   onOpenBrowser(): void;
@@ -63,21 +56,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   };
 
   return (
-    <>
-      {onToggleTree && (
-        <IconButton
-          data-cake-hint-key="r"
-          tooltip="Session tree"
-          hotkey="toggle-session-tree"
-          aria-pressed={treeOpen}
-          onClick={onToggleTree}
-        >
-          <TreeIcon />
-        </IconButton>
-      )}
-      <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
-      <WorkLogControls store={chat} />
-      <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
+    <ToolbarGroup label="Workspace tools">
       {(["browser", "vscode"] as const).map(modeControl)}
       <IconButton
         data-cake-hint-key="t"
@@ -90,6 +69,6 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
       >
         <TerminalIcon />
       </IconButton>
-    </>
+    </ToolbarGroup>
   );
 });

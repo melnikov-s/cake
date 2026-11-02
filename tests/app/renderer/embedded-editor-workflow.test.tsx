@@ -100,9 +100,6 @@ async function hydrateBootstrap(
   });
 }
 
-const sourceControlButton = () =>
-  screen.getByRole("button", { name: "Open workspace changes in VS Code" });
-
 describe("Embedded editor workflow", () => {
   it.each(["vscode", "text"] as const)(
     "routes chat range/diff links to %s before any editor launch",
@@ -319,7 +316,7 @@ describe("Embedded editor workflow", () => {
       { bootstrap: true },
     );
 
-    await fixture.user.click(sourceControlButton());
+    await fixture.user.keyboard("{Control>}{Shift>}g{/Shift}{/Control}");
     expect(open).toHaveBeenCalledTimes(1);
     expect(openSourceControl).not.toHaveBeenCalled();
     await boundary.accept();
@@ -351,7 +348,7 @@ describe("Embedded editor workflow", () => {
       { ...boundary.client, vscode: { open, openSourceControl } },
       { bootstrap: true },
     );
-    await fixture.user.click(sourceControlButton());
+    await fixture.user.keyboard("{Control>}{Shift>}g{/Shift}{/Control}");
     fixture.hydrate();
     await boundary.accept();
     await act(async () => fixture.initialization);
@@ -397,7 +394,7 @@ describe("Embedded editor workflow", () => {
         { ...boundary.client, vscode: { open, openSourceControl, release } },
         { bootstrap: true },
       );
-      await fixture.user.click(sourceControlButton());
+      await fixture.user.keyboard("{Control>}{Shift>}g{/Shift}{/Control}");
       if (cancellation === "hide") await fixture.user.click(backToAgentButton());
       else fixture.disconnected();
       await boundary.accept();
@@ -434,7 +431,7 @@ describe("Embedded editor workflow", () => {
         { ...boundary.client, vscode: { open, openSourceControl, release } },
         { bootstrap: true },
       );
-      await fixture.user.click(sourceControlButton());
+      await fixture.user.keyboard("{Control>}{Shift>}g{/Shift}{/Control}");
       if (cancellation === "disconnect") fixture.disconnected();
       await fixture.user.click(backToAgentButton());
       await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
@@ -478,7 +475,7 @@ describe("Embedded editor workflow", () => {
           ],
         },
       );
-      await fixture.user.click(sourceControlButton());
+      await fixture.user.keyboard("{Control>}{Shift>}g{/Shift}{/Control}");
       await fixture.user.click(screen.getByRole("button", { name: /^Other conversation / }));
       await act(async () => {
         pending.resolve(stale);

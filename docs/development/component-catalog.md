@@ -110,6 +110,8 @@ Its shared [`SessionActivityIndicator`](../../src/renderer/components/session-ac
 is also used by Project Chat entries: blue while running (including when selected), green for
 unread completion, amber while waiting, red for errors, and no dot for idle/read or deliberately
 stopped work. Selection and read acknowledgement do not introduce a neutral/gray dot.
+[`ToolbarGroup`](../../src/renderer/components/ui/toolbar-group.tsx) frames related workspace header actions with a leading hairline separator.
+
 [`FloatingToolbar`](../../src/renderer/components/ui/floating-toolbar.tsx) provides a
 content-sized, draggable toolbar with viewport-clamped transient geometry and keyboard movement.
 Only its actual footprint intercepts input on the underlying canvas.

@@ -7,7 +7,7 @@ import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("opens tree navigation from the session header and individual messages", async () => {
+test("opens tree navigation from its shortcut and individual messages", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-tree-toggle-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -96,20 +96,14 @@ test("opens tree navigation from the session header and individual messages", as
     const composer = page.getByRole("combobox", { name: "Message" });
     await expect(composer).toBeVisible({ timeout: 20_000 });
 
-    const treeButton = page.getByRole("button", { name: "Session tree", exact: true });
-    await expect(treeButton).toBeVisible();
-    await expect(treeButton).toHaveAttribute("aria-pressed", "false");
-
-    // Open: the command pane shows the session tree and the button reads pressed.
-    await treeButton.click();
+    // The tree remains available through its existing shortcut.
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+E" : "Control+Shift+E");
     const paneTitle = page.getByRole("heading", { name: "Session tree" });
     await expect(paneTitle).toBeVisible();
-    await expect(treeButton).toHaveAttribute("aria-pressed", "true");
 
-    // Close: the pane disappears and the button returns to its unpressed state.
+    // Close: the pane disappears.
     await page.keyboard.press("Escape");
     await expect(paneTitle).toBeHidden();
-    await expect(treeButton).toHaveAttribute("aria-pressed", "false");
 
     // Completed user and assistant messages can both open Pi tree navigation.
     const assistantTree = page.getByRole("button", {

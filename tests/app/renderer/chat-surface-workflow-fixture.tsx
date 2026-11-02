@@ -5,7 +5,7 @@ import { StoreProvider } from "r-state-tree/react";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
-import { WorkLogControls } from "../../../src/renderer/components/work-log-controls";
+import { SettingsWorkLogOptions } from "../../../src/renderer/components/settings-work-log-options";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -60,7 +60,7 @@ export function renderChatSurface(
     <StoreProvider store={fixture.root}>
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
         <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
-          <WorkLogControls store={chat} />
+          <SettingsWorkLogOptions appearance={fixture.root.settingsStore.appearance} />
           <Chat store={chat} compact composerFocusEnabled={false} />
         </VirtuosoMockContext.Provider>
       </StoreProvider>

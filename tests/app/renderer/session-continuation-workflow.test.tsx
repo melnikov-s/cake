@@ -168,7 +168,7 @@ function visibleSessionId() {
   return document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id");
 }
 async function openFork(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "Session tree" }));
+  await user.keyboard("{Control>}{Shift>}e{/Shift}{/Control}");
   await user.click(screen.getByRole("button", { name: "Fork from Ready to continue" }));
   return screen.findByRole("dialog", { name: "Fork this conversation" });
 }

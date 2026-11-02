@@ -240,7 +240,6 @@ describe("Workbench workflow", () => {
     );
     using fixture = renderWorkbench({ projectSessions: { resolveWorkingDirectory } });
     expect(screen.getByRole("button", { name: "Open VS Code" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Open workspace changes in VS Code" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));
     await waitFor(() => expect(resolveWorkingDirectory).toHaveBeenCalledOnce());
     await fixture.user.click(screen.getByRole("button", { name: /^two conversation / }));
@@ -269,7 +268,6 @@ describe("Workbench workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: /^two conversation / }));
     await waitFor(() => expect(screen.getAllByText("two conversation").length).toBeGreaterThan(1));
     expect(screen.queryByRole("button", { name: "Open VS Code" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Open workspace changes in VS Code" })).toBeNull();
     expect(open).not.toHaveBeenCalled();
     expect(openSourceControl).not.toHaveBeenCalled();
   });
