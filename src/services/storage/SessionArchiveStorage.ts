@@ -9,7 +9,8 @@ export const SessionResolutionIndex = Schema.Struct({
 export const SessionArchiveLocation = Schema.Struct({
   cwd: Schema.String,
   activeRoot: Schema.String,
-  /** Former archive root, used only to migrate persisted transcripts back in place. */
+  /** Former archive root, used only to migrate persisted transcripts back in place.
+   * When it identifies the active directory, there is no separate legacy namespace to migrate. */
   resolvedRoot: Schema.String,
   direct: Schema.optionalKey(Schema.Boolean),
 });

@@ -334,33 +334,42 @@ export const makeSessionArchiveStorageLive = (
       // Storage migration only: old installations moved resolved Pi files out of
       // their normal directory. Record resolution before moving each one back;
       // interruption/restart can safely retry without losing that status.
-      const migrateLocation = Effect.fn("SessionArchiveStorage.migrateLocation")(
-        (location: SessionArchiveLocation) =>
-          streamSessionFiles(directoryInput(location, true)).pipe(
-            Stream.runForEach((item) =>
-              withUpdateLock(
-                locatorPath(item.id),
-                Effect.uninterruptibleMask((restore) =>
-                  Effect.gen(function* () {
-                    const source = yield* restore(findAt(item.id, location, true));
-                    if (!source) return;
-                    if (yield* restore(findAt(item.id, location, false)))
-                      return yield* archiveError(
-                        "migrateLocation",
-                        item.id,
-                        new Error(`Session ${item.id} exists in both namespaces`),
-                      );
-                    yield* setResolution(item.id, location, true);
-                    const directory = sessionDirectoryPath(directoryInput(location, false));
-                    yield* fileSystem.makeDirectory(directory, { recursive: true, mode: 0o700 });
-                    yield* fileSystem.rename(source, path.join(directory, path.basename(source)));
-                  }),
-                ),
+      const migrateLocation = Effect.fn("SessionArchiveStorage.migrateLocation")(function* (
+        location: SessionArchiveLocation,
+      ) {
+        if (
+          sessionDirectoryPath(directoryInput(location, true)) ===
+          sessionDirectoryPath(directoryInput(location, false))
+        )
+          return;
+        yield* streamSessionFiles(directoryInput(location, true)).pipe(
+          Stream.runForEach((item) =>
+            withUpdateLock(
+              locatorPath(item.id),
+              Effect.uninterruptibleMask((restore) =>
+                Effect.gen(function* () {
+                  const source = yield* restore(findAt(item.id, location, true));
+                  if (!source) return;
+                  if (yield* restore(findAt(item.id, location, false)))
+                    return yield* archiveError(
+                      "migrateLocation",
+                      item.id,
+                      new Error(`Session ${item.id} exists in both namespaces`),
+                    );
+                  yield* setResolution(item.id, location, true);
+                  const directory = sessionDirectoryPath(directoryInput(location, false));
+                  yield* fileSystem.makeDirectory(directory, {
+                    recursive: true,
+                    mode: 0o700,
+                  });
+                  yield* fileSystem.rename(source, path.join(directory, path.basename(source)));
+                }),
               ),
             ),
-            Effect.mapError((cause) => archiveError("migrateLocation", "", cause)),
           ),
-      );
+          Effect.mapError((cause) => archiveError("migrateLocation", "", cause)),
+        );
+      });
 
       const resolvedIds = Effect.fn("SessionArchiveStorage.resolvedIds")(function* (
         location: SessionArchiveLocation,

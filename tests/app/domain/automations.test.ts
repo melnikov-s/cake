@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
+import { readFile, writeFile, mkdtemp, mkdir, rm, stat } from "node:fs/promises";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,7 +10,21 @@ import {
   makeAutomationStorageLive,
 } from "../../../src/services/storage/AutomationStorage";
 import { it } from "@effect/vitest";
-import { DateTime, Deferred, Effect, Fiber, Layer, Option, Queue, Ref, Stream } from "effect";
+import {
+  Context,
+  DateTime,
+  Deferred,
+  Effect,
+  Fiber,
+  Layer,
+  Option,
+  Queue,
+  Ref,
+  Stream,
+} from "effect";
+import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
+import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
+import { makeSessionArchiveStorageLive } from "../../../src/services/storage/SessionArchiveStorageLive";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import * as projects from "../../../src/domain/projects/projects";
@@ -35,6 +49,151 @@ const waitForSettlement = (
   );
 
 describe("automation lifecycle and execution", () => {
+  it.effect.each(["auto-resolve", "keep-for-review"] as const)(
+    "%s uses real in-place archive storage, restores without rerunning, and drains queued executions",
+    (completion) =>
+      Effect.gen(function* () {
+        const f = yield* automationFixture();
+        const configuration = {
+          agentDirectory: "/agent",
+          sessionDirectory: join(f.inputDirectory, "pi"),
+          resolvedSessionDirectory: join(f.inputDirectory, "former-resolved"),
+        };
+        const archiveContext = yield* Layer.build(
+          makeSessionArchiveStorageLive(join(f.inputDirectory, "archive"), {
+            activeRoot: configuration.sessionDirectory,
+            resolvedRoot: configuration.resolvedSessionDirectory,
+          }).pipe(Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer))),
+        );
+        const context = Context.add(
+          Context.merge(f.context, archiveContext),
+          ProjectSessionConfiguration,
+          configuration,
+        );
+        yield* Effect.gen(function* () {
+          // Pi execution is controlled, but these SDK-format originals and archive IO are real.
+          const writeOriginal = Effect.fn("AutomationResolutionFixture.writeOriginal")(function* (
+            sessionId: string,
+            text: string,
+          ) {
+            const run = yield* runs.runForSession(sessionId);
+            const file = join(
+              run.sessionDirectory,
+              `${run.startedAt.replace(/[:.]/g, "-")}_${sessionId}.jsonl`,
+            );
+            const timestamp = Date.parse(run.startedAt);
+            const bytes =
+              [
+                {
+                  type: "session",
+                  version: 3,
+                  id: sessionId,
+                  timestamp: run.startedAt,
+                  cwd: run.workingDirectory,
+                },
+                {
+                  type: "message",
+                  id: "user-1",
+                  parentId: null,
+                  timestamp: run.startedAt,
+                  message: { role: "user", content: [{ type: "text", text }], timestamp },
+                },
+                {
+                  type: "message",
+                  id: "assistant-1",
+                  parentId: "user-1",
+                  timestamp: run.startedAt,
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: "Completed." }],
+                    api: "openai-responses",
+                    provider: "test",
+                    model: "test",
+                    stopReason: "stop",
+                    timestamp,
+                    usage: {
+                      input: 0,
+                      output: 0,
+                      cacheRead: 0,
+                      cacheWrite: 0,
+                      totalTokens: 0,
+                      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                    },
+                  },
+                },
+              ]
+                .map((entry) => JSON.stringify(entry))
+                .join("\n") + "\n";
+            yield* Effect.promise(async () => {
+              await mkdir(run.sessionDirectory, { recursive: true });
+              await writeFile(file, bytes);
+            });
+            return { run, file, bytes, inode: (yield* Effect.promise(() => stat(file))).ino };
+          });
+          const a = yield* definitions.create({
+            definition: automationDefinition({ completion, overlap: "queue" }),
+            initialState: "active",
+          });
+          yield* runs.trigger(a.id);
+          const first = yield* Queue.take(f.started);
+          const original = yield* writeOriginal(first.sessionId, first.text);
+          expect((yield* runs.trigger(a.id))._tag).toBe("queued");
+          yield* f.complete(first.sessionId);
+          expect(yield* Queue.take(f.disposed)).toBe(first.sessionId);
+          const location = {
+            cwd: original.run.workingDirectory,
+            activeRoot: original.run.sessionDirectory,
+            resolvedRoot: original.run.sessionDirectory,
+            direct: true,
+          };
+          const archive = yield* SessionArchiveStorage;
+          expect((yield* archive.recordedResolvedIds(location)).has(first.sessionId)).toBe(
+            completion === "auto-resolve",
+          );
+          const next = yield* Queue.take(f.started);
+          yield* writeOriginal(next.sessionId, next.text);
+          yield* runs.setResolved(first.sessionId, true);
+          expect((yield* archive.recordedResolvedIds(location)).has(first.sessionId)).toBe(true);
+          const resolvedCatalog = yield* (yield* runs.observe()).pipe(
+            Stream.take(1),
+            Stream.runCollect,
+          );
+          expect(resolvedCatalog[0]).toMatchObject({
+            _tag: "Snapshot",
+            snapshot: {
+              unresolvedSessions: expect.not.arrayContaining([
+                expect.objectContaining({
+                  identity: expect.objectContaining({ sessionId: first.sessionId }),
+                }),
+              ]),
+            },
+          });
+          yield* runs.setResolved(first.sessionId, false);
+          expect((yield* archive.recordedResolvedIds(location)).has(first.sessionId)).toBe(false);
+          const restoredCatalog = yield* (yield* runs.observe()).pipe(
+            Stream.take(1),
+            Stream.runCollect,
+          );
+          expect(restoredCatalog[0]).toMatchObject({
+            _tag: "Snapshot",
+            snapshot: {
+              unresolvedSessions: expect.arrayContaining([
+                expect.objectContaining({
+                  identity: expect.objectContaining({ sessionId: first.sessionId }),
+                }),
+              ]),
+            },
+          });
+          expect(f.captured).toHaveLength(2);
+          expect((yield* runs.runForSession(first.sessionId)).status._tag).toBe("completed");
+          expect(yield* Effect.promise(() => readFile(original.file, "utf8"))).toBe(original.bytes);
+          expect((yield* Effect.promise(() => stat(original.file))).ino).toBe(original.inode);
+          yield* f.complete(next.sessionId);
+          expect(yield* Queue.take(f.disposed)).toBe(next.sessionId);
+          expect(f.records.snapshot().runs).toHaveLength(2);
+        }).pipe(Effect.provide(context));
+      }),
+  );
   it.effect(
     "pages global history across archived and active definitions with exact run links and captured-name filtering",
     () =>

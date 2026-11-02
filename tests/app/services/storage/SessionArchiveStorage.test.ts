@@ -80,6 +80,38 @@ const withPlatform = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 
 describe("SessionArchiveStorage", () => {
   it.effect(
+    "resolves and restores one in-place namespace without treating its transcript as a legacy duplicate",
+    () =>
+      withPlatform(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const fixture = yield* makeFixture();
+          const location = { ...fixture, resolvedRoot: fixture.activeRoot };
+          const metadataRoot = yield* makeMetadataRoot();
+          const original = yield* fs.readFileString(fixture.sessionFile);
+          const before = yield* Effect.promise(() => stat(fixture.sessionFile));
+          yield* runArchive(
+            metadataRoot,
+            (archive) =>
+              Effect.gen(function* () {
+                expect(yield* archive.resolve("session-1", location)).toBe(true);
+                expect(yield* archive.resolve("session-1", location)).toBe(false);
+                expect((yield* archive.resolvedIds(location)).has("session-1")).toBe(true);
+                expect(yield* archive.locate("session-1", location)).toBe("resolved");
+                expect(yield* archive.restore("session-1", location)).toBe(true);
+                expect(yield* archive.restore("session-1", location)).toBe(false);
+                expect((yield* archive.recordedResolvedIds(location)).has("session-1")).toBe(false);
+                expect(yield* archive.locate("session-1", location)).toBe("active");
+              }),
+            location,
+          );
+          expect(yield* fs.readFileString(fixture.sessionFile)).toBe(original);
+          expect((yield* Effect.promise(() => stat(fixture.sessionFile))).ino).toBe(before.ino);
+        }),
+      ),
+  );
+
+  it.effect(
     "resolution snapshot reads the existing metadata index exactly once, without archives, migrations or transcripts",
     () =>
       withPlatform(
