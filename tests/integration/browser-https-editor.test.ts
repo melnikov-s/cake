@@ -19,6 +19,7 @@ import type { VsCodeLease } from "../../src/services/vscode/VsCodeServerRuntime"
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
+import { processGroupFinalizer } from "./fixtures/process-group";
 
 async function freeLocalPort() {
   const probe = createHttpServer();
@@ -325,7 +326,7 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
                 ],
                 { stdio: "ignore", detached: true, env: { ...process.env, HOME: root } },
               );
-              const closed = new Promise<void>((done) => server.once("close", () => done()));
+              const stopServer = processGroupFinalizer(server);
               try {
                 upstreamUrl = `http://127.0.0.1:${port}/`;
                 await browserExpect
@@ -389,16 +390,7 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
                   .poll(async () => (await context.request.get(realSrc)).status())
                   .toBe(403);
               } finally {
-                // This Homebrew fixture owns the wrapper and every extension-host descendant.
-                if (server.pid) {
-                  try {
-                    process.kill(-server.pid, "SIGKILL");
-                  } catch (error) {
-                    if (!(error instanceof Error && "code" in error && error.code === "ESRCH"))
-                      throw error;
-                  }
-                }
-                await closed;
+                await stopServer();
               }
             }
           } finally {
