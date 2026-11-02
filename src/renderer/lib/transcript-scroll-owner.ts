@@ -213,7 +213,10 @@ export function createTranscriptScrollOwner(
     if (!following && !pendingMeasurements) holdAnchor();
     knownTop = scroller.scrollTop;
     // Virtuoso's scrollToIndex moves for a pending reveal; that is not the reader.
-    if (pendingReveal === undefined) following = movedDown ? following || atBottom() : atEnd();
+    // An upward browser clamp can preserve following, never restart it after
+    // the reader paused it (for example by opening a response).
+    if (pendingReveal === undefined)
+      following = movedDown ? following || atBottom() : following && atEnd();
     if (!pendingMeasurements) anchor = findAnchor();
   };
 
@@ -321,7 +324,15 @@ export function createTranscriptScrollOwner(
       event.target.closest('input, textarea, select, [contenteditable="true"]')
     )
       return;
-    if (["ArrowUp", "PageUp", "Home"].includes(event.key) || (event.key === " " && event.shiftKey))
+    // Chromium can drop Home while a PageUp animation is being corrected for
+    // layout changes. Resolve this absolute reader destination synchronously,
+    // through the same owner, rather than competing with the native animation.
+    if (event.key === "Home" && !positioning() && !nestedScrollerConsumes(event.target, -1)) {
+      intent(event.target, -1);
+      event.preventDefault();
+      write(0);
+      anchor = undefined;
+    } else if (["ArrowUp", "PageUp"].includes(event.key) || (event.key === " " && event.shiftKey))
       intent(event.target, -1);
     else if (["ArrowDown", "PageDown", "End", " "].includes(event.key)) intent(event.target, 1);
   };

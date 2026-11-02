@@ -397,6 +397,44 @@ describe("transcript scroll owner following", () => {
     expect(scroller.scrollTop).toBe(3_300);
   });
 
+  it("does not resume following when a reading position is clamped to the end on collapse", () => {
+    disclosure().click();
+    grow(1_800);
+    scroller.scrollTop += 180;
+    scroller.dispatchEvent(new Event("scroll"));
+    contentHeight = 4_000;
+    scroller.scrollTop = contentHeight;
+    scroller.dispatchEvent(new Event("scroll"));
+    grow(140);
+    expect(scroller.scrollTop).toBe(3_400);
+  });
+
+  it("resolves Home immediately and keeps reader ownership across updates", () => {
+    scroller.dispatchEvent(new KeyboardEvent("keydown", { key: "PageUp" }));
+    scroller.scrollTop -= 300;
+    grow(200);
+    const home = new KeyboardEvent("keydown", { key: "Home", cancelable: true });
+    scroller.dispatchEvent(home);
+    expect(home.defaultPrevented).toBe(true);
+    expect(scroller.scrollTop).toBe(0);
+    grow(200);
+    expect(scroller.scrollTop).toBe(0);
+  });
+
+  it("leaves Home to editable inputs and nested scrollers", () => {
+    const input = document.createElement("textarea");
+    const nested = document.createElement("div");
+    nested.style.overflowY = "auto";
+    nested.scrollTop = 100;
+    scroller.firstElementChild!.append(input, nested);
+    for (const target of [input, nested]) {
+      const home = new KeyboardEvent("keydown", { key: "Home", bubbles: true, cancelable: true });
+      target.dispatchEvent(home);
+      expect(home.defaultPrevented).toBe(false);
+      expect(scroller.scrollTop).toBe(3_400);
+    }
+  });
+
   it("resumes following only when the reader returns to the bottom", () => {
     scroller.scrollTop -= 400;
     scroller.dispatchEvent(new Event("scroll"));

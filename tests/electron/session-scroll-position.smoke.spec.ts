@@ -501,12 +501,21 @@ for (const scenario of [
         if (scenario === "keeps user ownership through repeated streaming gestures") {
           await transcript.hover({ position: { x: 20, y: 200 } });
           for (let index = 0; index < 12; index++) {
-            const before = await transcript.evaluate((element) => element.scrollTop);
+            // Virtual measurement above the viewport can increase scrollTop
+            // while correctly preserving the reader's position. Measure the
+            // actual reading row: an upward wheel must move it down by 80px.
+            const before = await transcriptAnchor(transcript);
             await page.mouse.wheel(0, -80);
             stream.send(`Gesture ${index}. ${"Streaming height update. ".repeat(15)}\n\n`);
             await paintFrames(page, 3);
-            const after = await transcript.evaluate((element) => element.scrollTop);
-            expect(after).toBeLessThan(before - 20);
+            const after = await transcript.evaluate((element, text) => {
+              const row = Array.from(
+                element.querySelectorAll<HTMLElement>('[data-slot="transcript-item"]'),
+              ).find((candidate) => candidate.textContent === text);
+              if (!row) throw new Error("Reading row disappeared during upward gesture");
+              return row.getBoundingClientRect().top - element.getBoundingClientRect().top;
+            }, before.text);
+            expect(Math.abs(after - before.offset - 80)).toBeLessThanOrEqual(1);
           }
           const saved = await transcriptAnchor(transcript);
           for (let index = 0; index < 4; index++) {
