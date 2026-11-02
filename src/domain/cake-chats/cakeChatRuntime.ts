@@ -19,6 +19,9 @@ import { messageNavigationTarget } from "../../contracts/conversations/message-r
 import { makeAttachmentReferenceControl } from "../conversations/attachmentReferences";
 import * as projectSessionCreation from "../project-sessions/projectSessionCreation";
 import * as sessionReferences from "../project-sessions/sessionReferences";
+import * as projectSessionMetadata from "../project-sessions/projectSessionMetadata";
+import { projectChatSessionId } from "./cakeChatLocations";
+import { CakeChatDurable } from "../../services/pi-durable/CakeChatDurable";
 import * as projects from "../projects/projects";
 import * as projectTodoAssociations from "../projects/projectTodoAssociations";
 import * as projectTodos from "../projects/projectTodos";
@@ -98,6 +101,15 @@ import { artifactRevisionToRecord } from "../../contracts/artifacts/artifact-lin
 import * as artifactState from "../artifacts/artifactState";
 import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 
+const SHARED_VSCODE_OPERATIONS = [
+  "vscode.enter",
+  "vscode.open",
+  "vscode.script.run",
+  "vscode.selections.list",
+  "vscode.selections.remove",
+  "vscode.selections.clear",
+] as const;
+
 const CAKE_CHAT_OPERATIONS = [
   ...automationToolDescriptions.map((description) => description.command),
   ...Object.keys(themeOperationDefinitions),
@@ -110,12 +122,7 @@ const CAKE_CHAT_OPERATIONS = [
   "browser.enter",
   "browser.cdp",
   "browser.events",
-  "vscode.enter",
-  "vscode.open",
-  "vscode.script.run",
-  "vscode.selections.list",
-  "vscode.selections.remove",
-  "vscode.selections.clear",
+  ...SHARED_VSCODE_OPERATIONS,
   "attachments.list",
   "attachments.read",
   "messages.list",
@@ -276,6 +283,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     runEffect: (effect, signal) => run(effect, { signal }),
   });
   const vscode = yield* Effect.serviceOption(VsCodeServer);
+  const durable = yield* Effect.serviceOption(CakeChatDurable);
   const families = yield* SessionFamilyStorage;
   const automationEvents = yield* Effect.serviceOption(AutomationEvents);
   const archive = yield* SessionArchiveStorage;
@@ -313,6 +321,28 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
         target.sessionId !== CAKE_CHAT_SESSION_ID &&
         !companion,
     );
+  // Resolve on every call: Companion's runtime/history remain app-wide as the user moves.
+  const vscodeWorkingDirectory = Effect.fn("CakeChats.vscodeWorkingDirectory")(function* () {
+    if (project) return project.path;
+    const sessionId = Option.isSome(durable)
+      ? yield* durable.value.assistantContextSessionId()
+      : undefined;
+    if (!sessionId || sessionId === SESSION_ASSISTANT_ID || sessionId === CAKE_CHAT_SESSION_ID)
+      return yield* Effect.fail(
+        new Error(
+          "Companion has no project editor context. Open a Project Chat or Project Session, call vscode.enter, then retry.",
+        ),
+      );
+    const viewedProject = application
+      .snapshot()
+      .projects.find((item) => projectChatSessionId(item.path) === sessionId);
+    if (viewedProject) return viewedProject.path;
+    const draft = Option.isSome(drafts)
+      ? (yield* drafts.value.list()).find((item) => item.sessionId === sessionId)
+      : undefined;
+    if (draft) return draft.workingDirectory;
+    return (yield* projectSessionMetadata.findLocation({ sessionId })).workingDirectory;
+  });
   const title = companion ? "Companion" : project ? `${project.name} / Project Chat` : "Cake Chat";
   /** Same backend authority, receipts and ProjectAccess check as every other settings writer. */
   const invokeProjectSettings = (
@@ -498,6 +528,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               "You are the user’s app-wide companion. Keep one continuous identity and your own conversation history across sessions, projects and modes. You run independently of the main agent; never interrupt it unless the user asks.",
               `Your own messaging address is ${SESSION_ASSISTANT_ID}. Use sessionId: "parent" when the user means the viewed session/chat ("this session"); it resolves from your current invoking context, not your own conversation. Omitting sessionId from sessions.schedule always schedules to yourself. If invoking context is unavailable, ask rather than inventing a target.`,
               "Orientation entries are metadata, not requests: enter/exit only describe where the user is looking. Do not greet again, repeat reminders or import the invoking conversation. Use sessions.list/info and messages tools only when deeper context is needed. Prefer short answers and direct navigation via supported Cake tools, including sessions.open and vscode.open. Preserve trust and destructive-action safeguards.",
+              "You can directly author and run VS Code scripts with vscode.script.run, arrange editors and configure VS Code at the user's request; do not delegate these actions to or interrupt the main coding agent. VS Code tools target the currently viewed Project Chat or Project Session and its actual Working Directory, not your app-wide home directory. Call vscode.enter first. Scripts run trusted async JavaScript with vscode, input and require; return a JSON-compatible result. For settings use vscode.workspace.getConfiguration().inspect/get/update with an explicit ConfigurationTarget (Global or Workspace) matching the user's request, preserve unrelated settings and verify the result. If no project/editor context is available, ask the user to open the intended Project Chat or Project Session before retrying.",
               "You use the configured utility model. Your memory and instructions are separate, customizable in Settings → Application → Cake Chat → Companion or settings.get/update with companion.memoryViewBytes, companion.contextLimitTokens and companion.instructions. Change instructions only when the user requests lasting guidance: read first and preserve unrelated text. Shared Cake Chat instructions do not apply.",
             ].join("\n\n")
         : project
@@ -709,24 +740,32 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
         },
       },
       browserControl,
-      vscodeControl: project
-        ? makeVscodeControl({
-            request: (name, input, signal) =>
-              run(
-                rendererRequests.requestCakeChatControl(
-                  target.sessionId,
-                  { name, arguments: input },
-                  signal,
+      vscodeControl:
+        project || companion
+          ? makeVscodeControl({
+              request: (name, input, signal) =>
+                run(
+                  rendererRequests.requestCakeChatControl(
+                    target.sessionId,
+                    { name, arguments: input },
+                    signal,
+                  ),
+                  { signal },
                 ),
-                { signal },
-              ),
-            runScript: (source, input, signal) => {
-              if (Option.isNone(vscode))
-                return Promise.reject(new Error("VS Code is unavailable in this host"));
-              return run(vscode.value.runProjectScript(project.path, source, input), { signal });
-            },
-          })
-        : undefined,
+              runScript: (source, input, signal) => {
+                if (Option.isNone(vscode))
+                  return Promise.reject(new Error("VS Code is unavailable in this host"));
+                return run(
+                  vscodeWorkingDirectory().pipe(
+                    Effect.flatMap((workingDirectory) =>
+                      vscode.value.runProjectScript(workingDirectory, source, input),
+                    ),
+                  ),
+                  { signal },
+                );
+              },
+            })
+          : undefined,
       slashCommands: cakeChatBuiltinSlashCommands.map((command) => command.name),
       requestUi: async () => undefined,
       modelPresets,
@@ -785,17 +824,24 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           ),
       },
       globalControl: {
-        tools: target.tools.map((tool) => ({
-          ...tool,
-          parameters: Schema.decodeUnknownSync(jsonObjectSchema)(tool.parameters),
-          examples: tool.examples?.map((example) => ({
-            ...example,
-            input:
-              example.input === undefined
-                ? undefined
-                : Schema.decodeUnknownSync(jsonObjectSchema)(example.input),
+        // Shared VS Code definitions replace renderer-advertised Companion controls.
+        tools: target.tools
+          .filter(
+            (tool) =>
+              !(project || companion) ||
+              !SHARED_VSCODE_OPERATIONS.some((command) => command === tool.command),
+          )
+          .map((tool) => ({
+            ...tool,
+            parameters: Schema.decodeUnknownSync(jsonObjectSchema)(tool.parameters),
+            examples: tool.examples?.map((example) => ({
+              ...example,
+              input:
+                example.input === undefined
+                  ? undefined
+                  : Schema.decodeUnknownSync(jsonObjectSchema)(example.input),
+            })),
           })),
-        })),
         // Pi requires a Promise callback; this is the final adapter from the
         // Cake-owned control Effect to the Pi runtime callback contract.
         invoke: (invocation, signal) =>

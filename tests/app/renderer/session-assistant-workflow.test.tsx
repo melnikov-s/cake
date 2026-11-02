@@ -5,6 +5,8 @@ import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import { SESSION_ASSISTANT_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { Client } from "../../../src/renderer/client/Client";
 import { renderSessionAssistant } from "./session-assistant-workflow-fixture";
+import { applyCakeChatControlUpdate } from "../../../src/renderer/reducers/CakeChatControlReducer";
+import { editorLease } from "./embedded-editor-workflow-fixture";
 
 const turnId = TurnId.make("10000000-0000-4000-8000-000000000001");
 afterEach(cleanup);
@@ -52,6 +54,70 @@ describe("Shared companion", () => {
     });
     expect(orientation).toHaveBeenCalledTimes(1);
     expect(f.root.workspaceSession!.model.streaming).toBe(true);
+  });
+
+  it("routes Companion editor controls to the viewed session without prompting or interrupting its busy agent", async () => {
+    const respond = vi.fn<Client["cakeChats"]["respondControl"]>(async () => undefined);
+    const open = vi.fn<Client["vscode"]["open"]>(async () => editorLease("a"));
+    const reveal = vi.fn<Client["vscode"]["reveal"]>(async () => ({
+      outcome: { view: "file" },
+      locations: [],
+    }));
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>();
+    const abort = vi.fn<Client["sessionChats"]["abort"]>();
+    using f = renderSessionAssistant({
+      cakeChats: { respondControl: respond },
+      sessionChats: { prompt, abort },
+      filesystem: { prepareFileLocation: async ({ location }) => ({ viewer: "vscode", location }) },
+      vscode: {
+        open,
+        reveal,
+        updateAnnotations: async () => undefined,
+        updateSelectionHighlights: async () => undefined,
+        setTheme: async () => undefined,
+      },
+    });
+    act(() => {
+      f.root.workspaceSession!.model.streaming = true;
+    });
+    await f.user.click(screen.getByRole("button", { name: "Ask session assistant" }));
+    f.root.applicationControlStore.start();
+    const controls =
+      f.root.cakeChatCollectionStore.registry.load(SESSION_ASSISTANT_ID).props.controls;
+    const request = async (name: string, args: Record<string, string>, id: string) => {
+      act(() =>
+        applyCakeChatControlUpdate(controls, {
+          _tag: "Snapshot",
+          requests: [
+            {
+              _tag: "ControlRequested",
+              sessionId: SESSION_ASSISTANT_ID,
+              controlRequestId: id,
+              invocation: { name, arguments: args },
+            },
+          ],
+        }),
+      );
+      await waitFor(() =>
+        expect(respond).toHaveBeenCalledWith(
+          id,
+          expect.objectContaining({ ok: true }),
+          expect.anything(),
+        ),
+      );
+    };
+    await request("vscode.enter", {}, "enter");
+    expect(f.root.workspaceSession!.presentationMode).toBe("vscode");
+    await request("vscode.open", { path: "src/main.ts" }, "open");
+    expect(open).toHaveBeenCalledWith("/project", expect.anything());
+    expect(reveal).toHaveBeenCalledWith(
+      "/project",
+      { kind: "working-directory", path: "src/main.ts" },
+      expect.anything(),
+    );
+    expect(f.root.workspaceSession!.model.streaming).toBe(true);
+    expect(prompt).not.toHaveBeenCalled();
+    expect(abort).not.toHaveBeenCalled();
   });
 
   it("shows a failed quick admission and keeps the user's prompt for retry", async () => {

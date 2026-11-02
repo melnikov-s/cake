@@ -3,7 +3,11 @@ import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture"
 import { it } from "@effect/vitest";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { Context, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
+import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
+import { CakeChatDurable } from "../../../src/services/pi-durable/CakeChatDurable";
+import { SavedDraftStorage } from "../../../src/services/storage/SavedDraftStorage";
+import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import * as chatLocations from "../../../src/domain/cake-chats/cakeChatLocations";
 import * as metadata from "../../../src/domain/cake-chats/cakeChatMetadata";
 import { configureCakeSessionRuntime } from "../../../src/layers/CakeOperations";
@@ -517,6 +521,16 @@ describe("permanent Cake Chat", () => {
         expect(options.runtime.cakeChatSystemPrompt?.()).toContain('sessionId: "parent"');
         expect(options.runtime.cakeChatSystemPrompt?.()).toContain("schedules to yourself");
         expect(options.runtime.cakeChatTodos).toBeUndefined();
+        expect(options.runtime.vscodeControl).toBeDefined();
+        yield* Effect.promise(() =>
+          expect(
+            options.runtime.vscodeControl!.runScript(
+              "return null",
+              null,
+              new AbortController().signal,
+            ),
+          ).rejects.toThrow("VS Code is unavailable in this host"),
+        );
         expect(memory.preferences().instructions).not.toContain("Shared chat only");
         yield* Effect.promise(() =>
           memory.summarize({
@@ -541,6 +555,180 @@ describe("permanent Cake Chat", () => {
         });
         expect(f.state().cakeChatPreferences?.instructions).toBe("Shared chat only");
       }).pipe(Effect.provide(f.layer));
+    },
+  );
+  it.effect(
+    "discovers and executes Companion VS Code controls against the current project and actual session checkout without acquiring a coding agent",
+    () => {
+      const f = fixture();
+      const timestamp = "2026-01-01T00:00:00Z";
+      f.setState({
+        ...f.state(),
+        projects: [
+          { path: "/project", name: "Project", addedAt: timestamp, lastOpenedAt: timestamp },
+        ],
+      });
+      let viewed: string | undefined = chatLocations.projectChatSessionId("/project");
+      let visible = false;
+      const request = vi.fn<RendererRequestCoordinator["Service"]["requestCakeChatControl"]>(
+        (_sessionId, invocation) => {
+          if (invocation.name === "vscode.enter") visible = true;
+          return Effect.succeed({ ok: true });
+        },
+      );
+      const runScript = vi.fn<VsCodeServer["Service"]["runProjectScript"]>(
+        (_directory, _source, input) =>
+          Effect.succeed(
+            visible
+              ? { status: "completed" as const, value: input }
+              : { status: "mode-required" as const },
+          ),
+      );
+      return Effect.gen(function* () {
+        const options = yield* acquireOptions({
+          configuration,
+          target: {
+            sessionId: SESSION_ASSISTANT_ID,
+            tools: [
+              ...cakeChatControlTools(),
+              // Companion's renderer advertises these controls as well.
+              ...[
+                "vscode.enter",
+                "vscode.open",
+                "vscode.selections.list",
+                "vscode.selections.remove",
+                "vscode.selections.clear",
+              ].map((command) => ({
+                command,
+                topic: "vscode",
+                summary: "Renderer editor control",
+                parameters: { type: "object", properties: {} },
+              })),
+            ],
+          },
+          newSession: false,
+        });
+        const configured = configureCakeSessionRuntime({
+          ...options.runtime,
+          onEvent: () => undefined,
+        });
+        const operations = new CakeOperationRegistry(
+          configured.coordinator!.operations({
+            sessionId: SESSION_ASSISTANT_ID,
+            resolveModel: () => ({
+              provider: "p",
+              modelId: "m",
+              thinkingLevel: "off",
+              fastMode: false,
+            }),
+            setModel: async () => undefined,
+            info: async () => ({}),
+            usage: async () => ({}),
+            contextStatus: async () => ({}),
+            compact: async () => ({}),
+          }),
+        );
+        expect(operations.help()).toContain("vscode —");
+        expect(operations.topicHelp("vscode")).toContain("vscode.script.run");
+        expect(operations.operationHelp("vscode.script.run")).toContain(
+          "vscode, input, and require",
+        );
+        const context = {
+          signal: new AbortController().signal,
+          toolCallId: "companion-vscode",
+          runtime: { sessionId: SESSION_ASSISTANT_ID },
+        };
+        const source =
+          "await vscode.workspace.getConfiguration('editor').update('fontSize', input.size, vscode.ConfigurationTarget.Workspace); return input;";
+        const script = { command: "vscode.script.run", input: { source, input: { size: 16 } } };
+        const invoke = (input: Parameters<CakeOperationRegistry["invoke"]>[0]) =>
+          Effect.promise(() => operations.invoke(input, context));
+        expect((yield* invoke(script)).details).toMatchObject({
+          result: { ok: false, error: { code: "VSCODE_MODE_REQUIRED", retryable: true } },
+        });
+        expect((yield* invoke({ command: "vscode.enter" })).details).toMatchObject({
+          result: { entered: true },
+        });
+        expect(request).toHaveBeenCalledWith(
+          SESSION_ASSISTANT_ID,
+          { name: "vscode.enter", arguments: {} },
+          context.signal,
+        );
+        expect((yield* invoke(script)).details).toMatchObject({
+          result: { ok: true, result: { size: 16 } },
+        });
+        expect(runScript).toHaveBeenLastCalledWith("/project", source, { size: 16 });
+        // Same Companion runtime follows a Project Session in a different checkout.
+        viewed = "viewed-worker";
+        yield* invoke(script);
+        expect(runScript).toHaveBeenLastCalledWith("/worktree", source, { size: 16 });
+        viewed = "10000000-0000-4000-8000-000000000001";
+        yield* invoke(script);
+        expect(runScript).toHaveBeenLastCalledWith("/draft-checkout", source, { size: 16 });
+        expect(options.runtime.cwd).toBe("/home/user");
+        expect(options.runtime.sessionId).toBe(SESSION_ASSISTANT_ID);
+        for (const unavailable of [undefined, CAKE_CHAT_SESSION_ID, SESSION_ASSISTANT_ID]) {
+          viewed = unavailable;
+          yield* Effect.promise(() =>
+            expect(operations.invoke(script, context)).rejects.toThrow(
+              /Open a Project Chat or Project Session.*vscode.enter/,
+            ),
+          );
+        }
+        expect(runScript).toHaveBeenCalledTimes(4);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            f.layer,
+            Layer.mock(CakeChatDurable, {
+              assistantContextSessionId: () => Effect.succeed(viewed),
+            }),
+            Layer.mock(VsCodeServer, { runProjectScript: runScript, leaseFor: () => undefined }),
+            Layer.mock(SavedDraftStorage, {
+              list: () =>
+                Effect.succeed([
+                  {
+                    sessionId: "10000000-0000-4000-8000-000000000001",
+                    projectPath: "/project",
+                    workingDirectory: "/draft-checkout",
+                    title: "Draft",
+                    text: "",
+                    attachments: [],
+                    labelIds: [],
+                    resolved: false,
+                    createdAt: timestamp,
+                    modifiedAt: timestamp,
+                    revision: 1,
+                    status: "saved" as const,
+                  },
+                ]),
+            }),
+            Layer.mock(RendererRequestCoordinator, { requestCakeChatControl: request }),
+            Layer.mock(SessionFamilyStorage, { familyForMember: () => Effect.succeed(undefined) }),
+            Layer.mock(SessionArchiveStorage, {
+              resolvedProjectEntry: () => Effect.succeed(undefined),
+              locate: (id, location) =>
+                Effect.succeed(
+                  id === "viewed-worker" && location.cwd === "/worktree"
+                    ? ("active" as const)
+                    : undefined,
+                ),
+            }),
+            Layer.mock(ManagedWorktrees, {
+              records: () =>
+                Effect.succeed([
+                  {
+                    projectPath: "/project",
+                    worktreePath: "/worktree",
+                    branch: "agent/viewed",
+                    baseBranch: "main",
+                    createdAt: timestamp,
+                  },
+                ]),
+            }),
+          ),
+        ),
+      );
     },
   );
   it.effect(

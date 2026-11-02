@@ -118,6 +118,41 @@ describe("companion rendering of Store-owned selections", () => {
   });
 });
 
+describe("trusted VS Code scripting", () => {
+  it("runs async layout and configuration scripts with vscode, input and require and returns verified settings", async () => {
+    let fontSize = 14;
+    const update = vi.fn(async (key: string, value: number, target: number) => {
+      expect(key).toBe("fontSize");
+      expect(target).toBe(fakeVscode.ConfigurationTarget.Workspace);
+      fontSize = value;
+    });
+    fakeVscode.workspace.getConfiguration.mockReturnValue({
+      get: () => fontSize,
+      update,
+    });
+    const result = await send(
+      {
+        type: "script",
+        source: `
+        const settings = vscode.workspace.getConfiguration('editor');
+        const before = settings.get('fontSize');
+        await settings.update('fontSize', input.size, vscode.ConfigurationTarget.Workspace);
+        await vscode.commands.executeCommand('vscode.setEditorLayout', { groups: [{}, {}] });
+        return { before, after: settings.get('fontSize'), file: require('node:path').basename(input.file) };
+      `,
+        input: { size: 18, file: "/workspace/project/src/main.ts" },
+      },
+      200,
+    );
+    expect(JSON.parse(result.body)).toEqual({ before: 14, after: 18, file: "main.ts" });
+    expect(update).toHaveBeenCalledOnce();
+    expect(fakeVscode.workspace.getConfiguration).toHaveBeenCalledWith("editor");
+    expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith("vscode.setEditorLayout", {
+      groups: [{}, {}],
+    });
+  });
+});
+
 const WORKSPACE = "/workspace/project";
 const companionSource = join(import.meta.dirname, "../../../../src/assets/vscode-companion");
 
@@ -239,7 +274,7 @@ let receive: (
   request: EventEmitter & { headers: Record<string, string>; method: string },
   response: unknown,
 ) => void;
-async function send(payload: object) {
+async function send(payload: object, expectedStatus = 204) {
   const request = Object.assign(new EventEmitter(), {
     headers: { "x-cake-token": "token" },
     method: "POST",
@@ -260,7 +295,9 @@ async function send(payload: object) {
   request.emit("data", Buffer.from(JSON.stringify(payload)));
   request.emit("end");
   const result = await completed;
-  expect(result).toEqual({ status: 204, body: "" });
+  expect(result.status).toBe(expectedStatus);
+  if (expectedStatus === 204) expect(result.body).toBe("");
+  return result;
 }
 
 /**
@@ -372,7 +409,16 @@ const fakeVscode = {
         : undefined,
   },
   languages: { registerCodeLensProvider: () => ({ dispose() {} }) },
-  workspace: { openTextDocument },
+  ConfigurationTarget: { Global: 1, Workspace: 2 },
+  workspace: {
+    openTextDocument,
+    getConfiguration: vi.fn<
+      () => {
+        get(key: string): number;
+        update(key: string, value: number, target: number): Promise<void>;
+      }
+    >(),
+  },
 };
 
 const posted: Array<Record<string, unknown>> = [];
