@@ -319,9 +319,9 @@ interface WorkspaceCommands {
 }
 
 interface ManagedWorktreeCommands {
-  /** `base` is the user's comparison choice; `previousBase` lets Git report a deleted parent. */
+  /** `base` is the user's comparison choice; otherwise the backend infers it. */
   inspectChanges(
-    input: { workspacePath: string; base: string | undefined; previousBase: string | undefined },
+    input: { workspacePath: string; base: string | undefined },
     options?: ClientCommandOptions,
   ): Promise<WorktreeChanges>;
   create(

@@ -95,14 +95,12 @@ export class SessionChangesStore extends Store<SessionChangesStoreProps> {
   async refresh() {
     const request = ++this.request;
     const path = this.props.workspacePath();
-    const previousBase = path === this.dataPath ? this.data?.base : undefined;
     this.loading = true;
     try {
       const data = await ClientContext.consume(this)!.managedWorktrees.inspectChanges(
         {
           workspacePath: path,
           base: this.selectedBase,
-          previousBase: previousBase ?? undefined,
         },
         { signal: this.signal },
       );

@@ -19,7 +19,7 @@ export const BranchCommit = Schema.Struct({
 });
 export interface BranchCommit extends Schema.Schema.Type<typeof BranchCommit> {}
 
-/** A local branch HEAD could have forked from, with its fork point's distance from HEAD. */
+/** A local or remote-tracking branch HEAD could have forked from, with its fork point's distance from HEAD. */
 const BaseAlternative = Schema.Struct({
   branch: Schema.NonEmptyString,
   distance: count,
@@ -33,7 +33,6 @@ export const WorktreeChanges = Schema.Struct({
   /** Branch HEAD is compared with, inferred from the Git graph; null when none exists. */
   base: Schema.NullOr(Schema.String),
   baseAlternatives: Schema.Array(BaseAlternative),
-  baseNote: Schema.optional(Schema.String),
   commits: Schema.Array(BranchCommit),
   totalCommits: count,
   staged: Schema.Array(ChangedFile),

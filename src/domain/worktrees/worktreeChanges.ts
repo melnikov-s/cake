@@ -12,13 +12,7 @@ import { inferBase } from "./worktreeChangesBase";
  * Git graph on every call (or chosen by the user for this request); Cake stores none of it.
  */
 export const inspect = Effect.fn("WorktreeChanges.inspect")(
-  function* (
-    workspacePath: string,
-    options: {
-      readonly base?: string | undefined;
-      readonly previousBase?: string | undefined;
-    },
-  ) {
+  function* (workspacePath: string, options: { readonly base?: string | undefined }) {
     if (!(yield* (yield* ProjectAccess).isAllowed(workspacePath)))
       return yield* new ManagedWorktreeError({
         operation: "changes",
@@ -28,17 +22,11 @@ export const inspect = Effect.fn("WorktreeChanges.inspect")(
     const run = (args: readonly string[]) => git.run(workspacePath, args);
     const status = yield* (yield* ManagedWorktrees).status(workspacePath);
     const branch = (yield* run(["rev-parse", "--abbrev-ref", "HEAD"])).trim();
-    const inferred = yield* inferBase(run, {
-      branch,
-      requested: options.base,
-      previous: options.previousBase,
-    });
-    const base = inferred.base;
+    const inferred = yield* inferBase(run, { branch, requested: options.base });
+    const base = inferred.base?.ref;
     // A landed checkpoint hides commits already delivered by a squash landing.
     const landed = status?.record?.landedSourceCommit;
-    const revisions = base
-      ? ["HEAD", `^refs/heads/${base}`, ...(landed ? [`^${landed}`] : [])]
-      : [];
+    const revisions = base ? ["HEAD", `^${base}`, ...(landed ? [`^${landed}`] : [])] : [];
     const totalCommits = base
       ? Number((yield* run(["rev-list", "--count", ...revisions, "--"])).trim())
       : 0;
@@ -122,9 +110,11 @@ export const inspect = Effect.fn("WorktreeChanges.inspect")(
       }));
     return yield* Schema.decodeUnknownEffect(WorktreeChanges)({
       branch,
-      base,
-      baseAlternatives: inferred.alternatives.map(({ branch, distance }) => ({ branch, distance })),
-      baseNote: inferred.note,
+      base: inferred.base?.name ?? null,
+      baseAlternatives: inferred.alternatives.map(({ name, distance }) => ({
+        branch: name,
+        distance,
+      })),
       commits: commits.map((commit) => ({ ...commit, files: withExistence(commit.files) })),
       totalCommits,
       staged: withExistence(tracked.staged),

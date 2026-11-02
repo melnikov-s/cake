@@ -38,7 +38,7 @@ function dependencies(
     staged?: string;
     unstaged?: string;
     untracked?: Record<string, Uint8Array>;
-    /** `for-each-ref` lines: branch, ahead, behind relative to HEAD. */
+    /** Local branches: name, ahead, behind relative to HEAD. */
     branches?: ReadonlyArray<readonly [string, number, number]>;
     total?: number;
     branch?: string;
@@ -65,7 +65,10 @@ function dependencies(
         if (args[0] === "for-each-ref")
           return Effect.succeed(
             (options.branches ?? [["main", 0, 1]])
-              .map(([branch, ahead, behind]) => `${branch}\0${ahead} ${behind}\n`)
+              .map(
+                ([branch, ahead, behind]) =>
+                  `refs/heads/${branch}\0${branch}\0\0${ahead} ${behind}\n`,
+              )
               .join(""),
           );
         if (args[0] === "rev-list") return Effect.succeed(`${options.total ?? 1}\n`);
@@ -217,6 +220,24 @@ describe("Worktree Changes Git projection", () => {
       const result = yield* inspect("/checkout", {}).pipe(Effect.provide(fixture.layer));
       expect(result.base).toBe("main");
       expect(result.baseAlternatives).toEqual([{ branch: "main", distance: 3 }]);
+    }),
+  );
+
+  it.effect("compares a brand-new child with its parent and lists no commits", () =>
+    Effect.gen(function* () {
+      // The parent contains HEAD (behind 0) and Git recorded it before this branch.
+      const fixture = dependencies({
+        branches: [
+          ["agent/parent", 0, 0],
+          ["main", 0, 2],
+        ],
+        total: 0,
+        reflog: ["refs/heads/agent/review@{200}", "refs/heads/agent/parent@{100}"].join("\n"),
+      });
+      const result = yield* inspect("/checkout", {}).pipe(Effect.provide(fixture.layer));
+      expect(result.base).toBe("agent/parent");
+      expect(result.totalCommits).toBe(0);
+      expect(result.commits).toEqual([]);
     }),
   );
 

@@ -58,9 +58,6 @@ export const SessionChangesPanel = observer(function SessionChangesPanel({
               </span>
             )}
           </div>
-          {data.baseNote && (
-            <p className="px-4 pb-2 text-xs text-muted-foreground">{data.baseNote}</p>
-          )}
           <div className="px-4 pb-4">
             <Button
               variant="outline"

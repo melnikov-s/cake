@@ -41,7 +41,6 @@ export const ManagedWorktreeRpc = RpcGroup.make(
     payload: {
       workspacePath: Schema.NonEmptyString,
       base: Schema.optional(Schema.NonEmptyString),
-      previousBase: Schema.optional(Schema.NonEmptyString),
     },
     success: WorktreeChanges,
     error: ManagedWorktreeError,

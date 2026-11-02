@@ -52,7 +52,7 @@ async function worktree(repository: string, branch: string, from: string) {
   return path;
 }
 
-const changes = (path: string, options: { base?: string; previousBase?: string } = {}) =>
+const changes = (path: string, options: { base?: string } = {}) =>
   Effect.runPromise(
     inspect(path, options).pipe(
       Effect.provide(
@@ -127,7 +127,7 @@ describe("Changes base inferred from the Git graph", () => {
     expect(subjects(switched)).toEqual(["tied work"]);
   });
 
-  it("falls back to the nearest remaining branch with a note when the parent is deleted", async () => {
+  it("falls back to the nearest remaining branch when the parent is deleted", async () => {
     const root = await repository();
     const parent = await worktree(root, "agent/parent", "main");
     await commit(parent, "parent work");
@@ -138,10 +138,62 @@ describe("Changes base inferred from the Git graph", () => {
     await git(root, "worktree", "remove", "--force", parent);
     await git(root, "branch", "-D", "agent/parent");
 
-    const result = await changes(child, { previousBase: "agent/parent" });
+    const result = await changes(child);
     expect(result.base).toBe("main");
-    expect(result.baseNote).toBe("agent/parent no longer exists");
     expect(subjects(result)).toEqual(["child work", "parent work"]);
+  });
+
+  it("shows no commits for a brand-new child, only its parent as the base", async () => {
+    const root = await repository();
+    const parent = await worktree(root, "agent/parent", "main");
+    await commit(parent, "parent work");
+    const child = await worktree(root, "agent/child", "agent/parent");
+    // The parent moving on must not turn the empty child into a view of the parent's commits.
+    await commit(parent, "parent later");
+
+    const result = await changes(child);
+    expect(result.base).toBe("agent/parent");
+    expect(result.commits).toEqual([]);
+    expect(result.totalCommits).toBe(0);
+    // ...and the parent still reviews its own commits rather than comparing with the child.
+    expect(subjects(await changes(parent))).toEqual(["parent later", "parent work"]);
+  });
+
+  it("uses a fresher remote-tracking trunk but never the branch's own pushed copy", async () => {
+    const root = await repository();
+    await git(root, "remote", "add", "origin", join(root, "unused-remote"));
+    // origin/main has moved on while local main stayed behind.
+    await git(root, "update-ref", "refs/remotes/origin/main", "main");
+    await git(root, "branch", "--set-upstream-to=origin/main", "main");
+    const upstream = await worktree(root, "upstream-tip", "main");
+    for (const index of [1, 2, 3]) await commit(upstream, `upstream ${index}`);
+    await git(root, "update-ref", "refs/remotes/origin/main", "upstream-tip");
+    await git(root, "worktree", "remove", "--force", upstream);
+    await git(root, "branch", "-D", "upstream-tip");
+
+    const agent = await worktree(root, "agent/fresh", "origin/main");
+    await commit(agent, "agent pushed");
+    await git(agent, "update-ref", "refs/remotes/origin/agent/fresh", "HEAD");
+    await git(agent, "branch", "--set-upstream-to=origin/agent/fresh");
+    await commit(agent, "agent unpushed");
+
+    const result = await changes(agent);
+    expect(result.base).toBe("origin/main");
+    expect(subjects(result)).toEqual(["agent unpushed", "agent pushed"]);
+    expect(result.baseAlternatives.map(({ branch }) => branch)).toEqual(["origin/main", "main"]);
+  });
+
+  it("follows a rebase onto a branch created after this one", async () => {
+    const root = await repository();
+    const agent = await worktree(root, "agent/rebased", "main");
+    await commit(agent, "agent work");
+    const feature = await worktree(root, "feature/newer", "main");
+    await commit(feature, "newer work");
+    await git(agent, "rebase", "feature/newer");
+
+    const result = await changes(agent);
+    expect(result.base).toBe("feature/newer");
+    expect(subjects(result)).toEqual(["agent work"]);
   });
 
   it("follows a rebase to the new fork point", async () => {

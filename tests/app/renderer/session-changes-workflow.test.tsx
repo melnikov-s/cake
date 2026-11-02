@@ -294,21 +294,16 @@ describe("Session Changes review", () => {
     await fixture.user.selectOptions(picker, "main");
     await waitFor(() =>
       expect(fixture.inspectChanges).toHaveBeenLastCalledWith(
-        { workspacePath: editorWorkingDirectory, base: "main", previousBase: "agent/parent" },
+        { workspacePath: editorWorkingDirectory, base: "main" },
         expect.any(Object),
       ),
     );
     await waitFor(() => expect((picker as HTMLSelectElement).value).toBe("main"));
   });
 
-  it("explains a deleted parent and a capped commit list", async () => {
-    using fixture = renderChanges({
-      ...changes,
-      baseNote: "agent/parent no longer exists",
-      totalCommits: 8156,
-    });
+  it("explains a capped commit list", async () => {
+    using fixture = renderChanges({ ...changes, totalCommits: 8156 });
     const pane = await openChanges(fixture, 8156);
-    expect(within(pane).getByText("agent/parent no longer exists")).toBeDefined();
     expect(within(pane).getByText("Showing 2 of 8156 commits")).toBeDefined();
   });
 

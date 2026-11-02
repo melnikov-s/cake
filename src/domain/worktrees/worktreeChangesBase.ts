@@ -4,121 +4,149 @@ import { GitError } from "../../services/git/Git";
 /** Trunk names lose fork-point ties: a feature branch at the same fork is the likelier parent. */
 const defaultBranches = new Set(["main", "master"]);
 const alternativeLimit = 10;
+/** Reflogs are read only for the nearest candidates; the rest count as "creation unknown". */
+const reflogLimit = 20;
 
-interface BaseCandidate {
-  readonly branch: string;
-  /** Commits on HEAD that this branch does not have: the fork point's distance from HEAD. */
+interface Candidate {
+  /** Full ref used in Git ranges, e.g. refs/remotes/origin/main. */
+  readonly ref: string;
+  /** Short display name, e.g. origin/main. */
+  readonly name: string;
+  readonly remote: boolean;
+  readonly upstream: string;
+  /** Commits on HEAD that this ref does not have: the fork point's distance from HEAD. */
   readonly distance: number;
-  /** Commits on this branch since the fork. */
+  /** Commits on this ref since the fork. */
   readonly ahead: number;
 }
 
 interface InferredBase {
-  readonly base: string | null;
-  readonly alternatives: readonly BaseCandidate[];
-  readonly note: string | undefined;
+  readonly base: { readonly name: string; readonly ref: string } | null;
+  readonly alternatives: readonly { readonly name: string; readonly distance: number }[];
 }
 
-/**
- * Orders possible parents by the Git graph alone. Branches that already contain HEAD
- * (behind = 0) are children or copies of this branch, never its parent.
- */
-function rankCandidates(forEachRef: string, currentBranch: string): readonly BaseCandidate[] {
-  return forEachRef
+const forEachRefFormat = "%(refname)%00%(refname:short)%00%(upstream)%00%(ahead-behind:HEAD)";
+
+function parseRefs(output: string): Candidate[] {
+  return output
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const [branch = "", counts = ""] = line.split("\0");
+      const [ref = "", name = "", upstream = "", counts = ""] = line.split("\0");
       const [ahead = 0, distance = 0] = counts.split(" ").map(Number);
-      return { branch, ahead, distance };
-    })
-    .filter(({ branch, distance }) => branch && branch !== currentBranch && distance > 0)
-    .toSorted(
-      (left, right) =>
-        left.distance - right.distance ||
-        Number(defaultBranches.has(left.branch)) - Number(defaultBranches.has(right.branch)) ||
-        left.ahead - right.ahead ||
-        left.branch.localeCompare(right.branch),
-    );
+      return { ref, name, upstream, ahead, distance, remote: ref.startsWith("refs/remotes/") };
+    });
 }
 
-/** Oldest reflog entry per branch: when Git first recorded it. Expired reflogs are unknown. */
-function creationTimes(walk: string) {
+const isTrunk = ({ name, remote }: Candidate) =>
+  defaultBranches.has(remote ? name.slice(name.indexOf("/") + 1) : name);
+
+/**
+ * When Git first recorded each ref, from its oldest reflog entry. For the current branch, a later
+ * rebase or reset counts instead: that is when it last chose what to grow from.
+ */
+function reflogTimes(walk: string, ownRef: string) {
   const times = new Map<string, number>();
+  const resets = new Map<string, number>();
   for (const line of walk.split("\n")) {
-    const match = /^refs\/heads\/(.+)@\{(\d+)\}$/.exec(line.trim());
+    const [selector = "", subject = ""] = line.split("\0");
+    const match = /^(refs\/.+)@\{(\d+)\}$/.exec(selector.trim());
     if (!match) continue;
-    const [, branch = "", seconds = ""] = match;
-    times.set(branch, Math.min(Number(seconds), times.get(branch) ?? Infinity));
+    const [, ref = "", seconds = ""] = match;
+    const time = Number(seconds);
+    const previous = times.get(ref);
+    // Entries arrive newest first, so the first rebase/reset seen for HEAD's branch is the latest.
+    if (ref === ownRef && /^(rebase|reset)/.test(subject) && !resets.has(ref))
+      resets.set(ref, time);
+    times.set(ref, previous === undefined ? time : Math.min(previous, time));
   }
-  return times;
+  return { times, ownSince: resets.get(ownRef) ?? times.get(ownRef) };
 }
 
 /**
- * Infers the branch HEAD forked from on every call; nothing is stored.
- * `%(ahead-behind:HEAD)` (Git 2.41+) counts every local branch in one graph walk, so
- * huge repositories pay for a single process rather than one merge-base per branch.
+ * Infers the ref HEAD forked from on every call; nothing is stored.
+ * `%(ahead-behind:HEAD)` (Git 2.41+) counts every candidate in one graph walk, so huge
+ * repositories pay for one process rather than one merge-base per branch.
  */
 export const inferBase = Effect.fn("WorktreeChanges.inferBase")(function* (
   run: (args: readonly string[]) => Effect.Effect<string, GitError>,
-  options: { readonly branch: string; readonly requested?: string; readonly previous?: string },
+  options: { readonly branch: string; readonly requested: string | undefined },
 ) {
   // The trunk has no parent branch; its review is the working tree alone.
   if (defaultBranches.has(options.branch))
-    return { base: null, alternatives: [], note: undefined } satisfies InferredBase;
-  const refs = yield* run([
-    "for-each-ref",
-    "--format=%(refname:lstrip=2)%00%(ahead-behind:HEAD)",
-    "refs/heads",
-  ]).pipe(
-    Effect.mapError((error) =>
-      error.message.includes("ahead-behind")
-        ? new GitError({
-            operation: error.operation,
-            workingDirectory: error.workingDirectory,
-            message: "Finding the parent branch requires Git 2.41 or newer",
-          })
-        : error,
+    return { base: null, alternatives: [] } satisfies InferredBase;
+  const forEachRef = (patterns: readonly string[]) =>
+    run(["for-each-ref", `--format=${forEachRefFormat}`, ...patterns]).pipe(
+      Effect.mapError((error) =>
+        error.message.includes("ahead-behind")
+          ? new GitError({
+              operation: error.operation,
+              workingDirectory: error.workingDirectory,
+              message: "Finding the parent branch requires Git 2.41 or newer",
+            })
+          : error,
+      ),
+    );
+  const ownRef = `refs/heads/${options.branch}`;
+  const local = parseRefs(yield* forEachRef(["refs/heads"]));
+  const own = local.find((candidate) => candidate.ref === ownRef);
+  // Remote-tracking copies of other local branches (e.g. a fresher origin/main) are candidates;
+  // this branch's own pushed copy is just an older HEAD, never a parent.
+  const upstreams = [
+    ...new Set(
+      local
+        .filter((candidate) => candidate.ref !== ownRef)
+        .map((candidate) => candidate.upstream)
+        .filter((ref) => ref.startsWith("refs/remotes/") && ref !== own?.upstream),
     ),
-  );
-  const existing = new Set(refs.split("\n").map((line) => line.split("\0")[0]));
-  const graphRanked = rankCandidates(refs, options.branch);
-  // After two branches diverge the graph is symmetric: a parent that kept committing looks
-  // like a fork of its own child. Branch creation times in Git's reflog break the tie.
-  const created =
-    graphRanked.length && options.branch !== "HEAD"
-      ? creationTimes(
+  ];
+  const tracking = upstreams.length ? parseRefs(yield* forEachRef(upstreams)) : [];
+  const candidates = [...local, ...tracking]
+    .filter((candidate) => candidate.ref !== ownRef)
+    .toSorted(
+      (left, right) =>
+        left.distance - right.distance ||
+        Number(isTrunk(left)) - Number(isTrunk(right)) ||
+        Number(left.remote) - Number(right.remote) ||
+        left.ahead - right.ahead ||
+        left.name.localeCompare(right.name),
+    );
+  const checked = candidates.slice(0, reflogLimit);
+  const { times, ownSince } =
+    checked.length && options.branch !== "HEAD"
+      ? reflogTimes(
           yield* run([
             "log",
             "--walk-reflogs",
             "--date=unix",
-            "--format=%gD",
-            ...[options.branch, ...graphRanked.slice(0, alternativeLimit).map((c) => c.branch)].map(
-              (branch) => `refs/heads/${branch}`,
-            ),
+            "--format=%gD%x00%gs",
+            ownRef,
+            ...checked.map((candidate) => candidate.ref),
             "--",
           ]),
+          ownRef,
         )
-      : new Map<string, number>();
-  const ownCreation = created.get(options.branch);
-  const ranked = graphRanked.filter(({ branch }) => {
-    const creation = created.get(branch);
-    return ownCreation === undefined || creation === undefined || creation <= ownCreation;
+      : { times: new Map<string, number>(), ownSince: undefined };
+  const ranked = candidates.filter((candidate) => {
+    const created = times.get(candidate.ref);
+    // A ref that already contains HEAD is our parent only with proof it existed first (or it is
+    // the trunk); otherwise it is a child of this branch. A brand-new child lands here: its
+    // parent contains it, so it compares with the parent and shows no commits.
+    if (candidate.distance === 0)
+      return (
+        isTrunk(candidate) ||
+        (created !== undefined && ownSince !== undefined && created < ownSince)
+      );
+    // After two branches diverge the graph is symmetric: a parent that kept committing looks
+    // like a fork of its own child. A ref first recorded after this branch cannot be its parent.
+    return created === undefined || ownSince === undefined || created <= ownSince;
   });
-  const missing = [options.requested, options.previous].find(
-    (name) => name !== undefined && !existing.has(name),
-  );
-  const requested =
-    options.requested && existing.has(options.requested) && options.requested !== options.branch
-      ? options.requested
-      : undefined;
-  const base = requested ?? ranked[0]?.branch ?? null;
+  const chosen =
+    ranked.find((candidate) => candidate.name === options.requested) ?? ranked[0] ?? null;
   const alternatives = ranked.slice(0, alternativeLimit);
-  const chosen = ranked.find((candidate) => candidate.branch === base);
   if (chosen && !alternatives.includes(chosen)) alternatives.push(chosen);
   return {
-    base,
-    alternatives,
-    note: missing && missing !== base ? `${missing} no longer exists` : undefined,
+    base: chosen && { name: chosen.name, ref: chosen.ref },
+    alternatives: alternatives.map(({ name, distance }) => ({ name, distance })),
   } satisfies InferredBase;
 });
