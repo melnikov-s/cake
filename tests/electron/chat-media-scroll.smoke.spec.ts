@@ -27,57 +27,88 @@ async function startProbe(page: Page) {
   await page.evaluate(() => {
     const scroller = document.querySelector<HTMLElement>(".transcript")!;
     const result: MediaProbe = { loadingFrames: 0, diagramFrames: 0, imageFrames: 0, jumps: [] };
-    let previous: { id: string; top: number; bottom: number } | undefined;
-    let frame: number;
-    let timer: ReturnType<typeof setTimeout>;
-    const tick = () => {
-      frame = requestAnimationFrame(() => {
-        // Sample after all rAF callbacks and ResizeObserver delivery, at paint.
-        timer = setTimeout(() => {
-          const viewport = scroller.getBoundingClientRect();
-          const rows = [...scroller.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]")];
-          if (previous) {
-            const retained = rows.find((row) => row.dataset.transcriptAnchorId === previous!.id);
-            if (retained) {
-              const delta = retained.getBoundingClientRect().top - previous.top;
-              // A wheel step is 180px. Layout must not add a large jump to the
-              // reader's top row, even if scrollTop itself was compensated.
-              if (Math.abs(delta) > 181) result.jumps.push({ id: previous.id, delta });
-            } else if (previous.bottom > viewport.top + 181) {
-              // It could not legitimately have left the viewport in one step.
-              result.jumps.push({ id: previous.id, delta: "unmounted" });
-            }
-          }
-          const anchor = rows.find((row) => row.getBoundingClientRect().bottom > viewport.top + 1);
-          const rect = anchor?.getBoundingClientRect();
-          previous =
-            anchor && rect
-              ? { id: anchor.dataset.transcriptAnchorId!, top: rect.top, bottom: rect.bottom }
-              : undefined;
-          const block = scroller.querySelector('[data-diagram="pele"]');
-          if (block) {
-            if (block.querySelector("svg.pele")) result.diagramFrames++;
-            else {
-              result.loadingFrames++;
-              window.dispatchEvent(new Event("transcript-diagram-loading-painted"));
-            }
-          }
-          if (
-            [...scroller.querySelectorAll("img")].some(
-              (img) => img.complete && img.naturalWidth > 0,
-            )
-          )
-            result.imageFrames++;
-          tick();
-        }, 0);
-      });
+    type Geometry = {
+      viewportTop: number;
+      rows: Array<{ id: string; top: number; bottom: number }>;
+      loading: boolean;
+      diagram: boolean;
+      image: boolean;
     };
-    tick();
-    Reflect.set(window, "stopMediaProbe", () => {
-      cancelAnimationFrame(frame);
-      clearTimeout(timer);
-      return result;
+    let pending: Geometry | undefined;
+    let previous: Geometry["rows"][number] | undefined;
+    let frame: number;
+    let tall = false;
+    const sentinel = document.createElement("div");
+    sentinel.style.cssText =
+      "position:fixed;left:-10000px;top:0;width:1px;height:1px;contain:strict;pointer-events:none";
+    document.body.append(sentinel);
+
+    // ResizeObserver runs after rAF and layout. Retain its final geometry, then
+    // consume it on the next rAF, after that frame painted. A post-rAF timer can
+    // instead force layout between a late React commit and its next resize
+    // delivery, falsely calling geometry that never painted a reading jump.
+    const commit = () => {
+      const painted = pending;
+      pending = undefined;
+      if (!painted) return;
+      if (previous) {
+        const retained = painted.rows.find((row) => row.id === previous!.id);
+        if (retained) {
+          const delta = retained.top - previous.top;
+          if (Math.abs(delta) > 181) result.jumps.push({ id: previous.id, delta });
+        } else if (previous.bottom > painted.viewportTop + 181) {
+          result.jumps.push({ id: previous.id, delta: "unmounted" });
+        }
+      }
+      previous = painted.rows.find((row) => row.bottom > painted.viewportTop + 1);
+      if (painted.diagram) result.diagramFrames++;
+      if (painted.loading) {
+        result.loadingFrames++;
+        window.dispatchEvent(new Event("transcript-diagram-loading-painted"));
+      }
+      if (painted.image) result.imageFrames++;
+    };
+    const observer = new ResizeObserver(() => {
+      const block = scroller.querySelector('[data-diagram="pele"]');
+      pending = {
+        viewportTop: scroller.getBoundingClientRect().top,
+        rows: [...scroller.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]")].map(
+          (row) => {
+            const rect = row.getBoundingClientRect();
+            return { id: row.dataset.transcriptAnchorId!, top: rect.top, bottom: rect.bottom };
+          },
+        ),
+        loading: Boolean(block && !block.querySelector("svg.pele")),
+        diagram: Boolean(block?.querySelector("svg.pele")),
+        image: [...scroller.querySelectorAll("img")].some(
+          (img) => img.complete && img.naturalWidth > 0,
+        ),
+      };
     });
+    observer.observe(sentinel);
+    observer.observe(scroller);
+    if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
+    const tick = () => {
+      commit();
+      tall = !tall;
+      sentinel.style.height = tall ? "2px" : "1px";
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    Reflect.set(
+      window,
+      "stopMediaProbe",
+      () =>
+        new Promise<MediaProbe>((resolve) =>
+          requestAnimationFrame(() => {
+            commit();
+            cancelAnimationFrame(frame);
+            observer.disconnect();
+            sentinel.remove();
+            resolve(result);
+          }),
+        ),
+    );
   });
 }
 
@@ -220,7 +251,7 @@ for (const media of ["diagram", "image", "combined"] as const) {
           if (reachedEnd) break;
         }
         const result = await page.evaluate(() =>
-          (Reflect.get(window, "stopMediaProbe") as () => MediaProbe)(),
+          (Reflect.get(window, "stopMediaProbe") as () => Promise<MediaProbe>)(),
         );
         expect(
           await recordedRendererErrors(page),
@@ -235,6 +266,36 @@ for (const media of ["diagram", "image", "combined"] as const) {
           expect(result.diagramFrames).toBeGreaterThan(0);
         }
         if (media !== "diagram") expect(result.imageFrames).toBeGreaterThan(0);
+      }
+      if (media === "combined") {
+        // A probe that ignores real painted movement would manufacture green.
+        // Inject a visible transform after the traversal and require its 400px jump.
+        const painted = () =>
+          page.evaluate(
+            () =>
+              new Promise<void>((done) =>
+                requestAnimationFrame(() => requestAnimationFrame(() => done())),
+              ),
+          );
+        await startProbe(page);
+        await painted();
+        await transcript.evaluate((element) => {
+          const top = element.getBoundingClientRect().top;
+          const row = [
+            ...element.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]"),
+          ].find((item) => item.getBoundingClientRect().bottom > top + 1)!;
+          row.dataset.probeTarget = "true";
+          row.style.transform = "translateY(400px)";
+        });
+        await painted();
+        const control = await page.evaluate(() =>
+          (Reflect.get(window, "stopMediaProbe") as () => Promise<MediaProbe>)(),
+        );
+        expect(control.jumps.some((jump) => jump.delta === 400)).toBe(true);
+        await transcript.locator('[data-probe-target="true"]').evaluate((row) => {
+          row.style.removeProperty("transform");
+          delete row.dataset.probeTarget;
+        });
       }
       expect(errors).toEqual([]);
     } finally {
