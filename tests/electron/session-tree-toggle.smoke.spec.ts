@@ -113,7 +113,7 @@ test("opens tree navigation from its shortcut and individual messages", async ()
     await expect(assistantTree).toBeVisible();
     await expect(userTree).toBeVisible();
 
-    await assistantTree.click({ force: true });
+    await assistantTree.click();
     const dialog = page.getByRole("dialog", { name: "Continue from this message" });
     await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: "Summarize with custom focus" }).click();
@@ -124,7 +124,9 @@ test("opens tree navigation from its shortcut and individual messages", async ()
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(dialog).toBeHidden();
 
-    await userTree.click({ force: true });
+    await userTree.locator("..").hover();
+    await expect(userTree).toHaveCSS("pointer-events", "auto");
+    await userTree.click();
     await dialog.getByRole("button", { name: "Continue here" }).click();
     await expect(dialog).toBeHidden();
     await expect(composer).toHaveValue("Hello");

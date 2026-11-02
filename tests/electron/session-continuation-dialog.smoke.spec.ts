@@ -124,7 +124,7 @@ test("forks sessions across working directories", async () => {
       name: "Fork response with full context into new chat",
     });
     await expect(fork).toBeVisible({ timeout: 20_000 });
-    await fork.click({ force: true });
+    await fork.click();
 
     const dialog = page.getByRole("dialog", { name: "Fork this conversation" });
     await expect(dialog).toBeVisible();
@@ -144,7 +144,7 @@ test("forks sessions across working directories", async () => {
 
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
-    await fork.click({ force: true });
+    await fork.click();
     const existingDestination = dialog.getByRole("button", {
       name: "Use the current working directory",
     });

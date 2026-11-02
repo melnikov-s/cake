@@ -11,18 +11,21 @@ const repository = resolve(import.meta.dirname, "../..");
 const sessionId = "00000000-0000-4000-8000-000000000001";
 
 async function editorState(application: ElectronApplication) {
-  return application.evaluate(async ({ webContents }) => {
-    const editor = webContents
-      .getAllWebContents()
-      .find((contents) => /\/editor\/\d+\/[a-f0-9]+\//.test(contents.getURL()));
-    if (!editor || editor.isLoadingMainFrame()) return undefined;
-    return {
-      url: editor.getURL(),
-      state: await editor.executeJavaScript(
-        `({ tabs: [...document.querySelectorAll('.tab.active')].map(tab => tab.textContent.trim()), text: [...document.querySelectorAll('.view-lines')].map(lines => lines.textContent).join(' '), workbench: !!document.querySelector('.monaco-workbench') })`,
-      ),
-    };
-  });
+  const editor = application
+    .context()
+    .pages()
+    .find((page) => /\/editor\/\d+\/[a-f0-9]+\//.test(page.url()));
+  if (!editor) return undefined;
+  return {
+    url: editor.url(),
+    state: await editor.evaluate(() => ({
+      tabs: [...document.querySelectorAll(".tab.active")].map((tab) => tab.textContent?.trim()),
+      text: [...document.querySelectorAll(".view-lines")]
+        .map((lines) => lines.textContent)
+        .join(" "),
+      workbench: !!document.querySelector(".monaco-workbench"),
+    })),
+  };
 }
 
 test("separate Node backend serves a real leased code-server workbench to remote Electron", async () => {
@@ -331,8 +334,13 @@ test("separate Node backend serves a real leased code-server workbench to remote
       .click();
     await observerPage.getByRole("link", { name: "hello.ts", exact: true }).click();
     const second = observer;
+    // A new desktop loads a fresh workbench even when the backend process is retained.
+    // Use the same readiness boundary as the first viewer before checking its restored file.
     await expect
-      .poll(() => editorState(second), { timeout: 25_000 })
+      .poll(() => editorState(second), { timeout: 45_000 })
+      .toMatchObject({ state: { workbench: true } });
+    await expect
+      .poll(() => editorState(second), { timeout: 20_000 })
       .toMatchObject({
         state: { tabs: ["hello.ts"], text: expect.stringContaining("editedRemotely") },
       });

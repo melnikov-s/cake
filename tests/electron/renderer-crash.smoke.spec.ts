@@ -59,7 +59,18 @@ test("crash diagnostics cover DOM and native overlays, reach both consoles, and 
     await page.keyboard.press("Escape");
     await expect(crash).toBeVisible();
     await reload.click();
-    await expect(page.getByRole("button", { name: "Open settings", exact: true })).toBeVisible();
+    await expect(page.locator('[data-slot="workspace-header"]')).toBeVisible();
+    await expect(crash).toHaveCount(0);
+    // Reload may restore Settings, where the sidebar's Settings button is not rendered.
+    // Exercise the recovered application rather than assuming a particular saved surface.
+    const openSettings = page.getByRole("button", { name: "Open settings", exact: true });
+    await expect(
+      openSettings.or(page.getByRole("button", { name: "Back to chat", exact: true })),
+    ).toBeVisible();
+    if (await openSettings.isVisible()) await openSettings.click();
+    const search = page.getByRole("searchbox", { name: "Search settings", exact: true });
+    await search.fill("Appearance");
+    await expect(search).toHaveValue("Appearance");
     await expect(crash).toHaveCount(0);
     const teardownErrors: string[] = [];
     page.on("console", (message) => {
