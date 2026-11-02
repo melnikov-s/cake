@@ -24,6 +24,8 @@ export function createNestedToolActivityProjection(emit: (part: ToolPart) => voi
     const rootId = roots.get(boundedProjectionKey(`tool-${parentToolCallId}`));
     const root = rootId ? parts.get(rootId) : undefined;
     if (!root || !rootId) return;
+    // Rich publications belong in the reading flow, not only inside batch activity.
+    if (part.artifactId) emit(part);
     roots.set(part.id, rootId);
     const calls = [...(root.nestedCalls?.calls ?? [])];
     const index = calls.findIndex((call) => call.id === part.id);

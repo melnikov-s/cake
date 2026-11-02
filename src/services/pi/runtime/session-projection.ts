@@ -1057,7 +1057,7 @@ export function projectSessionEntries(
   const indexes = new Map<string, number>();
   const artifactOrigins = new Map<
     string,
-    { lineageId: string; revision: number; reference?: string }
+    { lineageId: string; revision: number; reference?: string; originEntryId: string }
   >();
   const interviews = new Map<string, InterviewRecord>();
   const append = (part: UiPart) => {
@@ -1247,26 +1247,15 @@ export function projectSessionEntries(
     if (entry.type !== "custom") continue;
     if (entry.customType === "cake.artifact/v1") {
       const pointer = decodeArtifactPointer(entry.data);
-      if (pointer?.origin) {
-        const origin = pointer.origin;
-        const originatingAssistant = entries.find(
-          (candidate) =>
-            candidate.id === origin.assistantEntryId &&
-            candidate.type === "message" &&
-            candidate.message.role === "assistant" &&
-            candidate.message.content.some(
-              (content) => content.type === "toolCall" && content.id === origin.toolCallId,
-            ),
-        );
-        if (originatingAssistant)
-          artifactOrigins.set(origin.toolCallId, {
-            lineageId: pointer.lineageId,
-            revision: pointer.revision,
-            ...(pointer.presentation === "selected-revision"
-              ? { reference: pointer.exactRef }
-              : null),
-          });
-      }
+      if (pointer?.origin)
+        artifactOrigins.set(pointer.origin.toolCallId, {
+          lineageId: pointer.lineageId,
+          revision: pointer.revision,
+          originEntryId: pointer.origin.assistantEntryId,
+          ...(pointer.presentation === "selected-revision"
+            ? { reference: pointer.exactRef }
+            : null),
+        });
       continue;
     }
     if (entry.customType === "cake.interview/v1") {
@@ -1296,16 +1285,55 @@ export function projectSessionEntries(
       if (Option.isSome(run)) append(reviewRunPart(run.value));
     }
   }
+  const nestedPublications = new Map<string, UiPart[]>();
   for (const [toolCallId, artifact] of artifactOrigins) {
-    const index = indexes.get(boundedProjectionKey(`tool-${toolCallId}`));
+    // Publication records the calling Pi leaf. Earlier operations in the same
+    // batch may already have appended metadata after the assistant message.
+    const originIndex = entries.findIndex((entry) => entry.id === artifact.originEntryId);
+    const assistant = entries
+      .slice(0, originIndex + 1)
+      .findLast((entry) => entry.type === "message" && entry.message.role === "assistant");
+    if (assistant?.type !== "message" || assistant.message.role !== "assistant") continue;
+    const calls = new Set(
+      assistant.message.content.flatMap((block) =>
+        block.type === "toolCall" ? [boundedProjectionKey(`tool-${block.id}`)] : [],
+      ),
+    );
+    const id = boundedProjectionKey(`tool-${toolCallId}`);
+    const metadata = {
+      artifactId: artifact.lineageId,
+      artifactRevision: artifact.revision,
+      ...(artifact.reference === undefined ? null : { artifactReference: artifact.reference }),
+    };
+    const index = indexes.get(id);
     const part = index === undefined ? undefined : projected[index];
-    if (index !== undefined && part?.kind === "tool")
-      projected[index] = {
-        ...part,
-        artifactId: artifact.lineageId,
-        artifactRevision: artifact.revision,
-        ...(artifact.reference === undefined ? null : { artifactReference: artifact.reference }),
-      };
+    if (index !== undefined && part?.kind === "tool" && calls.has(id))
+      projected[index] = { ...part, ...metadata };
+    else {
+      // Pi persists nested calls beneath their model-issued result, not as
+      // messages. Join the authoritative pointer to that explicit record; do
+      // not parse codemode output or infer ancestry from tool-call ID strings.
+      const parent = projected.find(
+        (candidate) =>
+          candidate.kind === "tool" &&
+          calls.has(candidate.id) &&
+          candidate.nestedCalls?.calls.some((call) => call.id === id),
+      );
+      const call =
+        parent?.kind === "tool" && parent.nestedCalls?.calls.find((call) => call.id === id);
+      if (!parent || !call) continue;
+      const publications = nestedPublications.get(parent.id) ?? [];
+      publications.push({
+        id,
+        kind: "tool",
+        name: call.name,
+        command: call.command,
+        input: call.input,
+        state: call.state,
+        ...metadata,
+      });
+      nestedPublications.set(parent.id, publications);
+    }
   }
   for (const [toolCallId, interview] of interviews) {
     const index = indexes.get(boundedProjectionKey(`tool-${toolCallId}`));
@@ -1331,7 +1359,7 @@ export function projectSessionEntries(
     for (const [index, part] of projected.entries())
       if (part.kind === "tool" && part.state === "running")
         projected[index] = { ...part, state: "interrupted" };
-  return projected;
+  return projected.flatMap((part) => [part, ...(nestedPublications.get(part.id) ?? [])]);
 }
 
 export function imageContent(attachments: Attachment[]) {
