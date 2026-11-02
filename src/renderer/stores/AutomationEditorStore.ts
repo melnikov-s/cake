@@ -3,15 +3,46 @@ import type {
   Automation,
   AutomationContext,
   AutomationDefinition,
+  AutomationEventSessionKind,
   AutomationId,
 } from "../../contracts/automations/automation-data";
 import { ClientContext } from "./context/ClientContext";
 
-/** Owns unsaved definition edits and the Context → Trigger → Task creation workflow. */
+const projectSessionKinds: readonly AutomationEventSessionKind[] = [
+  "project-chat",
+  "standalone-project-session",
+  "family-root",
+  "family-child",
+];
+const globalSessionKinds: readonly AutomationEventSessionKind[] = ["cake-chat"];
+
+function sessionKindsForProject(project: AutomationContext) {
+  return project._tag === "Project" ? projectSessionKinds : globalSessionKinds;
+}
+
+/** The selected project owns both the execution directory and the event source. */
+function bindEventToProject(definition: AutomationDefinition): AutomationDefinition {
+  if (definition.trigger._tag !== "Event") return definition;
+  const filter = definition.trigger.filter;
+  const available = sessionKindsForProject(definition.context);
+  const selected = filter.sessionKinds.filter((kind) => available.includes(kind));
+  return {
+    ...definition,
+    trigger: {
+      _tag: "Event",
+      filter: {
+        ...filter,
+        scope: definition.context,
+        sessionKinds: selected.length ? selected : available,
+      },
+    },
+  };
+}
+
+/** Owns the unsaved automation definition and its creation workflow. */
 export class AutomationEditorStore extends Store {
   automation: Automation | undefined;
   definition: AutomationDefinition | undefined;
-  step: "context" | "trigger" | "task" = "context";
   creating = false;
   loading = false;
   saving = false;
@@ -33,9 +64,8 @@ export class AutomationEditorStore extends Store {
     this.request?.abort();
     this.loading = false;
     this.automation = undefined;
-    this.definition = definition;
+    this.definition = bindEventToProject(definition);
     this.creating = true;
-    this.step = "context";
     this.initialState = "active";
     this.error = undefined;
   }
@@ -65,7 +95,7 @@ export class AutomationEditorStore extends Store {
       );
       if (this.signal.aborted || request.signal.aborted) return;
       this.automation = result.automation;
-      this.definition = result.automation.definition;
+      this.definition = bindEventToProject(result.automation.definition);
     } catch (error) {
       if (!this.signal.aborted && !request.signal.aborted)
         this.error = error instanceof Error ? error.message : String(error);
@@ -74,11 +104,21 @@ export class AutomationEditorStore extends Store {
     }
   }
 
-  setContext(context: AutomationContext) {
-    this.patch({ context });
+  get eventSessionKinds() {
+    return sessionKindsForProject(this.definition?.context ?? { _tag: "Global" });
+  }
+
+  setProject(project: AutomationContext) {
+    const trigger = this.definition?.trigger;
+    if (trigger?._tag === "Event") {
+      const filter = { ...trigger.filter };
+      delete filter.sessionId;
+      this.patch({ context: project, trigger: { _tag: "Event", filter } });
+    } else this.patch({ context: project });
   }
   patch(patch: Partial<AutomationDefinition>) {
-    if (this.definition && !this.saving) this.definition = { ...this.definition, ...patch };
+    if (this.definition && !this.saving)
+      this.definition = bindEventToProject({ ...this.definition, ...patch });
   }
   async addAttachments() {
     if (this.choosingAttachments || !this.definition) return;
@@ -109,10 +149,6 @@ export class AutomationEditorStore extends Store {
           ),
         },
       });
-  }
-
-  setStep(step: AutomationEditorStore["step"]) {
-    this.step = step;
   }
 
   /** Ignore repeated saves. The backend validates the complete explicit definition. */

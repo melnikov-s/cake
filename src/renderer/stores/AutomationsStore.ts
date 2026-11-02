@@ -18,7 +18,7 @@ export class AutomationsStore extends Store<{
   catalog: AutomationCatalog;
   openRun?(run: AutomationRun): void;
 }> {
-  context: AutomationContext | undefined;
+  project: AutomationContext | undefined;
   state: "active" | "paused" | "suspended" | "archived" | undefined;
   runningOnly = false;
   globalHistory = false;
@@ -46,7 +46,7 @@ export class AutomationsStore extends Store<{
   }
 
   get filtered() {
-    const context = this.context;
+    const context = this.project;
     return this.catalog.automations.filter(
       (item) =>
         (!this.runningOnly || item.activity.runningSessions > 0) &&
@@ -72,8 +72,8 @@ export class AutomationsStore extends Store<{
       0,
     );
   }
-  setContext(context: AutomationContext | undefined) {
-    this.context = context;
+  setProject(project: AutomationContext | undefined) {
+    this.project = project;
   }
   setState(state: AutomationsStore["state"]) {
     this.state = state;

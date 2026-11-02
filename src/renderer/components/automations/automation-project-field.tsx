@@ -2,19 +2,19 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../../stores/RootStore";
 import { Select } from "../ui/select";
 
-export const AutomationContextField = observer(function AutomationContextField() {
+export const AutomationProjectField = observer(function AutomationProjectField() {
   const root = useStore(RootStore);
   const editor = root.automationsStore.editor;
   const context = editor.definition?.context;
   if (!context) return null;
   return (
     <label className="grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-3 text-xs">
-      <span className="text-muted-foreground">Context</span>
+      <span className="text-muted-foreground">Project</span>
       <Select
-        aria-label="Execution context"
+        aria-label="Project"
         value={context._tag === "Global" ? "global" : context.projectPath}
         onChange={(event) =>
-          editor.setContext(
+          editor.setProject(
             event.currentTarget.value === "global"
               ? { _tag: "Global" }
               : { _tag: "Project", projectPath: event.currentTarget.value },

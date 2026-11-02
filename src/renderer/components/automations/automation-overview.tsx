@@ -83,16 +83,16 @@ export const AutomationOverview = observer(function AutomationOverview() {
         </nav>
         <Select
           className="w-48"
-          aria-label="Automation context"
+          aria-label="Filter by project"
           value={
-            hub.context?._tag === "Project"
-              ? hub.context.projectPath
-              : hub.context?._tag === "Global"
+            hub.project?._tag === "Project"
+              ? hub.project.projectPath
+              : hub.project?._tag === "Global"
                 ? "global"
                 : "all"
           }
           onChange={(event) =>
-            hub.setContext(
+            hub.setProject(
               event.currentTarget.value === "all"
                 ? undefined
                 : event.currentTarget.value === "global"
@@ -101,7 +101,7 @@ export const AutomationOverview = observer(function AutomationOverview() {
             )
           }
         >
-          <option value="all">All contexts</option>
+          <option value="all">All projects</option>
           <option value="global">Global</option>
           {projects.map((project) => (
             <option key={project.path} value={project.path}>
@@ -117,7 +117,7 @@ export const AutomationOverview = observer(function AutomationOverview() {
           <table className="w-full min-w-[650px] text-left text-xs" aria-label="Automations">
             <thead className="text-muted-foreground">
               <tr>
-                {["Automation", "Context", "Next run", "State", "Activity", ""].map((label) => (
+                {["Automation", "Project", "Next run", "State", "Activity", ""].map((label) => (
                   <th key={label} className="border-b border-border/65 py-3 pr-4 font-normal">
                     {label}
                   </th>

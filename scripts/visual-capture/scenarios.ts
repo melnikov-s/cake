@@ -1943,6 +1943,8 @@ const automationUiScenario: VisualCaptureScenario = {
     "activity",
     "settings",
     "event-settings",
+    "event-filters",
+    "create",
     "memory",
     "history",
     "running",
@@ -1957,6 +1959,14 @@ const automationUiScenario: VisualCaptureScenario = {
         .getByRole("button", { name: "Morning brief", exact: true }),
     ).toBeVisible();
     if (state === "default") return;
+    if (state === "create") {
+      await page.getByRole("button", { name: "New automation", exact: true }).click();
+      await page.getByRole("button", { name: "Event", exact: true }).click();
+      await expect(
+        page.getByRole("textbox", { name: "Automation task", exact: true }),
+      ).toBeVisible();
+      return;
+    }
     if (state === "history") {
       await page.getByRole("button", { name: "History", exact: true }).click();
       await expect(
@@ -1988,12 +1998,18 @@ const automationUiScenario: VisualCaptureScenario = {
     await page
       .getByRole("table", { name: "Automations", exact: true })
       .getByRole("button", {
-        name: state === "event-settings" ? "Review child replies" : "Morning brief",
+        name:
+          state === "event-settings" || state === "event-filters"
+            ? "Review child replies"
+            : "Morning brief",
         exact: true,
       })
       .click();
     await expect(page.getByRole("textbox", { name: "Automation task", exact: true })).toBeVisible();
-    if (state === "memory") {
+    if (state === "event-filters") {
+      await page.getByRole("button", { name: /^Filter events/ }).click();
+      await expect(page.getByRole("combobox", { name: "From session", exact: true })).toBeVisible();
+    } else if (state === "memory") {
       await page
         .getByRole("navigation", { name: "Automation panes" })
         .getByRole("button", { name: "Memory", exact: true })

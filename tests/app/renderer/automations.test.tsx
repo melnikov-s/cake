@@ -22,7 +22,11 @@ import { applyAutomationCatalogUpdate } from "../../../src/renderer/reducers/Aut
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
-import { projectRecord } from "./fixtures/catalog-fixtures";
+import {
+  projectRecord,
+  sessionSummary,
+  type SessionSummaryFixture,
+} from "./fixtures/catalog-fixtures";
 import {
   automation,
   automationDefinition,
@@ -62,11 +66,14 @@ function setup(
     unresolved?: boolean;
     second?: boolean;
     activity?: { runningSessions: number; queuedOccurrences: number };
+    sessions?: readonly SessionSummaryFixture[];
   } = {},
 ) {
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: projectPath, name: "Cake" })],
+    sessions: options.sessions,
     client: {
+      ...options.client,
       automations: {
         inspect: async ({ automationId: id }) => ({
           automation: automation({ id }),
@@ -74,7 +81,6 @@ function setup(
         }),
         ...options.client?.automations,
       },
-      ...options.client,
     },
   });
   const { root, models } = fixture;
@@ -163,13 +169,13 @@ async function openDefinition(user: ReturnType<typeof userEvent.setup>, name = "
 afterEach(cleanup);
 
 describe("automation product workflows", () => {
-  it("opens the global hub, distinguishes activity counts, and filters context/lifecycle with suspension reasons", async () => {
+  it("opens the global hub, distinguishes activity counts, and filters project/lifecycle with suspension reasons", async () => {
     using fixture = setup({ second: true });
     expect(screen.getByLabelText("Automation totals").textContent).toBe(
       "1 automations running2 active sessions4 queued occurrences",
     );
     await fixture.user.selectOptions(
-      screen.getByRole("combobox", { name: "Automation context" }),
+      screen.getByRole("combobox", { name: "Filter by project" }),
       projectPath,
     );
     expect(within(table()).queryByRole("button", { name: "Daily review" })).toBeNull();
@@ -181,32 +187,27 @@ describe("automation product workflows", () => {
     expect(fixture.models.sessionCatalog.sessions).toHaveLength(0);
   });
 
-  it.each([0, 1, 2])(
-    "cancels creation after %i steps, discards the draft, and returns to the list",
-    async (advances) => {
-      const create = vi.fn<Client["automations"]["create"]>();
-      const update = vi.fn<Client["automations"]["update"]>();
-      using fixture = setup({ client: { automations: { create, update } } });
-      await fixture.user.click(screen.getByRole("button", { name: "New automation" }));
-      const name = screen.getByRole("textbox", { name: "Automation name" });
-      await fixture.user.clear(name);
-      await fixture.user.type(name, "Discard this automation");
-      for (let step = 0; step < advances; step++)
-        await fixture.user.click(screen.getByRole("button", { name: "Next" }));
-      await fixture.user.click(screen.getByRole("button", { name: /^Cancel$/ }));
-      expect(within(table()).getByRole("button", { name: "Daily review" })).toBeTruthy();
-      expect(create).not.toHaveBeenCalled();
-      expect(update).not.toHaveBeenCalled();
-      await fixture.user.click(screen.getByRole("button", { name: "New automation" }));
-      expect(screen.getByRole("textbox", { name: "Automation name" })).toHaveProperty(
-        "value",
-        "New automation",
-      );
-      expect(screen.getByRole("combobox", { name: "Execution context" })).toBeTruthy();
-    },
-  );
+  it("cancels creation, discards the draft, and returns to the list", async () => {
+    const create = vi.fn<Client["automations"]["create"]>();
+    const update = vi.fn<Client["automations"]["update"]>();
+    using fixture = setup({ client: { automations: { create, update } } });
+    await fixture.user.click(screen.getByRole("button", { name: "New automation" }));
+    const name = screen.getByRole("textbox", { name: "Automation name" });
+    await fixture.user.clear(name);
+    await fixture.user.type(name, "Discard this automation");
+    await fixture.user.click(screen.getByRole("button", { name: /^Cancel$/ }));
+    expect(within(table()).getByRole("button", { name: "Daily review" })).toBeTruthy();
+    expect(create).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+    await fixture.user.click(screen.getByRole("button", { name: "New automation" }));
+    expect(screen.getByRole("textbox", { name: "Automation name" })).toHaveProperty(
+      "value",
+      "New automation",
+    );
+    expect(screen.getByRole("combobox", { name: "Project" })).toBeTruthy();
+  });
 
-  it("creates through Context, Trigger and Task with explicit model, attachment and event filters", async () => {
+  it("creates with project-bound event filters, a shared prompt composer and visible run choices", async () => {
     let saved: Automation | undefined;
     const create = vi.fn<Client["automations"]["create"]>(async ({ definition, initialState }) => {
       saved = automation({ definition, state: { _tag: initialState } });
@@ -225,6 +226,23 @@ describe("automation product workflows", () => {
       return saved;
     });
     using fixture = setup({
+      sessions: [
+        sessionSummary({
+          sessionId: "source-session",
+          title: "Review implementation",
+          projectPath,
+          familyId: "family",
+          familyParentSessionId: "parent",
+        }),
+        sessionSummary({
+          sessionId: "other-project",
+          title: "Other project child",
+          projectPath: "/work/other",
+          familyId: "other-family",
+          familyParentSessionId: "other-parent",
+        }),
+        sessionSummary({ sessionId: "standalone", title: "Standalone work", projectPath }),
+      ],
       client: {
         automations: { create },
         filesystem: {
@@ -239,42 +257,33 @@ describe("automation product workflows", () => {
       "Review replies",
     );
     await fixture.user.selectOptions(
-      screen.getByRole("combobox", { name: "Execution context" }),
+      screen.getByRole("combobox", { name: "Project" }),
       projectPath,
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Next" }));
     await fixture.user.click(screen.getByRole("button", { name: "Event" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Filter events" }));
     await fixture.user.selectOptions(
       screen.getByRole("combobox", { name: "Automation event" }),
       "user-message-received",
     );
-    await fixture.user.selectOptions(
-      screen.getByRole("combobox", { name: "Event source scope" }),
-      "Global",
-    );
-    await fixture.user.click(screen.getByRole("button", { name: "Family child" }));
-    await fixture.user.type(
-      screen.getByRole("textbox", { name: "Exact source session" }),
-      "source-session",
-    );
-    await fixture.user.type(
-      screen.getByRole("textbox", { name: "Event content contains" }),
-      "ready",
-    );
-    await fixture.user.click(screen.getByRole("button", { name: "Next" }));
+    for (const kind of ["Project Chat", "Standalone", "Family root"])
+      await fixture.user.click(screen.getByRole("button", { name: kind }));
+    const source = screen.getByRole("combobox", { name: "From session" });
+    expect(
+      within(source)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Any matching session", "Review implementation"]);
+    await fixture.user.selectOptions(source, "source-session");
+    await fixture.user.type(screen.getByRole("textbox", { name: "Message contains" }), "ready");
     await fixture.user.type(
       screen.getByRole("textbox", { name: "Automation task" }),
       "Review the response",
     );
     await fixture.user.click(screen.getByRole("button", { name: "Attach" }));
-    await fixture.user.selectOptions(
-      screen.getByRole("combobox", { name: "When already running" }),
-      "parallel",
-    );
-    await fixture.user.selectOptions(
-      screen.getByRole("combobox", { name: "Initial automation state" }),
-      "paused",
-    );
+    await fixture.user.click(screen.getByRole("radio", { name: "Run in parallel" }));
+    await fixture.user.click(screen.getByRole("radio", { name: "Auto-resolve" }));
+    await fixture.user.click(screen.getByRole("radio", { name: "Paused" }));
     await fixture.user.click(screen.getByRole("button", { name: "Create automation" }));
     await screen.findByRole("button", { name: "Save changes" });
     expect(saved?.definition).toMatchObject({
@@ -284,8 +293,8 @@ describe("automation product workflows", () => {
         _tag: "Event",
         filter: {
           event: "user-message-received",
-          scope: { _tag: "Global" },
-          sessionKinds: ["standalone-project-session", "family-child"],
+          scope: { _tag: "Project", projectPath },
+          sessionKinds: ["family-child"],
           sessionId: "source-session",
           contentContains: "ready",
         },
@@ -296,11 +305,163 @@ describe("automation product workflows", () => {
         attachments: [{ kind: "file", name: "guide.md", path: "/guide.md" }],
       },
       overlap: "parallel",
+      completion: "auto-resolve",
     });
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ initialState: "paused" }),
       expect.anything(),
     );
+  });
+
+  it("edits a saved automation with visible run choices and clears message matching for non-message events", async () => {
+    const update = vi.fn<Client["automations"]["update"]>(async ({ definition }) =>
+      automation({ definition }),
+    );
+    using fixture = setup({ client: { automations: { update } } });
+    await openDefinition(fixture.user);
+    await fixture.user.click(screen.getByRole("button", { name: "Event" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Filter events" }));
+    await fixture.user.type(screen.getByRole("textbox", { name: "Message contains" }), "ready");
+    await fixture.user.click(screen.getByRole("radio", { name: "Queue" }));
+    await fixture.user.click(screen.getByRole("radio", { name: "Auto-resolve" }));
+    await fixture.user.selectOptions(
+      screen.getByRole("combobox", { name: "Automation event" }),
+      "session-created",
+    );
+    expect(screen.queryByRole("textbox", { name: "Message contains" })).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(update).toHaveBeenCalledOnce());
+    expect(update.mock.calls[0]![0].definition).toMatchObject({
+      overlap: "queue",
+      completion: "auto-resolve",
+      trigger: { _tag: "Event", filter: { event: "session-created" } },
+      task: automationDefinition().task,
+    });
+    const trigger = update.mock.calls[0]![0].definition.trigger;
+    expect(trigger._tag === "Event" && trigger.filter.contentContains).toBeUndefined();
+  });
+
+  it.each(["global", projectPath])(
+    "creates an event automation bound to its selected project: %s",
+    async (project) => {
+      const create = vi.fn<Client["automations"]["create"]>(async ({ definition }) =>
+        automation({ definition }),
+      );
+      using fixture = setup({ client: { automations: { create } } });
+      await fixture.user.click(screen.getByRole("button", { name: "New automation" }));
+      await fixture.user.selectOptions(screen.getByRole("combobox", { name: "Project" }), project);
+      await fixture.user.click(screen.getByRole("button", { name: "Event" }));
+      await fixture.user.type(
+        screen.getByRole("textbox", { name: "Automation task" }),
+        "Review replies",
+      );
+      await fixture.user.click(screen.getByRole("button", { name: "Create automation" }));
+      await screen.findByRole("button", { name: "Save changes" });
+      const context =
+        project === "global" ? { _tag: "Global" } : { _tag: "Project", projectPath: project };
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          definition: expect.objectContaining({
+            context,
+            trigger: {
+              _tag: "Event",
+              filter: {
+                event: "assistant-response-completed",
+                scope: context,
+                sessionKinds:
+                  project === "global"
+                    ? ["cake-chat"]
+                    : ["project-chat", "standalone-project-session", "family-root", "family-child"],
+              },
+            },
+          }),
+        }),
+        expect.anything(),
+      );
+    },
+  );
+
+  it("binds existing event definitions to their project and updates scope and session kinds when the project changes", async () => {
+    const definitions: AutomationDefinition[] = [];
+    const definition = automationDefinition({
+      context: { _tag: "Project", projectPath },
+      trigger: {
+        _tag: "Event",
+        filter: {
+          event: "user-message-received",
+          scope: { _tag: "Any" },
+          sessionKinds: ["cake-chat", "family-child"],
+          sessionId: "project-child",
+          contentContains: "ready",
+        },
+      },
+    });
+    using fixture = setup({
+      client: {
+        automations: {
+          inspect: async () => ({
+            automation: automation({ definition }),
+            activity: { runningSessions: 0, queuedOccurrences: 0 },
+          }),
+          update: async ({ definition }) => {
+            definitions.push(definition);
+            return automation({ definition });
+          },
+        },
+      },
+    });
+    await openDefinition(fixture.user);
+    await fixture.user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(definitions).toHaveLength(1));
+    expect(definitions[0]?.trigger).toEqual({
+      _tag: "Event",
+      filter: {
+        event: "user-message-received",
+        scope: { _tag: "Project", projectPath },
+        sessionKinds: ["family-child"],
+        sessionId: "project-child",
+        contentContains: "ready",
+      },
+    });
+    await fixture.user.selectOptions(screen.getByRole("combobox", { name: "Project" }), "global");
+    await fixture.user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(definitions).toHaveLength(2));
+    expect(definitions[1]).toMatchObject({
+      context: { _tag: "Global" },
+      trigger: {
+        _tag: "Event",
+        filter: {
+          event: "user-message-received",
+          scope: { _tag: "Global" },
+          sessionKinds: ["cake-chat"],
+          contentContains: "ready",
+        },
+      },
+    });
+    expect(
+      definitions[1]?.trigger._tag === "Event" && definitions[1].trigger.filter.sessionId,
+    ).toBeUndefined();
+    await fixture.user.selectOptions(
+      screen.getByRole("combobox", { name: "Project" }),
+      projectPath,
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(definitions).toHaveLength(3));
+    expect(definitions[2]).toMatchObject({
+      context: { _tag: "Project", projectPath },
+      trigger: {
+        _tag: "Event",
+        filter: {
+          scope: { _tag: "Project", projectPath },
+          sessionKinds: [
+            "project-chat",
+            "standalone-project-session",
+            "family-root",
+            "family-child",
+          ],
+        },
+      },
+    });
   });
 
   it("edits once, fixed interval and timezone-aware friendly calendar controls without exposing cron", async () => {
@@ -617,13 +778,12 @@ describe("automation product workflows", () => {
       clientY: 20,
     });
     expect(await screen.findByRole("heading", { name: "New automation" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Execution context" })).toHaveProperty(
-      "value",
-      projectPath,
-    );
+    expect(screen.getByRole("combobox", { name: "Project" })).toHaveProperty("value", projectPath);
     expect(menu).toHaveBeenCalledWith(expect.objectContaining({ path: projectPath }));
-    await fixture.user.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.getByRole("combobox", { name: "Schedule repeat" })).toBeTruthy();
+    await fixture.user.click(screen.getByRole("button", { name: "Event" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Filter events" }));
+    expect(screen.getByRole("button", { name: "Project Chat" })).toBeTruthy();
   });
 
   it("keeps a newly selected definition when an earlier inspection finishes late", async () => {
