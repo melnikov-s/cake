@@ -323,8 +323,9 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
                   "--disable-telemetry",
                   projectPath,
                 ],
-                { stdio: "ignore", env: { ...process.env, HOME: root } },
+                { stdio: "ignore", detached: true, env: { ...process.env, HOME: root } },
               );
+              const closed = new Promise<void>((done) => server.once("close", () => done()));
               try {
                 upstreamUrl = `http://127.0.0.1:${port}/`;
                 await browserExpect
@@ -388,7 +389,16 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
                   .poll(async () => (await context.request.get(realSrc)).status())
                   .toBe(403);
               } finally {
-                server.kill();
+                // This Homebrew fixture owns the wrapper and every extension-host descendant.
+                if (server.pid) {
+                  try {
+                    process.kill(-server.pid, "SIGKILL");
+                  } catch (error) {
+                    if (!(error instanceof Error && "code" in error && error.code === "ESRCH"))
+                      throw error;
+                  }
+                }
+                await closed;
               }
             }
           } finally {

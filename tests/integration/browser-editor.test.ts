@@ -219,9 +219,11 @@ it("embeds only an isolated editor origin, supports editor resources and revokes
             ],
             {
               stdio: "ignore",
+              detached: true,
               env: { ...process.env, HOME: root },
             },
           );
+          const closed = new Promise<void>((done) => server.once("close", () => done()));
           try {
             upstreamUrl = `http://127.0.0.1:${port}/`;
             let ready = false;
@@ -298,7 +300,16 @@ it("embeds only an isolated editor origin, supports editor resources and revokes
             await browserExpect(realFrame).toHaveCount(0);
             expect((await page.request.get(realSrc)).status()).toBe(403);
           } finally {
-            server.kill();
+            // This Homebrew fixture owns the wrapper and every extension-host descendant.
+            if (server.pid) {
+              try {
+                process.kill(-server.pid, "SIGKILL");
+              } catch (error) {
+                if (!(error instanceof Error && "code" in error && error.code === "ESRCH"))
+                  throw error;
+              }
+            }
+            await closed;
           }
         }
       });
