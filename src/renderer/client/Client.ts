@@ -608,6 +608,7 @@ export interface Client {
   readonly projectTodos: CommandGroup<CakeIpcClientService["projectTodos"]>;
   readonly savedDrafts: CommandGroup<CakeIpcClientService["savedDrafts"]>;
   readonly scheduledMessages: CommandGroup<CakeIpcClientService["scheduledMessages"]>;
+  readonly automations: CommandGroup<CakeIpcClientService["automations"]>;
   readonly cakeChats: CommandGroup<CakeIpcClientService["cakeChats"]>;
   readonly discussionSessions: CommandGroup<CakeIpcClientService["discussionSessions"]>;
   readonly subagents: CommandGroup<CakeIpcClientService["subagents"]>;

@@ -107,6 +107,7 @@ function baseInput(projection: RootProjection, sessionId = "project-1") {
 function baseClient(overrides: ObserverClientOverrides = {}) {
   return observerClient({
     projects: { observeCatalog: () => Stream.never },
+    automations: { observe: () => Stream.never },
     cakeChats: { observeCatalog: () => Stream.never },
     conversations: { observe: () => Stream.never },
     discussionSessions: { observeCatalog: () => Stream.never, observe: () => Stream.never },

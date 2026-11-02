@@ -12,6 +12,9 @@ import type {
   SessionCatalogUpdate,
 } from "../../contracts/application/catalog-data";
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
+import type { AutomationCatalogUpdate } from "../../contracts/automations/automation-control";
+import type { AutomationCatalog } from "../models/AutomationCatalog";
+import { applyAutomationCatalogUpdate } from "../reducers/AutomationReducer";
 import { DiscussionSessionError } from "../../contracts/discussion-sessions/discussion-session-data";
 import type {
   DiscussionSessionTarget,
@@ -80,6 +83,7 @@ interface ModelSource {
   readonly cakeChatCatalogQueries?: () => ReadonlyArray<CakeChatCatalogQuery>;
   readonly loadedProjectSessions?: () => ReadonlyArray<ObservedProjectSessionTarget>;
   readonly loadedCakeChatIds?: () => ReadonlyArray<string>;
+  readonly automationSessionTargets?: () => ReadonlyArray<{ sessionId: string }>;
   readonly projectSessionTargets: () => ReadonlyArray<ObservedProjectSessionTarget>;
   /**
    * Staged Project Sessions have no Pi session to observe yet, but their
@@ -104,6 +108,11 @@ type ModelObservationOptions = Omit<ModelObservation, "model" | "stop">;
 type ModelInput = {
   readonly workflowStores?: readonly WorkflowRunStore[];
   readonly projects: ProjectCatalog;
+  readonly automations?: AutomationCatalog;
+  readonly automationSessions?: ReadonlyArray<{
+    target: { sessionId: string };
+    conversation: Conversation;
+  }>;
   readonly sessionCatalog: SessionCatalog;
   readonly worktrees?: WorktreeCatalog;
   readonly worktreeOperations?: WorktreeOperationCatalog;
@@ -231,6 +240,37 @@ export const createModelObserver = (
         (update: DiscussionCatalogUpdate) =>
           applyDiscussionCatalogUpdate(model, target.sessionId, update),
       );
+
+    const automations = input.automations;
+    if (automations)
+      observe(
+        "automations",
+        automations,
+        (client) => client.automations.observe(),
+        (update: AutomationCatalogUpdate) => applyAutomationCatalogUpdate(automations, update),
+        {
+          failed: (error) => {
+            automations.observationError = error instanceof Error ? error.message : String(error);
+          },
+        },
+      );
+    for (const { target, conversation } of input.automationSessions ?? []) {
+      assertSessionIdentity(conversation, target.sessionId);
+      observe(
+        `conversation:${target.sessionId}`,
+        conversation,
+        (client) =>
+          client.conversations.observe({ _tag: "AutomationSession", sessionId: target.sessionId }),
+        (update) => applyConversationUpdate(conversation, update),
+        {
+          clear: () => unloadConversationProjection(conversation),
+          failed: (error) => {
+            conversation.historyOnly = true;
+            conversation.observationError = error instanceof Error ? error.message : String(error);
+          },
+        },
+      );
+    }
 
     const worktreeOperations = input.worktreeOperations;
     if (worktreeOperations)
@@ -483,6 +523,7 @@ export const createModelObserver = (
           workingDirectory,
         })),
       loadedCakeChatIds: source.loadedCakeChatIds?.().slice(),
+      loadedAutomationIds: source.automationSessionTargets?.().map(({ sessionId }) => sessionId),
       stagedIds: new Set(
         (source.stagedProjectSessionTargets?.() ?? []).map(({ sessionId }) => sessionId),
       ),
@@ -493,6 +534,7 @@ export const createModelObserver = (
     const reconcileLoadedIdentities = ({
       loadedProjectSessions,
       loadedCakeChatIds,
+      loadedAutomationIds,
       stagedIds,
     }: ReturnType<typeof loadedIdentities>) => {
       if (loadedProjectSessions) {
@@ -512,6 +554,13 @@ export const createModelObserver = (
             source.projection.removeProjectSessionProjections(sessionId, {
               retainDiscussionCatalog: stagedIds.has(sessionId),
             });
+      }
+      if (loadedAutomationIds) {
+        const loadedIds = new Set(loadedAutomationIds);
+        for (const sessionId of loadedAutomationIds)
+          source.projection.automationConversation(sessionId);
+        for (const { sessionId } of source.projection.automationConversations.slice())
+          if (!loadedIds.has(sessionId)) source.projection.removeAutomationProjections(sessionId);
       }
       if (loadedCakeChatIds) {
         const loadedIds = new Set(loadedCakeChatIds);
@@ -565,6 +614,11 @@ export const createModelObserver = (
       sync({
         workflowStores: source.workflowStores?.(),
         projects: source.projection.projects,
+        automations: source.projection.automations,
+        automationSessions: (source.automationSessionTargets?.() ?? []).map((target) => ({
+          target,
+          conversation: source.projection.automationConversation(target.sessionId),
+        })),
         sessionCatalog: source.projection.sessionCatalog,
         worktrees: source.projection.worktrees,
         worktreeOperations: source.projection.worktreeOperations,
@@ -656,6 +710,7 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
         workingDirectory: workspacePath,
       })),
     loadedCakeChatIds: () => root.cakeChatCollectionStore.registry.targets,
+    automationSessionTargets: () => root.automationSessionsStore.observationTargets,
     workflowStores: () => [
       ...root.projectSessionObservationTargets.flatMap(({ sessionId }) => {
         const session = root.sessionRegistry.findSession(sessionId);

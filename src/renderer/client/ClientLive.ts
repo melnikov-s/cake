@@ -434,6 +434,41 @@ export function makeClient(
     modelPresets: commands("modelPresets"),
     savedDrafts: commands("savedDrafts"),
     scheduledMessages: commands("scheduledMessages"),
+    automations: {
+      ...commands("automations"),
+      create: (input, options) =>
+        run(
+          "automations.create",
+          withClient((client) =>
+            withAttachments(client, input.definition.task.attachments, (attachments) =>
+              client.automations.create({
+                ...input,
+                definition: {
+                  ...input.definition,
+                  task: { ...input.definition.task, attachments },
+                },
+              }),
+            ),
+          ),
+          options,
+        ),
+      update: (input, options) =>
+        run(
+          "automations.update",
+          withClient((client) =>
+            withAttachments(client, input.definition.task.attachments, (attachments) =>
+              client.automations.update({
+                ...input,
+                definition: {
+                  ...input.definition,
+                  task: { ...input.definition.task, attachments },
+                },
+              }),
+            ),
+          ),
+          options,
+        ),
+    },
     projectWorkflow: commands("projectWorkflow"),
     projectTodos: commands("projectTodos"),
     projectSessions: {

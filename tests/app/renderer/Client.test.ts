@@ -447,6 +447,7 @@ describe("Client transport and device integration", () => {
       "modelPresets",
       "savedDrafts",
       "scheduledMessages",
+      "automations",
       "projectWorkflow",
       "projectTodos",
       "projectSessions",
@@ -469,6 +470,7 @@ describe("Client transport and device integration", () => {
     ]);
     expect("observe" in client.savedDrafts).toBe(false);
     expect("observe" in client.scheduledMessages).toBe(false);
+    expect("observe" in client.automations).toBe(false);
     expect("observe" in client.projectSessions).toBe(false);
     expect("observe" in client.cakeChats).toBe(false);
     expect("observe" in client.discussionSessions).toBe(false);

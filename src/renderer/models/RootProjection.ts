@@ -1,5 +1,6 @@
 import { Model, child, computed, findModelById, observable, transient } from "r-state-tree";
 import { LlmModel } from "./LlmModel";
+import { AutomationCatalog } from "./AutomationCatalog";
 import { ArtifactCatalog } from "./ArtifactCatalog";
 import { Resource } from "./Resource";
 import { CakeChatCatalog } from "./CakeChatCatalog";
@@ -24,6 +25,8 @@ export class RootProjection extends Model {
   @child(ExperimentalFeatures) experimentalFeatures = ExperimentalFeatures.create();
   @child(CakeChatTodoList) cakeChatTodos = CakeChatTodoList.create();
   @child(SessionCatalog) sessionCatalog = SessionCatalog.create();
+  @child(AutomationCatalog) automations = AutomationCatalog.create();
+  @child(Conversation) automationConversations: Conversation[] = observable([]);
   @child(WorktreeCatalog) worktrees = WorktreeCatalog.create();
   @child(WorktreeOperationCatalog) worktreeOperations = WorktreeOperationCatalog.create();
   @child(CakeChatCatalog) cakeChatCatalog = CakeChatCatalog.create();
@@ -139,6 +142,20 @@ export class RootProjection extends Model {
     const session = Conversation.create({ sessionId });
     this.cakeChatConversations.push(session);
     return session;
+  }
+
+  automationConversation(sessionId: string) {
+    const existing = this.automationConversations.find(
+      (session) => session.sessionId === sessionId,
+    );
+    if (existing) return existing;
+    const conversation = Conversation.create({ sessionId });
+    this.automationConversations.push(conversation);
+    return conversation;
+  }
+
+  removeAutomationProjections(sessionId: string) {
+    removeBySessionId(this.automationConversations, sessionId);
   }
 
   removeCakeChatProjections(sessionId: string) {

@@ -16,6 +16,7 @@ export function requiresDeliveryReview(operation: string): boolean {
     case "cakeChats.open":
     case "cakeChats.assistantContext":
     case "modelPresets.resolve":
+    case "automations.zoomMemory":
     case "piSettings.extensions":
     case "models.refresh":
     case "workflows.saved":

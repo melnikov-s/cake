@@ -1,5 +1,6 @@
 import { Effect, Schema, Stream } from "effect";
 import { ArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
+import { automation, automationDefinition, automationId } from "./fixtures/automation-fixtures";
 import { retainedDeliveryUncertainty } from "../../../src/renderer/client/command-delivery-policy";
 import { RpcSchema } from "effect/unstable/rpc";
 import type {
@@ -92,6 +93,10 @@ describe("generated renderer command adaptation", () => {
       (client: Client) => client.cakeChats.setComposing({ sessionId: "session", composing: true }),
     ],
     ["read marker", (client: Client) => client.workspaces.setSessionUnread("session", false)],
+    [
+      "automation memory zoom",
+      (client: Client) => client.automations.zoomMemory({ automationId, range: { id: 0, n: 1 } }),
+    ],
   ] as const)("does not lock future sends or replay a failed routine %s", async (_name, invoke) => {
     let uncertain: string | undefined;
     let fail = true;
@@ -466,6 +471,63 @@ describe("generated renderer command adaptation", () => {
       await test.runtime.dispose();
     }
   });
+
+  it.each(["create", "update"] as const)(
+    "uploads automation task attachments before %s without changing explicit settings",
+    async (operation) => {
+      const reference = `cake-upload:${presetId}`;
+      const test = harness((message, respond) => {
+        const value =
+          message.tag === "attachmentUploads.open"
+            ? { id: presetId }
+            : message.tag === "attachmentUploads.finish"
+              ? { reference }
+              : message.tag === `automations.${operation}`
+                ? automation()
+                : null;
+        respond({ _tag: "Exit", requestId: message.id, exit: { _tag: "Success", value } });
+      });
+      const client = makeClient(test.runtime, {
+        kind: "remote",
+        connected: () => true,
+        blocked: () => false,
+        uncertain() {
+          throw new Error("Successful save must not be uncertain");
+        },
+      });
+      const definition = automationDefinition({
+        task: {
+          ...automationDefinition().task,
+          attachments: [{ kind: "image", name: "image.png", mimeType: "image/png", data: "AAAA" }],
+        },
+      });
+      try {
+        if (operation === "create")
+          await client.automations.create({ definition, initialState: "paused" });
+        else await client.automations.update({ automationId, definition });
+        const dispatched = requests(test.messages);
+        expect(dispatched.map(({ tag }) => tag)).toEqual([
+          "attachmentUploads.open",
+          "attachmentUploads.chunk",
+          "attachmentUploads.finish",
+          `automations.${operation}`,
+        ]);
+        expect(dispatched[3]?.payload).toMatchObject({
+          definition: {
+            ...definition,
+            task: {
+              ...definition.task,
+              attachments: [
+                { kind: "image", name: "image.png", mimeType: "image/png", data: reference },
+              ],
+            },
+          },
+        });
+      } finally {
+        await test.runtime.dispose();
+      }
+    },
+  );
 
   it("does not retry failed synthesis after delivering an audio chunk", async () => {
     const audio = { encoding: "pcm_s16le" as const, sampleRate: 24_000 as const, pcm: "AAAA" };

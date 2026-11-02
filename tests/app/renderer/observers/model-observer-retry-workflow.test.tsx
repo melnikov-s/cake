@@ -28,6 +28,7 @@ it("offers an actionable retry when a Discussion observation is no longer availa
   const runtime = observerRuntime(
     observerClient({
       projects: { observeCatalog: () => Stream.never },
+      automations: { observe: () => Stream.never },
       managedWorktrees: {
         observeCatalog: () => Stream.never,
         observeOperations: () => Stream.never,

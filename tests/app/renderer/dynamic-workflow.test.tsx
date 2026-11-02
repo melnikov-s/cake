@@ -178,6 +178,7 @@ function renderWorkflow(
   });
   const ipc = testIpcClient({
     projects: { observeCatalog: () => Stream.never },
+    automations: { observe: () => Stream.never },
     managedWorktrees: { observeCatalog: () => Stream.never, observeOperations: () => Stream.never },
     workflows: { observe, observeRun, inspectWorker },
   });

@@ -1,4 +1,6 @@
 import { SessionAssistantStore } from "./SessionAssistantStore";
+import { AutomationsStore } from "./AutomationsStore";
+import { AutomationSessionsStore } from "./AutomationSessionsStore";
 import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { DictationStore } from "./DictationStore";
 import { ScreenCaptureAttachmentStore } from "./ScreenCaptureAttachmentStore";
@@ -483,6 +485,21 @@ export class RootStore extends Store<{
       modelPresets: () => this.settingsStore.modelPresets.presets,
       openModelPresetSettings: () => this.navigationStore.showModelPresetSettings(),
       retirement: this.workingDirectoryRetirementStore,
+    });
+  }
+
+  @child
+  get automationsStore(): AutomationsStore {
+    return createStore(AutomationsStore, { catalog: this.props.projection.automations });
+  }
+
+  @child
+  get automationSessionsStore(): AutomationSessionsStore {
+    return createStore(AutomationSessionsStore, {
+      projection: this.props.projection,
+      operations: this.sessionOperationCoordinator,
+      modelPresets: () => this.settingsStore.modelPresets.presets,
+      openModelPresetSettings: () => this.navigationStore.showModelPresetSettings(),
     });
   }
 
