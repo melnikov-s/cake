@@ -1,12 +1,32 @@
 /** @vitest-environment jsdom */
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useTabInputFocus } from "../../../src/renderer/hooks/use-tab-input-focus";
+import { SlashCommandCombobox } from "../../../src/renderer/components/slash-command-combobox";
 
 function FocusShortcut() {
   useTabInputFocus();
   return null;
+}
+
+function ComposerChat({ initialValue = "/" }: { initialValue?: string }) {
+  const [value, setValue] = useState(initialValue);
+  return (
+    <section data-slot="chat" data-composer-focus-enabled="true">
+      <SlashCommandCombobox
+        aria-label="Message"
+        commands={["help", "models"].map((name) => ({
+          name,
+          source: "extension",
+          sourceInfo: { path: "/extension", source: "test", scope: "project", origin: "top-level" },
+        }))}
+        value={value}
+        onValueChange={setValue}
+        onSubmit={() => {}}
+      />
+    </section>
+  );
 }
 
 function press(target: HTMLElement, options: KeyboardEventInit = {}) {
@@ -72,6 +92,83 @@ describe("Tab input focus ownership", () => {
     expect(document.activeElement).toBe(main.input);
     expect(main.input.value).toBe("draft");
     expect([main.input.selectionStart, main.input.selectionEnd]).toEqual([1, 3]);
+  });
+
+  function renderComposer(initialValue = "/") {
+    act(() =>
+      root.render(
+        <>
+          <FocusShortcut />
+          <ComposerChat initialValue={initialValue} />
+        </>,
+      ),
+    );
+    const input = document.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
+    act(() => {
+      input.focus();
+      input.setSelectionRange(initialValue.length, initialValue.length);
+      input.dispatchEvent(new Event("select", { bubbles: true }));
+    });
+    return input;
+  }
+
+  it("lets the focused composer complete the selected slash command, then retains writing focus", () => {
+    const input = renderComposer();
+    act(() => press(input, { key: "ArrowDown" }));
+    expect(document.activeElement).toBe(input);
+    expect(input.dataset.composerTabCompletion).toBe("true");
+    expect(document.querySelector('[role="option"][aria-selected="true"]')?.textContent).toContain(
+      "models",
+    );
+    act(() => expect(press(input).defaultPrevented).toBe(true));
+    expect(input.value).toBe("/models ");
+    expect(input.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(input);
+    act(() => press(input));
+    expect(input.value).toBe("/models ");
+    expect(document.activeElement).toBe(input);
+  });
+
+  it.each([
+    { shiftKey: true },
+    { ctrlKey: true },
+    { metaKey: true },
+    { altKey: true },
+    { isComposing: true },
+    { keyCode: 229 },
+  ])("does not complete slash commands for modified Tab or IME: %j", (options) => {
+    const input = renderComposer();
+    expect(input.dataset.composerTabCompletion).toBe("true");
+    act(() => expect(press(input, options).defaultPrevented).toBe(false));
+    expect(input.value).toBe("/");
+  });
+
+  it.each(["unmatched", "dismissed"])(
+    "keeps global Tab ownership when the slash menu is %s",
+    (state) => {
+      const input = renderComposer(state === "unmatched" ? "/no-match" : "/");
+      if (state === "dismissed") act(() => press(input, { key: "Escape" }));
+      const localKeyDown = vi.fn();
+      input.addEventListener("keydown", localKeyDown);
+      act(() => expect(press(input).defaultPrevented).toBe(true));
+      expect(localKeyDown).not.toHaveBeenCalled();
+      expect(input.value).toBe(state === "unmatched" ? "/no-match" : "/");
+      expect(document.activeElement).toBe(input);
+    },
+  );
+
+  it("prioritizes a popup over an underlying slash completion, including repeated Tab", () => {
+    const input = renderComposer();
+    const overlay = popup('<input aria-label="Popup" />');
+    act(() => press(input));
+    expect(document.activeElement).toBe(overlay.querySelector("input"));
+    act(() => press(overlay.querySelector("input")!));
+    expect(document.activeElement).toBe(overlay.querySelector("input"));
+    expect(input.value).toBe("/");
+    overlay.remove();
+    input.focus();
+    act(() => press(input));
+    expect(input.value).toBe("/help ");
   });
 
   it("remembers the active side chat, then falls back when it closes or its split loses focus", () => {

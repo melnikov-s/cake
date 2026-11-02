@@ -245,6 +245,17 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
     await expect(page.getByRole("option", { name: /skill:global-fixture/ })).toBeVisible();
     await expect(page.getByRole("option", { name: /skill:project-fixture/ })).toHaveCount(0);
+    // A popup's input outranks the underlying composer's valid slash completion.
+    await assistantTrigger().click();
+    await expect(quickCompanionInput).toBeFocused();
+    await quickCompanion.getByRole("button", { name: "Send" }).focus();
+    await expect(quickCompanion.getByRole("button", { name: "Send" })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(quickCompanionInput).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(quickCompanionInput).toBeFocused();
+    await expect(input).toHaveValue("/");
+    await quickCompanionInput.press("Escape");
     await input.press("Escape");
     await input.fill("");
     const projectId = `project-chat:${createHash("sha256").update(project).digest("hex")}`;

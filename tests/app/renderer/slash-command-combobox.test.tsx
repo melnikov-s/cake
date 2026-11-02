@@ -158,7 +158,7 @@ describe("SlashCommandCombobox", () => {
     expect(input.selectionStart).toBe(6);
   });
 
-  it.each(["ArrowLeft", "ArrowRight"])("autocompletes with %s without submitting", (key) => {
+  it.each(["Tab", "ArrowLeft", "ArrowRight"])("autocompletes with %s without submitting", (key) => {
     const onSubmit = vi.fn();
     function ControlledCombobox() {
       const [value, setValue] = useState("/");

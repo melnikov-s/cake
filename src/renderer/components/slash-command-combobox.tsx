@@ -373,7 +373,15 @@ export function SlashCommandCombobox({
       executeCommand(filteredCommands[selectedIndex]!);
     } else if (
       menuKind === "commands" &&
-      (event.key === "ArrowLeft" || event.key === "ArrowRight")
+      (event.key === "ArrowLeft" ||
+        event.key === "ArrowRight" ||
+        (event.key === "Tab" &&
+          !event.shiftKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey &&
+          !event.nativeEvent.isComposing &&
+          event.keyCode !== 229))
     ) {
       event.preventDefault();
       chooseCommand(filteredCommands[selectedIndex]!);
@@ -458,6 +466,7 @@ export function SlashCommandCombobox({
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={open}
+        data-composer-tab-completion={menuKind === "commands" ? "true" : undefined}
         aria-controls={open ? listboxId : undefined}
         aria-activedescendant={open ? `${listboxId}-option-${selectedIndex}` : undefined}
         spellCheck={!draft.startsWith("/")}

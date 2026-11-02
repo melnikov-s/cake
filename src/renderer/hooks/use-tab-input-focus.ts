@@ -63,9 +63,6 @@ export function useTabInputFocus() {
       )
         return;
 
-      event.preventDefault();
-      // Claim the shortcut before local focus traps and suggestion completion.
-      event.stopPropagation();
       // Within each overlay band, shared primitives portal in opening order.
       // Ignore hidden/exiting surfaces; prefer the inner surface to its backdrop.
       const popup = Array.from(document.querySelectorAll<HTMLElement>(popupSelector))
@@ -73,6 +70,19 @@ export function useTabInputFocus() {
         .sort((left, right) => popupLayer(left) - popupLayer(right))
         .at(-1);
       const active = document.activeElement;
+      // A focused composer with a valid slash completion owns Tab, unless an
+      // overlay above it owns focus. Let its local handler perform completion.
+      if (
+        target instanceof HTMLElement &&
+        target === active &&
+        target.matches('[data-composer-tab-completion="true"]') &&
+        target.closest(chatSelector) &&
+        (!popup || popup.contains(target))
+      )
+        return;
+
+      event.preventDefault();
+      event.stopPropagation();
       if (popup) {
         if (
           active instanceof HTMLElement &&

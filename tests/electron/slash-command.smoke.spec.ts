@@ -142,7 +142,10 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     // Voice controls live in the toolbar, leaving a single initial input row.
     expect(initialHeight).toBe(40);
 
-    await composer.click();
+    await composer.evaluate((input: HTMLTextAreaElement) => input.blur());
+    await page.keyboard.press("Tab");
+    await expect(composer).toBeFocused();
+    await page.keyboard.press("Tab");
     await expect(composer).toBeFocused();
     await composer.pressSequentially("hello");
     await expect(composer).toHaveValue("hello");
@@ -174,10 +177,11 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     await expect(page.getByRole("option", { name: /compact/ })).toHaveCount(0);
     await expect(page.getByRole("option", { name: /toolcompact/ })).toHaveCount(0);
     await composer.press("Tab");
-    await expect(composer).toHaveValue("/existing prompt");
-    await expect(composer).toBeFocused();
-    await composer.press("ArrowRight");
     await expect(composer).toHaveValue("/model existing prompt");
+    await expect(composer).toBeFocused();
+    await composer.press("Tab");
+    await expect(composer).toHaveValue("/model existing prompt");
+    await expect(composer).toBeFocused();
 
     await composer.fill("/tree");
     await composer.press("Enter");
@@ -300,7 +304,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
 
       // Slash completion is an explicit writing action, not convenience autofocus.
-      for (const key of ["ArrowLeft", "ArrowRight"]) {
+      for (const key of ["Tab", "ArrowLeft", "ArrowRight"]) {
         await composer.fill("/skill:desktop");
         await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
         await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
