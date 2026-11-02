@@ -33,6 +33,7 @@ export const VSCODE_SERVER_IDLE_TTL = "3 minutes";
 /** Hard cap on concurrently running servers; beyond this the least recently used one dies. */
 const MAX_RUNNING_SERVERS = 3;
 const START_TIMEOUT = 45_000;
+const STOP_TIMEOUT = 2_000;
 const COMPANION_START_TIMEOUT = 5_000;
 const COMPANION_SCRIPT_TIMEOUT = 30_000;
 const COMPANION_REQUEST_TIMEOUT = 5_000;
@@ -218,6 +219,13 @@ export interface ServerInstance {
   viewers: number;
 }
 
+interface ServerProcess {
+  readonly startup: Promise<void>;
+  readonly stopped: Promise<void>;
+  closed: boolean;
+  readonly exitHandler: (code: number | null) => void;
+}
+
 /** One desktop's exclusive lease. Companion extension hosts cannot disambiguate multiple viewers. */
 export interface VsCodeLease {
   readonly id: string;
@@ -259,6 +267,7 @@ export class VsCodeServerRuntime {
   message: string | undefined;
   private props: VsCodeServerRuntimeProps;
   private servers = new Map<string, ServerInstance>();
+  private processes = new WeakMap<ServerInstance, ServerProcess>();
   private leases = new Map<number, VsCodeLease>();
   private companionPorts = new Map<string, number>();
   /** Maps canonical server workspaces back to the project path Cake presents to the renderer. */
@@ -623,7 +632,8 @@ export class VsCodeServerRuntime {
     return this.props.acquireServer(resolvedWorkspace, binary, signal);
   }
 
-  async startServer(
+  /** Spawns the process; its Effect owner registers cleanup before awaiting readiness. */
+  async createServer(
     workspacePath: string,
     binary: string,
     signal?: AbortSignal,
@@ -696,6 +706,18 @@ export class VsCodeServerRuntime {
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
+    const stopped = Promise.withResolvers<void>();
+    const startup = waitForServerStart(child, START_TIMEOUT);
+    // The process is already owned, but its cache waiter may be interrupted
+    // before consuming readiness. waitForServerReady still propagates this error.
+    void startup.catch(() => undefined);
+    const exitHandler = (code: number | null) => {
+      if (this.servers.get(workspacePath) !== instance) return;
+      this.forgetServer(instance);
+      this.servers.delete(workspacePath);
+      this.props.invalidateServer(this.serverCacheKey(instance));
+      this.setStatus("failed", `VS Code exited unexpectedly (code ${code ?? "unknown"})`);
+    };
     const instance: ServerInstance = {
       workspacePath,
       child,
@@ -706,25 +728,41 @@ export class VsCodeServerRuntime {
       lastUsedAt: Date.now(),
       viewers: 0,
     };
-
-    const exitHandler = (code: number | null) => {
-      if (this.servers.get(workspacePath) !== instance) return;
-      this.forgetServer(instance);
-      this.servers.delete(workspacePath);
-      this.props.invalidateServer(this.serverCacheKey(instance));
-      this.setStatus("failed", `VS Code exited unexpectedly (code ${code ?? "unknown"})`);
+    const lifecycle: ServerProcess = {
+      startup,
+      stopped: stopped.promise,
+      closed: false,
+      exitHandler,
     };
+    this.processes.set(instance, lifecycle);
     child.once("exit", exitHandler);
+    child.once("close", () => {
+      lifecycle.closed = true;
+      stopped.resolve();
+    });
+    return instance;
+  }
 
+  private ownedProcess(instance: ServerInstance) {
+    const process = this.processes.get(instance);
+    if (!process) throw new Error("The VS Code process is not owned by this runtime");
+    return process;
+  }
+
+  async waitForServerReady(instance: ServerInstance, signal?: AbortSignal) {
+    const process = this.ownedProcess(instance);
+    signal?.throwIfAborted();
+    const aborted = Promise.withResolvers<never>();
+    const onAbort = () => aborted.reject(signal?.reason);
+    signal?.addEventListener("abort", onAbort, { once: true });
     try {
-      await waitForServerStart(child, START_TIMEOUT, signal);
+      await Promise.race([process.startup, aborted.promise]);
       signal?.throwIfAborted();
       if (this.disposed) throw new Error("The VS Code runtime has been disposed");
-    } catch (error) {
-      child.removeListener("exit", exitHandler);
-      stopServerProcess(child);
-      throw error;
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
     }
+    const { child, workspacePath } = instance;
     // Startup readiness is detected from these streams. Pause them only after
     // detection; pausing before waitForServerStart prevents its data listeners
     // from ever receiving code-server's listening message.
@@ -780,13 +818,14 @@ export class VsCodeServerRuntime {
     }
   }
 
-  releaseServer(instance: ServerInstance) {
+  async releaseServer(instance: ServerInstance) {
     if (this.servers.get(instance.workspacePath) === instance) {
       this.forgetServer(instance);
       this.servers.delete(instance.workspacePath);
     }
-    instance.child.removeAllListeners("exit");
-    stopServerProcess(instance.child);
+    const process = this.ownedProcess(instance);
+    instance.child.off("exit", process.exitHandler);
+    await stopServerProcess(instance.child, process);
   }
 
   /** Localhost-only relay for companion extension traffic. The extension posts hello/activity here. */
@@ -1133,26 +1172,43 @@ function postJsonResponse(
   });
 }
 
-function stopServerProcess(child: ChildProcess) {
+async function stopServerProcess(child: ChildProcess, server: ServerProcess) {
+  // Drain shutdown output before waiting; code-server's wrappers share these pipes.
+  child.stdout?.resume();
+  child.stderr?.resume();
+  signalServerProcess(child, "SIGTERM");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      server.stopped,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, STOP_TIMEOUT);
+      }),
+    ]);
+    if (!server.closed) {
+      signalServerProcess(child, "SIGKILL");
+      await server.stopped;
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function signalServerProcess(child: ChildProcess, signal: "SIGTERM" | "SIGKILL") {
   if (process.platform === "win32" || child.pid === undefined) {
-    child.kill();
+    child.kill(signal);
     return;
   }
   try {
-    process.kill(-child.pid, "SIGTERM");
+    process.kill(-child.pid, signal);
   } catch (error) {
     // The group may already have exited after reporting a startup failure.
     if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
   }
 }
 
-function waitForServerStart(
-  child: ChildProcess,
-  timeout: number,
-  signal?: AbortSignal,
-): Promise<void> {
+function waitForServerStart(child: ChildProcess, timeout: number): Promise<void> {
   return new Promise((resolvePromise, reject) => {
-    signal?.throwIfAborted();
     const timer = setTimeout(() => {
       cleanup();
       reject(new Error("VS Code did not finish starting in time"));
@@ -1171,24 +1227,17 @@ function waitForServerStart(
       cleanup();
       reject(error);
     };
-    const onAbort = () => {
-      cleanup();
-      stopServerProcess(child);
-      reject(signal?.reason);
-    };
     function cleanup() {
       clearTimeout(timer);
       child.stdout?.off("data", onData);
       child.stderr?.off("data", onData);
       child.off("exit", onExit);
       child.off("error", onError);
-      signal?.removeEventListener("abort", onAbort);
     }
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
     child.once("exit", onExit);
     child.once("error", onError);
-    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 

@@ -105,7 +105,12 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
   await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "system" }));
   let application = await launch(temporaryRoot, cakeHome);
   try {
-    await application.firstWindow();
+    const firstMain = await application.firstWindow();
+    // The auxiliary RPC page does not mount the main window's persistence/close
+    // observer. Finish main startup before the first transactional restart.
+    await expect(firstMain.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
     const harness = await openHarness(application);
     expect(await call<Projection>(harness, "listModelPresets")).toEqual({ presets: [] });
 

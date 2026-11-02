@@ -64,10 +64,26 @@ function createRuntime({
     invalidateServer: () => undefined,
     evictServer: async () => undefined,
     pollUntil,
-    acquireServer: (workspacePath, binary): Promise<ServerInstance> =>
-      runtime.startServer(workspacePath, binary),
+    acquireServer: (workspacePath, binary, signal): Promise<ServerInstance> =>
+      startRuntimeServer(runtime, workspacePath, binary, signal),
   });
   return runtime;
+}
+
+async function startRuntimeServer(
+  runtime: VsCodeServerRuntime,
+  workspacePath: string,
+  binary: string,
+  signal?: AbortSignal,
+) {
+  const instance = await runtime.createServer(workspacePath, binary, signal);
+  try {
+    await runtime.waitForServerReady(instance, signal);
+    return instance;
+  } catch (error) {
+    await runtime.releaseServer(instance);
+    throw error;
+  }
 }
 
 function seedLease(runtime: VsCodeServerRuntime, connectionId: number, workspacePath: string) {
@@ -109,17 +125,64 @@ describe("VsCodeServerRuntime startup", () => {
       const kill = vi.spyOn(process, "kill").mockReturnValue(true);
       try {
         runtime = createRuntime({ root, spawnServer: spawnServer as never });
-        const instance = await runtime.startServer(root, "/fake/code-server");
+        const instance = await startRuntimeServer(runtime, root, "/fake/code-server");
         expect(spawnServer).toHaveBeenCalledWith(
           "/fake/code-server",
           expect.any(Array),
           expect.objectContaining({ detached: true }),
         );
-        runtime.releaseServer(instance);
+        let stopped = false;
+        const releasing = runtime.releaseServer(instance).then(() => {
+          stopped = true;
+        });
         expect(kill).toHaveBeenCalledExactlyOnceWith(-child.pid, "SIGTERM");
+        await Promise.resolve();
+        expect(stopped).toBe(false);
+        expect(child.stdout.isPaused()).toBe(false);
+        child.emit("exit", 0);
+        child.emit("close", 0);
+        await releasing;
+        expect(stopped).toBe(true);
         expect(child.kill).not.toHaveBeenCalled();
         expect(runtime["servers"].size).toBe(0);
       } finally {
+        kill.mockRestore();
+      }
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "finishes stopping an owned group that ignores SIGTERM",
+    async () => {
+      root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
+      const child = Object.assign(new EventEmitter(), {
+        pid: 900_002,
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        kill: vi.fn(() => true),
+      });
+      const spawnServer = vi.fn(() => {
+        queueMicrotask(() => child.stdout.write("HTTP server listening on http://127.0.0.1\n"));
+        return child;
+      });
+      const kill = vi.spyOn(process, "kill").mockImplementation((_pid, signal) => {
+        if (signal === "SIGKILL") child.emit("close", null);
+        return true;
+      });
+      try {
+        runtime = createRuntime({ root, spawnServer: spawnServer as never });
+        const instance = await startRuntimeServer(runtime, root, "/fake/code-server");
+        vi.useFakeTimers();
+        const stopping = runtime.releaseServer(instance);
+        expect(kill).toHaveBeenCalledExactlyOnceWith(-child.pid, "SIGTERM");
+        await vi.advanceTimersByTimeAsync(2_000);
+        await stopping;
+        expect(kill.mock.calls).toEqual([
+          [-child.pid, "SIGTERM"],
+          [-child.pid, "SIGKILL"],
+        ]);
+      } finally {
+        vi.useRealTimers();
         kill.mockRestore();
       }
     },
@@ -139,7 +202,11 @@ describe("VsCodeServerRuntime startup", () => {
     };
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
-    child.kill = vi.fn(() => true);
+    child.kill = vi.fn(() => {
+      child.emit("exit", 0);
+      child.emit("close", 0);
+      return true;
+    });
     const spawnServer = vi.fn(() => {
       spawned();
       return child;
@@ -147,7 +214,7 @@ describe("VsCodeServerRuntime startup", () => {
     runtime = createRuntime({ root, companionSource, spawnServer: spawnServer as never });
     const controller = new AbortController();
 
-    const starting = runtime.startServer(root, "/fake/code-server", controller.signal);
+    const starting = startRuntimeServer(runtime, root, "/fake/code-server", controller.signal);
     await didSpawn;
     controller.abort();
 
@@ -170,7 +237,11 @@ describe("VsCodeServerRuntime startup", () => {
     };
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
-    child.kill = vi.fn(() => true);
+    child.kill = vi.fn(() => {
+      child.emit("exit", 0);
+      child.emit("close", 0);
+      return true;
+    });
     runtime = createRuntime({
       root,
       companionSource,
@@ -180,7 +251,7 @@ describe("VsCodeServerRuntime startup", () => {
       }) as never,
     });
 
-    const starting = runtime.startServer(root, "/fake/code-server");
+    const starting = startRuntimeServer(runtime, root, "/fake/code-server");
     await didSpawn;
     runtime.disposeAll();
     child.stdout.write("HTTP server listening on http://127.0.0.1\n");

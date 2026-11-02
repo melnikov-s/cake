@@ -94,6 +94,8 @@ for (const global of [false, true])
       await expect(panel).toHaveCount(0);
       await navigation.press("Enter");
       await expect(panel).toBeVisible();
+      // The old pane-close restoration must not steal focus from keyboard navigation.
+      await expect(navigation).toBeFocused();
       await expect(toggle).toHaveAttribute("aria-expanded", "false");
       await navigation.press("Space");
       await expect(toggle).toHaveAttribute("aria-expanded", "false");

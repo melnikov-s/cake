@@ -237,7 +237,13 @@ export function SlashCommandCombobox({
     const previousRevision = lastFocusRequestRevision.current;
     lastFocusRequestRevision.current = focusRequestRevision;
     if (!focusEnabled || !focusRequestRevision || focusRequestRevision === previousRevision) return;
-    const frame = requestAnimationFrame(requestFocus);
+    const focusedAtRequest = document.activeElement;
+    const frame = requestAnimationFrame(() => {
+      // Closing a pane restores input focus, unless the user has already moved
+      // to another control before this frame. A removed close button leaves body.
+      if (document.activeElement === focusedAtRequest || document.activeElement === document.body)
+        requestFocus();
+    });
     return () => cancelAnimationFrame(frame);
   }, [focusEnabled, focusRequestRevision, requestFocus]);
 

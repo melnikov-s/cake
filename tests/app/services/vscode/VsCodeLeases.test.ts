@@ -1,4 +1,5 @@
 import { chmod, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { EventEmitter } from "node:events";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -57,10 +58,24 @@ async function fixture() {
       throw new Error("Expected seeded external process");
     },
   });
+  const stopped = Promise.withResolvers<void>();
+  const lifecycle = {
+    startup: Promise.resolve(),
+    stopped: stopped.promise,
+    closed: false,
+    exitHandler: () => undefined,
+  };
+  const child = Object.assign(new EventEmitter(), {
+    kill: vi.fn(() => {
+      lifecycle.closed = true;
+      stopped.resolve();
+      return true;
+    }),
+  });
   const instance: ServerInstance = {
     workspacePath: root,
     binary,
-    child: { kill: vi.fn(), removeAllListeners: vi.fn() } as never,
+    child: child as never,
     port: 4321,
     flavor: "codeserver",
     token: "token",
@@ -68,6 +83,7 @@ async function fixture() {
     lastUsedAt: 0,
   };
   runtime["servers"].set(root, instance);
+  runtime["processes"].set(instance, lifecycle);
   runtime["themes"].set(root, "dark");
   return { root, runtime, instance, sendTo, scheduleIdleEviction, cancelIdleEviction };
 }

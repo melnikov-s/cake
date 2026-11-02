@@ -119,12 +119,16 @@ export const makeVsCodeServerLive = (
           const runtime = yield* Deferred.await(runtimeReady);
           const separator = key.indexOf("\0");
           if (separator < 0) return yield* Effect.die("Invalid VS Code server cache key");
-          return yield* Effect.acquireRelease(
+          const instance = yield* Effect.acquireRelease(
             Effect.tryPromise((signal) =>
-              runtime.startServer(key.slice(0, separator), key.slice(separator + 1), signal),
+              runtime.createServer(key.slice(0, separator), key.slice(separator + 1), signal),
             ),
-            (instance) => Effect.sync(() => runtime.releaseServer(instance)),
+            (instance) => Effect.promise(() => runtime.releaseServer(instance)),
           );
+          // Listening can take seconds. Keep that wait interruptible, with the
+          // spawned process already owned by this cache entry's Scope.
+          yield* Effect.tryPromise((signal) => runtime.waitForServerReady(instance, signal));
+          return instance;
         }),
         timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero),
       });

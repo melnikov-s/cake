@@ -286,6 +286,43 @@ describe("SlashCommandCombobox", () => {
     expect(document.activeElement).toBe(input);
   });
 
+  it.each(["unchanged", "moved", "removed"] as const)(
+    "deferred composer focus respects the newer focus destination (%s)",
+    (destination) => {
+      const frames: FrameRequestCallback[] = [];
+      Object.assign(globalThis, {
+        requestAnimationFrame: (callback: FrameRequestCallback) => {
+          frames.push(callback);
+          return frames.length;
+        },
+      });
+      const renderComposer = (revision: number) =>
+        root.render(
+          <SlashCommandCombobox
+            aria-label="Message"
+            commands={[]}
+            autoFocus={false}
+            focusRequestRevision={revision}
+            value=""
+            onValueChange={vi.fn()}
+            onSubmit={vi.fn()}
+          />,
+        );
+      act(() => renderComposer(0));
+      const input = container.querySelector<HTMLTextAreaElement>('[role="combobox"]')!;
+      const closingControl = document.createElement("button");
+      const navigation = document.createElement("button");
+      container.append(closingControl, navigation);
+      closingControl.focus();
+      act(() => renderComposer(1));
+      expect(frames).toHaveLength(1);
+      if (destination === "moved") navigation.focus();
+      if (destination === "removed") closingControl.remove();
+      act(() => frames.shift()!(0));
+      expect(document.activeElement).toBe(destination === "moved" ? navigation : input);
+    },
+  );
+
   it("does not replay an inactive composer's stale focus request", () => {
     act(() =>
       root.render(

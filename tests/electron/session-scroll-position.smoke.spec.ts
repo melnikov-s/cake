@@ -292,7 +292,28 @@ for (const scenario of [
     });
 
     try {
+      // Enable the existing session-open lifecycle marks before bootstrap. If
+      // Electron already loaded this document, reload once to install the hook.
+      await application.context().addInitScript(() => {
+        performance.mark("cake.session-switch.enabled");
+      });
       const page = await application.firstWindow();
+      if (
+        !(await page.evaluate(
+          () => performance.getEntriesByName("cake.session-switch.enabled", "mark").length,
+        ))
+      )
+        await page.reload();
+      // Keep recording while startup hydration and virtual measurement settle.
+      await recordRendererErrors(page);
+      await page.waitForFunction(
+        (sessionId) =>
+          performance.getEntriesByName("cake.session-switch", "mark").some((entry) => {
+            const detail = (entry as PerformanceMark).detail;
+            return detail.sessionId === sessionId && detail.phase === "finished";
+          }),
+        firstSessionId,
+      );
       // The outgoing transition snapshot is inert DOM, not a second live chat.
       const transcript = page.locator(
         '.transcript:not([data-slot="content-transition-outgoing"] *)',
@@ -301,16 +322,26 @@ for (const scenario of [
       const secondSession = page.locator(`.session-item[data-session-id="${secondSessionId}"]`);
       await expect(transcript).toBeVisible({ timeout: 20_000 });
       await expect(firstSession).toHaveClass(/active/);
+      // An empty or still-positioning transcript also has a zero bottom gap.
+      // Wait for the actual seeded history and its revealed native bottom before
+      // capturing geometry or starting any resize/scroll operation.
+      const lastIndex = scenario === "reopens a large loaded session" ? 479 : 47;
       await expect
         .poll(() =>
-          transcript.evaluate(
-            (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
-          ),
+          transcript.evaluate((element, lastIndex) => {
+            const list = element.querySelector('[aria-label="Conversation"]');
+            const last = Array.from(element.querySelectorAll('[data-slot="transcript-item"]')).at(
+              -1,
+            );
+            return {
+              listVisible: Boolean(list && getComputedStyle(list).visibility === "visible"),
+              lastMessage: Boolean(last?.textContent?.includes(`transcript item ${lastIndex}`)),
+              scrolled: element.scrollTop > 0,
+              atBottom: element.scrollHeight - element.clientHeight - element.scrollTop <= 1,
+            };
+          }, lastIndex),
         )
-        .toBeLessThanOrEqual(1);
-      // Row growth (streaming, resizes, range commits) must not feed back into
-      // ResizeObserver delivery and report "ResizeObserver loop" errors.
-      await recordRendererErrors(page);
+        .toEqual({ listVisible: true, lastMessage: true, scrolled: true, atBottom: true });
 
       if (scenario === "scrolls upward through virtual range boundaries without resetting") {
         await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(

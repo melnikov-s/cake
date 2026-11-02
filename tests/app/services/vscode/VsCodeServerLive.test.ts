@@ -1,6 +1,6 @@
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Ref } from "effect";
-import { describe, expect, vi } from "vitest";
+import { beforeEach, describe, expect, vi } from "vitest";
 import { defaultApplicationState } from "../../../../src/contracts/application/application-data";
 import {
   ClientConnections,
@@ -19,7 +19,8 @@ import type { CompanionManifest } from "../../../../src/services/vscode/VsCodeSe
 const native = vi.hoisted(() => ({
   releaseServer: vi.fn(),
   releaseConnection: vi.fn(),
-  startServer: vi.fn(),
+  createServer: vi.fn(),
+  waitForServerReady: vi.fn(),
 }));
 
 vi.mock("../../../../src/services/vscode/VsCodeServerRuntime", () => ({
@@ -73,17 +74,28 @@ vi.mock("../../../../src/services/vscode/VsCodeServerRuntime", () => ({
       native.releaseConnection(connectionId);
     }
 
-    startServer(workspacePath: string, binary: string, signal?: AbortSignal) {
-      return native.startServer(workspacePath, binary, signal);
+    async createServer(workspacePath: string, binary: string) {
+      return native.createServer(workspacePath, binary);
     }
 
-    releaseServer(instance: unknown) {
-      native.releaseServer(instance);
+    async waitForServerReady(instance: { workspacePath: string }, signal?: AbortSignal) {
+      return native.waitForServerReady(instance.workspacePath, signal);
+    }
+
+    async releaseServer(instance: unknown) {
+      await native.releaseServer(instance);
     }
 
     disposeAll() {}
   },
 }));
+
+beforeEach(() => {
+  native.createServer.mockReset().mockImplementation(async (workspacePath) => ({ workspacePath }));
+  native.waitForServerReady.mockReset().mockResolvedValue(undefined);
+  native.releaseServer.mockReset().mockResolvedValue(undefined);
+  native.releaseConnection.mockReset();
+});
 
 const companionManifest: CompanionManifest = {
   name: "cake-companion",
@@ -147,7 +159,7 @@ describe("VsCodeServerLive server acquisition", () => {
     "acquires a code-server lease for a connected browser but rejects an unknown client",
     () =>
       Effect.gen(function* () {
-        native.startServer.mockReset().mockResolvedValue({ workspacePath: "/workspace" });
+        native.waitForServerReady.mockReset().mockResolvedValue({ workspacePath: "/workspace" });
         const connections = yield* ClientConnections;
         const id = connections.socket();
         const server = yield* VsCodeServer;
@@ -158,24 +170,25 @@ describe("VsCodeServerLive server acquisition", () => {
         };
         const lease = yield* server.acquire(id, request);
         expect(lease.connectionId).toBe(id);
-        expect(native.startServer).toHaveBeenCalledOnce();
+        expect(native.waitForServerReady).toHaveBeenCalledOnce();
         connections.release(id);
         const failure = yield* server.acquire(id, request).pipe(Effect.flip);
         expect(failure.message).toContain("connected client");
-        expect(native.startServer).toHaveBeenCalledOnce();
+        expect(native.waitForServerReady).toHaveBeenCalledOnce();
       }).pipe(Effect.provide(liveLayer())),
   );
 
   it.effect("rejects an unapproved project before acquiring a browser editor process", () =>
     Effect.gen(function* () {
-      native.startServer.mockClear();
+      native.waitForServerReady.mockClear();
       const id = (yield* ClientConnections).socket();
       const failure = yield* (yield* VsCodeServer)
         .acquire(id, { requestId: "wrong-project", workspacePath: "/wrong", theme: "dark" })
         .pipe(Effect.flip);
       expect(failure.operation).toBe("authorizeWorkingDirectory");
       expect(failure.message).toContain("not selected by the user");
-      expect(native.startServer).not.toHaveBeenCalled();
+      expect(native.createServer).not.toHaveBeenCalled();
+      expect(native.waitForServerReady).not.toHaveBeenCalled();
     }).pipe(Effect.provide(liveLayer((path) => path === "/workspace"))),
   );
 
@@ -184,7 +197,7 @@ describe("VsCodeServerLive server acquisition", () => {
       const started = yield* Deferred.make<void>();
       let finish!: () => void;
       native.releaseConnection.mockClear();
-      native.startServer.mockReset().mockImplementation(
+      native.waitForServerReady.mockReset().mockImplementation(
         () =>
           new Promise((resolve) => {
             finish = () => resolve({ workspacePath: "/workspace" });
@@ -210,7 +223,7 @@ describe("VsCodeServerLive server acquisition", () => {
       const started = yield* Deferred.make<void>();
       let finish!: () => void;
       native.releaseConnection.mockClear();
-      native.startServer.mockReset().mockImplementation(
+      native.waitForServerReady.mockReset().mockImplementation(
         () =>
           new Promise((resolve) => {
             finish = () => resolve({ workspacePath: "/workspace" });
@@ -235,10 +248,53 @@ describe("VsCodeServerLive server acquisition", () => {
     }).pipe(Effect.provide(liveLayer())),
   );
 
+  it.effect("owns a spawned process before readiness and awaits its stop during shutdown", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const stopStarted = yield* Deferred.make<void>();
+      const closed = yield* Ref.make(false);
+      let finishStop!: () => void;
+      native.waitForServerReady.mockImplementation(() => {
+        Deferred.doneUnsafe(started, Effect.void);
+        return new Promise<void>(() => undefined);
+      });
+      native.releaseServer.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finishStop = resolve;
+            Deferred.doneUnsafe(stopStarted, Effect.void);
+          }),
+      );
+      const shutdown = yield* Effect.gen(function* () {
+        const connectionId = (yield* ClientConnections).desktop(94);
+        const vscode = yield* VsCodeServer;
+        yield* vscode
+          .acquire(connectionId, {
+            requestId: "pending-startup",
+            workspacePath: "/workspace",
+            theme: "dark",
+          })
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(started);
+      }).pipe(
+        Effect.provide(liveLayer()),
+        Effect.tap(() => Ref.set(closed, true)),
+        Effect.forkChild,
+      );
+      yield* Deferred.await(stopStarted);
+      expect(yield* Ref.get(closed)).toBe(false);
+      finishStop();
+      yield* Fiber.join(shutdown);
+      expect(yield* Ref.get(closed)).toBe(true);
+      expect(native.createServer).toHaveBeenCalledOnce();
+      expect(native.releaseServer).toHaveBeenCalledOnce();
+    }),
+  );
+
   it.effect("retries a failed server start for the same workspace", () =>
     Effect.gen(function* () {
       native.releaseServer.mockReset();
-      native.startServer
+      native.waitForServerReady
         .mockReset()
         .mockRejectedValueOnce(new Error("startup failed"))
         .mockResolvedValue({ workspacePath: "/workspace" });
@@ -260,8 +316,8 @@ describe("VsCodeServerLive server acquisition", () => {
       expect(failure.operation).toBe("acquire");
       expect(result).toMatchObject({ id: "lease", workspacePath: "/workspace" });
       expect(cachedResult).toEqual(result);
-      expect(native.startServer).toHaveBeenCalledTimes(2);
-      expect(native.releaseServer).toHaveBeenCalledOnce();
+      expect(native.waitForServerReady).toHaveBeenCalledTimes(2);
+      expect(native.releaseServer).toHaveBeenCalledTimes(2);
     }),
   );
 });

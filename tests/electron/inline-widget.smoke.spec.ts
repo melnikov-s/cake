@@ -248,8 +248,16 @@ export default function Editor() {
       frame.src = url;
     }, artifact.widget);
     const artifactFrame = iframe.contentFrame();
-    await expect(artifactFrame.getByRole("button", { name: "Saved count 2" })).toBeVisible();
-    await artifactFrame.getByRole("button", { name: "Saved count 2" }).click();
+    const save = artifactFrame.getByRole("button", { name: "Saved count 2" });
+    await expect(save).toBeVisible();
+    await expect(artifactFrame.locator("html")).toHaveAttribute("data-cake-widget-ready", "true");
+    if (language === "react") {
+      // This path navigates the same hidden React frame through several documents.
+      // Target its real control with native keys rather than stale pointer hit regions.
+      await save.focus();
+      await expect(save).toBeFocused();
+      await save.press("Enter");
+    } else await save.click();
     await expect(artifactFrame.getByRole("button", { name: "Saved count 3" })).toBeVisible();
     expect(await page.evaluate(() => Reflect.get(window, "__cakeArtifactSmokeSaved"))).toEqual({
       version: 2,

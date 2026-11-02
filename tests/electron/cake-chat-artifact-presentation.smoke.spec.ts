@@ -281,12 +281,14 @@ export default function Prototype() {
     await page.reload();
     await verify("Selected option B", true);
     expect(await readFile(join(artifactRoot, "catalog.json"), "utf8")).toBe(before);
-    await surfaces
-      .nth(0)
-      .locator("iframe")
-      .contentFrame()
-      .getByRole("button", { name: "Choose C" })
-      .click();
+    const editor = surfaces.nth(0).locator("iframe").contentFrame();
+    await expect(editor.locator("html")).toHaveAttribute("data-cake-widget-ready", "true");
+    // Hidden Electron iframe pointer hit regions can lag the document. Activate the
+    // real focused control with native keyboard input rather than clicking its host.
+    const choose = editor.getByRole("button", { name: "Choose C" });
+    await choose.focus();
+    await expect(choose).toBeFocused();
+    await choose.press("Enter");
     await verify("Selected option C");
     await page
       .locator(
