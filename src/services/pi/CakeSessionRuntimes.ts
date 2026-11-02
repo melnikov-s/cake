@@ -483,6 +483,7 @@ const runtimeFingerprint = (options: CakeSessionRuntimeAcquireOptions): string =
     hasGlobalControl: runtime.globalControl !== undefined,
     hasSessionControl: runtime.sessionControl !== undefined,
     hasAgentControl: runtime.agentControl !== undefined,
+    hasAutomationControl: runtime.automationControl !== undefined,
   });
 };
 

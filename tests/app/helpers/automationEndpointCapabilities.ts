@@ -3,7 +3,7 @@ import {
   AutomationRecords,
   type AutomationRecordSnapshot,
 } from "../../../src/services/automations/AutomationRecords";
-import { CakeChatConfiguration } from "../../../src/services/pi-durable/CakeChatConfiguration";
+import { AutomationConfiguration } from "../../../src/services/automations/AutomationConfiguration";
 import { OptMemory } from "../../../src/services/opt-memory/OptMemory";
 
 const empty: AutomationRecordSnapshot = { revision: 0, automations: [], occurrences: [], runs: [] };
@@ -15,10 +15,7 @@ export const unusedAutomationEndpointCapabilities = Layer.mergeAll(
     changes: () => Stream.concat(Stream.succeed(empty), Stream.never),
   }),
   Layer.mock(OptMemory, {}),
-  Layer.succeed(CakeChatConfiguration, {
-    agentDirectory: "/agent",
-    location: { workingDirectory: "/home/test", sessionDirectory: "/chat" },
-  }),
+  Layer.succeed(AutomationConfiguration, { homeDirectory: "/home/test" }),
   Layer.succeed(FileSystem.FileSystem, FileSystem.makeNoop({})),
   Path.layer,
 );

@@ -1,4 +1,5 @@
 import { createMessageOperations } from "../domain/conversations/cake-message-operations";
+import { createAutomationOperations } from "../domain/automations/cake-automation-operations";
 import { createAttachmentReferenceOperations } from "../domain/conversations/cake-attachment-operations";
 import type {
   CakeModelSelection,
@@ -109,6 +110,12 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
       ...createConversationOperations(bridge.api),
       ...createSessionFamilyOperations(bridge.api),
       ...createScheduledMessageOperations(bridge.api),
+      ...createAutomationOperations(
+        options.automationControl ??
+          ((command, input, signal) => bridge.api().invokeAppControl(command, input, signal)),
+        options.automationControl !== undefined,
+        options.automationControl === undefined,
+      ),
       ...createSessionWorktreeOperations(bridge.api),
       ...(!options.auxiliary && options.tools === undefined && options.nonChatModelPreferences
         ? createCakeNonChatModelOperations(options.nonChatModelPreferences, {
@@ -261,6 +268,7 @@ export function configureCakeSessionRuntime(
   options: CakeSessionRuntimeSetup,
 ): CakeSessionRuntimeOptions {
   const {
+    automationControl,
     projectTodos,
     messageReferenceControl,
     attachmentReferenceControl,
@@ -299,6 +307,7 @@ export function configureCakeSessionRuntime(
     ...runtime
   } = options;
   const featureOptions: CakeOperationOptions = {
+    automationControl,
     projectTodos,
     messageReferenceControl,
     attachmentReferenceControl,

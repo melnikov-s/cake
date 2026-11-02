@@ -21,7 +21,6 @@ import {
   AutomationOccurrenceTarget,
   AutomationRunTarget,
   AutomationTarget,
-  AutomationTriggerInput,
   AutomationTriggerResult,
   AutomationUpdateInput,
 } from "../../contracts/automations/automation-control";
@@ -70,7 +69,7 @@ export const AutomationRpc = RpcGroup.make(
     error: AutomationError,
   }),
   Rpc.make("automations.trigger", {
-    payload: AutomationTriggerInput,
+    payload: AutomationTarget,
     success: AutomationTriggerResult,
     error: AutomationError,
   }),

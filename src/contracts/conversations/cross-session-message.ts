@@ -51,7 +51,7 @@ export const CrossSessionMessageMetadata = Schema.Struct({
   sender: Schema.Struct({
     sessionId: boundedId,
     title: boundedLabel,
-    kind: Schema.Literals(["project-session", "cake-chat"]),
+    kind: Schema.Literals(["project-session", "cake-chat", "automation-session"]),
     projectName: Schema.optionalKey(boundedLabel),
     workingDirectory: Schema.optionalKey(boundedPath),
   }),

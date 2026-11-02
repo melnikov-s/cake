@@ -39,8 +39,6 @@ export const AutomationArchiveInput = Schema.Struct({
 export interface AutomationArchiveInput extends Schema.Schema.Type<typeof AutomationArchiveInput> {}
 
 /** Run now is allowed while paused, never implicitly activates, and respects overlap. */
-export const AutomationTriggerInput = AutomationTarget;
-export interface AutomationTriggerInput extends Schema.Schema.Type<typeof AutomationTriggerInput> {}
 export const AutomationTriggerResult = Schema.TaggedUnion({
   started: {
     occurrenceId: AutomationOccurrenceId,
@@ -76,7 +74,7 @@ export const AutomationListPage = Schema.Struct({
 export interface AutomationListPage extends Schema.Schema.Type<typeof AutomationListPage> {}
 
 /** Focused authority observation: no transcripts or memory originals in this catalog. */
-export const AutomationCatalogSnapshot = Schema.Struct({
+const AutomationCatalogSnapshot = Schema.Struct({
   revision: Schema.Int,
   automations: Schema.Array(AutomationSummary),
   unresolvedSessions: Schema.Array(AutomationSessionSummary),

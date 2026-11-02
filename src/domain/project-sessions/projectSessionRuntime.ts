@@ -1,5 +1,8 @@
 import { messageReference } from "../../contracts/conversations/message-reference";
 import { AutomationEvents } from "../../services/automations/AutomationEvents";
+import type { AutomationRecords } from "../../services/automations/AutomationRecords";
+import type { AutomationConfiguration } from "../../services/automations/AutomationConfiguration";
+import type { OptMemory } from "../../services/opt-memory/OptMemory";
 import { publishProjectSession as publishProjectAutomationEvent } from "../automations/automationSourceEvents";
 import * as sessionFamilies from "../session-families/sessionFamilies";
 import * as backendAgentControl from "../application/agentControl";
@@ -32,7 +35,7 @@ import * as projectSessionContinuations from "./projectSessionContinuations";
 import * as projectSessionOperations from "./projectSessionOperations";
 import * as sessionChats from "../conversations/sessionChats";
 import { inheritTaskInputProtection } from "../conversations/taskInputs";
-import { Context, Effect, Option, Schema, Schedule } from "effect";
+import { Context, Effect, Option, Schema, Schedule, type FileSystem, type Path } from "effect";
 import {
   deleteSessionPlugin,
   setProjectSessionLabelsIfUnlabelled,
@@ -120,6 +123,11 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
 }): Effect.fn.Return<
   CakeSessionRuntimeAcquireOptions,
   ProjectSessionRuntimeCompositionError,
+  | AutomationRecords
+  | AutomationConfiguration
+  | OptMemory
+  | FileSystem.FileSystem
+  | Path.Path
   | ApplicationState
   | PiModels
   | CakeSessionRuntimes
@@ -162,6 +170,11 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const vscode = yield* Effect.serviceOption(VsCodeServer);
   const worktrees = yield* ManagedWorktrees;
   const context = yield* Effect.context<
+    | AutomationRecords
+    | AutomationConfiguration
+    | OptMemory
+    | FileSystem.FileSystem
+    | Path.Path
     | ApplicationState
     | PiModels
     | CakeSessionRuntimes
@@ -664,7 +677,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             Effect.scoped(
               projectSessionCreation.createPrompted({
                 ...input,
-                sourceSessionId: sessionId,
+                source: { sessionId, kind: "project-session", title: "Project Session" },
                 senderWorkingDirectory: location.workingDirectory,
                 projectPath: location.projectPath,
               }),

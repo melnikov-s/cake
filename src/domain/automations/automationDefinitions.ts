@@ -1,4 +1,5 @@
-import { Cron, DateTime, Effect, FileSystem, Option, Result, Stream, Struct } from "effect";
+import { Cron, DateTime, Effect, FileSystem, Option, Result, Struct } from "effect";
+import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import {
   AutomationError,
   AutomationId,
@@ -7,6 +8,7 @@ import {
   type AutomationDefinition,
   type AutomationListInput,
   type AutomationSchedule,
+  type AutomationRunId,
   type AutomationState,
   type AutomationSummary,
 } from "../../contracts/automations/automation-data";
@@ -20,7 +22,8 @@ import { agentListPage } from "../../contracts/agent/agent-list-data";
 import { AutomationRecords } from "../../services/automations/AutomationRecords";
 import type { AutomationLedger } from "../../services/storage/AutomationStorage";
 import { ApplicationState } from "../../services/storage/ApplicationState";
-import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
+import { AutomationConfiguration } from "../../services/automations/AutomationConfiguration";
+import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 
 export const automationError = (
   operation: string,
@@ -38,7 +41,7 @@ export const lookup = Effect.fn("Automations.lookup")(function* (id: AutomationI
 export const resolveContext = Effect.fn("Automations.resolveContext")(function* (
   context: AutomationContext,
 ) {
-  if (context._tag === "Global") return (yield* CakeChatConfiguration).location.workingDirectory;
+  if (context._tag === "Global") return (yield* AutomationConfiguration).homeDirectory;
   const application = (yield* ApplicationState).snapshot();
   if (!application.projects.some((project) => project.path === context.projectPath))
     return yield* automationError(
@@ -112,7 +115,41 @@ const validate = Effect.fn("Automations.validateDefinition")(function* (
   }
 });
 
-export function summarize(automation: Automation, ledger: AutomationLedger): AutomationSummary {
+const captureInputs = Effect.fn("Automations.captureInputs")(function* (
+  id: AutomationId,
+  definition: AutomationDefinition,
+) {
+  if (!definition.task.attachments.length) return definition;
+  // The definition owns a stable input snapshot; executions receive explicit recipient grants.
+  const attachments = yield* (yield* TaskInputStorage)
+    .isolate(id, definition.task.attachments)
+    .pipe(Effect.mapError((cause) => automationError("attachments", cause.message)));
+  return { ...definition, task: { ...definition.task, attachments } };
+});
+
+export const runningRunIds = Effect.fn("Automations.runningRunIds")(function* (
+  ledger: AutomationLedger,
+) {
+  const sessions = yield* CakeSessionRuntimes;
+  const ids = yield* Effect.forEach(ledger.runs, (run) =>
+    Effect.gen(function* () {
+      if (
+        run.status._tag === "running" ||
+        (yield* sessions.currentStatus(run))?.streaming ||
+        (yield* sessions.currentTurnIds(run)).length > 0
+      )
+        return run.id;
+      return undefined;
+    }),
+  );
+  return new Set(ids.filter((id): id is AutomationRunId => id !== undefined));
+});
+
+export function summarize(
+  automation: Automation,
+  ledger: AutomationLedger,
+  running: ReadonlySet<AutomationRunId>,
+): AutomationSummary {
   const summary: AutomationSummary = {
     id: automation.id,
     name: automation.definition.name,
@@ -120,7 +157,7 @@ export function summarize(automation: Automation, ledger: AutomationLedger): Aut
     state: automation.state,
     activity: {
       runningSessions: ledger.runs.filter(
-        (run) => run.automationId === automation.id && run.status._tag === "running",
+        (run) => run.automationId === automation.id && running.has(run.id),
       ).length,
       queuedOccurrences: ledger.occurrences.filter(
         (occurrence) =>
@@ -135,11 +172,12 @@ export function summarize(automation: Automation, ledger: AutomationLedger): Aut
 
 export const list = Effect.fn("Automations.list")(function* (input: AutomationListInput) {
   const ledger = (yield* AutomationRecords).snapshot();
+  const running = yield* runningRunIds(ledger);
   const context = input.context;
   const query = input.query?.toLowerCase();
   return agentListPage(
     ledger.automations
-      .map((item) => summarize(item, ledger))
+      .map((item) => summarize(item, ledger, running))
       .filter(
         (item) =>
           (!context ||
@@ -158,9 +196,10 @@ export const list = Effect.fn("Automations.list")(function* (input: AutomationLi
 
 export const inspect = Effect.fn("Automations.inspect")(function* (id: AutomationId) {
   const automation = yield* lookup(id);
+  const ledger = (yield* AutomationRecords).snapshot();
   return {
     automation,
-    activity: summarize(automation, (yield* AutomationRecords).snapshot()).activity,
+    activity: summarize(automation, ledger, yield* runningRunIds(ledger)).activity,
   };
 });
 
@@ -177,9 +216,11 @@ export const create = Effect.fn("Automations.create")(function* (input: Automati
     next === undefined
   )
     return yield* automationError("create", "A one-time schedule must be in the future.");
+  const id = AutomationId.make(crypto.randomUUID());
+  const definition = yield* captureInputs(id, input.definition);
   const automation: Automation = {
-    id: AutomationId.make(crypto.randomUUID()),
-    definition: input.definition,
+    id,
+    definition,
     state: { _tag: input.initialState },
     memoryId: OptMemoryId.make(crypto.randomUUID()),
     createdAt: DateTime.formatIso(now),
@@ -207,13 +248,15 @@ export const update = Effect.fn("Automations.update")(function* (input: Automati
     next === undefined
   )
     return yield* automationError("update", "A one-time schedule must be in the future.");
+  yield* lookup(input.automationId);
+  const definition = yield* captureInputs(input.automationId, input.definition);
   return yield* (yield* AutomationRecords).transact((ledger) =>
     Effect.gen(function* () {
       const current = ledger.automations.find((item) => item.id === input.automationId);
       if (!current) return yield* automationError("update", "Automation not found", "not-found");
       const automation: Automation = {
         ...Struct.omit(current, ["nextScheduledAt"]),
-        definition: input.definition,
+        definition,
         updatedAt: DateTime.formatIso(now),
       };
       if (next !== undefined) Object.assign(automation, { nextScheduledAt: next });
@@ -240,6 +283,12 @@ export const changeState = Effect.fn("Automations.changeState")(function* (
     Effect.gen(function* () {
       const current = ledger.automations.find((item) => item.id === id);
       if (!current) return yield* automationError("state", "Automation not found", "not-found");
+      if (current.state._tag === "archived" && state._tag === "paused")
+        return yield* automationError(
+          "pause",
+          "An archived automation must be restored explicitly.",
+          "invalid-state",
+        );
       let automation: Automation = { ...current, state, updatedAt: DateTime.formatIso(now) };
       if (state._tag === "active") {
         automation = Struct.omit(automation, ["nextScheduledAt"]);
@@ -286,13 +335,4 @@ export const history = Effect.fn("Automations.history")(function* (input: Automa
     total: page.total,
     nextOffset: page.nextOffset,
   };
-});
-
-export const observeDefinitions = Effect.fn("Automations.observeDefinitions")(function* () {
-  return (yield* AutomationRecords).changes().pipe(
-    Stream.map((ledger) => ({
-      revision: ledger.revision,
-      automations: ledger.automations.map((item) => summarize(item, ledger)),
-    })),
-  );
 });

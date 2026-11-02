@@ -13,6 +13,8 @@ export class AutomationRecords extends Context.Service<
     readonly initialize: () => Effect.Effect<void, AutomationError>;
     readonly snapshot: () => AutomationRecordSnapshot;
     readonly changes: () => Stream.Stream<AutomationRecordSnapshot>;
+    /** Publish a fresh joined view after Pi activity or another authority changes; no ledger write. */
+    readonly refresh: () => Effect.Effect<void>;
     readonly transact: <A, E>(
       transition: (ledger: AutomationLedger) => Effect.Effect<
         {
@@ -62,8 +64,17 @@ export class AutomationRecords extends Context.Service<
             }),
           ),
       );
+      const refresh = Effect.fn("AutomationRecords.refresh")(() =>
+        gate.withPermits(1)(
+          SubscriptionRef.update(projection, (current) => ({
+            ...current,
+            revision: current.revision + 1,
+          })),
+        ),
+      );
       return AutomationRecords.of({
         initialize,
+        refresh,
         snapshot: () => SubscriptionRef.getUnsafe(projection),
         changes: () => SubscriptionRef.changes(projection),
         transact,

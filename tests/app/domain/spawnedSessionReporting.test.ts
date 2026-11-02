@@ -448,7 +448,7 @@ it.effect(
           const error = yield* createPrompted({
             ...createArgs,
             projectPath: "/project",
-            sourceSessionId: CAKE_CHAT_SESSION_ID,
+            source: { sessionId: CAKE_CHAT_SESSION_ID, kind: "cake-chat", title: "Cake Chat" },
             worktreeName: "must-not-create",
             promptFiles: ["must-not-read.md"],
           }).pipe(Effect.flip);
@@ -603,7 +603,7 @@ it.effect("invalid creation prompt files fail before worktree creation or sessio
         const error = yield* createPrompted({
           ...createArgs,
           projectPath: "/project",
-          sourceSessionId: parentId,
+          source: { sessionId: parentId, kind: "project-session", title: "Project Session" },
           senderWorkingDirectory: root,
           promptFiles: ["missing.md"],
           worktreeName: "must-not-create",

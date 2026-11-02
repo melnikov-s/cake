@@ -59,7 +59,7 @@ export const AutomationSchedule = Schema.TaggedUnion({
 export type AutomationSchedule = typeof AutomationSchedule.Type;
 
 /** These are source-session kinds, not execution destinations. Automation runs are not sources. */
-export const AutomationEventSessionKind = Schema.Literals([
+const AutomationEventSessionKind = Schema.Literals([
   "cake-chat",
   "project-chat",
   "standalone-project-session",
@@ -101,7 +101,7 @@ export const AutomationEventFilter = Schema.Struct({
 });
 export interface AutomationEventFilter extends Schema.Schema.Type<typeof AutomationEventFilter> {}
 
-export const AutomationTrigger = Schema.TaggedUnion({
+const AutomationTrigger = Schema.TaggedUnion({
   Schedule: { schedule: AutomationSchedule },
   Event: { filter: AutomationEventFilter },
 });
@@ -185,7 +185,7 @@ export const AutomationRun = Schema.Struct({
 export interface AutomationRun extends Schema.Schema.Type<typeof AutomationRun> {}
 
 /** New selectable Cake session kind; never fabricate a project for global execution. */
-export const AutomationSessionIdentity = Schema.TaggedStruct("AutomationSession", {
+const AutomationSessionIdentity = Schema.TaggedStruct("AutomationSession", {
   sessionId: boundedId,
   automationId: AutomationId,
   runId: AutomationRunId,

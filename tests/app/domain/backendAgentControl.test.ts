@@ -16,7 +16,7 @@ import {
   Schema,
   Stream,
 } from "effect";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import {
   defaultApplicationState,
   defaultProjectSettings,
@@ -51,7 +51,14 @@ import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-ope
 import {
   coordinatorCakeOperations,
   projectCakeOperations,
+  createProjectSessionRuntime,
 } from "../../../src/layers/CakeOperations";
+import { AutomationRecords } from "../../../src/services/automations/AutomationRecords";
+import {
+  AutomationStorage,
+  type AutomationLedger,
+} from "../../../src/services/storage/AutomationStorage";
+import { automationDefinition } from "../helpers/automationFixture";
 import { setCakeChatPreferences, upsertProject } from "../../../src/domain/application/application";
 import { defaultCakeChatPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
 import { createGlobalControlOperations } from "../../../src/domain/application/cake-global-control-operations";
@@ -1706,6 +1713,110 @@ const cakeControl = Effect.fn("BackendAgentControlTest.cakeControl")(function* (
   assert.ok(options.runtime.globalControl);
   return options.runtime.globalControl;
 });
+
+it.effect(
+  "Project Sessions, Project Chat and Cake Chat discover and execute the same automation controls",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture(true);
+      let ledger: AutomationLedger = { automations: [], occurrences: [], runs: [] };
+      const automationContext = yield* Layer.build(
+        AutomationRecords.layer.pipe(
+          Layer.provide(
+            Layer.succeed(AutomationStorage, {
+              load: () => Effect.succeed(ledger),
+              save: (next) =>
+                Effect.sync(() => {
+                  ledger = next;
+                }),
+            }),
+          ),
+        ),
+      );
+      const context = Context.merge(f.context, automationContext);
+      yield* Context.get(context, AutomationRecords).initialize();
+      const input = Schema.decodeUnknownSync(jsonObjectSchema)({
+        definition: automationDefinition(),
+        initialState: "paused",
+      });
+      for (const sessionId of [projectChatSessionId("/project"), CAKE_CHAT_SESSION_ID]) {
+        const options = yield* cakeChatRuntime
+          .acquireOptions({
+            configuration: {
+              location: { workingDirectory: "/home", sessionDirectory: "/cake/global" },
+              agentDirectory: "/cake",
+            },
+            target: { sessionId, tools: backendAgentTools() },
+            newSession: false,
+          })
+          .pipe(Effect.provide(context));
+        const registry = new CakeOperationRegistry(
+          coordinatorCakeOperations(options.runtime)({
+            sessionId,
+            resolveModel: () => ({
+              provider: "test",
+              modelId: "test",
+              thinkingLevel: "off",
+              fastMode: false,
+            }),
+            setModel: async () => {},
+            info: async () => ({}),
+            usage: async () => ({}),
+            contextStatus: async () => ({}),
+            compact: async () => ({}),
+          }),
+        );
+        expect(registry.topicHelp("automations")).toContain("automations.create");
+        const result = yield* Effect.promise(() =>
+          registry.invoke(
+            { command: "automations.create", input },
+            { signal: signal(), toolCallId: "automation", runtime: {} },
+          ),
+        );
+        expect(result.details).toMatchObject({
+          result: { ok: true, automation: { state: { _tag: "paused" } } },
+        });
+      }
+      const directory = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(join(tmpdir(), "cake-automation-project-tools-"))),
+        (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+      );
+      yield* Effect.acquireRelease(
+        Effect.sync(() => vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"))),
+        () => Effect.sync(() => vi.unstubAllEnvs()),
+      );
+      const options = yield* acquireOptions({
+        location,
+        sessionId: source,
+        newSession: false,
+      }).pipe(Effect.provide(context));
+      const runtime = yield* Effect.acquireRelease(
+        Effect.promise(() =>
+          createProjectSessionRuntime({
+            ...options.runtime,
+            cwd: directory,
+            agentDir: join(directory, "agent"),
+            sessionDir: join(directory, "sessions"),
+            newSession: true,
+            onEvent: () => undefined,
+          }),
+        ),
+        (value) =>
+          Effect.promise(async () => {
+            await value.dispose();
+          }),
+      );
+      const call = runtime.callCakeOperation?.bind(runtime);
+      assert.ok(call);
+      expect(
+        yield* Effect.promise(() => call("automations.create", input, signal())),
+      ).toMatchObject({ ok: true, automation: { state: { _tag: "paused" } } });
+      expect(yield* Effect.promise(() => call("automations.list", {}, signal()))).toMatchObject({
+        total: 3,
+      });
+      expect(ledger.automations).toHaveLength(3);
+    }),
+);
 
 it.effect("permanent Project Chat and global Cake Chat discover and execute tool compaction", () =>
   Effect.gen(function* () {

@@ -97,6 +97,7 @@ import { WorkflowSupervisorLive } from "../services/workflows/WorkflowSupervisor
 import { CakeChatConfiguration } from "../services/pi-durable/CakeChatConfiguration";
 import { makeAutomationStorageLive } from "../services/storage/AutomationStorage";
 import { AutomationRecords } from "../services/automations/AutomationRecords";
+import { AutomationConfiguration } from "../services/automations/AutomationConfiguration";
 import { AutomationEvents } from "../services/automations/AutomationEvents";
 import { makeAutomationMemoryLive } from "../layers/AutomationMemoryLive";
 import * as automationWorker from "../domain/automations/automationWorker";
@@ -119,6 +120,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
       },
     }),
     Layer.succeed(ProjectConfiguration, { agentDirectory: paths.piAgent }),
+    Layer.succeed(AutomationConfiguration, { homeDirectory: options.homeDirectory ?? paths.home }),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: paths.piAgent,
       sessionDirectory: paths.piSessions,

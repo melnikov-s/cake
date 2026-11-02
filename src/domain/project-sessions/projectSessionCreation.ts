@@ -10,7 +10,10 @@ import { ensureAdmittedSession as ensureSessionTodo } from "../projects/projectT
 import { type SessionRequester } from "../../contracts/project-sessions/session-reporting";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { ApplicationState } from "../../services/storage/ApplicationState";
-import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import {
+  encodeCrossSessionMessage,
+  type CrossSessionMessageMetadata,
+} from "../../contracts/conversations/cross-session-message";
 import { inheritTaskInputProtection } from "../conversations/taskInputs";
 import {
   SESSION_TITLE_MAX_LENGTH,
@@ -25,7 +28,7 @@ import * as managedWorktrees from "../worktrees/managedWorktrees";
 /** One backend admission for independent sessions; presentation is never part of creation. */
 export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(function* (input: {
   readonly projectPath: string;
-  readonly sourceSessionId?: string;
+  readonly source?: CrossSessionMessageMetadata["sender"];
   readonly attachments?: readonly Attachment[];
   readonly name: string;
   readonly initialPrompt: string;
@@ -63,7 +66,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
       : yield* snapshotPromptFiles({
           text: input.initialPrompt,
           promptFiles: input.promptFiles,
-          senderSessionId: input.sourceSessionId ?? "user",
+          senderSessionId: input.source?.sessionId ?? "user",
           workingDirectory: input.senderWorkingDirectory,
         }).pipe(
           Effect.mapError(
@@ -80,8 +83,8 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
     : undefined;
   const workingDirectory = record?.worktreePath ?? input.projectPath;
   const sessionId = crypto.randomUUID();
-  if (input.sourceSessionId)
-    yield* inheritTaskInputProtection(input.sourceSessionId, sessionId).pipe(
+  if (input.source)
+    yield* inheritTaskInputProtection(input.source.sessionId, sessionId).pipe(
       Effect.mapError(
         (error) => new ProjectSessionError({ operation: "createPrompted", message: error.message }),
       ),
@@ -90,15 +93,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
     input.requester?.kind === "cake-chat" && isCakeChatSessionId(input.requester.sessionId)
       ? input.requester
       : undefined;
-  const sender =
-    requester ??
-    (input.sourceSessionId
-      ? {
-          sessionId: input.sourceSessionId,
-          title: "Project Session",
-          kind: "project-session" as const,
-        }
-      : undefined);
+  const sender = requester ?? input.source;
   const resultDelivery = input.resultDelivery ?? "notification";
   const expectsResponse = resultDelivery !== "ignore";
   const storage = yield* SessionFamilyStorage;

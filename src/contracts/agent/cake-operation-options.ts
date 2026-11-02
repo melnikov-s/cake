@@ -191,6 +191,12 @@ export interface CakeOperationOptions extends Partial<CakeArtifactOperationOptio
   /** Parent Project Session gateway granted to an auxiliary runtime, not coordinator authority. */
   sessionControl?: GlobalOperationControl;
   agentControl?: AgentOperationControl;
+  /** Automation runtime's own application/memory gateway; no Project Session identity is implied. */
+  automationControl?: (
+    command: string,
+    input: JsonObject,
+    signal: AbortSignal,
+  ) => Promise<JsonValue>;
   attachmentReferenceControl?: AttachmentReferenceControl;
   messageReferenceControl?: MessageOperationControl;
 }

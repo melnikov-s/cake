@@ -1,4 +1,8 @@
 import { Effect, Schema } from "effect";
+import type { AutomationRecords } from "../../services/automations/AutomationRecords";
+import type { AutomationConfiguration } from "../../services/automations/AutomationConfiguration";
+import type { OptMemory } from "../../services/opt-memory/OptMemory";
+import type { FileSystem, Path } from "effect";
 import type { PiSettings } from "../../services/pi/PiSettings";
 import type { McpSettings } from "../../services/pi/McpSettings";
 import type { WidgetPackages } from "../../services/widgets/WidgetPackages";
@@ -42,6 +46,11 @@ import { agentListLabel, agentListPage } from "../../contracts/agent/agent-list-
 /** Validated domain dispatch for the Pi adapter's narrow JSON callback. */
 /** Explicit capability set breaks the type-inference cycle with Project runtime assembly. */
 type WorkflowControlServices =
+  | AutomationRecords
+  | AutomationConfiguration
+  | OptMemory
+  | FileSystem.FileSystem
+  | Path.Path
   | ApplicationState
   | PiSettings
   | McpSettings

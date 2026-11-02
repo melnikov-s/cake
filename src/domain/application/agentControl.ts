@@ -33,6 +33,7 @@ import {
 import { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import * as application from "./application";
+import * as automationControl from "../automations/automationControl";
 import { defaultProjectSettings } from "../../contracts/application/application-data";
 import * as agentSettings from "./agentSettings";
 import * as pendingReports from "../conversations/pendingReports";
@@ -163,6 +164,24 @@ export const invoke: (
       });
       const fail = (error: string) => toJsonValue({ ok: false, command, error });
       switch (invocation.name) {
+        case "automations.list":
+        case "automations.inspect":
+        case "automations.read-task":
+        case "automations.create":
+        case "automations.update":
+        case "automations.activate":
+        case "automations.pause":
+        case "automations.archive":
+        case "automations.trigger":
+        case "automations.history":
+        case "automations.cancel-run":
+        case "automations.cancel-queued":
+        case "automations.memory":
+        case "automations.zoom-memory":
+        case "memory.read":
+        case "memory.zoom":
+        case "memory.write":
+          return yield* automationControl.invoke(invocation.name, input, caller.sessionId);
         case "projects.list":
           return toJsonValue({
             ok: true,

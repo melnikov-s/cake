@@ -57,6 +57,15 @@ const cakeTopics = [
       "Inspect and arrange the Cake window (layout, split panes) and read the user's highlighted text.",
   },
   {
+    name: "automations",
+    summary:
+      "Manage saved automations, schedule/event rules, runs, queues, history and shared memory.",
+  },
+  {
+    name: "memory",
+    summary: "Read, expand and deliberately write this automation's shared OptMem.",
+  },
+  {
     name: "projects",
     summary:
       "List, register (add), request trust for, rename, configure, and remove Projects in Cake.",

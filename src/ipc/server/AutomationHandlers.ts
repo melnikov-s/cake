@@ -1,6 +1,10 @@
 import { Effect, Stream } from "effect";
 import { AutomationRpc } from "../protocol/AutomationRpc";
-import { AutomationError } from "../../contracts/automations/automation-data";
+import {
+  AutomationError,
+  type AutomationDefinition,
+} from "../../contracts/automations/automation-data";
+import { admitTurnAttachments } from "./AttachmentUploadHandlers";
 import * as definitions from "../../domain/automations/automationDefinitions";
 import * as runs from "../../domain/automations/automationRuns";
 import { OptMemory } from "../../services/opt-memory/OptMemory";
@@ -8,12 +12,30 @@ import { OptMemory } from "../../services/opt-memory/OptMemory";
 const memoryError = (cause: { readonly message: string }) =>
   new AutomationError({ operation: "memory", code: "unavailable", message: cause.message });
 
+const admitTaskAttachments = <A extends { readonly definition: AutomationDefinition }>(input: A) =>
+  (input.definition.task.attachments.length
+    ? admitTurnAttachments(input.definition.task)
+    : Effect.succeed(input.definition.task)
+  ).pipe(
+    Effect.map((task) => ({ ...input, definition: { ...input.definition, task } })),
+    Effect.mapError(
+      (cause) =>
+        new AutomationError({
+          operation: "attachments",
+          code: "invalid-configuration",
+          message: cause.message,
+        }),
+    ),
+  );
+
 export const automationHandlers = AutomationRpc.of({
   "automations.observe": () => Stream.unwrap(runs.observe()),
   "automations.list": definitions.list,
   "automations.inspect": (input) => definitions.inspect(input.automationId),
-  "automations.create": definitions.create,
-  "automations.update": definitions.update,
+  "automations.create": (input) =>
+    admitTaskAttachments(input).pipe(Effect.flatMap(definitions.create)),
+  "automations.update": (input) =>
+    admitTaskAttachments(input).pipe(Effect.flatMap(definitions.update)),
   "automations.activate": (input) =>
     runs.activate(input.automationId).pipe(Effect.andThen(definitions.lookup(input.automationId))),
   "automations.pause": (input) => definitions.changeState(input.automationId, { _tag: "paused" }),

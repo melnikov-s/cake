@@ -64,6 +64,45 @@ const attachments = Schema.Struct({
   ),
   nextAfter: Schema.NullOr(TaskInputReference.fields.id),
 });
+const automations = Schema.Struct({
+  ...page,
+  items: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      state: Schema.Struct({ _tag: Schema.String }),
+      activity: Schema.Struct({ runningSessions: count, queuedOccurrences: count }),
+      context: Schema.TaggedUnion({ Global: {}, Project: { projectPath: Schema.String } }),
+      nextScheduledAt: Schema.optionalKey(Schema.String),
+    }),
+  ),
+});
+const automationHistory = Schema.Struct({
+  ...page,
+  occurrences: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      occurredAt: Schema.String,
+      source: Schema.Struct({
+        _tag: Schema.String,
+        sourceSessionId: Schema.optionalKey(Schema.String),
+        requestedBySessionId: Schema.optionalKey(Schema.String),
+      }),
+      disposition: Schema.Struct({
+        _tag: Schema.String,
+        reason: Schema.optionalKey(Schema.String),
+      }),
+    }),
+  ),
+  runs: Schema.Array(
+    Schema.Struct({
+      occurrenceId: Schema.String,
+      sessionId: Schema.String,
+      status: Schema.Struct({ _tag: Schema.String }),
+    }),
+  ),
+});
 const settingsList = Schema.Struct({ value: SettingsListOutput });
 const error = Schema.Struct({ ok: Schema.Literal(false) });
 
@@ -97,6 +136,46 @@ const table = (header: string, columns: readonly string[], rows: readonly (reado
 export function discoveryResultText(command: string, value: JsonValue): string | undefined {
   if (Schema.is(error)(value)) return undefined;
   switch (command) {
+    case "automations.list": {
+      const result = Schema.decodeUnknownSync(automations)(value);
+      return table(
+        heading("automations", result),
+        ["id", "state", "running", "queued", "context", "next", "name"],
+        result.items.map((item) => [
+          item.id,
+          item.state._tag,
+          item.activity.runningSessions,
+          item.activity.queuedOccurrences,
+          item.context._tag === "Global" ? "global" : item.context.projectPath,
+          item.nextScheduledAt,
+          item.name,
+        ]),
+      );
+    }
+    case "automations.history": {
+      const result = Schema.decodeUnknownSync(automationHistory)(value);
+      return table(
+        heading("occurrences", result),
+        ["id", "trigger", "status", "session", "when", "sourceSession", "reason", "name"],
+        result.occurrences.map((item) => {
+          const run = result.runs.find((candidate) => candidate.occurrenceId === item.id);
+          return [
+            item.id,
+            item.source._tag,
+            run?.status._tag ?? item.disposition._tag,
+            run?.sessionId,
+            item.occurredAt,
+            item.source._tag === "Event"
+              ? item.source.sourceSessionId
+              : item.source._tag === "Manual"
+                ? item.source.requestedBySessionId
+                : undefined,
+            "reason" in item.disposition ? item.disposition.reason : undefined,
+            item.name,
+          ];
+        }),
+      );
+    }
     case "projects.list": {
       const result = Schema.decodeUnknownSync(projects)(value);
       return table(

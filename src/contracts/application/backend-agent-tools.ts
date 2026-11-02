@@ -8,6 +8,7 @@ import { sessionListGuidance, sessionListResult } from "../project-sessions/agen
 import { Schema } from "effect";
 import { CakeControlTool } from "../cake-chats/cake-chat-data";
 import { BackendAgentInvocation } from "./backend-agent-control";
+import { automationToolDescriptions } from "../automations/agent-automations";
 import {
   agentScheduleGuidance,
   agentScheduleSummary,
@@ -15,6 +16,18 @@ import {
 
 /** Data-only discovery. These operations execute in the backend, never in the window gateway. */
 const definitions = [
+  ...automationToolDescriptions.map(({ command, summary, result }) => ({
+    command,
+    scope: "global",
+    discovery: {
+      topic: "automations",
+      summary,
+      result,
+      guidance: ["automations.list", "automations.history"].includes(command)
+        ? [compactDiscoveryGuidance]
+        : [],
+    },
+  })),
   ...sessionCompactionDefinitions.map(
     ({ command, topic, summary, guidance, examples, result }) => ({
       command,

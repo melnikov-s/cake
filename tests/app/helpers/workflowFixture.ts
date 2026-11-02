@@ -1,4 +1,5 @@
 import { Effect, Layer, Option, Ref } from "effect";
+import { unusedAutomationEndpointCapabilities } from "./automationEndpointCapabilities";
 import { PiSettings } from "../../../src/services/pi/PiSettings";
 import { McpSettings } from "../../../src/services/pi/McpSettings";
 import { WidgetPackages } from "../../../src/services/widgets/WidgetPackages";
@@ -94,6 +95,7 @@ export const makeMemoryWorkflowStorage = Effect.fn("WorkflowFixture.storage")(fu
 });
 
 export const AgentControlTestLive = Layer.mergeAll(
+  unusedAutomationEndpointCapabilities,
   SessionCoordination.layer.pipe(
     Layer.provide(Layer.suspend(() => coordinationStorageHarness().layer)),
   ),

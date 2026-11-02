@@ -1,5 +1,9 @@
 import { NodePath } from "@effect/platform-node-shared";
 import { Context, Deferred, Effect, FileSystem, Layer, Queue, Ref, Stream } from "effect";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { makeTaskInputStorageLive } from "../../../src/services/storage/TaskInputStorageLive";
 import type { AutomationDefinition } from "../../../src/contracts/automations/automation-data";
 import {
   defaultApplicationState,
@@ -11,17 +15,22 @@ import {
   AutomationStorage,
   type AutomationLedger,
 } from "../../../src/services/storage/AutomationStorage";
-import { CakeChatConfiguration } from "../../../src/services/pi-durable/CakeChatConfiguration";
+import { AutomationConfiguration } from "../../../src/services/automations/AutomationConfiguration";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import {
   CakeSessionRuntimes,
   makeCakeSessionRuntimesLayer,
+  type CakeSessionRuntimeSetup,
 } from "../../../src/services/pi/CakeSessionRuntimes";
-import type { CakeSessionRuntimeOptions } from "../../../src/services/pi/runtime/cake-session-runtime";
+import type { Attachment } from "../../../src/contracts/conversations/session-contract";
 import { OptMemory } from "../../../src/services/opt-memory/OptMemory";
 import type { RuntimeRecoveryRecord } from "../../../src/services/storage/RuntimeRecoveryStorage";
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
+import { makeProjectSessionRuntimeTestLayer } from "../domain/projectSessionRuntimeTestLayer";
+import { WorkflowTestLive } from "./workflowFixture";
+import { familyStorageHarness } from "./familyStorageHarness";
+import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { fakeRuntime, makeRuntimeRecoveryStorageTestLayer, snapshot } from "./piRuntimeFixture";
 
 export const automationDefinition = (
@@ -49,6 +58,10 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
     readonly recovery?: ReadonlyArray<RuntimeRecoveryRecord>;
   } = {},
 ) {
+  const inputDirectory = yield* Effect.acquireRelease(
+    Effect.promise(() => mkdtemp(join(tmpdir(), "cake-automation-inputs-"))),
+    (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+  );
   const persisted = yield* Ref.make<AutomationLedger>(
     initial.ledger ?? {
       automations: [],
@@ -63,10 +76,12 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
   const started = yield* Queue.unbounded<{
     sessionId: string;
     text: string;
-    options: CakeSessionRuntimeOptions;
+    options: CakeSessionRuntimeSetup;
+    attachments: readonly Attachment[];
   }>();
   const completions = new Map<string, Deferred.Deferred<void, Error>>();
-  const captured: CakeSessionRuntimeOptions[] = [];
+  const disposed = yield* Queue.unbounded<string>();
+  const captured: CakeSessionRuntimeSetup[] = [];
   const runtimes = makeCakeSessionRuntimesLayer({
     sessionIds: () => Stream.empty,
     catalog: () => Stream.empty,
@@ -81,17 +96,23 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
         captured.push(options);
         let streaming = false;
         return {
-          ...fakeRuntime(options, () => undefined),
+          ...fakeRuntime(options, () => {
+            Effect.runSync(Queue.offer(disposed, sessionId));
+          }),
           sessionId,
           sessionFile: `/sessions/${sessionId}.jsonl`,
           get streaming() {
             return streaming;
           },
           snapshot: async () => ({ ...snapshot, sessionId, streaming, workspacePath: options.cwd }),
-          prompt: async (text: string) => {
+          prompt: async (
+            text: string,
+            _delivery: "prompt" | "steer" | "follow-up",
+            attachments: Attachment[],
+          ) => {
             streaming = true;
             options.onInitialTranscriptPersisted?.();
-            Effect.runSync(Queue.offer(started, { sessionId, text, options }));
+            Effect.runSync(Queue.offer(started, { sessionId, text, options, attachments }));
             try {
               await Effect.runPromise(Deferred.await(completion));
             } finally {
@@ -127,6 +148,13 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
   };
   let projectAvailable = true;
   const layer = Layer.mergeAll(
+    WorkflowTestLive,
+    makeProjectSessionRuntimeTestLayer(),
+    Layer.mock(ManagedWorktrees, {
+      records: () => Effect.succeed([]),
+      awaitSetup: () => Effect.void,
+    }),
+    familyStorageHarness().layer,
     AutomationRecords.layer.pipe(Layer.provide(storage)),
     runtimes,
     archive,
@@ -151,21 +179,21 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
       sessionDirectory: "/sessions",
       resolvedSessionDirectory: "/resolved",
     }),
-    Layer.succeed(CakeChatConfiguration, {
-      agentDirectory: "/agent",
-      location: { workingDirectory: "/home/user", sessionDirectory: "/cake-chat" },
-    }),
+    Layer.succeed(AutomationConfiguration, { homeDirectory: "/home/user" }),
     Layer.succeed(OptMemory, {
       read: () => Effect.succeed({ lines: [], bytes: 0, budgetBytes: 10_000, sourceCount: 0 }),
       zoom: () => Effect.die("Unexpected Zoom"),
       write: () => Effect.die("Unexpected memory write"),
     }),
+    makeTaskInputStorageLive(inputDirectory),
   );
   const context = yield* Layer.build(layer);
   yield* Context.get(context, AutomationRecords).initialize();
   return {
     context,
+    inputDirectory,
     started,
+    disposed,
     captured,
     setProjectAvailable: (available: boolean) => {
       projectAvailable = available;

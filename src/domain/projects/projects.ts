@@ -2,7 +2,8 @@ import { stat } from "node:fs/promises";
 import { basename, isAbsolute, resolve } from "node:path";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
-import { Effect, Stream } from "effect";
+import { Effect, Option, Stream } from "effect";
+import { AutomationRecords } from "../../services/automations/AutomationRecords";
 import type {
   AgentProjectAddInput,
   AgentProjectInfoInput,
@@ -607,6 +608,18 @@ export const setSessionUnread = Effect.fn("Projects.setSessionUnread")(function*
   _connectionId: number,
   request: Payload<"set-session-unread">,
 ) {
+  const automations = yield* Effect.serviceOption(AutomationRecords);
+  if (
+    Option.isSome(automations) &&
+    automations.value.snapshot().runs.some((run) => run.sessionId === request.sessionId)
+  ) {
+    const state = yield* mapProjectError(
+      "setSessionUnread",
+      setApplicationSessionUnread(request.sessionId, request.unread),
+    );
+    yield* automations.value.refresh();
+    return { state };
+  }
   const access = yield* ProjectAccess;
   const workingDirectory = yield* mapProjectError(
     "setSessionUnread",

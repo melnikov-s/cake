@@ -1,5 +1,6 @@
 import { messageReference } from "../../contracts/conversations/message-reference";
 import { AutomationEvents } from "../../services/automations/AutomationEvents";
+import { automationToolDescriptions } from "../../contracts/automations/agent-automations";
 import { publishChat as publishChatAutomationEvent } from "../automations/automationSourceEvents";
 import { parseScheduledMessage } from "../../contracts/conversations/scheduled-message-envelope";
 import { cakeChatBuiltinSlashCommands } from "../../contracts/conversations/session-contract";
@@ -98,6 +99,7 @@ import * as artifactState from "../artifacts/artifactState";
 import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 
 const CAKE_CHAT_OPERATIONS = [
+  ...automationToolDescriptions.map((description) => description.command),
   ...Object.keys(themeOperationDefinitions),
   "html.present",
   "artifacts.link",
@@ -879,7 +881,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                           yield* projectSessionCreation.createPrompted({
                             ...input,
                             projectPath: input.workspacePath,
-                            sourceSessionId: target.sessionId,
+                            source: { sessionId: target.sessionId, kind: "cake-chat", title },
                             senderWorkingDirectory: project?.path,
                             attachments: selected.inputRefs.map((reference) => ({
                               kind: "forwarded-input" as const,
