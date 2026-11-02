@@ -8,6 +8,7 @@ import * as chatLocations from "../../../src/domain/cake-chats/cakeChatLocations
 import * as metadata from "../../../src/domain/cake-chats/cakeChatMetadata";
 import { configureCakeSessionRuntime } from "../../../src/layers/CakeOperations";
 import { acquireOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
+import { observeConversation } from "../../../src/domain/cake-chats/cakeChatOperations";
 import { SESSION_ASSISTANT_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { defaultAssistantPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
@@ -19,7 +20,7 @@ import { defaultCakeChatPreferences } from "../../../src/contracts/cake-chats/ca
 import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
+import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import {
@@ -40,7 +41,7 @@ const location = {
 };
 const configuration = { location, agentDirectory: "/cake/pi" };
 
-function fixture() {
+function fixture(runtimeOverrides: Partial<CakeSessionRuntimes["Service"]> = {}) {
   let state = defaultApplicationState();
   const completions: string[] = [];
   const completionTimeouts: Array<number | undefined> = [];
@@ -98,6 +99,7 @@ function fixture() {
         Stream.fromIterable(
           [summary(CAKE_CHAT_SESSION_ID)].filter((item) => !removed.includes(item.id)),
         ),
+      ...runtimeOverrides,
     }),
     Layer.mock(SessionArchiveStorage, {}),
     SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
@@ -117,6 +119,103 @@ function fixture() {
 }
 
 describe("permanent Cake Chat", () => {
+  it.effect(
+    "publishes cold Project Chat history before acquiring any runtime, using the owning project identity",
+    () => {
+      const queries: unknown[] = [];
+      const f = fixture({
+        hasCurrent: () => Effect.succeed(false),
+        catalogEntry: (query, id) =>
+          Effect.succeed({
+            id,
+            path: `${query.sessionDirectory}/coordinator.sqlite`,
+            cwd: query.workingDirectory,
+            created: "2026-01-01T00:00:00Z",
+            modified: "2026-01-01T00:00:00Z",
+            messageCount: 1,
+            title: "Project history",
+            resolved: false,
+            firstMessage: "Hello",
+          }),
+        inspect: (query) => {
+          queries.push(query);
+          return Effect.succeed({
+            workspacePath: query.workingDirectory,
+            sessionId: query.sessionId,
+            sessionFile: `${query.sessionDirectory}/coordinator.sqlite`,
+            parts: [
+              {
+                id: "history",
+                kind: "text",
+                role: "user",
+                text: query.workingDirectory,
+                status: "complete",
+              },
+            ],
+          });
+        },
+        acquire: () => Effect.die("History must not wait for runtime acquisition"),
+      });
+      f.setState({
+        ...defaultApplicationState(),
+        projects: ["/alpha", "/beta"].map((path) => ({
+          path,
+          name: path.slice(1),
+          addedAt: "2026-01-01T00:00:00Z",
+          lastOpenedAt: "2026-01-01T00:00:00Z",
+        })),
+      });
+      return Effect.gen(function* () {
+        for (const path of ["/alpha", "/beta"]) {
+          const sessionId = chatLocations.projectChatSessionId(path);
+          const updates = yield* observeConversation({ sessionId, tools: [] }, configuration);
+          const first = yield* updates.pipe(Stream.take(1), Stream.runCollect);
+          expect(first).toMatchObject([
+            {
+              _tag: "Preview",
+              snapshot: {
+                sessionId,
+                parts: [{ text: path }],
+                sessionFile: `${chatLocations.projectLocation(location, path).sessionDirectory}/coordinator.sqlite`,
+              },
+            },
+          ]);
+        }
+        expect(queries).toEqual(
+          ["/alpha", "/beta"].map((path) => ({
+            ...chatLocations.projectLocation(location, path),
+            sessionId: chatLocations.projectChatSessionId(path),
+            cakeChatSessionId: chatLocations.projectChatSessionId(path),
+            direct: true,
+          })),
+        );
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
+  it.effect.each([true, false])(
+    "does not replay disk history for a live or unstarted chat (live: %s)",
+    (current) => {
+      const f = fixture({
+        hasCurrent: () => Effect.succeed(current),
+        catalogEntry: () =>
+          current ? Effect.die("Live chats must not read disk history") : Effect.succeed(undefined),
+        inspect: () => Effect.die("No historical preview is appropriate"),
+        acquire: () =>
+          Effect.fail(
+            new PiSessionError({ operation: "acquire", message: "Reached live acquisition" }),
+          ),
+      });
+      return Effect.gen(function* () {
+        const stream = yield* observeConversation(
+          { sessionId: CAKE_CHAT_SESSION_ID, tools: [] },
+          configuration,
+        );
+        const error = yield* stream.pipe(Stream.runDrain, Effect.flip);
+        expect(error.message).toContain("Reached live acquisition");
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
+
   it.effect(
     "keeps the companion projectless with independent small configurable memory and utility summaries",
     () => {

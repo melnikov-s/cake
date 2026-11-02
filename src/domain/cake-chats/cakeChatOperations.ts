@@ -10,6 +10,7 @@ import {
   deliverWhenAvailable,
   observe as observeConversationUpdates,
   projectAttachments,
+  projectPreviewSnapshot,
   TurnId,
 } from "../conversations/conversations";
 import {
@@ -46,8 +47,33 @@ export const observeConversation = Effect.fn("CakeChats.observeConversation")(fu
   configuration: CakeChatRuntimeConfiguration,
 ) {
   const catalogs = yield* SessionCatalogChanges;
-  const handle = yield* acquireTarget(target, false, configuration);
-  return observeConversationUpdates(handle).pipe(
+  const live = Stream.unwrap(
+    acquireTarget(target, false, configuration).pipe(Effect.map(observeConversationUpdates)),
+  );
+  const location = yield* cakeChatLocations.resolve(configuration.location, target.sessionId);
+  const sessions = yield* CakeSessionRuntimes;
+  const query = {
+    ...location,
+    sessionId: target.sessionId,
+    direct: true as const,
+    cakeChatSessionId: target.sessionId,
+  };
+  // Already-live chats must begin with current streaming/queue facts. Cold chats
+  // can show Pi-owned originals without waiting for resource/MCP/model startup.
+  const current = yield* sessions.hasCurrent(query);
+  const persisted = current
+    ? undefined
+    : yield* sessions.catalogEntry(query, target.sessionId).pipe(asError("observeConversation"));
+  const updates = persisted
+    ? Stream.succeed({
+        _tag: "Preview" as const,
+        revision: 0,
+        snapshot: projectPreviewSnapshot(
+          yield* sessions.inspect(query).pipe(asError("observeConversation")),
+        ),
+      }).pipe(Stream.concat(live))
+    : live;
+  return updates.pipe(
     Stream.tap((update) =>
       update._tag === "Event" && update.event._tag === "TurnSettled"
         ? catalogs.publish({

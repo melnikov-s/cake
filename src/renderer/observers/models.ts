@@ -419,7 +419,12 @@ export const createModelObserver = (
         conversation,
         (client) => client.conversations.observe({ _tag: "CakeChatSession", ...target }),
         (update) => applyConversationUpdate(conversation, update),
-        { clear: () => unloadConversationProjection(conversation) },
+        {
+          clear: () => unloadConversationProjection(conversation),
+          failed: (error) => {
+            conversation.observationError = error instanceof Error ? error.message : String(error);
+          },
+        },
       );
       observe(
         `subagents:${target.sessionId}`,

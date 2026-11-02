@@ -7,7 +7,11 @@ import { createModels } from "@earendil-works/pi-durable-ai";
 
 /** Seed the coordinator's real persistence authority without invoking a model. */
 export async function seedCakeChatHistory(cakeHome: string, text: string) {
-  const database = join(cakeHome, "pi", "global-chat", "coordinator.sqlite");
+  return seedPermanentChatHistory(join(cakeHome, "pi", "global-chat"), text);
+}
+
+export async function seedPermanentChatHistory(directory: string, text: string) {
+  const database = join(directory, "coordinator.sqlite");
   await mkdir(dirname(database), { recursive: true });
   const harness = await Harness.open(
     await openNodeSqliteStorage(database),

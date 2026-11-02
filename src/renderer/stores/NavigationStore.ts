@@ -437,14 +437,21 @@ export class NavigationStore extends Store<{
   async openCakeChat(sessionId?: string) {
     if (!sessionId) return this.startCakeChat();
     this.workbench.dismissSecondarySurfaces();
-    this.props.shell.selectWorkspace(
-      isProjectChatSessionId(sessionId) ? "project-sessions" : "cake-chat",
-    );
+    const projectChat = isProjectChatSessionId(sessionId);
+    if (!projectChat) this.props.shell.selectWorkspace("cake-chat");
     const collection = this.props.cakeChat();
     if (!collection.hydrated) await collection.initialize();
-    // Opening selects the pane synchronously once initialized. Focus belongs to that
-    // navigation, not the backend completion, which may arrive after the user moves on.
-    const opening = collection.openSession(sessionId);
+    const source = this.props.shell.activeConversation;
+    const sourceSurface = this.props.shell.surface;
+    const opening = collection.openSession(
+      sessionId,
+      () =>
+        this.props.shell.surface === sourceSurface &&
+        this.props.shell.activeConversation?.sessionId === source?.sessionId,
+    );
+    // Keep the current conversation until Project Chat's history is available,
+    // rather than mounting an empty destination or waiting for its full runtime.
+    if (projectChat && (await opening) === false) return;
     this.commitCakeChatSelection(sessionId);
     this.presentation.restore();
     collection.registry

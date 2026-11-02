@@ -1,3 +1,5 @@
+import { LoadingState } from "../components/ui/loading-state";
+import { ErrorNotice } from "../components/error-notice";
 import { ConversationActivity } from "../components/conversation-activity";
 import { SessionAssistant } from "../components/session-assistant";
 import type { RootStore } from "../stores/RootStore";
@@ -36,7 +38,12 @@ export function cakeChatPropsFor(root: RootStore, session: CakeChatSessionStore,
         root.cakeChatCollectionStore.pendingSessions.isPending(session.sessionId),
     },
     transcriptBehavior: cakeChatTranscriptBehaviorFor(root, session),
-    empty: (
+    empty: session.model.observationError ? (
+      <ErrorNotice title="Could not open chat" message={session.model.observationError} />
+    ) : !session.model.sessionFile &&
+      !root.cakeChatCollectionStore.pendingSessions.isPending(session.sessionId) ? (
+      <LoadingState label="Opening chat" />
+    ) : (
       <div className="grid min-h-[calc(100vh-330px)] place-items-center content-center p-10 text-center">
         <span className="grid size-14 rotate-3 place-items-center rounded-bl-[14px] rounded-br-[20px] rounded-tl-[20px] rounded-tr-[14px] border border-border bg-card/75 shadow-[0_20px_70px_-30px_hsl(var(--shadow)/0.5)]">
           <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">

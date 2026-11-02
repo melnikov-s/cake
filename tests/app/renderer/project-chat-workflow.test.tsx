@@ -22,7 +22,10 @@ import type { UiPart } from "../../../src/contracts/conversations/session-contra
 import { App } from "../../../src/renderer/components/app";
 import { MarkdownLinkProvider } from "../../../src/renderer/components/ai-elements/markdown";
 import { isMacPlatform } from "../../../src/renderer/lib/platform";
-import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
+import {
+  applyConversationUpdate,
+  unloadConversationProjection,
+} from "../../../src/renderer/reducers/ConversationReducer";
 import type { Client } from "../../../src/renderer/client/Client";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -62,6 +65,7 @@ async function fixture(
     projectRecord({ path: "/finance", name: "finance" }),
   ],
   taskWorkingDirectory = "/zombies",
+  hydrateProjectChats = true,
 ) {
   const browserState = (sessionId: string) => ({
     sessionId,
@@ -127,13 +131,13 @@ async function fixture(
   });
   f.root.sessionRegistry.load("task", taskWorkingDirectory);
   let revision = 0;
-  const publish = (id: string, parts: UiPart[] = [], streaming = false) => {
+  const publish = (id: string, parts: UiPart[] = [], streaming = false, preview = false) => {
     const model =
       id === "task"
         ? f.models.projectConversation(id, taskWorkingDirectory)
         : f.models.cakeChatConversation(id);
     applyConversationUpdate(model, {
-      _tag: "Snapshot",
+      _tag: preview ? "Preview" : "Snapshot",
       revision: ++revision,
       snapshot: {
         sessionId: id,
@@ -151,7 +155,8 @@ async function fixture(
       },
     });
   };
-  for (const id of [CAKE_CHAT_SESSION_ID, projectId, otherId, "task"]) publish(id);
+  for (const id of [CAKE_CHAT_SESSION_ID, projectId, otherId, "task"])
+    if (hydrateProjectChats || (id !== projectId && id !== otherId)) publish(id);
   await f.root.cakeChatCollectionStore.initialize();
   f.root.terminalStore.readyForEvents();
   f.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
@@ -175,8 +180,8 @@ async function fixture(
   return {
     ...f,
     user: userEvent.setup(),
-    publish(id: string, parts: UiPart[], streaming: boolean) {
-      act(() => publish(id, parts, streaming));
+    publish(id: string, parts: UiPart[], streaming: boolean, preview = false) {
+      act(() => publish(id, parts, streaming, preview));
     },
     setFullscreenSurfaceOpen,
     chatOpen,
@@ -190,6 +195,85 @@ async function fixture(
     },
   };
 }
+
+it("mounts each Project Chat with its first history projection, without waiting for the live runtime", async () => {
+  using f = await fixture(undefined, undefined, undefined, false);
+  f.chatOpen.mockClear();
+  const history = (text: string): UiPart[] => [
+    {
+      id: `entry-${text}-text-0`,
+      entryId: text,
+      renderKey: `assistant-${text}-text-0`,
+      kind: "text",
+      role: "assistant",
+      text,
+      status: "complete",
+    },
+  ];
+  const pane = (id: string) =>
+    document.querySelector(`[data-slot="session-pane"][data-session-id="${id}"]`);
+  for (const [id, name, text, previous] of [
+    [projectId, "zombies", "Zombies history", CAKE_CHAT_SESSION_ID],
+    [otherId, "finance", "Finance history", projectId],
+    [projectId, "zombies", "Zombies history reloaded", otherId],
+  ]) {
+    await f.user.click(screen.getByRole("button", { name: `Open Project Chat for ${name}` }));
+    // The destination is observed before it is selected; the current chat stays
+    // intact, without an empty destination, timer, fade or loading placeholder.
+    expect(pane(id!)).toBeNull();
+    expect(pane(previous!)).toBeTruthy();
+    expect(f.root.cakeChatCollectionStore.registry.observationTargets).toContainEqual(
+      expect.objectContaining({ sessionId: id }),
+    );
+    f.publish(id!, history(text!), false, true);
+    await waitFor(() => expect(pane(id!)).toBeTruthy());
+    expect(f.models.cakeChatConversation(id!).uiParts).toContainEqual(
+      expect.objectContaining({ text }),
+    );
+    expect(
+      within(pane(id!) as HTMLElement).getByRole("combobox", { name: "Message Project Chat" }),
+    ).toBeTruthy();
+    // Native virtualized row layout is covered by project-chat-first-render.smoke.spec.ts.
+    expect(screen.queryByText("Let’s talk about this project")).toBeNull();
+    expect(f.models.cakeChatConversation(id!).historyOnly).toBe(true);
+    act(() => unloadConversationProjection(f.models.cakeChatConversation(previous!)));
+  }
+  // Observation owns runtime acquisition; navigation no longer starts a second
+  // acquire that could force the history path to wait for runtime startup.
+  expect(f.chatOpen).not.toHaveBeenCalled();
+});
+
+it("keeps genuine empty Project Chats empty only after their snapshot arrives", async () => {
+  using f = await fixture(undefined, undefined, undefined, false);
+  await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+  expect(screen.queryByText("Let’s talk about this project")).toBeNull();
+  f.publish(projectId, [], false);
+  expect(
+    await screen.findByRole("heading", { name: "Let’s talk about this project" }),
+  ).toBeTruthy();
+});
+
+it("distinguishes a restored Project Chat's missing snapshot from a genuinely empty snapshot", async () => {
+  using f = await fixture(undefined, undefined, undefined, false);
+  act(() => {
+    f.root.cakeChatCollectionStore.registry.load(projectId);
+    f.root.navigationStore.selectCakeChat(projectId);
+  });
+  expect(screen.getByRole("status", { name: "Opening chat in progress" })).toBeTruthy();
+  expect(screen.queryByText("Let’s talk about this project")).toBeNull();
+  f.publish(projectId, [], false);
+  expect(screen.getByRole("heading", { name: "Let’s talk about this project" })).toBeTruthy();
+});
+
+it("selects the latest requested Project Chat when snapshots arrive out of order", async () => {
+  using f = await fixture(undefined, undefined, undefined, false);
+  await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+  await f.user.click(screen.getByRole("button", { name: "Open Project Chat for finance" }));
+  f.publish(projectId, [], false);
+  expect(f.root.appShellStore.activeConversation?.sessionId).toBe(CAKE_CHAT_SESSION_ID);
+  f.publish(otherId, [], false);
+  await waitFor(() => expect(f.root.appShellStore.activeConversation?.sessionId).toBe(otherId));
+});
 
 it.each(["/zombies", "/managed/task-worktree"])(
   "opens the session header's owning Project Chat from %s, not the globally selected project",
@@ -215,9 +299,8 @@ it.each(["/zombies", "/managed/task-worktree"])(
       ).toBeTruthy(),
     );
     expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
-    expect(f.chatOpen).toHaveBeenLastCalledWith(
+    expect(f.root.cakeChatCollectionStore.registry.observationTargets).toContainEqual(
       expect.objectContaining({ sessionId: projectId }),
-      expect.anything(),
     );
   },
 );
