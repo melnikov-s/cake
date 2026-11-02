@@ -144,35 +144,47 @@ for (const { theme, standalone, godot } of scenarios) {
       await expect(diagram).toHaveAttribute("tabindex", "0");
 
       const assertNodeContrast = async () => {
-        const colors = await diagram.evaluate((svg) => {
-          const canvas = document.createElement("canvas");
-          canvas.width = canvas.height = 1;
-          const context = canvas.getContext("2d")!;
-          const luminance = (color: string) => {
-            context.clearRect(0, 0, 1, 1);
-            context.fillStyle = color;
-            context.fillRect(0, 0, 1, 1);
-            const channels = Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3);
-            const linear = channels.map((channel) => {
-              const value = channel / 255;
-              return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-            });
-            return linear[0]! * 0.2126 + linear[1]! * 0.7152 + linear[2]! * 0.0722;
-          };
-          return ["A", "B", "C", "D", "E", "F"].map((id) => {
-            const node = svg.querySelector(`.pele-node[data-id="${id}"]`)!;
-            const background = getComputedStyle(node.querySelector("rect")!).fill;
-            const foreground = getComputedStyle(node.querySelector(".pele-label")!).fill;
-            const a = luminance(background);
-            const b = luminance(foreground);
-            return {
-              id,
-              background,
-              foreground,
-              contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+        // Query and read styles in one browser call: layout can replace the SVG
+        // between resolving a locator handle and evaluating against that handle.
+        const readColors = () =>
+          page.evaluate(() => {
+            const svg = document.querySelector("svg.pele");
+            if (!svg) return [];
+            const canvas = document.createElement("canvas");
+            canvas.width = canvas.height = 1;
+            const context = canvas.getContext("2d")!;
+            const luminance = (color: string) => {
+              context.clearRect(0, 0, 1, 1);
+              context.fillStyle = color;
+              context.fillRect(0, 0, 1, 1);
+              const channels = Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3);
+              const linear = channels.map((channel) => {
+                const value = channel / 255;
+                return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+              });
+              return linear[0]! * 0.2126 + linear[1]! * 0.7152 + linear[2]! * 0.0722;
             };
+            return ["A", "B", "C", "D", "E", "F"].map((id) => {
+              const node = svg.querySelector(`.pele-node[data-id="${id}"]`)!;
+              const background = getComputedStyle(node.querySelector("rect")!).fill;
+              const foreground = getComputedStyle(node.querySelector(".pele-label")!).fill;
+              const a = luminance(background);
+              const b = luminance(foreground);
+              return {
+                id,
+                background,
+                foreground,
+                contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+              };
+            });
           });
-        });
+        let colors: Awaited<ReturnType<typeof readColors>> = [];
+        await expect
+          .poll(async () => {
+            colors = await readColors();
+            return colors.length;
+          })
+          .toBe(6);
         for (const color of colors)
           expect(color.contrast, JSON.stringify(color)).toBeGreaterThanOrEqual(4.5);
         expect(colors.find((color) => color.id === "B")!.background).toBe("rgb(255, 242, 204)");
@@ -272,7 +284,8 @@ for (const { theme, standalone, godot } of scenarios) {
 
       const reader = page.getByRole("dialog", { name: "Cake" });
       if (!standalone) {
-        await page.getByRole("button", { name: "View response fullscreen" }).click({ force: true });
+        await message.hover();
+        await message.getByRole("button", { name: "View response fullscreen" }).click();
         await expect(reader).toBeVisible();
       }
 

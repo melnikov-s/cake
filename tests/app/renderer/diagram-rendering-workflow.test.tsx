@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   diagramStreamingIdleTimeoutMs,
@@ -8,6 +8,7 @@ import {
   type DiagramResponse,
 } from "../../../src/renderer/lib/diagram-contract";
 import { renderDiagram } from "../../../src/renderer/lib/diagram-engine";
+import { PeleDiagram } from "../../../src/renderer/components/pele-diagram";
 import { DiagramTestWorker, installDiagramMeasurement } from "./diagram-browser-fixture";
 import { renderMarkdown } from "./markdown-rendering-fixture";
 
@@ -67,6 +68,16 @@ function controlWorkers() {
 }
 
 describe("diagram render lifecycle through Markdown", () => {
+  it("keeps the zoom-owned SVG mounted across unrelated React renders", async () => {
+    const code = "flowchart TB\nA[Player] --> B[Godot]";
+    const fixture = render(<PeleDiagram code={code} />);
+    await advance();
+    const svg = fixture.container.querySelector("svg.pele");
+    expect(svg).not.toBeNull();
+    fixture.rerender(<PeleDiagram code={code} fullscreen />);
+    expect(fixture.container.querySelector("svg.pele")).toBe(svg);
+  });
+
   it("keeps active input waiting, bounds an idle stream, and recovers on input/completion", async () => {
     const workers = controlWorkers();
     const incomplete = source.slice(0, -4);

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useId, useRef, useState } from "react";
+import { useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Zoom } from "pele/core";
 import { CopyButton } from "@/components/ui/copy-button";
 import { IconButton } from "@/components/ui/icon-button";
@@ -34,6 +34,8 @@ export function PeleDiagram({
   const [width, setWidth] = useState<number>();
   const [svg, setSvg] = useState<string>();
   const [error, setError] = useState<string>();
+  // Preserve Pele’s zoom-owned DOM when only the surrounding React UI rerenders.
+  const markup = useMemo(() => ({ __html: svg ?? "" }), [svg]);
 
   useEffect(() => {
     const element = container.current;
@@ -184,7 +186,7 @@ export function PeleDiagram({
               ? "relative flex min-h-0 flex-1 items-center justify-center overflow-hidden"
               : "relative flex min-h-24 w-full items-center justify-center overflow-hidden"
           }
-          dangerouslySetInnerHTML={{ __html: svg }}
+          dangerouslySetInnerHTML={markup}
         />
       ) : (
         <LoadingState label="Rendering diagram" />
