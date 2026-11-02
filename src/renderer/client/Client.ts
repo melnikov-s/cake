@@ -181,6 +181,7 @@ interface ElectronCommands {
     },
     options?: ClientCommandOptions,
   ): Promise<
+    | "new-automation"
     | "settings"
     | "sort-by-date"
     | "sort-by-label"

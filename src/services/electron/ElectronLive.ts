@@ -23,6 +23,7 @@ import { shouldAllowNavigation } from "./navigation-policy";
 import { installRendererDiagnostics } from "./renderer-diagnostics";
 import { CAKE_TITLE_BAR_HEIGHT, Electron, type ElectronWindowLifecycle } from "./Electron";
 import { ElectronError } from "../../contracts/desktop/electron-errors";
+import type { cakeRpcSuccessSchemas } from "../../contracts/application/cake-rpc-contract";
 import { ClientConnections } from "../clients/ClientConnections";
 import { ClientEvents } from "../clients/ClientEvents";
 import { ClientWorkspaces } from "../clients/ClientWorkspaces";
@@ -905,6 +906,7 @@ const makeElectronService = (
                 resolve({ action });
               };
               Menu.buildFromTemplate([
+                { label: "New Automation…", click: () => finish("new-automation") },
                 { label: "Project Settings…", click: () => finish("settings") },
                 {
                   label: "Sort Sessions",
@@ -1082,11 +1084,4 @@ type SuccessComposerMenu = { readonly action?: "reword" | "reword-with-prompt" }
 type SuccessSessionMenu = {
   readonly action?: "rename" | "mark-read" | "mark-unread" | "resolve" | "unresolve" | "delete";
 };
-type SuccessProjectMenu = {
-  readonly action?:
-    | "settings"
-    | "sort-by-date"
-    | "sort-by-label"
-    | "remove-project"
-    | "delete-resolved-worktrees";
-};
+type SuccessProjectMenu = (typeof cakeRpcSuccessSchemas)["show-project-context-menu"]["Type"];

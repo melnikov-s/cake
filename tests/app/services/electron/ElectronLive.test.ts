@@ -4,10 +4,13 @@ import {
 } from "../../../../src/services/clients/ClientConnections";
 import { EventEmitter } from "node:events";
 import { it } from "@effect/vitest";
-import { Context, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
-import type { MenuItemConstructorOptions } from "electron";
+import { Context, Deferred, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect";
+import type { MenuItemConstructorOptions, PopupOptions } from "electron";
 import { afterEach, describe, expect, vi } from "vitest";
-import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
+import {
+  cakeRpcSuccessSchemas,
+  type CakeEvent,
+} from "../../../../src/contracts/application/cake-rpc-contract";
 import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
 import { ClientEventsLive } from "../../../../src/services/clients/ClientEventsLive";
 import { ClientWorkspaces } from "../../../../src/services/clients/ClientWorkspaces";
@@ -23,6 +26,8 @@ const native = vi.hoisted(() => ({
   confirm: vi.fn(async () => ({ response: 0 })),
   flushes: 0,
   fromId: vi.fn(() => undefined as unknown),
+  fromWebContents: vi.fn(() => undefined as unknown),
+  popup: vi.fn<(options: PopupOptions) => void>(),
   decodeImage: vi.fn(),
   writeImage: vi.fn(),
 }));
@@ -39,6 +44,9 @@ vi.mock("electron", () => ({
     }
     static getFocusedWindow() {
       return undefined;
+    }
+    static fromWebContents() {
+      return native.fromWebContents();
     }
     isMinimized() {
       return true;
@@ -75,7 +83,7 @@ vi.mock("electron", () => ({
   Menu: {
     buildFromTemplate: (template: MenuItemConstructorOptions[]) => {
       native.template = template;
-      return {};
+      return { popup: native.popup };
     },
     setApplicationMenu: () => {},
   },
@@ -101,11 +109,47 @@ const live = makeElectronLive({
 afterEach(() => {
   vi.unstubAllEnvs();
   native.fromId.mockReset();
+  native.fromWebContents.mockReset();
+  native.popup.mockReset();
   native.decodeImage.mockReset();
   native.writeImage.mockReset();
 });
 
 describe("ElectronLive client state", () => {
+  it.effect.each(["select", "dismiss"] as const)(
+    "native Project menu %s returns a validated automation action or dismissal",
+    (choice) =>
+      Effect.gen(function* () {
+        const context = yield* Layer.build(live);
+        const electron = Context.get(context, Electron);
+        const connectionId = Context.get(context, ClientConnections).desktop(42);
+        const owner = { id: 1 };
+        native.fromId.mockReturnValue({ id: 42, isDestroyed: () => false });
+        native.fromWebContents.mockReturnValue(owner);
+        native.popup.mockImplementation(({ callback }) => {
+          const item = native.template.find((entry) => entry.label === "New Automation…");
+          if (!item?.click) throw new Error("Missing native New Automation action");
+          if (choice === "select") Reflect.apply(item.click, undefined, []);
+          callback?.();
+        });
+        const result = yield* electron.showProjectContextMenu(connectionId, {
+          path: "/project",
+          x: 24,
+          y: 48,
+          sessionSort: "date",
+          resolvedWorktreeCount: 0,
+        });
+        expect(result.action).toBe(choice === "select" ? "new-automation" : undefined);
+        expect(native.popup).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ window: owner, x: 24, y: 48 }),
+        );
+        expect(
+          yield* Schema.decodeUnknownEffect(cakeRpcSuccessSchemas["show-project-context-menu"])(
+            result,
+          ),
+        ).toEqual(result);
+      }),
+  );
   it.effect("copies decoded pixels and reports native failures without writing empty images", () =>
     Effect.gen(function* () {
       const context = yield* Layer.build(live);

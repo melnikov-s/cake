@@ -808,6 +808,7 @@ const cakeRpcResultSchemas = {
   "project-context-menu-closed": Schema.Struct({
     action: Schema.optional(
       Schema.Literals([
+        "new-automation",
         "settings",
         "sort-by-date",
         "sort-by-label",
