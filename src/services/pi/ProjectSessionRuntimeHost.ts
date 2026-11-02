@@ -39,8 +39,14 @@ export class ProjectSessionRuntimeHostError extends Schema.TaggedError<ProjectSe
   { operation: Schema.String, message: Schema.String },
 ) {}
 
+export interface PreparedProjectSessionRuntime {
+  readonly integrations: ProjectSessionRuntimeIntegrations;
+  readonly initialize: Effect.Effect<void, ProjectSessionRuntimeHostError>;
+  readonly release: Effect.Effect<void, ProjectSessionRuntimeHostError>;
+}
+
 /**
- * Scoped Cake UI/artifact integrations attached to authoritative Pi Session runtimes.
+ * Prepares instance-owned integrations; only actual Pi runtime construction activates them.
  */
 export class ProjectSessionRuntimeHost extends Context.Service<
   ProjectSessionRuntimeHost,
@@ -48,12 +54,9 @@ export class ProjectSessionRuntimeHost extends Context.Service<
     readonly stopWorkingDirectory: (
       workingDirectory: string,
     ) => Effect.Effect<void, ProjectSessionRuntimeHostError>;
-    readonly runtimeIntegrations: (
+    readonly prepare: (
       workingDirectory: string,
       sessionId: string,
-    ) => Effect.Effect<ProjectSessionRuntimeIntegrations, ProjectSessionRuntimeHostError>;
-    readonly releaseSession: (
-      sessionId: string,
-    ) => Effect.Effect<void, ProjectSessionRuntimeHostError>;
+    ) => Effect.Effect<PreparedProjectSessionRuntime, ProjectSessionRuntimeHostError>;
   }
 >()("cake/services/pi/ProjectSessionRuntimeHost") {}

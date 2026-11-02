@@ -47,6 +47,7 @@ function fixture(runtimeOverrides: Partial<CakeSessionRuntimes["Service"]> = {})
   const completionTimeouts: Array<number | undefined> = [];
   const removed: string[] = [];
   const changes: SessionCatalogChange[] = [];
+  const catalogReads: string[] = [];
   const summary = (id: string) => ({
     id,
     path: `/cake/global/${id}.jsonl`,
@@ -94,7 +95,10 @@ function fixture(runtimeOverrides: Partial<CakeSessionRuntimes["Service"]> = {})
     }),
     Layer.mock(CakeSessionRuntimes, {
       catalogEntry: (_, id) =>
-        Effect.succeed(id === CAKE_CHAT_SESSION_ID ? summary(id) : undefined),
+        Effect.sync(() => {
+          catalogReads.push(id);
+          return id === CAKE_CHAT_SESSION_ID ? summary(id) : undefined;
+        }),
       catalog: () =>
         Stream.fromIterable(
           [summary(CAKE_CHAT_SESSION_ID)].filter((item) => !removed.includes(item.id)),
@@ -109,6 +113,7 @@ function fixture(runtimeOverrides: Partial<CakeSessionRuntimes["Service"]> = {})
     layer,
     completions,
     completionTimeouts,
+    catalogReads,
     removed,
     state: () => state,
     changes,
@@ -119,6 +124,41 @@ function fixture(runtimeOverrides: Partial<CakeSessionRuntimes["Service"]> = {})
 }
 
 describe("permanent Cake Chat", () => {
+  it.effect("looks up only the exact registered chat metadata before its first turn", () => {
+    const f = fixture();
+    f.setState({
+      ...defaultApplicationState(),
+      projects: ["/new-project", "/other-project"].map((path) => ({
+        path,
+        name: path.slice(1),
+        addedAt: "2026-01-01T00:00:00.000Z",
+        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+      })),
+    });
+    const sessionId = chatLocations.projectChatSessionId("/new-project");
+    return Effect.gen(function* () {
+      expect(yield* metadata.lookup(sessionId, location)).toEqual({
+        sessionId,
+        projectPath: "/new-project",
+        title: "new-project",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        modifiedAt: "2026-01-01T00:00:00.000Z",
+        messageCount: 0,
+        resolved: false,
+        unread: false,
+      });
+      expect(f.catalogReads).toEqual([sessionId]);
+      const error = yield* metadata
+        .lookup(chatLocations.projectChatSessionId("/unregistered"), location)
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({
+        _tag: "CakeChatError",
+        operation: "lookup",
+        message: "Cake could not find that registered chat.",
+      });
+      expect(f.catalogReads).toEqual([sessionId]);
+    }).pipe(Effect.provide(f.layer));
+  });
   it.effect(
     "publishes cold Project Chat history before acquiring any runtime, using the owning project identity",
     () => {

@@ -535,22 +535,25 @@ const makeLayer = (
       isAllowed: () => Effect.succeed(true),
     }),
     Layer.mock(ProjectSessionRuntimeHost, {
-      runtimeIntegrations: () =>
+      prepare: () =>
         Effect.sync(() => {
           return {
-            requestUi: async () => undefined,
-            requestApplicationControl: async () => ({ ok: true }),
-            emitExtensionUiIntent: () => undefined,
-            persistArtifact: async () => {
-              throw new Error("Unexpected artifact persistence");
+            integrations: {
+              requestUi: async () => undefined,
+              requestApplicationControl: async () => ({ ok: true }),
+              emitExtensionUiIntent: () => undefined,
+              persistArtifact: async () => {
+                throw new Error("Unexpected artifact persistence");
+              },
+              requestInterview: async () => undefined,
+              generateInlineWidget: async () => {
+                throw new Error("Unexpected widget generation");
+              },
             },
-            requestInterview: async () => undefined,
-            generateInlineWidget: async () => {
-              throw new Error("Unexpected widget generation");
-            },
+            initialize: Effect.void,
+            release: Effect.void,
           };
         }),
-      releaseSession: () => Effect.void,
     }),
     Layer.mock(PiModels, {}),
     Layer.mock(Electron, {

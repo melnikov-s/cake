@@ -43,7 +43,9 @@ const expectChat = async (name: string) =>
 const openSettings = async (fixture: ReturnType<typeof renderAppShellNavigation>) => {
   const settingsButton = screen.queryAllByRole("button", { name: "Open settings" })[0];
   if (settingsButton) await fixture.user.click(settingsButton);
-  await fixture.user.click(screen.getByRole("button", { name: /^Agent Behavior and content$/ }));
+  await fixture.user.click(
+    await screen.findByRole("button", { name: /^Agent Behavior and content$/ }),
+  );
   return screen.getByRole("switch", { name: "Allow agent session navigation" });
 };
 
@@ -140,6 +142,82 @@ describe("Agent session navigation workflow", () => {
       expect(lookup).not.toHaveBeenCalled();
     },
   );
+
+  it("opens a registered Project Chat before its passive catalog projection arrives", async () => {
+    const sessionId = `project-chat:${"c".repeat(64)}`;
+    const summary = {
+      sessionId,
+      projectPath: "/alpha",
+      title: "New registered chat",
+      createdAt: new Date(0).toISOString(),
+      modifiedAt: new Date(0).toISOString(),
+      messageCount: 0,
+      resolved: false,
+      unread: false,
+    };
+    const lookup = vi.fn(async () => summary);
+    const open = vi.fn<Client["cakeChats"]["open"]>(async () => undefined);
+    const respondControl = vi.fn<Client["projectSessions"]["respondControl"]>(
+      async () => undefined,
+    );
+    using fixture = renderAppShellNavigation({
+      cakeChats: { lookup, open },
+      projectSessions: { respondControl },
+    });
+    await fixture.user.click(sessionButton("alpha"));
+    await expectChat("alpha");
+    expect(fixture.models.cakeChatCatalog.find(sessionId)).toBeUndefined();
+    open.mockClear();
+    await requestOpen(fixture, { sessionId });
+    expect(respondControl).toHaveBeenLastCalledWith(
+      "alpha",
+      expect.any(String),
+      { ok: true, command: "sessions.open", opened: { sessionId, workspacePath: "/alpha" } },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(
+      document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+    ).toBe(sessionId);
+    expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeDefined();
+    expect(lookup).toHaveBeenCalledExactlyOnceWith(
+      { sessionId },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(open).toHaveBeenCalledOnce();
+    expect(fixture.models.cakeChatCatalog.find(sessionId)?.projectPath).toBe("/alpha");
+  });
+
+  it("does not navigate to an unregistered canonical Project Chat missing from the projection", async () => {
+    const sessionId = `project-chat:${"d".repeat(64)}`;
+    const lookup = vi.fn(async () => {
+      throw new Error("Project Chat belongs to no registered project");
+    });
+    const open = vi.fn<Client["cakeChats"]["open"]>(async () => undefined);
+    const respondControl = vi.fn<Client["projectSessions"]["respondControl"]>(
+      async () => undefined,
+    );
+    using fixture = renderAppShellNavigation({
+      cakeChats: { lookup, open },
+      projectSessions: { respondControl },
+    });
+    await fixture.user.click(sessionButton("alpha"));
+    await expectChat("alpha");
+    open.mockClear();
+    await requestOpen(fixture, { sessionId });
+    expect(respondControl).toHaveBeenLastCalledWith(
+      "alpha",
+      expect.any(String),
+      {
+        ok: false,
+        command: "sessions.open",
+        error: "Project Chat belongs to no registered project",
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    await expectChat("alpha");
+    expect(open).not.toHaveBeenCalled();
+    expect(fixture.models.cakeChatCatalog.find(sessionId)).toBeUndefined();
+  });
 
   it("requests Project Chat focus on navigation, not on delayed open completion", async () => {
     const sessionId = `project-chat:${"a".repeat(64)}`;

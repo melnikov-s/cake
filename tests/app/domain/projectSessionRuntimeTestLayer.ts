@@ -48,8 +48,8 @@ export const makeHeadlessProjectSessionRuntimeMechanismTestLayer = (
       isAllowed: () => Effect.succeed(true),
     }),
     Layer.mock(ProjectSessionRuntimeHost, {
-      runtimeIntegrations: () => Effect.succeed(integrations),
-      releaseSession: () => Effect.void,
+      prepare: () =>
+        Effect.succeed({ integrations, initialize: Effect.void, release: Effect.void }),
     }),
     Layer.mock(PiModels, {}),
     Layer.mock(RendererRequestCoordinator, { presentAgentAction: () => Effect.void }),

@@ -995,6 +995,116 @@ describe("CakeSessionRuntimes", () => {
     }),
   );
 
+  it.effect("initializes only actual runtime candidates, not unused cache-hit options", () =>
+    Effect.gen(function* () {
+      const acquisitions = yield* Ref.make(0);
+      const finalizations = yield* Ref.make(0);
+      const initialized = yield* Ref.make<string[]>([]);
+      const released = yield* Ref.make<string[]>([]);
+      const seenAtCreation: string[][] = [];
+      const base = adapter(acquisitions, finalizations);
+      const context = yield* Layer.build(
+        makeCakeSessionRuntimesLayer({
+          ...base,
+          createRuntime: (runtimeOptions) =>
+            Ref.get(initialized).pipe(
+              Effect.tap((names) =>
+                Effect.sync(() => {
+                  seenAtCreation.push([...names]);
+                }),
+              ),
+              Effect.andThen(base.createRuntime(runtimeOptions)),
+            ),
+        }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+      );
+      const sessions = Context.get(context, CakeSessionRuntimes);
+      const candidate = (name: string): CakeSessionRuntimeAcquireOptions => ({
+        ...options(),
+        onInitialize: Ref.update(initialized, (names) => [...names, name]),
+        onRelease: Ref.update(released, (names) => [...names, name]),
+      });
+      const first = candidate("first");
+      const firstScope = yield* Scope.make();
+      yield* sessions.acquire(first).pipe(Scope.provide(firstScope));
+      const replacement = candidate("replacement");
+      const unused = candidate("unused");
+      const cacheScope = yield* Scope.make();
+      yield* sessions.acquire(unused).pipe(Scope.provide(cacheScope));
+      assert.deepEqual(yield* Ref.get(initialized), ["first"]);
+      yield* Scope.close(cacheScope, Exit.void);
+      assert.deepEqual(yield* Ref.get(released), []);
+      yield* Scope.close(firstScope, Exit.void);
+      assert.deepEqual(yield* Ref.get(released), ["first"]);
+      const replacementScope = yield* Scope.make();
+      yield* sessions.acquire(replacement).pipe(Scope.provide(replacementScope));
+      assert.deepEqual(seenAtCreation, [["first"], ["first", "replacement"]]);
+      yield* Scope.close(replacementScope, Exit.void);
+      assert.deepEqual(yield* Ref.get(released), ["first", "replacement"]);
+      assert.equal(yield* Ref.get(acquisitions), 2);
+    }),
+  );
+
+  it.effect(
+    "returns a typed acquisition error and releases the candidate when initialization fails",
+    () =>
+      Effect.gen(function* () {
+        const acquisitions = yield* Ref.make(0);
+        const finalizations = yield* Ref.make(0);
+        const released = yield* Ref.make(0);
+        const context = yield* Layer.build(
+          makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)).pipe(
+            Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
+          ),
+        );
+        const sessions = Context.get(context, CakeSessionRuntimes);
+        const owner = yield* Scope.make();
+        const error = yield* sessions
+          .acquire({
+            ...options(),
+            onInitialize: Effect.fail(new Error("initializer failed")),
+            onRelease: Ref.update(released, (count) => count + 1),
+          })
+          .pipe(Scope.provide(owner), Effect.flip);
+        assert.equal(error._tag, "PiSessionError");
+        assert.equal(error.operation, "acquire");
+        assert.equal(error.message, "initializer failed");
+        assert.equal(yield* Ref.get(acquisitions), 0);
+        assert.equal(yield* Ref.get(finalizations), 0);
+        assert.equal(yield* Ref.get(released), 1);
+        yield* Scope.close(owner, Exit.void);
+        assert.equal(yield* Ref.get(released), 1);
+      }),
+  );
+
+  it.effect("releases initialized integrations once when runtime construction fails", () =>
+    Effect.gen(function* () {
+      const acquisitions = yield* Ref.make(0);
+      const finalizations = yield* Ref.make(0);
+      const initialized = yield* Ref.make(0);
+      const released = yield* Ref.make(0);
+      const context = yield* Layer.build(
+        makeCakeSessionRuntimesLayer({
+          ...adapter(acquisitions, finalizations),
+          createRuntime: () => Effect.fail(new Error("constructor failed")),
+        }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+      );
+      const sessions = Context.get(context, CakeSessionRuntimes);
+      const owner = yield* Scope.make();
+      const result = yield* sessions
+        .acquire({
+          ...options(),
+          onInitialize: Ref.update(initialized, (count) => count + 1),
+          onRelease: Ref.update(released, (count) => count + 1),
+        })
+        .pipe(Scope.provide(owner), Effect.exit);
+      assert.ok(Exit.isFailure(result));
+      assert.equal(yield* Ref.get(initialized), 1);
+      assert.equal(yield* Ref.get(released), 1);
+      yield* Scope.close(owner, Exit.void);
+      assert.equal(yield* Ref.get(released), 1);
+    }),
+  );
+
   it.effect("acquires the current runtime without reconstructing its options", () =>
     Effect.gen(function* () {
       const acquisitions = yield* Ref.make(0);

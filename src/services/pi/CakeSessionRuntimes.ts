@@ -141,7 +141,9 @@ export interface CakeSessionRuntimeAcquireOptions {
     CakeSessionRuntimeSetup,
     "onEvent" | "onTurnResult" | "onInitialTranscriptPersisted"
   >;
-  /** Finalizes Cake-owned integrations when the final shared runtime lease is released. */
+  /** Activates this candidate only when constructing the shared runtime, never on a cache hit. */
+  readonly onInitialize?: Effect.Effect<void, unknown>;
+  /** Finalizes this candidate on construction failure or after the final shared runtime lease. */
   readonly onRelease?: Effect.Effect<void, unknown>;
   readonly admitTurn?: (
     input: {
@@ -608,6 +610,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         lookup: (key: RuntimeKey) =>
           Effect.acquireRelease(
             Effect.gen(function* () {
+              yield* key.options.onInitialize ?? Effect.void;
               const events = yield* PubSub.unbounded<PiSessionEvent>();
               const activityEvents = yield* PubSub.subscribe(events);
               yield* Stream.fromSubscription(activityEvents).pipe(
@@ -701,7 +704,17 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 key.options,
               );
               return shared;
-            }),
+            }).pipe(
+              Effect.onExit((exit) =>
+                Exit.isFailure(exit)
+                  ? shutdownDiagnostics.effect(
+                      "runtime.onRelease",
+                      shutdownResource(key.options.runtime.sessionId ?? runtimeTarget(key.options)),
+                      (key.options.onRelease ?? Effect.void).pipe(Effect.orDie),
+                    )
+                  : Effect.void,
+              ),
+            ),
             (shared) =>
               Effect.tryPromise({
                 try: async () => {
@@ -1913,11 +1926,13 @@ export const makeCakeSessionRuntimesLive = (
                     ),
                   catch: (cause) => cause,
                 }),
+        // Side chats inherit coordinator controls without becoming the coordinator.
+        // Their canonical conversation identity chooses the engine before capabilities.
         createRuntime: (options) =>
-          options.globalControl
-            ? durable.createRuntime(options)
-            : cakeChatSideChatConversationId(options.sessionId) !== undefined
-              ? durable.createSideChatRuntime(options)
+          cakeChatSideChatConversationId(options.sessionId) !== undefined
+            ? durable.createSideChatRuntime(options)
+            : options.globalControl
+              ? durable.createRuntime(options)
               : Effect.tryPromise({
                   try: () => createRuntime(options),
                   catch: (cause) => cause,

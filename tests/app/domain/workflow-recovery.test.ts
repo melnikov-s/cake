@@ -239,7 +239,7 @@ describe("Backend workflow checkpoint recovery", () => {
           }).pipe(
             Effect.provideService(ProjectSessionRuntimeHost, {
               ...host,
-              runtimeIntegrations: () =>
+              prepare: () =>
                 Deferred.succeed(reached, undefined).pipe(Effect.andThen(Effect.never)),
             }),
           );

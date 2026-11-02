@@ -108,7 +108,9 @@ test("permanent Cake Chat retains its input, history and settings across restart
               reasoning: false,
               input: ["text"],
               cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-              contextWindow: 200_000,
+              // Admit startup, but make the long reply require a memory rebuild
+              // before another request, rather than merely deferring idle work.
+              contextWindow: 16_000,
               maxTokens: 4_096,
             },
           ],
@@ -452,6 +454,8 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
     await input.fill("Stop while waiting for memory");
     await page.getByRole("button", { name: "Send", exact: true }).click();
+    // The original input commits before preparation. A replacement pi.reset
+    // is deliberately not published until its complete memory view is ready.
     await expect
       .poll(async () => {
         const storage = await openNodeSqliteStorage(database);
@@ -462,7 +466,7 @@ test("permanent Cake Chat retains its input, history and settings across restart
             undefined,
             BACKGROUND_CONTEXT,
           );
-          return JSON.stringify(page.items.find((entry) => entry.kind === "pi.reset")?.model);
+          return JSON.stringify(page.items.find((entry) => entry.kind === "pi.user")?.model);
         } finally {
           await storage.close(BACKGROUND_CONTEXT);
         }

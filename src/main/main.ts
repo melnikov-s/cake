@@ -197,7 +197,7 @@ function startMain() {
           Effect.gen(function* () {
             const host = yield* Effect.serviceOption(ProjectSessionRuntimeHost);
             if (host._tag === "None") return yield* Effect.die("Local-only smoke hook");
-            const integration = yield* host.value.runtimeIntegrations(
+            const { integrations: integration } = yield* host.value.prepare(
               input.workingDirectory,
               input.sessionId,
             );
@@ -348,7 +348,7 @@ function startMain() {
                   : Effect.die("Local-only smoke hook"),
               ),
             );
-            const integration = yield* host.runtimeIntegrations(
+            const { integrations: integration } = yield* host.prepare(
               input.workingDirectory,
               input.sessionId,
             );
@@ -483,7 +483,7 @@ function startMain() {
                   : Effect.die("Local-only smoke hook"),
               ),
             );
-            const integration = yield* host.runtimeIntegrations(
+            const { integrations: integration } = yield* host.prepare(
               input.workingDirectory,
               input.sessionId,
             );

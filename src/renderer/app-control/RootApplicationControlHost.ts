@@ -231,6 +231,7 @@ export function createRootApplicationControlHost(
     },
     sessions: {
       lookup: (sessionId) => capabilities.sessionCatalogStore.lookup(sessionId),
+      lookupChat: (sessionId) => capabilities.cakeChatCollectionStore.lookup(sessionId),
       navigationEnabled: () => capabilities.settingsStore.agentNavigation.enabled,
       open: (sessionId, messageId) =>
         capabilities.navigationStore.openSession(sessionId, messageId),

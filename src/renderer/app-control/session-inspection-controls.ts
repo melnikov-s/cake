@@ -17,20 +17,18 @@ export const sessionInspectionControls = [
       ]);
       if (!resolved.ok) return { ok: false, command, error: resolved.error };
       const chatTarget = isCakeChatSessionId(resolved.sessionId);
-      const chat = chats.find((session) => session.sessionId === resolved.sessionId);
-      if (chatTarget && !chat)
-        return { ok: false, command, error: "Cake could not find that registered chat." };
+      let chat = chats.find((session) => session.sessionId === resolved.sessionId);
       let known = chatTarget ? undefined : knownSession(host, resolved.sessionId);
-      if (!chatTarget && !known?.draft) {
-        try {
+      try {
+        if (chatTarget && !chat) chat = await host.sessions.lookupChat(resolved.sessionId);
+        else if (!chatTarget && !known?.draft)
           known = await host.sessions.lookup(resolved.sessionId);
-        } catch (error) {
-          return {
-            ok: false,
-            command,
-            error: error instanceof Error ? error.message : String(error),
-          };
-        }
+      } catch (error) {
+        return {
+          ok: false,
+          command,
+          error: error instanceof Error ? error.message : String(error),
+        };
       }
       if (!chatTarget && !known)
         return { ok: false, command, error: "Cake could not find that session." };

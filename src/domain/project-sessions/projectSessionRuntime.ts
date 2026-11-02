@@ -199,9 +199,10 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   yield* access
     .rememberSessionLocation(location.workingDirectory, sessionId)
     .pipe(Effect.mapError((cause) => compositionError("acquireOptions", cause)));
-  const runtimeIntegrations = yield* runtimeHost
-    .runtimeIntegrations(location.workingDirectory, sessionId)
-    .pipe(Effect.mapError((cause) => compositionError("runtimeIntegrations", cause)));
+  const preparedRuntime = yield* runtimeHost
+    .prepare(location.workingDirectory, sessionId)
+    .pipe(Effect.mapError((cause) => compositionError("prepareRuntime", cause)));
+  const runtimeIntegrations = preparedRuntime.integrations;
   const family = yield* families
     .familyForMember(sessionId)
     .pipe(Effect.mapError((cause) => compositionError("acquireOptions", cause)));
@@ -331,7 +332,8 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   );
   const runtimeOptions: CakeSessionRuntimeAcquireOptions = {
     profile: { _tag: "ProjectSession" },
-    onRelease: runtimeHost.releaseSession(sessionId),
+    onInitialize: preparedRuntime.initialize,
+    onRelease: preparedRuntime.release,
     onSessionChanged: catalogs.publish({
       _tag: "ProjectSessionChanged",
       sessionId,

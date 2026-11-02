@@ -55,7 +55,10 @@ export const setUnread = Effect.fn("CakeChats.setUnread")(function* (
 });
 
 /** Discovery never opens Harnesses. Unstarted project chats have an address but no database. */
-export const catalog = Effect.fn("CakeChats.catalog")(function* (location: CakeChatLocation) {
+export const catalog = Effect.fn("CakeChats.catalog")(function* (
+  location: CakeChatLocation,
+  sessionId?: string,
+) {
   const application = yield* ApplicationState;
   const sessions = yield* CakeSessionRuntimes;
   const state = application.snapshot();
@@ -77,6 +80,7 @@ export const catalog = Effect.fn("CakeChats.catalog")(function* (location: CakeC
   ];
   const summaries: CakeChatSummary[] = [];
   for (const scope of scopes) {
+    if (sessionId !== undefined && scope.sessionId !== sessionId) continue;
     const item = yield* sessions
       .catalogEntry(queryFor(scope.location, scope.sessionId), scope.sessionId)
       .pipe(asError("catalog"));
@@ -95,6 +99,20 @@ export const catalog = Effect.fn("CakeChats.catalog")(function* (location: CakeC
     });
   }
   return summaries;
+});
+
+/** Exact metadata lookup also covers a registered Project Chat before its first turn. */
+export const lookup = Effect.fn("CakeChats.lookup")(function* (
+  sessionId: string,
+  location: CakeChatLocation,
+) {
+  const summary = (yield* catalog(location, sessionId))[0];
+  if (!summary)
+    return yield* new CakeChatError({
+      operation: "lookup",
+      message: "Cake could not find that registered chat.",
+    });
+  return summary;
 });
 
 export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (

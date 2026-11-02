@@ -275,12 +275,12 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
         },
       };
       return ProjectSessionRuntimeHost.of({
-        runtimeIntegrations: (_workingDirectory, sessionId) =>
-          requests
-            .registerProjectSession(sessionId, projectPath)
-            .pipe(Effect.orDie, Effect.as(integrations)),
-        releaseSession: (sessionId) =>
-          requests.releaseSession({ _tag: "ProjectSession", sessionId }),
+        prepare: (_workingDirectory, sessionId) =>
+          Effect.succeed({
+            integrations,
+            initialize: requests.registerProjectSession(sessionId, projectPath).pipe(Effect.orDie),
+            release: requests.releaseSession({ _tag: "ProjectSession", sessionId }),
+          }),
         stopWorkingDirectory: () => Effect.void,
       });
     }),

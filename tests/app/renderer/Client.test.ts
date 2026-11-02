@@ -79,6 +79,67 @@ describe("Client transport and device integration", () => {
     expect(uncertain).not.toHaveBeenCalled();
   });
 
+  it("allows registered chat metadata lookup while remote mutation delivery is blocked", async () => {
+    const sessionId = `project-chat:${"c".repeat(64)}`;
+    const summary = {
+      sessionId,
+      projectPath: "/new-project",
+      title: "New project",
+      createdAt: new Date(0).toISOString(),
+      modifiedAt: new Date(0).toISOString(),
+      messageCount: 0,
+      resolved: false,
+      unread: false,
+    };
+    await using transport = commandClientFinishTransport(() => ({
+      _tag: "Success",
+      value: summary,
+    }));
+    const uncertain = vi.fn();
+    const client = makeClient(transport.runtime, {
+      kind: "remote",
+      connected: () => true,
+      blocked: () => true,
+      uncertain,
+    });
+    await expect(client.cakeChats.lookup({ sessionId })).resolves.toEqual(summary);
+    await expect(client.projectSessions.resolve({ sessionId: "session" })).rejects.toBeInstanceOf(
+      ClientError,
+    );
+    expect(transport.requests()).toEqual([
+      expect.objectContaining({ tag: "cakeChats.lookup", payload: { sessionId } }),
+    ]);
+    expect(uncertain).not.toHaveBeenCalled();
+  });
+
+  it("retains unregistered chat lookup failure without remote delivery uncertainty", async () => {
+    const failure = {
+      _tag: "CakeChatError",
+      operation: "lookup",
+      message: "Cake could not find that registered chat.",
+    };
+    await using transport = commandClientFinishTransport(() => ({
+      _tag: "Failure",
+      cause: [{ _tag: "Fail", error: failure }],
+    }));
+    const uncertain = vi.fn();
+    const client = makeClient(transport.runtime, {
+      kind: "remote",
+      connected: () => true,
+      blocked: () => true,
+      uncertain,
+    });
+    await expect(
+      client.cakeChats.lookup({ sessionId: `project-chat:${"d".repeat(64)}` }),
+    ).rejects.toMatchObject({
+      kind: "rejected",
+      operation: "cakeChats.lookup",
+      message: failure.message,
+    });
+    expect(transport.requests().map(({ tag }) => tag)).toEqual(["cakeChats.lookup"]);
+    expect(uncertain).not.toHaveBeenCalled();
+  });
+
   it.each([
     {
       _tag: "ResolutionRejected",

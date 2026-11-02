@@ -41,6 +41,8 @@ export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration
     "cakeChats.requestInspection": (input) => requestInspection.inspect(input),
     "cakeChats.observeCatalog": (query) =>
       Stream.unwrap(cakeChatMetadata.observeCatalog(query, configuration.location)),
+    "cakeChats.lookup": ({ sessionId }) =>
+      cakeChatMetadata.lookup(sessionId, configuration.location),
     "cakeChats.inspect": ({ sessionId }) =>
       cakeChatMetadata.inspect(sessionId, configuration.location),
     "cakeChats.open": (target) =>

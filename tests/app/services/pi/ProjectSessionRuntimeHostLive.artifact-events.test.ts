@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
-import { Effect, Layer, ManagedRuntime, Schema } from "effect";
+import { Context, Effect, Exit, Layer, ManagedRuntime, Schema, Scope, Stream } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as artifactWorkflows from "../../../../src/domain/artifacts/artifactWorkflows";
 import { ArtifactLineageId } from "../../../../src/contracts/artifacts/artifact-lineage";
@@ -14,7 +14,21 @@ import { createCakeArtifactOperations } from "../../../../src/domain/artifacts/c
 import { makeArtifactProjectionLive } from "../../../../src/services/artifacts/ArtifactProjectionLive";
 import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
 import { PiModels } from "../../../../src/services/pi/PiModels";
-import type { ProjectSessionRuntimeIntegrations } from "../../../../src/services/pi/ProjectSessionRuntimeHost";
+import type {
+  PreparedProjectSessionRuntime,
+  ProjectSessionRuntimeIntegrations,
+} from "../../../../src/services/pi/ProjectSessionRuntimeHost";
+import {
+  CakeSessionRuntimes,
+  makeCakeSessionRuntimesLayer,
+  type CakeSessionRuntimeAcquireOptions,
+} from "../../../../src/services/pi/CakeSessionRuntimes";
+import type { CakeSessionRuntimeOptions } from "../../../../src/services/pi/runtime/cake-session-runtime";
+import {
+  fakeRuntime,
+  makeRuntimeRecoveryStorageTestLayer,
+  options,
+} from "../../helpers/piRuntimeFixture";
 import { ProjectSessionRuntimeHost } from "../../../../src/services/pi/ProjectSessionRuntimeHost";
 import { makeProjectSessionRuntimeHostLive } from "../../../../src/layers/ProjectSessionRuntimeHostLive";
 import { RendererRequestCoordinator } from "../../../../src/services/renderer-requests/RendererRequestCoordinator";
@@ -73,6 +87,8 @@ const makeHarness = async (capture?: RenderedWidgetCapture["Service"]["capture"]
   const root = await mkdtemp(join(tmpdir(), "cake-session-runtime-artifact-events-"));
   roots.push(root);
   const events: CakeEvent[] = [];
+  const registrations: string[] = [];
+  const releases: string[] = [];
   const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
   const dependencies = Layer.mergeAll(
     makeArtifactStorageLive(join(root, "artifacts")).pipe(Layer.provide(platform)),
@@ -90,8 +106,14 @@ const makeHarness = async (capture?: RenderedWidgetCapture["Service"]["capture"]
       },
     }),
     Layer.mock(RendererRequestCoordinator, {
-      registerProjectSession: () => Effect.void,
-      releaseSession: () => Effect.void,
+      registerProjectSession: (sessionId) =>
+        Effect.sync(() => {
+          registrations.push(sessionId);
+        }),
+      releaseSession: (target) =>
+        Effect.sync(() => {
+          releases.push(target.sessionId);
+        }),
       releaseWorkingDirectory: () => Effect.void,
     }),
     Layer.mock(PiModels, {}),
@@ -127,7 +149,7 @@ const makeHarness = async (capture?: RenderedWidgetCapture["Service"]["capture"]
       host: ProjectSessionRuntimeHost,
     }),
   );
-  return { ...services, events, root, runtime };
+  return { ...services, events, registrations, releases, root, runtime };
 };
 
 const requireArtifactOperations = (integration: ProjectSessionRuntimeIntegrations) => {
@@ -151,6 +173,107 @@ const effectiveLineageIds = (
   );
 
 describe("ProjectSessionRuntimeHostLive artifact events", () => {
+  it("keeps a prepared replacement alive after the previous shared runtime releases its own host", async () => {
+    const { host, root, runtime, events, registrations } = await makeHarness();
+    await runtime.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const callbacks: Array<NonNullable<CakeSessionRuntimeOptions["emitExtensionUiIntent"]>> =
+            [];
+          const context = yield* Layer.build(
+            makeCakeSessionRuntimesLayer({
+              sessionIds: () => Stream.empty,
+              catalog: () => Stream.empty,
+              catalogEntry: () => Effect.succeed(undefined),
+              inspect: () => Effect.succeed(undefined),
+              changelog: () => Effect.succeed(""),
+              createRuntime: (runtimeOptions) =>
+                Effect.sync(() => {
+                  if (!runtimeOptions.emitExtensionUiIntent)
+                    throw new Error("Missing runtime intent callback");
+                  callbacks.push(runtimeOptions.emitExtensionUiIntent);
+                  return fakeRuntime(runtimeOptions, () => undefined);
+                }),
+            }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+          );
+          const runtimes = Context.get(context, CakeSessionRuntimes);
+          const acquireOptions = (
+            prepared: PreparedProjectSessionRuntime,
+          ): CakeSessionRuntimeAcquireOptions => ({
+            ...options(),
+            runtime: {
+              ...options().runtime,
+              emitExtensionUiIntent: prepared.integrations.emitExtensionUiIntent,
+            },
+            onInitialize: prepared.initialize,
+            onRelease: prepared.release,
+          });
+          const first = yield* host.prepare(root, "session-1");
+          const owner = yield* Scope.make();
+          yield* runtimes.acquire(acquireOptions(first)).pipe(Scope.provide(owner));
+          const replacement = yield* host.prepare(root, "session-1");
+          const unused = yield* host.prepare(root, "session-1");
+          const cacheHit = yield* Scope.make();
+          yield* runtimes.acquire(acquireOptions(unused)).pipe(Scope.provide(cacheHit));
+          expect(registrations).toEqual(["session-1"]);
+          yield* Scope.close(cacheHit, Exit.void);
+          yield* Scope.close(owner, Exit.void);
+          const nextOwner = yield* Scope.make();
+          yield* runtimes.acquire(acquireOptions(replacement)).pipe(Scope.provide(nextOwner));
+          expect(registrations).toEqual(["session-1", "session-1"]);
+          expect(callbacks).toHaveLength(2);
+          callbacks[0]!({ kind: "notify", id: "stale", message: "Stale", tone: "info" });
+          callbacks[1]!({ kind: "notify", id: "live", message: "Connected", tone: "info" });
+          callbacks[1]!({ kind: "editor-text", text: "draft", mode: "replace" });
+          expect(
+            events
+              .filter((event) => event.type === "extension-ui-intent")
+              .map((event) => event.intent.kind),
+          ).toEqual(["notify", "editor-text"]);
+          yield* Scope.close(nextOwner, Exit.void);
+          callbacks[1]!({ kind: "notify", id: "closed", message: "Closed", tone: "info" });
+          expect(events).toHaveLength(2);
+        }),
+      ),
+    );
+  });
+
+  it("owns each prepared host independently across replacement and unused candidates", async () => {
+    const { host, root, runtime, events, registrations, releases } = await makeHarness();
+    const first = await runtime.runPromise(host.prepare(root, "native"));
+    const replacement = await runtime.runPromise(host.prepare(root, "native"));
+    const unused = await runtime.runPromise(host.prepare(root, "native"));
+    expect(registrations).toEqual([]);
+    await runtime.runPromise(first.initialize);
+    await runtime.runPromise(replacement.initialize);
+    expect(registrations).toEqual(["native", "native"]);
+    await runtime.runPromise(first.release);
+    await runtime.runPromise(unused.release);
+    expect(releases).toEqual([]);
+    const emitFirst = first.integrations.emitExtensionUiIntent;
+    const emitReplacement = replacement.integrations.emitExtensionUiIntent;
+    if (!emitFirst || !emitReplacement) throw new Error("Missing native extension intent port");
+    emitFirst({ kind: "notify", id: "stale", message: "Stale", tone: "info" });
+    emitReplacement({ kind: "notify", id: "live", message: "Connected", tone: "info" });
+    emitReplacement({ kind: "editor-text", text: "draft", mode: "replace" });
+    expect(events).toEqual([
+      {
+        type: "extension-ui-intent",
+        sessionId: "native",
+        intent: { kind: "notify", id: "live", message: "Connected", tone: "info" },
+      },
+      {
+        type: "extension-ui-intent",
+        sessionId: "native",
+        intent: { kind: "editor-text", text: "draft", mode: "replace" },
+      },
+    ]);
+    await runtime.runPromise(replacement.release);
+    expect(releases).toEqual(["native"]);
+    emitReplacement({ kind: "notify", id: "closed", message: "Closed", tone: "info" });
+    expect(events).toHaveLength(2);
+  });
+
   it("instantiates retained output with independent state, captures new pixels, and reopens without changing source r1", async () => {
     const tokens: string[] = [];
     const capture = vi.fn<RenderedWidgetCapture["Service"]["capture"]>(
@@ -164,7 +287,9 @@ describe("ProjectSessionRuntimeHostLive artifact events", () => {
       },
     );
     const { host, root, runtime } = await makeHarness(capture);
-    const integration = await runtime.runPromise(host.runtimeIntegrations(root, "parent"));
+    const prepared = await runtime.runPromise(host.prepare(root, "parent"));
+    await runtime.runPromise(prepared.initialize);
+    const integration = prepared.integrations;
     const browser = await runtime.runPromise(
       Effect.flatMap(WidgetBrowserOutputs, (outputs) =>
         outputs.retain({
@@ -267,8 +392,10 @@ describe("ProjectSessionRuntimeHostLive artifact events", () => {
       expectedVersion: initial.version,
       edits: [{ op: "set", path: "/title", value: "Edited independent data" }],
     });
-    await runtime.runPromise(host.releaseSession("parent"));
-    const reopened = await runtime.runPromise(host.runtimeIntegrations(root, "parent"));
+    await runtime.runPromise(prepared.release);
+    const reopened = await runtime.runPromise(
+      host.prepare(root, "parent").pipe(Effect.map((prepared) => prepared.integrations)),
+    );
     expect(await reopened.readArtifactState!(input.id)).toMatchObject({
       version: 2,
       value: { title: "Edited independent data" },
@@ -307,7 +434,9 @@ describe("ProjectSessionRuntimeHostLive artifact events", () => {
         context,
       ),
     ).rejects.toThrow("new lineage ID");
-    const independentSession = await runtime.runPromise(host.runtimeIntegrations(root, "unlinked"));
+    const independentSession = await runtime.runPromise(
+      host.prepare(root, "unlinked").pipe(Effect.map((prepared) => prepared.integrations)),
+    );
     const unlinkedRegistry = new CakeOperationRegistry(
       createCakeArtifactOperations(
         { appendEntry },
@@ -358,7 +487,9 @@ describe("ProjectSessionRuntimeHostLive artifact events", () => {
         new RenderedWidgetCaptureError({ kind: "infrastructure", message: "Capture failed" }),
       );
     });
-    const integration = await runtime.runPromise(host.runtimeIntegrations(root, "parent"));
+    const integration = await runtime.runPromise(
+      host.prepare(root, "parent").pipe(Effect.map((prepared) => prepared.integrations)),
+    );
     const browser = await runtime.runPromise(
       Effect.flatMap(WidgetBrowserOutputs, (outputs) =>
         outputs.retain({
@@ -422,8 +553,12 @@ describe("ProjectSessionRuntimeHostLive artifact events", () => {
 
   it("hands off an accepted image and retrieves the pinned revision in an independent session after replacement", async () => {
     const { host, root, runtime } = await makeHarness();
-    const parent = await runtime.runPromise(host.runtimeIntegrations(root, "parent"));
-    const independent = await runtime.runPromise(host.runtimeIntegrations(root, "independent"));
+    const parent = await runtime.runPromise(
+      host.prepare(root, "parent").pipe(Effect.map((prepared) => prepared.integrations)),
+    );
+    const independent = await runtime.runPromise(
+      host.prepare(root, "independent").pipe(Effect.map((prepared) => prepared.integrations)),
+    );
     const makeRegistry = (integration: ProjectSessionRuntimeIntegrations) =>
       new CakeOperationRegistry(
         createCakeArtifactOperations(
@@ -603,7 +738,9 @@ describe("ProjectSessionRuntimeHostLive artifact events", () => {
       }),
     );
     const integration = requireArtifactOperations(
-      await runtime.runPromise(host.runtimeIntegrations(root, "parent")),
+      await runtime.runPromise(
+        host.prepare(root, "parent").pipe(Effect.map((prepared) => prepared.integrations)),
+      ),
     );
 
     await integration.linkArtifact("cake://artifact/shared");
@@ -632,7 +769,9 @@ describe("ProjectSessionRuntimeHostLive artifact events", () => {
   it("keeps create and update on their existing artifact-updated event path", async () => {
     const { host, events, root, runtime } = await makeHarness();
     const integration = requireArtifactOperations(
-      await runtime.runPromise(host.runtimeIntegrations(root, "parent")),
+      await runtime.runPromise(
+        host.prepare(root, "parent").pipe(Effect.map((prepared) => prepared.integrations)),
+      ),
     );
 
     await integration.persistArtifact(markdown("created", "parent", 1, "One"));

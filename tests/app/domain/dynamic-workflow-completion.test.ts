@@ -144,15 +144,15 @@ describe("Workflow completion ownership", () => {
         let fail = true;
         const host = ProjectSessionRuntimeHost.of({
           ...original,
-          runtimeIntegrations: (cwd, id) =>
+          prepare: (cwd, id) =>
             Effect.suspend(() => {
-              if (!fail) return original.runtimeIntegrations(cwd, id);
+              if (!fail) return original.prepare(cwd, id);
               fail = false;
               return Deferred.succeed(failed, undefined).pipe(
                 Effect.andThen(
                   Effect.fail(
                     new ProjectSessionRuntimeHostError({
-                      operation: "runtimeIntegrations",
+                      operation: "prepare",
                       message: "temporary owner acquisition failure",
                     }),
                   ),

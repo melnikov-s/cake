@@ -1,4 +1,5 @@
 import type { Project } from "../models/Project";
+import { applyCakeChatCatalogGroupUpdate } from "../reducers/CatalogReducer";
 import type { CakeChatTodoList } from "../models/CakeChatTodoList";
 import { Store, child, createStore, observable, effect as reactiveEffect } from "r-state-tree";
 import { settledSessionActivity, type SessionActivity } from "../lib/session-activity";
@@ -285,6 +286,22 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       this.resolveInitialization?.();
       this.resolveInitialization = undefined;
     }
+  }
+
+  /** Reconcile an exact identity without waiting for the passive catalog stream. */
+  async lookup(sessionId: string) {
+    const session = await this.client.cakeChats.lookup({ sessionId }, { signal: this.signal });
+    this.signal.throwIfAborted();
+    applyCakeChatCatalogGroupUpdate(
+      this.props.catalog,
+      session.resolved ? { resolved: true, limit: 1 } : { resolved: false },
+      {
+        _tag: "Event",
+        revision: 0,
+        event: { _tag: "Upserted", session },
+      },
+    );
+    return session;
   }
 
   async open(sessionId?: string, isCurrent = () => true) {

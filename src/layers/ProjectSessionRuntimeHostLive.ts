@@ -140,30 +140,25 @@ export const makeProjectSessionRuntimeHostLive = (
       );
       const sessions = new Map<string, SessionIntegration>();
 
-      const disposeHost = (sessionId: string) => {
-        const integration = sessions.get(sessionId);
-        if (!integration) return;
-        sessions.delete(sessionId);
+      const release = Effect.fn("ProjectSessionRuntimeHost.release")(function* (
+        integration: SessionIntegration,
+      ) {
         integration.host[Symbol.dispose]();
-      };
-      const release = Effect.fn("ProjectSessionRuntimeHost.release")(function* (sessionId: string) {
-        disposeHost(sessionId);
-        yield* rendererRequests.releaseSession({ _tag: "ProjectSession", sessionId });
+        if (sessions.get(integration.sessionId) !== integration) return;
+        sessions.delete(integration.sessionId);
+        yield* rendererRequests.releaseSession({
+          _tag: "ProjectSession",
+          sessionId: integration.sessionId,
+        });
       });
       const releaseWorkingDirectory = Effect.fn(
         "ProjectSessionRuntimeHost.releaseWorkingDirectory",
       )(function* (workingDirectory: string) {
         for (const integration of sessions.values())
-          if (integration.workingDirectory === workingDirectory) disposeHost(integration.sessionId);
+          if (integration.workingDirectory === workingDirectory) yield* release(integration);
         yield* rendererRequests.releaseWorkingDirectory(workingDirectory);
       });
-      const acquire = (workingDirectory: string, sessionId: string) => {
-        const existing = sessions.get(sessionId);
-        if (existing) {
-          if (existing.workingDirectory !== workingDirectory)
-            throw new Error(`Session ID collision detected: ${sessionId}`);
-          return existing;
-        }
+      const prepare = (workingDirectory: string, sessionId: string) => {
         const host = new ProjectSessionIntegrationHost({
           workspacePath: workingDirectory,
           agentDir: options.agentDirectory,
@@ -379,79 +374,91 @@ export const makeProjectSessionRuntimeHostLive = (
             reviewContextPath: reviews.reviewContextPath,
           },
         });
-        const integration = { sessionId, workingDirectory, host } satisfies SessionIntegration;
-        sessions.set(sessionId, integration);
-        return integration;
+        return { sessionId, workingDirectory, host } satisfies SessionIntegration;
       };
       yield* Effect.addFinalizer(() =>
-        Effect.forEach([...sessions.keys()], release, { discard: true }),
+        Effect.forEach([...sessions.values()], release, { discard: true }),
       );
 
       return ProjectSessionRuntimeHost.of({
         stopWorkingDirectory: Effect.fn("ProjectSessionRuntimeHost.stopWorkingDirectory")(
           (workingDirectory) => releaseWorkingDirectory(workingDirectory),
         ),
-        runtimeIntegrations: Effect.fn("ProjectSessionRuntimeHost.runtimeIntegrations")(
-          (workingDirectory, sessionId) =>
-            rendererRequests.registerProjectSession(sessionId, workingDirectory).pipe(
-              Effect.andThen(
-                Effect.try({
-                  try: () =>
-                    ({
-                      ...acquire(workingDirectory, sessionId).host.runtimeIntegrations(sessionId),
-                      messageBoardControl: {
-                        deliveryExclusions: () =>
-                          runAdapter(messageBoards.deliveryExclusions(sessionId)),
-                        append: (input) =>
-                          runAdapter(
-                            messageBoards.append(sessionId, input).pipe(
-                              Effect.tap((result) =>
-                                Effect.sync(() =>
-                                  clientEvents.broadcast({
-                                    type: "artifact-catalog-invalidated",
-                                    lineageId: result.boardId,
-                                  }),
-                                ),
-                              ),
-                            ),
-                          ),
-                        readNew: (input, notificationOnly, excludeEntries) =>
-                          runAdapter(
-                            Effect.gen(function* () {
-                              const family = yield* families.familyForMember(sessionId);
-                              if (!family) return undefined;
-                              // Existing families acquire their board without changing membership.
-                              yield* families.withMemberLock(
-                                sessionId,
-                                messageBoards.ensureBoard(family),
-                              );
-                              return yield* messageBoards.readNew(
-                                sessionId,
-                                input,
-                                notificationOnly,
-                                excludeEntries,
-                              );
+        prepare: Effect.fn("ProjectSessionRuntimeHost.prepare")((workingDirectory, sessionId) =>
+          Effect.try({
+            try: () => {
+              const candidate = prepare(workingDirectory, sessionId);
+              const integrations = {
+                ...candidate.host.runtimeIntegrations(sessionId),
+                messageBoardControl: {
+                  deliveryExclusions: () => runAdapter(messageBoards.deliveryExclusions(sessionId)),
+                  append: (input) =>
+                    runAdapter(
+                      messageBoards.append(sessionId, input).pipe(
+                        Effect.tap((result) =>
+                          Effect.sync(() =>
+                            clientEvents.broadcast({
+                              type: "artifact-catalog-invalidated",
+                              lineageId: result.boardId,
                             }),
                           ),
-                        current: (input) => runAdapter(messageBoards.current(sessionId, input)),
-                        read: (sequences) => runAdapter(messageBoards.read(sessionId, sequences)),
-                        entryReceipts: (sequence) =>
-                          runAdapter(messageBoards.entryReceipts(sessionId, sequence)),
-                        sessionReceipts: (target, input) =>
-                          runAdapter(messageBoards.sessionReceipts(sessionId, target, input)),
-                        recordIntake: (boardId, sequences, kind) =>
-                          runAdapter(
-                            messageBoards.recordIntake(sessionId, boardId, sequences, kind),
-                          ),
-                      },
-                    }) satisfies ProjectSessionRuntimeIntegrations,
-                  catch: (cause) => runtimeError("runtimeIntegrations", cause),
-                }),
-              ),
-              Effect.mapError((cause) => runtimeError("runtimeIntegrations", cause)),
-            ),
+                        ),
+                      ),
+                    ),
+                  readNew: (input, notificationOnly, excludeEntries) =>
+                    runAdapter(
+                      Effect.gen(function* () {
+                        const family = yield* families.familyForMember(sessionId);
+                        if (!family) return undefined;
+                        // Existing families acquire their board without changing membership.
+                        yield* families.withMemberLock(
+                          sessionId,
+                          messageBoards.ensureBoard(family),
+                        );
+                        return yield* messageBoards.readNew(
+                          sessionId,
+                          input,
+                          notificationOnly,
+                          excludeEntries,
+                        );
+                      }),
+                    ),
+                  current: (input) => runAdapter(messageBoards.current(sessionId, input)),
+                  read: (sequences) => runAdapter(messageBoards.read(sessionId, sequences)),
+                  entryReceipts: (sequence) =>
+                    runAdapter(messageBoards.entryReceipts(sessionId, sequence)),
+                  sessionReceipts: (target, input) =>
+                    runAdapter(messageBoards.sessionReceipts(sessionId, target, input)),
+                  recordIntake: (boardId, sequences, kind) =>
+                    runAdapter(messageBoards.recordIntake(sessionId, boardId, sequences, kind)),
+                },
+              } satisfies ProjectSessionRuntimeIntegrations;
+              return {
+                integrations,
+                initialize: Effect.try({
+                  try: () => {
+                    const current = sessions.get(sessionId);
+                    if (current && current.workingDirectory !== workingDirectory)
+                      throw new Error(`Session ID collision detected: ${sessionId}`);
+                  },
+                  catch: (cause) => runtimeError("initialize", cause),
+                }).pipe(
+                  Effect.andThen(
+                    rendererRequests.registerProjectSession(sessionId, workingDirectory),
+                  ),
+                  Effect.andThen(
+                    Effect.sync(() => {
+                      sessions.set(sessionId, candidate);
+                    }),
+                  ),
+                  Effect.mapError((cause) => runtimeError("initialize", cause)),
+                ),
+                release: release(candidate),
+              };
+            },
+            catch: (cause) => runtimeError("prepare", cause),
+          }),
         ),
-        releaseSession: Effect.fn("ProjectSessionRuntimeHost.releaseSession")(release),
       });
     }),
   );

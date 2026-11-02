@@ -5,6 +5,7 @@ import {
   CakeChatCatalogQuery,
   CakeChatError,
   CakeChatPreview,
+  CakeChatSummary,
   CakeChatStartInput,
   CakeChatTarget,
   CakeChatControlUpdate,
@@ -40,6 +41,11 @@ export const CakeChatRpc = RpcGroup.make(
     success: CakeChatCatalogUpdate,
     error: CakeChatError,
     stream: true,
+  }),
+  Rpc.make("cakeChats.lookup", {
+    payload: { sessionId: CakeChatTarget.fields.sessionId },
+    success: CakeChatSummary,
+    error: CakeChatError,
   }),
   Rpc.make("cakeChats.inspect", {
     payload: { sessionId: CakeChatTarget.fields.sessionId },

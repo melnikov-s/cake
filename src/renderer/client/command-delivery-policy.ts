@@ -12,6 +12,7 @@ export function requiresDeliveryReview(operation: string): boolean {
     case "backendConnection.connect":
     case "projectSessions.open":
     case "projectSessions.lookup":
+    case "cakeChats.lookup":
     case "cakeChats.open":
     case "cakeChats.assistantContext":
     case "modelPresets.resolve":

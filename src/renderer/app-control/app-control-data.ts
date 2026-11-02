@@ -185,6 +185,7 @@ export interface AppControlHost {
   };
   sessions: {
     lookup(sessionId: string): Promise<SessionSummaryView | undefined>;
+    lookupChat(sessionId: string): Promise<CakeChatSummary>;
     navigationEnabled(): boolean;
     open(sessionId: string, messageId?: string): Promise<boolean | void>;
     create(input: {
