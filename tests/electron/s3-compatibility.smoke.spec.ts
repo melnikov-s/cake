@@ -132,7 +132,10 @@ export default function (pi) {
     page.on("pageerror", (error) => rendererErrors.push(error.message));
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
     expect(rendererErrors).toEqual([]);
-    await page.getByLabel("Message").fill("/desktop-fixture");
+    const composer = page.getByLabel("Message");
+    await composer.fill("/desktop-fixture");
+    await expect(composer).toHaveValue("/desktop-fixture");
+    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByText("Desktop extension", { exact: true })).toBeVisible();
     await expect(page.getByText("Companion count: 1", { exact: true })).toBeVisible();
@@ -143,6 +146,7 @@ export default function (pi) {
     await expect(page.getByText("fixture ready", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Increment companion" }).click();
     await expect(page.getByText("Companion count: 2", { exact: true })).toBeVisible();
+    expect(rendererErrors).toEqual([]);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
