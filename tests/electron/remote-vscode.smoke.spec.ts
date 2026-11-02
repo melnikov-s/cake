@@ -15,7 +15,7 @@ async function editorState(application: ElectronApplication) {
     const editor = webContents
       .getAllWebContents()
       .find((contents) => /\/editor\/\d+\/[a-f0-9]+\//.test(contents.getURL()));
-    if (!editor) return undefined;
+    if (!editor || editor.isLoadingMainFrame()) return undefined;
     return {
       url: editor.getURL(),
       state: await editor.executeJavaScript(

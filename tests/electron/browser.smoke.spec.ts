@@ -362,9 +362,9 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(tableActions).toHaveCSS("opacity", "1");
 
     // Keyboard users can operate the same persistently visible controls.
-    await tableCopy.focus();
-    await page.keyboard.press("Tab");
-    await expect(tableExpand).toBeFocused();
+    await tableExpand.focus();
+    await page.keyboard.press("Shift+Tab");
+    await expect(tableCopy).toBeFocused();
     await expect(tableActions).toHaveCSS("opacity", "1");
     await composer.click();
     await expect(tableActions).toHaveCSS("opacity", "1");

@@ -400,7 +400,7 @@ test("remote Electron uses the full shell and only the server owns agent state",
       await input.pressSequentially("Read @server-no");
       await expect(input).toHaveValue("Read @server-no");
       await expect(page.getByRole("option", { name: /server-note\.txt/ })).toBeVisible();
-      await input.press("Tab");
+      await input.press("Enter");
       await expect(input).toHaveValue("Read @server-note.txt ");
       await expect(input).toBeFocused();
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();

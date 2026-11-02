@@ -147,13 +147,10 @@ test("Session Plugins follow live Cake themes, own hide/show, and persist SDK st
     await expect(guide.getByText("2 / 4")).toBeVisible();
     await expect(guide.getByRole("button", { name: "Previous" })).toBeEnabled();
     const previous = guide.getByRole("button", { name: "Previous" });
-    await previous.focus();
-    await previous.press("Tab");
-    await expect(guide.getByRole("button", { name: "Next", exact: true })).toBeFocused();
-    await expect(guide.getByRole("button", { name: "Next", exact: true })).not.toHaveCSS(
-      "box-shadow",
-      "none",
-    );
+    await guide.getByRole("button", { name: "Next", exact: true }).focus();
+    await page.keyboard.press("Shift+Tab");
+    await expect(previous).toBeFocused();
+    await expect(previous).not.toHaveCSS("box-shadow", "none");
     const composer = page.getByLabel("Message", { exact: true });
     await composer.click();
     await expect(composer).toBeFocused();

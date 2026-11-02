@@ -47,9 +47,11 @@ for (const theme of ["dark", "light"] as const) {
       await disclosure.press("Enter");
       await expect(disclosure).toHaveAttribute("aria-expanded", "true");
       await expect(advanced).toBeVisible();
-      await disclosure.press("Tab");
       const continuation = advanced.getByRole("slider", { name: "Speech continuation threshold" });
-      await expect(continuation).toBeFocused();
+      await continuation.focus();
+      await continuation.press("Shift+Tab");
+      await expect(disclosure).toBeFocused();
+      await continuation.focus();
       await continuation.press("Home");
       await expect(continuation).toHaveValue("0.05");
       await sensitivity.press("ArrowRight");

@@ -111,13 +111,14 @@ test("keyboard focus reveals project actions and keeps sort controls accessible"
   const actions = header.locator('[data-slot="project-actions"]');
   await header.getByRole("button", { name: "Collapse alpha", exact: true }).click();
   await page.mouse.move(1, 1);
-  await page.keyboard.press("Tab");
+  const trigger = header.getByRole("button", { name: "Project actions for alpha", exact: true });
+  await trigger.focus();
+  await trigger.press("Shift+Tab");
   const label = header.locator('[data-slot="project-label"]');
   await expect(label).toBeFocused();
   expect(await label.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
   await expect(actions).toHaveCSS("opacity", "1");
-  await page.keyboard.press("Tab");
-  const trigger = header.getByRole("button", { name: "Project actions for alpha", exact: true });
+  await trigger.focus();
   await expect(trigger).toBeFocused();
   await page.keyboard.press("Enter");
   const menu = page.getByRole("menu", { name: "Project actions for alpha" });
@@ -139,11 +140,15 @@ test("keyboard focus reveals project actions and keeps sort controls accessible"
   );
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(
-    header.getByRole("button", { name: "New chat in alpha", exact: true }),
-  ).toBeFocused();
-  await page.keyboard.press("Tab");
+  const newChat = header.getByRole("button", { name: "New chat in alpha", exact: true });
+  await newChat.focus();
+  await newChat.press("Shift+Tab");
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(label).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(header.getByRole("button", { name: "Expand alpha", exact: true })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
   await expect(actions).toHaveCSS("opacity", "0");
 });
 

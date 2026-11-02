@@ -182,10 +182,11 @@ test("to-do text selection and copying do not activate rows or their controls", 
     await expect(action).toHaveAttribute("aria-pressed", "true");
     await action.press("Enter");
     await expect(action).toHaveAttribute("aria-pressed", "false");
-    await action.press("Tab");
+    await link.focus();
+    await link.press("Shift+Tab");
     await expect(done).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(link).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(action).toBeFocused();
     await action.click();
     await expect(action).toHaveAttribute("aria-pressed", "true");
     await done.click();

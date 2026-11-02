@@ -407,7 +407,7 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await instructions.click();
     await expect(instructions).toBeFocused();
     await instructions.pressSequentially("Always create a worktree for coding sessions.");
-    await instructions.press("Tab");
+    await instructions.press("Shift+Tab");
     await expect.poll(preferences).toMatchObject({
       memoryViewBytes: 10_000,
       instructions: "Always create a worktree for coding sessions.",

@@ -371,12 +371,13 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await review.getByText("Report delivered; awaiting your review", { exact: true }).click();
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
     await expect(reviewTitle).toHaveAttribute("aria-disabled", "false");
-    await reviewTitle.press("Tab");
+    await review.getByRole("link", { name: "Investigation report" }).focus();
+    await page.keyboard.press("Shift+Tab");
     await expect(
       review.getByRole("button", { name: "Mark done: Review conversations" }),
     ).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(review.getByRole("link", { name: "Investigation report" })).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(reviewTitle).toBeFocused();
     await expect(
       panel.getByRole("button", { name: "Review conversations", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");

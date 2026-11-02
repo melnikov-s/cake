@@ -112,18 +112,22 @@ for (const theme of ["light", "dark"] as const) {
         await expect(page.getByRole("tooltip")).not.toBeAttached();
       }
       expect(new Set(icons.slice(0, 5)).size).toBe(5);
-      await startup.focus();
-      await page.keyboard.press("Tab");
-      await expect(
-        panel.getByRole("button", { name: "Mark done: Startup investigation", exact: true }),
-      ).toBeFocused();
-      for (const [title, href] of destinations) {
-        await page.keyboard.press("Tab");
+      // Modified Tab retains native sequential navigation; plain Tab returns to writing.
+      await page.keyboard.press("Shift");
+      await panel.getByRole("link", { name: destinations.at(-1)![0], exact: true }).focus();
+      for (const [index, [title, href]] of [...destinations].reverse().entries()) {
+        if (index > 0) await page.keyboard.press("Shift+Tab");
         const link = panel.getByRole("link", { name: title, exact: true });
         await expect(link).toBeFocused();
         await expect(page.getByRole("tooltip")).toHaveText(href!);
         await expect(link).toHaveCSS("outline-style", "solid");
       }
+      await page.keyboard.press("Shift+Tab");
+      await expect(
+        panel.getByRole("button", { name: "Mark done: Startup investigation", exact: true }),
+      ).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(startup).toBeFocused();
       await page.setViewportSize({ width: 780, height: 800 });
       await expect(panel).toBeVisible();
       await expect(panel.getByRole("link", { name: "Startup implementation" })).toBeVisible();

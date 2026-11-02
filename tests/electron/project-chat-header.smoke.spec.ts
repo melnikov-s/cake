@@ -76,10 +76,12 @@ test("header project icon opens the owning Project Chat with keyboard activation
     await expect(
       page.getByRole("tooltip", { name: "Go to Project Chat for Alpha", exact: true }),
     ).toBeVisible();
-    // A native Tab establishes keyboard focus; Enter activates the actual button.
+    // Shift+Tab retains native navigation; Enter activates the actual button.
     await projectLink().focus();
-    await page.keyboard.press("Shift+Tab");
     await page.keyboard.press("Tab");
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeFocused();
+    await headers.locator('[data-slot="workspace-actions"] button:visible').first().focus();
+    await page.keyboard.press("Shift+Tab");
     await expect(projectLink()).toBeFocused();
     await page.keyboard.press("Enter");
     const pane = page.locator(`[data-slot="session-pane"][data-session-id="${projectId}"]`);

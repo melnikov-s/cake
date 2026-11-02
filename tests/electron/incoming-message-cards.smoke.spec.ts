@@ -147,10 +147,9 @@ for (const theme of ["dark", "light"] as const)
       const headerBox = (await sourceToggle.boundingBox())!;
       await sourceToggle.click({ position: { x: headerBox.width - 8, y: 16 } });
       await expect(sourceToggle).toHaveAttribute("aria-expanded", "true");
-      await sourceToggle.focus();
-      await sourceToggle.press("Tab");
-      await expect(titleLink).toBeFocused();
-      await sourceToggle.focus();
+      await titleLink.focus();
+      await titleLink.press("Shift+Tab");
+      await expect(sourceToggle).toBeFocused();
       await sourceToggle.press("Enter");
       const rail = page
         .getByRole("button", { name: "Show in To-do: Fix the flaky build", exact: true })

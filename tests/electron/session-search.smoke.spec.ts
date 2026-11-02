@@ -47,10 +47,10 @@ for (const theme of ["light", "dark"] as const) {
       await expect(dialog.getByRole("option", { selected: true })).toContainText(
         "Search dialog keyboard",
       );
-      await page.keyboard.press("Tab");
-      await expect(dialog.getByRole("switch", { name: "Include resolved" })).toBeFocused();
-      await page.keyboard.press("Tab");
+      await page.keyboard.press("Shift+Tab");
       await expect(dialog.getByRole("button", { name: "Close", exact: true })).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(dialog.getByRole("switch", { name: "Include resolved" })).toBeFocused();
       await page.keyboard.press("Tab");
       await expect(filter).toBeFocused();
       await page.keyboard.press("Enter");

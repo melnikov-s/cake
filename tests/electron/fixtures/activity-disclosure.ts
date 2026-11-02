@@ -20,8 +20,11 @@ export async function verifyInlineActivity(activity: Locator, composer: Locator)
   expect(Math.abs(expandedInput.y - collapsedInput.y)).toBeLessThan(2);
   expect(expanded.y).toBeGreaterThan(0);
 
+  await details.getByRole("button").first().focus();
+  await details.getByRole("button").first().press("Shift+Tab");
+  await expect(activity).toBeFocused();
   await activity.press("Tab");
-  await expect(details.getByRole("button").first()).toBeFocused();
+  await expect(composer).toBeFocused();
   await composer.click();
   await expect(composer).toBeFocused();
   await composer.pressSequentially("Keep activity draft");

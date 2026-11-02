@@ -207,7 +207,7 @@ test("new session dialog supports filtering, keyboard, mouse and cancellation", 
     await expect(dialog.getByRole("status")).toHaveText("No matching destinations.");
     await expect(dialog).toBeVisible();
     await filter.fill("");
-    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
     await expect(dialog.getByRole("button", { name: "Close", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(filter).toBeFocused();

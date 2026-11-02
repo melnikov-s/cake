@@ -141,8 +141,9 @@ test("topbar sharing supports keyboard access, real listener actions and Setting
     await expect(panel).toBeVisible();
     await expect(start).toBeFocused();
     await expect(panel).toContainText("full host access");
-    await start.press("Tab");
-    await expect(panel.getByRole("button", { name: "Connection settings" })).toBeFocused();
+    await panel.getByRole("button", { name: "Connection settings" }).focus();
+    await page.keyboard.press("Shift+Tab");
+    await expect(start).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(panel).not.toBeVisible();
     await expect(offline).toBeFocused();

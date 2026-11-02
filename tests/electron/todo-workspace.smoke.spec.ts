@@ -73,6 +73,9 @@ for (const mode of ["Browser Mode", "VS Code"] as const) {
         .locator('[data-slot="project-header"] [data-slot="project-label"]')
         .first()
         .click();
+      await expect(
+        page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
+      ).toBeVisible();
       await page.getByRole("button", { name: "To-do", exact: true }).click();
       const panel = page.getByRole("complementary", { name: "To-do", exact: true });
       const selected = panel.getByRole("button", { name: title, exact: true });

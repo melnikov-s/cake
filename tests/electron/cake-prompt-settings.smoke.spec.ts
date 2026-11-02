@@ -43,7 +43,7 @@ test("prompt defaults remain placeholders while custom overrides persist, clear,
     await expect(prompt).toBeFocused();
     await prompt.pressSequentially("Commit only the intended work.");
     await expect(prompt).toHaveValue("Commit only the intended work.");
-    await prompt.press("Tab");
+    await prompt.press("Shift+Tab");
     await expect.poll(savedPrompts).toEqual({ worktreeCommit: "Commit only the intended work." });
     await app.close();
     app = await launch();
@@ -56,11 +56,11 @@ test("prompt defaults remain placeholders while custom overrides persist, clear,
     prompt = page.getByRole("textbox", { name: "Commit before merge", exact: true });
     await expect(prompt).toHaveValue("Commit only the intended work.");
     await prompt.fill("");
-    await prompt.press("Tab");
+    await prompt.press("Shift+Tab");
     await expect.poll(savedPrompts).toEqual({});
     await expect(prompt).toHaveAttribute("placeholder", defaultCakePrompts().worktreeCommit);
     await prompt.fill("Another custom prompt.");
-    await prompt.press("Tab");
+    await prompt.press("Shift+Tab");
     await expect.poll(savedPrompts).toEqual({ worktreeCommit: "Another custom prompt." });
     await page
       .locator("#setting-prompt-worktree-commit")

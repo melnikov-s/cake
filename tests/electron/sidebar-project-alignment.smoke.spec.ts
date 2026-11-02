@@ -78,9 +78,12 @@ for (const theme of ["light", "dark"] as const) {
         await expectAligned(add.locator("svg"), unread);
       }
 
-      await add.focus();
+      await sidebar
+        .locator('[data-slot="project-header"]')
+        .first()
+        .getByRole("button", { name: /^Collapse / })
+        .focus();
       await page.keyboard.press("Shift+Tab");
-      await page.keyboard.press("Tab");
       await expect(add).toBeFocused();
       await expect(page.getByRole("tooltip")).toHaveText("Add project");
 

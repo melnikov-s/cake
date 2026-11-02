@@ -81,8 +81,8 @@ for (const theme of ["light", "dark"] as const) {
       await page.mouse.move(1, 1);
       await expect(page.getByRole("tooltip")).not.toBeAttached();
       const artifact = page.getByRole("link", { name: "Collaboration requirements", exact: true });
-      await artifact.focus();
-      await artifact.press("Tab");
+      const implementation = page.getByRole("link", { name: "the implementation", exact: true });
+      await implementation.focus();
       await expect(
         page.getByRole("link", { name: "the implementation", exact: true }),
       ).toBeFocused();

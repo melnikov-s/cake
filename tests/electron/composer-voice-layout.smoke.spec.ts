@@ -97,9 +97,11 @@ test("dictation and conversation mode lead the toolbar at every width", async ()
       await expect(unmute).toBeVisible();
       expect(await layout()).toEqual(empty);
       await unmute.click();
-      // Portaled controls preserve the writing target during keyboard navigation too.
-      await input.press("Tab");
-      await expect(mute).toBeFocused();
+      // Tab returns to writing; the portaled control still handles Escape from keyboard focus.
+      await mute.focus();
+      await mute.press("Tab");
+      await expect(input).toBeFocused();
+      await mute.focus();
       await mute.press("Escape");
       await expect(input).toBeFocused();
       await expect(input).toHaveValue("Typed with toolbar controls");

@@ -124,7 +124,7 @@ test("image/classifier preferences and native execution controls persist and rea
     await budget.fill("");
     await budget.pressSequentially("0");
     await expect(budget).toHaveValue("0");
-    await budget.press("Tab");
+    await budget.press("Shift+Tab");
     await expect
       .poll(async () => JSON.parse(await readFile(piDocument, "utf8")).codemode?.inlineBudget)
       .toBe(0);

@@ -88,7 +88,8 @@ for (const theme of ["light", "dark"] as const) {
 
         await search.pressSequentially("STARTUP");
         await expect(selected).toBeVisible();
-        await search.press("Tab");
+        await panel.getByRole("button", { name: "Close To-do" }).focus();
+        await page.keyboard.press("Shift+Tab");
         await expect(clear).toBeFocused();
         await clear.press("Enter");
         await expect(search).toBeFocused();

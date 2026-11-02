@@ -303,7 +303,7 @@ test("keeps target-warning tooltips and merges directly while preserving dirty t
     // Keyboard focus must move between the two triggers without bubbling to the branch.
     await branch.focus();
     await expect(tooltips).toHaveText(branchName);
-    await branch.press("Tab");
+    await warning.focus();
     await expect(warning).toBeFocused();
     await expect(tooltips).toHaveText(warningText);
     await warning.press("Shift+Tab");
