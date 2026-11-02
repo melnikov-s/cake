@@ -3,8 +3,6 @@ import { observer } from "r-state-tree/react";
 import { AccessoryPanelLayout } from "@/components/ui/accessory-panel-layout";
 import { SidePanel } from "@/components/ui/side-panel";
 import { Button } from "@/components/ui/button";
-import { IconButton } from "@/components/ui/icon-button";
-import { CloseIcon } from "@/components/ui/icons";
 import { Callout } from "@/components/ui/callout";
 import { SearchInput } from "@/components/ui/search-input";
 import type { ChatStore } from "../stores/ChatStore";
@@ -34,8 +32,8 @@ export const SideChatLayout = observer(function SideChatLayout({
       ? undefined
       : store.target;
   const model = target?.model?.();
-  // Read-only conversations and non-chat panels retain their header controls.
-  const dockActions = Boolean(target?.chatStore?.composerVisible);
+  // Keep merge near the composer; pane dismissal always belongs in the header.
+  const dockMergeAction = Boolean(target?.chatStore?.composerVisible && target.merge);
   const mergeAction = target?.merge && (
     <Button
       variant="outline"
@@ -46,19 +44,12 @@ export const SideChatLayout = observer(function SideChatLayout({
       {target.merge.label}
     </Button>
   );
-  const composerHeader = dockActions && target && (
+  const composerHeader = dockMergeAction && (
     <div
       data-slot="side-chat-actions"
       className="flex shrink-0 items-center justify-end gap-3 px-3 py-2"
     >
       {mergeAction}
-      <IconButton
-        tooltip={`Close ${target.title}`}
-        ariaLabel={`Close ${target.title}`}
-        onClick={() => store.close()}
-      >
-        <CloseIcon size={14} />
-      </IconButton>
     </div>
   );
   return (
@@ -76,7 +67,7 @@ export const SideChatLayout = observer(function SideChatLayout({
             <SidePanel
               title={target.title}
               eyebrow={target.eyebrow?.()}
-              onClose={dockActions ? undefined : () => store.close()}
+              onClose={() => store.close()}
               headerActions={
                 target.todos ? (
                   <SearchInput
@@ -88,7 +79,7 @@ export const SideChatLayout = observer(function SideChatLayout({
                 ) : (
                   <>
                     {model && <ModelSummary {...model} className="max-w-[65%]" />}
-                    {!dockActions && mergeAction}
+                    {!dockMergeAction && mergeAction}
                   </>
                 )
               }

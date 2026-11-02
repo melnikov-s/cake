@@ -252,14 +252,26 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
       name: selection ? "Reply to selection side chat" : "Reply to side chat",
     });
     const streamedAnswer = sideChat.getByText("Side chat streamed answer", { exact: false });
-    const actionRow = sideChat.locator('[data-slot="side-chat-actions"]');
-    const close = actionRow.getByRole("button", { name: "Close Side chat" });
-    await expect(close).toBeVisible();
-    const actionBounds = await actionRow.boundingBox();
-    const composerBounds = await sideChat.locator('[data-slot="composer-input"]').boundingBox();
-    expect(actionBounds).not.toBeNull();
-    expect(composerBounds).not.toBeNull();
-    expect(actionBounds!.y + actionBounds!.height).toBeLessThanOrEqual(composerBounds!.y);
+    const header = sideChat.locator(":scope > header");
+    const close = header.getByRole("button", { name: "Close Side chat", exact: true });
+    const expectHeaderClose = async () => {
+      await expect(close).toBeInViewport();
+      await expect(
+        sideChat.getByRole("button", { name: "Close Side chat", exact: true }),
+      ).toHaveCount(1);
+      const headerBounds = await header.boundingBox();
+      const closeBounds = await close.boundingBox();
+      expect(headerBounds).not.toBeNull();
+      expect(closeBounds).not.toBeNull();
+      expect(closeBounds!.y).toBeGreaterThanOrEqual(headerBounds!.y);
+      expect(closeBounds!.y + closeBounds!.height).toBeLessThanOrEqual(
+        headerBounds!.y + headerBounds!.height,
+      );
+      expect(closeBounds!.x + closeBounds!.width).toBeLessThanOrEqual(
+        headerBounds!.x + headerBounds!.width,
+      );
+    };
+    await expectHeaderClose();
 
     await expect.poll(() => responses.length).toBe(1);
     const sideChatResponse = responses[0]!;
@@ -267,7 +279,7 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
       sideChatResponse,
       Array.from(
         { length: 12 },
-        (_, index) => `Side chat streamed answer paragraph ${index}.\n\n`,
+        (_, index) => `${`Side chat streamed answer paragraph ${index}. `.repeat(14)}\n\n`,
       ).join(""),
     );
     await expect(streamedAnswer.first()).toBeVisible();
@@ -317,8 +329,32 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
       )
       .toBeLessThanOrEqual(1);
 
-    // The actions stay with the composer, not with the scrolling messages.
-    const dockedBounds = await actionRow.boundingBox();
+    // Close stays in the header in both wide split and narrow replacement layouts.
+    const layout = page.locator('[data-slot="side-chat-layout"]');
+    for (const width of [1440, 900]) {
+      await application.evaluate(({ BrowserWindow }, width) => {
+        BrowserWindow.getAllWindows()[0]!.setSize(width, 900);
+      }, width);
+      await expect(layout).toHaveAttribute(
+        "data-presentation",
+        width === 1440 ? "side-by-side" : "replacement",
+      );
+      await expectHeaderClose();
+    }
+
+    // The side chat's response fullscreen control remains independent of closing the pane.
+    await sideChat
+      .getByRole("button", { name: "View response fullscreen" })
+      .first()
+      .click({ force: true });
+    const fullscreen = page.getByRole("dialog", { name: "Cake", exact: true });
+    await expect(fullscreen).toBeVisible();
+    await fullscreen.getByRole("button", { name: "Exit fullscreen Cake" }).click();
+    await expect(fullscreen).toHaveCount(0);
+    await expectHeaderClose();
+
+    // Transcript scrolling must not move Close out of the header.
+    const headerCloseBounds = await close.boundingBox();
     expect(
       await transcript.evaluate((element) => element.scrollHeight > element.clientHeight),
     ).toBe(true);
@@ -326,10 +362,9 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
       element.scrollTop = 0;
     });
     await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBe(0);
-    expect(await actionRow.boundingBox()).toEqual(dockedBounds);
-    await expect(close).toBeInViewport();
-    await sideChatInput.focus();
-    await page.keyboard.press("Shift+Tab");
+    expect(await close.boundingBox()).toEqual(headerCloseBounds);
+    await expectHeaderClose();
+    await close.focus();
     await expect(close).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(sideChat).toHaveCount(0);

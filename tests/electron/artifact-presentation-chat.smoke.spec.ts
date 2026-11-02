@@ -40,6 +40,10 @@ for (const placement of ["old", "latest"] as const) {
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     await findVisualCaptureScenario("inline-artifact")!.seed(paths, "dark");
+    const applicationFile = join(paths.cakeHome, "state", "application.json");
+    const applicationState = JSON.parse(await readFile(applicationFile, "utf8"));
+    applicationState.trustedProjectPaths = [paths.project];
+    await writeFile(applicationFile, JSON.stringify(applicationState));
     await mkdir(join(paths.cakeHome, "pi"), { recursive: true });
     await writeFile(
       join(paths.cakeHome, "pi", "models.json"),
@@ -270,6 +274,27 @@ for (const placement of ["old", "latest"] as const) {
         ).toBeVisible();
       }
       await fullscreen.getByRole("button", { name: "Open chat" }).click();
+      await expectRetained();
+      // Nested side-chat dismissal stays in its header, even inside a fullscreen chat drawer.
+      await input.pressSequentially("/side");
+      await expect(
+        fullscreen.getByRole("option", { name: /sidechat \[prompt\] Start a side chat/ }),
+      ).toBeVisible();
+      await input.press("Enter");
+      const sideChat = fullscreen.getByRole("complementary", { name: "Side chat", exact: true });
+      const closeSideChat = sideChat
+        .locator(":scope > header")
+        .getByRole("button", { name: "Close Side chat", exact: true });
+      await expect(closeSideChat).toBeInViewport();
+      await expect(
+        sideChat.getByRole("combobox", { name: "Message side chat", exact: true }),
+      ).toBeVisible();
+      const exitFullscreen = fullscreen.getByRole("button", {
+        name: "Exit fullscreen Inline visualization",
+      });
+      await expect(exitFullscreen).toBeVisible();
+      await closeSideChat.click();
+      await expect(sideChat).toHaveCount(0);
       await expectRetained();
       await fullscreen
         .getByRole("button", { name: "Exit fullscreen Inline visualization" })

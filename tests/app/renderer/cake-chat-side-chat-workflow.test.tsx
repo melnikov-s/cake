@@ -195,7 +195,10 @@ it("merges an idle side chat explicitly, keeps it usable, and reports repeated i
     '[data-slot="composer-dock"] [data-slot="side-chat-actions"]',
   );
   expect(actionRow).not.toBeNull();
-  expect(within(actionRow!).getByRole("button", { name: "Close Side chat" })).toBeDefined();
+  const header = panel.querySelector<HTMLElement>(":scope > header");
+  expect(header).not.toBeNull();
+  expect(within(header!).getByRole("button", { name: "Close Side chat" })).toBeDefined();
+  expect(within(panel).getAllByRole("button", { name: "Close Side chat" })).toHaveLength(1);
   await user.click(within(actionRow!).getByRole("button", { name: "Merge into main chat" }));
   expect(merge).toHaveBeenCalledTimes(1);
   expect(merge.mock.calls[0]![0]).toEqual({

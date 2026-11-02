@@ -281,8 +281,8 @@ const assistantMarkdownCode: VisualCaptureScenario = {
 const sideChatActions: VisualCaptureScenario = {
   ...assistantMarkdownCode,
   name: "side-chat-actions",
-  description: "Side-chat merge and close actions docked above the follow-up composer",
-  states: ["default"],
+  description: "Side-chat header close control and merge action above the follow-up composer",
+  states: ["default", "draft"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     const directory = join(paths.cakeHome, "pi", "global-chat");
@@ -363,8 +363,24 @@ const sideChatActions: VisualCaptureScenario = {
       await storage.close(BACKGROUND_CONTEXT);
     }
   },
-  async prepare(page) {
+  async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
+    if (state === "draft") {
+      const composer = page.getByRole("combobox", { name: "Message", exact: true });
+      await composer.fill("/sidechat ");
+      await composer.press("Escape");
+      await composer.press("Enter");
+      const panel = page.getByRole("complementary", { name: "Side chat", exact: true });
+      await expect(
+        panel.getByRole("combobox", { name: "Message side chat", exact: true }),
+      ).toBeVisible();
+      await expect(
+        panel.locator(":scope > header").getByRole("button", { name: "Close Side chat" }),
+      ).toBeVisible();
+      await page.waitForFunction(() => document.fonts.status === "loaded");
+      await page.mouse.move(1, 1);
+      return;
+    }
     await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
     await page.getByRole("button", { name: "Side chats, 1 open" }).click();
     await page.getByRole("dialog", { name: "Open side chats" }).getByRole("button").click();
