@@ -181,9 +181,9 @@ it.each([320, 360, 384, 390, 412])(
               "52px",
             );
             await page.setViewportSize({ width, height: 844 });
-            await input.fill("Draft from my phone");
-            await input.focus();
-            await page.getByRole("button", { name: "Session tree", exact: true }).tap();
+            // Tree navigation is a composer command, not a dedicated toolbar action.
+            await input.fill("/tree");
+            await send.tap();
             const tree = page.getByRole("complementary", { name: "Session tree", exact: true });
             await browserExpect(tree).toBeVisible();
             await browserExpect(tree).toHaveCSS(
@@ -203,6 +203,9 @@ it.each([320, 360, 384, 390, 412])(
             expect(treeBounds?.y).toBe(96);
             expect((treeBounds?.y ?? 0) + (treeBounds?.height ?? 0)).toBeLessThanOrEqual(844);
             await tree.getByRole("button", { name: "Close Session tree" }).tap();
+            await input.fill("Draft from my phone");
+            await input.focus();
+            expect(controlled.stats.turns).toBe(0);
             await page.getByRole("button", { name: "Model configuration", exact: true }).tap();
             const picker = page.getByRole("dialog");
             await browserExpect(picker).toBeVisible();
