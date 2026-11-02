@@ -1,5 +1,6 @@
 import { createServer } from "node:net";
 import { toolCallRowsScenario } from "./tool-call-rows";
+import { sessionChangesScenario } from "./session-changes";
 import { seedAutomationVisualFixture } from "../../tests/fixtures/automations";
 import { provokeRendererCrash } from "../../tests/electron/renderer-crash-fixture.ts";
 import {
@@ -6928,6 +6929,7 @@ const assistantStandaloneDiagram: VisualCaptureScenario = {
 };
 
 export const visualCaptureScenarios: VisualCaptureScenario[] = [
+  sessionChangesScenario,
   sideChatActions,
   assistantStandaloneDiagram,
   rendererCrash,

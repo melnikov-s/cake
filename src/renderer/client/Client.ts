@@ -56,6 +56,7 @@ import type {
   InlineWidgetLanguage,
 } from "../../contracts/widgets/inline-widget-contract";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
+import type { WorktreeChanges } from "../../contracts/worktrees/worktree-changes";
 import type { VscodeEditorAction } from "../../contracts/vscode/vscode-editor-action";
 import type {
   EditorSelectionHighlights,
@@ -318,6 +319,7 @@ interface WorkspaceCommands {
 }
 
 interface ManagedWorktreeCommands {
+  inspectChanges(workspacePath: string, options?: ClientCommandOptions): Promise<WorktreeChanges>;
   create(
     input: {
       operationId: string;

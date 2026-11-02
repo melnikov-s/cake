@@ -25,6 +25,7 @@ import { SubagentCoordinatorLive } from "../../../src/services/subagents/Subagen
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { Git } from "../../../src/services/git/Git";
 import { Electron } from "../../../src/services/electron/Electron";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
@@ -86,6 +87,7 @@ export const unusedEndpointServices = Layer.mergeAll(
     resolvedSessionDirectory: "/resolved",
   }),
   Layer.mock(ManagedWorktrees, {}),
+  Layer.mock(Git, {}),
   Layer.mock(Electron, {
     requireRendererConnection: unexpectedCapability,
     windowsForWorkspace: unexpectedCapability,

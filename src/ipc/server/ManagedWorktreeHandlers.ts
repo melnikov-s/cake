@@ -1,11 +1,14 @@
 import { Effect, Stream } from "effect";
 import * as managedWorktrees from "../../domain/worktrees/managedWorktrees";
+import * as worktreeChanges from "../../domain/worktrees/worktreeChanges";
 import * as worktreeLandings from "../../domain/worktrees/worktreeLandings";
 import { ManagedWorktreeRpc } from "../protocol/ManagedWorktreeRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 
 export const managedWorktreeHandlers = ManagedWorktreeRpc.of({
+  "managedWorktrees.inspectChanges": ({ workspacePath }) =>
+    Effect.flatMap(RendererConnection, () => worktreeChanges.inspect(workspacePath)),
   "managedWorktrees.observeCatalog": () =>
     Stream.unwrap(Effect.map(ManagedWorktrees, (worktrees) => worktrees.observe())),
   "managedWorktrees.observeOperations": () => Stream.unwrap(worktreeLandings.observeOperations()),

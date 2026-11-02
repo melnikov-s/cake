@@ -1,4 +1,6 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Schema } from "effect";
+import { WorktreeChanges } from "../../contracts/worktrees/worktree-changes";
 import {
   ResolvedManagedWorktreeCleanupPlan,
   ResolvedManagedWorktreeCleanupResult,
@@ -35,6 +37,11 @@ const landingRpc = <Type extends LandingOperation>(type: Type) =>
   });
 
 export const ManagedWorktreeRpc = RpcGroup.make(
+  Rpc.make("managedWorktrees.inspectChanges", {
+    payload: { workspacePath: Schema.NonEmptyString },
+    success: WorktreeChanges,
+    error: ManagedWorktreeError,
+  }),
   Rpc.make("managedWorktrees.observeCatalog", {
     success: ManagedWorktreeCatalogUpdate,
     error: ManagedWorktreeError,

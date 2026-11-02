@@ -7,6 +7,7 @@ import { RootStore } from "../stores/RootStore";
 import type { SessionPaneNode } from "../stores/SessionLayoutStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
+import { SessionChangesToggle } from "./session-changes-toggle";
 import { ConversationActivity } from "./conversation-activity";
 
 export const ProjectPaneHeader = observer(function ProjectPaneHeader({
@@ -52,6 +53,7 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
       )}
       <SessionArtifactMenu session={paneSession} onOpen={focusPane} />
       <SideChatsMenu store={paneSession} onOpen={focusPane} />
+      <SessionChangesToggle session={paneSession} onOpen={focusPane} />
       <ToolbarGroup label="Workspace tools">
         {!browserMode && (
           <IconButton

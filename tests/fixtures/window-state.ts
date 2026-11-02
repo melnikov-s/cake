@@ -9,6 +9,8 @@ export interface WindowStateOptions {
   readonly project: string;
   /** Existing Project Session selected on launch; otherwise a fresh staged session is selected. */
   readonly sessionId?: string;
+  /** Session checkout when it differs from the registered Project root. */
+  readonly workingDirectory?: string;
   readonly theme?: "system" | "light" | "dark";
   /** Sidebar Project order; defaults to the opened Project only. */
   readonly projects?: readonly string[];
@@ -52,7 +54,7 @@ export function windowStateChildren(options: WindowStateOptions): Record<string,
     projectWorkbenchStore: store({}, { projectOpenStore: store({ projectPath: options.project }) }),
     projectCatalogStore: store({ projectOrder: options.projects ?? [options.project] }),
     sessionRegistry: store(
-      { targets: [{ sessionId, workspacePath: options.project }] },
+      { targets: [{ sessionId, workspacePath: options.workingDirectory ?? options.project }] },
       {
         sessions: [sessionStore(sessionId)],
         pendingSessions: staged

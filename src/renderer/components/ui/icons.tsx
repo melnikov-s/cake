@@ -465,6 +465,17 @@ export const SkillIcon = () => (
     <path d="m18.5 14 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" />
   </Icon>
 );
+export const FileIcon = () => (
+  <Icon size={14}>
+    <path d="M6 3h8l4 4v14H6zM14 3v5h4" />
+  </Icon>
+);
+export const CommitIcon = () => (
+  <Icon size={14}>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M3 12h5M16 12h5" />
+  </Icon>
+);
 export const DiffIcon = () => (
   <Icon size={14}>
     <rect x="4" y="4" width="16" height="16" rx="2" />

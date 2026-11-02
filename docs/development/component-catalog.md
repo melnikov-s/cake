@@ -83,6 +83,8 @@ worktree tools beneath it when present. Empty caps collapse without reserved spa
 
 [`QrCode`](../../src/renderer/components/ui/qr-code.tsx) renders locally encoded QR images without sending their contents to an external service.
 
+[`ChangeStats`](../../src/renderer/components/ui/change-stats.tsx) displays compact Git additions/deletions and explicitly identifies binary files without inventing line counts.
+
 ## Navigation and layout
 
 | Component                                                                                                                                    | Use for                                                                                   |
@@ -125,6 +127,8 @@ restores the same inline height. Its expanded target uses atomic DOM moves to
 preserve the live iframe browsing context rather than remounting an editor. Its
 `fill` mode fills a shared accessory pane without adding an inline height or resize
 grip; the owning pane supplies resizing and chrome.
+
+[`AccessoryPanelLayout`](../../src/renderer/components/ui/accessory-panel-layout.tsx) owns the animated, resizable right-hand accessory slot. Its `keepConversationVisible` option keeps review panes beside the conversation and composer at narrower widths; other accessories retain their existing replacement behavior.
 
 ### Workspace and chat shell
 

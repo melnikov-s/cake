@@ -22,6 +22,7 @@ import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { MessageCommentsStore } from "./MessageCommentsStore";
 import { SubagentActivityStore } from "./SubagentActivityStore";
 import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
+import { SessionChangesStore } from "./SessionChangesStore";
 import { StagedSessionCommandStore } from "./StagedSessionCommandStore";
 import { ClientContext } from "./context/ClientContext";
 import { EditorSelectionsStore } from "./EditorSelectionsStore";
@@ -235,6 +236,17 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   depart() {
     this.markRead();
     this.conversationSessionStore.composerStore.cancelDraftEdit();
+  }
+
+  @child
+  get changesStore(): SessionChangesStore {
+    return createStore(SessionChangesStore, {
+      workspacePath: () => this.workspacePath,
+      enabled: () => this.props.isActive() && !this.isForkPreview,
+      isStreaming: () => this.isStreaming,
+      worktreeOperation: this.props.worktreeOperation,
+      panel: () => this.conversationSessionStore.sideChatStore,
+    });
   }
 
   @child

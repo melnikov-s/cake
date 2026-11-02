@@ -11,6 +11,9 @@ import { SideChatContext } from "./side-chat-context";
 import { ProjectTodosPanel } from "./project-todos-panel";
 import { ArtifactMenuSurface } from "./artifact-menu-surface";
 import { ModelSummary } from "./model-summary";
+import { SessionChangesPanel } from "./session-changes-panel";
+import { IconButton } from "./ui/icon-button";
+import { ReloadIcon } from "./ui/icons";
 
 export const SideChatLayout = observer(function SideChatLayout({
   store,
@@ -57,9 +60,12 @@ export const SideChatLayout = observer(function SideChatLayout({
       <AccessoryPanelLayout
         dataSlot="side-chat-layout"
         open={Boolean(target)}
-        width={store.width}
-        resizeLabel="Resize side chat"
-        onWidthChange={(width) => store.setWidth(width)}
+        width={target?.changes?.width ?? store.width}
+        keepConversationVisible={Boolean(target?.changes)}
+        resizeLabel={target?.changes ? "Resize changes" : "Resize side chat"}
+        onWidthChange={(width) =>
+          target?.changes ? target.changes.setWidth(width) : store.setWidth(width)
+        }
         panel={
           target?.artifact ? (
             <ArtifactMenuSurface paneStore={target.artifact} />
@@ -69,7 +75,15 @@ export const SideChatLayout = observer(function SideChatLayout({
               eyebrow={target.eyebrow?.()}
               onClose={() => store.close()}
               headerActions={
-                target.todos ? (
+                target.changes ? (
+                  <IconButton
+                    tooltip="Refresh changes"
+                    disabled={target.changes.loading}
+                    onClick={() => void target.changes?.refresh()}
+                  >
+                    <ReloadIcon />
+                  </IconButton>
+                ) : target.todos ? (
                   <SearchInput
                     label="Search to-dos"
                     value={target.todos.query}
@@ -87,7 +101,9 @@ export const SideChatLayout = observer(function SideChatLayout({
               <div className="flex h-full min-h-0 flex-col">
                 {target.merge?.error && <Callout variant="error">{target.merge.error}</Callout>}
                 <div className="min-h-0 flex-1">
-                  {target.todos ? (
+                  {target.changes ? (
+                    <SessionChangesPanel store={target.changes} />
+                  ) : target.todos ? (
                     <ProjectTodosPanel store={target.todos} />
                   ) : (
                     renderChat(target.chatStore, composerHeader)

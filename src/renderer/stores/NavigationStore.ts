@@ -518,7 +518,13 @@ export class NavigationStore extends Store<{
       return;
     }
     if (this.presentation.tryBackToAgent()) return;
-    this.commands.tryClose();
+    if (this.commands.tryClose()) return;
+    const sessionId = this.props.layout.focusedSessionId;
+    if (sessionId) {
+      const panel =
+        this.props.registry.findSession(sessionId)?.conversationSessionStore.sideChatStore;
+      panel?.target?.changes?.close();
+    }
   }
 
   /** Selects a Cake Chat or Project Chat in its conversation workspace. */

@@ -72,6 +72,7 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ScheduledMessages } from "../../../src/services/scheduled-messages/ScheduledMessages";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { Git } from "../../../src/services/git/Git";
 import { makeSubagentStorageLive } from "../../../src/services/storage/SubagentStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
@@ -331,6 +332,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       join(tmpdir(), `cake-test-accepted-${randomUUID()}`),
     ).pipe(Layer.provide(clients)),
     worktrees,
+    Layer.mock(Git, {}),
     Layer.succeed(ProjectConfiguration, { agentDirectory: "/agent" }),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: "/agent",

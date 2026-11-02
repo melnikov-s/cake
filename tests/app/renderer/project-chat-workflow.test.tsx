@@ -855,6 +855,8 @@ it("opens Project Chat from its collapsed project header with VS Code and Termin
   await waitFor(() =>
     expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy(),
   );
+  expect(screen.queryByRole("button", { name: /Review changes/ })).toBeNull();
+  expect(screen.queryByRole("complementary", { name: "Changes" })).toBeNull();
   await f.user.click(screen.getByRole("button", { name: "Terminal" }));
   await waitFor(() =>
     expect(f.terminalOpen).toHaveBeenCalledWith(

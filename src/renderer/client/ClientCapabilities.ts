@@ -319,6 +319,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
         ),
     },
     managedWorktrees: {
+      inspectChanges: (workspacePath, options) =>
+        execute(
+          "managedWorktrees.inspectChanges",
+          (client) => client.managedWorktrees.inspectChanges({ workspacePath }),
+          options,
+        ),
       create: (input, options) =>
         execute(
           "managedWorktrees.create-worktree",
