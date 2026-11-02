@@ -182,13 +182,19 @@ export const settle = Effect.fn("Automations.settle")(function* (
   );
   const completedRun = settled?.run ?? (yield* lookupRun(runId));
   yield* setSessionUnread(completedRun.sessionId, true).pipe(asError("unread"));
+  const occurrence =
+    settled?.occurrence ??
+    records.snapshot().occurrences.find((item) => item.id === completedRun.occurrenceId);
+  const sessions = yield* CakeSessionRuntimes;
   if (
-    settled &&
+    completedRun.status._tag === "completed" &&
     outcome === "complete" &&
-    settled.occurrence.definition.completion === "auto-resolve"
+    occurrence?.definition.completion === "auto-resolve" &&
+    !(yield* sessions.currentStatus(completedRun))?.streaming &&
+    (yield* sessions.currentTurnIds(completedRun)).length === 0
   ) {
     yield* (yield* SessionArchiveStorage)
-      .resolve(settled.run.sessionId, archiveLocation(settled.run))
+      .resolve(completedRun.sessionId, archiveLocation(completedRun))
       .pipe(asError("autoResolve"));
   }
   yield* records.refresh();

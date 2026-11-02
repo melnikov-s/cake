@@ -71,9 +71,18 @@ export const recover = Effect.fn("Automations.recover")(function* () {
   const records = yield* AutomationRecords;
   const recovery = yield* RuntimeRecoveryStorage;
   const sessions = yield* CakeSessionRuntimes;
-  for (const run of records.snapshot().runs.filter((item) => item.status._tag === "running")) {
+  for (const run of records.snapshot().runs) {
     const result = yield* Effect.gen(function* () {
       const receipt = yield* recovery.get(run.sessionId);
+      // A historical run may own new accepted work without changing its original outcome.
+      // Leave terminal/empty receipts alone so restart does not undo an explicit restore.
+      if (
+        run.status._tag !== "running" &&
+        (!receipt ||
+          receipt.inputs.length === 0 ||
+          !["active", "blocked", "stopped"].includes(receipt.state))
+      )
+        return;
       if (!receipt) {
         yield* settle(
           run.id,

@@ -1488,8 +1488,9 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               )
               .pipe(sessionError("abort"));
             const claimed = yield* claimAbortedTurns(shared.runtime.executingTurnIds?.() ?? []);
-            yield* settleAbortedTurns(claimed, stop);
             yield* call("abort", (runtime) => runtime.abort(stop));
+            // Claim before stopping to prevent duplicate settlement; notify owners only once Pi is idle.
+            yield* settleAbortedTurns(claimed, stop);
           }),
           executeCommand: (command, arguments_) =>
             command === "changelog"

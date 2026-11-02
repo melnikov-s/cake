@@ -25,7 +25,11 @@ import {
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import type { Attachment } from "../../../src/contracts/conversations/session-contract";
 import { OptMemory } from "../../../src/services/opt-memory/OptMemory";
-import type { RuntimeRecoveryRecord } from "../../../src/services/storage/RuntimeRecoveryStorage";
+import type {
+  RuntimeRecoveryInput,
+  RuntimeRecoveryRecord,
+} from "../../../src/services/storage/RuntimeRecoveryStorage";
+import type { CakeSessionRuntime } from "../../../src/services/pi/runtime/cake-session-runtime";
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import { makeProjectSessionRuntimeTestLayer } from "../domain/projectSessionRuntimeTestLayer";
 import { WorkflowTestLive } from "./workflowFixture";
@@ -78,10 +82,19 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
     text: string;
     options: CakeSessionRuntimeSetup;
     attachments: readonly Attachment[];
+    turnId: string;
   }>();
-  const completions = new Map<string, Deferred.Deferred<void, Error>>();
+  const completions = new Map<
+    string,
+    Map<string, { completion: Deferred.Deferred<void, Error>; idle: Deferred.Deferred<void> }>
+  >();
+  const pendingTurn = (sessionId: string, turnId?: string) => {
+    const turns = completions.get(sessionId);
+    return turnId === undefined ? turns?.values().next().value : turns?.get(turnId);
+  };
   const disposed = yield* Queue.unbounded<string>();
   const captured: CakeSessionRuntimeSetup[] = [];
+  const recoveredInputs = yield* Queue.unbounded<RuntimeRecoveryInput>();
   const runtimes = makeCakeSessionRuntimesLayer({
     sessionIds: () => Stream.empty,
     catalog: () => Stream.empty,
@@ -89,40 +102,74 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
     inspect: () => Effect.succeed(undefined),
     changelog: () => Effect.succeed(""),
     createRuntime: (options) =>
-      Effect.gen(function* () {
-        const completion = yield* Deferred.make<void, Error>();
+      Effect.sync(() => {
         const sessionId = options.sessionId ?? "unexpected-missing-id";
-        completions.set(sessionId, completion);
+        const pending = new Map<
+          string,
+          { completion: Deferred.Deferred<void, Error>; idle: Deferred.Deferred<void> }
+        >();
+        completions.set(sessionId, pending);
         captured.push(options);
-        let streaming = false;
-        return {
+        const runtime: CakeSessionRuntime = {
           ...fakeRuntime(options, () => {
             Effect.runSync(Queue.offer(disposed, sessionId));
           }),
           sessionId,
           sessionFile: `/sessions/${sessionId}.jsonl`,
           get streaming() {
-            return streaming;
+            return pending.size > 0;
           },
-          snapshot: async () => ({ ...snapshot, sessionId, streaming, workspacePath: options.cwd }),
+          executingTurnIds: () => [...pending.keys()],
+          snapshot: async () => ({
+            ...snapshot,
+            sessionId,
+            streaming: pending.size > 0,
+            workspacePath: options.cwd,
+          }),
           prompt: async (
             text: string,
             _delivery: "prompt" | "steer" | "follow-up",
             attachments: Attachment[],
+            _markdown?: boolean,
+            turnId?: string,
           ) => {
-            streaming = true;
+            if (!turnId) throw new Error("The managed runtime must supply an accepted turn ID");
+            const turn = {
+              completion: Deferred.makeUnsafe<void, Error>(),
+              idle: Deferred.makeUnsafe<void>(),
+            };
+            pending.set(turnId, turn);
             options.onInitialTranscriptPersisted?.();
-            Effect.runSync(Queue.offer(started, { sessionId, text, options, attachments }));
+            Effect.runSync(Queue.offer(started, { sessionId, text, options, attachments, turnId }));
             try {
-              await Effect.runPromise(Deferred.await(completion));
+              await Effect.runPromise(Deferred.await(turn.completion));
             } finally {
-              streaming = false;
+              pending.delete(turnId);
+              Deferred.doneUnsafe(turn.idle, Effect.void);
             }
           },
+          recoverInput: (input) => {
+            Queue.offerUnsafe(recoveredInputs, input);
+            return runtime.prompt(
+              input.text,
+              input.delivery,
+              [...input.attachments],
+              input.markdown,
+              input.turnId,
+              input.presentationMode,
+              input.automaticTitle,
+              input.responseMode,
+              input.internal,
+            );
+          },
           abort: async () => {
-            Deferred.doneUnsafe(completion, Effect.fail(new TurnCanceledError("Stopped")));
+            const active = [...pending.values()];
+            for (const turn of active)
+              Deferred.doneUnsafe(turn.completion, Effect.fail(new TurnCanceledError("Stopped")));
+            await Promise.all(active.map((turn) => Effect.runPromise(Deferred.await(turn.idle))));
           },
         };
+        return runtime;
       }),
   }).pipe(Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer(initial.recovery)));
   const resolved = yield* Ref.make<ReadonlySet<string>>(new Set());
@@ -195,6 +242,7 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
     started,
     disposed,
     captured,
+    recoveredInputs,
     setProjectAvailable: (available: boolean) => {
       projectAvailable = available;
     },
@@ -202,14 +250,14 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
     resolved,
     records: Context.get(context, AutomationRecords),
     sessions: Context.get(context, CakeSessionRuntimes),
-    fail: (sessionId: string) => {
-      const completion = completions.get(sessionId);
+    fail: (sessionId: string, turnId?: string) => {
+      const completion = pendingTurn(sessionId, turnId)?.completion;
       return completion
         ? Deferred.fail(completion, new Error("Provider rejected the request"))
         : Effect.die(`Unknown test session ${sessionId}`);
     },
-    complete: (sessionId: string) => {
-      const completion = completions.get(sessionId);
+    complete: (sessionId: string, turnId?: string) => {
+      const completion = pendingTurn(sessionId, turnId)?.completion;
       return completion
         ? Deferred.succeed(completion, undefined)
         : Effect.die(`Unknown test session ${sessionId}`);

@@ -23,8 +23,13 @@ import {
   Stream,
 } from "effect";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
+import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { makeSessionArchiveStorageLive } from "../../../src/services/storage/SessionArchiveStorageLive";
+import {
+  RuntimeRecoveryStorage,
+  type RuntimeRecoveryInput,
+} from "../../../src/services/storage/RuntimeRecoveryStorage";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import * as projects from "../../../src/domain/projects/projects";
@@ -35,6 +40,7 @@ import { automationDefinition, automationFixture } from "../helpers/automationFi
 import { automationSourceFixture } from "../helpers/automationSourceFixture";
 import * as definitions from "../../../src/domain/automations/automationDefinitions";
 import * as runs from "../../../src/domain/automations/automationRuns";
+import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 
 const waitForSettlement = (
   f: Effect.Success<ReturnType<typeof automationFixture>>,
@@ -49,6 +55,86 @@ const waitForSettlement = (
   );
 
 describe("automation lifecycle and execution", () => {
+  it.effect.each(["complete", "failed", "aborted"] as const)(
+    "auto-resolution waits for accepted follow-ups before handling their %s outcome",
+    (outcome) =>
+      Effect.gen(function* () {
+        const f = yield* automationFixture();
+        const settled = yield* Queue.unbounded<string>();
+        const sessions = CakeSessionRuntimes.of({
+          ...f.sessions,
+          acquire: (options) =>
+            f.sessions.acquire({
+              ...options,
+              onTurnSettled: (event) =>
+                (options.onTurnSettled?.(event) ?? Effect.void).pipe(
+                  Effect.andThen(Queue.offer(settled, event.turnId)),
+                ),
+            }),
+        });
+        const context = Context.add(f.context, CakeSessionRuntimes, sessions);
+        yield* Effect.gen(function* () {
+          const a = yield* definitions.create({
+            definition: automationDefinition({ completion: "auto-resolve" }),
+            initialState: "active",
+          });
+          yield* runs.trigger(a.id);
+          const first = yield* Queue.take(f.started);
+          const handle = yield* runs.acquireSession(first.sessionId);
+          yield* handle.followUp("Continue with one more task");
+          const followUp = yield* Queue.take(f.started);
+          expect(followUp.sessionId).toBe(first.sessionId);
+          yield* f.complete(first.sessionId, first.turnId);
+          expect(yield* Queue.take(settled)).toBe(first.turnId);
+          expect((yield* Ref.get(f.resolved)).has(first.sessionId)).toBe(false);
+          expect((yield* definitions.inspect(a.id)).activity.runningSessions).toBe(1);
+          if (outcome === "complete") yield* f.complete(first.sessionId, followUp.turnId);
+          else if (outcome === "failed") yield* f.fail(first.sessionId, followUp.turnId);
+          else yield* handle.abort({ by: "user" });
+          expect(yield* Queue.take(settled)).toBe(followUp.turnId);
+          expect((yield* Ref.get(f.resolved)).has(first.sessionId)).toBe(outcome === "complete");
+          expect((yield* runs.runForSession(first.sessionId)).status._tag).toBe("completed");
+          expect(f.records.snapshot().runs).toHaveLength(1);
+          expect((yield* definitions.inspect(a.id)).activity.runningSessions).toBe(0);
+        }).pipe(Effect.provide(context));
+      }),
+  );
+  it.effect.each(["cancel-run", "shared-stop"] as const)(
+    "%s drains FIFO only after an executing Pi turn is stopped",
+    (path) =>
+      Effect.gen(function* () {
+        const f = yield* automationFixture();
+        yield* Effect.gen(function* () {
+          const a = yield* definitions.create({
+            definition: automationDefinition({ overlap: "queue" }),
+            initialState: "active",
+          });
+          yield* runs.trigger(a.id);
+          const first = yield* Queue.take(f.started);
+          const firstRun = yield* runs.runForSession(first.sessionId);
+          const queued = yield* runs.trigger(a.id);
+          expect(queued._tag).toBe("queued");
+          if (path === "cancel-run") yield* runs.cancelRun(firstRun.id);
+          else
+            yield* Effect.scoped(
+              sessionChats.abort({ sessionId: first.sessionId, stop: { by: "user" } }),
+            );
+          expect((yield* runs.runForSession(first.sessionId)).status._tag).toBe("canceled");
+          expect(
+            f.records.snapshot().occurrences.find((item) => item.id === queued.occurrenceId)
+              ?.disposition._tag,
+          ).toBe("started");
+          const next = yield* Queue.take(f.started);
+          expect(next.sessionId).not.toBe(first.sessionId);
+          expect((yield* definitions.inspect(a.id)).activity).toEqual({
+            runningSessions: 1,
+            queuedOccurrences: 0,
+          });
+          yield* f.complete(next.sessionId);
+          yield* waitForSettlement(f, next.sessionId);
+        }).pipe(Effect.provide(f.context));
+      }),
+  );
   it.effect.each(["auto-resolve", "keep-for-review"] as const)(
     "%s uses real in-place archive storage, restores without rerunning, and drains queued executions",
     (completion) =>
@@ -776,16 +862,18 @@ describe("automation lifecycle and execution", () => {
         const f = yield* automationFixture();
         yield* Effect.gen(function* () {
           const automation = yield* definitions.create({
-            definition: automationDefinition(),
+            definition: automationDefinition({ completion: "auto-resolve" }),
             initialState: "active",
           });
           yield* runs.trigger(automation.id);
           const started = yield* Queue.take(f.started);
           yield* f.complete(started.sessionId);
-          yield* waitForSettlement(f, started.sessionId);
+          expect(yield* Queue.take(f.disposed)).toBe(started.sessionId);
+          expect((yield* Ref.get(f.resolved)).has(started.sessionId)).toBe(true);
           yield* definitions.changeState(automation.id, { _tag: "paused" });
           yield* runs.setResolved(started.sessionId, true);
           yield* runs.setResolved(started.sessionId, false);
+          yield* worker.recover();
           expect(f.captured).toHaveLength(1);
           expect((yield* definitions.lookup(automation.id)).state._tag).toBe("paused");
           expect((yield* Ref.get(f.resolved)).has(started.sessionId)).toBe(false);
@@ -817,6 +905,87 @@ describe("automation lifecycle and execution", () => {
 });
 
 describe("automation triggers and recovery", () => {
+  it.effect.each(["completed", "failed", "canceled"] as const)(
+    "recovers accepted historical follow-ups without replacing the original %s outcome and leaves held receipts for review",
+    (originalOutcome) =>
+      Effect.gen(function* () {
+        const f = yield* automationFixture();
+        const checkpoint = yield* Effect.gen(function* () {
+          const a = yield* definitions.create({
+            definition: automationDefinition(),
+            initialState: "active",
+          });
+          yield* runs.trigger(a.id);
+          const first = yield* Queue.take(f.started);
+          if (originalOutcome === "completed") yield* f.complete(first.sessionId);
+          else if (originalOutcome === "failed") yield* f.fail(first.sessionId);
+          else yield* runs.cancelRun((yield* runs.runForSession(first.sessionId)).id);
+          expect(yield* Queue.take(f.disposed)).toBe(first.sessionId);
+          return f.records.snapshot();
+        }).pipe(Effect.provide(f.context));
+        const original = checkpoint.runs[0];
+        if (!original) throw new Error("Expected the historical automation run");
+        expect(original.status._tag).toBe(originalOutcome);
+        for (const state of ["active", "blocked", "stopped"] as const) {
+          const input: RuntimeRecoveryInput = {
+            turnId: crypto.randomUUID(),
+            text: "Accepted historical follow-up, not the saved automation task",
+            delivery: "follow-up",
+            attachments: [],
+            markdown: false,
+          };
+          const receipt = {
+            sessionId: original.sessionId,
+            workingDirectory: original.workingDirectory,
+            sessionDirectory: original.sessionDirectory,
+            profile: "AutomationSession" as const,
+            transcriptPersisted: true,
+            inputs: [input],
+            state,
+            ...(state === "blocked" ? { issue: "An unfinished tool needs review" } : {}),
+          };
+          const restarted = yield* automationFixture({ ledger: checkpoint, recovery: [receipt] });
+          yield* worker.recover().pipe(Effect.provide(restarted.context));
+          expect(restarted.records.snapshot().runs[0]?.status).toEqual(original.status);
+          if (state === "active") {
+            expect(restarted.captured).toHaveLength(1);
+            expect(restarted.captured[0]?.newSession).toBe(false);
+            const resumed = yield* Queue.take(restarted.started);
+            expect(resumed.sessionId).toBe(original.sessionId);
+            expect(resumed.turnId).toBe(input.turnId);
+            expect(resumed.text).toBe(input.text);
+            expect(yield* Queue.take(restarted.recoveredInputs)).toEqual(input);
+            expect(
+              (yield* definitions
+                .inspect(original.automationId)
+                .pipe(Effect.provide(restarted.context))).activity.runningSessions,
+            ).toBe(1);
+            yield* restarted.complete(original.sessionId, input.turnId);
+            expect(yield* Queue.take(restarted.disposed)).toBe(original.sessionId);
+          } else {
+            expect(restarted.captured).toHaveLength(0);
+            expect(
+              (yield* Context.get(restarted.context, RuntimeRecoveryStorage).get(
+                original.sessionId,
+              ))?.inputs,
+            ).toEqual([input]);
+            expect((yield* restarted.sessions.currentStatus(original))?.pending).toBe(true);
+            expect(
+              (yield* Context.get(restarted.context, RuntimeRecoveryStorage).get(
+                original.sessionId,
+              ))?.state,
+            ).toBe(state);
+            expect(
+              (yield* definitions
+                .inspect(original.automationId)
+                .pipe(Effect.provide(restarted.context))).activity.runningSessions,
+            ).toBe(0);
+          }
+          expect(restarted.records.snapshot().runs).toHaveLength(1);
+          expect(restarted.records.snapshot().runs[0]?.status).toEqual(original.status);
+        }
+      }),
+  );
   it.effect(
     "fires once, fixed-interval, and timezone-aware calendar schedules using backend time",
     () =>
