@@ -5,7 +5,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
-import { observer } from "r-state-tree/react";
+import { observer, StoreProvider } from "r-state-tree/react";
 import { useAppDocument } from "../../../src/renderer/hooks/use-app-document";
 import type { RootStore } from "../../../src/renderer/stores/RootStore";
 
@@ -45,7 +45,7 @@ function renderAppearanceSettings(snapshot?: StoreSnapshot, customIcon = false) 
   });
   const { root } = rootFixture;
   const view = render(
-    <>
+    <StoreProvider store={root}>
       <DocumentTheme root={root} />
       <SettingsAppearanceSection appearance={root.settingsStore.appearance} />
       <SidebarProjectGroup
@@ -67,7 +67,7 @@ function renderAppearanceSettings(snapshot?: StoreSnapshot, customIcon = false) 
         }
         onOpenSettings={(path) => root.projectSettingsStore.open(path)}
       />
-    </>,
+    </StoreProvider>,
   );
   return {
     user: userEvent.setup(),

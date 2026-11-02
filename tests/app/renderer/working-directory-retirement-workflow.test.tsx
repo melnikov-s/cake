@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StoreProvider } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ResolutionCleanupFailed } from "../../../src/contracts/project-sessions/project-session-resolution";
 import { WorkbenchErrorNotice } from "./workbench-error-notice";
@@ -91,7 +92,7 @@ function renderRetirement(
   }
   const { root } = fixture;
   const view = render(
-    <>
+    <StoreProvider store={root}>
       <SidebarProjectGroup
         cakeChat={root.cakeChatCollectionStore}
         onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
@@ -129,7 +130,7 @@ function renderRetirement(
         store={fixture.root.terminalStore}
         retirement={fixture.root.workingDirectoryRetirementStore}
       />
-    </>,
+    </StoreProvider>,
   );
   return {
     user: userEvent.setup(),

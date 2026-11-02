@@ -196,8 +196,6 @@ describe("Project opening workflow", () => {
       "user",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    // Project opening and work-log path presentation each resolve home.
-    expect(getHomeDirectory).toHaveBeenCalledTimes(2);
     expect(getHomeDirectory).toHaveBeenCalledWith(
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );

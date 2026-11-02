@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StoreProvider } from "r-state-tree/react";
 import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
@@ -61,7 +62,7 @@ async function renderCatalog(
   root.sessionLayoutStore.ensureSession(sessionId);
   root.projectWorkbenchStore.showLoadedSession(sessionId);
   const view = render(
-    <>
+    <StoreProvider store={root}>
       <aside aria-label="Project sessions">
         {[false, true].map((resolved) => (
           <section
@@ -92,7 +93,7 @@ async function renderCatalog(
         ))}
       </aside>
       <Chat store={staged.conversationSessionStore.chatStore} composerFocusEnabled={false} />
-    </>,
+    </StoreProvider>,
   );
   return {
     root,

@@ -3,7 +3,7 @@ import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { renderTranscriptContent as render } from "./render-transcript-content";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
-import { observer } from "r-state-tree/react";
+import { observer, StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SavedDraft } from "../../../src/contracts/project-sessions/saved-draft-data";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
@@ -177,7 +177,11 @@ async function renderDrafts(
       </>
     );
   });
-  const view = render(<Surface />);
+  const view = render(
+    <StoreProvider store={root}>
+      <Surface />
+    </StoreProvider>,
+  );
   return {
     user: userEvent.setup(),
     async refreshDrafts() {

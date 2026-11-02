@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StoreProvider } from "r-state-tree/react";
 import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -83,7 +84,7 @@ async function renderMetadata(options: { pendingWorktree?: boolean; avatars?: bo
   }
   const { root } = fixture;
   const view = render(
-    <>
+    <StoreProvider store={root}>
       {[false, true].map((resolved) => (
         <section
           key={String(resolved)}
@@ -112,7 +113,7 @@ async function renderMetadata(options: { pendingWorktree?: boolean; avatars?: bo
         </section>
       ))}
       {pending && <Chat store={pending.conversationSessionStore.chatStore} />}
-    </>,
+    </StoreProvider>,
   );
   return {
     user: userEvent.setup(),

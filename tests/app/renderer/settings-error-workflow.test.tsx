@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StoreProvider } from "r-state-tree/react";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { projectPiSettings } from "../../../src/services/pi/runtime/settings-translation";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -263,7 +264,7 @@ describe("Settings error ownership", () => {
     root.settingsStore.selectPage("providers");
     const user = userEvent.setup();
     const view = render(
-      <>
+      <StoreProvider store={root}>
         <SidebarProjectGroup
           cakeChat={root.cakeChatCollectionStore}
           onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
@@ -285,7 +286,7 @@ describe("Settings error ownership", () => {
           onOpenSettings={(path) => root.projectSettingsStore.open(path)}
         />
         <SettingsPage settings={root.settingsStore} />
-      </>,
+      </StoreProvider>,
     );
     try {
       await user.click(screen.getByRole("button", { name: /^Missing conversation/ }));

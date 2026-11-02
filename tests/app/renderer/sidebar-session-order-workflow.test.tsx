@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StoreProvider } from "r-state-tree/react";
 import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -74,23 +75,25 @@ function renderOrdering() {
     resolved: false,
   };
   const view = render(
-    <SidebarProjectGroup
-      cakeChat={root.cakeChatCollectionStore}
-      onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
-      {...common}
-      sessionMetadata={root.sessionMetadataStore}
-      projects={root.projectCatalogStore}
-      chat={root.projectWorkbenchStore}
-      appearance={root.settingsStore.appearance}
-      path={projectPath}
-      flattenSessions
-      onCreateSession={(path) => void root.navigationStore.createSession(path)}
-      onOpenSession={(id) => void root.navigationStore.openSession(id)}
-      onRemoveProject={(path, deleteSessions) =>
-        root.projectRemovalStore.remove(path, deleteSessions)
-      }
-      onOpenSettings={(path) => root.projectSettingsStore.open(path)}
-    />,
+    <StoreProvider store={root}>
+      <SidebarProjectGroup
+        cakeChat={root.cakeChatCollectionStore}
+        onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
+        {...common}
+        sessionMetadata={root.sessionMetadataStore}
+        projects={root.projectCatalogStore}
+        chat={root.projectWorkbenchStore}
+        appearance={root.settingsStore.appearance}
+        path={projectPath}
+        flattenSessions
+        onCreateSession={(path) => void root.navigationStore.createSession(path)}
+        onOpenSession={(id) => void root.navigationStore.openSession(id)}
+        onRemoveProject={(path, deleteSessions) =>
+          root.projectRemovalStore.remove(path, deleteSessions)
+        }
+        onOpenSettings={(path) => root.projectSettingsStore.open(path)}
+      />
+    </StoreProvider>,
   );
   let eventRevision = 0;
   const user = userEvent.setup();
