@@ -1,5 +1,7 @@
 import { Effect } from "effect";
 import * as sessionChats from "../../domain/conversations/sessionChats";
+import * as cakeChatTargets from "../../domain/cake-chats/cakeChatTargets";
+import { isProjectChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { SessionChatRpc } from "../protocol/SessionChatRpc";
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
@@ -10,7 +12,19 @@ const deliverFromRenderer = (
   delivery: Parameters<typeof sessionChats.deliver>[1],
 ) =>
   Effect.flatMap(RendererConnection, ({ connectionId }) =>
-    sessionChats.bindRenderer(input.sessionId, connectionId).pipe(
+    // A saved Project Chat preview can accept input while its observer is still
+    // assembling the runtime. Join that ordinary shared profile before binding it.
+    (isProjectChatSessionId(input.sessionId)
+      ? cakeChatTargets
+          .acquireAvailable(input.sessionId)
+          .pipe(
+            Effect.mapError(
+              (error) => new SessionChatError({ operation: "deliver", message: error.message }),
+            ),
+          )
+      : Effect.void
+    ).pipe(
+      Effect.andThen(sessionChats.bindRenderer(input.sessionId, connectionId)),
       Effect.andThen(
         admitTurnAttachments(input).pipe(
           Effect.mapError(

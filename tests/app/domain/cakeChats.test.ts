@@ -2,16 +2,22 @@ import { cakeChatControlTools } from "../../../src/contracts/application/window-
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import { it } from "@effect/vitest";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
-import { Effect, Layer, Stream } from "effect";
+import { Context, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
 import { describe, expect } from "vitest";
 import * as chatLocations from "../../../src/domain/cake-chats/cakeChatLocations";
 import * as metadata from "../../../src/domain/cake-chats/cakeChatMetadata";
 import { configureCakeSessionRuntime } from "../../../src/layers/CakeOperations";
 import { acquireOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
-import { observeConversation } from "../../../src/domain/cake-chats/cakeChatOperations";
+import {
+  acquireTarget,
+  observeConversation,
+} from "../../../src/domain/cake-chats/cakeChatOperations";
 import { SESSION_ASSISTANT_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { defaultAssistantPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  cakeChatSideChatSessionId,
+} from "../../../src/contracts/cake-chats/cake-chat-identity";
 import {
   PROJECT_TODO_CLOSING_RULE,
   PROJECT_TODO_CREATION_RULE,
@@ -20,7 +26,21 @@ import { defaultCakeChatPreferences } from "../../../src/contracts/cake-chats/ca
 import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
+import {
+  CakeSessionRuntimes,
+  PiSessionError,
+  makeCakeSessionRuntimesLayer,
+} from "../../../src/services/pi/CakeSessionRuntimes";
+import { CakeChatConfiguration } from "../../../src/services/pi-durable/CakeChatConfiguration";
+import { sessionChatHandlers } from "../../../src/ipc/server/SessionChatHandlers";
+import { RendererConnection } from "../../../src/ipc/protocol/RendererConnectionMiddleware";
+import { AttachmentUploads } from "../../../src/services/filesystem/AttachmentUploads";
+import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import {
+  fakeRuntime,
+  makeRuntimeRecoveryStorageTestLayer,
+  snapshot as runtimeSnapshot,
+} from "../helpers/piRuntimeFixture";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import {
@@ -124,6 +144,204 @@ function fixture(runtimeOverrides: Partial<CakeSessionRuntimes["Service"]> = {})
 }
 
 describe("permanent Cake Chat", () => {
+  it.effect.each(["cold", "warming", "assembled"] as const)(
+    "submits the first Project Chat input through renderer binding while %s",
+    (phase) => {
+      const f = fixture();
+      const projectPath = "/cold-project";
+      const sessionId = chatLocations.projectChatSessionId(projectPath);
+      f.setState({
+        ...defaultApplicationState(),
+        projects: [
+          {
+            path: projectPath,
+            name: "Cold project",
+            addedAt: "2026-01-01T00:00:00.000Z",
+            lastOpenedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      });
+      const bindings: Array<{ sessionId: string; connectionId: number; profile: string }> = [];
+      const deliveries: string[] = [];
+      return Effect.gen(function* () {
+        const started = yield* Deferred.make<void>();
+        const releaseFactory = yield* Deferred.make<void>();
+        const delivered = yield* Deferred.make<void>();
+        const acquisitionAttempts = yield* Queue.unbounded<string>();
+        let constructions = 0;
+        const context = yield* Layer.build(
+          makeCakeSessionRuntimesLayer({
+            sessionIds: () => Stream.empty,
+            catalog: () => Stream.empty,
+            catalogEntry: () => Effect.succeed(undefined),
+            inspect: () => Effect.succeed(undefined),
+            changelog: () => Effect.succeed(""),
+            createRuntime: (runtimeOptions) =>
+              Effect.gen(function* () {
+                constructions += 1;
+                yield* Deferred.succeed(started, undefined);
+                if (phase === "warming") yield* Deferred.await(releaseFactory);
+                const runtime = fakeRuntime(runtimeOptions, () => undefined);
+                return {
+                  ...runtime,
+                  sessionId,
+                  snapshot: async () => ({
+                    ...runtimeSnapshot,
+                    workspacePath: projectPath,
+                    sessionId,
+                  }),
+                  prompt: async (text) => {
+                    deliveries.push(text);
+                    await Effect.runPromise(Deferred.succeed(delivered, undefined));
+                  },
+                };
+              }),
+          }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+        );
+        const runtimes = Context.get(context, CakeSessionRuntimes);
+        const observed = CakeSessionRuntimes.of({
+          ...runtimes,
+          acquireSession: (id) =>
+            Queue.offer(acquisitionAttempts, id).pipe(Effect.andThen(runtimes.acquireSession(id))),
+        });
+        yield* Effect.gen(function* () {
+          const warming =
+            phase !== "cold"
+              ? yield* acquireTarget(
+                  { sessionId, tools: cakeChatControlTools() },
+                  false,
+                  configuration,
+                ).pipe(Effect.forkScoped)
+              : undefined;
+          if (warming) yield* Deferred.await(started);
+          if (warming && phase === "assembled") yield* Fiber.join(warming);
+          const input = {
+            sessionId,
+            text: "Read retained handoff",
+            attachments: [],
+            renderUserMessageAsMarkdown: false,
+          };
+          const submission = yield* sessionChatHandlers["sessionChats.prompt"](input).pipe(
+            Effect.forkScoped,
+          );
+          if (warming && phase === "warming") {
+            expect(yield* Queue.take(acquisitionAttempts)).toBe(sessionId);
+            yield* Deferred.succeed(releaseFactory, undefined);
+            yield* Fiber.join(warming);
+          }
+          const turnId = yield* Fiber.join(submission);
+          yield* Deferred.await(delivered);
+          expect(turnId).toMatch(/^[a-f0-9-]{36}$/);
+          expect(constructions).toBe(1);
+          expect(bindings).toEqual([{ sessionId, connectionId: 41, profile: "CakeChatSession" }]);
+          expect(deliveries).toEqual(["Read retained handoff"]);
+        }).pipe(Effect.provideService(CakeSessionRuntimes, observed));
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            familyStorageHarness().layer,
+            Layer.succeed(CakeChatConfiguration, configuration),
+            Layer.succeed(RendererConnection, { connectionId: 41, correlationId: "cold-submit" }),
+            Layer.mock(AttachmentUploads, {
+              admit: (_owner, attachments) => Effect.succeed(attachments),
+            }),
+            Layer.mock(RendererRequestCoordinator, {
+              bind: (target, connectionId) =>
+                Effect.sync(() => {
+                  bindings.push({
+                    sessionId: target.sessionId,
+                    connectionId,
+                    profile: target._tag,
+                  });
+                }),
+              releaseSession: () => Effect.void,
+            }),
+          ),
+        ),
+        Effect.provide(f.layer),
+      );
+    },
+  );
+
+  it.effect(
+    "rejects a cold Project Chat with no registered project before binding or construction",
+    () => {
+      const sessionId = chatLocations.projectChatSessionId("/unregistered");
+      const f = fixture({
+        acquireSession: () =>
+          Effect.fail(
+            new PiSessionError({
+              operation: "acquireSession",
+              message: `Pi Session ${sessionId} has not been assembled`,
+            }),
+          ),
+        acquire: () => Effect.die("Unregistered Project Chat must not construct a runtime"),
+      });
+      return sessionChatHandlers["sessionChats.prompt"]({
+        sessionId,
+        text: "Not admitted",
+        attachments: [],
+        renderUserMessageAsMarkdown: false,
+      }).pipe(
+        Effect.flip,
+        Effect.tap((error) =>
+          Effect.sync(() => {
+            expect(error).toMatchObject({
+              _tag: "SessionChatError",
+              operation: "deliver",
+              message: "Project Chat belongs to no registered project",
+            });
+          }),
+        ),
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.succeed(CakeChatConfiguration, configuration),
+            Layer.succeed(RendererConnection, { connectionId: 41, correlationId: "unknown-chat" }),
+            Layer.mock(AttachmentUploads, {}),
+          ),
+        ),
+        Effect.provide(f.layer),
+      );
+    },
+  );
+
+  it.effect.each([
+    { kind: "global Cake Chat", sessionId: CAKE_CHAT_SESSION_ID },
+    { kind: "Companion", sessionId: SESSION_ASSISTANT_ID },
+    { kind: "Project Session", sessionId: "project-session" },
+    { kind: "Subagent Session", sessionId: "private-worker" },
+    { kind: "Discussion Session", sessionId: cakeChatSideChatSessionId(2) },
+    { kind: "malformed Project Chat", sessionId: "project-chat:not-a-hash" },
+  ])("does not reconstruct a cold $kind through Project Chat submission", ({ sessionId }) => {
+    const message = `Pi Session ${sessionId} has not been assembled`;
+    const f = fixture({
+      acquireSession: () =>
+        Effect.fail(new PiSessionError({ operation: "acquireSession", message })),
+      acquire: () => Effect.die("Other profiles must not be reconstructed"),
+    });
+    return sessionChatHandlers["sessionChats.prompt"]({
+      sessionId,
+      text: "Not admitted",
+      attachments: [],
+      renderUserMessageAsMarkdown: false,
+    }).pipe(
+      Effect.flip,
+      Effect.tap((error) =>
+        Effect.sync(() => {
+          expect(error).toMatchObject({ _tag: "SessionChatError", operation: "acquire", message });
+        }),
+      ),
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(CakeChatConfiguration, configuration),
+          Layer.succeed(RendererConnection, { connectionId: 41, correlationId: "other-profile" }),
+          Layer.mock(AttachmentUploads, {}),
+        ),
+      ),
+      Effect.provide(f.layer),
+    );
+  });
+
   it.effect("looks up only the exact registered chat metadata before its first turn", () => {
     const f = fixture();
     f.setState({
