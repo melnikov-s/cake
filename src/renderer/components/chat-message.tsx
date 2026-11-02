@@ -121,8 +121,12 @@ export const ChatTextMessage = forwardRef<
   },
   ref,
 ) {
+  // Incoming agent messages can carry the user transport role, but ordinary
+  // user-authored prompts must never offer a reply action.
+  const agentMessage =
+    part.role === "assistant" || part.crossSession || part.subagentReport || part.agentSource;
   const replyAction =
-    onReply && part.entryId && !part.draft && part.status !== "streaming" ? (
+    agentMessage && onReply && part.entryId && !part.draft && part.status !== "streaming" ? (
       <IconButton
         tooltip="Reply to message"
         ariaLabel="Reply to message"

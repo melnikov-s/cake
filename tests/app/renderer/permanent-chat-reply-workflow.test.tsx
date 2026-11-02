@@ -36,7 +36,7 @@ afterEach(cleanup);
 it.each([
   ["Cake Chat", CAKE_CHAT_SESSION_ID],
   ["Project Chat", `project-chat:${"a".repeat(64)}`],
-])("keeps replies on older messages as the newest conversation changes in %s", (_, sessionId) => {
+])("limits replies to older agent messages in %s", (_, sessionId) => {
   using fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project", name: "Project" })],
     client: {
@@ -96,11 +96,11 @@ it.each([
   try {
     expectReplies([]);
     publish([question, answer, ...utilities]);
-    expectReplies(["question"]);
+    expectReplies([]);
 
     const nextQuestion = { ...question, id: "next-question", entryId: "next-question-entry" };
     publish([question, answer, nextQuestion, ...utilities]);
-    expectReplies(["question", "answer"]);
+    expectReplies(["answer"]);
 
     // An empty assistant placeholder is not a visible conversational message.
     const live = {
@@ -112,14 +112,14 @@ it.each([
       text: "",
     };
     publish([question, answer, nextQuestion, live, ...utilities], true);
-    expectReplies(["question", "answer"]);
+    expectReplies(["answer"]);
     // Once visible, the unaddressable stream becomes newest, not the last
     // reply-eligible message. Earlier actions must remain available.
     publish(
       [question, answer, nextQuestion, { ...live, text: "Arriving answer" }, ...utilities],
       true,
     );
-    expectReplies(["question", "answer", "next-question"]);
+    expectReplies(["answer"]);
     publish([
       question,
       answer,
@@ -133,16 +133,16 @@ it.each([
       },
       ...utilities,
     ]);
-    expectReplies(["question", "answer", "next-question"]);
+    expectReplies(["answer"]);
 
     // A newly arriving user message (including its pending draft projection)
     // takes the newest slot without gaining a redundant reply action.
     const draft = { ...question, id: "draft", entryId: undefined, draft: true };
     const settled = { ...answer, id: "settled", entryId: "settled-entry" };
     publish([question, answer, nextQuestion, settled, draft, ...utilities]);
-    expectReplies(["question", "answer", "next-question", "settled"]);
+    expectReplies(["answer", "settled"]);
     publish([question, answer, nextQuestion, settled, { ...draft, draft: false, entryId: "sent" }]);
-    expectReplies(["question", "answer", "next-question", "settled"]);
+    expectReplies(["answer", "settled"]);
   } finally {
     view.unmount();
   }

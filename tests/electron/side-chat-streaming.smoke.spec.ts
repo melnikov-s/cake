@@ -307,6 +307,10 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
     await expect(sideChat.getByText("Follow-up streamed answer.")).toBeVisible();
     finish(followUpResponse);
     await expect(sideChat.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    // Side chats do not opt into the permanent-chat message reply action.
+    await expect(
+      sideChat.getByRole("button", { name: "Reply to message", exact: true }),
+    ).toHaveCount(0);
 
     const contextUsage = sideChat.getByRole("img", { name: "Context usage" });
     await expect(contextUsage).toBeVisible();

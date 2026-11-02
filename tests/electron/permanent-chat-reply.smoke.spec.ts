@@ -213,6 +213,14 @@ for (const theme of ["dark", "light"] as const)
           });
           await expect(reply).toBeAttached();
         }).toPass();
+        const question = page.locator("[data-part-id]").filter({
+          has: page.getByText("Original question", { exact: true }),
+        });
+        await expect(question).toBeVisible();
+        await question.hover();
+        await expect(
+          question.getByRole("button", { name: "Reply to message", exact: true }),
+        ).toHaveCount(0);
         await original.hover();
         await expect(reply).toBeVisible();
         const copy = original.getByRole("button", { name: "Copy response", exact: true });
@@ -271,13 +279,13 @@ for (const theme of ["dark", "light"] as const)
         await expect(
           received.getByRole("button", { name: "Reply to message", exact: true }),
         ).toHaveCount(0);
-        // The sent prompt is older once the new response arrives.
+        // Even after the response arrives, the user-authored prompt cannot be replied to.
         await expect(
           sentMessage.locator("xpath=ancestor::article").getByRole("button", {
             name: "Reply to message",
             exact: true,
           }),
-        ).toBeAttached();
+        ).toHaveCount(0);
       }
     } finally {
       await app?.close();
