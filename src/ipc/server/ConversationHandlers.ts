@@ -3,6 +3,7 @@ import * as cakeChatOperations from "../../domain/cake-chats/cakeChatOperations"
 import type { CakeChatRuntimeConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
 import * as projectSessionOperations from "../../domain/project-sessions/projectSessionOperations";
+import * as automationRuns from "../../domain/automations/automationRuns";
 import { ConversationRpc } from "../protocol/ConversationRpc";
 
 const asError = (operation: string) =>
@@ -17,11 +18,15 @@ const asError = (operation: string) =>
 export const makeConversationHandlers = (configuration: CakeChatRuntimeConfiguration) =>
   ConversationRpc.of({
     "conversations.observe": (target) =>
-      target._tag === "ProjectSession"
-        ? Stream.unwrap(
-            projectSessionOperations.observeConversation(target, target.allowCreate),
-          ).pipe(asError("observeProjectSession"))
-        : Stream.unwrap(cakeChatOperations.observeConversation(target, configuration)).pipe(
-            asError("observeCakeChatSession"),
-          ),
+      target._tag === "AutomationSession"
+        ? Stream.unwrap(automationRuns.observeConversation(target.sessionId)).pipe(
+            asError("observeAutomationSession"),
+          )
+        : target._tag === "ProjectSession"
+          ? Stream.unwrap(
+              projectSessionOperations.observeConversation(target, target.allowCreate),
+            ).pipe(asError("observeProjectSession"))
+          : Stream.unwrap(cakeChatOperations.observeConversation(target, configuration)).pipe(
+              asError("observeCakeChatSession"),
+            ),
   });

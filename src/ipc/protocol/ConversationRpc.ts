@@ -3,12 +3,14 @@ import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import {
   ConversationUpdate,
   SessionChatError,
+  SessionChatTarget,
 } from "../../contracts/conversations/conversation-data";
 import { CakeChatTarget } from "../../contracts/cake-chats/cake-chat-data";
 import { ProjectSessionTarget } from "../../contracts/project-sessions/project-session-data";
 
 /** Validated target needed to assemble the owning Cake Session runtime profile. */
 const ConversationObservationTarget = Schema.TaggedUnion({
+  AutomationSession: SessionChatTarget.fields,
   ProjectSession: {
     ...ProjectSessionTarget.fields,
     /** A renderer-known new identity may not have a Pi transcript yet. */

@@ -1,4 +1,5 @@
 import { VsCodeRpc } from "./VsCodeRpc";
+import { AutomationRpc } from "./AutomationRpc";
 import { InlineWidgetRpc } from "./InlineWidgetRpc";
 import { WidgetCaptureResponseRpc } from "./WidgetCaptureRpc";
 import { BrowserResponseRpc } from "./BrowserRpc";
@@ -32,6 +33,7 @@ import { WorkspaceRpc } from "./WorkspaceRpc";
 
 /** Shared backend membership for local and network endpoints, excluding desktop-only actions. */
 export const BackendRpc = ApplicationRpc.merge(
+  AutomationRpc,
   BackendConnectionRpc,
   VsCodeRpc,
   InlineWidgetRpc,

@@ -26,7 +26,7 @@ import {
   AutomationUpdateInput,
 } from "../../contracts/automations/automation-control";
 
-/** Review skeleton: not registered in CakeRpc/BackendRpc until the backend slice is implemented. */
+/** Shared backend operations consumed by the management UI and exposed through Cake tools. */
 export const AutomationRpc = RpcGroup.make(
   Rpc.make("automations.observe", {
     success: AutomationCatalogUpdate,

@@ -1,7 +1,10 @@
 import { NodePath } from "@effect/platform-node-shared";
 import { Context, Deferred, Effect, FileSystem, Layer, Queue, Ref, Stream } from "effect";
 import type { AutomationDefinition } from "../../../src/contracts/automations/automation-data";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import {
+  defaultApplicationState,
+  type ApplicationState as ApplicationStateValue,
+} from "../../../src/contracts/application/application-data";
 import { AutomationRecords } from "../../../src/services/automations/AutomationRecords";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import {
@@ -110,7 +113,7 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
         Effect.as(true),
       ),
   });
-  const application = {
+  let application: ApplicationStateValue = {
     ...defaultApplicationState(),
     trustedProjectPaths: ["/projects/cake"],
     projects: [
@@ -128,7 +131,17 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
     runtimes,
     archive,
     NodePath.layer,
-    Layer.mock(ApplicationState, { snapshot: () => application }),
+    Layer.mock(ApplicationState, {
+      snapshot: () => application,
+      transact: (transition) =>
+        transition(application).pipe(
+          Effect.tap((next) =>
+            Effect.sync(() => {
+              application = next;
+            }),
+          ),
+        ),
+    }),
     Layer.succeed(
       FileSystem.FileSystem,
       FileSystem.makeNoop({ exists: () => Effect.succeed(projectAvailable) }),

@@ -1,4 +1,7 @@
-import { Effect, Stream } from "effect";
+import { Effect, Option, Stream } from "effect";
+import { AutomationRecords } from "../../services/automations/AutomationRecords";
+import * as automationRuns from "../../domain/automations/automationRuns";
+import type { ProjectSessionTarget } from "../../contracts/project-sessions/project-session-data";
 import { ProjectSessionError } from "../../contracts/project-sessions/project-session-data";
 import * as projects from "../../domain/projects/projects";
 import * as projectSessionMetadata from "../../domain/project-sessions/projectSessionMetadata";
@@ -33,6 +36,29 @@ const bindRenderer = (connectionId: number, sessionId: string) =>
       (error) => new ProjectSessionError({ operation: "bindRenderer", message: error.message }),
     ),
   );
+
+const setResolved = Effect.fn("SessionLifecycle.setResolved")(function* (
+  target: ProjectSessionTarget,
+  resolved: boolean,
+  userInitiated: boolean,
+) {
+  const automations = yield* Effect.serviceOption(AutomationRecords);
+  if (
+    Option.isSome(automations) &&
+    automations.value.snapshot().runs.some((run) => run.sessionId === target.sessionId)
+  )
+    return yield* automationRuns.setResolved(target.sessionId, resolved).pipe(
+      Effect.provideService(AutomationRecords, automations.value),
+      Effect.mapError(
+        (error) => new ProjectSessionError({ operation: "setResolved", message: error.message }),
+      ),
+    );
+  if (userInitiated)
+    return yield* projectSessionUserLifecycle.setResolved(target, resolved).pipe(Effect.asVoid);
+  return yield* (
+    resolved ? projectSessionLifecycle.resolve(target) : projectSessionLifecycle.restore(target)
+  ).pipe(Effect.asVoid);
+});
 
 export const projectSessionHandlers = ProjectSessionRpc.of({
   "projectSessions.observeCatalog": (query) =>
@@ -92,18 +118,11 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
     return projectSessionContinuations.fork(input);
   },
   "projectSessions.resolve": ({ userInitiated, ...target }) =>
-    (userInitiated
-      ? projectSessionUserLifecycle.setResolved(target, true)
-      : projectSessionLifecycle.resolve(target)
-    ).pipe(Effect.asVoid),
+    setResolved(target, true, userInitiated === true),
   "projectSessions.resolveWorkingDirectory": ({ workingDirectory }) =>
     projectSessionLifecycle.resolveWorkingDirectory(workingDirectory),
   "projectSessions.restore": ({ userInitiated, ...target }) =>
-    (userInitiated
-      ? projectSessionUserLifecycle.setResolved(target, false)
-      : projectSessionLifecycle.restore(target)
-    ).pipe(
-      Effect.asVoid,
+    setResolved(target, false, userInitiated === true).pipe(
       Effect.mapError(
         (error) => new ProjectSessionError({ operation: "restore", message: error.message }),
       ),

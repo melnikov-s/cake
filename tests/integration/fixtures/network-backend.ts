@@ -7,6 +7,7 @@ import { projectPiSettings } from "../../../src/services/pi/runtime/settings-tra
 import { makeCakeChatDurableLive } from "../../../src/services/pi-durable/CakeChatDurable";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { WorkflowTestLive } from "../../app/helpers/workflowFixture";
+import { unusedAutomationEndpointCapabilities } from "../../app/helpers/automationEndpointCapabilities";
 import { DiscussionSessionEnvironment } from "../../../src/services/discussion-sessions/DiscussionSessionEnvironment";
 import { WorktreeLandingAgent } from "../../../src/services/worktrees/WorktreeLandingAgent";
 import { WorktreeLandingCompletion } from "../../../src/services/worktrees/WorktreeLandingCompletion";
@@ -286,6 +287,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     }),
   ).pipe(Layer.provide(coordinator));
   const layer = Layer.mergeAll(
+    unusedAutomationEndpointCapabilities,
     WorkflowTestLive,
     Layer.mock(VsCodeServer, {
       leaseFor: () => undefined,

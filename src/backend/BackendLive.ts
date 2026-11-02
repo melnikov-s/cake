@@ -95,6 +95,11 @@ import { makeWorkflowRunStorageLive } from "../services/storage/WorkflowRunStora
 import { WorkflowSupervisorLive } from "../services/workflows/WorkflowSupervisorLive";
 
 import { CakeChatConfiguration } from "../services/pi-durable/CakeChatConfiguration";
+import { makeAutomationStorageLive } from "../services/storage/AutomationStorage";
+import { AutomationRecords } from "../services/automations/AutomationRecords";
+import { AutomationEvents } from "../services/automations/AutomationEvents";
+import { makeAutomationMemoryLive } from "../layers/AutomationMemoryLive";
+import * as automationWorker from "../domain/automations/automationWorker";
 
 export interface BackendLiveOptions {
   readonly paths: CakePaths;
@@ -123,6 +128,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
 
   const applicationStorage = makeApplicationStorageLive(paths.state);
   const scheduledMessageStorage = makeScheduledMessageStorageLive(paths.state);
+  const automationStorage = makeAutomationStorageLive(paths.state);
   const StorageLive = Layer.mergeAll(
     applicationStorage,
     makeLocalMcpSettingsLive(paths.state),
@@ -130,6 +136,9 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
     ProjectTodoReports.layer,
     ApplicationState.layer.pipe(Layer.provide(applicationStorage)),
     scheduledMessageStorage,
+    automationStorage,
+    AutomationRecords.layer.pipe(Layer.provide(automationStorage)),
+    AutomationEvents.layer,
     makeRuntimeRecoveryStorageLive(paths.state),
     makeSubagentStorageLive(paths.state),
     makeSessionCoordinationStorageLive(join(paths.state, "session-coordination.json")),
@@ -195,6 +204,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
       PlatformLive,
       StorageLive,
       PiLive,
+      makeAutomationMemoryLive(paths.state).pipe(Layer.provide(Layer.merge(PiLive, StorageLive))),
       ClientStateLive,
       PreviewLeasesLive.pipe(Layer.provide(ClientStateLive)),
       GitLive,
@@ -303,6 +313,14 @@ export const makeBackendLive = <HostServices, HostError>(
     Layer.provide(SessionWorkflowsLive),
   );
   const BackgroundWorkersLive = Layer.mergeAll(
+    Layer.effectDiscard(
+      Effect.gen(function* () {
+        yield* (yield* AutomationRecords).initialize().pipe(Effect.orDie);
+        yield* automationWorker.runEventWorker.pipe(Effect.forkScoped);
+        yield* automationWorker.recover().pipe(Effect.orDie);
+        yield* automationWorker.runScheduleWorker.pipe(Effect.forkScoped);
+      }),
+    ),
     Layer.effectDiscard(localMcp.initialize()),
     Layer.effectDiscard(projectTodoResolution.initialize()),
     Layer.effectDiscard(projectTodoSnoozes.initialize()),

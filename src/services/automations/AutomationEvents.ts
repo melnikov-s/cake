@@ -1,7 +1,8 @@
-import { Context, Effect, Layer, PubSub, Stream } from "effect";
+import { Context, Effect, Layer, Queue, Stream } from "effect";
 import type { AutomationSourceEvent } from "../../contracts/automations/automation-data";
 
-/** Process-scoped source-event fanout. Durable automation occurrences are owned separately. */
+/** One process-scoped event consumer; queue admission survives listener startup, not process exit.
+ * Durable accepted automation occurrences are owned separately. */
 export class AutomationEvents extends Context.Service<
   AutomationEvents,
   {
@@ -13,14 +14,14 @@ export class AutomationEvents extends Context.Service<
     AutomationEvents,
     Effect.gen(function* () {
       const events = yield* Effect.acquireRelease(
-        PubSub.unbounded<AutomationSourceEvent>(),
-        PubSub.shutdown,
+        Queue.unbounded<AutomationSourceEvent>(),
+        Queue.shutdown,
       );
       return AutomationEvents.of({
         publish: Effect.fn("AutomationEvents.publish")((event: AutomationSourceEvent) =>
-          PubSub.publish(events, event).pipe(Effect.asVoid),
+          Queue.offer(events, event).pipe(Effect.asVoid),
         ),
-        events: () => Stream.fromPubSub(events),
+        events: () => Stream.fromQueue(events),
       });
     }),
   );

@@ -1,4 +1,5 @@
 import { vscodeHandlers } from "./VsCodeHandlers";
+import { automationHandlers } from "./AutomationHandlers";
 import { inlineWidgetHandlers } from "./InlineWidgetHandlers";
 import { widgetCaptureResponseHandlers } from "./WidgetCaptureHandlers";
 import { browserResponseHandlers } from "./BrowserResponseHandlers";
@@ -40,6 +41,7 @@ export const makeBackendRpcHandlersLive = (
   cakeChatConfiguration: CakeChatRuntimeConfiguration,
 ) =>
   BackendRpc.toLayer({
+    ...automationHandlers,
     ...backendConnectionHandlers,
     ...vscodeHandlers,
     ...inlineWidgetHandlers,

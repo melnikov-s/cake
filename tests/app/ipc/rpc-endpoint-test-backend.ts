@@ -1,4 +1,5 @@
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
+import { unusedAutomationEndpointCapabilities } from "../helpers/automationEndpointCapabilities";
 import {
   configureCakeSessionRuntime,
   createCoordinatorRuntime,
@@ -59,6 +60,7 @@ const unexpectedCapability = (): never => {
 // Build the complete production endpoint, not a test-only RPC group. These unrelated external
 // capabilities fail if called; the tests supply real ApplicationState/ClientEvents authorities.
 export const unusedEndpointServices = Layer.mergeAll(
+  unusedAutomationEndpointCapabilities,
   ClientConnectionsLive,
   makeCakeChatDurableLive(createCoordinatorRuntime, configureCakeSessionRuntime),
   Layer.mock(DesktopHost, { current: () => ({ kind: "local" }) }),
