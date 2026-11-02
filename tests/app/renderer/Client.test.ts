@@ -217,9 +217,6 @@ describe("Client transport and device integration", () => {
       () =>
         client.electron.startScreenCapture({
           annotationColor: "yellow",
-          projects: [],
-          cakeChats: [],
-          defaultDestination: { kind: "cake-chat", sessionId: "session" },
           dictation: {
             enabled: false,
             deviceId: "",
@@ -232,10 +229,7 @@ describe("Client transport and device integration", () => {
             },
           },
           appearance: {
-            projectAvatarsEnabled: true,
             theme: "dark",
-            sessionAvatarsEnabled: true,
-            sidebarCharactersEnabled: false,
           },
         }),
       () => client.electron.configureScreenCapture({ shortcut: "Mod+Shift+6", maxDimension: 2048 }),

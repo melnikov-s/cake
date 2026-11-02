@@ -1,3 +1,4 @@
+import { SidebarCapabilities } from "../lib/sidebar-capabilities";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -31,6 +32,7 @@ import { SessionSearchDialog } from "./session-search-dialog";
 import { SortableItem, type SortableItemDragHandleProps } from "./ui/sortable-item";
 
 export const Sidebar = observer(function Sidebar({
+  view = "navigation",
   store,
   sessionList,
   sessionMetadata,
@@ -51,6 +53,7 @@ export const Sidebar = observer(function Sidebar({
   onGoForward,
   onToggle,
 }: {
+  view?: "navigation" | "destination";
   store: SidebarStore;
   sessionList: SidebarSessionListStore;
   sessionMetadata: SessionMetadataStore;
@@ -71,198 +74,149 @@ export const Sidebar = observer(function Sidebar({
   onGoForward(): void;
   onToggle: () => void;
 }) {
-  const focusedProjectPath = store.focusModeProjectPath;
+  const management = view === "navigation";
+  const focusedProjectPath = management ? store.focusModeProjectPath : undefined;
   const projectPaths = focusedProjectPath ? [focusedProjectPath] : projects.orderedProjectPaths;
   const focusMode = focusedProjectPath !== undefined;
-  const activityMode = !focusMode && store.navigationMode === "activity";
+  const activityMode = management && !focusMode && store.navigationMode === "activity";
   return (
     <aside
       data-slot="sidebar"
+      data-view={view}
+      onContextMenuCapture={
+        management
+          ? undefined
+          : (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+      }
       data-focus-mode={focusMode ? "true" : undefined}
       className={cn(
-        "flex h-full min-w-0 flex-col overflow-hidden border-r border-border/72 bg-sidebar text-sidebar-foreground select-none max-[620px]:absolute max-[620px]:inset-y-0 max-[620px]:left-0 max-[620px]:z-50 max-[620px]:w-[min(360px,calc(100%-44px))] phone:absolute phone:inset-y-0 phone:left-0 phone:z-50 phone:w-[min(360px,calc(100%-44px))]",
+        "flex h-full min-w-0 flex-col overflow-hidden border-r border-border/72 bg-sidebar text-sidebar-foreground select-none",
+        management &&
+          "max-[620px]:absolute max-[620px]:inset-y-0 max-[620px]:left-0 max-[620px]:z-50 max-[620px]:w-[min(360px,calc(100%-44px))] phone:absolute phone:inset-y-0 phone:left-0 phone:z-50 phone:w-[min(360px,calc(100%-44px))]",
         focusMode && "[&_svg]:size-5",
       )}
     >
-      <div className="flex h-[52px] shrink-0 items-center gap-1 pl-[103px] pr-3 [app-region:drag] max-[620px]:pl-2 max-[620px]:h-auto max-[620px]:min-h-11 max-[620px]:flex-wrap [@media(pointer:coarse)]:pl-2 [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-wrap">
-        <SidebarNavigationControls onToggle={onToggle} />
-        <IconButton
-          data-cake-hint-key="b"
-          tooltip="Back"
-          hotkey="history-back"
-          disabled={!shell.canGoBack}
-          onClick={onGoBack}
-          ariaLabel="Go back in session history"
-        >
-          <BackIcon />
-        </IconButton>
-        <IconButton
-          data-cake-hint-key="f"
-          tooltip="Forward"
-          hotkey="history-forward"
-          disabled={!shell.canGoForward}
-          onClick={onGoForward}
-          ariaLabel="Go forward in session history"
-        >
-          <ForwardIcon />
-        </IconButton>
-        <div className="ml-auto flex items-center gap-0.5 [app-region:no-drag]">
-          {!focusMode && (
-            <IconButton
-              data-cake-hint-key="n"
-              tooltip="New session"
-              ariaLabel="New session"
-              hotkey="new-session"
-              onClick={onNewSession}
-            >
-              <PlusIcon />
-            </IconButton>
-          )}
+      {management && (
+        <div className="flex h-[52px] shrink-0 items-center gap-1 pl-[103px] pr-3 [app-region:drag] max-[620px]:pl-2 max-[620px]:h-auto max-[620px]:min-h-11 max-[620px]:flex-wrap [@media(pointer:coarse)]:pl-2 [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-wrap">
+          <SidebarNavigationControls onToggle={onToggle} />
           <IconButton
-            tooltip="Search sessions"
-            ariaLabel="Search sessions"
-            onClick={() => store.sessionSearchStore.show()}
+            data-cake-hint-key="b"
+            tooltip="Back"
+            hotkey="history-back"
+            disabled={!shell.canGoBack}
+            onClick={onGoBack}
+            ariaLabel="Go back in session history"
           >
-            <SearchIcon />
+            <BackIcon />
           </IconButton>
-          {!focusMode && (
+          <IconButton
+            data-cake-hint-key="f"
+            tooltip="Forward"
+            hotkey="history-forward"
+            disabled={!shell.canGoForward}
+            onClick={onGoForward}
+            ariaLabel="Go forward in session history"
+          >
+            <ForwardIcon />
+          </IconButton>
+          <div className="ml-auto flex items-center gap-0.5 [app-region:no-drag]">
+            {!focusMode && (
+              <IconButton
+                data-cake-hint-key="n"
+                tooltip="New session"
+                ariaLabel="New session"
+                hotkey="new-session"
+                onClick={onNewSession}
+              >
+                <PlusIcon />
+              </IconButton>
+            )}
             <IconButton
-              className={cn(activityMode && "bg-sidebar-active text-foreground")}
-              tooltip={activityMode ? "Show projects" : "Show activity"}
-              ariaLabel={activityMode ? "Show projects" : "Show activity"}
-              aria-pressed={activityMode}
-              onClick={() => (activityMode ? store.showProjects() : store.showActivity())}
+              tooltip="Search sessions"
+              ariaLabel="Search sessions"
+              onClick={() => store.sessionSearchStore.show()}
             >
-              <BellIcon />
+              <SearchIcon />
             </IconButton>
-          )}
+            {!focusMode && (
+              <IconButton
+                className={cn(activityMode && "bg-sidebar-active text-foreground")}
+                tooltip={activityMode ? "Show projects" : "Show activity"}
+                ariaLabel={activityMode ? "Show projects" : "Show activity"}
+                aria-pressed={activityMode}
+                onClick={() => (activityMode ? store.showProjects() : store.showActivity())}
+              >
+                <BellIcon />
+              </IconButton>
+            )}
+          </div>
         </div>
-      </div>
+      )}
       <div className="flex min-w-0 flex-wrap gap-1.5 px-3 pb-2 empty:hidden"></div>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 pb-4 pt-2">
-        <NavigationHighlight>
-          {activityMode && (
-            <SidebarCakeChatGroup
-              cakeChat={cakeChat}
-              shell={shell}
-              onOpenCakeChat={onOpenCakeChat}
-            />
-          )}
-          {activityMode ? (
-            <SidebarActivityFeed
-              store={store}
-              sessionList={sessionList}
-              sessionMetadata={sessionMetadata}
-              projects={projects}
-              chat={chat}
-              cakeChat={cakeChat}
-              shell={shell}
-              appearance={appearance}
-              onOpenSession={onOpenSession}
-              onOpenCakeChat={onOpenCakeChat}
-            />
-          ) : (
-            <>
-              {!focusMode && (
-                <>
-                  <SidebarCakeChatGroup
-                    cakeChat={cakeChat}
-                    shell={shell}
-                    onOpenCakeChat={onOpenCakeChat}
-                  />
-                  <div
-                    data-slot="projects-heading"
-                    className="mt-0.5 flex items-center justify-between pl-1.5 pr-2 py-2 text-sm font-medium text-muted-foreground"
-                  >
-                    <span>Projects</span>
-                    {/* Center the control on the rows' compact status column. */}
-                    <span className="flex w-6 shrink-0 items-center justify-center [@media(pointer:coarse)]:w-auto">
-                      <IconButton
-                        data-cake-hint-key="p"
-                        tooltip="Add project"
-                        onClick={onChooseProject}
-                      >
-                        <FolderPlusIcon />
-                      </IconButton>
-                    </span>
-                  </div>
-                </>
-              )}
-              {projectPaths.length === 0 ? (
-                <p className="mx-2 my-1.5 text-sm leading-relaxed text-muted-foreground">
-                  Add a folder to start a project.
-                </p>
-              ) : (
-                projectPaths.map((path) => {
-                  const group = (dragHandleProps?: SortableItemDragHandleProps) => (
-                    <SidebarProjectGroup
-                      key={path}
-                      store={store}
-                      sessionList={sessionList}
-                      sessionMetadata={sessionMetadata}
-                      projects={projects}
-                      chat={chat}
+        <SidebarCapabilities value={{ management }}>
+          <NavigationHighlight>
+            {activityMode && (
+              <SidebarCakeChatGroup
+                cakeChat={cakeChat}
+                shell={shell}
+                onOpenCakeChat={onOpenCakeChat}
+              />
+            )}
+            {activityMode ? (
+              <SidebarActivityFeed
+                store={store}
+                sessionList={sessionList}
+                sessionMetadata={sessionMetadata}
+                projects={projects}
+                chat={chat}
+                cakeChat={cakeChat}
+                shell={shell}
+                appearance={appearance}
+                onOpenSession={onOpenSession}
+                onOpenCakeChat={onOpenCakeChat}
+              />
+            ) : (
+              <>
+                {!focusMode && (
+                  <>
+                    <SidebarCakeChatGroup
                       cakeChat={cakeChat}
-                      onOpenCakeChat={onOpenCakeChat}
                       shell={shell}
-                      appearance={appearance}
-                      path={path}
-                      resolved={false}
-                      focusMode={focusMode}
-                      dragHandleProps={dragHandleProps}
-                      onToggleFocus={(path) =>
-                        focusMode ? store.leaveProjectFocus() : store.focusProject(path)
-                      }
-                      onCreateSession={onCreateSession}
-                      onOpenSession={onOpenSession}
-                      onRemoveProject={onRemoveProject}
-                      onOpenSettings={(path) => projectSettings.open(path)}
+                      onOpenCakeChat={onOpenCakeChat}
                     />
-                  );
-                  return focusMode ? (
-                    group()
-                  ) : (
-                    <SortableItem
-                      key={path}
-                      id={path}
-                      onMove={(source, target, placement) =>
-                        projects.move(source, target, placement)
-                      }
+                    <div
+                      data-slot="projects-heading"
+                      className="mt-0.5 flex items-center justify-between pl-1.5 pr-2 py-2 text-sm font-medium text-muted-foreground"
                     >
-                      {group}
-                    </SortableItem>
-                  );
-                })
-              )}
-              <section
-                data-slot="resolved-lane"
-                className="mt-4 border-t border-border/72 pt-2"
-                aria-label="Resolved sessions"
-              >
-                <div
-                  className={cn(
-                    "flex items-center justify-between px-1.5 pt-2.5 text-sm font-medium text-muted-foreground",
-                    focusMode && "text-sm",
-                  )}
-                  id="resolved-lane-heading"
-                >
-                  <DisclosureTrigger
-                    className={cn(
-                      "h-[1.6875rem] px-1.5 text-sm font-medium text-muted-foreground hover:text-foreground",
-                      focusMode && "h-9 text-sm",
-                    )}
-                    open={sessionList.resolvedLaneExpanded}
-                    aria-controls="resolved-lane-content"
-                    aria-label={`${sessionList.resolvedLaneExpanded ? "Collapse" : "Expand"} Resolved`}
-                    onClick={() => sessionList.toggleResolvedLane()}
-                    title="Resolved"
-                  />
-                </div>
-                {sessionList.resolvedLaneExpanded && (
-                  <div id="resolved-lane-content" className="mt-1">
-                    {projectPaths.map((path) => (
+                      <span>Projects</span>
+                      {/* Center the control on the rows' compact status column. */}
+                      <span className="flex min-h-7 w-6 shrink-0 items-center justify-center [@media(pointer:coarse)]:w-auto">
+                        {management && (
+                          <IconButton
+                            data-cake-hint-key="p"
+                            tooltip="Add project"
+                            onClick={onChooseProject}
+                          >
+                            <FolderPlusIcon />
+                          </IconButton>
+                        )}
+                      </span>
+                    </div>
+                  </>
+                )}
+                {projectPaths.length === 0 ? (
+                  <p className="mx-2 my-1.5 text-sm leading-relaxed text-muted-foreground">
+                    Add a folder to start a project.
+                  </p>
+                ) : (
+                  projectPaths.map((path) => {
+                    const group = (dragHandleProps?: SortableItemDragHandleProps) => (
                       <SidebarProjectGroup
-                        key={`resolved:${path}`}
+                        key={path}
                         store={store}
                         sessionList={sessionList}
                         sessionMetadata={sessionMetadata}
@@ -273,23 +227,92 @@ export const Sidebar = observer(function Sidebar({
                         shell={shell}
                         appearance={appearance}
                         path={path}
-                        resolved
+                        resolved={false}
                         focusMode={focusMode}
-                        flattenSessions={focusMode}
+                        dragHandleProps={dragHandleProps}
+                        onToggleFocus={(path) =>
+                          focusMode ? store.leaveProjectFocus() : store.focusProject(path)
+                        }
                         onCreateSession={onCreateSession}
                         onOpenSession={onOpenSession}
                         onRemoveProject={onRemoveProject}
                         onOpenSettings={(path) => projectSettings.open(path)}
                       />
-                    ))}
-                  </div>
+                    );
+                    return focusMode || !management ? (
+                      group()
+                    ) : (
+                      <SortableItem
+                        key={path}
+                        id={path}
+                        onMove={(source, target, placement) =>
+                          projects.move(source, target, placement)
+                        }
+                      >
+                        {group}
+                      </SortableItem>
+                    );
+                  })
                 )}
-              </section>
-            </>
-          )}
-        </NavigationHighlight>
+                {management && (
+                  <section
+                    data-slot="resolved-lane"
+                    className="mt-4 border-t border-border/72 pt-2"
+                    aria-label="Resolved sessions"
+                  >
+                    <div
+                      className={cn(
+                        "flex items-center justify-between px-1.5 pt-2.5 text-sm font-medium text-muted-foreground",
+                        focusMode && "text-sm",
+                      )}
+                      id="resolved-lane-heading"
+                    >
+                      <DisclosureTrigger
+                        className={cn(
+                          "h-[1.6875rem] px-1.5 text-sm font-medium text-muted-foreground hover:text-foreground",
+                          focusMode && "h-9 text-sm",
+                        )}
+                        open={sessionList.resolvedLaneExpanded}
+                        aria-controls="resolved-lane-content"
+                        aria-label={`${sessionList.resolvedLaneExpanded ? "Collapse" : "Expand"} Resolved`}
+                        onClick={() => sessionList.toggleResolvedLane()}
+                        title="Resolved"
+                      />
+                    </div>
+                    {sessionList.resolvedLaneExpanded && (
+                      <div id="resolved-lane-content" className="mt-1">
+                        {projectPaths.map((path) => (
+                          <SidebarProjectGroup
+                            key={`resolved:${path}`}
+                            store={store}
+                            sessionList={sessionList}
+                            sessionMetadata={sessionMetadata}
+                            projects={projects}
+                            chat={chat}
+                            cakeChat={cakeChat}
+                            onOpenCakeChat={onOpenCakeChat}
+                            shell={shell}
+                            appearance={appearance}
+                            path={path}
+                            resolved
+                            focusMode={focusMode}
+                            flattenSessions={focusMode}
+                            onCreateSession={onCreateSession}
+                            onOpenSession={onOpenSession}
+                            onRemoveProject={onRemoveProject}
+                            onOpenSettings={(path) => projectSettings.open(path)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                )}
+              </>
+            )}
+          </NavigationHighlight>
+        </SidebarCapabilities>
       </div>
-      {!focusMode && (
+      {management && !focusMode && (
         <div className="min-h-[52px] border-t border-border/65 px-3 py-2 text-muted-foreground">
           <Button
             variant="ghost"
@@ -307,14 +330,18 @@ export const Sidebar = observer(function Sidebar({
           </Button>
         </div>
       )}
-      <SessionSearchDialog
-        sidebar={store}
-        sessionMetadata={sessionMetadata}
-        projects={projects}
-        appearance={appearance}
-        onOpenSession={onOpenSession}
-      />
-      <ProjectSettingsDialog store={projectSettings} />
+      {management && (
+        <>
+          <SessionSearchDialog
+            sidebar={store}
+            sessionMetadata={sessionMetadata}
+            projects={projects}
+            appearance={appearance}
+            onOpenSession={onOpenSession}
+          />
+          <ProjectSettingsDialog store={projectSettings} />
+        </>
+      )}
     </aside>
   );
 });

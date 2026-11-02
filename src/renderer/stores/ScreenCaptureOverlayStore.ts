@@ -4,7 +4,6 @@ import {
   captureDrawingAnchor,
   captureRect,
   type CaptureDrawing,
-  type CaptureDestination,
   type CaptureMode,
   type CapturePoint,
   type CaptureRect,
@@ -33,7 +32,6 @@ export class ScreenCaptureOverlayStore extends Store<{
 }> {
   snapshot: ScreenCaptureSnapshot | undefined;
   mode: CaptureMode = "crop";
-  destination: CaptureDestination | undefined;
   readonly drawings: CaptureDrawing[] = observable([]);
   readonly stroke: CapturePoint[] = observable([]);
   dragStart: CapturePoint | undefined;
@@ -69,7 +67,6 @@ export class ScreenCaptureOverlayStore extends Store<{
       if (!this.signal.aborted) {
         this.snapshot = snapshot;
         this.annotationColor = snapshot.routing.annotationColor;
-        this.destination = snapshot.routing.defaultDestination;
         const voice = snapshot.routing.dictation;
         const recognition = voice.recognition;
         this.speechPreferences.preferences = {
@@ -90,9 +87,6 @@ export class ScreenCaptureOverlayStore extends Store<{
     }
   }
 
-  selectDestination(destination: CaptureDestination) {
-    if (!this.busy && !this.cancelled) this.destination = destination;
-  }
   setMode(mode: CaptureMode) {
     this.commitLabel();
     this.abandonDrag();
@@ -203,8 +197,7 @@ export class ScreenCaptureOverlayStore extends Store<{
     this.copied = false;
   }
   async capture(rect?: CaptureRect, copy = false) {
-    if (!this.snapshot || !this.destination || this.busy || this.cancelled) return;
-    const destination = { ...this.destination };
+    if (!this.snapshot || this.busy || this.cancelled) return;
     this.commitLabel();
     const drawings = this.drawings.slice();
     const annotationText = captureAnnotationText(drawings, rect);
@@ -224,7 +217,7 @@ export class ScreenCaptureOverlayStore extends Store<{
         this.copied = true;
       } else {
         await this.props.client.finishScreenCapture(
-          { image, annotationText, destination },
+          { image, annotationText },
           this.annotationColor,
           { signal: this.signal },
         );

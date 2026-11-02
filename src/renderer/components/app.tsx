@@ -1,3 +1,4 @@
+import { CaptureDestinationPicker } from "./capture-destination-picker";
 import { useState } from "react";
 import { usePhoneLayout } from "../lib/phone-layout";
 import { observer, useStore } from "r-state-tree/react";
@@ -37,6 +38,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       : undefined;
   const overlays = (
     <>
+      <CaptureDestinationPicker />
       <ArtifactMenuSurface />
       <AppOverlayHost workspaceMode={Boolean(mode)} fullscreen={fullscreen} />
     </>

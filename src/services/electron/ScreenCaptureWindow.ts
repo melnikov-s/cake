@@ -13,8 +13,7 @@ import {
   captureOutputSize,
   DEFAULT_CAPTURE_MAX_DIMENSION,
   DEFAULT_CAPTURE_SHORTCUT,
-  type CaptureDestination,
-  type CaptureRouting,
+  type CapturePreferences,
   type CaptureResult,
   type CaptureCompletion,
   type CaptureAnnotationColor,
@@ -87,7 +86,7 @@ export class ScreenCaptureWindow {
 
   async start(
     owner: BrowserWindow,
-    routing: CaptureRouting,
+    routing: CapturePreferences,
     signal: AbortSignal,
   ): Promise<CaptureCompletion> {
     if (this.stopped) throw new Error("Screen capture has shut down");
@@ -222,30 +221,18 @@ export class ScreenCaptureWindow {
 
   finish(
     senderId: number,
-    capture: { image: string; annotationText: string; destination: CaptureDestination } | undefined,
+    capture: { image: string; annotationText: string } | undefined,
     annotationColor: CaptureAnnotationColor,
   ) {
     const snapshot = this.state(senderId);
     let data: string | undefined;
     if (capture) {
-      const { image, destination } = capture;
-      const routing = snapshot.routing;
-      const offered =
-        destination.kind === "new-session"
-          ? routing.projects.some((project) => project.path === destination.projectPath)
-          : destination.kind === "cake-chat"
-            ? routing.cakeChats.some((session) => session.sessionId === destination.sessionId)
-            : routing.projects.some((project) =>
-                project.sessions.some((session) => session.sessionId === destination.sessionId),
-              );
-      if (!offered) throw new Error("Choose an available screenshot destination.");
+      const { image } = capture;
       data = this.decodeImage(image, snapshot.maxDimension).toPNG().toString("base64");
     }
     this.overlay?.hide();
     this.complete?.(
-      data && capture
-        ? { data, annotationText: capture.annotationText, destination: capture.destination }
-        : undefined,
+      data && capture ? { data, annotationText: capture.annotationText } : undefined,
       annotationColor,
     );
   }

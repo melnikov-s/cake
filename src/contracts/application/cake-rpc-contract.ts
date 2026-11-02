@@ -6,8 +6,7 @@ import { AgentActionNotice } from "./agent-action-notice";
 import { WidgetBrowserOutput } from "../widgets/widget-browser-output";
 import {
   CaptureImage,
-  CaptureDestination,
-  CaptureRouting,
+  CapturePreferences,
   CaptureCompletion,
   CaptureAnnotationColor,
   ScreenCaptureSettings,
@@ -437,7 +436,7 @@ export const cakeRpcPayloadSchemas = {
   "configure-cake-chat-overlay": CakeChatOverlaySettings,
   "hide-cake-chat-overlay": Schema.Struct({}),
   "show-main-window": Schema.Struct({ sessionId: Schema.optionalKey(bounded(1, 256)) }),
-  "start-screen-capture": CaptureRouting,
+  "start-screen-capture": CapturePreferences,
   "screen-capture-state": Schema.Struct({}),
   "copy-screen-capture": Schema.Struct({ image: CaptureImage, annotationText: Schema.String }),
   "copy-image": Schema.Struct({ dataUrl: bounded(1, 48_000_000) }),
@@ -447,7 +446,6 @@ export const cakeRpcPayloadSchemas = {
       Schema.Struct({
         image: CaptureImage,
         annotationText: Schema.String,
-        destination: CaptureDestination,
       }),
     ),
   }),

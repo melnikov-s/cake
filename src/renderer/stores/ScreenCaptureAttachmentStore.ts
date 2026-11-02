@@ -8,9 +8,8 @@ import { Store, snapshot, untracked } from "r-state-tree";
 import {
   DEFAULT_CAPTURE_MAX_DIMENSION,
   DEFAULT_CAPTURE_SHORTCUT,
-  type CaptureDestination,
-  type CaptureRouting,
-  type CaptureSessionOption,
+  type CapturePreferences,
+  type CaptureResult,
 } from "../../contracts/desktop/screen-capture-data";
 import type { Client } from "../client/Client";
 import type { AppShellStore, WindowConversationSelection } from "./AppShellStore";
@@ -18,26 +17,19 @@ import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import type { NavigationStore } from "./NavigationStore";
-import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
-import type { SessionMetadataStore } from "./SessionMetadataStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
-import type { SidebarStore } from "./SidebarStore";
 import { ToastContext } from "./context/ToastContext";
 
 /** Owns native capture preferences and destination routing, not chat or transcript state.
  * Preferences/last destination persist in the window snapshot. Captures are single-flight;
- * overlay choices are frozen at activation and revalidated before appending. New destinations
- * create an empty session only after capture succeeds, never on cancellation.
+ * the owning renderer selects destinations using its live sidebar after native editing.
  */
 export class ScreenCaptureAttachmentStore extends Store<{
   client: Client["electron"];
   shell: AppShellStore;
-  projects: ProjectCatalogStore;
   catalog: SessionCatalogStore;
   registry: SessionRegistryStore;
-  sidebar(): SidebarStore;
-  metadata(): SessionMetadataStore;
   settings(): AppearanceSettingsStore;
   dictation(): DictationStore;
   cakeChat(): CakeChatCollectionStore;
@@ -69,8 +61,13 @@ export class ScreenCaptureAttachmentStore extends Store<{
     );
   }
 
-  private get destinations(): Omit<CaptureRouting, "defaultDestination"> {
-    const sidebar = this.props.sidebar();
+  pendingCapture: CaptureResult | undefined;
+
+  get currentDestination() {
+    return this.props.shell.activeConversation ?? this.lastTarget;
+  }
+
+  private get preferences(): CapturePreferences {
     const settings = this.props.settings();
     const customTheme = settings.activeCustomTheme;
     return {
@@ -78,9 +75,6 @@ export class ScreenCaptureAttachmentStore extends Store<{
       appearance: {
         theme: customTheme?.type ?? settings.theme,
         importedTheme: customTheme,
-        projectAvatarsEnabled: settings.projectAvatarsEnabled,
-        sessionAvatarsEnabled: settings.sessionAvatarsEnabled,
-        sidebarCharactersEnabled: settings.sidebarCharactersEnabled,
       },
       dictation: {
         enabled: this.props.dictation().enabled,
@@ -88,80 +82,12 @@ export class ScreenCaptureAttachmentStore extends Store<{
         textProcessingMode: this.props.dictation().textProcessingMode,
         recognition: speechRecognitionSettings(this.props.dictation().props.preferences.values),
       },
-      projects: this.props.projects.orderedProjectPaths.map((path) => {
-        // Preserve sidebar ordering, including collapsed descendants. Unsent pane
-        // identities are valid destinations but intentionally not sidebar rows.
-        const listed = sidebar.sessionListStore.projectSessions(path, false, true);
-        const unsent = this.props.registry.unsentSessionsForProject(path, listed);
-        const project: CaptureRouting["projects"][number] = {
-          path,
-          name: this.props.projects.nameForPath(path),
-          sessions: [...listed, ...unsent].map((session) => {
-            const worktree = sidebar.managedWorktree(session.workingDirectory);
-            const activity = sidebar.sessionListStore.sessionActivityForDisplay(session);
-            const worktreeName = "worktreeName" in session ? session.worktreeName : undefined;
-            const option: CaptureSessionOption = {
-              sessionId: session.sessionId,
-              title: session.title || "New chat",
-              modifiedAt: session.modifiedAt,
-              activityTime: sidebar.sessionActivityTime(session.modifiedAt),
-              labels: this.props.metadata().sessionLabels(session.sessionId),
-              draft: session.draft ?? false,
-              familyCollapsed: sidebar.sessionListStore.isFamilyCollapsed(session.sessionId),
-            };
-            if (activity !== undefined) Object.assign(option, { activity });
-            if (worktreeName !== undefined) Object.assign(option, { worktreeName });
-            if (session.familyParentSessionId !== undefined)
-              Object.assign(option, { familyParentSessionId: session.familyParentSessionId });
-            if (session.familyChildSessionIds !== undefined)
-              Object.assign(option, { familyChildSessionIds: session.familyChildSessionIds });
-            if (session.familyDepth !== undefined)
-              Object.assign(option, { familyDepth: session.familyDepth });
-            if (worktree)
-              Object.assign(option, {
-                managedWorktree: {
-                  branch: worktree.branch,
-                  baseBranch: worktree.baseBranch,
-                  parentWorktreePath: worktree.parentWorktreePath,
-                  state: worktree.state,
-                },
-              });
-            return option;
-          }),
-        };
-        const icon = this.props.projects.find(path)?.settings?.icon;
-        if (icon) Object.assign(project, { icon });
-        return project;
-      }),
-      cakeChats: sidebar.sessionListStore.cakeChatSessions().map((session) => {
-        const option: CaptureSessionOption = {
-          sessionId: session.sessionId,
-          title: session.title,
-          modifiedAt: session.modifiedAt,
-          activityTime: sidebar.sessionActivityTime(session.modifiedAt),
-          labels: [],
-          familyCollapsed: false,
-        };
-        if (this.props.cakeChat().registry.find(session.sessionId)?.streaming)
-          Object.assign(option, { activity: "running" });
-        else if (session.unread) Object.assign(option, { activity: "unread" });
-        return option;
-      }),
     };
   }
 
   private async prepareDestination(
-    destination: CaptureDestination,
+    destination: WindowConversationSelection,
   ): Promise<WindowConversationSelection> {
-    if (destination.kind === "new-session") {
-      if (!this.props.projects.find(destination.projectPath))
-        throw new Error("The destination Project is no longer available.");
-      const sessionId = crypto.randomUUID();
-      this.props.registry.pendingSessions.prepareStaged(destination.projectPath, sessionId);
-      if (!(await this.props.navigation().openSession(sessionId)))
-        throw new Error("Cake could not create the destination session.");
-      return { kind: "project-session", sessionId };
-    }
     if (destination.kind === "project-session") {
       if (this.props.catalog.find(destination.sessionId)?.resolved)
         throw new Error("The destination chat is no longer editable.");
@@ -186,7 +112,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
 
   private findDraft(target: WindowConversationSelection) {
     if (target.kind === "project-session") {
-      if (this.props.metadata().isResolved(target.sessionId)) return undefined;
+      if (this.props.catalog.find(target.sessionId)?.resolved) return undefined;
       return this.props.registry.findSession(target.sessionId)?.conversationSessionStore
         .composerStore.draftStore;
     }
@@ -240,42 +166,36 @@ export class ScreenCaptureAttachmentStore extends Store<{
   }
 
   async capture() {
-    if (this.busy || this.recordingShortcut) return;
-    const choices = this.cakeChatOnly ? { ...this.destinations, projects: [] } : this.destinations;
-    const remembered = this.props.shell.activeConversation ?? this.lastTarget;
-    const available =
-      remembered &&
-      (remembered.kind === "cake-chat"
-        ? choices.cakeChats.some((session) => session.sessionId === remembered.sessionId)
-        : choices.projects.some((project) =>
-            project.sessions.some((session) => session.sessionId === remembered.sessionId),
-          ));
-    const project = choices.projects[0];
-    const recentSession = project?.sessions[0];
-    const defaultDestination: CaptureDestination | undefined = available
-      ? remembered
-      : recentSession
-        ? { kind: "project-session", sessionId: recentSession.sessionId }
-        : project
-          ? { kind: "new-session", projectPath: project.path }
-          : choices.cakeChats[0]
-            ? { kind: "cake-chat", sessionId: choices.cakeChats[0].sessionId }
-            : undefined;
-    if (!defaultDestination) {
-      this.reportError("Add a Project before capturing an attachment.");
-      return;
-    }
+    if (this.busy || this.pendingCapture || this.recordingShortcut) return;
     this.busy = true;
     try {
-      const completion = await this.props.client.startScreenCapture(
-        { ...choices, defaultDestination },
-        { signal: this.signal },
-      );
+      const completion = await this.props.client.startScreenCapture(this.preferences, {
+        signal: this.signal,
+      });
       if (this.signal.aborted) return;
       this.annotationColor = completion.annotationColor;
-      const result = completion.capture;
-      if (!result) return;
-      const target = await this.prepareDestination(result.destination);
+      this.pendingCapture = completion.capture;
+    } catch (error) {
+      if (!this.signal.aborted)
+        this.reportError(error instanceof Error ? error.message : String(error));
+    } finally {
+      this.busy = false;
+    }
+    // The drop-down window intentionally attaches only to its current Cake Chat.
+    if (this.cakeChatOnly && this.pendingCapture && this.currentDestination)
+      await this.attachTo(this.currentDestination);
+  }
+
+  cancelDestination() {
+    if (!this.busy) this.pendingCapture = undefined;
+  }
+
+  async attachTo(destination: WindowConversationSelection) {
+    const result = this.pendingCapture;
+    if (this.busy || !result) return;
+    this.busy = true;
+    try {
+      const target = await this.prepareDestination(destination);
       if (this.signal.aborted) return;
       const draft = this.findDraft(target);
       if (!draft) throw new Error("The destination chat is no longer editable.");
@@ -295,6 +215,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
           [draft.text, `${name}\n${result.annotationText}`].filter(Boolean).join("\n\n"),
         );
       this.lastTarget = { ...target };
+      this.pendingCapture = undefined;
       draft.requestFocus();
     } catch (error) {
       if (!this.signal.aborted)

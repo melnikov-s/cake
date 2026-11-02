@@ -1,7 +1,5 @@
 import { Schema } from "effect";
 import { SpeechRecognitionSettings, TextProcessingMode } from "../dictation/dictation-data";
-import { ProjectIcon, SessionLabel } from "../application/application-data";
-import { WorktreeRecord } from "../worktrees/managed-worktree-data";
 import { ImportedColorTheme } from "../themes/color-theme";
 
 import { CAPTURE_ANNOTATION_COLORS } from "../../utils/capture-annotation-colors";
@@ -18,56 +16,12 @@ export const ScreenCaptureSettings = Schema.Struct({
 });
 export interface ScreenCaptureSettings extends Schema.Schema.Type<typeof ScreenCaptureSettings> {}
 
-export const CaptureDestination = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("project-session"), sessionId: Schema.String }),
-  Schema.Struct({ kind: Schema.Literal("cake-chat"), sessionId: Schema.String }),
-  Schema.Struct({ kind: Schema.Literal("new-session"), projectPath: Schema.String }),
-]);
-export type CaptureDestination = Schema.Schema.Type<typeof CaptureDestination>;
-
-/** Frozen sidebar presentation facts; the overlay does not create another session catalog. */
-export const CaptureSessionOption = Schema.Struct({
-  sessionId: Schema.String,
-  title: Schema.String,
-  modifiedAt: Schema.String,
-  activityTime: Schema.String,
-  labels: Schema.Array(SessionLabel),
-  activity: Schema.optionalKey(
-    Schema.Literals(["waiting", "running", "blocked", "unread", "error", "stopped"]),
-  ),
-  draft: Schema.optionalKey(Schema.Boolean),
-  worktreeName: Schema.optionalKey(Schema.String),
-  familyParentSessionId: Schema.optionalKey(Schema.String),
-  familyChildSessionIds: Schema.optionalKey(Schema.Array(Schema.String)),
-  familyDepth: Schema.optionalKey(Schema.Int),
-  familyCollapsed: Schema.Boolean,
-  managedWorktree: Schema.optionalKey(
-    Schema.Struct({
-      branch: WorktreeRecord.fields.branch,
-      baseBranch: WorktreeRecord.fields.baseBranch,
-      parentWorktreePath: WorktreeRecord.fields.parentWorktreePath,
-      state: WorktreeRecord.fields.state,
-    }),
-  ),
-});
-export interface CaptureSessionOption extends Schema.Schema.Type<typeof CaptureSessionOption> {}
-export const CaptureRouting = Schema.Struct({
+/** Native editing preferences; destinations stay in the owning renderer. */
+export const CapturePreferences = Schema.Struct({
   annotationColor: CaptureAnnotationColor,
-  projects: Schema.Array(
-    Schema.Struct({
-      path: Schema.String,
-      name: Schema.String,
-      icon: Schema.optionalKey(ProjectIcon),
-      sessions: Schema.Array(CaptureSessionOption),
-    }),
-  ),
-  cakeChats: Schema.Array(CaptureSessionOption),
   appearance: Schema.Struct({
     theme: Schema.Literals(["system", "light", "dark"]),
     importedTheme: Schema.optional(ImportedColorTheme),
-    projectAvatarsEnabled: Schema.Boolean,
-    sessionAvatarsEnabled: Schema.Boolean,
-    sidebarCharactersEnabled: Schema.Boolean,
   }),
   dictation: Schema.Struct({
     enabled: Schema.Boolean,
@@ -75,15 +29,13 @@ export const CaptureRouting = Schema.Struct({
     textProcessingMode: TextProcessingMode,
     recognition: SpeechRecognitionSettings,
   }),
-  defaultDestination: CaptureDestination,
 });
-export interface CaptureRouting extends Schema.Schema.Type<typeof CaptureRouting> {}
+export interface CapturePreferences extends Schema.Schema.Type<typeof CapturePreferences> {}
 
 const CaptureAnnotationText = Schema.String;
 export const CaptureResult = Schema.Struct({
   data: Schema.String.check(Schema.isMaxLength(20_000_000)),
   annotationText: CaptureAnnotationText,
-  destination: CaptureDestination,
 });
 export interface CaptureResult extends Schema.Schema.Type<typeof CaptureResult> {}
 
@@ -97,7 +49,7 @@ export interface CaptureCompletion extends Schema.Schema.Type<typeof CaptureComp
 export const CaptureImage = Schema.String.check(Schema.isMaxLength(48_000_000));
 export const ScreenCaptureSnapshot = Schema.Struct({
   image: CaptureImage,
-  routing: CaptureRouting,
+  routing: CapturePreferences,
   width: Schema.Int.check(Schema.isGreaterThan(0)),
   height: Schema.Int.check(Schema.isGreaterThan(0)),
   maxDimension: ScreenCaptureSettings.fields.maxDimension,

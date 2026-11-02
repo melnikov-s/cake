@@ -3,7 +3,6 @@ import { StoreProvider, observer } from "r-state-tree/react";
 import type { ScreenCaptureOverlayStore } from "../stores/ScreenCaptureOverlayStore";
 import { CaptureCanvas } from "./ui/capture-canvas";
 import { CaptureToolbar } from "./ui/capture-toolbar";
-import { CaptureDestinationPicker } from "./ui/capture-destination-picker";
 import { AnnotationDraftPopover } from "./annotation-draft-popover";
 import { AnnotationItemPopover } from "./annotation-item-popover";
 import { Callout } from "./ui/callout";
@@ -120,17 +119,6 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
         canUndo={store.drawings.length > 0}
         copied={store.copied}
         onCopy={() => void store.capture(undefined, true)}
-        destinationPicker={
-          snapshot &&
-          store.destination && (
-            <CaptureDestinationPicker
-              routing={snapshot.routing}
-              destination={store.destination}
-              disabled={store.busy || store.cancelled}
-              onChange={(destination) => store.selectDestination(destination)}
-            />
-          )
-        }
         onMode={(mode) => store.setMode(mode)}
         onUndo={() => store.undo()}
         onCapture={() => void store.capture()}

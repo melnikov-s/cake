@@ -412,8 +412,11 @@ is a refactoring signal, not precedent.
   forwarding them through the registry or exposing another owner's child layout.
   Project Session Stores bind session-specific policy into reusable conversation
   primitives; shared chat primitives do not consume Project-only contexts.
-  **ScreenCaptureAttachmentStore** owns capture destination presentation and routing,
-  including unsent pane identities that intentionally remain outside sidebar lists.
+  **ScreenCaptureAttachmentStore** owns native capture preferences, the pending image and
+  attachment routing. After native editing, destination selection composes the owning
+  window’s real `AppSidebar` in a capability-limited view over the same sidebar Store;
+  no sidebar snapshots or mirrored disclosure state cross into the native editor.
+  The current-chat action also supports unsent pane identities outside sidebar lists.
 - **Project Chat to-dos** are Project-owned ApplicationStorage data, projected through
   the existing Project catalog into `Project.todos`; `ProjectTodosStore` owns only
   local edits, disclosure and side-pane interaction. The To-do toolbar toggle selects

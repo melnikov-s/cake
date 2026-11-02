@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import type { CaptureMode } from "../../../contracts/desktop/screen-capture-data";
 import type { CaptureAnnotationColor } from "../../../utils/capture-annotation-colors";
 import { AnnotationColorPicker } from "./annotation-color-picker";
@@ -24,7 +23,6 @@ export function CaptureToolbar({
   canUndo,
   copied,
   onCopy,
-  destinationPicker,
   onMode,
   onUndo,
   onCapture,
@@ -37,7 +35,6 @@ export function CaptureToolbar({
   canUndo: boolean;
   copied: boolean;
   onCopy(): void;
-  destinationPicker: ReactNode;
   onMode(mode: CaptureMode): void;
   onUndo(): void;
   onCapture(): void;
@@ -52,8 +49,6 @@ export function CaptureToolbar({
       // Lower only the initial strip by 40 CSS pixels; dragged geometry stays with the primitive.
       className="top-14"
     >
-      {destinationPicker}
-      <span aria-hidden="true" className="mx-1 h-5 w-px shrink-0 bg-border" />
       <IconButton
         tooltip="Crop · drag to attach"
         ariaLabel="Crop"

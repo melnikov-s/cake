@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useContext, useState } from "react";
+import { SidebarCapabilities } from "../lib/sidebar-capabilities";
 import { observer } from "r-state-tree/react";
 import { SESSION_TITLE_MAX_LENGTH } from "../../contracts/conversations/session-contract";
 import { isActiveSessionActivity } from "../lib/session-activity";
@@ -30,6 +31,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   onMarkUnread,
   ...row
 }: SidebarSessionItemProps) {
+  const { management } = useContext(SidebarCapabilities);
   const [renamingValue, setRenamingValue] = useState<string | null>(null);
   const { session, activity, resolved, onResolve } = row;
   const contextMenuUnread =
@@ -46,8 +48,10 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   return (
     <SessionListItem
       {...row}
-      activateOnMouseDown
-      revealWhenSelected
+      activateOnMouseDown={management}
+      revealWhenSelected={management}
+      onResolve={management ? row.onResolve : undefined}
+      onSetLabels={management ? row.onSetLabels : undefined}
       associated={store.isSessionAssociatedWithSelectedTodo(session.sessionId)}
       activityTime={store.sessionActivityTime(session.modifiedAt)}
       labelIds={sessionMetadata?.sessionLabelIds(session.sessionId) ?? []}
@@ -72,6 +76,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
       }
       onContextMenu={(event) => {
         event.preventDefault();
+        if (!management) return;
         const { clientX, clientY } = event;
         requestAnimationFrame(() => {
           const menu = isFamilyChild

@@ -1244,7 +1244,6 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
   states: [
     "default",
     "destination",
-    "new-session",
     "annotate",
     "annotation-input",
     "annotation-details",
@@ -1333,11 +1332,13 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
         overlay.locator("canvas").evaluate((canvas) => (canvas as HTMLCanvasElement).width),
       )
       .toBe(dimensions.width);
-    if (state === "destination" || state === "new-session") {
-      await overlay.getByRole("button", { name: "Screenshot destination" }).click();
-      if (state === "new-session") {
-        await overlay.getByRole("button", { name: "New chat", exact: true }).click();
-      }
+    if (state === "destination") {
+      await overlay.getByRole("button", { name: "Attach full display" }).click();
+      const destination = page.getByRole("dialog", { name: "Screenshot destination" });
+      await expect(destination.locator('[data-slot="sidebar"]')).toBeVisible();
+      captureOverlayRegions.set(page, destination);
+      await page.mouse.move(1, 1);
+      return;
     }
     const annotationState =
       state === "annotate" ||
@@ -1386,7 +1387,7 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
         ? toolbar
         : annotationState
           ? overlay.getByLabel("Screen capture", { exact: true })
-          : overlay.getByRole("dialog", { name: "Screenshot destination" }),
+          : overlay.getByLabel("Screen capture", { exact: true }),
     );
   },
   region(page) {

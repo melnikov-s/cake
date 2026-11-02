@@ -126,11 +126,8 @@ export class RootStore extends Store<{
     return createStore(ScreenCaptureAttachmentStore, {
       client: this.client.electron,
       shell: this.appShellStore,
-      projects: this.projectCatalogStore,
       catalog: this.sessionCatalogStore,
       registry: this.sessionRegistry,
-      sidebar: () => this.sidebarStore,
-      metadata: () => this.sessionMetadataStore,
       settings: () => this.settingsStore.appearance,
       dictation: () => this.dictationStore,
       cakeChat: () => this.cakeChatCollectionStore,

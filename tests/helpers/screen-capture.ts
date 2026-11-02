@@ -1,31 +1,9 @@
-import type {
-  CaptureRouting,
-  CaptureSessionOption,
-} from "../../src/contracts/desktop/screen-capture-data";
+import type { CapturePreferences } from "../../src/contracts/desktop/screen-capture-data";
 
-export function captureSession(
-  sessionId: string,
-  title: string,
-  overrides: Partial<CaptureSessionOption> = {},
-): CaptureSessionOption {
-  return {
-    sessionId,
-    title,
-    modifiedAt: new Date(0).toISOString(),
-    activityTime: "1h",
-    labels: [],
-    familyCollapsed: false,
-    ...overrides,
-  };
-}
-
-export const captureRouting: CaptureRouting = {
+export const captureRouting: CapturePreferences = {
   annotationColor: "yellow",
   appearance: {
     theme: "dark",
-    projectAvatarsEnabled: true,
-    sessionAvatarsEnabled: true,
-    sidebarCharactersEnabled: false,
   },
   dictation: {
     enabled: false,
@@ -38,14 +16,4 @@ export const captureRouting: CaptureRouting = {
       maximumUtteranceSeconds: 30,
     },
   },
-  projects: [
-    {
-      path: "/project",
-      name: "Project",
-      sessions: [captureSession("alpha", "Session A"), captureSession("beta", "Session B")],
-    },
-    { path: "/other", name: "Other Project", sessions: [captureSession("gamma", "Session C")] },
-  ],
-  cakeChats: [],
-  defaultDestination: { kind: "project-session", sessionId: "alpha" },
 };

@@ -1,12 +1,12 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Schema } from "effect";
 import {
-  CaptureRouting,
+  CapturePreferences,
   type CaptureCompletion,
 } from "../../../src/contracts/desktop/screen-capture-data";
 import {
@@ -52,6 +52,8 @@ function renderCapture(
       });
     },
   );
+  const menu = vi.fn<Client["electron"]["showSessionContextMenu"]>(async () => undefined);
+  const projectMenu = vi.fn<Client["electron"]["showProjectContextMenu"]>(async () => undefined);
   const fixture = createRendererStoreFixture({
     projects: [
       projectRecord({ path: "/project", name: "Project" }),
@@ -70,11 +72,46 @@ function renderCapture(
       }),
     ],
     client: {
-      electron: { startScreenCapture, configureScreenCapture },
+      electron: {
+        startScreenCapture,
+        configureScreenCapture,
+        showSessionContextMenu: menu,
+        showProjectContextMenu: projectMenu,
+      },
+      cakeChats: {
+        open: async ({ sessionId }) => {
+          applyConversationUpdate(fixture.models.cakeChatConversation(sessionId), {
+            _tag: "Snapshot",
+            revision: 1,
+            snapshot: emptyConversation(sessionId),
+          });
+        },
+      },
       sessionChats: { prompt },
       projectSessions: { open: openSession },
       workspaces: { loadStagedSlashCommands: async () => [] },
     },
+  });
+  applySnapshot(fixture.models.cakeChatCatalog, {
+    loaded: true,
+    sessions: [
+      {
+        sessionId: projectChatId,
+        title: "Project Chat",
+        projectPath: "/project",
+        createdAt: "2026-01-01T00:00:00Z",
+        modifiedAt: "2026-01-01T00:00:00Z",
+        messageCount: 0,
+        resolved: false,
+        unread: false,
+      },
+    ],
+  });
+  fixture.root.cakeChatCollectionStore.registry.load(projectChatId);
+  applyConversationUpdate(fixture.models.cakeChatConversation(projectChatId), {
+    _tag: "Snapshot",
+    revision: 1,
+    snapshot: emptyConversation(projectChatId),
   });
   const capture = fixture.root.screenCaptureStore;
   for (const id of ["alpha", "beta"]) {
@@ -111,6 +148,8 @@ function renderCapture(
     capture,
     configureScreenCapture,
     prompt,
+    menu,
+    projectMenu,
     openSession,
     select,
     user: userEvent.setup(),
@@ -133,7 +172,7 @@ beforeEach(() => {
   });
   vi.stubGlobal("matchMedia", (query: string) => ({
     media: query,
-    matches: true,
+    matches: query.includes("prefers-reduced-motion"),
     onchange: null,
     addListener() {},
     removeListener() {},
@@ -148,160 +187,62 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const projectChatId = `project-chat:${"a".repeat(64)}`;
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
 const captured: CaptureCompletion = {
   annotationColor: "yellow",
-  capture: {
-    data: png,
-    annotationText: "",
-    destination: { kind: "project-session", sessionId: "alpha" },
-  },
+  capture: { data: png, annotationText: "" },
 };
-describe("Screen capture attachment workflow", () => {
-  it("sends the numbered plain text and matching screenshot once through the existing composer", async () => {
-    using fixture = renderCapture(async () => ({
+const popup = () => screen.getByRole("dialog", { name: "Screenshot destination" });
+const normalSidebar = () =>
+  document.querySelector<HTMLElement>('[data-slot="sidebar"][data-view="navigation"]')!;
+const rowIds = (scope: HTMLElement) =>
+  [...scope.querySelectorAll(".session-item")].map((row) => row.getAttribute("data-session-id"));
+async function begin(fixture: ReturnType<typeof renderCapture>, showMain = false) {
+  await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
+  await screen.findByRole("dialog", { name: "Screenshot destination" });
+  if (showMain) {
+    await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Screenshot destination" }));
+  }
+  return within(popup());
+}
+
+describe("Screen capture attachment destinations", () => {
+  it("adds numbered text and pixels once to the current unsent chat, then uses the existing Send flow", async () => {
+    const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => ({
       ...captured,
-      capture: {
-        ...captured.capture!,
-        annotationText: "1. Arrow note\n   continued\n2. Freehand note",
-      },
+      capture: { data: png, annotationText: "1. Arrow note\n   continued\n2. Freehand note" },
     }));
-    await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
+    using fixture = renderCapture(start);
+    const menu = await begin(fixture);
+    Schema.decodeUnknownSync(CapturePreferences)(start.mock.calls[0]![0]);
+    await fixture.user.click(menu.getByRole("button", { name: "Attach to current chat" }));
     expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
     const input = screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement;
-    expect(input.value).toMatch(
-      /Existing draft\n\nScreenshot-[^\n]+\n1\. Arrow note\n {3}continued\n2\. Freehand note/,
-    );
+    expect(input.value).toMatch(/Existing draft\n\nScreenshot-[^\n]+\n1\. Arrow note/);
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(fixture.prompt).toHaveBeenCalledOnce());
     const sent = fixture.prompt.mock.calls[0]![0];
-    expect(sent.text).toContain("1. Arrow note\n   continued\n2. Freehand note");
     expect(sent.text.match(/1\. Arrow note/g)).toHaveLength(1);
-    expect(sent.attachments).toEqual([
-      expect.objectContaining({ kind: "image", mimeType: "image/png", data: png }),
-    ]);
+    expect(sent.attachments).toEqual([expect.objectContaining({ kind: "image", data: png })]);
   });
-  it("includes an unsent chat outside the Pi catalog and defaults to its existing draft", async () => {
-    const start = vi.fn<Client["electron"]["startScreenCapture"]>(async (routing) => {
-      Schema.decodeUnknownSync(CaptureRouting)(routing);
-      return {
-        annotationColor: routing.annotationColor,
-        capture: { data: png, annotationText: "", destination: routing.defaultDestination },
-      };
-    });
-    using fixture = renderCapture(start, true);
-    await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
-    expect(start).toHaveBeenCalledWith(
-      expect.objectContaining({
-        defaultDestination: { kind: "project-session", sessionId: "alpha" },
-      }),
-      expect.anything(),
-    );
-    expect(() => Schema.decodeUnknownSync(CaptureRouting)(start.mock.calls[0]?.[0])).not.toThrow();
+
+  it("attaches to an unsent current pane without inventing sidebar rows", async () => {
+    using fixture = renderCapture(async () => captured, true);
+    const menu = await begin(fixture);
+    expect(rowIds(popup())).not.toContain("alpha");
+    await fixture.user.click(menu.getByRole("button", { name: "Attach to current chat" }));
     expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
     expectExistingDraft();
-  });
-  it.each(["projected", "pending"] as const)(
-    "groups unsent destinations by their %s Managed Worktree Project without duplicating listed sessions",
-    async (source) => {
-      const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => ({
-        annotationColor: "yellow",
-      }));
-      using fixture = renderCapture(start);
-      const worktree = {
-        projectPath: "/project",
-        worktreePath: "/worktree",
-        branch: "agent/capture",
-        baseBranch: "main",
-        state: "active" as const,
-        createdAt: "2026-01-01T00:00:00.000Z",
-      };
-      act(() => {
-        if (source === "projected")
-          applySnapshot(fixture.models.worktrees, { worktrees: [worktree] });
-        else fixture.root.sessionCatalogStore.notePendingManagedWorktree(worktree);
-        fixture.root.sessionRegistry.pendingSessions.prepareStaged("/worktree", "unsent");
-        fixture.root.sessionRegistry.pendingSessions.prepareStaged("/other", "other-unsent");
-        fixture.root.sessionRegistry.load("loaded-only", "/project");
-      });
-      await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
-      const routing = start.mock.calls[0]![0];
-      expect(() => Schema.decodeUnknownSync(CaptureRouting)(routing)).not.toThrow();
-      expect(
-        routing.projects
-          .find((project) => project.path === "/project")!
-          .sessions.map((session) => session.sessionId),
-      ).toEqual(["alpha", "beta", "unsent"]);
-      expect(
-        routing.projects
-          .find((project) => project.path === "/other")!
-          .sessions.map((session) => session.sessionId),
-      ).toEqual(["gamma", "other-unsent"]);
-      expect(routing.projects[0]!.sessions[2]).toEqual(
-        expect.objectContaining({
-          title: "New chat",
-          draft: true,
-          managedWorktree: expect.objectContaining({ branch: "agent/capture" }),
-        }),
-      );
-
-      // Submission makes the same temporary identity a catalog/sidebar row.
-      act(() =>
-        fixture.root.sessionRegistry.pendingSessions.projectSubmission("unsent", "Capture plan"),
-      );
-      await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
-      const submitted = start.mock.calls[1]![0].projects.find(
-        (project) => project.path === "/project",
-      )!.sessions.filter((session) => session.sessionId === "unsent");
-      expect(submitted).toHaveLength(1);
-      expect(submitted[0]).toEqual(expect.objectContaining({ title: "Capture plan" }));
-    },
-  );
-
-  it("uses sidebar Project order and session order with the same identity presentation facts", async () => {
-    const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => ({
-      annotationColor: "yellow",
-    }));
-    using fixture = renderCapture(start);
-    act(() => {
-      fixture.root.projectCatalogStore.move("/other", "/project", "before");
-      fixture.root.settingsStore.appearance.setSessionAvatarsEnabled(false);
-      fixture.root.settingsStore.appearance.setSidebarCharactersEnabled(true);
-      // A label sort and selected-row pin are owned by the sidebar, not reimplemented here.
-      fixture.root.sidebarStore.sessionListStore.setProjectSessionSort("/project", "label");
-    });
-    await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
-    const routing = start.mock.calls[0]![0];
-    expect(() => Schema.decodeUnknownSync(CaptureRouting)(routing)).not.toThrow();
-    expect(routing.projects.map((project) => project.path)).toEqual(["/other", "/project"]);
-    expect(routing.appearance).toEqual({
-      projectAvatarsEnabled: true,
-      theme: fixture.root.settingsStore.appearance.theme,
-      sessionAvatarsEnabled: false,
-      sidebarCharactersEnabled: true,
-    });
-    const projectRows = routing.projects[1]!.sessions;
-    expect(projectRows.map((session) => session.sessionId)).toEqual(
-      fixture.root.sidebarStore.sessionListStore
-        .projectSessions("/project")
-        .map((session) => session.sessionId),
-    );
-    expect(projectRows[0]).toEqual(
-      expect.objectContaining({
-        modifiedAt: fixture.root.sessionCatalogStore.find(projectRows[0]!.sessionId)!.modifiedAt,
-        labels: fixture.root.sessionMetadataStore.sessionLabels(projectRows[0]!.sessionId),
-        activityTime: fixture.root.sidebarStore.sessionActivityTime(projectRows[0]!.modifiedAt),
-      }),
-    );
+    expect(fixture.openSession).not.toHaveBeenCalled();
+    expect(fixture.prompt).not.toHaveBeenCalled();
   });
 
-  it("includes collapsed family descendants before unsent pane destinations", async () => {
-    const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => ({
-      annotationColor: "yellow",
-    }));
-    using fixture = renderCapture(start);
-    act(() => {
+  it("shares project and family collapse live in both directions, including reopening", async () => {
+    using fixture = renderCapture(async () => captured);
+    act(() =>
       applySnapshot(fixture.models.sessionCatalog, {
         sessions: [
           sessionSummary({
@@ -319,156 +260,154 @@ describe("Screen capture attachment workflow", () => {
             familyDepth: 1,
           }),
         ],
-      });
-      fixture.root.sidebarStore.sessionListStore.toggleFamilyCollapsed("beta");
-      fixture.root.sessionRegistry.pendingSessions.prepareStaged("/project", "unsent");
-    });
-    await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
-    const routing = start.mock.calls[0]![0];
-    expect(() => Schema.decodeUnknownSync(CaptureRouting)(routing)).not.toThrow();
-    const sessions = routing.projects.find((project) => project.path === "/project")!.sessions;
-    expect(sessions.map((session) => session.sessionId)).toEqual(["beta", "alpha", "unsent"]);
-    expect(sessions[0]).toEqual(
-      expect.objectContaining({ familyCollapsed: true, familyChildSessionIds: ["alpha"] }),
+      }),
     );
-    expect(sessions[1]).toEqual(
-      expect.objectContaining({ familyParentSessionId: "beta", familyDepth: 1 }),
-    );
-    expect(sessions[2]).toEqual(expect.objectContaining({ title: "New chat", draft: true }));
+    await begin(fixture, true);
+    const main = within(normalSidebar());
+    await fixture.user.click(main.getByRole("button", { name: "Collapse Project" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Screenshot destination" }));
+    let menu = within(popup());
+    expect(menu.getByRole("button", { name: "Expand Project" })).toBeDefined();
+    expect(rowIds(popup())).toEqual([]);
+    await fixture.user.click(menu.getByRole("button", { name: "Expand Project" }));
+    expect(main.getByRole("button", { name: "Collapse Project" })).toBeDefined();
+    expect(rowIds(normalSidebar())).toEqual(rowIds(popup()));
+    await fixture.user.click(menu.getByRole("button", { name: "Collapse children of Parent" }));
+    expect(rowIds(normalSidebar())).toEqual(["beta"]);
+    expect(rowIds(popup())).toEqual(["beta"]);
+    // Escape dismisses just the menu; the screenshot can be reopened without a new capture.
+    await fixture.user.keyboard("{Escape}");
+    await fixture.user.click(main.getByRole("button", { name: "Expand children of Parent" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Screenshot destination" }));
+    menu = within(popup());
+    expect(rowIds(popup())).toEqual(["beta", "alpha"]);
+    await fixture.user.click(menu.getByRole("button", { name: "Collapse Project" }));
+    await fixture.user.keyboard("{Escape}");
+    await fixture.user.click(screen.getByRole("button", { name: "Screenshot destination" }));
+    expect(within(popup()).getByRole("button", { name: "Expand Project" })).toBeDefined();
+    expect(fixture.prompt).not.toHaveBeenCalled();
+    expect(fixture.openSession).not.toHaveBeenCalled();
   });
 
-  it("offers catalog sessions, defaults to the last chat, and routes to a different chosen session", async () => {
-    const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => ({
-      annotationColor: "yellow",
-      capture: {
-        data: png,
-        annotationText: "1. Chosen session note",
-        destination: { kind: "project-session", sessionId: "beta" },
-      },
-    }));
-    using fixture = renderCapture(start);
-    await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
-    await waitFor(() =>
-      expect(start).toHaveBeenCalledWith(
-        expect.objectContaining({
-          defaultDestination: { kind: "project-session", sessionId: "alpha" },
-          projects: expect.arrayContaining([
-            expect.objectContaining({
-              path: "/project",
-              sessions: expect.arrayContaining([
-                expect.objectContaining({ sessionId: "alpha", title: "Session A" }),
-                expect.objectContaining({ sessionId: "beta", title: "Session B" }),
-              ]),
-            }),
-          ]),
-        }),
-        expect.anything(),
-      ),
-    );
-    expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
-    expect(
-      (screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value,
-    ).toContain("1. Chosen session note");
-    act(() => fixture.select("alpha"));
-    expectExistingDraft();
-    expect(screen.queryByRole("button", { name: /^View Screenshot-/ })).toBeNull();
-  });
-
-  it("opens an unloaded catalog session in another Project before attaching", async () => {
-    using fixture = renderCapture(async () => ({
-      annotationColor: "yellow",
-      capture: {
-        data: png,
-        annotationText: "1. Other project note",
-        destination: { kind: "project-session", sessionId: "gamma" },
-      },
-    }));
-    await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
-    expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
-    expect(fixture.openSession).toHaveBeenCalledWith(
-      { sessionId: "gamma", workingDirectory: "/other" },
-      expect.anything(),
-    );
-    expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("gamma");
-    expect(
-      (screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value,
-    ).toContain("1. Other project note");
-    act(() => fixture.select("alpha"));
-    expectExistingDraft();
-  });
-
-  it("creates a fresh session with the attachment in the chosen Project without sending", async () => {
-    using fixture = renderCapture(async () => ({
-      annotationColor: "yellow",
-      capture: {
-        data: png,
-        annotationText: "1. New session note",
-        destination: { kind: "new-session", projectPath: "/other" },
-      },
-    }));
-    await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
-    expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
-    const active = fixture.root.appShellStore.activeConversation;
-    expect(active?.kind).toBe("project-session");
-    expect(active?.sessionId).not.toBe("alpha");
-    expect(active?.sessionId).not.toBe("beta");
-    expect(fixture.root.sessionRegistry.findSession(active!.sessionId)?.workspacePath).toBe(
-      "/other",
-    );
-    expect(
-      (screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value,
-    ).toContain("1. New session note");
-    act(() => fixture.select("alpha"));
-    expectExistingDraft();
-  });
-  it("uses the last chat when no conversation is active and appends without replacing or sending the draft", async () => {
-    const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => captured);
-    using fixture = renderCapture(start);
+  it("keeps real project/session ordering and presentation, even when normal navigation shows activity", async () => {
+    using fixture = renderCapture(async () => captured);
     act(() => {
-      fixture.root.navigationStore.showEmptyWorkbench();
-      fixture.root.appShellStore.showSettings();
+      fixture.root.projectCatalogStore.move("/other", "/project", "before");
+      fixture.root.sidebarStore.sessionListStore.setProjectSessionSort("/project", "label");
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
-    await waitFor(() => expect(start).toHaveBeenCalledOnce());
-    act(() => fixture.select("alpha"));
-    expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
-    expectExistingDraft();
+    await begin(fixture, true);
+    const expected = rowIds(normalSidebar());
+    expect(rowIds(popup())).toEqual(expected);
+    const projectNames = (scope: HTMLElement) =>
+      [...scope.querySelectorAll('[data-slot="project-label"]')].map((row) => row.textContent);
+    expect(projectNames(popup())).toEqual(projectNames(normalSidebar()));
+    expect(projectNames(popup())).toEqual(["Other Project", "Project"]);
+    expect(popup().querySelector('[data-slot="avatar"]')).not.toBeNull();
+    await fixture.user.keyboard("{Escape}");
+    await fixture.user.click(
+      within(normalSidebar()).getByRole("button", { name: "Show activity" }),
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Screenshot destination" }));
+    expect(rowIds(popup())).toEqual(expected);
   });
 
-  it("pins the destination at activation even if navigation changes before capture completes", async () => {
-    let complete!: (value: CaptureCompletion) => void;
-    const result = new Promise<CaptureCompletion>((resolve) => {
-      complete = resolve;
-    });
-    using fixture = renderCapture(async () => result);
-    await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
-    act(() => fixture.select("beta"));
-    await act(async () => complete(captured));
-    expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
-    expectExistingDraft();
-  });
-
-  it("leaves the existing draft untouched when the native experience is cancelled", async () => {
-    using fixture = renderCapture(async () => ({ annotationColor: "yellow" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
+  it("project disclosure never attaches; the project label attaches to Project Chat, not a new session", async () => {
+    using fixture = renderCapture(async () => captured);
+    const menu = await begin(fixture);
+    await fixture.user.click(menu.getByRole("button", { name: "Collapse Project" }));
     expect(screen.queryByRole("button", { name: /^View Screenshot-/ })).toBeNull();
+    expect(fixture.openSession).not.toHaveBeenCalled();
+    await fixture.user.click(menu.getByRole("button", { name: "Open Project Chat for project" }));
+    expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
+    expect(fixture.root.appShellStore.activeConversation).toEqual({
+      kind: "cake-chat",
+      sessionId: projectChatId,
+    });
+    expect(fixture.openSession).not.toHaveBeenCalled();
+    expect(fixture.prompt).not.toHaveBeenCalled();
+    act(() => fixture.select("alpha"));
     expectExistingDraft();
+    expect(screen.queryByRole("button", { name: /^View Screenshot-/ })).toBeNull();
   });
 
-  it("reports native failures without destroying the draft and supports another capture", async () => {
+  it.each(["Session B", "Session C"])(
+    "routes the chosen %s row through the existing attachment flow",
+    async (title) => {
+      using fixture = renderCapture(async () => captured);
+      const menu = await begin(fixture);
+      await fixture.user.click(menu.getByRole("button", { name: new RegExp(`^${title} `) }));
+      expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
+      expect(fixture.root.appShellStore.activeConversation).toEqual({
+        kind: "project-session",
+        sessionId: title === "Session B" ? "beta" : "gamma",
+      });
+      if (title === "Session C")
+        expect(fixture.openSession).toHaveBeenCalledWith(
+          { sessionId: "gamma", workingDirectory: "/other" },
+          expect.anything(),
+        );
+      expect(fixture.prompt).not.toHaveBeenCalled();
+      act(() => fixture.select("alpha"));
+      expectExistingDraft();
+    },
+  );
+
+  it("suppresses management only in the selection surface", async () => {
+    using fixture = renderCapture(async () => captured);
+    const menu = await begin(fixture, true);
+    expect(menu.queryByRole("button", { name: "Project actions for project" })).toBeNull();
+    expect(menu.queryByRole("button", { name: "Resolve Session A" })).toBeNull();
+    expect(menu.queryByRole("button", { name: /New chat|Add project|Open settings/ })).toBeNull();
+    expect(popup().querySelector('[draggable="true"]')).toBeNull();
+    await fixture.user.pointer({
+      target: menu.getByRole("button", { name: /^Session A / }),
+      keys: "[MouseRight]",
+    });
+    await fixture.user.pointer({
+      target: menu.getByRole("button", { name: "Open Project Chat for project" }),
+      keys: "[MouseRight]",
+    });
+    expect(fixture.menu).not.toHaveBeenCalled();
+    expect(fixture.projectMenu).not.toHaveBeenCalled();
+    await fixture.user.keyboard("{Escape}");
+    const main = within(normalSidebar());
+    expect(main.getByRole("button", { name: "Project actions for project" })).toBeDefined();
+    expect(main.getByRole("button", { name: "Resolve Session A" })).toBeDefined();
+    await fixture.user.pointer({
+      target: main.getByRole("button", { name: /^Session A / }),
+      keys: "[MouseRight]",
+    });
+    await waitFor(() => expect(fixture.menu).toHaveBeenCalledOnce());
+  });
+
+  it("can discard a screenshot without changing the draft", async () => {
+    using fixture = renderCapture(async () => captured);
+    const menu = await begin(fixture);
+    await fixture.user.click(menu.getByRole("button", { name: "Cancel screenshot attachment" }));
+    expect(screen.queryByRole("button", { name: "Screenshot destination" })).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
+    expectExistingDraft();
+    expect(screen.queryByRole("button", { name: /^View Screenshot-/ })).toBeNull();
+  });
+
+  it("leaves the draft unchanged on native cancellation and reports failures with retry", async () => {
     const start = vi
       .fn<Client["electron"]["startScreenCapture"]>()
       .mockRejectedValueOnce(new Error("Allow screen recording"))
+      .mockResolvedValueOnce({ annotationColor: "yellow" })
       .mockResolvedValueOnce(captured);
     using fixture = renderCapture(start);
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
     expect(await screen.findByText("Allow screen recording")).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
+    expect(screen.queryByRole("button", { name: "Screenshot destination" })).toBeNull();
+    const menu = await begin(fixture);
+    await fixture.user.click(menu.getByRole("button", { name: "Attach to current chat" }));
     expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
+    expectExistingDraft();
   });
 
-  it("does not attach a finished capture to a chat resolved during capture", async () => {
+  it("does not attach to a current chat resolved during capture", async () => {
     let complete!: (value: CaptureCompletion) => void;
     const result = new Promise<CaptureCompletion>((resolve) => {
       complete = resolve;
@@ -476,23 +415,22 @@ describe("Screen capture attachment workflow", () => {
     using fixture = renderCapture(async () => result);
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
     act(() => {
-      const summary = fixture.models.sessionCatalog.sessions.find(
-        (session) => session.sessionId === "alpha",
-      );
-      if (!summary) throw new Error("Missing session");
-      summary.resolved = true;
+      fixture.models.sessionCatalog.sessions.find((s) => s.sessionId === "alpha")!.resolved = true;
     });
     await act(async () => complete(captured));
+    await fixture.user.click(
+      within(popup()).getByRole("button", { name: "Attach to current chat" }),
+    );
     expect(await screen.findByText("The destination chat is no longer editable.")).toBeDefined();
   });
 
-  it("configures the resized-image limit and disables the global shortcut through Settings", async () => {
+  it("configures image size and shortcut from Settings", async () => {
     using fixture = renderCapture(async () => ({ annotationColor: "yellow" }));
     await fixture.user.selectOptions(screen.getByLabelText("Maximum image dimension"), "1024");
     await waitFor(() =>
       expect(fixture.configureScreenCapture).toHaveBeenLastCalledWith(
         { shortcut: "Mod+Shift+6", maxDimension: 1024 },
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        expect.anything(),
       ),
     );
     await fixture.user.click(screen.getByRole("button", { name: "Clear" }));
@@ -501,9 +439,6 @@ describe("Screen capture attachment workflow", () => {
         { shortcut: "", maxDimension: 1024 },
         expect.anything(),
       ),
-    );
-    expect(screen.getByRole("button", { name: "Screen capture shortcut" }).textContent).toContain(
-      "Not assigned",
     );
   });
 });

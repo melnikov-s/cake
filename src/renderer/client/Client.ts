@@ -12,8 +12,7 @@ import type {
 } from "../../contracts/artifacts/message-board";
 import type { ProjectSessionResolutionDomainFailure } from "../../contracts/project-sessions/project-session-resolution";
 import type {
-  CaptureRouting,
-  CaptureResult,
+  CapturePreferences,
   CaptureCompletion,
   CaptureAnnotationColor,
   ScreenCaptureSettings,
@@ -125,7 +124,7 @@ interface ElectronCommands {
     options?: ClientCommandOptions,
   ): Promise<void>;
   startScreenCapture(
-    routing: CaptureRouting,
+    routing: CapturePreferences,
     options?: ClientCommandOptions,
   ): Promise<CaptureCompletion>;
   screenCaptureState(options?: ClientCommandOptions): Promise<ScreenCaptureSnapshot>;
@@ -135,9 +134,7 @@ interface ElectronCommands {
   ): Promise<void>;
   copyImage(dataUrl: string, options?: ClientCommandOptions): Promise<void>;
   finishScreenCapture(
-    capture:
-      | { image: string; annotationText: string; destination: CaptureResult["destination"] }
-      | undefined,
+    capture: { image: string; annotationText: string } | undefined,
     annotationColor: CaptureAnnotationColor,
     options?: ClientCommandOptions,
   ): Promise<void>;

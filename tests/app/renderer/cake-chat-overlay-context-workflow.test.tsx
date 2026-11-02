@@ -100,19 +100,13 @@ it("routes overlay screenshots only to Cake Chat and attaches them to its draft"
     capture: {
       data: "c2NyZWVu",
       annotationText: "1. Inspect this\n   and this",
-      destination: routing.defaultDestination,
     },
   }));
   using view = overlayFixture(startScreenCapture);
   const { fixture, draft } = view;
   await act(() => startCakeChatOverlay(fixture.root));
   await act(() => fixture.root.screenCaptureStore.capture());
-  const routing = startScreenCapture.mock.calls[0]![0];
-  expect(routing.projects).toEqual([]);
-  expect(routing.defaultDestination).toEqual({
-    kind: "cake-chat",
-    sessionId: CAKE_CHAT_SESSION_ID,
-  });
+  expect(startScreenCapture).toHaveBeenCalledOnce();
   expect(draft().text).toContain("1. Inspect this\n   and this");
   expect(draft().attachments).toEqual([
     expect.objectContaining({ kind: "image", mimeType: "image/png", data: "c2NyZWVu" }),

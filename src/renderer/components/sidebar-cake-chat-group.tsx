@@ -1,4 +1,6 @@
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import { useContext } from "react";
+import { SidebarCapabilities } from "../lib/sidebar-capabilities";
 import { observer } from "r-state-tree/react";
 import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore";
 import type { AppShellStore } from "../stores/AppShellStore";
@@ -15,9 +17,10 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
   shell: AppShellStore;
   onOpenCakeChat(sessionId?: string): void;
 }) {
+  const { management } = useContext(SidebarCapabilities);
   return (
     <NavItem
-      activateOnMouseDown
+      activateOnMouseDown={management}
       data-slot="cake-chat-group"
       label="Cake Chat"
       icon={<CakeIcon aria-hidden />}
@@ -35,6 +38,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
       onClick={() => onOpenCakeChat(CAKE_CHAT_SESSION_ID)}
       onContextMenu={(event) => {
         event.preventDefault();
+        if (!management) return;
         const { clientX, clientY } = event;
         requestAnimationFrame(() => void cakeChat.showContextMenu(clientX, clientY));
       }}

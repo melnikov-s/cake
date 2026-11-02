@@ -196,7 +196,6 @@ describe("Native screen capture lifetime", () => {
       {
         image: "data:image/png;base64,composed",
         annotationText: "1. First\n   second",
-        destination: { kind: "project-session", sessionId: "beta" },
       },
       "cyan",
     );
@@ -205,7 +204,6 @@ describe("Native screen capture lifetime", () => {
       capture: {
         data: Buffer.from("resized").toString("base64"),
         annotationText: "1. First\n   second",
-        destination: { kind: "project-session", sessionId: "beta" },
       },
     });
     expect(native.output).toMatchObject({ width: 1024, height: 512 });
@@ -228,41 +226,6 @@ describe("Native screen capture lifetime", () => {
     expect(() => capture.state(window.webContents.id)).not.toThrow();
     capture.finish(window.webContents.id, undefined, "yellow");
     expect(await running).toEqual({ annotationColor: "yellow" });
-    capture.stop();
-  });
-  it("allows new sessions only in an offered Project and returns the chosen route", async () => {
-    const { owner, capture } = fixture();
-    const { running, created } = startOverlay(capture, owner);
-    const window = await created;
-    expect(capture.state(window.webContents.id).routing).toEqual(captureRouting);
-    expect(() =>
-      capture.finish(
-        window.webContents.id,
-        {
-          image: "data:image/png;base64,new",
-          annotationText: "1. First\n   second",
-          destination: { kind: "new-session", projectPath: "/unavailable" },
-        },
-        "yellow",
-      ),
-    ).toThrow("available screenshot destination");
-    capture.finish(
-      window.webContents.id,
-      {
-        image: "data:image/png;base64,new",
-        annotationText: "1. First\n   second",
-        destination: { kind: "new-session", projectPath: "/other" },
-      },
-      "yellow",
-    );
-    expect(await running).toEqual({
-      annotationColor: "yellow",
-      capture: {
-        data: Buffer.from("resized").toString("base64"),
-        annotationText: "1. First\n   second",
-        destination: { kind: "new-session", projectPath: "/other" },
-      },
-    });
     capture.stop();
   });
   it("rejects concurrent activation, tears down on cancellation, and permits another capture", async () => {

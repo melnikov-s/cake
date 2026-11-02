@@ -3,7 +3,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createStore, mount } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { captureRouting, captureSession } from "../../helpers/screen-capture";
+import { captureRouting } from "../../helpers/screen-capture";
 import { ScreenCaptureOverlay } from "../../../src/renderer/components/screen-capture-overlay";
 import { ScreenCaptureOverlayStore } from "../../../src/renderer/stores/ScreenCaptureOverlayStore";
 import { createTestClient } from "./test-client";
@@ -112,78 +112,6 @@ describe("Screen capture overlay", () => {
     },
   );
 
-  it("uses sidebar project icons and session rows, keeps selection and creates a chat in a Project", async () => {
-    using fixture = await renderOverlay();
-    const picker = screen.getByRole("button", { name: "Screenshot destination" });
-    await fixture.user.click(picker);
-    const popup = screen.getByRole("dialog", { name: "Screenshot destination" });
-    expect(popup.querySelector("button")?.textContent).toBe("New chat");
-    expect(
-      [...popup.querySelectorAll("[data-session-id]")].map((row) =>
-        row.getAttribute("data-session-id"),
-      ),
-    ).toEqual(["alpha", "beta", "gamma"]);
-    expect(
-      screen
-        .getByRole("button", { name: "Collapse Project" })
-        .querySelector('[data-slot="avatar"]'),
-    ).not.toBeNull();
-    expect(popup.querySelector('[data-session-id="alpha"] [data-slot="avatar"]')).not.toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse Project" }));
-    expect(screen.queryByRole("button", { name: /Session A/ })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Expand Project" }));
-    await fixture.user.click(screen.getByRole("button", { name: /Session C/ }));
-    expect(picker.textContent).toContain("Session C");
-    await fixture.user.click(picker);
-    await fixture.user.click(screen.getByRole("button", { name: /^New chat$/ }));
-    const project = screen.getByRole("button", { name: /^New chat in Project$/ });
-    expect(project.querySelector('[data-slot="avatar"]')).not.toBeNull();
-    await fixture.user.click(project);
-    await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
-    expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
-      {
-        image: "data:image/png;base64,new",
-        annotationText: "",
-        destination: { kind: "new-session", projectPath: "/project" },
-      },
-      "yellow",
-      expect.anything(),
-    );
-  });
-
-  it("shares family disclosure, branch, labels and activity with sidebar rows", async () => {
-    const parent = captureSession("parent", "Family parent", {
-      familyChildSessionIds: ["child"],
-      familyCollapsed: true,
-      worktreeName: "capture-polish",
-      labels: [{ id: "review", name: "Review", color: "blue" }],
-      activity: "running",
-    });
-    const child = captureSession("child", "Family child", {
-      familyParentSessionId: "parent",
-      familyDepth: 1,
-    });
-    using fixture = await renderOverlay(undefined, {
-      ...captureRouting,
-      projects: [{ path: "/project", name: "Project", sessions: [parent, child] }],
-      defaultDestination: { kind: "project-session", sessionId: "parent" },
-    });
-    await fixture.user.click(screen.getByRole("button", { name: "Screenshot destination" }));
-    expect(screen.queryByRole("button", { name: /Family child/ })).toBeNull();
-    expect(screen.getByText("capture-polish")).toBeDefined();
-    expect(screen.getByRole("img", { name: "Labels: Review" })).toBeDefined();
-    await fixture.user.click(
-      screen.getByRole("button", { name: "Expand children of Family parent" }),
-    );
-    await fixture.user.click(screen.getByRole("button", { name: /Family child/ }));
-    await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
-    expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
-      expect.objectContaining({ destination: { kind: "project-session", sessionId: "child" } }),
-      "yellow",
-      expect.anything(),
-    );
-  });
-
   it.each(["Annotate", "Freehand"])(
     "opens the exact shared annotation composer on %s release and exports multiline numbered text",
     async (tool) => {
@@ -224,7 +152,6 @@ describe("Screen capture overlay", () => {
         {
           image: "data:image/png;base64,drawing",
           annotationText: "1. First line\n   Second line",
-          destination: captureRouting.defaultDestination,
         },
         "yellow",
         expect.anything(),
@@ -323,15 +250,6 @@ describe("Screen capture overlay", () => {
     expect(fixture.finishScreenCapture).not.toHaveBeenCalled();
   });
 
-  it("closes destination popup before cancelling capture on Escape", async () => {
-    using fixture = await renderOverlay();
-    await fixture.user.click(screen.getByRole("button", { name: "Screenshot destination" }));
-    await fixture.user.keyboard("{Escape}");
-    expect(fixture.finishScreenCapture).not.toHaveBeenCalled();
-    await fixture.user.keyboard("{Escape}");
-    expect(fixture.finishScreenCapture).toHaveBeenCalledOnce();
-  });
-
   it("cancels during flattening and never delivers the late render", async () => {
     let complete!: (value: string) => void;
     const pending = new Promise<string>((resolve) => {
@@ -361,7 +279,6 @@ describe("Screen capture overlay", () => {
       {
         image: "data:image/png;base64,retry",
         annotationText: "",
-        destination: captureRouting.defaultDestination,
       },
       "yellow",
       expect.anything(),
