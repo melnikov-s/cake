@@ -106,7 +106,14 @@ describe("Cake runtime streaming projection", () => {
         } as never);
 
       expect(events.filter((event) => event.type === "part-updated")).toEqual([]);
+      const snapshotParts = projection.streamingParts();
+      expect(snapshotParts).toEqual([
+        expect.objectContaining({ text: "partial-1000", status: "streaming" }),
+      ]);
       vi.advanceTimersByTime(50);
+      expect(events.filter((event) => event.type === "part-updated")).toEqual(
+        snapshotParts.map((part) => ({ type: "part-updated", sessionId: "session-1", part })),
+      );
       expect(events.filter((event) => event.type === "part-updated")).toEqual([
         expect.objectContaining({
           part: expect.objectContaining({ text: "partial-1000", status: "streaming" }),

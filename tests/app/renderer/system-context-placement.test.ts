@@ -53,6 +53,7 @@ function fixture() {
       session: session as unknown as AgentSession,
       settingsManager: SettingsManager.inMemory(),
       models: [],
+      streamingParts: [],
       queuedParts: [],
       transientParts: [],
       fastMode: false,

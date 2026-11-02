@@ -60,6 +60,7 @@ interface PendingUserPresentation {
 
 export interface RuntimeEventProjection {
   readonly currentUsage: () => SessionUsage;
+  readonly streamingParts: () => UiPart[];
   readonly queuedParts: () => UiPart[];
   readonly projectEvent: (event: AgentSessionEvent) => void;
   readonly syncQueuedParts: () => void;
@@ -394,6 +395,10 @@ export function createCakeSessionRuntimeEventProjection(input: {
 
   return {
     currentUsage,
+    streamingParts: () =>
+      pendingAssistantUpdate
+        ? projectLiveMessage(pendingAssistantUpdate)
+        : projectLiveMessage.streamingParts(session.state.streamingMessage),
     queuedParts,
     projectEvent,
     syncQueuedParts,

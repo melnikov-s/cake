@@ -35,6 +35,7 @@ export interface CakeSessionRuntimeSnapshotInput {
   readonly session: AgentSession;
   readonly settingsManager: SettingsManager;
   readonly models: ModelOption[];
+  readonly streamingParts: readonly UiPart[];
   readonly queuedParts: readonly UiPart[];
   readonly transientParts: readonly UiPart[];
   readonly fastMode: boolean;
@@ -70,6 +71,7 @@ export function projectCakeSessionRuntimeSnapshot(
             ...projectRuntimeSystemPrompt(session.systemPrompt, "runtime", tools),
             ...withoutRuntimeSystemPrompt(branchParts, session.systemPrompt, tools),
           ]),
+      ...input.streamingParts,
       ...input.queuedParts,
       ...input.transientParts,
     ],

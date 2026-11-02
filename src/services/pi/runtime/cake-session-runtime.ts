@@ -522,6 +522,9 @@ export async function createCakeSessionRuntime(
       session,
       settingsManager,
       models,
+      // SessionManager contains finalized entries; Pi owns the in-flight response.
+      // Use its current message with the same part IDs as the streamed deltas.
+      streamingParts: projection.streamingParts(),
       queuedParts: projection.queuedParts(),
       transientParts: [
         ...(session.isCompacting ? [activeCompactionNotice()] : []),

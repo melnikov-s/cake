@@ -930,6 +930,15 @@ describe("CakeSessionRuntime characterization", () => {
     const liveSnapshot = await runtime.snapshot();
     expect(runtime.streaming).toBe(true);
     expect(liveSnapshot.streaming).toBe(true);
+    const streamingPart = events.findLast(
+      (event) =>
+        event.type === "part-updated" &&
+        event.part.kind === "text" &&
+        event.part.text === "Finished.",
+    );
+    expect(streamingPart?.type).toBe("part-updated");
+    if (streamingPart?.type !== "part-updated") throw new Error("Missing streamed response");
+    expect(liveSnapshot.parts).toContainEqual(streamingPart.part);
     expect(events).toEqual(
       expect.arrayContaining([
         { type: "streaming", sessionId: runtime.sessionId, streaming: true },

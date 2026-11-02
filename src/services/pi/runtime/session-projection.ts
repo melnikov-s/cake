@@ -838,6 +838,7 @@ export function createLiveMessageProjector(
         Reflect.get(message, "role") === "system",
     ) ?? false;
   let activeStreamId: string | undefined;
+  let streamingContentIndex: number | undefined;
   let streamIndex = 0;
   let userIndex = 0;
   let activeAssistantPartIds = new Set<string>();
@@ -886,13 +887,14 @@ export function createLiveMessageProjector(
     }
     if (event.type === "message_start" && event.message.role === "assistant") {
       activeStreamId = nextStreamId();
+      streamingContentIndex = undefined;
       activeAssistantPartIds = new Set();
       return [];
     }
     if (event.type === "message_update") {
       activeStreamId ??= nextStreamId();
       const update = event.assistantMessageEvent;
-      const streamingContentIndex =
+      streamingContentIndex =
         update.type === "toolcall_start" ||
         update.type === "toolcall_delta" ||
         update.type === "thinking_start" ||
@@ -931,9 +933,23 @@ export function createLiveMessageProjector(
       lastAssistantPartIds = [...activeAssistantPartIds];
       activeAssistantPartIds = new Set();
       activeStreamId = undefined;
+      streamingContentIndex = undefined;
       return parts;
     }
     return [];
+  };
+  project.streamingParts = (message: unknown): UiPart[] => {
+    if (!activeStreamId) return [];
+    const parts = partsFromMessage(
+      message,
+      activeStreamId,
+      true,
+      undefined,
+      false,
+      streamingContentIndex,
+    );
+    for (const part of parts) activeAssistantPartIds.add(part.id);
+    return parts;
   };
   project.takeLastAssistantPartIds = () => {
     const partIds = lastAssistantPartIds;
