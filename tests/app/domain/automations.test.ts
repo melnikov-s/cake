@@ -36,6 +36,68 @@ const waitForSettlement = (
 
 describe("automation lifecycle and execution", () => {
   it.effect(
+    "pages global history across archived and active definitions with exact run links and captured-name filtering",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* automationFixture();
+        yield* Effect.gen(function* () {
+          const a = yield* definitions.create({
+            definition: automationDefinition({ name: "Daily digest", overlap: "queue" }),
+            initialState: "active",
+          });
+          const b = yield* definitions.create({
+            definition: automationDefinition({
+              name: "Project checks",
+              context: { _tag: "Project", projectPath: "/projects/cake" },
+            }),
+            initialState: "active",
+          });
+          const first = yield* runs.trigger(a.id);
+          const firstSession = yield* Queue.take(f.started);
+          yield* TestClock.adjust("1 second");
+          const queued = yield* runs.trigger(a.id);
+          expect(queued._tag).toBe("queued");
+          yield* TestClock.adjust("1 second");
+          const project = yield* runs.trigger(b.id);
+          const projectSession = yield* Queue.take(f.started);
+          yield* TestClock.adjust("1 second");
+          const skipped = yield* runs.trigger(b.id);
+          expect(skipped._tag).toBe("skipped");
+          yield* runs.archive({ automationId: a.id, runningSessions: "let-finish" });
+          const latest = yield* definitions.history({ limit: 2 });
+          expect(latest.total).toBe(4);
+          expect(latest.nextOffset).toBe(2);
+          expect(latest.occurrences.map((item) => item.id)).toEqual([
+            skipped.occurrenceId,
+            project.occurrenceId,
+          ]);
+          expect(latest.runs.map((item) => item.sessionId)).toEqual([projectSession.sessionId]);
+          const older = yield* definitions.history({ offset: 2, limit: 2 });
+          expect(older.total).toBe(4);
+          expect(older.nextOffset).toBeNull();
+          expect(older.occurrences.map((item) => item.id)).toEqual([
+            queued.occurrenceId,
+            first.occurrenceId,
+          ]);
+          expect(older.occurrences[0]?.disposition._tag).toBe("canceled");
+          expect(older.runs.map((item) => item.sessionId)).toEqual([firstSession.sessionId]);
+          expect(
+            (yield* definitions.history({ query: "DAILY" })).occurrences.map(
+              (item) => item.automationId,
+            ),
+          ).toEqual([a.id, a.id]);
+          expect((yield* definitions.history({ automationId: b.id })).total).toBe(2);
+          expect(
+            (yield* definitions.history({ query: "Summarize what needs attention" })).total,
+          ).toBe(0);
+          yield* f.complete(firstSession.sessionId);
+          yield* f.complete(projectSession.sessionId);
+          yield* waitForSettlement(f, firstSession.sessionId);
+          yield* waitForSettlement(f, projectSession.sessionId);
+        }).pipe(Effect.provide(f.context));
+      }),
+  );
+  it.effect(
     "vaults task attachments once, grants each execution, and preserves queued originals across edits",
     () =>
       Effect.gen(function* () {

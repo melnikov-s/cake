@@ -146,8 +146,9 @@ export const automationToolDescriptions = [
   {
     command: "automations.history",
     summary:
-      "List a bounded page of trigger outcomes and run/session links without task bodies or transcripts.",
-    result: "Occurrence metadata and run links, total and nextOffset.",
+      "List globally ordered trigger outcomes and run/session links, optionally filtered by automationId; query matches captured automation names.",
+    result:
+      "A bounded page of occurrence metadata and run links, total and nextOffset; no task bodies or transcripts.",
   },
   {
     command: "automations.cancel-run",

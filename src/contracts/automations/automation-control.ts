@@ -51,8 +51,9 @@ export const AutomationTriggerResult = Schema.TaggedUnion({
 });
 export type AutomationTriggerResult = typeof AutomationTriggerResult.Type;
 
+/** Omit automationId for one globally ordered, bounded occurrence page. Query matches captured names. */
 export const AutomationHistoryInput = Schema.Struct({
-  ...AutomationTarget.fields,
+  automationId: Schema.optionalKey(AutomationId),
   ...AgentListInput.fields,
 });
 export interface AutomationHistoryInput extends Schema.Schema.Type<typeof AutomationHistoryInput> {}

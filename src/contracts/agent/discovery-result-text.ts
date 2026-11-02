@@ -83,6 +83,7 @@ const automationHistory = Schema.Struct({
     Schema.Struct({
       id: Schema.String,
       name: Schema.String,
+      automationId: Schema.String,
       occurredAt: Schema.String,
       source: Schema.Struct({
         _tag: Schema.String,
@@ -156,11 +157,22 @@ export function discoveryResultText(command: string, value: JsonValue): string |
       const result = Schema.decodeUnknownSync(automationHistory)(value);
       return table(
         heading("occurrences", result),
-        ["id", "trigger", "status", "session", "when", "sourceSession", "reason", "name"],
+        [
+          "id",
+          "automation",
+          "trigger",
+          "status",
+          "session",
+          "when",
+          "sourceSession",
+          "reason",
+          "name",
+        ],
         result.occurrences.map((item) => {
           const run = result.runs.find((candidate) => candidate.occurrenceId === item.id);
           return [
             item.id,
+            item.automationId,
             item.source._tag,
             run?.status._tag ?? item.disposition._tag,
             run?.sessionId,

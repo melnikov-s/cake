@@ -328,7 +328,7 @@ describe("automation Cake tools parity", () => {
             },
             initialState: "active",
           });
-          yield* definitions.create({
+          const other = yield* definitions.create({
             definition: automationDefinition({ name: "Second" }),
             initialState: "active",
           });
@@ -374,6 +374,29 @@ describe("automation Cake tools parity", () => {
           expect(history).toMatchObject({ total: 1, nextOffset: null });
           expect(JSON.stringify(history)).not.toContain("PRIVATE TASK BODY");
           expect(JSON.stringify(history)).not.toContain("PRIVATE ATTACHMENT BODY");
+          yield* runs.trigger(other.id);
+          const secondRun = yield* Queue.take(f.started);
+          yield* finish(f, secondRun.sessionId);
+          const global = yield* invoke(registry, "automations.history", { limit: 2 });
+          expect(global.details).toMatchObject({ total: 2, nextOffset: null });
+          expect(global.text).toContain("id\tautomation\ttrigger");
+          expect(global.text).toContain(a.id);
+          expect(global.text).toContain(other.id);
+          expect(JSON.stringify(global.details)).not.toContain("PRIVATE TASK BODY");
+          expect(JSON.stringify(global.details)).not.toContain("PRIVATE ATTACHMENT BODY");
+          expect(
+            (yield* invoke(registry, "automations.history", { limit: 1 })).details,
+          ).toMatchObject({ total: 2, nextOffset: 1 });
+          expect(
+            (yield* invoke(registry, "automations.history", { offset: 1, limit: 1 })).details,
+          ).toMatchObject({ total: 2, nextOffset: null });
+          expect(
+            (yield* invoke(registry, "automations.history", { query: "Second" })).details,
+          ).toMatchObject({ total: 1 });
+          expect(
+            (yield* invoke(registry, "automations.history", { query: "PRIVATE TASK BODY" }))
+              .details,
+          ).toMatchObject({ total: 0 });
         }).pipe(Effect.provide(f.context));
       }),
   );

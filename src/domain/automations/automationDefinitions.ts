@@ -322,10 +322,15 @@ export const changeState = Effect.fn("Automations.changeState")(function* (
 });
 
 export const history = Effect.fn("Automations.history")(function* (input: AutomationHistoryInput) {
-  yield* lookup(input.automationId);
+  if (input.automationId !== undefined) yield* lookup(input.automationId);
   const ledger = (yield* AutomationRecords).snapshot();
+  const query = input.query?.toLowerCase();
   const occurrences = ledger.occurrences
-    .filter((item) => item.automationId === input.automationId)
+    .filter(
+      (item) =>
+        (input.automationId === undefined || item.automationId === input.automationId) &&
+        (!query || item.definition.name.toLowerCase().includes(query)),
+    )
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || b.id.localeCompare(a.id));
   const page = agentListPage(occurrences, input);
   const occurrenceIds = new Set(page.items.map((item) => item.id));
