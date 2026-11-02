@@ -418,6 +418,9 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   async reveal(location: EditorLocation) {
     const projectPath = this.props.projectPath();
     if (!projectPath || !this.visible) throw new Error("Embedded VS Code is not visible");
+    // A rejected open must settle before the user returns to Agent and retries.
+    // Do not start another acquisition behind the error card for the same link.
+    if (this.openedWorkspace !== projectPath && this.error) throw new Error(this.error);
     if (this.openedWorkspace !== projectPath) await this.open();
     this.signal.throwIfAborted();
     if (this.props.projectPath() !== projectPath || !this.nativeViewReady)

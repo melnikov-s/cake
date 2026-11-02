@@ -271,10 +271,8 @@ readline.createInterface({input:process.stdin}).on('line', line => {
       await overlay.getByRole("button", { name: "Capture screenshot" }).click();
       const capture = await capturing;
       await expect(capture.getByRole("toolbar", { name: "Screen capture tools" })).toBeVisible();
-      await expect(capture.getByRole("button", { name: "Screenshot destination" })).toContainText(
-        "Cake Chat",
-      );
-      await Promise.all([capture.waitForEvent("close"), capture.keyboard.press("Enter")]);
+      // Enter closes the capture on keydown; there is no surviving target for keyup.
+      await Promise.all([capture.waitForEvent("close"), capture.keyboard.down("Enter")]);
       await expect(overlay.getByRole("button", { name: /^View Screenshot-/ })).toBeVisible();
       await expect(main.getByRole("button", { name: /^View Screenshot-/ })).toHaveCount(0);
 

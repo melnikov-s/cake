@@ -40,163 +40,180 @@ async function fixture() {
     );
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Missing fixture server address");
-  await writeFile(
-    join(cakeHome, "pi", "models.json"),
-    JSON.stringify({
-      providers: {
-        fixture: {
-          baseUrl: `http://127.0.0.1:${address.port}/v1`,
-          apiKey: "fixture",
-          api: "openai-completions",
-          models: [
-            {
-              id: "fixture",
-              name: "Fixture",
-              reasoning: false,
-              input: ["text"],
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-              contextWindow: 32_000,
-              maxTokens: 1024,
-            },
-          ],
-        },
-      },
-    }),
-  );
-  const timestamp = new Date(0).toISOString();
-  await writeFile(
-    join(userData, "window-state.json"),
-    windowState({ project, sessionId, theme: "dark" }),
-  );
-  await writeFile(
-    join(cakeHome, "state", "application.json"),
-    JSON.stringify({
-      schemaVersion: 1,
-      projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [project],
-    }),
-  );
-  await writeFile(
-    join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
-    [
-      { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
-      {
-        type: "model_change",
-        id: "model",
-        parentId: null,
-        timestamp,
-        provider: "fixture",
-        modelId: "fixture",
-      },
-      {
-        type: "message",
-        id: "user-1",
-        parentId: "model",
-        timestamp,
-        message: {
-          role: "user",
-          content: [{ type: "text", text: "Give me a code tour" }],
-          timestamp: 0,
-        },
-      },
-    ]
-      .map((entry) => JSON.stringify(entry))
-      .join("\n") + "\n",
-  );
-  const application = await electron.launch({
-    args: [repositoryRoot],
-    cwd: repositoryRoot,
-    env: {
-      ...process.env,
-      CAKE_ELECTRON_SMOKE: "1",
-      CAKE_ELECTRON_USER_DATA: userData,
-      CAKE_HOME: cakeHome,
-      PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
-      PI_CODING_AGENT_SESSION_DIR: "",
-    },
-  });
-  const page = await application.firstWindow();
-  const command = (command: string, input: JsonObject = {}) =>
-    emitRendererEvent(application, {
-      type: "project-session-control-requested",
-      sessionId,
-      controlRequestId: randomUUID(),
-      invocation: { _tag: "InvokeAppControl", command, input },
-    });
-  await expect(page.getByLabel("Message", { exact: true })).toBeVisible({ timeout: 20_000 });
-  await installLocalModelHttpGuard(application, `http://127.0.0.1:${address.port}`);
-  await page.getByRole("button", { name: "Model configuration" }).click();
-  const search = page.getByLabel("Search presets and models");
-  const changeModel = page.getByRole("button", { name: /Change model/ });
-  await expect
-    .poll(async () => (await search.isVisible()) || (await changeModel.isVisible()))
-    .toBe(true);
-  if (await changeModel.isVisible()) await changeModel.click();
-  await search.fill("Fixture");
-  await page
-    .getByRole("button", { name: /Fixture.*fixture/ })
-    .first()
-    .click();
-  await page.getByRole("button", { name: "Apply", exact: true }).click();
-  await expect(search).toBeHidden();
-  // Observe the real companion's resets, without replacing or suppressing events.
-  // DOM tabs can mount before the active-editor notification reaches Cake.
-  await page.evaluate((workspacePath) => {
-    Reflect.set(window, "selectionResetRevision", 0);
-    if (!window.cake) throw new Error("Missing native RPC transport");
-    window.cake.rpc.subscribe((message) => {
-      if (!message || typeof message !== "object" || Reflect.get(message, "_tag") !== "Chunk")
-        return;
-      const values: unknown = Reflect.get(message, "values");
-      if (!Array.isArray(values)) return;
-      for (const event of values) {
-        if (
-          event &&
-          typeof event === "object" &&
-          Reflect.get(event, "type") === "embedded-editor-selection-cleared" &&
-          Reflect.get(event, "workspacePath") === workspacePath
-        )
-          Reflect.set(
-            window,
-            "selectionResetRevision",
-            Number(Reflect.get(window, "selectionResetRevision")) + 1,
-          );
-      }
-    });
-  }, project);
-  const selectionResetRevision = () =>
-    page.evaluate(() => Number(Reflect.get(window, "selectionResetRevision")));
-  await command("vscode.enter");
-  await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible({
-    timeout: 20_000,
-  });
-  await expect.poll(selectionResetRevision).toBeGreaterThan(0);
-  const pills = page.locator('[aria-label="Editor selections"]');
-  const open = async (path = "src/a.ts", line = 100, extra: JsonObject = {}) => {
-    await command("vscode.open", { path, line, endLine: line + 2, ...extra });
-    await expect(
-      pills
-        .getByRole("button", { name: new RegExp(`^Reveal .*${path.replaceAll(".", "\\.")}`) })
-        .first(),
-    ).toBeVisible({ timeout: 20_000 });
-  };
-  return {
-    application,
-    page,
-    project,
-    command,
-    pills,
-    open,
-    selectionResetRevision,
-    close: async () => {
-      await application.close();
+  let ownedApplication: ElectronApplication | undefined;
+  const close = async () => {
+    try {
+      await ownedApplication?.close();
+    } finally {
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(temporaryRoot, { recursive: true, force: true });
-    },
+    }
   };
+  try {
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Missing fixture server address");
+    await writeFile(
+      join(cakeHome, "pi", "models.json"),
+      JSON.stringify({
+        providers: {
+          fixture: {
+            baseUrl: `http://127.0.0.1:${address.port}/v1`,
+            apiKey: "fixture",
+            api: "openai-completions",
+            models: [
+              {
+                id: "fixture",
+                name: "Fixture",
+                reasoning: false,
+                input: ["text"],
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 32_000,
+                maxTokens: 1024,
+              },
+            ],
+          },
+        },
+      }),
+    );
+    const timestamp = new Date(0).toISOString();
+    await writeFile(
+      join(userData, "window-state.json"),
+      windowState({ project, sessionId, theme: "dark" }),
+    );
+    await writeFile(
+      join(cakeHome, "state", "application.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
+        trustedProjectPaths: [project],
+      }),
+    );
+    await writeFile(
+      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+      [
+        { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+        {
+          type: "model_change",
+          id: "model",
+          parentId: null,
+          timestamp,
+          provider: "fixture",
+          modelId: "fixture",
+        },
+        {
+          type: "message",
+          id: "user-1",
+          parentId: "model",
+          timestamp,
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "Give me a code tour" }],
+            timestamp: 0,
+          },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+    const application = await electron.launch({
+      args: [repositoryRoot],
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        CAKE_ELECTRON_SMOKE: "1",
+        CAKE_ELECTRON_USER_DATA: userData,
+        CAKE_HOME: cakeHome,
+        PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
+      },
+    });
+    ownedApplication = application;
+    const page = await application.firstWindow();
+    const command = (command: string, input: JsonObject = {}) =>
+      emitRendererEvent(application, {
+        type: "project-session-control-requested",
+        sessionId,
+        controlRequestId: randomUUID(),
+        invocation: { _tag: "InvokeAppControl", command, input },
+      });
+    await expect(page.getByLabel("Message", { exact: true })).toBeVisible({ timeout: 20_000 });
+    await installLocalModelHttpGuard(application, `http://127.0.0.1:${address.port}`);
+    await page.getByRole("button", { name: "Model configuration" }).click();
+    const search = page.getByLabel("Search presets and models");
+    const changeModel = page.getByRole("button", { name: /Change model/ });
+    await expect
+      .poll(async () => (await search.isVisible()) || (await changeModel.isVisible()))
+      .toBe(true);
+    if (await changeModel.isVisible()) await changeModel.click();
+    await search.fill("Fixture");
+    await page
+      .getByRole("button", { name: /Fixture.*fixture/ })
+      .first()
+      .click();
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
+    await expect(search).toBeHidden();
+    // Observe the real companion's resets, without replacing or suppressing events.
+    // DOM tabs can mount before the active-editor notification reaches Cake.
+    await page.evaluate((workspacePath) => {
+      Reflect.set(window, "selectionResetRevision", 0);
+      if (!window.cake) throw new Error("Missing native RPC transport");
+      window.cake.rpc.subscribe((message) => {
+        if (!message || typeof message !== "object" || Reflect.get(message, "_tag") !== "Chunk")
+          return;
+        const values: unknown = Reflect.get(message, "values");
+        if (!Array.isArray(values)) return;
+        for (const event of values) {
+          if (
+            event &&
+            typeof event === "object" &&
+            Reflect.get(event, "type") === "embedded-editor-selection-cleared" &&
+            Reflect.get(event, "workspacePath") === workspacePath
+          )
+            Reflect.set(
+              window,
+              "selectionResetRevision",
+              Number(Reflect.get(window, "selectionResetRevision")) + 1,
+            );
+        }
+      });
+    }, project);
+    const selectionResetRevision = () =>
+      page.evaluate(() => Number(Reflect.get(window, "selectionResetRevision")));
+    await command("vscode.enter");
+    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible({
+      timeout: 20_000,
+    });
+    // The region is Cake's loading surface, not an initialized VS Code workbench.
+    await expect
+      .poll(() => editorState(application), { timeout: 20_000 })
+      .toMatchObject({
+        ready: true,
+      });
+    await expect.poll(selectionResetRevision).toBeGreaterThan(0);
+    const pills = page.locator('[aria-label="Editor selections"]');
+    const open = async (path = "src/a.ts", line = 100, extra: JsonObject = {}) => {
+      await command("vscode.open", { path, line, endLine: line + 2, ...extra });
+      await expect(
+        pills
+          .getByRole("button", { name: new RegExp(`^Reveal .*${path.replaceAll(".", "\\.")}`) })
+          .first(),
+      ).toBeVisible({ timeout: 20_000 });
+    };
+    return {
+      application,
+      page,
+      project,
+      command,
+      pills,
+      open,
+      selectionResetRevision,
+      close,
+    };
+  } catch (error) {
+    await close();
+    throw error;
+  }
 }
 
 async function editorState(application: ElectronApplication) {
@@ -204,7 +221,7 @@ async function editorState(application: ElectronApplication) {
     for (const contents of webContents.getAllWebContents()) {
       if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
       return contents.executeJavaScript(
-        `({ tabs: [...document.querySelectorAll('.tab.active')].map(tab => tab.textContent.trim()), text: [...document.querySelectorAll('.view-lines')].map(lines => lines.textContent).join(' ') })`,
+        `({ ready: !!document.getElementById('cake-back-to-agent'), tabs: [...document.querySelectorAll('.tab.active')].map(tab => tab.textContent.trim()), text: [...document.querySelectorAll('.view-lines')].map(lines => lines.textContent).join(' ') })`,
       );
     }
     return undefined;

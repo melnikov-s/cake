@@ -336,7 +336,11 @@ test("separate Node backend serves a real leased code-server workbench to remote
       .toMatchObject({
         state: { tabs: ["hello.ts"], text: expect.stringContaining("editedRemotely") },
       });
-    expect((await editorState(second))?.url).not.toBe(state.url);
+    const reopened = await editorState(second);
+    if (!reopened) throw new Error("Missing reopened editor");
+    expect(reopened.url).not.toBe(state.url);
+    expect((await fetch(reopened.url)).status).toBe(200);
+    expect(await readFile(join(project, "hello.ts"), "utf8")).toContain("editedRemotely");
     expect(await readdir(join(directory, "observer-backend-must-not-exist"))).toEqual(["logs"]);
   } finally {
     await observer?.close();

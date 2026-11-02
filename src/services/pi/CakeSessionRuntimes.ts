@@ -406,6 +406,7 @@ interface SharedRuntime {
   applicationLease: boolean;
   requestedProjectTrust: boolean;
   readonly fingerprint: string;
+  readonly acquireOptions: CakeSessionRuntimeAcquireOptions;
   readonly workingDirectory: string;
   readonly sessionDirectory: string;
   readonly profile: CakeSessionRuntimeAcquireOptions["profile"]["_tag"];
@@ -607,7 +608,6 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
       // to fan explicit refresh intents to currently acquired runtimes; it never acquires or
       // retains a runtime.
       const activeRuntimes = new Set<SharedRuntime>();
-      const acquiredOptions = new Map<string, CakeSessionRuntimeAcquireOptions>();
       // RcMap is the process-local keyed resource owner. Each acquire retains a
       // reference in its caller Scope; the final release disposes the one Pi
       // runtime. Equal/Hash intentionally key only by Pi Session target, while
@@ -698,6 +698,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 settledInputIds,
                 turnResults,
                 fingerprint: key.fingerprint,
+                acquireOptions: key.options,
                 workingDirectory: key.options.runtime.cwd,
                 sessionDirectory: key.options.runtime.sessionDir,
                 profile: key.options.profile._tag,
@@ -709,11 +710,6 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 turnAdmissions: Semaphore.makeUnsafe(1),
               };
               activeRuntimes.add(shared);
-              acquiredOptions.set(runtimeTarget(key.options), key.options);
-              acquiredOptions.set(
-                `${key.options.runtime.cwd}\u0000${key.options.runtime.sessionDir}\u0000${runtime.sessionId}`,
-                key.options,
-              );
               return shared;
             }).pipe(
               Effect.onExit((exit) =>
@@ -730,9 +726,6 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               Effect.tryPromise({
                 try: async () => {
                   activeRuntimes.delete(shared);
-                  for (const [target, options] of acquiredOptions)
-                    if (runtimeTarget(options) === runtimeTarget(key.options))
-                      acquiredOptions.delete(target);
                   await shared.runtime.dispose();
                 },
                 catch: (cause) => cause,
@@ -1743,8 +1736,12 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
       const acquireCurrent = Effect.fn("CakeSessionRuntimes.acquireCurrent")(function* (
         target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
       ) {
-        const key = `${target.workingDirectory}\u0000${target.sessionDirectory}\u0000${target.sessionId}`;
-        const options = acquiredOptions.get(key);
+        const options = [...activeRuntimes].find(
+          (shared) =>
+            shared.workingDirectory === target.workingDirectory &&
+            shared.sessionDirectory === target.sessionDirectory &&
+            shared.runtime.sessionId === target.sessionId,
+        )?.acquireOptions;
         if (!options)
           return yield* new PiSessionError({
             operation: "acquireCurrent",
@@ -1756,9 +1753,9 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
       const acquireSession = Effect.fn("CakeSessionRuntimes.acquireSession")(function* (
         sessionId: string,
       ) {
-        const matches = [...acquiredOptions.values()].filter(
-          (options) => options.runtime.sessionId === sessionId,
-        );
+        const matches = [...activeRuntimes]
+          .filter((shared) => shared.runtime.sessionId === sessionId)
+          .map((shared) => shared.acquireOptions);
         const options = matches[0];
         if (!options)
           return yield* new PiSessionError({

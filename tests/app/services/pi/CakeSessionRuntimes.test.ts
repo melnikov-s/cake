@@ -17,7 +17,8 @@ import {
   Scope,
   Stream,
 } from "effect";
-import { describe } from "vitest";
+import { describe, vi } from "vitest";
+import { shutdownDiagnostics } from "../../../../src/services/diagnostics/shutdown-diagnostics";
 import { TestClock } from "effect/testing";
 import {
   makeCakeSessionRuntimesLayer,
@@ -1103,6 +1104,73 @@ describe("CakeSessionRuntimes", () => {
       yield* Scope.close(owner, Exit.void);
       assert.equal(yield* Ref.get(released), 1);
     }),
+  );
+
+  it.effect(
+    "keeps a reopened runtime addressable when the previous runtime finishes releasing",
+    () =>
+      Effect.gen(function* () {
+        const releasing = yield* Deferred.make<void>();
+        const finishRelease = yield* Deferred.make<void>();
+        const original = shutdownDiagnostics.effect.bind(shutdownDiagnostics);
+        let firstRelease = true;
+        yield* Effect.acquireRelease(
+          Effect.sync(() =>
+            vi
+              .spyOn(shutdownDiagnostics, "effect")
+              .mockImplementation(
+                <A, E, R>(
+                  operation: string,
+                  resource: string | undefined,
+                  work: Effect.Effect<A, E, R>,
+                ) => {
+                  if (operation !== "runtime.release" || !firstRelease)
+                    return original(operation, resource, work);
+                  firstRelease = false;
+                  return Deferred.succeed(releasing, undefined).pipe(
+                    Effect.andThen(Deferred.await(finishRelease)),
+                    Effect.andThen(original(operation, resource, work)),
+                  );
+                },
+              ),
+          ),
+          (spy) => Effect.sync(() => spy.mockRestore()),
+        );
+        const acquisitions = yield* Ref.make(0);
+        const finalizations = yield* Ref.make(0);
+        const context = yield* Layer.build(
+          makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)).pipe(
+            Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
+          ),
+        );
+        const sessions = Context.get(context, CakeSessionRuntimes);
+        const previous = yield* Scope.make();
+        const reopened = yield* Scope.make();
+        yield* sessions.acquire(options()).pipe(Scope.provide(previous));
+        // RcMap removes the old entry before closing its scope. Hold that cleanup
+        // while the next observer assembles a replacement for the same identity.
+        const closing = yield* Scope.close(previous, Exit.void).pipe(Effect.forkScoped);
+        yield* Deferred.await(releasing);
+        yield* sessions.acquire(options()).pipe(Scope.provide(reopened));
+        yield* Deferred.succeed(finishRelease, undefined);
+        yield* Fiber.join(closing);
+        assert.equal(yield* Ref.get(acquisitions), 2);
+        assert.equal(yield* Ref.get(finalizations), 1);
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const byId = yield* sessions.acquireSession("session-1");
+            const byTarget = yield* sessions.acquireCurrent({
+              workingDirectory: "/project",
+              sessionDirectory: "/sessions",
+              sessionId: "session-1",
+            });
+            assert.equal((yield* byId.snapshot()).sessionId, "session-1");
+            assert.equal((yield* byTarget.snapshot()).sessionId, "session-1");
+          }),
+        );
+        yield* Scope.close(reopened, Exit.void);
+        assert.equal(yield* Ref.get(finalizations), 2);
+      }),
   );
 
   it.effect("acquires the current runtime without reconstructing its options", () =>

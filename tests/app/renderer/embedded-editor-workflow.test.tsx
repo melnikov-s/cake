@@ -859,6 +859,45 @@ describe("Embedded editor workflow", () => {
     expect(release).not.toHaveBeenCalledWith(first.id);
   });
 
+  it("settles a rejected file-link open without a hidden retry, then acquires a fresh editor on explicit reopen", async () => {
+    const message = "This workspace's VS Code editor is already open in another desktop";
+    const open = vi.fn<Client["vscode"]["open"]>().mockRejectedValue(new Error(message));
+    const reveal = vi.fn<Client["vscode"]["reveal"]>(async () => ({
+      outcome: { view: "file" },
+      locations: [],
+    }));
+    using fixture = renderEmbeddedEditor(
+      { vscode: { open, reveal } },
+      {
+        parts: [
+          {
+            id: "file-link",
+            kind: "text",
+            role: "assistant",
+            status: "complete",
+            text: "[hello.ts](hello.ts#L1-L2)",
+          },
+        ],
+      },
+    );
+    const link = await screen.findByRole("link", { name: "hello.ts" });
+    await fixture.user.click(link);
+    expect(await screen.findByText(message)).toBeDefined();
+    await act(async () => {});
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(reveal).not.toHaveBeenCalled();
+    await fixture.user.click(
+      within(screen.getByRole("alert")).getByRole("button", { name: "Back to agent" }),
+    );
+    const fresh = editorLease("e");
+    open.mockResolvedValue(fresh);
+    await fixture.user.click(await screen.findByRole("link", { name: "hello.ts" }));
+    await waitFor(() => expect(workspaceFrame()?.getAttribute("src")).toBe(fresh.endpoint));
+    await waitFor(() => expect(reveal).toHaveBeenCalledTimes(1));
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(message)).toBeNull();
+  });
+
   it.each(["rejected open", "malformed endpoint"] as const)(
     "shows a %s failure and retries through the agent toolbar",
     async (failure) => {
