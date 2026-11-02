@@ -221,6 +221,7 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
       await expect(draft).toHaveCount(0);
     } else if (bare) {
       await composer.pressSequentially("/side");
+      await expect(composer).toHaveValue("/side");
       await expect(
         page.getByRole("option", { name: /sidechat \[prompt\] Start a side chat/ }),
       ).toBeVisible();

@@ -74,6 +74,7 @@ function renderSideChats(
     withoutModel?: boolean;
     streaming?: boolean;
     streamingThreads?: readonly string[];
+    commands?: ConversationSnapshot["commands"];
   } = {},
 ) {
   const fixture = createRendererStoreFixture({
@@ -90,7 +91,11 @@ function renderSideChats(
   const session = fixture.root.sessionRegistry.load("parent-1", "/project");
   fixture.root.projectWorkbenchStore.projectOpenStore.projectPath = "/project";
   fixture.root.navigationStore.selectProjectSession("parent-1");
-  const snapshot = { ...conversation("parent-1"), streaming: options.streaming ?? false };
+  const snapshot = {
+    ...conversation("parent-1"),
+    streaming: options.streaming ?? false,
+    commands: options.commands ?? builtinSlashCommands,
+  };
   if (options.withoutModel) Object.assign(snapshot, { model: undefined });
   applyConversationSnapshot(session.model, snapshot);
   let revision = 0;
@@ -153,6 +158,9 @@ function renderSideChats(
     publish(threads: DiscussionThread[]) {
       act(() => publish(threads));
     },
+    publishCommands(commands: ConversationSnapshot["commands"]) {
+      act(() => applyConversationSnapshot(session.model, { ...snapshot, commands }));
+    },
     [Symbol.dispose]() {
       view.unmount();
       fixture[Symbol.dispose]();
@@ -208,6 +216,29 @@ describe("Secondary conversation workflows", () => {
       expect(screen.getByRole("combobox")).toBeDefined();
     },
   );
+
+  it("updates an unchanged slash query when authoritative commands arrive and are removed", async () => {
+    const start = vi.fn<Client["discussionSessions"]["start"]>();
+    using fixture = renderSideChats(start, { commands: [] });
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
+    await fixture.user.type(input, "/side");
+    expect(screen.queryByRole("option")).toBeNull();
+
+    fixture.publishCommands(builtinSlashCommands);
+    expect(
+      await screen.findByRole("option", { name: /sidechat \[prompt\] Start a side chat/ }),
+    ).toBeDefined();
+    expect(input.value).toBe("/side");
+
+    fixture.publishCommands([]);
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(input.value).toBe("/side");
+    fixture.publishCommands(builtinSlashCommands);
+    await screen.findByRole("option", { name: /sidechat \[prompt\] Start a side chat/ });
+    await fixture.user.keyboard("{Enter}");
+    expect(await screen.findByRole("complementary", { name: "Side chat" })).toBeDefined();
+    expect(start).not.toHaveBeenCalled();
+  });
 
   it("discovers bare /sidechat and opens a session-wide draft while the parent streams", async () => {
     const created = thread("bare-thread", "Compare approaches");
