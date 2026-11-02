@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { workLogChangeChunks, workLogChanges } from "../../../src/utils/turn-diff";
+import { workLogChangeChunks } from "../../../src/utils/turn-diff";
 
-describe("workLogChanges", () => {
-  it("projects pending edits and writes into a single live file diff", () => {
-    const changes = workLogChanges([
+describe("workLogChangeChunks", () => {
+  it("projects pending edits and writes into live work-log diffs", () => {
+    const changes = workLogChangeChunks([
       {
         id: "edit-1",
         kind: "tool" as const,
@@ -79,7 +79,6 @@ describe("workLogChanges", () => {
         streaming: false,
       }),
     ]);
-    expect(workLogChanges(parts)).toHaveLength(2);
   });
 
   it("retains each file chunk's own input streaming state", () => {

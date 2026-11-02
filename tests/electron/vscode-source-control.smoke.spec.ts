@@ -145,7 +145,7 @@ test("workspace changes use Source Control, committed files fall back to the fil
           content: [
             {
               type: "text",
-              text: `Read [Markdown report](../project-sibling/report.md). Compare with the previous commit: [what this branch changed](src/app.ts?view=changes&base=HEAD~1#L1). Read [external lines](../project-sibling/notes.txt#L2-L3) or [external before revision](${join(external, "notes.txt")}?view=changes&side=before&base=HEAD~1#L2).`,
+              text: `Read [Markdown report](../project-sibling/report.md). Inspect [working-tree changes](src/app.ts?view=changes). Compare with the previous commit: [what this branch changed](src/app.ts?view=changes&base=HEAD~1#L1). Read [external lines](../project-sibling/notes.txt#L2-L3) or [external before revision](${join(external, "notes.txt")}?view=changes&side=before&base=HEAD~1#L2).`,
             },
           ],
           api: "anthropic-messages",
@@ -261,15 +261,7 @@ test("workspace changes use Source Control, committed files fall back to the fil
     });
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeHidden();
 
-    await page.getByRole("button", { name: /Changed Files/ }).click();
-    await page.getByTitle(`Open changes for ${join(external, "notes.txt")}`).click();
-    await expect(externalReader).toBeVisible();
-    await expect(
-      externalReader.getByText(/Diff unavailable outside the selected project/),
-    ).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(externalReader).toBeHidden();
-    await page.getByTitle("Open changes for src/app.ts").click();
+    await page.getByRole("link", { name: "working-tree changes", exact: true }).click();
     await expect.poll(activeVsCodeTab, { timeout: 20_000 }).toMatch(/app\.ts.+/);
 
     // CDP targets the hidden workbench without focusing a native OS window.
@@ -366,7 +358,7 @@ test("workspace changes use Source Control, committed files fall back to the fil
 
     await git(project, "add", ".");
     await git(project, "commit", "-m", "Commit agent change");
-    await page.getByTitle("Open changes for src/app.ts").click();
+    await page.getByRole("link", { name: "working-tree changes", exact: true }).click();
 
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
     await expect.poll(activeVsCodeTab, { timeout: 20_000 }).toBe("app.ts");

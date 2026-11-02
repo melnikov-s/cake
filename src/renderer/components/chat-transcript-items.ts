@@ -17,7 +17,6 @@ export type TranscriptItem =
     }
   | { kind: "source-group"; id: string; parts: Extract<UiPart, { kind: "source" }>[] }
   | { kind: "context-group"; id: string; parts: Extract<UiPart, { kind: "context" }>[] }
-  | { kind: "changed-files"; id: string }
   | { kind: "loading-state"; id: string };
 
 export function errorNoticeFollowsUser(items: TranscriptItem[], index: number) {

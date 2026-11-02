@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
@@ -78,26 +78,6 @@ describe("Shared Chat surface workflows", () => {
       }
     },
   );
-
-  it("retains expanded changed files until a new period of work begins, without closing a user's expansion during that work", async () => {
-    using fixture = renderChatSurface({ parts: [changedFile] });
-    const files = screen.getByRole("region", { name: "Changed Files" });
-    const trigger = within(files).getByRole("button", { name: "Changed Files 1 file" });
-    expect(trigger.getAttribute("aria-expanded")).toBe("false");
-    await fixture.user.click(trigger);
-    expect(within(files).getByText("src/one.ts")).toBeDefined();
-    fixture.publish([changedFile]);
-    expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    fixture.publish([changedFile], true);
-    expect(trigger.getAttribute("aria-expanded")).toBe("false");
-    await fixture.user.click(trigger);
-    fixture.publish([changedFile], true);
-    expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    fixture.publish([changedFile]);
-    expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    fixture.publish([changedFile], true);
-    expect(trigger.getAttribute("aria-expanded")).toBe("false");
-  });
 
   it("opens only diff-bearing work logs in Diff/Compact mode, allows a manual override, and resets it when expansion changes", async () => {
     using fixture = renderChatSurface({

@@ -1,9 +1,7 @@
 import { memo } from "react";
 import { TaskSectionRail } from "./task-section-rail";
-import { ChangedFiles } from "@/components/changed-files";
 import { LoadingState } from "@/components/ui/loading-state";
 import type { UiPart } from "../../contracts/conversations/session-contract";
-import type { ChatStore } from "../stores/ChatStore";
 import { cn } from "../lib/utils";
 import { SideChatImportGroup } from "./side-chat-import-group";
 import { ActivityGroup } from "./work-log-activity-group";
@@ -21,9 +19,7 @@ interface ChatTranscriptItemProps {
   arriving: boolean;
   errorFollowsUser: boolean;
   selected: boolean;
-  parts: UiPart[];
   behavior: CanonicalTranscriptBehavior;
-  changedFilesOpen: boolean;
   loadingStartedAt: number | undefined;
   loadingLabel: string | undefined;
   taskSection?: { todoId: string | undefined; start: boolean; key: string; expanded: boolean };
@@ -44,7 +40,7 @@ function sameItem(left: TranscriptItem, right: TranscriptItem) {
     return sameParts(left.parts, right.parts);
   if (left.kind === "source-group" && right.kind === "source-group")
     return sameParts(left.parts, right.parts);
-  return left.kind === "changed-files" || left.kind === "loading-state";
+  return left.kind === "loading-state";
 }
 
 /** Keeps collection-level streaming updates from re-rendering unchanged transcript items. */
@@ -56,14 +52,11 @@ export const ChatTranscriptItem = memo(
     arriving,
     errorFollowsUser,
     selected,
-    parts,
     behavior,
-    changedFilesOpen,
     loadingStartedAt,
     loadingLabel,
     taskSection,
   }: ChatTranscriptItemProps) {
-    const store: ChatStore = behavior.store;
     return (
       <div
         data-slot="transcript-item"
@@ -119,18 +112,6 @@ export const ChatTranscriptItem = memo(
                 <TranscriptPart key={part.id} part={part} behavior={behavior} />
               ))}
             </div>
-          ) : item.kind === "changed-files" ? (
-            <ChangedFiles
-              parts={parts}
-              workspacePath={behavior.workspacePath}
-              open={changedFilesOpen}
-              onOpenChange={(open) => store.transcriptInteraction.setChangedFilesOpen(open)}
-              onOpenFile={
-                behavior.openSourceLocation
-                  ? (path) => behavior.openSourceLocation?.({ path, view: "changes" })
-                  : undefined
-              }
-            />
           ) : item.kind === "loading-state" ? (
             <LoadingState label={loadingLabel} startedAt={loadingStartedAt} />
           ) : item.kind === "review-run" ? (
@@ -155,8 +136,6 @@ export const ChatTranscriptItem = memo(
     previous.errorFollowsUser === next.errorFollowsUser &&
     previous.behavior === next.behavior &&
     sameItem(previous.item, next.item) &&
-    (next.item.kind !== "changed-files" ||
-      (previous.parts === next.parts && previous.changedFilesOpen === next.changedFilesOpen)) &&
     (next.item.kind !== "loading-state" ||
       (previous.loadingStartedAt === next.loadingStartedAt &&
         previous.loadingLabel === next.loadingLabel)),

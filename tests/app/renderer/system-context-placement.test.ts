@@ -74,7 +74,7 @@ function visibleParts(model: Conversation): UiPart[] {
     item.kind === "source-group" ||
     item.kind === "side-chat-import"
       ? item.parts
-      : item.kind === "changed-files" || item.kind === "loading-state"
+      : item.kind === "loading-state"
         ? []
         : [item],
   );

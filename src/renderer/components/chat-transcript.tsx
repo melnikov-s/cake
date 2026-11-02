@@ -24,7 +24,6 @@ import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { LoadingState } from "@/components/ui/loading-state";
 import { SideChatContext } from "@/components/side-chat-context";
-import { workLogChanges } from "../../utils/turn-diff";
 import type { ChatStore, TranscriptScrollPosition } from "../stores/ChatStore";
 import {
   ErrorNotice,
@@ -145,9 +144,6 @@ export const ChatTranscript = observer(function ChatTranscript({
   const sentMessageRevision = store.transcriptInteraction.sentMessageRevision;
   const scrolledForSentMessage = useRef(sentMessageRevision);
   const parts = store.parts;
-  // Read disclosure state in this observer's render. VirtualizedConversation invokes
-  // itemContent from its own render, outside this component's reactive tracking.
-  const changedFilesOpen = store.transcriptInteraction.changedFilesOpen;
   const loadingStartedAt = store.transcriptInteraction.loadingStartedAt;
   const loadingLabel = store.contextInspector?.activityLabel;
   const visibleParts = store.hideThinking
@@ -163,11 +159,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         behavior.waitingForUser || behavior.interviews?.some((interview) => interview.requested),
       ),
     );
-  useLayoutEffect(() => {
-    store.transcriptInteraction.syncChangedFilesOpen(showAssistantLoading);
-  }, [showAssistantLoading, store]);
   const groupedParts = groupTranscriptParts(parts);
-  const hasWorkLogChanges = useMemo(() => workLogChanges(parts).length > 0, [parts]);
   const visibleGroupedParts = store.hideThinking
     ? groupedParts.flatMap((item): TranscriptItem[] => {
         if (item.kind === "reasoning") return [];
@@ -178,7 +170,6 @@ export const ChatTranscript = observer(function ChatTranscript({
     : groupedParts;
   const allItems: TranscriptItem[] = [
     ...visibleGroupedParts,
-    ...(hasWorkLogChanges ? [{ kind: "changed-files" as const, id: "changed-files" }] : []),
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
   const allItemKeys = transcriptItemKeys(allItems);
@@ -243,7 +234,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const items = visibleIndices.map((index) => allItems[index]!);
   const itemKeys = visibleIndices.map((index) => allItemKeys[index]!);
   const visibleSectionViews = visibleIndices.map((index) => sectionViews?.[index]);
-  // Loading/changed-files rows can disappear during submission. Use the last
+  // Loading rows can disappear during submission. Use the last
   // content row as the durable destination while the virtual range settles.
   const lastItemKey =
     allItemKeys[visibleIndices.findLast((index) => index < visibleGroupedParts.length) ?? -1];
@@ -481,9 +472,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         arriving={isArriving(itemKeys[index] ?? item.id)}
         errorFollowsUser={errorNoticeFollowsUser(items, index)}
         selected={index === selectedItemIndex}
-        parts={parts}
         behavior={item.id === latestMessageId ? latestMessageBehavior : transcriptBehavior}
-        changedFilesOpen={changedFilesOpen}
         loadingStartedAt={loadingStartedAt}
         loadingLabel={loadingLabel}
         taskSection={visibleSectionViews[index]}

@@ -17,15 +17,12 @@ const toolPathInputSchema = Schema.Struct({
   file_path: Schema.optionalKey(Schema.String),
 });
 
-export interface WorkLogChange {
+export interface WorkLogChangeChunk {
+  id: string;
   path: string;
   additions: number;
   deletions: number;
   diff: string;
-}
-
-export interface WorkLogChangeChunk extends WorkLogChange {
-  id: string;
   streaming: boolean;
 }
 
@@ -92,24 +89,4 @@ export function workLogChangeChunks(parts: readonly UiPart[]): WorkLogChangeChun
     });
   }
   return chunks;
-}
-
-export function workLogChanges(parts: readonly UiPart[]): WorkLogChange[] {
-  const changes: WorkLogChange[] = [];
-  for (const chunk of workLogChangeChunks(parts)) {
-    const existing = changes.find((change) => change.path === chunk.path);
-    if (existing) {
-      existing.diff = `${existing.diff}\n${chunk.diff}`;
-      existing.additions += chunk.additions;
-      existing.deletions += chunk.deletions;
-    } else {
-      changes.push({
-        path: chunk.path,
-        additions: chunk.additions,
-        deletions: chunk.deletions,
-        diff: chunk.diff,
-      });
-    }
-  }
-  return changes;
 }

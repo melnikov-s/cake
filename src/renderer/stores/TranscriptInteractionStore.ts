@@ -56,7 +56,6 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
   loadingStartedAt: number | undefined;
   transcriptScrollPosition: TranscriptScrollPosition | undefined;
   messageSelection: MessageSelection | undefined;
-  changedFilesOpen = false;
   private readonly openSideChatImports = observable(new Set<string>());
 
   sideChatImportOpen(groupId: string) {
@@ -74,7 +73,6 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
    */
   sentMessageRevision = 0;
   private messageSelectionRevision = 0;
-  private changedFilesChurning: boolean | undefined;
 
   constructor(props: TranscriptInteractionStore["props"]) {
     super(props);
@@ -232,17 +230,6 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
       origin,
       revision: ++this.messageSelectionRevision,
     };
-  }
-
-  setChangedFilesOpen(open: boolean) {
-    this.changedFilesOpen = open;
-  }
-
-  /** Collapses changed files when a new period of file-change churn begins. */
-  syncChangedFilesOpen(churning: boolean) {
-    if (this.changedFilesChurning === churning) return;
-    this.changedFilesChurning = churning;
-    if (churning) this.changedFilesOpen = false;
   }
 
   @computed
