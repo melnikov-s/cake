@@ -365,11 +365,7 @@ export function SlashCommandCombobox({
     } else if (open && event.key === "ArrowUp") {
       event.preventDefault();
       flushSync(() => setActiveIndex((index) => (index - 1 + menuItems.length) % menuItems.length));
-    } else if (
-      menuKind === "files" &&
-      (event.key === "Enter" || event.key === "Tab") &&
-      !event.nativeEvent.isComposing
-    ) {
+    } else if (menuKind === "files" && event.key === "Enter" && !event.nativeEvent.isComposing) {
       event.preventDefault();
       chooseFile(fileResults.items[selectedIndex]!);
     } else if (menuKind === "commands" && event.key === "Enter" && !event.nativeEvent.isComposing) {
@@ -377,7 +373,7 @@ export function SlashCommandCombobox({
       executeCommand(filteredCommands[selectedIndex]!);
     } else if (
       menuKind === "commands" &&
-      (event.key === "Tab" || event.key === "ArrowLeft" || event.key === "ArrowRight")
+      (event.key === "ArrowLeft" || event.key === "ArrowRight")
     ) {
       event.preventDefault();
       chooseCommand(filteredCommands[selectedIndex]!);

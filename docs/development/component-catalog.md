@@ -51,8 +51,10 @@ write reactive state. Results are paged in batches of 25; arrow-key navigation c
 pages and all matches remain reachable. The optional `filters` slot composes shared controls.
 
 `Textarea.focusAnchorRef` exposes a non-editable, programmatically focusable wrapper.
-Focusing it positions native forward Tab at the textarea without activating dictation;
-it does not add a tab stop or intercept normal Tab/Shift+Tab navigation.
+Focusing it parks focus without activating dictation and does not add a tab stop.
+The window-owned plain Tab shortcut explicitly focuses the active chat input, or the
+highest popup's input when open. An input-less popup retains focus within its surface.
+Modified Tab, IME, and embedded editor/terminal keyboard ownership remain unchanged.
 After a manual chat send while dictation is unmuted, consecutive plain Enter presses
 can steer, then stop-and-send that exact input without focusing the textarea.
 `ChatStore` owns this transient continuation; the mounted chat routes DOM cancellation

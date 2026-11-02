@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { useAppDocument } from "../hooks/use-app-document";
+import { useTabInputFocus } from "../hooks/use-tab-input-focus";
 import { cakeChatOverlayShownEventName } from "../lib/cake-chat-overlay";
 import { AppNotifications } from "./app-notifications";
 import { AttachmentReferencePreview } from "./attachment-reference-preview";
@@ -16,6 +17,7 @@ export const CakeChatOverlayApp = observer(function CakeChatOverlayApp() {
   const root = useStore(RootStore);
   const panel = useRef<HTMLDivElement>(null);
   useAppDocument(root);
+  useTabInputFocus();
   const hide = useCallback(
     () =>
       void root.client.electron.hideCakeChatOverlay().catch((error: unknown) =>

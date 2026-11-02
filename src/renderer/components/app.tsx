@@ -6,6 +6,7 @@ import { RootStore } from "../stores/RootStore";
 import { useAppDocument } from "../hooks/use-app-document";
 import { useAppFullscreenResponse } from "../hooks/use-app-fullscreen-response";
 import { useAppHotkeys } from "../hooks/use-app-hotkeys";
+import { useTabInputFocus } from "../hooks/use-tab-input-focus";
 import { AppOverlayHost } from "./app-overlay-host";
 import { ArtifactMenuSurface } from "./artifact-menu-surface";
 import { AppShellLayout } from "./app-shell-layout";
@@ -18,6 +19,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
   // Keep this geometry across switches to full workspace layouts.
   const [commandPaneWidth, setCommandPaneWidth] = useState(420);
   useAppDocument(root);
+  useTabInputFocus();
   const fullscreen = useAppFullscreenResponse(root);
   useAppHotkeys(root, fullscreen.openResponse);
 

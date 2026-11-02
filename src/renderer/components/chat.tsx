@@ -445,6 +445,7 @@ export const Chat = observer(function Chat({
     <div
       ref={layoutRef}
       data-slot="chat"
+      data-composer-focus-enabled={composerVisible && !activatingDraft && composerFocusEnabled}
       onKeyDownCapture={handleMessageSelectionKey}
       className={cn(
         "relative grid h-full w-full max-w-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden",

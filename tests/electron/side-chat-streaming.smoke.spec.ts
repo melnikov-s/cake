@@ -290,6 +290,11 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
 
     // Submitting while the side chat streams queues the prompt instead of being refused.
     await sideChatInput.click();
+    await close.focus();
+    await page.keyboard.press("Tab");
+    await expect(sideChatInput).toBeFocused();
+    await sideChatInput.press("Tab");
+    await expect(sideChatInput).toBeFocused();
     await page.keyboard.type("And then what?");
     await expect(sideChatInput).toHaveValue("And then what?");
     await expect(sideChat.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
@@ -353,7 +358,13 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
       .click({ force: true });
     const fullscreen = page.getByRole("dialog", { name: "Cake", exact: true });
     await expect(fullscreen).toBeVisible();
-    await fullscreen.getByRole("button", { name: "Exit fullscreen Cake" }).click();
+    const exitFullscreen = fullscreen.getByRole("button", { name: "Exit fullscreen Cake" });
+    // With no input in this modal, Tab keeps its current control rather than
+    // escaping to either underlying composer.
+    await exitFullscreen.focus();
+    await page.keyboard.press("Tab");
+    await expect(exitFullscreen).toBeFocused();
+    await exitFullscreen.click();
     await expect(fullscreen).toHaveCount(0);
     await expectHeaderClose();
 
@@ -372,6 +383,8 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
     await expect(close).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(sideChat).toHaveCount(0);
+    await page.keyboard.press("Tab");
+    await expect(composer).toBeFocused();
   } finally {
     for (const response of responses) response.end();
     await application.close();

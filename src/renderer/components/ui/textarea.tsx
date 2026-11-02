@@ -43,7 +43,7 @@ export interface TextareaProps
   /** Optional voice-mode span; dictation supplies its own through the registered target. */
   provisionalText?: ProvisionalTextSpan;
   ref?: Ref<HTMLTextAreaElement>;
-  /** Non-editable focus destination; native forward Tab enters the textarea. */
+  /** Non-editable focus destination; the plain Tab shortcut enters the textarea. */
   focusAnchorRef?: Ref<HTMLDivElement>;
 }
 

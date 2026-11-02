@@ -107,7 +107,10 @@ test("Quake terminal runs a shell and retains tabs when a Project Session is res
     });
     await expect(terminalRows).toHaveCSS("font-size", "14px");
     await panel.locator(".xterm-screen:visible").click();
-    await page.keyboard.type("printf CAKE_TERMINAL_OK");
+    await page.keyboard.type("printf CAKE_TERMINAL_");
+    await page.keyboard.press("Tab");
+    await expect(panel.locator(".xterm-helper-textarea:visible")).toBeFocused();
+    await page.keyboard.type("OK");
     await page.keyboard.press("Enter");
     await expect(panel.locator(".xterm-rows:visible")).toContainText("CAKE_TERMINAL_OK", {
       timeout: 10_000,

@@ -59,6 +59,12 @@ test("splits project chats while retaining independent drafts and pane focus", a
     await firstInput.pressSequentially("left draft");
     await expect(firstInput).toHaveValue("left draft");
     await expect(panes.nth(0).getByRole("button", { name: "Send" })).toBeEnabled();
+    await panes.nth(0).getByRole("button", { name: "Split right" }).focus();
+    await page.keyboard.press("Tab");
+    await expect(firstInput).toBeFocused();
+    await firstInput.press("Tab");
+    await expect(firstInput).toBeFocused();
+    await expect(firstInput).toHaveValue("left draft");
 
     await panes.nth(0).getByRole("button", { name: "Split right" }).click();
     await expect(panes).toHaveCount(2);
@@ -91,13 +97,22 @@ test("splits project chats while retaining independent drafts and pane focus", a
       narrowPaneBounds!.x + narrowPaneBounds!.width,
     );
 
-    await secondInput.fill("right draft");
+    await panes.nth(1).getByRole("button", { name: "Split right" }).focus();
+    await page.keyboard.press("Tab");
+    await expect(secondInput).toBeFocused();
+    await page.keyboard.type("right draft");
+    await expect(secondInput).toHaveValue("right draft");
+    await expect(panes.nth(1).getByRole("button", { name: "Send" })).toBeEnabled();
 
     await panes
       .nth(0)
       .locator('[data-slot="chat"]')
       .click({ position: { x: 24, y: 80 } });
     await expect(panes.nth(0)).toHaveAttribute("data-focused", "true");
+    // The focused split wins even if DOM focus is still in the other composer.
+    await panes.nth(0).getByRole("button", { name: "Split right" }).focus();
+    await page.keyboard.press("Tab");
+    await expect(firstInput).toBeFocused();
     await expect(firstInput).toHaveValue("left draft");
     await expect(secondInput).toHaveValue("right draft");
 
@@ -189,6 +204,20 @@ test("splits project chats while retaining independent drafts and pane focus", a
     await expect(panes).toHaveCount(1);
     await expect(panes.nth(0).getByLabel("Message", { exact: true })).toHaveValue("left draft");
 
+    await page.getByRole("button", { name: "New session", exact: true }).click();
+    const destinationDialog = page.getByRole("dialog", { name: "New session", exact: true });
+    const filter = destinationDialog.getByRole("combobox", { name: "Filter projects" });
+    await destinationDialog.getByRole("button", { name: "Close", exact: true }).focus();
+    await page.keyboard.press("Tab");
+    await expect(filter).toBeFocused();
+    await page.keyboard.type("Cake");
+    await page.keyboard.press("Tab");
+    await expect(filter).toBeFocused();
+    await expect(filter).toHaveValue("Cake");
+    await page.keyboard.press("Escape");
+    await expect(destinationDialog).toHaveCount(0);
+    await page.keyboard.press("Tab");
+    await expect(panes.nth(0).getByLabel("Message", { exact: true })).toBeFocused();
     await page.getByRole("button", { name: "New session", exact: true }).click();
     await page.getByRole("option", { name: /Cake Chat/ }).click();
     await expect(panes).toHaveCount(1);

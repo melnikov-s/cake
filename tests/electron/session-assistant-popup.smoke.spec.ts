@@ -67,6 +67,11 @@ for (const dictation of [false, true]) {
       const send = quick.getByRole("button", { name: "Send", exact: true });
       await send.focus();
       await expect(send).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(input).toBeFocused();
+      await input.press("Tab");
+      await expect(input).toBeFocused();
+      await expect(input).toHaveValue("A draft to keep");
       await page.keyboard.press(shortcut);
       await expect(input).toBeFocused();
       await expect(input).toHaveValue("A draft to keep");
@@ -78,6 +83,8 @@ for (const dictation of [false, true]) {
       await input.press("Escape");
       await expect(quick).toHaveCount(0);
       await expect(trigger).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(parent).toBeFocused();
       await trigger.click();
       await expect(input).toBeFocused();
       await expect(input).toHaveValue("A draft to keep");
@@ -100,6 +107,8 @@ for (const dictation of [false, true]) {
       await expect(fullInput).toHaveValue("Full chat draft");
       await expect(full.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
       await full.getByRole("button", { name: "Close companion", exact: true }).focus();
+      await page.keyboard.press("Tab");
+      await expect(fullInput).toBeFocused();
       await page.keyboard.press(shortcut);
       await expect(fullInput).toBeFocused();
       await expect(fullInput).toHaveValue("Full chat draft");

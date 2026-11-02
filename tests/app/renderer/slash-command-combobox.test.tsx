@@ -151,12 +151,14 @@ describe("SlashCommandCombobox", () => {
     });
 
     expect(input.getAttribute("aria-expanded")).toBe("true");
-    act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })));
+    act(() =>
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })),
+    );
     expect(input.value).toBe("/help summarize this");
     expect(input.selectionStart).toBe(6);
   });
 
-  it.each(["Tab", "ArrowLeft", "ArrowRight"])("autocompletes with %s without submitting", (key) => {
+  it.each(["ArrowLeft", "ArrowRight"])("autocompletes with %s without submitting", (key) => {
     const onSubmit = vi.fn();
     function ControlledCombobox() {
       const [value, setValue] = useState("/");
@@ -463,7 +465,7 @@ describe("SlashCommandCombobox", () => {
     await waitForFileSuggestions();
     const input = container.querySelector<HTMLTextAreaElement>('[role="combobox"]')!;
 
-    act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })));
+    act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(input.value).toBe('open @"my folder/"');
     expect(input.selectionStart).toBe(input.value.length - 1);
   });

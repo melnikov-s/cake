@@ -151,6 +151,9 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     await composer.fill("Explain @no");
     await expect(page.getByRole("option", { name: /notes\.txt/ })).toBeVisible();
     await composer.press("Tab");
+    await expect(composer).toHaveValue("Explain @no");
+    await expect(composer).toBeFocused();
+    await composer.press("Enter");
     await expect(composer).toHaveValue("Explain @notes.txt ");
     await expect(composer).toBeFocused();
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
@@ -171,6 +174,9 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     await expect(page.getByRole("option", { name: /compact/ })).toHaveCount(0);
     await expect(page.getByRole("option", { name: /toolcompact/ })).toHaveCount(0);
     await composer.press("Tab");
+    await expect(composer).toHaveValue("/existing prompt");
+    await expect(composer).toBeFocused();
+    await composer.press("ArrowRight");
     await expect(composer).toHaveValue("/model existing prompt");
 
     await composer.fill("/tree");
@@ -182,7 +188,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     await expect(
       page.getByRole("option", { name: /skill:desktop-fixture Desktop fixture skill/ }),
     ).toBeVisible();
-    await composer.press("Tab");
+    await composer.press("ArrowRight");
     await expect(composer).toHaveValue("/skill:desktop-fixture ");
     await composer.press("Enter");
     await expect(page.locator(".session-item.active")).toHaveCount(1, { timeout: 20_000 });
@@ -294,7 +300,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
 
       // Slash completion is an explicit writing action, not convenience autofocus.
-      for (const key of ["Tab", "ArrowLeft", "ArrowRight"]) {
+      for (const key of ["ArrowLeft", "ArrowRight"]) {
         await composer.fill("/skill:desktop");
         await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
         await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
