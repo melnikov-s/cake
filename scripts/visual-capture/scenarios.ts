@@ -3323,15 +3323,52 @@ const cakeChatSidebarUnread: VisualCaptureScenario = {
     const state = JSON.parse(await readFile(file, "utf8"));
     await writeFile(
       file,
-      JSON.stringify({ ...state, unreadSessionIds: ["ca4ec4a7-0000-4000-8000-000000000001"] }),
+      JSON.stringify({
+        ...state,
+        data: {
+          ...state.data,
+          unreadSessionIds: ["ca4ec4a7-0000-4000-8000-000000000001", "visual-sidebar-unread"],
+        },
+      }),
+    );
+    const sessions = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const original = await readFile(
+      join(sessions, "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl"),
+      "utf8",
+    );
+    await writeFile(
+      join(sessions, "1970-01-01T00-00-00-000Z_visual-sidebar-unread.jsonl"),
+      original
+        .replaceAll("visual-assistant-markdown-code", "visual-sidebar-unread")
+        .replaceAll("How should agents capture Cake UI changes?", "Check sidebar dot alignment"),
     );
   },
   async prepare(page) {
     await assistantMarkdownCode.prepare(page, "default");
-    await expect(
-      page.locator('[data-slot="cake-chat-group"]').getByRole("img", { name: "Ready, unread" }),
-    ).toBeVisible();
+    const coordinator = page.locator('[data-slot="cake-chat-group"]');
+    const coordinatorDot = coordinator.getByRole("img", { name: "Ready, unread" });
+    const sessionDot = page
+      .locator('.session-item[data-session-id="visual-sidebar-unread"]')
+      .getByRole("img", { name: "Ready, unread" });
+    await expect(coordinatorDot).toBeVisible();
+    await expect(sessionDot).toBeVisible();
     await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+    await expect
+      .poll(async () => {
+        const [cake, session] = await Promise.all([
+          coordinatorDot.boundingBox(),
+          sessionDot.boundingBox(),
+        ]);
+        if (!cake || !session) return Infinity;
+        return Math.abs(cake.x + cake.width / 2 - (session.x + session.width / 2));
+      })
+      .toBeLessThan(1);
+    await coordinator.hover();
+    await expect(coordinatorDot).toBeVisible();
     await page.mouse.move(1, 1);
   },
   region: (page) => page.locator('[data-slot="sidebar"]'),
