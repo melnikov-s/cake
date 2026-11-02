@@ -323,7 +323,10 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await toggle.press("Space");
     await expect(panel).toBeHidden();
     await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    // Closing returns focus to writing; let that request finish before testing Space again.
+    await expect(input).toBeFocused();
     await toggle.focus();
+    await expect(toggle).toBeFocused();
     await toggle.press("Space");
     await expect(panel).toBeVisible();
     await expect(toggle).toHaveAttribute("aria-pressed", "true");
@@ -458,6 +461,8 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
         .locator('[data-slot="project-header"] [data-slot="project-label"]')
         .first()
         .click();
+      // Navigation commits asynchronously; do not toggle the restored panel closed.
+      await expect(input).toBeVisible();
       if (!(await panel.isVisible())) await toggle.click();
       await expect(panel).toBeVisible();
     };
