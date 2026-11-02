@@ -247,11 +247,22 @@ describe("Project navigation workflow", () => {
       '[data-slot="chat"] > [data-slot="content-transition"] > [data-slot="content-transition-live"]',
     )[1]!;
     await act(async () => {
-      for (const exit of exits) exit.onfinish?.call(exit, {} as AnimationPlaybackEvent);
+      for (const exit of exits.splice(0)) exit.onfinish?.call(exit, {} as AnimationPlaybackEvent);
     });
-    expect(live.classList.contains("opacity-0")).toBe(true);
+    // First-history navigation keeps the existing chat visible until the
+    // destination's persisted projection arrives, instead of mounting a blank pane.
+    expect(live.classList.contains("opacity-0")).toBe(false);
+    expect(
+      document.querySelectorAll<HTMLElement>('[data-slot="session-pane"]')[1]!.dataset.sessionId,
+    ).toBe(`project-chat:${"2".repeat(64)}`);
     await fixture.hydrateProjectChat(2);
+    await act(async () => {
+      for (const exit of exits.splice(0)) exit.onfinish?.call(exit, {} as AnimationPlaybackEvent);
+    });
     await waitFor(() => expect(live.classList.contains("opacity-0")).toBe(false));
+    expect(
+      document.querySelectorAll<HTMLElement>('[data-slot="session-pane"]')[1]!.dataset.sessionId,
+    ).toBe(`project-chat:${"3".repeat(64)}`);
     expect(live.hasAttribute("aria-hidden")).toBe(false);
     expect(live.inert).toBe(false);
     expect(document.querySelectorAll('[data-slot="session-pane"]')).toHaveLength(2);
