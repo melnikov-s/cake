@@ -131,6 +131,7 @@ export function browserMenus(
     },
     showProjectContextMenu: async (input) => {
       const action = await store.show("Project actions", [
+        { label: "New Automation…", action: "new-automation" },
         { label: "Project Settings…", action: "settings" },
         {
           label: `Sort Sessions: By Date${input.sessionSort === "date" ? " ✓" : ""}`,
@@ -148,7 +149,8 @@ export function browserMenus(
         },
         { label: "Remove Project…", action: "remove-project" },
       ]);
-      return action === "settings" ||
+      return action === "new-automation" ||
+        action === "settings" ||
         action === "sort-by-date" ||
         action === "sort-by-label" ||
         action === "delete-resolved-worktrees" ||

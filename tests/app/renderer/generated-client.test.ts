@@ -529,6 +529,43 @@ describe("generated renderer command adaptation", () => {
     },
   );
 
+  it("preserves canonical automation input references on a later remote edit without reuploading", async () => {
+    const reference = {
+      kind: "input" as const,
+      id: presetId,
+      name: "guide.md",
+      mimeType: "text/markdown",
+      byteLength: 12,
+    };
+    const definition = automationDefinition({
+      task: { ...automationDefinition().task, attachments: [reference] },
+    });
+    const test = harness((message, respond) =>
+      respond({
+        _tag: "Exit",
+        requestId: message.id,
+        exit: { _tag: "Success", value: automation({ definition }) },
+      }),
+    );
+    const client = makeClient(test.runtime, {
+      kind: "remote",
+      connected: () => true,
+      blocked: () => false,
+      uncertain() {
+        throw new Error("Successful edit must not be uncertain");
+      },
+    });
+    try {
+      await client.automations.update({ automationId, definition });
+      expect(requests(test.messages).map(({ tag }) => tag)).toEqual(["automations.update"]);
+      expect(requests(test.messages)[0]?.payload).toMatchObject({
+        definition: { task: { attachments: [reference] } },
+      });
+    } finally {
+      await test.runtime.dispose();
+    }
+  });
+
   it("does not retry failed synthesis after delivering an audio chunk", async () => {
     const audio = { encoding: "pcm_s16le" as const, sampleRate: 24_000 as const, pcm: "AAAA" };
     const consumed: (typeof audio)[] = [];

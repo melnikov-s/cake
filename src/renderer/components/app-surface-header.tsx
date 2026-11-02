@@ -62,24 +62,31 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
           />
         )}
         <strong className="block min-w-0 max-w-full truncate text-sm font-semibold">
-          {surface === "settings"
-            ? "Settings"
-            : surface === "artifact-library"
-              ? "All artifacts"
-              : surface === "cake-chat"
-                ? "Cake Chat"
-                : (extensionUi.title ?? (session ? store.sessionTitle : "Cake"))}
+          {surface === "automations"
+            ? "Automations"
+            : surface === "automation-session"
+              ? (root.automationSessionsStore.selectedSession?.displayTitle ?? "Automation run")
+              : surface === "settings"
+                ? "Settings"
+                : surface === "artifact-library"
+                  ? "All artifacts"
+                  : surface === "cake-chat"
+                    ? "Cake Chat"
+                    : (extensionUi.title ?? (session ? store.sessionTitle : "Cake"))}
         </strong>
       </div>
       <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
         {surface === "settings" && <BrowserSharingMenu />}
-        {surface !== "artifact-library" && artifactCatalogMenu}
+        {surface !== "artifact-library" &&
+          surface !== "automations" &&
+          surface !== "automation-session" &&
+          artifactCatalogMenu}
         {surface === "artifact-library" && (
           <IconButton tooltip="Close all artifacts" onClick={returnToWorkbench}>
             <CloseIcon />
           </IconButton>
         )}
-        {terminal.available && (
+        {terminal.available && surface !== "automations" && surface !== "automation-session" && (
           <IconButton
             data-cake-hint-key="t"
             className="phone:hidden"

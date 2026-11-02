@@ -2,14 +2,27 @@ import { Store, observable, snapshot } from "r-state-tree";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
 
-export type AppSurface = "workbench" | "cake-chat" | "artifact-library" | "settings";
-export type ConversationWorkspace = "home" | "project-sessions" | "cake-chat";
+export type AppSurface =
+  | "workbench"
+  | "cake-chat"
+  | "artifact-library"
+  | "settings"
+  | "automations"
+  | "automation-session";
+export type ConversationWorkspace =
+  | "home"
+  | "project-sessions"
+  | "cake-chat"
+  | "automation-sessions";
 
 export type WindowConversationSelection =
+  | { kind: "automation-session"; sessionId: string }
   | { kind: "project-session"; sessionId: string }
   | { kind: "cake-chat"; sessionId: string };
 
 export type AppSelection =
+  | { kind: "automations" }
+  | { kind: "automation-session"; sessionId: string }
   | { kind: "workbench" }
   | { kind: "project-session"; sessionId: string }
   | { kind: "cake-chat"; sessionId?: string }
@@ -18,12 +31,16 @@ export type AppSelection =
 
 /** One visited conversation in the window's back/forward session history. */
 export type SessionHistoryEntry =
+  | { kind: "automation-session"; sessionId: string }
   | { kind: "project-session"; sessionId: string }
   | { kind: "cake-chat"; sessionId: string };
 
 /** Owns workspace/cover selection and window visits, never the layouts' session identities. */
 export interface AppShellStoreProps {
-  focusedSessionId(workspace: "project-sessions" | "cake-chat"): string | undefined;
+  focusedSessionId(
+    workspace: "project-sessions" | "cake-chat" | "automation-sessions",
+  ): string | undefined;
+  automationSessionResolved?(sessionId: string): boolean;
   sessionInNavigationScope(entry: SessionHistoryEntry): boolean;
   onProjectSessionDeparted(sessionId: string): void;
 }
@@ -34,7 +51,7 @@ const sameSessionEntry = (left: SessionHistoryEntry, right: SessionHistoryEntry)
 export class AppShellStore extends Store<AppShellStoreProps> {
   @snapshot readonly navigationVersion = 3;
   @snapshot workspace: ConversationWorkspace = "home";
-  @snapshot coveringSurface: "settings" | "artifact-library" | undefined;
+  @snapshot coveringSurface: "settings" | "artifact-library" | "automations" | undefined;
 
   get activeConversation(): WindowConversationSelection | undefined {
     if (this.workspace === "home") return undefined;
@@ -42,9 +59,11 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     return sessionId
       ? {
           kind:
-            this.workspace === "cake-chat" || isCakeChatSessionId(sessionId)
-              ? "cake-chat"
-              : "project-session",
+            this.workspace === "automation-sessions"
+              ? "automation-session"
+              : this.workspace === "cake-chat" || isCakeChatSessionId(sessionId)
+                ? "cake-chat"
+                : "project-session",
           sessionId,
         }
       : undefined;
@@ -77,8 +96,15 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     this.reaction(
       () => {
         const active = this.activeConversation;
-        if (active?.kind !== "project-session") return undefined;
-        return { ...active, resolved: this.metadata.isResolved(active.sessionId) };
+        if (active?.kind !== "project-session" && active?.kind !== "automation-session")
+          return undefined;
+        return {
+          ...active,
+          resolved:
+            active.kind === "automation-session"
+              ? this.props.automationSessionResolved?.(active.sessionId)
+              : this.metadata.isResolved(active.sessionId),
+        };
       },
       (current, previous) => {
         if (
@@ -96,6 +122,8 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   }
 
   get surface(): AppSurface {
+    if (this.selection.kind === "automations") return "automations";
+    if (this.selection.kind === "automation-session") return "automation-session";
     if (this.selection.kind === "settings") return "settings";
     if (this.selection.kind === "artifact-library") return "artifact-library";
     if (this.selection.kind === "cake-chat") return "cake-chat";
@@ -176,7 +204,11 @@ export class AppShellStore extends Store<AppShellStoreProps> {
       const entry = this.sessionHistory[cursor]!;
       if (!this.props.sessionInNavigationScope(entry)) continue;
       if (target && !sameSessionEntry(entry, target)) continue;
-      if (entry.kind === "cake-chat" || this.metadata.isResolved(entry.sessionId) !== true)
+      if (
+        entry.kind === "automation-session"
+          ? !this.props.automationSessionResolved?.(entry.sessionId)
+          : entry.kind === "cake-chat" || this.metadata.isResolved(entry.sessionId) !== true
+      )
         return cursor;
     }
     return undefined;
@@ -221,6 +253,10 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     this.coveringSurface = undefined;
   }
 
+  showAutomations() {
+    this.coveringSurface = "automations";
+  }
+
   showArtifactLibrary() {
     this.coveringSurface = "artifact-library";
   }
@@ -234,6 +270,11 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     const entry = this.activeConversation;
     if (!entry) return;
     if (entry.kind === "project-session" && this.metadata.isResolved(entry.sessionId)) return;
+    if (
+      entry.kind === "automation-session" &&
+      this.props.automationSessionResolved?.(entry.sessionId)
+    )
+      return;
     this.recordSessionVisit(entry);
   }
 

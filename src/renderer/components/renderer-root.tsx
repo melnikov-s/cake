@@ -35,7 +35,11 @@ export const RendererRoot = observer(function RendererRoot({
   openSubagent,
 }: RendererRootProps) {
   const activeSessionId = rootStore.appShellStore.activeConversation?.sessionId;
-  const sessionIds = rootStore.sessionCatalogStore.authoritativeSessionIds;
+  const sessionIds = [
+    ...rootStore.sessionCatalogStore.authoritativeSessionIds,
+    ...rootStore.props.projection.automations.unresolvedSessions.map((item) => item.sessionId),
+    ...rootStore.automationSessionsStore.identities.map((item) => item.sessionId),
+  ];
   return (
     <RendererErrorBoundary>
       <StrictMode>
@@ -53,6 +57,12 @@ export const RendererRoot = observer(function RendererRoot({
                   openSubagent,
                   sessionIds: () => sessionIds,
                   sessionTitle: (sessionId) =>
+                    rootStore.props.projection.automations.unresolvedSessions.find(
+                      (item) => item.sessionId === sessionId,
+                    )?.title ??
+                    rootStore.automationSessionsStore.sessions.find(
+                      (session) => session.sessionId === sessionId,
+                    )?.displayTitle ??
                     rootStore.sessionCatalogStore.find(sessionId)?.title ??
                     rootStore.cakeChatCollectionStore.summaries.find(
                       (session) => session.sessionId === sessionId,

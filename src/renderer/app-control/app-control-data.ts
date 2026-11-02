@@ -1,3 +1,4 @@
+import type { AutomationSessionIdentity } from "../../contracts/automations/automation-data";
 import type { ColorThemeChoice } from "../../contracts/themes/color-theme";
 import type {
   ThemeAddInput,
@@ -79,6 +80,8 @@ export type SessionSummaryView = Pick<
   >;
 
 type AppControlSelection =
+  | { kind: "automations" }
+  | { kind: "automation-session"; sessionId: string; title: string; workingDirectory: string }
   | { kind: "workbench" }
   | { kind: "new-project-chat" }
   | {
@@ -150,6 +153,7 @@ export interface AppControlHost {
     projects(): readonly ProjectRecord[];
     sessions(): readonly SessionSummaryView[];
     cakeChatSessions(): readonly CakeChatSummary[];
+    automationSessions(): readonly { identity: AutomationSessionIdentity; title: string }[];
     sessionActivity(sessionId: string): SessionActivity | undefined;
     managedWorktree(workingDirectory: string): WorktreeRecord | undefined;
     globalSessionLabels(): readonly SessionLabel[];

@@ -13,6 +13,7 @@ import { SessionSearchStore } from "./SessionSearchStore";
 
 export interface SidebarStoreProps {
   catalog: SessionCatalogStore;
+  createAutomation?(projectPath: string): void;
   cakeChat(): CakeChatCollectionStore;
   selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
   embeddedEditorSettings: EmbeddedEditorSettingsStore;
@@ -206,6 +207,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       resolvedWorktreeCount: this.props.catalog.resolvedWorktrees(path).length,
       sessionSort: this.sessionListStore.projectSessionSort(path),
     });
+    if (action === "new-automation") this.props.createAutomation?.(path);
     if (action === "sort-by-date") this.sessionListStore.setProjectSessionSort(path, "date");
     if (action === "sort-by-label") this.sessionListStore.setProjectSessionSort(path, "label");
     return action;

@@ -1,4 +1,4 @@
-import { Store, child, createStore, observable } from "r-state-tree";
+import { Store, child, createStore, observable, snapshot } from "r-state-tree";
 import type {
   AutomationRun,
   AutomationSessionIdentity,
@@ -15,8 +15,8 @@ export class AutomationSessionsStore extends Store<{
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
 }> {
-  readonly identities: AutomationSessionIdentity[] = observable([]);
-  selectedSessionId: string | undefined;
+  @snapshot readonly identities: AutomationSessionIdentity[] = observable([]);
+  @snapshot selectedSessionId: string | undefined;
 
   get catalog() {
     return this.props.projection.automations;
@@ -34,6 +34,14 @@ export class AutomationSessionsStore extends Store<{
         key: identity.sessionId,
         identity,
         model: this.props.projection.automationConversation(identity.sessionId),
+        initialTitle:
+          this.catalog.unresolvedSessions.find((item) => item.sessionId === identity.sessionId)
+            ?.title ??
+          this.catalog.automations.find((item) => item.id === identity.automationId)?.name ??
+          "Automation run",
+        currentTitle: () =>
+          this.catalog.unresolvedSessions.find((item) => item.sessionId === identity.sessionId)
+            ?.title,
         resolved: () =>
           this.catalog.loaded &&
           !this.catalog.unresolvedSessions.some(
@@ -46,31 +54,71 @@ export class AutomationSessionsStore extends Store<{
     );
   }
 
+  hasSession(sessionId: string) {
+    return (
+      this.catalog.unresolvedSessions.some((session) => session.sessionId === sessionId) ||
+      this.identities.some((item) => item.sessionId === sessionId)
+    );
+  }
+  isResolved(sessionId: string) {
+    return (
+      this.catalog.loaded &&
+      !this.catalog.unresolvedSessions.some((session) => session.sessionId === sessionId)
+    );
+  }
+  sessionsForProject(projectPath: string | undefined) {
+    return this.catalog.unresolvedSessions
+      .filter((session) =>
+        projectPath === undefined
+          ? session.identity?.context._tag === "Global"
+          : session.identity?.context._tag === "Project" &&
+            session.identity.context.projectPath === projectPath,
+      )
+      .sort(
+        (left, right) =>
+          Number(right.running) - Number(left.running) ||
+          right.modifiedAt.localeCompare(left.modifiedAt) ||
+          left.sessionId.localeCompare(right.sessionId),
+      );
+  }
+
   openSession(sessionId: string) {
-    const identity =
-      this.catalog.unresolvedSessions.find((session) => session.sessionId === sessionId)
-        ?.identity ?? this.identities.find((item) => item.sessionId === sessionId);
-    if (!identity) return false;
-    this.openIdentity(identity);
+    const session = this.loadSession(sessionId);
+    if (!session) return false;
+    this.selectedSessionId = sessionId;
     return true;
   }
 
+  loadSession(sessionId: string) {
+    const identity =
+      this.catalog.unresolvedSessions.find((session) => session.sessionId === sessionId)
+        ?.identity ?? this.identities.find((item) => item.sessionId === sessionId);
+    if (!identity) return undefined;
+    if (!this.identities.some((item) => item.sessionId === sessionId))
+      this.identities.push(identity);
+    return this.sessions.find((session) => session.sessionId === sessionId);
+  }
+
   /** History supplies resolved runs' real identity/context without Project Session lookup. */
-  openRun(run: AutomationRun) {
-    this.openIdentity({
+  openRun(run: AutomationRun, title?: string) {
+    this.loadRun(run, title);
+    this.selectedSessionId = run.sessionId;
+  }
+
+  loadRun(run: AutomationRun, title?: string) {
+    const identity: AutomationSessionIdentity = {
       _tag: "AutomationSession",
       sessionId: run.sessionId,
       automationId: run.automationId,
       runId: run.id,
       context: run.context,
       workingDirectory: run.workingDirectory,
-    });
-  }
-
-  private openIdentity(identity: AutomationSessionIdentity) {
-    if (!this.identities.some((item) => item.sessionId === identity.sessionId))
+    };
+    if (!this.identities.some((item) => item.sessionId === run.sessionId))
       this.identities.push(identity);
-    this.selectedSessionId = identity.sessionId;
+    const session = this.sessions.find((session) => session.sessionId === run.sessionId)!;
+    if (title) session.title = title;
+    return session;
   }
 
   closeSession(sessionId: string) {

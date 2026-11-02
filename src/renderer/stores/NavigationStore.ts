@@ -28,6 +28,14 @@ import type { SessionMetadataStore } from "./SessionMetadataStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SettingsStore } from "./SettingsStore";
 import type { SidebarStore } from "./SidebarStore";
+import type { AutomationSessionsStore } from "./AutomationSessionsStore";
+import type { AutomationsStore } from "./AutomationsStore";
+import type {
+  AutomationContext,
+  AutomationId,
+  AutomationRun,
+} from "../../contracts/automations/automation-data";
+import type { SessionChatConfiguration } from "../../contracts/conversations/conversation-data";
 
 /** Window-local navigation policy. Selection, history and layout stay with their existing owners.
  * Async session opening retains the workbench's concurrency policy; this Store adds no persisted state.
@@ -44,6 +52,9 @@ export class NavigationStore extends Store<{
   settings(): SettingsStore;
   artifacts(): ArtifactLibraryStore;
   artifactMenu(): ArtifactMenuStore;
+  automationSessions(): AutomationSessionsStore;
+  automations(): AutomationsStore;
+  defaultAutomationConfiguration?(): SessionChatConfiguration | undefined;
 }> {
   private get workbench() {
     return ProjectSessionNavigationContext.consume(this)!;
@@ -70,6 +81,18 @@ export class NavigationStore extends Store<{
   async openSession(sessionId: string, messageId?: string) {
     this.messageReferencePreview.close();
     this.attachmentReferencePreview.close();
+    if (this.props.automationSessions().hasSession(sessionId)) {
+      if (!this.openAutomationSession(sessionId)) return false;
+      if (!messageId) return true;
+      const chat =
+        this.props.automationSessions().selectedSession?.conversationSessionStore.chatStore;
+      const part = chat && linkedMessageTarget(chat.parts, messageId);
+      if (part && chat) {
+        chat.transcriptInteraction.navigateToMessage(part.id);
+        return true;
+      }
+      return this.messageReferencePreview.open(sessionId, messageId);
+    }
     if (isCakeChatSessionId(sessionId)) {
       await this.openCakeChat(sessionId);
       if (!messageId) return true;
@@ -98,6 +121,69 @@ export class NavigationStore extends Store<{
     if (!message) return this.messageReferencePreview.open(sessionId, messageId);
     session.conversationSessionStore.chatStore.transcriptInteraction.navigateToMessage(message.id);
     return true;
+  }
+
+  showAutomations() {
+    this.props.shell.showAutomations();
+  }
+
+  async editAutomation(automationId: AutomationId) {
+    this.showAutomations();
+    await this.props.automations().select(automationId);
+  }
+
+  createAutomation(context: AutomationContext = { _tag: "Global" }) {
+    this.props.automations().beginCreate({
+      name: "New automation",
+      context,
+      trigger: {
+        _tag: "Schedule",
+        schedule: {
+          _tag: "Interval",
+          startsAt: new Date(Date.now() + 3600000).toISOString(),
+          everySeconds: 86400,
+        },
+      },
+      task: {
+        prompt: "",
+        configuration: this.props.defaultAutomationConfiguration?.() ?? {
+          provider: "",
+          modelId: "",
+          thinkingLevel: "off",
+          fastMode: false,
+        },
+        attachments: [],
+      },
+      overlap: "skip",
+      completion: "keep-for-review",
+    });
+    this.showAutomations();
+  }
+
+  openAutomationSession(sessionId: string) {
+    if (!this.props.automationSessions().openSession(sessionId)) return false;
+    this.commitAutomationSelection();
+    return true;
+  }
+
+  openAutomationRun(run: AutomationRun, title?: string) {
+    this.props.automationSessions().openRun(run, title);
+    this.commitAutomationSelection();
+  }
+
+  private commitAutomationSelection() {
+    this.props.shell.selectWorkspace("automation-sessions");
+    this.props.shell.recordCurrentConversationVisit();
+    const session = this.props.automationSessions().selectedSession;
+    if (
+      session &&
+      this.props
+        .automationSessions()
+        .catalog.unresolvedSessions.some(
+          (item) => item.sessionId === session.sessionId && item.unread,
+        )
+    )
+      void session.setUnread(false);
   }
 
   selectProjectSession(sessionId: string) {
@@ -134,6 +220,10 @@ export class NavigationStore extends Store<{
     const resolved = resolveSessionLinkReference(reference, [
       ...this.props.catalog.sessions.map((session) => session.sessionId),
       ...this.props.cakeChat().summaries.map((session) => session.sessionId),
+      ...this.props
+        .automationSessions()
+        .catalog.unresolvedSessions.map((session) => session.sessionId),
+      ...this.props.automationSessions().identities.map((identity) => identity.sessionId),
     ]);
     if (!resolved.ok) throw new Error(resolved.error);
     const { sessionId } = resolved;
@@ -227,6 +317,16 @@ export class NavigationStore extends Store<{
   sessionInNavigationScope(entry: SessionHistoryEntry) {
     const projectPath = this.props.sidebar().focusModeProjectPath;
     if (projectPath === undefined) return true;
+    if (entry.kind === "automation-session") {
+      const identity =
+        this.props
+          .automationSessions()
+          .identities.find((item) => item.sessionId === entry.sessionId) ??
+        this.props
+          .automationSessions()
+          .catalog.unresolvedSessions.find((item) => item.sessionId === entry.sessionId)?.identity;
+      return identity?.context._tag === "Project" && identity.context.projectPath === projectPath;
+    }
     if (entry.kind === "cake-chat")
       return (
         this.props.cakeChat().summaries.find((chat) => chat.sessionId === entry.sessionId)

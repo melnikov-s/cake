@@ -15,6 +15,7 @@ export class AutomationEditorStore extends Store {
   creating = false;
   loading = false;
   saving = false;
+  choosingAttachments = false;
   initialState: "active" | "paused" = "active";
   error: string | undefined;
   private request: AbortController | undefined;
@@ -70,6 +71,37 @@ export class AutomationEditorStore extends Store {
   patch(patch: Partial<AutomationDefinition>) {
     if (this.definition && !this.saving) this.definition = { ...this.definition, ...patch };
   }
+  async addAttachments() {
+    if (this.choosingAttachments || !this.definition) return;
+    this.choosingAttachments = true;
+    this.error = undefined;
+    try {
+      const attachments = await this.client.filesystem.chooseAttachments({ signal: this.signal });
+      if (!this.signal.aborted && this.definition)
+        this.patch({
+          task: {
+            ...this.definition.task,
+            attachments: [...this.definition.task.attachments, ...attachments],
+          },
+        });
+    } catch (error) {
+      if (!this.signal.aborted) this.error = error instanceof Error ? error.message : String(error);
+    } finally {
+      if (!this.signal.aborted) this.choosingAttachments = false;
+    }
+  }
+  removeAttachment(index: number) {
+    if (this.definition)
+      this.patch({
+        task: {
+          ...this.definition.task,
+          attachments: this.definition.task.attachments.filter(
+            (_, candidate) => candidate !== index,
+          ),
+        },
+      });
+  }
+
   setStep(step: AutomationEditorStore["step"]) {
     this.step = step;
   }

@@ -1,3 +1,4 @@
+import type { AutomationSessionsStore } from "../stores/AutomationSessionsStore";
 import type { AppControlHost } from "./app-control-data";
 import { inspectWorkspaceView } from "./workspace-view-projection";
 import { invokeAgentSettings } from "./AgentSettingsControl";
@@ -25,6 +26,7 @@ export interface RootApplicationControlCapabilities {
   signal: AbortSignal;
   flushWindowState(): Promise<void>;
   appShellStore: AppShellStore;
+  automationSessionsStore: AutomationSessionsStore;
   applicationControlStore(): ApplicationControlStore;
   cakeChatCollectionStore: CakeChatCollectionStore;
   notificationStore: NotificationStore;
@@ -40,7 +42,7 @@ export interface RootApplicationControlCapabilities {
   sessionMetadataStore: SessionMetadataStore;
   toastStore: ToastStore;
   requireProjectSessionWorkingDirectory(sessionId: string): string;
-  prepareProjectSessionChat(sessionId: string): Promise<void>;
+  prepareSessionChat(sessionId: string): Promise<void>;
   navigationStore: NavigationStore;
   sessionRetirementStore: SessionRetirementStore;
 }
@@ -63,6 +65,17 @@ export function createRootApplicationControlHost(
       workspaceView: () => inspectWorkspaceView(capabilities),
       currentSelection: () => {
         const selection = capabilities.appShellStore.selection;
+        if (selection.kind === "automations") return { kind: "automations" as const };
+        if (selection.kind === "automation-session") {
+          const session = capabilities.automationSessionsStore.selectedSession;
+          if (session)
+            return {
+              kind: "automation-session" as const,
+              sessionId: session.sessionId,
+              title: session.displayTitle,
+              workingDirectory: session.identity.workingDirectory,
+            };
+        }
         if (selection.kind === "project-session") {
           if (
             capabilities.sessionRegistry.pendingSessions.isTemporary(selection.sessionId) &&
@@ -122,6 +135,24 @@ export function createRootApplicationControlHost(
       projects: () => capabilities.projectCatalogStore.projects,
       sessions: () => capabilities.sessionCatalogStore.sessions,
       cakeChatSessions: () => capabilities.cakeChatCollectionStore.summaries,
+      automationSessions: () => {
+        const catalog = capabilities.automationSessionsStore.catalog;
+        const identities = new Map(
+          capabilities.automationSessionsStore.identities.map((identity) => [
+            identity.sessionId,
+            identity,
+          ]),
+        );
+        for (const summary of catalog.unresolvedSessions)
+          if (summary.identity) identities.set(summary.sessionId, summary.identity);
+        return [...identities.values()].map((identity) => ({
+          identity,
+          title:
+            capabilities.automationSessionsStore.sessions.find(
+              (session) => session.sessionId === identity.sessionId,
+            )?.displayTitle ?? "Automation run",
+        }));
+      },
       sessionActivity: (sessionId) => capabilities.sessionMetadataStore.sessionActivity(sessionId),
       managedWorktree: (workingDirectory) =>
         capabilities.sessionCatalogStore.managedWorktree(workingDirectory),
@@ -244,7 +275,7 @@ export function createRootApplicationControlHost(
         ),
       queueCommand: (sessionId, command) =>
         capabilities.applicationControlStore().runOperation(async () => {
-          await capabilities.prepareProjectSessionChat(sessionId);
+          await capabilities.prepareSessionChat(sessionId);
           return capabilities.client.sessionChats.queueCommand(
             { sessionId, command },
             { signal: capabilities.signal },
@@ -256,7 +287,7 @@ export function createRootApplicationControlHost(
           { signal: capabilities.signal },
         ),
       listPendingMessages: async (sessionId) => {
-        await capabilities.prepareProjectSessionChat(sessionId);
+        await capabilities.prepareSessionChat(sessionId);
         return capabilities.client.sessionChats.listQueuedMessages(
           { sessionId },
           { signal: capabilities.signal },
@@ -264,7 +295,7 @@ export function createRootApplicationControlHost(
       },
       dequeuePendingMessages: (sessionId) =>
         capabilities.applicationControlStore().runOperation(async () => {
-          await capabilities.prepareProjectSessionChat(sessionId);
+          await capabilities.prepareSessionChat(sessionId);
           return capabilities.client.sessionChats.clearQueue(
             { sessionId },
             { signal: capabilities.signal },
@@ -272,7 +303,7 @@ export function createRootApplicationControlHost(
         }),
       removeQueuedMessage: (sessionId, partId) =>
         capabilities.applicationControlStore().runOperation(async () => {
-          await capabilities.prepareProjectSessionChat(sessionId);
+          await capabilities.prepareSessionChat(sessionId);
           return capabilities.client.sessionChats.removeQueuedMessage(
             { sessionId, partId },
             { signal: capabilities.signal },
@@ -280,7 +311,7 @@ export function createRootApplicationControlHost(
         }),
       steerQueuedMessage: (sessionId, partId) =>
         capabilities.applicationControlStore().runOperation(async () => {
-          await capabilities.prepareProjectSessionChat(sessionId);
+          await capabilities.prepareSessionChat(sessionId);
           return capabilities.client.sessionChats.steerQueuedMessage(
             { sessionId, partId },
             { signal: capabilities.signal },
@@ -288,7 +319,7 @@ export function createRootApplicationControlHost(
         }),
       sendQueuedMessageNow: (sessionId, partId) =>
         capabilities.applicationControlStore().runOperation(async () => {
-          await capabilities.prepareProjectSessionChat(sessionId);
+          await capabilities.prepareSessionChat(sessionId);
           return capabilities.client.sessionChats.sendQueuedMessageNow(
             { sessionId, partId },
             { signal: capabilities.signal },
@@ -296,7 +327,7 @@ export function createRootApplicationControlHost(
         }),
       abort: (sessionId, stop) =>
         capabilities.applicationControlStore().runOperation(async () => {
-          await capabilities.prepareProjectSessionChat(sessionId);
+          await capabilities.prepareSessionChat(sessionId);
           return capabilities.client.sessionChats.abort(
             { sessionId, stop },
             { signal: capabilities.signal },

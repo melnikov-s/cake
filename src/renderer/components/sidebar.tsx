@@ -17,6 +17,7 @@ import {
 import { SidebarNavigationControls } from "./sidebar-navigation-controls";
 import { SidebarCakeChatGroup } from "./sidebar-cake-chat-group";
 import { SidebarProjectGroup } from "./sidebar-project-group";
+import { SidebarAutomations } from "./automations/sidebar-automations";
 import { ProjectSettingsDialog } from "./project-settings-dialog";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
@@ -160,11 +161,14 @@ export const Sidebar = observer(function Sidebar({
         <SidebarCapabilities value={{ management }}>
           <NavigationHighlight>
             {activityMode && (
-              <SidebarCakeChatGroup
-                cakeChat={cakeChat}
-                shell={shell}
-                onOpenCakeChat={onOpenCakeChat}
-              />
+              <>
+                <SidebarCakeChatGroup
+                  cakeChat={cakeChat}
+                  shell={shell}
+                  onOpenCakeChat={onOpenCakeChat}
+                />
+                <SidebarAutomations />
+              </>
             )}
             {activityMode ? (
               <SidebarActivityFeed
@@ -188,6 +192,7 @@ export const Sidebar = observer(function Sidebar({
                       shell={shell}
                       onOpenCakeChat={onOpenCakeChat}
                     />
+                    {management && <SidebarAutomations />}
                     <div
                       data-slot="projects-heading"
                       className="mt-0.5 flex items-center justify-between pl-1.5 pr-2 py-2 text-sm font-medium text-muted-foreground"

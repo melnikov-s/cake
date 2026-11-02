@@ -16,6 +16,7 @@ import {
 } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
 import { SidebarProjectSessionItem } from "./sidebar-project-session-item";
+import { AutomationSessionItems } from "./automations/automation-session-items";
 import type { AppShellStore } from "../stores/AppShellStore";
 import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
@@ -319,6 +320,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               onOpenSession={onOpenSession}
             />
           ))}
+          {management && !resolved && <AutomationSessionItems projectPath={path} />}
           {hasMore && (
             <Button
               variant="ghost"

@@ -121,6 +121,9 @@ export class RootStore extends Store<{
       settings: () => this.settingsStore,
       artifacts: () => this.artifactLibraryStore,
       artifactMenu: () => this.artifactMenuStore,
+      automationSessions: () => this.automationSessionsStore,
+      automations: () => this.automationsStore,
+      defaultAutomationConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
     });
   }
   @child
@@ -370,7 +373,13 @@ export class RootStore extends Store<{
     else this.sessionRegistry.observationRetention.retain(sessionId);
   }
 
-  private async prepareProjectSessionChat(sessionId: string) {
+  private async prepareSessionChat(sessionId: string) {
+    if (this.automationSessionsStore.hasSession(sessionId)) {
+      const session = this.automationSessionsStore.loadSession(sessionId);
+      if (!session || !(await session.conversationSessionStore.prepareForCommand()))
+        throw new Error("Cake could not open that automation session");
+      return;
+    }
     this.retainProjectSessionObservation(sessionId);
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session || !(await session.conversationSessionStore.prepareForCommand()))
@@ -490,7 +499,10 @@ export class RootStore extends Store<{
 
   @child
   get automationsStore(): AutomationsStore {
-    return createStore(AutomationsStore, { catalog: this.props.projection.automations });
+    return createStore(AutomationsStore, {
+      catalog: this.props.projection.automations,
+      openRun: (run) => this.navigationStore.openAutomationRun(run),
+    });
   }
 
   @child
@@ -525,6 +537,7 @@ export class RootStore extends Store<{
 
   get workspaceSession() {
     const active = this.appShellStore.activeConversation;
+    if (active?.kind === "automation-session") return undefined;
     return active?.kind === "cake-chat"
       ? this.cakeChatCollectionStore.registry.find(active.sessionId)
       : this.projectWorkbenchStore.activeSession;
@@ -672,6 +685,8 @@ export class RootStore extends Store<{
   get sidebarStore(): SidebarStore {
     return createStore(SidebarStore, {
       catalog: this.sessionCatalogStore,
+      createAutomation: (projectPath) =>
+        this.navigationStore.createAutomation({ _tag: "Project", projectPath }),
       cakeChat: () => this.cakeChatCollectionStore,
       selectedConversation: () => {
         const selection = this.appShellStore.selection;
@@ -918,7 +933,10 @@ export class RootStore extends Store<{
       focusedSessionId: (workspace) =>
         workspace === "cake-chat"
           ? this.cakeChatCollectionStore.sessionLayoutStore.focusedSessionId
-          : this.sessionLayoutStore.focusedSessionId,
+          : workspace === "automation-sessions"
+            ? this.automationSessionsStore.selectedSessionId
+            : this.sessionLayoutStore.focusedSessionId,
+      automationSessionResolved: (sessionId) => this.automationSessionsStore.isResolved(sessionId),
       sessionInNavigationScope: (entry) => this.navigationStore.sessionInNavigationScope(entry),
       onProjectSessionDeparted: (sessionId) =>
         this.sessionRegistry.findSession(sessionId)?.depart(),
@@ -934,6 +952,7 @@ export class RootStore extends Store<{
         signal: this.signal,
         flushWindowState: this.props.flushWindowState,
         appShellStore: this.appShellStore,
+        automationSessionsStore: this.automationSessionsStore,
         applicationControlStore: () => this.applicationControlStore,
         cakeChatCollectionStore: this.cakeChatCollectionStore,
         notificationStore: this.notificationStore,
@@ -950,7 +969,7 @@ export class RootStore extends Store<{
         toastStore: this.toastStore,
         requireProjectSessionWorkingDirectory: (sessionId) =>
           this.requireProjectSessionWorkingDirectory(sessionId),
-        prepareProjectSessionChat: (sessionId) => this.prepareProjectSessionChat(sessionId),
+        prepareSessionChat: (sessionId) => this.prepareSessionChat(sessionId),
         navigationStore: this.navigationStore,
         sessionRetirementStore: this.sessionRetirementStore,
       }),
@@ -1000,7 +1019,7 @@ export class RootStore extends Store<{
       signal: this.signal,
       plugins: this.sessionPluginStore,
       workingDirectory: (sessionId) => this.requireProjectSessionWorkingDirectory(sessionId),
-      prepareChat: (sessionId) => this.prepareProjectSessionChat(sessionId),
+      prepareChat: (sessionId) => this.prepareSessionChat(sessionId),
     });
   }
 

@@ -1,5 +1,6 @@
 import { createServer } from "node:net";
 import { toolCallRowsScenario } from "./tool-call-rows";
+import { seedAutomationVisualFixture } from "../../tests/fixtures/automations";
 import { provokeRendererCrash } from "../../tests/electron/renderer-crash-fixture.ts";
 import {
   seedMessageBoardFixture,
@@ -1931,6 +1932,186 @@ const inlineArtifactRevisionsScenario: VisualCaptureScenario = {
   region(page) {
     return page.locator(".transcript").first();
   },
+};
+
+const automationUiScenario: VisualCaptureScenario = {
+  name: "automation-ui",
+  description: "Automation hub, settings, memory, history and real regular-Pi run conversations",
+  states: [
+    "default",
+    "activity",
+    "settings",
+    "event-settings",
+    "memory",
+    "history",
+    "running",
+    "completed",
+  ],
+  seed: seedAutomationVisualFixture,
+  async prepare(page, state) {
+    await expect(page.getByRole("heading", { name: "Automations", exact: true })).toBeVisible();
+    await expect(
+      page
+        .getByRole("table", { name: "Automations", exact: true })
+        .getByRole("button", { name: "Morning brief", exact: true }),
+    ).toBeVisible();
+    if (state === "default") return;
+    if (state === "history") {
+      await page.getByRole("button", { name: "History", exact: true }).click();
+      await expect(
+        page.getByRole("button", { name: "Open run", exact: true }).first(),
+      ).toBeVisible();
+      return;
+    }
+    if (state === "activity") {
+      for (const name of ["Morning brief", "Review child replies"]) {
+        await page
+          .getByRole("table", { name: "Automations", exact: true })
+          .getByRole("button", { name, exact: true })
+          .click();
+        await page.getByRole("button", { name: "Run now", exact: true }).click();
+        await expect(page.locator('[data-slot="automation-session"]')).toBeVisible();
+        await page.getByRole("button", { name: "Automation", exact: true }).click();
+        await page.getByRole("button", { name: "Run now", exact: true }).click();
+        if (name === "Morning brief")
+          await expect(page.getByText("Occurrence queued", { exact: true })).toBeVisible();
+        else {
+          await expect(page.locator('[data-slot="automation-session"]')).toBeVisible();
+          await page.getByRole("button", { name: "Automation", exact: true }).click();
+        }
+        await page.getByRole("button", { name: "All automations", exact: true }).click();
+      }
+      await expect(page.getByLabel("Automation totals")).toContainText("3 active sessions");
+      return;
+    }
+    await page
+      .getByRole("table", { name: "Automations", exact: true })
+      .getByRole("button", {
+        name: state === "event-settings" ? "Review child replies" : "Morning brief",
+        exact: true,
+      })
+      .click();
+    await expect(page.getByRole("textbox", { name: "Automation task", exact: true })).toBeVisible();
+    if (state === "memory") {
+      await page
+        .getByRole("navigation", { name: "Automation panes" })
+        .getByRole("button", { name: "Memory", exact: true })
+        .click();
+      await expect(page.getByRole("button", { name: "Zoom", exact: true }).first()).toBeVisible();
+    } else if (state === "completed") {
+      await page
+        .getByRole("navigation", { name: "Automation panes" })
+        .getByRole("button", { name: "Runs", exact: true })
+        .click();
+      await expect(
+        page.getByRole("button", { name: "Open run", exact: true }).first(),
+      ).toBeVisible();
+      if (state === "completed") {
+        await page.getByRole("button", { name: "Open run", exact: true }).first().click();
+        await expect(page.locator('[data-slot="automation-session"]')).toBeVisible();
+        await expect(
+          page.getByText(
+            "The review is complete. Shared memory retains recurring decisions and unresolved work.",
+            { exact: true },
+          ),
+        ).toBeVisible();
+        await page.getByRole("button", { name: "Resolve", exact: true }).click();
+        await expect(page.getByRole("button", { name: "Unresolve", exact: true })).toBeVisible();
+      }
+    } else if (state === "running") {
+      await page.getByRole("button", { name: "Run now", exact: true }).click();
+      await expect(page.locator('[data-slot="automation-session"]')).toBeVisible();
+      await expect(
+        page.getByText("Reviewing the latest project changes and shared automation memory.", {
+          exact: true,
+        }),
+      ).toBeVisible();
+    }
+  },
+  region: (page) => page.locator("body"),
+};
+
+const automationApprovedWalkthrough: VisualCaptureScenario = {
+  name: "automation-approved-walkthrough",
+  description: "Fresh native rendering of the immutable accepted automation walkthrough @r1",
+  states: ["default", "running", "settings", "memory", "history", "completed"],
+  async seed(paths, theme) {
+    const path = process.env.CAKE_AUTOMATION_DESIGN_SOURCE;
+    if (!path)
+      throw new Error("Set CAKE_AUTOMATION_DESIGN_SOURCE to the linked @r1 content.html.txt");
+    const source = await readFile(path, "utf8");
+    if (sha256(source) !== "6bad079f03a0217c1123cbd1dcaee2fabad982a5f6f4054ad4da4775f3299f83")
+      throw new Error("The source is not cake-automations-project-session-examples@r1");
+    await seedArtifactScenario(
+      paths,
+      theme,
+      {
+        protocol: "cake.artifact/v1",
+        id: "automation-approved-walkthrough",
+        sessionId: "automation-approved-walkthrough",
+        revision: 1,
+        kind: "widget",
+        title: "Approved automation walkthrough",
+        payload: {
+          language: "html",
+          source,
+          brief: "Exact original source; fresh capture, not a retained publication PNG",
+          generationSessionId: "automation-design-capture-fixture",
+          browser: await retainArtifactBrowser(paths, "html", source),
+        },
+        fallback: { markdown: "Automations — live runs across projects" },
+        interaction: { mode: "present" },
+      },
+      true,
+    );
+    const timestamp = new Date(0).toISOString();
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        version: 7,
+        data: {
+          ...defaultApplicationState(),
+          projects: [
+            {
+              path: paths.project,
+              name: "Approved source fixture",
+              addedAt: timestamp,
+              lastOpenedAt: timestamp,
+            },
+          ],
+          trustedProjectPaths: [paths.project],
+        },
+      }),
+    );
+  },
+  async prepare(page, state) {
+    const disclosure = page.locator('[data-slot="artifact-disclosure"]').first();
+    await expect(disclosure.locator("iframe").contentFrame().locator(".walkthrough")).toBeVisible();
+    await disclosure
+      .getByRole("button", { name: "View Approved automation walkthrough fullscreen" })
+      .click();
+    const frame = page
+      .getByRole("dialog", { name: "Approved automation walkthrough", exact: true })
+      .locator("iframe")
+      .contentFrame();
+    const routes: Record<string, string> = {
+      default: "route-overview",
+      running: "route-run-morning-19",
+      settings: "route-settings-review",
+      memory: "route-memory-review",
+      history: "route-history-all",
+      completed: "route-run-morning-19",
+    };
+    await frame.locator(`label[for="${routes[state]}"]`).first().click();
+    if (state === "completed")
+      await frame.locator("#finish-morning").evaluate((element: HTMLInputElement) => {
+        element.checked = true;
+      });
+  },
+  region: (page) =>
+    page
+      .getByRole("dialog", { name: "Approved automation walkthrough", exact: true })
+      .locator("iframe"),
 };
 
 function widgetThemeScenario(language: "html" | "react"): VisualCaptureScenario {
@@ -6785,6 +6966,8 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   inlineArtifactRevisionsScenario,
   widgetThemeScenario("react"),
   widgetThemeScenario("html"),
+  automationApprovedWalkthrough,
+  automationUiScenario,
   cakePromptsSettingsScenario,
   mcpSettingsScenario,
   localMcpSettingsScenario,

@@ -4,6 +4,7 @@ import type {
   AutomationContext,
   AutomationDefinition,
   AutomationId,
+  AutomationRun,
 } from "../../contracts/automations/automation-data";
 import type { AutomationTriggerResult } from "../../contracts/automations/automation-control";
 import type { AutomationCatalog } from "../models/AutomationCatalog";
@@ -13,9 +14,14 @@ import { AutomationMemoryStore } from "./AutomationMemoryStore";
 import { ClientContext } from "./context/ClientContext";
 
 /** Management/status hub workflow, distinct from independently living run conversations. */
-export class AutomationsStore extends Store<{ catalog: AutomationCatalog }> {
+export class AutomationsStore extends Store<{
+  catalog: AutomationCatalog;
+  openRun?(run: AutomationRun): void;
+}> {
   context: AutomationContext | undefined;
   state: "active" | "paused" | "suspended" | "archived" | undefined;
+  runningOnly = false;
+  globalHistory = false;
   selectedId: AutomationId | undefined;
   tab: "definition" | "runs" | "memory" = "definition";
   changing = false;
@@ -43,6 +49,7 @@ export class AutomationsStore extends Store<{ catalog: AutomationCatalog }> {
     const context = this.context;
     return this.catalog.automations.filter(
       (item) =>
+        (!this.runningOnly || item.activity.runningSessions > 0) &&
         (!this.state || item.state._tag === this.state) &&
         (!context ||
           (context._tag === "Global"
@@ -70,9 +77,27 @@ export class AutomationsStore extends Store<{ catalog: AutomationCatalog }> {
   }
   setState(state: AutomationsStore["state"]) {
     this.state = state;
+    this.runningOnly = false;
+  }
+  showRunning() {
+    this.state = undefined;
+    this.runningOnly = true;
+  }
+  async showGlobalHistory() {
+    this.showOverview();
+    this.globalHistory = true;
+    this.history.select(undefined);
+    await this.history.load();
+  }
+  showOverview() {
+    this.globalHistory = false;
+    this.selectedId = undefined;
+    this.editor.creating = false;
+    this.archiveConfirmationId = undefined;
   }
 
   async select(automationId: AutomationId) {
+    this.globalHistory = false;
     this.selectedId = automationId;
     this.tab = "definition";
     this.lastTrigger = undefined;
@@ -83,6 +108,7 @@ export class AutomationsStore extends Store<{ catalog: AutomationCatalog }> {
   }
 
   beginCreate(definition: AutomationDefinition) {
+    this.globalHistory = false;
     this.selectedId = undefined;
     this.tab = "definition";
     this.archiveConfirmationId = undefined;
@@ -124,6 +150,14 @@ export class AutomationsStore extends Store<{ catalog: AutomationCatalog }> {
       );
       if (this.signal.aborted) return;
       this.lastTrigger = result;
+      if (result._tag === "started" && this.props.openRun) {
+        const page = await this.client.automations.history(
+          { automationId, limit: 20 },
+          { signal: this.signal },
+        );
+        const run = page.runs.find((run) => run.id === result.runId);
+        if (!this.signal.aborted && run) this.props.openRun(run);
+      }
       if (this.history.automationId === automationId && this.history.loaded)
         await this.history.load();
     });

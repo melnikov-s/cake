@@ -18,9 +18,7 @@ export const automationId = Schema.decodeUnknownSync(AutomationId)(
 export const secondAutomationId = Schema.decodeUnknownSync(AutomationId)(
   "10000000-0000-4000-8000-000000000002",
 );
-export const runId = Schema.decodeUnknownSync(AutomationRunId)(
-  "20000000-0000-4000-8000-000000000001",
-);
+const runId = Schema.decodeUnknownSync(AutomationRunId)("20000000-0000-4000-8000-000000000001");
 export const occurrenceId = Schema.decodeUnknownSync(AutomationOccurrenceId)(
   "30000000-0000-4000-8000-000000000001",
 );

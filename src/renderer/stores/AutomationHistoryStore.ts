@@ -43,7 +43,7 @@ export class AutomationHistoryStore extends Store {
 
   async load(more = false) {
     const automationId = this.automationId;
-    if (!automationId || (more && (this.loading || this.nextOffset === null))) return;
+    if (more && (this.loading || this.nextOffset === null)) return;
     this.request?.abort();
     const request = new AbortController();
     this.request = request;
@@ -51,7 +51,11 @@ export class AutomationHistoryStore extends Store {
     this.error = undefined;
     try {
       const page = await this.client.automations.history(
-        { automationId, offset: more ? (this.nextOffset ?? 0) : 0, limit: 20 },
+        {
+          ...(automationId ? { automationId } : null),
+          offset: more ? (this.nextOffset ?? 0) : 0,
+          limit: 20,
+        },
         { signal: AbortSignal.any([this.signal, request.signal]) },
       );
       if (this.signal.aborted || request.signal.aborted) return;

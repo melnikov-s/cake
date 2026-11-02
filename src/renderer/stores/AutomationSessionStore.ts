@@ -1,4 +1,4 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, createStore, snapshot } from "r-state-tree";
 import type { AutomationSessionIdentity } from "../../contracts/automations/automation-data";
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import type { Conversation } from "../models/Conversation";
@@ -11,14 +11,31 @@ import { ClientContext } from "./context/ClientContext";
 export class AutomationSessionStore extends Store<{
   identity: AutomationSessionIdentity;
   model: Conversation;
+  initialTitle: string;
+  currentTitle(): string | undefined;
   resolved(): boolean;
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
 }> {
+  @snapshot title = this.props.initialTitle;
   lifecyclePending = false;
   error: string | undefined;
   private unreadUpdates: Promise<void> = Promise.resolve();
+
+  constructor(props: AutomationSessionStore["props"]) {
+    super(props);
+    this.reaction(
+      () => this.props.currentTitle(),
+      (title) => {
+        if (title) this.title = title;
+      },
+    );
+  }
+
+  get displayTitle() {
+    return this.props.currentTitle() ?? this.title;
+  }
 
   get identity() {
     return this.props.identity;
@@ -46,7 +63,7 @@ export class AutomationSessionStore extends Store<{
       model: this.model,
       operations: this.props.operations,
       canSubmit: () => this.ready,
-      ensureSessionActive: () => this.ready,
+      ensureSessionActive: () => !this.resolved,
       composer: {
         projectPath: () =>
           this.identity.context._tag === "Project" ? this.identity.context.projectPath : undefined,

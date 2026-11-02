@@ -21,6 +21,11 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import { ToastContext } from "./context/ToastContext";
 
+type CaptureConversationTarget = Exclude<
+  WindowConversationSelection,
+  { kind: "automation-session" }
+>;
+
 /** Owns native capture preferences and destination routing, not chat or transcript state.
  * Preferences/last destination persist in the window snapshot. Captures are single-flight;
  * the owning renderer selects destinations using its live sidebar after native editing.
@@ -39,7 +44,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
   @snapshot annotationColor: CaptureAnnotationColor = DEFAULT_CAPTURE_ANNOTATION_COLOR;
   @snapshot shortcut = DEFAULT_CAPTURE_SHORTCUT;
   @snapshot maxDimension = DEFAULT_CAPTURE_MAX_DIMENSION;
-  @snapshot private lastTarget: WindowConversationSelection | undefined;
+  @snapshot private lastTarget: CaptureConversationTarget | undefined;
   busy = false;
   /** The drop-down Cake Chat attaches captures only to the Cake Chat it shows. */
   cakeChatOnly = false;
@@ -53,7 +58,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
       () => this.props.shell.activeConversation,
       (target, previous) => {
         const remembered = target ?? previous;
-        if (remembered)
+        if (remembered && remembered.kind !== "automation-session")
           untracked(() => {
             this.lastTarget = { ...remembered };
           });
@@ -64,7 +69,8 @@ export class ScreenCaptureAttachmentStore extends Store<{
   pendingCapture: CaptureResult | undefined;
 
   get currentDestination() {
-    return this.props.shell.activeConversation ?? this.lastTarget;
+    const active = this.props.shell.activeConversation;
+    return active?.kind === "automation-session" ? this.lastTarget : (active ?? this.lastTarget);
   }
 
   private get preferences(): CapturePreferences {
@@ -87,7 +93,9 @@ export class ScreenCaptureAttachmentStore extends Store<{
 
   private async prepareDestination(
     destination: WindowConversationSelection,
-  ): Promise<WindowConversationSelection> {
+  ): Promise<CaptureConversationTarget> {
+    if (destination.kind === "automation-session")
+      throw new Error("Choose a Project Session or Cake Chat for this capture.");
     if (destination.kind === "project-session") {
       if (this.props.catalog.find(destination.sessionId)?.resolved)
         throw new Error("The destination chat is no longer editable.");
@@ -110,7 +118,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
     return destination;
   }
 
-  private findDraft(target: WindowConversationSelection) {
+  private findDraft(target: CaptureConversationTarget) {
     if (target.kind === "project-session") {
       if (this.props.catalog.find(target.sessionId)?.resolved) return undefined;
       return this.props.registry.findSession(target.sessionId)?.conversationSessionStore

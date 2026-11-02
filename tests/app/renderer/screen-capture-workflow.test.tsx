@@ -16,6 +16,8 @@ import {
 import type { Client } from "../../../src/renderer/client/Client";
 import { App } from "../../../src/renderer/components/app";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
+import { applyAutomationCatalogUpdate } from "../../../src/renderer/reducers/AutomationReducer";
+import { automationSession, automationSummary } from "./fixtures/automation-fixtures";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -210,6 +212,53 @@ async function begin(fixture: ReturnType<typeof renderCapture>, showMain = false
 }
 
 describe("Screen capture attachment destinations", () => {
+  it("keeps automation navigation in the main sidebar while capture destinations use the remembered editable chat", async () => {
+    using fixture = renderCapture(async () => captured);
+    const base = automationSession();
+    const run = automationSession({
+      title: "Automated capture work",
+      identity: {
+        ...base.identity,
+        context: { _tag: "Project", projectPath: "/project" },
+        workingDirectory: "/project",
+      },
+    });
+    await act(async () => {
+      applyAutomationCatalogUpdate(fixture.models.automations, {
+        _tag: "Snapshot",
+        snapshot: {
+          revision: 1,
+          automations: [
+            automationSummary({
+              context: { _tag: "Project", projectPath: "/project" },
+              activity: { runningSessions: 1, queuedOccurrences: 0 },
+            }),
+          ],
+          unresolvedSessions: [run],
+        },
+      });
+      await fixture.root.navigationStore.openAutomationSession(run.identity.sessionId);
+      fixture.root.appShellStore.showSettings();
+      fixture.root.settingsStore.selectPage("screen-capture");
+    });
+    expect(fixture.capture.currentDestination).toEqual({
+      kind: "project-session",
+      sessionId: "alpha",
+    });
+    const menu = await begin(fixture, true);
+    expect(normalSidebar().querySelector('[data-slot="sidebar-automations"]')).not.toBeNull();
+    expect(within(normalSidebar()).getByText("Automated capture work")).toBeDefined();
+    expect(popup().querySelector('[data-slot="sidebar-automations"]')).toBeNull();
+    expect(menu.queryByText("Automated capture work")).toBeNull();
+    await fixture.user.click(menu.getByRole("button", { name: "Attach to current chat" }));
+    expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
+    expectExistingDraft();
+    expect(fixture.root.appShellStore.selection).toEqual({
+      kind: "project-session",
+      sessionId: "alpha",
+    });
+    expect(fixture.prompt).not.toHaveBeenCalled();
+  });
   it("adds numbered text and pixels once to the current unsent chat, then uses the existing Send flow", async () => {
     const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => ({
       ...captured,

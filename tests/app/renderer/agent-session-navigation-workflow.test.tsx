@@ -12,6 +12,8 @@ import { WindowStatePersistence } from "../../../src/renderer/persistence/Window
 import { searchSettings } from "../../../src/renderer/lib/settings-search";
 import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { applyAutomationCatalogUpdate } from "../../../src/renderer/reducers/AutomationReducer";
+import { automationSession, automationSummary } from "./fixtures/automation-fixtures";
 
 beforeEach(() => {
   vi.stubGlobal("PointerEvent", MouseEvent);
@@ -63,6 +65,45 @@ const requestOpen = async (
   );
 
 describe("Agent session navigation workflow", () => {
+  it("opens a real global Automation Session without Project lookup and still honors navigation permission", async () => {
+    const lookup = vi.fn<Client["projectSessions"]["lookup"]>();
+    using fixture = renderAppShellNavigation({ projectSessions: { lookup } });
+    const session = automationSession({ unread: false });
+    act(() =>
+      applyAutomationCatalogUpdate(fixture.models.automations, {
+        _tag: "Snapshot",
+        snapshot: {
+          revision: 1,
+          automations: [
+            automationSummary({ activity: { runningSessions: 1, queuedOccurrences: 0 } }),
+          ],
+          unresolvedSessions: [session],
+        },
+      }),
+    );
+    const invoke = () =>
+      fixture.root.applicationControlStore.invoke(
+        { name: "sessions.open", arguments: { sessionId: session.identity.sessionId } },
+        { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+      );
+    await act(async () => {
+      expect(await invoke()).toEqual({
+        ok: true,
+        command: "sessions.open",
+        opened: { sessionId: session.identity.sessionId },
+      });
+    });
+    expect(await screen.findByRole("combobox", { name: "Message automation run" })).toBeTruthy();
+    expect(lookup).not.toHaveBeenCalled();
+    await fixture.user.click(await openSettings(fixture));
+    await act(async () => {
+      expect(await invoke()).toMatchObject({
+        ok: false,
+        error: expect.stringContaining("disabled"),
+      });
+    });
+    expect(lookup).not.toHaveBeenCalled();
+  });
   it("opens the target in the invoking window's focused pane, not the background caller's pane", async () => {
     const respondControl = vi.fn<Client["projectSessions"]["respondControl"]>(
       async () => undefined,

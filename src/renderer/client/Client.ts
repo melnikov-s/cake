@@ -183,6 +183,7 @@ interface ElectronCommands {
   ): Promise<
     | "new-automation"
     | "settings"
+    | "new-automation"
     | "sort-by-date"
     | "sort-by-label"
     | "remove-project"
