@@ -459,6 +459,9 @@ describe("Agent session navigation workflow", () => {
     );
     using fixture = renderAppShellNavigation({ projectSessions: { open, respondControl } });
     await fixture.user.click(sessionButton("alpha"));
+    // This permission scenario starts from a landed conversation. Pending
+    // selection versus a newer Settings intent is covered independently.
+    await expectChat("alpha");
     const toggle = await openSettings(fixture);
     expect(toggle.getAttribute("aria-checked")).toBe("true");
     await fixture.user.click(toggle);

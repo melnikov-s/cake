@@ -233,6 +233,37 @@ describe("App shell navigation workflow", () => {
     expect(forward()).toHaveProperty("disabled", true);
   });
 
+  it.each([false, true])(
+    "a pending cached selection respects a newer Settings intent (open Settings: %s)",
+    async (showSettings) => {
+      using fixture = renderAppShellNavigation({}, { history: ["beta"] });
+      const frames = new Map<number, FrameRequestCallback>();
+      let frameId = 0;
+      vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+        frames.set(++frameId, callback);
+        return frameId;
+      });
+      vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+      await fixture.user.click(sessionButton("alpha"));
+      expect(screen.getByPlaceholderText("Ask Cake to work in beta…")).toBeDefined();
+      expect(frames.size).toBeGreaterThan(0);
+      if (showSettings) {
+        await fixture.user.click(settings());
+        expect(screen.getByRole("button", { name: /^Agent Behavior and content$/ })).toBeDefined();
+      }
+      // Complete the held native-focus/selection boundary, not an elapsed sleep.
+      const pending = [...frames.values()];
+      frames.clear();
+      await act(async () => pending.forEach((frame) => frame(0)));
+      if (showSettings) {
+        expect(screen.getByRole("button", { name: /^Agent Behavior and content$/ })).toBeDefined();
+        await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
+        await expectProjectChat("beta");
+      } else await expectProjectChat("alpha");
+      expect(fixture.root.projectWorkbenchStore.openingSession).toBeUndefined();
+    },
+  );
+
   it("traverses repeated scoped visits to the visible session without waiting for metadata", async () => {
     let holdLookup = false;
     let finish!: () => void;

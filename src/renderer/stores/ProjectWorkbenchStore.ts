@@ -68,6 +68,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   /** Session context the current error belongs to; context-free errors are undefined. */
   private errorSessionId: string | undefined;
   private sessionOpenRevision = 0;
+  /** The existing open revision owned by a user navigation, rather than startup authorization. */
+  private pendingNavigationRevision: number | undefined;
 
   constructor(props: ProjectWorkbenchStore["props"]) {
     super(props);
@@ -493,6 +495,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     restoring = false,
   ) {
     const revision = ++this.sessionOpenRevision;
+    this.pendingNavigationRevision = restoring ? undefined : revision;
     const phase = beginSessionSwitchMeasurement(
       sessionId,
       revision,
@@ -519,6 +522,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       }
       throw error;
     } finally {
+      if (this.pendingNavigationRevision === revision) this.pendingNavigationRevision = undefined;
       phase(
         this.signal.aborted || revision !== this.sessionOpenRevision ? "superseded" : "finished",
       );
@@ -760,6 +764,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   dismissSecondarySurfaces() {
+    if (this.pendingNavigationRevision === this.sessionOpenRevision) {
+      this.sessionOpenRevision += 1;
+      this.pendingNavigationRevision = undefined;
+      this.openingSession = undefined;
+    }
     this.sessionContinuationStore.cancelPrompt();
     this.commandPaneStore.dismiss();
     this.presentationStore.suspend();
