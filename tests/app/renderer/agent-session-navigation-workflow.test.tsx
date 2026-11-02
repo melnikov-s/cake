@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, screen } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import { applySnapshot, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { messageReference } from "../../../src/contracts/conversations/message-reference";
@@ -119,6 +119,7 @@ describe("Agent session navigation workflow", () => {
             ],
           }),
         );
+      if (sessionId !== CAKE_CHAT_SESSION_ID) await fixture.publishCakeChatProjection(sessionId);
       const invoke = () =>
         fixture.root.applicationControlStore.invoke(
           { name: "sessions.open", arguments: { sessionId } },
@@ -166,6 +167,7 @@ describe("Agent session navigation workflow", () => {
     });
     await fixture.user.click(sessionButton("alpha"));
     await expectChat("alpha");
+    await fixture.publishCakeChatProjection(sessionId);
     expect(fixture.models.cakeChatCatalog.find(sessionId)).toBeUndefined();
     open.mockClear();
     await requestOpen(fixture, { sessionId });
@@ -183,7 +185,11 @@ describe("Agent session navigation workflow", () => {
       { sessionId },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(open).toHaveBeenCalledOnce();
+    expect(fixture.models.cakeChatConversation(sessionId).historyOnly).toBe(true);
+    expect(fixture.root.cakeChatCollectionStore.registry.observationTargets).toContainEqual(
+      expect.objectContaining({ sessionId }),
+    );
+    expect(open).not.toHaveBeenCalled();
     expect(fixture.models.cakeChatCatalog.find(sessionId)?.projectPath).toBe("/alpha");
   });
 
@@ -219,16 +225,17 @@ describe("Agent session navigation workflow", () => {
     expect(fixture.models.cakeChatCatalog.find(sessionId)).toBeUndefined();
   });
 
-  it("requests Project Chat focus on navigation, not on delayed open completion", async () => {
+  it("requests Project Chat focus after first history, not on a later live snapshot", async () => {
     const sessionId = `project-chat:${"a".repeat(64)}`;
-    let finishOpen!: () => void;
-    const opened = new Promise<void>((resolve) => {
-      finishOpen = resolve;
-    });
-    const open = vi.fn<Client["cakeChats"]["open"]>(async (target) => {
-      if (target.sessionId === sessionId) await opened;
-    });
-    using fixture = renderAppShellNavigation({ cakeChats: { open } });
+    using fixture = renderAppShellNavigation();
+    const history: UiPart = {
+      id: "retained-answer",
+      kind: "text",
+      role: "assistant",
+      text: "Retained Project Chat history",
+      status: "complete",
+    };
+    await fixture.publishCakeChatProjection(sessionId, [history]);
     act(() => {
       applySnapshot(fixture.models.cakeChatCatalog, {
         loaded: true,
@@ -254,19 +261,23 @@ describe("Agent session navigation workflow", () => {
       fixture.root.cakeChatCollectionStore.registry.find(sessionId)!.conversationSessionStore
         .composerStore.draftStore;
     const before = draft.focusRequestRevision;
-    open.mockClear();
     await fixture.user.click(screen.getByRole("button", { name: "Open Project Chat for alpha" }));
-    expect(open).toHaveBeenCalledOnce();
+    expect(fixture.models.cakeChatConversation(sessionId).historyOnly).toBe(true);
+    expect(fixture.models.cakeChatConversation(sessionId).uiParts).toContainEqual(history);
+    expect(fixture.root.cakeChatCollectionStore.registry.observationTargets).toContainEqual(
+      expect.objectContaining({ sessionId }),
+    );
     // Electron covers actual input focus; this regression owns the async request timing.
-    expect(draft.focusRequestRevision).toBe(before + 1);
+    await waitFor(() => expect(draft.focusRequestRevision).toBe(before + 1));
     const otherInput = screen.getByRole("combobox", { name: "Message" });
     await fixture.user.click(otherInput);
     await fixture.user.type(otherInput, "Keep typing here");
-    await act(async () => {
-      finishOpen();
-      await opened;
-    });
+    const live: UiPart = { ...history, id: "live-answer", text: "Later live snapshot" };
+    await fixture.publishCakeChatProjection(sessionId, [history, live], "Snapshot");
+    expect(fixture.models.cakeChatConversation(sessionId).historyOnly).toBe(false);
+    expect(fixture.models.cakeChatConversation(sessionId).uiParts).toContainEqual(live);
     expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
+    expect(document.activeElement).toBe(otherInput);
     expect(otherInput).toHaveProperty("value", "Keep typing here");
     expect(draft.focusRequestRevision).toBe(before + 1);
   });

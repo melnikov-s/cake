@@ -107,6 +107,7 @@ export function renderAppShellNavigation(
     fixture.root.projectWorkbenchStore.showLoadedSession(current);
     fixture.root.sessionLayoutStore.ensureSession(current);
   }
+  let cakeChatRevision = 1;
   const view = render(
     <StoreProvider store={fixture.root}>
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
@@ -119,6 +120,23 @@ export function renderAppShellNavigation(
     models: fixture.models,
     client: fixture.client,
     user: userEvent.setup(),
+    async publishCakeChatProjection(
+      sessionId: string,
+      parts: ConversationSnapshot["parts"] = [],
+      kind: "Preview" | "Snapshot" = "Preview",
+    ) {
+      await act(async () =>
+        applyConversationUpdate(fixture.models.cakeChatConversation(sessionId), {
+          _tag: kind,
+          revision: ++cakeChatRevision,
+          snapshot: {
+            ...snapshot(sessionId),
+            sessionFile: `/chats/${sessionId}/coordinator.sqlite`,
+            parts,
+          },
+        }),
+      );
+    },
     async publishResolved(sessionId: string, resolved = true) {
       sessions = sessions.map((session) =>
         session.sessionId === sessionId ? { ...session, resolved } : session,
