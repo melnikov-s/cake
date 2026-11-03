@@ -68,7 +68,7 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
         timestamp,
         message: {
           role: "user",
-          content: [{ type: "text", text: `Test the app\n\n${persistedBrowserContext}` }],
+          content: [{ type: "text", text: "Prepare the local app" }],
           timestamp: 0,
         },
       },
@@ -101,6 +101,19 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
           },
           stopReason: "stop",
           timestamp: 1,
+        },
+      },
+      // Keep this browser-persistence check at the history tail; startup scroll
+      // ownership is covered by the transcript workflows, not this fixture.
+      {
+        type: "message",
+        id: "user-2",
+        parentId: "assistant-1",
+        timestamp,
+        message: {
+          role: "user",
+          content: [{ type: "text", text: `Test the app\n\n${persistedBrowserContext}` }],
+          timestamp: 2,
         },
       },
     ]
@@ -148,21 +161,15 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(page.getByRole("button", { name: "Open Browser Mode" })).toBeVisible({
       timeout: 20_000,
     });
-    await expect
-      .poll(async () => {
-        await page.locator(".transcript").evaluate((element) => {
-          element.scrollTop = 0;
-        });
-        return page.getByText("main#seeded", { exact: true }).isVisible();
-      })
-      .toBe(true);
     await expect(page.getByText("main#seeded", { exact: true })).toBeVisible();
     await expect(page.getByText(/cake-browser-attachment/)).toHaveCount(0);
     // Warm both sessions so switching exercises the synchronous hydrated-session path.
     await page.locator(`.session-item[data-session-id="${otherSessionId}"]`).click();
     await expect(page.locator(".transcript").getByText("Other browser fixture")).toBeVisible();
     await page.locator(`.session-item[data-session-id="${sessionId}"]`).click();
-    await expect(page.locator(".transcript").getByText("Test the app")).toBeVisible();
+    await expect(
+      page.locator(".transcript").getByRole("cell", { name: "Running", exact: true }),
+    ).toBeVisible();
     // Configure the project through the actual controlled Settings input before
     // creating a page, so no external network is needed for startup verification.
     await page.getByRole("button", { name: "Project actions for project" }).click();
@@ -420,18 +427,12 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
       .windows()
       .find((window) => window !== page && window.url().includes("index.html"));
     if (!second) throw new Error("Second desktop window missing");
-    await expect
-      .poll(async () => {
-        await second.locator(".transcript").evaluate((element) => {
-          element.scrollTop = 0;
-        });
-        return second.locator(".transcript").getByText("Test the app", { exact: true }).isVisible();
-      })
-      .toBe(true);
-    await expect(second.locator(".transcript").getByText("Test the app")).toBeVisible();
+    await expect(
+      second.locator(".transcript").getByRole("cell", { name: "Running", exact: true }),
+    ).toBeVisible();
     const secondAddress = second.getByLabel("Browser address");
-    if (!(await secondAddress.isVisible()))
-      await second.getByRole("button", { name: "Open Browser Mode" }).click();
+    // Startup restores Browser Mode asynchronously; do not race it by clicking
+    // an Open button that is about to be replaced by the restored workspace.
     await expect(secondAddress).toBeVisible();
     await secondAddress.fill(origin);
     await secondAddress.press("Enter");
@@ -443,8 +444,6 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     application = await launch();
     const restoredPage = await application.firstWindow();
     const restoredAddress = restoredPage.getByLabel("Browser address");
-    if (!(await restoredAddress.isVisible()))
-      await restoredPage.getByRole("button", { name: "Open Browser Mode" }).click();
     await expect(restoredAddress).toHaveValue(`${origin}/changed-default`, { timeout: 20_000 });
     await restoredPage.getByRole("button", { name: "Back to agent" }).click();
     await restoredPage.getByRole("button", { name: "Project actions for project" }).click();
