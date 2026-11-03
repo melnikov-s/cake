@@ -19,9 +19,12 @@ permits, since it runs Oxlint first and then ESLint. Run focused tests and the
 relevant typecheck or build for the files changed. Preserve unrelated worktree
 changes.
 
-Before committing, run the full `pnpm typecheck && pnpm test` (about 1 minute and
-4 minutes locally). Focused tests alone do not catch tests elsewhere that encode
-the behavior you changed. Claim a failure as pre-existing only after reproducing
+Before committing a behavior change, run the full `pnpm typecheck && pnpm test`
+(about 1 minute and 2-5 minutes locally). Focused tests alone do not catch tests
+elsewhere that encode the behavior you changed. A small presentation-only tweak
+(styling, layout or copy in one component, with no state, prop or logic change) or a
+docs-only change can rely on focused tests. For copy or accessible-name changes,
+first search `tests/` for the old string. `AGENTS.md` has the exact rule. Claim a failure as pre-existing only after reproducing
 the same test failing on the base commit, and name each one in the report. CI runs
 `format:check`, `lint`, `typecheck` and the sharded `test` suite on every PR and
 push to main.
