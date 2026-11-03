@@ -398,7 +398,7 @@ it("restores every underlying section on explicit unfocus and keeps attachment a
       .composerStore.draftStore;
   expect(draft.attachments).toHaveLength(0);
   await fixture.user.click(
-    focus().getByRole("button", { name: `Use to-do for next message: ${items[0]!.title}` }),
+    focus().getByRole("button", { name: `Attach to-do as context: ${items[0]!.title}` }),
   );
   expect(draft.attachments).toHaveLength(1);
   expect(fixture.store.focusedItems).toHaveLength(4);
@@ -415,7 +415,7 @@ it("restores every underlying section on explicit unfocus and keeps attachment a
     expect(draft.attachments).toHaveLength(1);
   }
   await fixture.user.click(
-    screen.getByRole("button", { name: `Use to-do for next message: ${items[1]!.title}` }),
+    screen.getByRole("button", { name: `Attach to-do as context: ${items[1]!.title}` }),
   );
   expect(draft.attachments).toHaveLength(2);
   expect(fixture.store.focusedItems).toEqual([]);

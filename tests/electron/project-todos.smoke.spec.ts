@@ -376,7 +376,7 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await expect(reviewTitle).toHaveAttribute("aria-disabled", "false");
     const reviewDone = review.getByRole("button", { name: "Mark done: Review conversations" });
     const reviewReply = review.getByRole("button", {
-      name: "Use to-do for next message: Review conversations",
+      name: "Attach to-do as context: Review conversations",
     });
     await expect(reviewDone).toBeEnabled();
     await review.getByRole("link", { name: "Investigation report" }).focus();

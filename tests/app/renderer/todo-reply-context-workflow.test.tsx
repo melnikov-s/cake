@@ -12,7 +12,7 @@ import { emptyProjectTodos, type ProjectTodo } from "../../../src/contracts/proj
 import { Chat } from "../../../src/renderer/components/chat";
 import { ProjectTodosPanel } from "../../../src/renderer/components/project-todos-panel";
 import { ProjectTodoSelectionBar } from "../../../src/renderer/components/project-todo-selection-bar";
-import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { projectRecord } from "./fixtures/catalog-fixtures";
 
@@ -40,6 +40,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
       projects: [project()],
       client: {
         sessionChats: { prompt },
+        cakeChats: { open: async () => undefined },
         projectTodos: {
           mutateUser: async ({ mutation }) => {
             if (mutation._tag !== "Select") throw new Error("Unexpected mutation");
@@ -68,36 +69,40 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
     });
     const owner = collection.registry.load(sessionId);
     collection.pendingSessions.markMaterialized(sessionId);
-    applyConversationSnapshot(owner.model, {
-      sessionId,
-      sessionFile: "/chat.sqlite",
-      models: [],
-      thinkingLevel: "off",
-      availableThinkingLevels: ["off"],
-      streaming: true,
-      diagnostics: [],
-      commands: [],
-      compatibility: { resources: [], diagnostics: [] },
-      extensionUi: { statuses: [] },
-      tree: [],
-      parts: [
-        {
-          kind: "text",
-          id: "old",
-          entryId: "old-entry",
-          role: "assistant",
-          text: "Older answer",
-          status: "complete",
-        },
-        {
-          kind: "text",
-          id: "new",
-          entryId: "new-entry",
-          role: "user",
-          text: "New question",
-          status: "complete",
-        },
-      ],
+    applyConversationUpdate(owner.model, {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: {
+        sessionId,
+        sessionFile: "/chat.sqlite",
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: true,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+        parts: [
+          {
+            kind: "text",
+            id: "old",
+            entryId: "old-entry",
+            role: "assistant",
+            text: "Older answer",
+            status: "complete",
+          },
+          {
+            kind: "text",
+            id: "new",
+            entryId: "new-entry",
+            role: "user",
+            text: "New question",
+            status: "complete",
+          },
+        ],
+      },
     });
     owner.todos.open();
     const chat = owner.conversationSessionStore.chatStore;
@@ -121,17 +126,21 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
     try {
       const user = userEvent.setup();
       const panel = within(screen.getByRole("complementary", { name: "To-do" }));
-      const focusA = panel.getByRole("button", { name: "Task A" });
-      await user.click(focusA);
-      expect(focusA.getAttribute("aria-pressed")).toBe("true");
-      await user.click(panel.getByRole("button", { name: "Use to-do for next message: Task B" }));
-      expect(focusA.getAttribute("aria-pressed")).toBe("true");
+      const focusA = () => panel.getByRole("button", { name: "Task A" });
+      await user.click(focusA());
+      expect(focusA().getAttribute("aria-pressed")).toBe("true");
+      await user.click(panel.getByRole("button", { name: "Attach to-do as context: Task B" }));
+      expect(focusA().getAttribute("aria-pressed")).toBe("true");
+      expect(panel.getByRole("button", { name: "Task B" }).getAttribute("aria-pressed")).toBe(
+        "false",
+      );
+      expect(panel.getByRole("button", { name: "Mark done: Task B" })).toBeDefined();
       expect(screen.getByRole("button", { name: "Remove To-do · Task B" })).toBeDefined();
       await user.click(screen.getByRole("button", { name: "Clear to-do focus" }));
       expect(screen.getByRole("button", { name: "Remove To-do · Task B" })).toBeDefined();
-      await user.click(focusA);
+      await user.click(focusA());
       await user.click(screen.getByRole("button", { name: "Remove To-do · Task B" }));
-      expect(focusA.getAttribute("aria-pressed")).toBe("true");
+      expect(focusA().getAttribute("aria-pressed")).toBe("true");
 
       // Message replies use exactly the same existing attachment preview/remove/send path.
       fireEvent.change(screen.getByRole("combobox"), { target: { value: "Keep my draft" } });
@@ -139,7 +148,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
       expect((screen.getByRole("combobox") as HTMLTextAreaElement).value).toBe("Keep my draft");
       expect(screen.getByRole("button", { name: "Remove Reply to message" })).toBeDefined();
       await user.click(screen.getByRole("button", { name: "Remove Reply to message" }));
-      await user.click(panel.getByRole("button", { name: "Use to-do for next message: Task B" }));
+      await user.click(panel.getByRole("button", { name: "Attach to-do as context: Task B" }));
       await user.click(screen.getByRole("button", { name: "Send" }));
       expect(prompt).toHaveBeenCalledTimes(1);
       const submitted = prompt.mock.calls[0]![0];
@@ -153,10 +162,10 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
       ]);
       expect(screen.queryByRole("button", { name: "Remove To-do · Task B" })).toBeNull();
       expect(screen.getByRole("list", { name: "Queued prompts" })).toBeDefined();
-      expect(focusA.getAttribute("aria-pressed")).toBe("true");
+      expect(focusA().getAttribute("aria-pressed")).toBe("true");
 
       // A different next-message attachment and later live edits cannot rewrite the queued snapshot.
-      await user.click(panel.getByRole("button", { name: "Use to-do for next message: Task A" }));
+      await user.click(panel.getByRole("button", { name: "Attach to-do as context: Task A" }));
       await user.click(panel.getByRole("button", { name: "Task B" }));
       act(() => {
         todos = { ...todos, items: [a, { ...b, description: "Changed after send", revision: 1 }] };

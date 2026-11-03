@@ -133,7 +133,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.keyboard.press("Shift+Tab");
       await expect(
         panel.getByRole("button", {
-          name: "Use to-do for next message: Startup investigation",
+          name: "Attach to-do as context: Startup investigation",
           exact: true,
         }),
       ).toBeFocused();

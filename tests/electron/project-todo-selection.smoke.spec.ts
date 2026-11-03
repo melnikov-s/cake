@@ -196,7 +196,7 @@ test("to-do text selection and copying do not activate rows or their controls", 
     await row.getByRole("button", { name: `Unfocus to-do: ${title}` }).click();
     await expect(action).toHaveAttribute("aria-pressed", "false");
     await expect(done).toBeEnabled();
-    const reply = row.getByRole("button", { name: `Use to-do for next message: ${title}` });
+    const reply = row.getByRole("button", { name: `Attach to-do as context: ${title}` });
     // Plain Tab intentionally returns to writing; Shift+Tab retains control traversal.
     await link.focus();
     await link.press("Shift+Tab");

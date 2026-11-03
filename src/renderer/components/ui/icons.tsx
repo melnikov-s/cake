@@ -122,6 +122,11 @@ export const CaptureArrowIcon = () => (
     <path d="M5 19 19 5M9 5h10v10" />
   </Icon>
 );
+export const PaperclipIcon = () => (
+  <Icon size={14}>
+    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l10-10a4 4 0 0 1 5.66 5.66l-10 10a2 2 0 0 1-2.83-2.83l9.19-9.19" />
+  </Icon>
+);
 export const ReplyIcon = () => (
   <Icon>
     <path d="m9 5-6 6 6 6M3 11h10a7 7 0 0 1 7 7v1" />

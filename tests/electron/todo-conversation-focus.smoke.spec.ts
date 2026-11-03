@@ -152,9 +152,16 @@ for (const global of [false, true])
       await expect(composer).toHaveText("Keep this unsent draft.");
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
       await selectA.click();
-      await panel
-        .getByRole("button", { name: `Use to-do for next message: ${titleB}`, exact: true })
-        .click();
+      const attachB = panel.getByRole("button", {
+        name: `Attach to-do as context: ${titleB}`,
+        exact: true,
+      });
+      await attachB.hover();
+      await expect(
+        page.getByRole("tooltip", { name: `Attach to-do as context: ${titleB}` }),
+      ).toBeVisible();
+      await expect(selectA).toHaveAttribute("aria-pressed", "true");
+      await attachB.click();
       await expect(selectA).toHaveAttribute("aria-pressed", "true");
       await expect(composer).toBeFocused();
       await expect(composer).toHaveValue("Keep this unsent draft.");
@@ -165,6 +172,21 @@ for (const global of [false, true])
         exact: true,
       });
       await expect(removeContext).toBeVisible();
+      // Both native keyboard activation keys attach context, never select or complete the row.
+      for (const key of ["Enter", "Space"]) {
+        await removeContext.click();
+        await attachB.focus();
+        await attachB.press(key);
+        await expect(removeContext).toBeVisible();
+        await expect(selectA).toHaveAttribute("aria-pressed", "true");
+        await expect(selectB).toHaveAttribute("aria-pressed", "false");
+        await expect(
+          panel.getByRole("button", { name: `Mark done: ${titleB}`, exact: true }),
+        ).toBeVisible();
+        await expect(composer).toBeFocused();
+        await expect(composer).toHaveValue("Keep this unsent draft. With context.");
+        await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      }
       for (const width of [1800, 900, 600, 1800]) {
         await page.setViewportSize({ width, height: 1000 });
         await expect(clear).toBeVisible();

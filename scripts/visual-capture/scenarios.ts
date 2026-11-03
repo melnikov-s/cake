@@ -3080,7 +3080,7 @@ const projectChatTodos: VisualCaptureScenario = {
     if (state === "reply-context") {
       await page
         .getByRole("button", {
-          name: "Use to-do for next message: Improve project navigation",
+          name: "Attach to-do as context: Improve project navigation",
           exact: true,
         })
         .click();

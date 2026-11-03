@@ -1,10 +1,11 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type Locator } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 
 const repository = resolve(import.meta.dirname, "../..");
+const navigationTitle = "Improve project navigation across all ongoing projects and conversations";
 
 async function titleAppearance(title: Locator) {
   return title.evaluate(async (element) => {
@@ -47,6 +48,12 @@ for (const theme of ["light", "dark"] as const) {
     let dispose: void | (() => Promise<void>) = undefined;
     try {
       dispose = await scenario.seed(paths, theme);
+      const applicationPath = join(paths.cakeHome, "state", "application.json");
+      const application = JSON.parse(await readFile(applicationPath, "utf8"));
+      application.data.projects[0].todos.items.find(
+        (item: { title: string }) => item.title === "Improve project navigation",
+      ).title = navigationTitle;
+      await writeFile(applicationPath, JSON.stringify(application));
       app = await electron.launch({
         args: [repository],
         cwd: repository,
@@ -73,7 +80,7 @@ for (const theme of ["light", "dark"] as const) {
 
       for (const [name, done] of [
         ["Startup investigation", false],
-        ["Improve project navigation", false],
+        [navigationTitle, false],
         ["Discuss the next milestone", true],
       ] as const) {
         const action = panel.getByRole("button", { name, exact: true });
@@ -101,9 +108,13 @@ for (const theme of ["light", "dark"] as const) {
         expect(await row.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(
           background,
         );
-        // Hovering trailing controls must not move or recolor the title either.
+        // Hovering leading controls must not move or recolor the title either.
         await row
           .getByRole("button", { name: `${done ? "Reopen" : "Mark done"}: ${name}`, exact: true })
+          .hover();
+        expect(await titleAppearance(title)).toEqual(resting);
+        await row
+          .getByRole("button", { name: `Attach to-do as context: ${name}`, exact: true })
           .hover();
         expect(await titleAppearance(title)).toEqual(resting);
         await page.mouse.move(1, 1);
@@ -115,18 +126,91 @@ for (const theme of ["light", "dark"] as const) {
       await page.mouse.move(1, 1);
       const selected = await titleAppearance(title);
       const selectionBar = page.locator('[data-slot="selection-bar"]');
-      const selectionBarHeight = (await selectionBar.boundingBox())!.height;
-      await associated.click();
+      await panel
+        .getByRole("button", { name: "Unfocus to-do: Startup investigation", exact: true })
+        .click();
       await expect(associated).toHaveAttribute("aria-pressed", "false");
       await expect(associated.locator("..")).not.toHaveAttribute("data-associated");
       await page.mouse.move(1, 1);
-      // Clearing context removes its selection bar; the title moves with the
-      // whole list, but its typography and row-local geometry stay identical.
+      // Unfocus returns the row from the Focus overlay to its underlying section.
+      // Position changes, but typography and rendered text dimensions stay identical.
       await expect(selectionBar).toHaveCount(0);
-      expect(await titleAppearance(title)).toEqual({
-        ...selected,
-        rects: selected.rects.map((rect) => ({ ...rect, y: rect.y - selectionBarHeight })),
-      });
+      const { rects: selectedRects, ...selectedTypography } = selected;
+      const { rects: unfocusedRects, ...unfocusedTypography } = await titleAppearance(title);
+      expect(unfocusedTypography).toEqual(selectedTypography);
+      expect(unfocusedRects.map(({ width, height }) => ({ width, height }))).toEqual(
+        selectedRects.map(({ width, height }) => ({ width, height })),
+      );
+
+      // Completion and attachment stay separate, before the wrapping title at both pane widths.
+      for (const width of [1500, 600]) {
+        await page.setViewportSize({ width, height: 900 });
+        for (const [name, done] of [
+          ["Startup investigation", false],
+          [navigationTitle, false],
+          ["Discuss the next milestone", true],
+        ] as const) {
+          const action = panel.getByRole("button", { name, exact: true });
+          const row = action.locator("..");
+          const completion = row.getByRole("button", {
+            name: `${done ? "Reopen" : "Mark done"}: ${name}`,
+            exact: true,
+          });
+          const attach = row.getByRole("button", {
+            name: `Attach to-do as context: ${name}`,
+            exact: true,
+          });
+          await expect(attach).toBeVisible();
+          await expect(attach.locator("svg")).toHaveAttribute("aria-hidden", "true");
+          await expect(attach.locator("svg")).toHaveAttribute("width", "14");
+          await expect(attach.locator("svg")).toHaveAttribute("height", "14");
+          await expect(row.locator("button button")).toHaveCount(0);
+          // Responsive pane transitions must settle before comparing independently read bounds.
+          await expect(async () => {
+            const completionBox = (await completion.boundingBox())!;
+            const attachBox = (await attach.boundingBox())!;
+            const titleBox = (await action.boundingBox())!;
+            expect(completionBox.x + completionBox.width).toBeLessThan(attachBox.x);
+            expect(attachBox.x + attachBox.width).toBeLessThan(titleBox.x);
+            const alignment = await action.evaluate((element) => {
+              const row = element.parentElement!;
+              const style = getComputedStyle(element);
+              const titleCenter =
+                element.getBoundingClientRect().top +
+                parseFloat(style.paddingTop) +
+                parseFloat(style.lineHeight) / 2;
+              const icons = Array.from(row.querySelectorAll('[data-slot="nav-trailing"] svg'));
+              const rowStyle = getComputedStyle(row);
+              const contentLeft =
+                row.getBoundingClientRect().left + parseFloat(rowStyle.paddingLeft);
+              return {
+                iconCenters: icons.map((icon) => {
+                  const box = icon.getBoundingClientRect();
+                  return box.top + box.height / 2;
+                }),
+                titleCenter,
+                contentLeft,
+                bodyLefts: Array.from(
+                  row.querySelectorAll(":scope > p, :scope > ul"),
+                  (content) => content.getBoundingClientRect().left,
+                ),
+                lineHeight: parseFloat(style.lineHeight),
+              };
+            });
+            expect(alignment.iconCenters).toHaveLength(2);
+            for (const center of alignment.iconCenters)
+              expect(Math.abs(center - alignment.titleCenter)).toBeLessThan(0.02);
+            expect(alignment.bodyLefts.length).toBeGreaterThan(0);
+            for (const left of alignment.bodyLefts)
+              expect(Math.abs(left - alignment.contentLeft)).toBeLessThan(0.02);
+            if (name === navigationTitle && width === 1500)
+              expect(titleBox.height).toBeGreaterThan(alignment.lineHeight);
+            expect(
+              await row.evaluate((element) => element.scrollWidth <= element.clientWidth),
+            ).toBe(true);
+          }).toPass();
+        }
+      }
     } finally {
       await app?.close();
       await dispose?.();
