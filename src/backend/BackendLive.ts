@@ -1,4 +1,3 @@
-import { homedir } from "node:os";
 import * as projectTodoUpdates from "../domain/projects/projectTodoUpdates";
 import { ProjectTodoReports } from "../services/projects/ProjectTodoReports";
 import * as projectTodoResolution from "../domain/projects/projectTodoResolution";
@@ -95,6 +94,7 @@ import { makeWorkflowRunStorageLive } from "../services/storage/WorkflowRunStora
 import { WorkflowSupervisorLive } from "../services/workflows/WorkflowSupervisorLive";
 
 import { CakeChatConfiguration } from "../services/pi-durable/CakeChatConfiguration";
+import * as cakeChatLocations from "../domain/cake-chats/cakeChatLocations";
 import { makeAutomationStorageLive } from "../services/storage/AutomationStorage";
 import { AutomationRecords } from "../services/automations/AutomationRecords";
 import { AutomationConfiguration } from "../services/automations/AutomationConfiguration";
@@ -104,7 +104,8 @@ import * as automationWorker from "../domain/automations/automationWorker";
 
 export interface BackendLiveOptions {
   readonly paths: CakePaths;
-  readonly homeDirectory?: string;
+  /** The user's home directory: global Cake Chat and global automations run here. */
+  readonly homeDirectory: string;
   readonly remoteCapture?: boolean;
 }
 
@@ -112,15 +113,9 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
   const paths = options.paths;
   const PlatformLive = Layer.mergeAll(
     BootstrapLive,
-    Layer.succeed(CakeChatConfiguration, {
-      agentDirectory: paths.piAgent,
-      location: {
-        workingDirectory: options.homeDirectory ?? paths.home,
-        sessionDirectory: paths.cakeChat,
-      },
-    }),
+    Layer.succeed(CakeChatConfiguration, cakeChatLocations.configuration(options)),
     Layer.succeed(ProjectConfiguration, { agentDirectory: paths.piAgent }),
-    Layer.succeed(AutomationConfiguration, { homeDirectory: options.homeDirectory ?? paths.home }),
+    Layer.succeed(AutomationConfiguration, { homeDirectory: options.homeDirectory }),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: paths.piAgent,
       sessionDirectory: paths.piSessions,
@@ -243,7 +238,7 @@ export const makeBackendLive = <HostServices, HostError>(
   makeHostLive: (foundation: BackendFoundationLive) => Layer.Layer<HostServices, HostError>,
 ) => {
   const paths = options.paths;
-  const homeDirectory = options.homeDirectory ?? homedir();
+  const homeDirectory = options.homeDirectory;
   const FoundationLive = makeBackendFoundationLive(options);
   const HostLive = Layer.suspend(() => makeHostLive(FoundationLive));
   const ApplicationCapabilitiesLive = Layer.suspend(() => Layer.merge(FoundationLive, HostLive));

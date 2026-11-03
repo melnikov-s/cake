@@ -20,7 +20,7 @@ export const initialize = Effect.fn("RuntimeRecovery.initialize")(function* () {
       Effect.scoped(
         Effect.gen(function* () {
           if (record.profile === "CakeChatSession") {
-            const handle = yield* cakeChatTargets.acquire(record.sessionId);
+            const handle = yield* cakeChatTargets.acquireAvailable(record.sessionId);
             yield* handle.recover(record.inputs);
             return;
           }

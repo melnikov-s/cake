@@ -67,6 +67,12 @@ import { AttachmentUploadError } from "../../../src/contracts/filesystem/attachm
 import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import * as cakeChatRuntime from "../../../src/domain/cake-chats/cakeChatRuntime";
+import * as cakeChatOperations from "../../../src/domain/cake-chats/cakeChatOperations";
+import * as runtimeRecovery from "../../../src/domain/project-sessions/runtimeRecovery";
+import {
+  RuntimeRecoveryStorage,
+  type RuntimeRecoveryRecord,
+} from "../../../src/services/storage/RuntimeRecoveryStorage";
 import * as agentControl from "../../../src/domain/application/agentControl";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
@@ -4171,5 +4177,73 @@ it.effect("a Project Session schedules to itself when it omits sessionId", () =>
     ).toMatchObject({ ok: false, command: "sessions.schedule" });
     expect(f.storedSchedules()).toHaveLength(1);
     expect(f.requestCalls).toEqual([]);
+  }),
+);
+
+// The backend fixture configures Cake Chat at /chat. The window either agrees (the
+// supported wiring) or, defensively, resolves another working directory.
+const windowChat = (workingDirectory: string) => ({
+  location: { workingDirectory, sessionDirectory: "/chats" },
+  agentDirectory: "/agent",
+});
+const cakeChatRuntimeCount = (f: Effect.Success<ReturnType<typeof fixture>>) =>
+  f.runtimeCreates.filter((id) => id === CAKE_CHAT_SESSION_ID).length;
+
+for (const windowDirectory of ["/chat", "/home"])
+  for (const order of ["window first", "agent first"] as const)
+    it.effect(
+      `an agent send and the open Cake Chat window share one runtime (${order}, window at ${windowDirectory})`,
+      () =>
+        Effect.gen(function* () {
+          const f = yield* fixture(true);
+          const openWindow = cakeChatOperations
+            .open({ sessionId: CAKE_CHAT_SESSION_ID, tools: [] }, windowChat(windowDirectory))
+            .pipe(Effect.provide(f.context));
+          const send = f.direct(
+            "sessions.send",
+            { sessionId: CAKE_CHAT_SESSION_ID, text: "Project result" },
+            caller,
+          );
+          if (order === "window first") yield* openWindow;
+          expect(yield* send).toMatchObject({ ok: true, command: "sessions.send" });
+          if (order === "agent first") yield* openWindow;
+          expect((yield* Queue.take(f.prompts)).sessionId).toBe(CAKE_CHAT_SESSION_ID);
+          // The user's own send resolves the chat by ID, which failed on a collision.
+          yield* Context.get(f.context, CakeSessionRuntimes).acquireSession(CAKE_CHAT_SESSION_ID);
+          expect(cakeChatRuntimeCount(f)).toBe(1);
+        }),
+    );
+
+it.effect("restart recovery resumes Cake Chat through the runtime the window opened", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture(true);
+    yield* cakeChatOperations
+      .open({ sessionId: CAKE_CHAT_SESSION_ID, tools: [] }, windowChat("/home"))
+      .pipe(Effect.provide(f.context));
+    const record: RuntimeRecoveryRecord = {
+      sessionId: CAKE_CHAT_SESSION_ID,
+      workingDirectory: "/chat",
+      sessionDirectory: "/chats",
+      profile: "CakeChatSession",
+      transcriptPersisted: true,
+      state: "active",
+      inputs: [
+        {
+          turnId: "interrupted",
+          text: "Interrupted request",
+          delivery: "prompt",
+          attachments: [],
+          markdown: false,
+        },
+      ],
+    };
+    const recoveryContext = yield* Layer.build(makeRuntimeRecoveryStorageTestLayer([record]));
+    const context = Context.merge(f.context, recoveryContext);
+    yield* runtimeRecovery.initialize().pipe(Effect.provide(context));
+    expect(
+      (yield* Context.get(recoveryContext, RuntimeRecoveryStorage).get(CAKE_CHAT_SESSION_ID))
+        ?.state,
+    ).toBe("active");
+    expect(cakeChatRuntimeCount(f)).toBe(1);
   }),
 );

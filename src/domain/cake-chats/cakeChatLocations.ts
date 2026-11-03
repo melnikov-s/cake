@@ -8,7 +8,11 @@ import {
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { CakeChatError } from "../../contracts/cake-chats/cake-chat-data";
 import { ApplicationState } from "../../services/storage/ApplicationState";
-import type { CakeChatLocation } from "../../services/pi-durable/CakeChatConfiguration";
+import type {
+  CakeChatLocation,
+  CakeChatRuntimeConfiguration,
+} from "../../services/pi-durable/CakeChatConfiguration";
+import type { CakePaths } from "../../config/CakePaths";
 
 export const projectChatSessionId = (projectPath: string) =>
   PROJECT_CHAT_PREFIX + createHash("sha256").update(projectPath).digest("hex");
@@ -53,4 +57,17 @@ export interface CakeChatLocationOptions {
 export const make = (options: CakeChatLocationOptions): CakeChatLocation => ({
   workingDirectory: options.homeDirectory,
   sessionDirectory: options.sessionDirectory,
+});
+
+/** The process's one Cake Chat configuration. Backend services and every endpoint must share it:
+ * runtimes are keyed by location, so two working directories would open the same chat twice. */
+export const configuration = (options: {
+  readonly homeDirectory: string;
+  readonly paths: Pick<CakePaths, "cakeChat" | "piAgent">;
+}): CakeChatRuntimeConfiguration => ({
+  agentDirectory: options.paths.piAgent,
+  location: make({
+    homeDirectory: options.homeDirectory,
+    sessionDirectory: options.paths.cakeChat,
+  }),
 });

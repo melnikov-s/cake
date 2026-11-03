@@ -798,10 +798,35 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         return yield* adapter.catalogEntry(decoded, sessionId).pipe(sessionError("catalogEntry"));
       });
 
-      const acquire = Effect.fn("CakeSessionRuntimes.acquire")(function* (
+      // A permanent chat keeps an application lease on its runtime, so a second runtime for
+      // the same Pi Session would write the same transcript and make by-ID lookups ambiguous
+      // until quit. A caller that resolves another location joins the open runtime instead.
+      const permanentChatRuntime = Effect.fn("CakeSessionRuntimes.permanentChatRuntime")(function* (
         options: CakeSessionRuntimeAcquireOptions,
       ) {
-        yield* validateProfile(options);
+        const sessionId = options.runtime.sessionId;
+        if (options.profile._tag !== "CakeChatSession" || sessionId === undefined) return options;
+        const open = [...activeRuntimes].filter((shared) => shared.runtime.sessionId === sessionId);
+        const requested = runtimeTarget(options);
+        const existing = open[0];
+        if (!existing || open.some((shared) => runtimeTarget(shared.acquireOptions) === requested))
+          return options;
+        yield* Effect.logError(
+          "Permanent chat requested at a second location; reusing the open runtime",
+          {
+            sessionId,
+            requested: { cwd: options.runtime.cwd, sessionDir: options.runtime.sessionDir },
+            open: { cwd: existing.workingDirectory, sessionDir: existing.sessionDirectory },
+          },
+        );
+        return existing.acquireOptions;
+      });
+
+      const acquire = Effect.fn("CakeSessionRuntimes.acquire")(function* (
+        requested: CakeSessionRuntimeAcquireOptions,
+      ) {
+        yield* validateProfile(requested);
+        const options = yield* permanentChatRuntime(requested);
         const key = new RuntimeKey(runtimeTarget(options), options);
         const ownerScope = yield* Effect.scope;
         const shared = yield* Effect.uninterruptibleMask((restore) =>
@@ -1753,21 +1778,43 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
       const acquireSession = Effect.fn("CakeSessionRuntimes.acquireSession")(function* (
         sessionId: string,
       ) {
-        const matches = [...activeRuntimes]
-          .filter((shared) => shared.runtime.sessionId === sessionId)
-          .map((shared) => shared.acquireOptions);
-        const options = matches[0];
-        if (!options)
+        const matches = [...activeRuntimes].filter(
+          (shared) => shared.runtime.sessionId === sessionId,
+        );
+        const oldest = matches[0];
+        if (!oldest)
           return yield* new PiSessionError({
             operation: "acquireSession",
             message: `Pi Session ${sessionId} has not been assembled`,
           });
-        if (matches.some((candidate) => runtimeTarget(candidate) !== runtimeTarget(options)))
-          return yield* new PiSessionError({
-            operation: "acquireSession",
-            message: `Pi Session ID collision detected: ${sessionId}`,
-          });
-        return yield* acquire(options);
+        const locations = matches.map((shared) => ({
+          cwd: shared.workingDirectory,
+          sessionDir: shared.sessionDirectory,
+        }));
+        if (
+          matches.some(
+            (shared) =>
+              runtimeTarget(shared.acquireOptions) !== runtimeTarget(oldest.acquireOptions),
+          )
+        ) {
+          // A permanent chat must stay usable: its oldest runtime is the one every
+          // later acquisition joins. Other profiles have no lasting lease to work around.
+          if (oldest.profile !== "CakeChatSession") {
+            yield* Effect.logError("Pi Session ID collision", { sessionId, locations });
+            return yield* new PiSessionError({
+              operation: "acquireSession",
+              message: `Pi Session ID collision detected: ${sessionId}`,
+            });
+          }
+          yield* Effect.logError(
+            "Permanent chat has runtimes at several locations; using the oldest",
+            {
+              sessionId,
+              locations,
+            },
+          );
+        }
+        return yield* acquire(oldest.acquireOptions);
       });
 
       const hasCurrent = Effect.fn("CakeSessionRuntimes.hasCurrent")(

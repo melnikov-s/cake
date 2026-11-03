@@ -28,10 +28,10 @@ const program = Effect.gen(function* () {
   });
   const homeDirectory = homedir();
   const logging = makeBackendLoggingLive(paths.logs, "server").pipe(Layer.provide(BootstrapLive));
-  const backend = makeBackendLive(
-    { paths, homeDirectory, remoteCapture: true },
-    () => Layer.empty,
-  ).pipe(Layer.provideMerge(logging));
+  const backendOptions = { paths, homeDirectory, remoteCapture: true };
+  const backend = makeBackendLive(backendOptions, () => Layer.empty).pipe(
+    Layer.provideMerge(logging),
+  );
   yield* Effect.gen(function* () {
     if (network) {
       const previews = yield* PreviewLeases;
@@ -39,13 +39,7 @@ const program = Effect.gen(function* () {
         network,
         {
           homeDirectory,
-          cakeChat: {
-            agentDirectory: paths.piAgent,
-            location: cakeChatLocations.make({
-              homeDirectory,
-              sessionDirectory: paths.cakeChat,
-            }),
-          },
+          cakeChat: cakeChatLocations.configuration(backendOptions),
         },
         previews,
       );

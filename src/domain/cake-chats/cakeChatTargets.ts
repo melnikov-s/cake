@@ -15,14 +15,14 @@ export const acquireAvailable = Effect.fn("CakeChats.acquireAvailable")(function
     .pipe(
       Effect.catchTag("PiSessionError", (error) =>
         error.operation === "acquireSession" && error.message.includes("has not been assembled")
-          ? acquire(sessionId)
+          ? acquireConfigured(sessionId)
           : Effect.fail(new CakeChatError({ operation: error.operation, message: error.message })),
       ),
     );
 });
 
-/** Messaging can open a permanent chat without first visiting its renderer surface. */
-export const acquire = Effect.fn("CakeChats.acquireAddress")(function* (sessionId: string) {
+/** Messaging and recovery can open a permanent chat without first visiting its renderer surface. */
+const acquireConfigured = Effect.fn("CakeChats.acquireConfigured")(function* (sessionId: string) {
   const configuration = yield* Effect.serviceOption(CakeChatConfiguration);
   if (configuration._tag === "None")
     return yield* new CakeChatError({

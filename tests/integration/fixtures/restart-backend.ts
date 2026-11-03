@@ -112,7 +112,7 @@ try {
         }
         const handle =
           globalChat || surface === "project-chat"
-            ? yield* cakeChatTargets.acquire(sessionId)
+            ? yield* cakeChatTargets.acquireAvailable(sessionId)
             : yield* acquireTarget(location, sessionId, mode?.startsWith("start") ?? false);
         if (mode?.startsWith("start")) {
           yield* handle.applyConfiguration({

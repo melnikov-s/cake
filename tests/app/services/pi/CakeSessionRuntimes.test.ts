@@ -1253,6 +1253,95 @@ describe("CakeSessionRuntimes", () => {
       }),
   );
 
+  const permanentChat = (cwd: string): CakeSessionRuntimeAcquireOptions => ({
+    profile: { _tag: "CakeChatSession" },
+    runtime: {
+      ...options({ sessionId: CAKE_CHAT_SESSION_ID, cwd, sessionDir: "/cake/global-chat" }).runtime,
+      globalControl: { tools: [], invoke: async () => ({ ok: true }) },
+    },
+  });
+  const permanentChatAdapter = (
+    acquisitions: Ref.Ref<number>,
+    finalizations: Ref.Ref<number>,
+    beforeCreate: Effect.Effect<void> = Effect.void,
+  ): CakeSessionRuntimesAdapter => {
+    const base = adapter(acquisitions, finalizations);
+    return {
+      ...base,
+      createRuntime: (runtimeOptions) =>
+        beforeCreate.pipe(
+          Effect.andThen(base.createRuntime(runtimeOptions)),
+          Effect.map((runtime) => ({ ...runtime, sessionId: CAKE_CHAT_SESSION_ID })),
+        ),
+    };
+  };
+
+  it.effect("joins the open permanent chat runtime when a caller resolves another location", () =>
+    Effect.gen(function* () {
+      const acquisitions = yield* Ref.make(0);
+      const finalizations = yield* Ref.make(0);
+      const applicationScope = yield* Scope.make();
+      const context = yield* Layer.build(
+        makeCakeSessionRuntimesLayer(permanentChatAdapter(acquisitions, finalizations)).pipe(
+          Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
+        ),
+      ).pipe(Effect.provideService(Scope.Scope, applicationScope));
+      const sessions = Context.get(context, CakeSessionRuntimes);
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const window = yield* sessions.acquire(permanentChat("/Users/user"));
+          const backend = yield* sessions.acquire(permanentChat("/Users/user/.cake"));
+          const byId = yield* sessions.acquireSession(CAKE_CHAT_SESSION_ID);
+          assert.equal(yield* Ref.get(acquisitions), 1);
+          for (const handle of [window, backend, byId])
+            assert.equal(handle.profile, "CakeChatSession");
+        }),
+      );
+      yield* Scope.close(applicationScope, Exit.void);
+      assert.equal(yield* Ref.get(finalizations), 1);
+    }),
+  );
+
+  it.effect("keeps a permanent chat usable after concurrent assembly at two locations", () =>
+    Effect.gen(function* () {
+      const acquisitions = yield* Ref.make(0);
+      const finalizations = yield* Ref.make(0);
+      const entered = yield* Queue.unbounded<void>();
+      const release = yield* Deferred.make<void>();
+      const applicationScope = yield* Scope.make();
+      const context = yield* Layer.build(
+        makeCakeSessionRuntimesLayer(
+          permanentChatAdapter(
+            acquisitions,
+            finalizations,
+            Queue.offer(entered, undefined).pipe(Effect.andThen(Deferred.await(release))),
+          ),
+        ).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+      ).pipe(Effect.provideService(Scope.Scope, applicationScope));
+      const sessions = Context.get(context, CakeSessionRuntimes);
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          // Neither runtime is visible to the other until Pi finishes assembling it.
+          const first = yield* sessions
+            .acquire(permanentChat("/Users/user"))
+            .pipe(Effect.forkScoped);
+          const second = yield* sessions
+            .acquire(permanentChat("/Users/user/.cake"))
+            .pipe(Effect.forkScoped);
+          yield* Queue.take(entered);
+          yield* Queue.take(entered);
+          yield* Deferred.succeed(release, undefined);
+          yield* Fiber.join(first);
+          yield* Fiber.join(second);
+          const byId = yield* sessions.acquireSession(CAKE_CHAT_SESSION_ID);
+          assert.equal(byId.profile, "CakeChatSession");
+          assert.equal(yield* Ref.get(acquisitions), 2);
+        }),
+      );
+      yield* Scope.close(applicationScope, Exit.void);
+    }),
+  );
+
   it.effect("does not replay session creation after the assembled runtime is released", () =>
     Effect.gen(function* () {
       const acquisitions = yield* Ref.make(0);

@@ -43,7 +43,10 @@ export const makeMainLive = (options: MainLiveOptions) => {
       Number.parseInt(release(), 10) >= 23,
     options.dictationHelperPath,
   );
-  const BackendLive = makeBackendLive(options, (foundation) => {
+  // One home directory for backend services and window endpoints alike.
+  const backendOptions = { paths: options.paths, homeDirectory };
+  const cakeChat = cakeChatLocations.configuration(backendOptions);
+  const BackendLive = makeBackendLive(backendOptions, (foundation) => {
     const ElectronLive = makeElectronLive({
       application: options.application,
       cakeIconPath: options.cakeIconPath,
@@ -85,13 +88,6 @@ export const makeMainLive = (options: MainLiveOptions) => {
       ),
     );
   });
-  const cakeChat = {
-    location: cakeChatLocations.make({
-      homeDirectory,
-      sessionDirectory: options.paths.cakeChat,
-    }),
-    agentDirectory: options.paths.piAgent,
-  };
   const SharingLive = makeDesktopSharingLive(
     { homeDirectory, cakeChat },
     join(import.meta.dirname, "../browser"),
