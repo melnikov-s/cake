@@ -255,6 +255,7 @@ describe("ArtifactStorage", () => {
     );
     expect(conflict).toBeInstanceOf(ArtifactPublicationConflict);
     expect(conflict).toMatchObject({ expectedLatestRevision: 1, actualLatestRevision: 2 });
+    expect(conflict.message).toContain("is at revision 2, not 1");
   });
 
   it("resolves session and family links as follow-latest or pinned without copying blobs", async () => {

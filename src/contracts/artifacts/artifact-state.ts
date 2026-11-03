@@ -60,7 +60,11 @@ export class ArtifactStateConflict extends Schema.TaggedError<ArtifactStateConfl
     expectedVersion: ArtifactStateVersion,
     actualVersion: ArtifactStateVersion,
   },
-) {}
+) {
+  override get message() {
+    return `Artifact "${this.lineageId}" state is at version ${this.actualVersion}, not ${this.expectedVersion}. Read the current state and retry.`;
+  }
+}
 
 const isStateObject = Schema.is(Schema.Record(Schema.String, Schema.Json));
 

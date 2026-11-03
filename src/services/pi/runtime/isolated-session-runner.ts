@@ -14,6 +14,7 @@ import {
   requireRegisteredModel,
 } from "./extension-providers";
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
+import { emptyToolErrorExtension } from "./tool-error-text";
 import { createWidgetContextExtension } from "./widget-context-extension";
 import { createWidgetBranchTools } from "./widget-branch-tools";
 import { cakeBuiltinSkillsOverride } from "./cake-builtin-skills";
@@ -180,6 +181,7 @@ export async function runIsolatedSession(
     systemPrompt: inheritedSystem ? undefined : options.systemPrompt,
     appendSystemPromptOverride: inheritedSystem ? () => [] : undefined,
     extensionFactories: [
+      emptyToolErrorExtension,
       ...(promptCacheLineage ? [promptCacheLineage.extension] : []),
       ...(inheritedSystem ? [createWidgetContextExtension(inheritedSystem)] : []),
     ],

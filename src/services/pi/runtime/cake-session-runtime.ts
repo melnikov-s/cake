@@ -120,6 +120,7 @@ import type {
   CakeOperationInvocation,
 } from "../../../contracts/agent/cake-operation";
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
+import { emptyToolErrorExtension } from "./tool-error-text";
 import { projectCakeOperationRuntime } from "./cake-operation-context";
 import {
   createCakeSessionRuntimeConfiguration,
@@ -356,6 +357,7 @@ export async function createCakeSessionRuntime(
     requestExtensions: [
       configurationState.fastModeExtension,
       promptCacheLineage.extension,
+      emptyToolErrorExtension,
       ...mcpExtensions,
     ],
   });

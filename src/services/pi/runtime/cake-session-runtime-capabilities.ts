@@ -39,6 +39,7 @@ import commonPromptTemplate from "./prompts/common.md?raw";
 import { projectInvestigationSystemPrompt } from "../subagent-system-prompt";
 import { renderPromptTemplate } from "./prompt-template";
 import { formatUnknown } from "./session-projection";
+import { toolFailureMessage } from "./tool-error-text";
 import { projectCakeOperationRuntime } from "./cake-operation-context";
 import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
 
@@ -68,12 +69,19 @@ export function createCakeToolDefinition(
           content: [{ type: "text", text: formatUnknown(value, 24_000) }],
           details: value,
         });
-      const result = await registry.invoke(params, {
-        signal: signal ?? new AbortController().signal,
-        toolCallId,
-        onUpdate: update,
-        runtime: projectCakeOperationRuntime(runtime, toolCallId),
-      });
+      const result = await registry
+        .invoke(params, {
+          signal: signal ?? new AbortController().signal,
+          toolCallId,
+          onUpdate: update,
+          runtime: projectCakeOperationRuntime(runtime, toolCallId),
+        })
+        .catch((error: unknown) => {
+          const message = toolFailureMessage(error);
+          throw error instanceof Error && error.message === message
+            ? error
+            : new Error(message, { cause: error });
+        });
       return {
         content: result.content,
         details: result.details,
