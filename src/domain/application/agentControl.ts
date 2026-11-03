@@ -38,7 +38,7 @@ import {
   defaultProjectSettings,
   type ProjectSettings,
 } from "../../contracts/application/application-data";
-import { readProjectIconFile } from "../projects/projectIconFile";
+import { readProjectIconFile, summarizeProjectIconSettings } from "../projects/projectIconFile";
 import * as agentSettings from "./agentSettings";
 import * as pendingReports from "../conversations/pendingReports";
 import * as completionInbox from "../conversations/completionInbox";
@@ -254,9 +254,10 @@ export const invoke: (
             command,
             scope: "project",
             projectPath: project.path,
-            settings:
+            settings: summarizeProjectIconSettings(
               owner.snapshot().projects.find((item) => item.path === project.path)?.settings ??
-              defaultProjectSettings(),
+                defaultProjectSettings(),
+            ),
           });
         }
         case "session-labels.list": {

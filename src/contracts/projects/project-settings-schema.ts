@@ -4,7 +4,7 @@ import { ProjectChatInstructions } from "./project-chat-instructions";
 
 const boundedProjectPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 
-export const projectIconPathGuidance = `Set the icon with iconPath: an absolute or ~/ path to a local PNG, JPEG, GIF or WebP file of at most ${PROJECT_ICON_FILE_MAX_BYTES.toLocaleString("en-US")} bytes. Cake reads and stores the image; never send image bytes. Transparency is preserved.`;
+export const projectIconPathGuidance = `Set the icon with iconPath: an absolute or ~/ path to a local PNG, JPEG, GIF or WebP file of at most ${PROJECT_ICON_FILE_MAX_BYTES.toLocaleString("en-US")} bytes. Cake reads and stores the image; never send image bytes. Transparency is preserved. Results report the icon as { mimeType, sizeBytes }.`;
 
 const ProjectSettingsChanges = Schema.Struct({
   browserDefaultUrl: ProjectSettings.fields.browserDefaultUrl,

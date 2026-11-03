@@ -1903,6 +1903,8 @@ it.effect("permanent Project Chat and global Cake Chat discover and execute tool
 
 const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]);
 const pngIcon = { mimeType: "image/png", data: pngBytes.toString("base64") } as const;
+/** Agents see only the type and size; the stored bytes stay in settings. */
+const pngSummary = { mimeType: "image/png", sizeBytes: pngBytes.length } as const;
 
 const iconFiles = Effect.acquireRelease(
   Effect.promise(() => mkdtemp(join(tmpdir(), "cake-project-icon-"))),
@@ -1948,7 +1950,8 @@ it.effect("Project Session and global Cake Chat set the Project icon from a loca
       yield* f.call("project.settings.update", {
         changes: { iconPath: join(root, "icon.png") },
       }),
-    ).toMatchObject({ ok: true, settings: { icon: pngIcon } });
+    ).toMatchObject({ ok: true, settings: { icon: pngSummary } });
+    expect(f.state().projects[0]?.settings?.icon).toEqual(pngIcon);
     // Global Cake Chat targets the Project explicitly; a leading ~ resolves to the home directory.
     vi.stubEnv("HOME", root);
     yield* Effect.addFinalizer(() => Effect.sync(() => vi.unstubAllEnvs()));
@@ -1962,7 +1965,11 @@ it.effect("Project Session and global Cake Chat set the Project icon from a loca
       ),
     ).toMatchObject({
       ok: true,
-      settings: { icon: { mimeType: "image/jpeg", data: "/9j/4AAQ" } },
+      settings: { icon: { mimeType: "image/jpeg", sizeBytes: 6 } },
+    });
+    expect(f.state().projects[0]?.settings?.icon).toEqual({
+      mimeType: "image/jpeg",
+      data: "/9j/4AAQ",
     });
   }),
 );
@@ -2019,13 +2026,16 @@ it.effect("Project Chat reads and patches only its own Project's settings, icon 
           signal(),
         ),
       ),
-    ).toMatchObject({ ok: true, projectPath: "/project", settings: { icon: pngIcon } });
-    expect(
-      yield* Effect.promise(() => control.getSettings({ projectPath: "/project" }, signal())),
-    ).toMatchObject({
+    ).toMatchObject({ ok: true, projectPath: "/project", settings: { icon: pngSummary } });
+    const read = yield* Effect.promise(() =>
+      control.getSettings({ projectPath: "/project" }, signal()),
+    );
+    expect(read).toMatchObject({
       projectPath: "/project",
-      settings: { icon: pngIcon, worktreeLanding: "pull-request" },
+      settings: { worktreeLanding: "pull-request" },
     });
+    expect(JSON.stringify(read)).not.toContain(pngIcon.data);
+    expect(read).toMatchObject({ settings: { icon: pngSummary } });
     for (const attempt of [
       () => control.getSettings({ projectPath: "/other" }, signal()),
       () => control.updateSettings({ projectPath: "/other", changes: { iconPath } }, signal()),

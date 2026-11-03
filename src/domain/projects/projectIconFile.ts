@@ -3,6 +3,7 @@ import { Effect, FileSystem, type PlatformError } from "effect";
 import {
   PROJECT_ICON_FILE_MAX_BYTES,
   type ProjectIcon,
+  type ProjectSettings,
 } from "../../contracts/application/application-data";
 import { expandHomePath } from "../../services/filesystem/local-path";
 
@@ -47,3 +48,12 @@ export const readProjectIconFile = Effect.fn("Projects.readProjectIconFile")(fun
   if (!mimeType) return yield* Effect.fail(failure("it is not a PNG, JPEG, GIF or WebP image"));
   return { mimeType, data: Buffer.from(bytes).toString("base64") } satisfies ProjectIcon;
 });
+
+/** Agents see the icon's type and size, never its bytes. */
+export const summarizeProjectIconSettings = ({ icon, ...settings }: ProjectSettings) =>
+  icon
+    ? {
+        ...settings,
+        icon: { mimeType: icon.mimeType, sizeBytes: Buffer.from(icon.data, "base64").length },
+      }
+    : settings;
