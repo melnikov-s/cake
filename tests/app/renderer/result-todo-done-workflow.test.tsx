@@ -349,8 +349,8 @@ it.each(chats)(
       const id = [...wire.matchAll(/cake-turn id="([^"]+)"/g)].at(-1)?.[1];
       if (!id) throw new Error("Missing current turn identity");
       const message = durableAnswer(
-        "Research options and Fix the build are names, not task associations." +
-          `<cake-todo>${JSON.stringify({ turnId: id, todoId: currentDecision })}</cake-todo>`,
+        `<cake-todo>${JSON.stringify({ turnId: id, todoId: currentDecision })}</cake-todo>` +
+          "Research options and Fix the build are names, not task associations.",
       );
       void (async () => {
         requestStarted();

@@ -71,8 +71,8 @@ async function fixture(database?: string) {
     (request, index) =>
       response?.(request, index) ??
       durableAnswer(
-        "Normal streamed answer" +
-          (decision === undefined ? "" : metadata(turnIds(request).at(-1)!, decision)),
+        (decision === undefined ? "" : metadata(turnIds(request).at(-1)!, decision)) +
+          "Normal streamed answer",
       ),
   );
   const classify = vi.spyOn(f.models, "completeSimple");
@@ -167,7 +167,7 @@ async function fixture(database?: string) {
       started,
       stream,
       finish: (request: Context, id: string | null = A) => {
-        const message = durableAnswer("Held answer" + metadata(turnIds(request).at(-1)!, id));
+        const message = durableAnswer(metadata(turnIds(request).at(-1)!, id) + "Held answer");
         stream.push({ type: "done", reason: "stop", message });
       },
     };
@@ -237,6 +237,46 @@ it("uses only the normal conversation request for continuation, switch, explicit
   );
 });
 
+it("publishes follow-up, switch, none and return associations from the live stream before prose or completion", async () => {
+  const f = await fixture();
+  const decisions = [A, A, B, null, A];
+  for (const [index, decision] of decisions.entries()) {
+    const held = f.hold();
+    const submission = await f.submit(
+      ["Startup", "Check config too", "Navigation", "Weather?", "Back to startup"][index]!,
+    );
+    const request = await held.started;
+    let unsubscribe = () => {};
+    const settled = new Promise<void>((resolve) => {
+      unsubscribe = f.engine.harness.subscribeCommits((publication) => {
+        if (
+          publication.changes.some(
+            (change) =>
+              change.type === "document" && change.record.kind === "cake.task-attribution",
+          )
+        )
+          resolve();
+      });
+    });
+    const text = metadata(turnIds(request).at(-1)!, decision);
+    held.stream.push({
+      type: "text_delta",
+      contentIndex: 0,
+      delta: text,
+      partial: durableAnswer(text),
+    });
+    await settled;
+    unsubscribe();
+    expect(
+      (await f.page()).parts.findLast((part) => part.kind === "text" && part.role === "user"),
+    ).toMatchObject({ taskTodoId: decision });
+    held.finish(request, decision);
+    await submission.wait(context);
+  }
+  expect(f.requests).toHaveLength(5);
+  expect(f.classify).not.toHaveBeenCalled();
+});
+
 it("projects a newly admitted input pending while an old group exists, even before request preparation, then settles it", async () => {
   const f = await fixture();
   await f.send("Startup");
@@ -268,7 +308,7 @@ it("supports a new to-do created mid-response without an attribution-only model/
   f.setResponse((request, index) =>
     index === 1
       ? durableAnswer("", [{ type: "toolCall", id: "create", name: "create_task", arguments: {} }])
-      : durableAnswer("Created navigation" + metadata(turnIds(request).at(-1)!, B)),
+      : durableAnswer(metadata(turnIds(request).at(-1)!, B) + "Created navigation"),
   );
   const sent = await f.send("Create navigation work");
   expect((await f.doc())?.inputs[String(sent.entry)]).toMatchObject({ pending: false, todoId: B });
@@ -276,7 +316,7 @@ it("supports a new to-do created mid-response without an attribution-only model/
   expect(f.classify).not.toHaveBeenCalled();
 });
 
-it.each(["invalid", "unknown", "completed", "missing", "duplicate", "interrupted", "length"])(
+it.each(["invalid", "unknown", "completed", "missing", "duplicate"])(
   "keeps %s decisions unresolved rather than inheriting or claiming explicit none",
   async (mode) => {
     const f = await fixture();
@@ -291,10 +331,8 @@ it.each(["invalid", "unknown", "completed", "missing", "duplicate", "interrupted
             ? ""
             : metadata(id, mode === "unknown" ? "00000000-0000-4000-8000-000000000099" : B);
       const answer = durableAnswer(
-        "Other subject" + block + (mode === "duplicate" ? metadata(id, A) : ""),
+        block + (mode === "duplicate" ? metadata(id, A) : "") + "Other subject",
       );
-      if (mode === "interrupted") answer.stopReason = "aborted";
-      if (mode === "length") answer.stopReason = "length";
       return answer;
     });
     const sent = await f.submit("Other subject");
@@ -316,7 +354,7 @@ it("never applies an earlier decision to a queued or later input, and ignores re
   const oldId = turnIds(request).at(-1)!;
   const second = await f.submit("Navigation queued");
   f.setResponse((req) =>
-    durableAnswer("Navigation" + metadata(oldId, A) + metadata(turnIds(req).at(-1)!, B)),
+    durableAnswer(metadata(oldId, A) + metadata(turnIds(req).at(-1)!, B) + "Navigation"),
   );
   held.finish(request, A);
   await first.wait(context);
@@ -339,7 +377,7 @@ it("binds overlapping steered input decisions individually, never promoting an o
   const oldId = turnIds(request).at(-1)!;
   const second = await f.submit("Switch now", f.engine.root, "steer");
   f.setResponse((req) =>
-    durableAnswer("Switched" + metadata(oldId, B) + metadata(turnIds(req).at(-1)!, B)),
+    durableAnswer(metadata(oldId, B) + metadata(turnIds(req).at(-1)!, B) + "Switched"),
   );
   held.finish(request, A);
   await first.wait(context);
@@ -451,7 +489,7 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
   },
 );
 
-it("strips split metadata from every streaming event and stopped partial without delaying ordinary prose", async () => {
+it("settles split prefix metadata before returning the first visible character and retains it on abort", async () => {
   const f = await fixture();
   const held = f.hold();
   const s = await f.submit("Startup");
@@ -463,7 +501,8 @@ it("strips split metadata from every streaming event and stopped partial without
     signal: new AbortController().signal,
     todos: () => [todo(A)],
   });
-  const wire = "Answer" + metadata(turnIds(req).at(-1)!, A);
+  const prefix = metadata(turnIds(req).at(-1)!, A);
+  const wire = prefix + "Answer";
   let raw = "";
   let visible = "";
   for (const char of wire) {
@@ -472,6 +511,12 @@ it("strips split metadata from every streaming event and stopped partial without
     const event = await project({ type: "text_delta", contentIndex: 0, delta: char, partial });
     if (event.type === "text_delta") visible += event.delta;
     expect(JSON.stringify(event)).not.toContain("cake-todo");
+    if (raw.length <= prefix.length) expect(visible).toBe("");
+    if (raw.length >= prefix.length)
+      expect(Object.values((await f.doc())?.inputs ?? {})[0]).toMatchObject({
+        pending: false,
+        todoId: A,
+      });
   }
   expect(visible).toBe("Answer");
   const interrupted = await project({
@@ -480,10 +525,113 @@ it("strips split metadata from every streaming event and stopped partial without
     error: { ...durableAnswer("Answer<cake-todo>{"), stopReason: "aborted" },
   });
   expect(JSON.stringify(interrupted)).not.toContain("cake-todo");
-  expect(Object.values((await f.doc())?.inputs ?? {})[0]).toMatchObject({ pending: true });
+  expect(Object.values((await f.doc())?.inputs ?? {})[0]).toMatchObject({
+    pending: false,
+    todoId: A,
+  });
   held.finish(req, A);
   await s.wait(context);
 });
+
+it.each(["toolUse", "length"] as const)(
+  "accepts a complete prefix in a coalesced %s event before forwarding its text",
+  async (reason) => {
+    const f = await fixture();
+    const held = f.hold();
+    const submission = await f.submit("Startup");
+    const request = await held.started;
+    const project = await prepareTaskAttribution({
+      conversation: f.engine.root,
+      harness: f.engine.harness,
+      storage: f.engine.storage,
+      signal: new AbortController().signal,
+      todos: () => [todo(A)],
+    });
+    const message = {
+      ...durableAnswer(metadata(turnIds(request).at(-1)!, A) + "Visible text"),
+      stopReason: reason,
+    };
+    const event = await project({ type: "done", reason, message });
+    expect(JSON.stringify(event)).not.toContain("cake-todo");
+    expect(Object.values((await f.doc())?.inputs ?? {})[0]).toMatchObject({
+      pending: false,
+      todoId: A,
+    });
+    held.finish(request);
+    await submission.wait(context);
+  },
+);
+
+it("streams missing attribution immediately and never applies a late trailer or a later tool-round decision", async () => {
+  const f = await fixture();
+  f.setResponse((request, index) =>
+    index === 1
+      ? durableAnswer("", [
+          { type: "text", text: "Starting without metadata" },
+          { type: "toolCall", id: "create", name: "create_task", arguments: {} },
+        ])
+      : durableAnswer(metadata(turnIds(request).at(-1)!, B) + "Late assignment"),
+  );
+  const sent = await f.send("Navigation");
+  expect((await f.doc())?.inputs[String(sent.entry)]).toMatchObject({
+    pending: true,
+    responseStarted: true,
+  });
+  expect(JSON.stringify((await f.page()).parts)).toContain("Starting without metadata");
+  expect(JSON.stringify((await f.page()).parts)).toContain("Late assignment");
+
+  f.setResponse((request) =>
+    durableAnswer("Unrelated answer" + metadata(turnIds(request).at(-1)!, A)),
+  );
+  const trailer = await f.send("Other topic");
+  expect((await f.doc())?.inputs[String(trailer.entry)]).toMatchObject({ pending: true });
+});
+
+it.each([false, true])(
+  "preserves early attribution or incomplete-prefix pending state across abort and SQLite reopen (complete=%s)",
+  async (complete) => {
+    const directory = await mkdtemp(join(tmpdir(), "cake-early-attribution-"));
+    cleanup.push(() => rm(directory, { recursive: true, force: true }));
+    const database = join(directory, "chat.sqlite");
+    const f = await fixture(database);
+    const held = f.hold();
+    const s = await f.submit("Startup");
+    const request = await held.started;
+    const stopped = new AbortController();
+    const project = await prepareTaskAttribution({
+      conversation: f.engine.root,
+      harness: f.engine.harness,
+      storage: f.engine.storage,
+      signal: stopped.signal,
+      todos: () => [todo(A)],
+    });
+    const text = complete ? metadata(turnIds(request).at(-1)!, A) : '<cake-todo>{"turnId":';
+    const event = await project({
+      type: "text_delta",
+      contentIndex: 0,
+      delta: text,
+      partial: durableAnswer(text),
+    });
+    if (event.type !== "text_delta") throw new Error("Expected text delta");
+    expect(event.delta).toBe("");
+    stopped.abort();
+    held.stream.push({
+      type: "error",
+      reason: "aborted",
+      error: { ...durableAnswer(text), stopReason: "aborted" },
+    });
+    const entry = Object.keys((await f.doc())?.inputs ?? {})[0];
+    if (!entry) throw new Error("Missing original input");
+    await s.wait(context);
+    await f.close();
+    const reopened = await fixture(database);
+    expect((await reopened.doc())?.inputs[entry]).toMatchObject(
+      complete ? { pending: false, todoId: A } : { pending: true },
+    );
+    expect(reopened.requests).toHaveLength(0);
+    expect(JSON.stringify((await reopened.page()).parts)).not.toContain("cake-todo");
+  },
+);
 
 it("rejects a late result after its run was stopped", async () => {
   const f = await fixture();

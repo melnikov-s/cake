@@ -16,7 +16,10 @@ import { parseCrossSessionMessage } from "../../contracts/conversations/cross-se
 
 /** Identity-only presentation metadata. Originals remain the only transcript. */
 export const TaskAttributionDoc = defineDoc<{
-  inputs: Record<string, { pending: boolean; todoId: string | null; turnId?: string }>;
+  inputs: Record<
+    string,
+    { pending: boolean; todoId: string | null; turnId?: string; responseStarted?: boolean }
+  >;
 }>({
   kind: "cake.task-attribution",
   version: 1,
@@ -28,7 +31,7 @@ export const TaskAttributionDoc = defineDoc<{
 });
 
 export const TASK_ATTRIBUTION_INSTRUCTIONS =
-  'For each current human input marked <cake-turn id="…"/>, attribute that input and your response to one open to-do from the existing injected list, or explicitly none. Follow the actual topic: related short follow-ups continue; topic switches and returns use the matching identity. Selection is evidence, not assignment. After any needed to-do creation/tools, append exactly one hidden metadata block per marked current input at the END of your final answer: <cake-todo>{"turnId":"the exact cake-turn id","todoId":"open to-do UUID or null"}</cake-todo>. Use JSON null for no matching to-do. Never use completed items, invent IDs, repeat old decisions, or write metadata in prose/code fences. No extra tool calls or model turns just for attribution.';
+  'For each current human input marked <cake-turn id="…"/>, attribute that input and your response to one open to-do from the existing injected list, or explicitly none. Follow the actual topic: related short follow-ups continue; topic switches and returns use the matching identity. Selection is evidence, not assignment. Before ANY visible response text, emit exactly one hidden metadata block per marked current input at the START of your response: <cake-todo>{"turnId":"the exact cake-turn id","todoId":"open to-do UUID or null"}</cake-todo>. Use JSON null for no matching to-do. If a new to-do is needed, create it with the normal tools before the metadata and before any prose. Never use completed items, invent IDs, repeat old decisions, or write metadata in prose/code fences. No extra tool calls or model turns just for attribution.';
 
 const Decision = Schema.Struct({
   turnId: Schema.String.check(Schema.isUUID(4)),
@@ -89,40 +92,54 @@ export async function prepareTaskAttribution(options: {
         doc.inputs[String(entry)] ??= { pending: true, todoId: null, turnId };
     }, BACKGROUND_CONTEXT);
   const lengths = new Map<number, number>();
+  let responseStarted = false;
   return async (event: AssistantMessageEvent): Promise<AssistantMessageEvent> => {
-    if (event.type === "done" && event.reason === "stop" && bound.size && !options.signal.aborted) {
+    const message =
+      event.type === "done" ? event.message : event.type === "error" ? event.error : event.partial;
+    if (message && bound.size && !responseStarted && !options.signal.aborted) {
+      // Only the structured prefix can assign a turn. Missing/invalid metadata never
+      // delays prose, and a late trailer must not move an already-streaming header.
+      const text = message.content
+        .flatMap((block) => (block.type === "text" ? [block.text] : []))
+        .join("");
+      const prefix =
+        event.type === "error"
+          ? ""
+          : (text.match(/^(?:\s*<cake-todo>[\s\S]*?<\/cake-todo>)*/)?.[0] ?? "");
+      responseStarted = visibleText(text).trim().length > 0;
       const decisions = new Map<string, Array<Schema.Schema.Type<typeof Decision>>>();
-      for (const block of event.message.content) {
-        if (block.type !== "text") continue;
-        for (const match of block.text.matchAll(/<cake-todo>([\s\S]*?)<\/cake-todo>/g)) {
-          const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Decision))(match[1]);
-          if (Option.isNone(decoded)) continue;
-          const list = decisions.get(decoded.value.turnId) ?? [];
-          list.push(decoded.value);
-          decisions.set(decoded.value.turnId, list);
-        }
+      for (const match of prefix.matchAll(/<cake-todo>([\s\S]*?)<\/cake-todo>/g)) {
+        const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Decision))(match[1]);
+        if (Option.isNone(decoded)) continue;
+        const list = decisions.get(decoded.value.turnId) ?? [];
+        list.push(decoded.value);
+        decisions.set(decoded.value.turnId, list);
       }
-      await conversation.commit(async (tx) => {
-        // A stopped/replaced run cannot settle metadata, even if its provider finishes late.
-        if (
-          options.signal.aborted ||
-          (await tx.doc(LiveDoc, conversation.id)).run?.taskId !== live?.run?.taskId
-        )
-          return;
-        const doc = await tx.doc(TaskAttributionDoc, conversation.id);
-        for (const [turnId, entry] of bound) {
-          const candidates = decisions.get(turnId);
-          const decision = candidates?.length === 1 ? candidates[0] : undefined;
-          const current = doc.inputs[String(entry)];
-          if (!decision || !current?.pending || current.turnId !== turnId) continue;
+      if (decisions.size || responseStarted)
+        await conversation.commit(async (tx) => {
+          // A stopped/replaced run cannot settle metadata, even if its provider finishes late.
           if (
-            decision.todoId !== null &&
-            !options.todos().some((todo) => todo.id === decision.todoId && todo.state === "open")
+            options.signal.aborted ||
+            (await tx.doc(LiveDoc, conversation.id)).run?.taskId !== live?.run?.taskId
           )
-            continue;
-          doc.inputs[String(entry)] = { pending: false, todoId: decision.todoId, turnId };
-        }
-      }, BACKGROUND_CONTEXT);
+            return;
+          const doc = await tx.doc(TaskAttributionDoc, conversation.id);
+          for (const [turnId, entry] of bound) {
+            const candidates = decisions.get(turnId);
+            const decision = candidates?.length === 1 ? candidates[0] : undefined;
+            const current = doc.inputs[String(entry)];
+            if (!current?.pending || current.turnId !== turnId || current.responseStarted) continue;
+            if (
+              decision &&
+              (decision.todoId === null ||
+                options
+                  .todos()
+                  .some((todo) => todo.id === decision.todoId && todo.state === "open"))
+            )
+              doc.inputs[String(entry)] = { pending: false, todoId: decision.todoId, turnId };
+            else if (responseStarted) current.responseStarted = true;
+          }
+        }, BACKGROUND_CONTEXT);
     }
     if (event.type === "done") return { ...event, message: visibleMessage(event.message) };
     if (event.type === "error") return { ...event, error: visibleMessage(event.error) };

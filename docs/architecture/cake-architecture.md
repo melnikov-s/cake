@@ -516,11 +516,11 @@ is a refactoring signal, not precedent.
   recreation/reset.
   Permanent Project Chat and Cake Chat group contiguous related conversation with a margin
   rail, labeling task switches rather than every message. A → B → A labels A again on return.
-  Newly admitted human inputs start unresolved and ungrouped, including while queued or
-  streaming; they never optimistically extend the preceding heading, status or rail.
+  Newly admitted human inputs start unresolved and ungrouped until early attribution;
+  they never optimistically extend the preceding heading, status or rail.
   This also applies to shared-list side chats forked from permanent chats, not ordinary
   coding-session task management. A stable instruction asks the main conversational agent
-  to append a hidden `<cake-todo>` JSON trailer to its normal final response, with the exact
+  to emit a hidden `<cake-todo>` JSON prefix before any visible response text, with the exact
   admitted `cake-turn` UUID and an open chat-scoped `todoId` or explicit JSON null.
   The admission token lives in Durable's existing input envelope and is exposed once on
   that input at the provider boundary. There is no utility attribution model, background
@@ -529,20 +529,25 @@ is a refactoring signal, not precedent.
   supply identities, including to-dos created during the response.
   Attached reply context is evidence, never an automatic assignment. Related follow-ups continue; genuine
   topic switches choose another identity or none, and returning to an earlier task labels it
-  again. The provider-boundary adapter removes complete and split/incomplete trailers from
-  live and persisted assistant text, validates successful final decisions against the exact
+  again. The provider-boundary adapter removes complete and split/incomplete metadata from
+  live and persisted assistant text, validates complete prefix decisions against the exact
   consumed human inputs and current open list, and commits identity-only metadata beside
-  Durable originals. Duplicate, invalid, completed, missing, truncated, interrupted and stale
-  decisions remain unresolved, distinct from explicit none. Settled metadata and manual
-  corrections cannot be overwritten by later or replayed results. Reload preserves both
-  unresolved and settled states; old settled associations are not reclassified.
+  Durable originals before forwarding the first visible response text. Normal to-do creation
+  tools can precede the prefix, but prose must not. No separate classification dependency or
+  timeout is introduced: missing/invalid metadata lets prose flow immediately, leaving the
+  turn unresolved rather than hanging the reply. Once prose starts, unresolved turns cannot
+  be assigned by a late trailer or a later tool round. This boundary is persisted too.
+  Duplicate, invalid, completed, missing, incomplete and stale decisions remain unresolved,
+  distinct from explicit none. An already committed prefix survives later failure or abort.
+  Settled metadata and manual corrections cannot be overwritten by later or replayed results.
+  Reload preserves unresolved and settled states; old settled associations are not reclassified.
   The static instruction changes the system prefix once on deployment; per-input UUID
-  markers are stable across tool rounds and later requests. Trailers add generation tokens.
-  Removing a trailer from subsequent context may invalidate the cached suffix beginning
-  there (hence metadata is requested at the end, not before prose); no zero-latency or
-  zero-cache-impact guarantee is made. Local preparation reads only the active run's
-  submissions/originals, not dialogue history, and performs metadata transactions without
-  creating scheduled work.
+  markers are stable across tool rounds and later requests. Prefixes add generation tokens;
+  removing metadata from subsequent context may invalidate the cached suffix beginning there.
+  This trades some prefix/cache cost for early headers, not another model request or a buffered
+  answer; no zero-latency or zero-cache-impact guarantee is made. Local preparation reads only
+  the active run's submissions/originals, not dialogue history, and performs metadata transactions
+  without creating scheduled work.
   For explicit user-requested historical grouping repairs, the owning permanent chat exposes
   `messages.set-todo` with the original user entry ID and an existing chat-scoped to-do ID (or
   null). It updates settled identity-only attribution, never originals or the to-do itself;

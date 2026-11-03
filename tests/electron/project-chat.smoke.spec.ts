@@ -34,8 +34,8 @@ test("Project Chat isolates history and restores its root workspace, while globa
     if (!summary && turnId) attributions.push(turnId);
     const content = summary
       ? "talk: project guidance discussed"
-      : `Reply ${requests.length}` +
-        (turnId ? `<cake-todo>${JSON.stringify({ turnId, todoId: null })}</cake-todo>` : "");
+      : (turnId ? `<cake-todo>${JSON.stringify({ turnId, todoId: null })}</cake-todo>` : "") +
+        `Reply ${requests.length}`;
     const chunk = (delta: object, finish_reason: string | null) =>
       `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
     response.writeHead(200, { "content-type": "text/event-stream" });

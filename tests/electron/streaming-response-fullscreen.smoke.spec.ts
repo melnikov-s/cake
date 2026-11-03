@@ -187,6 +187,32 @@ for (const surface of ["project", "global", "session"] as const) {
         await composer.press("Enter");
         await expect.poll(() => responses.length).toBe(count + 1);
         const response = responses[count]!;
+        if (surface === "project") {
+          expect(turnIds[count]).toBeTruthy();
+          response.write(
+            chunk({
+              role: "assistant",
+              content: `<cake-todo>${JSON.stringify({ turnId: turnIds[count], todoId: firstTodo })}</cake-todo>`,
+            }),
+          );
+          // Attribution must reach the actual transcript while the provider is
+          // still held before its first visible response character.
+          // The second input continues this group; its original header may be
+          // virtualized above the long response, so check the new row's rail below.
+          if (count === 0)
+            await expect(
+              page.locator('[data-slot="task-section-label"]').filter({ hasText: "Earlier task" }),
+            ).toBeVisible();
+          await expect(
+            page
+              .locator('[data-slot="transcript-item"]')
+              .filter({ hasText: `Explain fullscreen ${entry}` })
+              .locator('[data-slot="margin-rail"]'),
+          ).toBeVisible();
+          await expect(
+            page.locator('[data-slot="message"]').filter({ hasText: partial.trim() }),
+          ).toHaveCount(count);
+        }
         response.write(chunk({ role: "assistant", content: partial }));
         const message = page
           .locator('[data-slot="message"]')
@@ -197,10 +223,6 @@ for (const surface of ["project", "global", "session"] as const) {
           message.evaluate((node) => node.closest("[data-part-id]")?.getAttribute("data-part-id"));
         const liveId = await partId();
         expect(liveId).toBeTruthy();
-        // Admission consumes next-message selection. Pick another task while the
-        // reply is unresolved; final attribution must not dismiss its reader.
-        if (surface === "project")
-          await page.getByRole("button", { name: "Current task", exact: true }).click();
         if (entry === "keyboard") {
           // No hovered message: exercise App's latest-response selection, not the message's local reader.
           await page.mouse.move(1, 1);
@@ -233,14 +255,6 @@ for (const surface of ["project", "global", "session"] as const) {
         await expect(page.getByText(`Fullscreen stays on ${entry}`, { exact: true })).toBeVisible();
         expect(await readerNode!.evaluate((node) => node.isConnected)).toBe(true);
         response.write(chunk({ content: ending }));
-        if (surface === "project") {
-          expect(turnIds[count]).toBeTruthy();
-          response.write(
-            chunk({
-              content: `<cake-todo>${JSON.stringify({ turnId: turnIds[count], todoId: firstTodo })}</cake-todo>`,
-            }),
-          );
-        }
         response.end(chunk({}, "stop") + "data: [DONE]\n\n");
         // Wait for the real persisted projection, not merely a final streamed delta.
         await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
