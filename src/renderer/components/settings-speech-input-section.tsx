@@ -6,6 +6,7 @@ import { DisclosureTrigger } from "./ui/disclosure-trigger";
 import { SettingSlider } from "./ui/setting-slider";
 import { Switch } from "./ui/switch";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 
 export const SettingsSpeechInputSection = observer(function SettingsSpeechInputSection({
   store,
@@ -38,6 +39,37 @@ export const SettingsSpeechInputSection = observer(function SettingsSpeechInputS
           maxLabel="Reject more noise"
           onValueChange={(value) => store.setNumber(sensitivity.key, value)}
         />
+        <div className="grid gap-3 px-3.5 py-3">
+          <div className="flex items-center justify-between gap-6">
+            <label htmlFor="dictation-voice-send" className="text-xs font-medium text-foreground">
+              Send dictation by voice
+            </label>
+            <Switch
+              id="dictation-voice-send"
+              checked={values.dictationVoiceSend}
+              onCheckedChange={(enabled) => store.setDictationVoiceSend(enabled)}
+            />
+          </div>
+          {values.dictationVoiceSend && (
+            <div className="grid gap-1.5">
+              <label
+                htmlFor="dictation-send-phrase"
+                className="text-xs font-medium text-foreground"
+              >
+                Send phrase
+              </label>
+              <Input
+                id="dictation-send-phrase"
+                value={values.dictationSendPhrase}
+                onChange={(event) => store.setDictationSendPhrase(event.target.value)}
+                aria-describedby="dictation-send-phrase-description"
+              />
+              <p id="dictation-send-phrase-description" className="text-xs text-muted-foreground">
+                Say the phrase on its own, with three seconds of quiet before and after.
+              </p>
+            </div>
+          )}
+        </div>
         <DisclosureTrigger
           id="advanced-voice-title"
           title="Advanced speech input"

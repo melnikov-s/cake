@@ -4,6 +4,7 @@ import type { SpeechRecognitionSettings } from "../contracts/dictation/dictation
 // Preference snapshot decoding stays outside ordinary renderer Stores.
 const readNumber = Schema.decodeUnknownOption(Schema.Finite);
 const readBoolean = Schema.decodeUnknownOption(Schema.Boolean);
+const readString = Schema.decodeUnknownOption(Schema.String);
 
 export const speechInputControls = [
   {
@@ -119,6 +120,8 @@ export const speechInputControls = [
 export type SpeechInputNumericSetting = (typeof speechInputControls)[number]["key"];
 export type SpeechInputPreferences = Record<SpeechInputNumericSetting, number> & {
   shortCommands: boolean;
+  dictationVoiceSend: boolean;
+  dictationSendPhrase: string;
 };
 export const defaultSpeechInputPreferences: SpeechInputPreferences = {
   speechStartThreshold: 0.6,
@@ -131,6 +134,8 @@ export const defaultSpeechInputPreferences: SpeechInputPreferences = {
   interruptionWords: 4,
   interruptionWindowMs: 3000,
   shortCommands: true,
+  dictationVoiceSend: false,
+  dictationSendPhrase: "send it",
 };
 
 /** Normalize window preferences without importing transport/Effect into Stores.
@@ -147,6 +152,11 @@ export function normalizeSpeechInputPreferences(
   result.shortCommands = Option.getOrElse(
     readBoolean(input?.shortCommands),
     () => result.shortCommands,
+  );
+  result.dictationVoiceSend = input?.dictationVoiceSend === true;
+  result.dictationSendPhrase = Option.getOrElse(
+    readString(input?.dictationSendPhrase),
+    () => result.dictationSendPhrase,
   );
   result.speechContinueThreshold = Math.min(
     result.speechContinueThreshold,

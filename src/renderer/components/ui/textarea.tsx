@@ -40,6 +40,8 @@ export interface TextareaProps
   extends TextareaHTMLAttributes<HTMLTextAreaElement>, VariantProps<typeof textareaVariants> {
   /** Opt in only Cake-owned prose fields; never code, paths or embedded surfaces. */
   dictation?: boolean;
+  /** Explicit Send capability only; never infer it from Enter handlers (e.g. annotation Save). */
+  dictationSubmit?: () => void | Promise<void>;
   /** Optional voice-mode span; dictation supplies its own through the registered target. */
   provisionalText?: ProvisionalTextSpan;
   ref?: Ref<HTMLTextAreaElement>;
@@ -53,6 +55,7 @@ export const Textarea = observer(function Textarea({
   size,
   font,
   dictation = false,
+  dictationSubmit,
   provisionalText,
   focusAnchorRef,
   onFocus,
@@ -69,7 +72,11 @@ export const Textarea = observer(function Textarea({
     if (!input.current) throw new Error("Textarea ref is not mounted");
     return input.current;
   });
-  const voice = useDictationInput(dictation && !props.disabled && !props.readOnly, input);
+  const voice = useDictationInput(
+    dictation && !props.disabled && !props.readOnly,
+    input,
+    dictationSubmit,
+  );
   const active = voice.store?.enabled && voice.store.activeTargetId === voice.id;
   const candidate = provisionalText ?? (active ? voice.store?.provisionalText : undefined);
   const pending =

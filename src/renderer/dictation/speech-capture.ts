@@ -16,7 +16,7 @@ export class SpeechCaptureBacklogError extends Error {
 export async function openSpeechCapture(
   microphone: Microphone,
   detect: Client["dictation"]["detectSpeech"],
-  onAudio: (samples: Float32Array, speech: boolean) => void,
+  onAudio: (samples: Float32Array, speech: boolean) => void | Promise<void>,
   onError: (error: unknown) => void,
   signal: AbortSignal,
   deviceId: string,
@@ -48,7 +48,7 @@ export async function openSpeechCapture(
         const speech = await detect({ captureId, pcm: encodePcm([samples]) }, { signal });
         if (!stopped && !signal.aborted) {
           queuedSamples -= samples.length;
-          onAudio(samples, speech);
+          await onAudio(samples, speech);
         }
       }
     })()

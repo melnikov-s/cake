@@ -64,6 +64,40 @@ describe("native speech capture adapter", () => {
     expect(mic.finish).toHaveBeenCalledTimes(1);
     expect(mic.stop).toHaveBeenCalledTimes(1);
   });
+  it("holds later audio behind an awaited utterance-boundary consumer, including finish", async () => {
+    const mic = microphone();
+    const boundary = deferred<void>();
+    const started = deferred<void>();
+    const detect = vi.fn<Client["dictation"]["detectSpeech"]>(async () => true);
+    const audio = vi.fn(async () => {
+      if (audio.mock.calls.length === 1) {
+        started.resolve();
+        await boundary.promise;
+      }
+    });
+    const error = vi.fn();
+    const capture = await openSpeechCapture(
+      mic.device,
+      detect,
+      audio,
+      error,
+      new AbortController().signal,
+      "",
+      () => {},
+    );
+    mic.push(new Float32Array(8192));
+    await started.promise;
+    const finished = capture.finish();
+    expect(detect).toHaveBeenCalledOnce();
+    expect(audio).toHaveBeenCalledOnce();
+    expect(mic.stop).not.toHaveBeenCalled();
+    boundary.resolve();
+    await finished;
+    expect(detect).toHaveBeenCalledTimes(2);
+    expect(audio).toHaveBeenCalledTimes(2);
+    expect(error).not.toHaveBeenCalled();
+    expect(mic.stop).toHaveBeenCalledOnce();
+  });
   it("drops late detection and buffered frames on capture cancellation", async () => {
     const mic = microphone();
     const result = deferred<boolean>();

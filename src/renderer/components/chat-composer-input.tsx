@@ -42,6 +42,11 @@ export const ChatComposerInput = observer(function ChatComposerInput({
   return (
     <SlashCommandCombobox
       dictation={!voiceOwnsInput}
+      dictationSubmit={
+        !store.editingMessage && !store.submitsAsDraft && !store.isDraftSession
+          ? () => onSubmit(inputRef.current?.value ?? store.draft)
+          : undefined
+      }
       provisionalText={voiceOwnsInput ? conversation.workflow.provisionalInput : undefined}
       autoFocus={focusEnabled}
       focusEnabled={focusEnabled}

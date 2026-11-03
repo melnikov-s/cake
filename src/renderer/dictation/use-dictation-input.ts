@@ -4,13 +4,19 @@ import { useOptionalStore } from "r-state-tree/react";
 import { DictationStore, type DictationTarget } from "../stores/DictationStore";
 
 /** DOM-only adapter: the Store owns capture, focus generations, and inference policy. */
-export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAreaElement | null>) {
+export function useDictationInput(
+  enabled: boolean,
+  input: RefObject<HTMLTextAreaElement | null>,
+  submit?: () => void | Promise<void>,
+) {
   const store = useOptionalStore(DictationStore);
   const id = useId();
   // Targets outlive renders. Revoke their DOM access immediately when the field opts out,
   // including results already queued before the capture generation is cancelled.
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
   const inserting = useRef(false);
   const replaying = useRef(false);
   const insertion = useRef({ before: "", after: "", value: "", start: -1, caret: -1 });
@@ -24,6 +30,14 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
         if (element.parentElement?.hasAttribute("tabindex")) element.parentElement.focus();
         else element.blur();
       }
+    },
+    get submit() {
+      if (!submitRef.current) return undefined;
+      return () => {
+        const element = input.current;
+        if (enabledRef.current && element?.isConnected && !element.disabled && !element.readOnly)
+          return submitRef.current?.();
+      };
     },
     begin() {
       const element = input.current;

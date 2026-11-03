@@ -19,6 +19,12 @@ export class SpeechInputSettingsStore extends Store {
   setShortCommands(enabled: boolean): void {
     this.preferences = { ...this.values, shortCommands: enabled };
   }
+  setDictationVoiceSend(enabled: boolean): void {
+    this.preferences = { ...this.values, dictationVoiceSend: enabled };
+  }
+  setDictationSendPhrase(phrase: string): void {
+    this.preferences = { ...this.values, dictationSendPhrase: phrase };
+  }
   reset(): void {
     this.preferences = { ...defaultSpeechInputPreferences };
   }

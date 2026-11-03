@@ -185,7 +185,10 @@ function renderDictation(
         : "dictation-session";
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project" })],
-    sessions: [sessionSummary({ sessionId, projectPath: "/project" })],
+    sessions: [
+      sessionSummary({ sessionId, projectPath: "/project" }),
+      sessionSummary({ sessionId: "other-dictation-session", projectPath: "/project" }),
+    ],
     snapshot: options.snapshot,
     client: {
       ...options.client,
@@ -270,6 +273,7 @@ function renderDictation(
         snapshot: {
           ...initialUpdate.snapshot,
           sessionId: nextId,
+          sessionFile: `/project/${nextId}.jsonl`,
         },
       });
       fixture.root.navigationStore.selectProjectSession(nextId);
@@ -334,6 +338,272 @@ afterEach(() => {
 });
 
 describe("Dictation writing-field workflow", () => {
+  async function voiceSend(f: ReturnType<typeof renderDictation>, phrase?: string) {
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    await f.user.click(screen.getByRole("switch", { name: "Send dictation by voice" }));
+    if (phrase !== undefined)
+      fireEvent.change(screen.getByRole("textbox", { name: "Send phrase" }), {
+        target: { value: phrase },
+      });
+    await f.user.click(mode());
+    await f.user.click(message());
+    listening();
+    // An actual leading acoustic boundary, not a recognizer packet or timer.
+    await f.audio.push(new Float32Array(49_152));
+  }
+
+  it("defaults voice sending off and persists its custom phrase through window snapshots", async () => {
+    let saved: StoreSnapshot;
+    {
+      using f = renderDictation();
+      render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+      expect(
+        screen
+          .getByRole("switch", { name: "Send dictation by voice" })
+          .getAttribute("aria-checked"),
+      ).toBe("false");
+      await f.user.click(screen.getByRole("switch", { name: "Send dictation by voice" }));
+      const phrase = screen.getByRole("textbox", { name: "Send phrase" });
+      expect((phrase as HTMLInputElement).value).toBe("send it");
+      fireEvent.change(phrase, { target: { value: "over and out" } });
+      saved = toSnapshot(f.root);
+      cleanup();
+    }
+    using restored = renderDictation({ snapshot: saved });
+    render(<SettingsSpeechInputSection store={restored.root.speechInputSettingsStore} />);
+    expect(
+      screen.getByRole("switch", { name: "Send dictation by voice" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Send phrase" }).value).toBe(
+      "over and out",
+    );
+  });
+
+  it.each(["send it", "SEND IT!", "Send it.", "send it?", "send it…"])(
+    "sends only the isolated finalized command %s, excluding it and retaining prior speech after blur",
+    async (command) => {
+      let text = "";
+      const transcribe = vi.fn<Client["dictation"]["transcribe"]>(async () => text);
+      using f = renderDictation({ client: { dictation: { transcribe } } });
+      await voiceSend(f);
+      text = "Previously dictated content.";
+      await f.audio.push(new Float32Array(16_384).fill(0.1));
+      await f.audio.push(new Float32Array(49_152));
+      await waitFor(() => expect(message().value).toBe(text));
+      text = command;
+      await f.user.click(screen.getByRole("heading", { name: "Speech input" }));
+      expect(document.activeElement).not.toBe(message());
+      await f.audio.push(new Float32Array(16_384).fill(0.1));
+      expect(f.prompt).not.toHaveBeenCalled();
+      await f.audio.push(new Float32Array(49_152));
+      await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+      expect(f.prompt).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Previously dictated content." }),
+        expect.anything(),
+      );
+      expect(transcribe.mock.calls.filter(([input]) => input.final)).toHaveLength(2);
+      await f.audio.push(new Float32Array(49_152));
+      expect(f.prompt).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("retains the voice-send owner after detected speech blurs before its first decode", async () => {
+    let text = "";
+    using f = renderDictation({ client: { dictation: { transcribe: async () => text } } });
+    await voiceSend(f);
+    await f.user.type(message(), "Previously typed content.");
+    await f.audio.push(new Float32Array(49_152));
+    text = "send it";
+    await f.audio.push(new Float32Array(4096).fill(0.1));
+    await f.user.click(screen.getByRole("heading", { name: "Speech input" }));
+    expect(document.activeElement).not.toBe(message());
+    listening();
+    await f.audio.push(new Float32Array(12_288).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+    expect(f.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Previously typed content." }),
+      expect.anything(),
+    );
+  });
+
+  it.each(["I want to send it tomorrow", "please send it", "sent it", "send it,", "send it now"])(
+    "keeps nonmatching finalized speech %s as ordinary dictation",
+    async (words) => {
+      let text = "";
+      using f = renderDictation({ client: { dictation: { transcribe: async () => text } } });
+      await voiceSend(f);
+      text = words;
+      await f.audio.push(new Float32Array(16_384).fill(0.1));
+      await f.audio.push(new Float32Array(49_152));
+      expect(message().value).toBe(words);
+      expect(f.prompt).not.toHaveBeenCalled();
+    },
+  );
+
+  it("never mistakes interim fragments or transport packets for an isolated final utterance", async () => {
+    let text = "";
+    using f = renderDictation({ client: { dictation: { transcribe: async () => text } } });
+    await voiceSend(f);
+    text = "send";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    text = "send it";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(16_384)); // short pause is not isolation
+    expect(f.prompt).not.toHaveBeenCalled();
+    text = "send it tomorrow";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    expect(message().value).toBe(text);
+    expect(f.prompt).not.toHaveBeenCalled();
+  });
+
+  it("uses a custom phrase, never the default phrase or utility-cleaned words", async () => {
+    let text = "";
+    using f = renderDictation({ client: { dictation: { transcribe: async () => text } } });
+    await voiceSend(f, "over and out");
+    text = "send it";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    expect(f.prompt).not.toHaveBeenCalled();
+    text = "OVER AND OUT.";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+    expect(f.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "send it" }),
+      expect.anything(),
+    );
+  });
+
+  it("requires a leading pause, and leaves disabled dictation behavior unchanged", async () => {
+    let text = "send it";
+    using f = renderDictation({ client: { dictation: { transcribe: async () => text } } });
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    expect(message().value).toBe("send it");
+    expect(f.prompt).not.toHaveBeenCalled();
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    await f.user.click(screen.getByRole("switch", { name: "Send dictation by voice" }));
+    // Settings freeze on capture entry; switch targets to start an opted-in capture.
+    await f.user.click(trial());
+    await f.user.click(message());
+    text = "send it";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    expect(f.prompt).not.toHaveBeenCalled();
+    expect(message().value).toBe("send it send it");
+  });
+  it.each(["mute", "stop", "target", "session", "unmount", "setting", "edit"] as const)(
+    "cancels an isolated command whose final recognition arrives after %s",
+    async (action) => {
+      let text = "";
+      const final = deferred<string>();
+      const transcribe = vi.fn<Client["dictation"]["transcribe"]>(async (input) =>
+        input.final ? final.promise : text,
+      );
+      using f = renderDictation({ client: { dictation: { transcribe } } });
+      await voiceSend(f);
+      text = "send it";
+      await f.audio.push(new Float32Array(16_384).fill(0.1));
+      await f.audio.push(new Float32Array(49_152));
+      await waitFor(() => expect(transcribe.mock.calls.some(([input]) => input.final)).toBe(true));
+      if (action === "mute")
+        await f.user.click(screen.getByRole("button", { name: "Mute dictation" }));
+      if (action === "stop") await f.user.click(mode());
+      if (action === "target") await f.user.click(trial());
+      if (action === "unmount") f.remountComposer();
+      if (action === "session") act(() => f.switchProjectSession());
+      if (action === "setting")
+        await f.user.click(screen.getByRole("switch", { name: "Send dictation by voice" }));
+      if (action === "edit") await f.user.type(message(), "manual change");
+      await act(async () => final.resolve("send it"));
+      expect(f.prompt).not.toHaveBeenCalled();
+      expect(trial().value).toBe("");
+    },
+  );
+
+  it("keeps unsupported targets as dictation even when the send phrase is enabled", async () => {
+    let text = "";
+    using f = renderDictation({ client: { dictation: { transcribe: async () => text } } });
+    await voiceSend(f);
+    await f.user.click(trial());
+    await f.audio.push(new Float32Array(49_152));
+    text = "send it";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    expect(trial().value).toBe("send it");
+    expect(f.prompt).not.toHaveBeenCalled();
+  });
+
+  it("removes an empty command without bypassing normal send validation", async () => {
+    let text = "";
+    using f = renderDictation({ client: { dictation: { transcribe: async () => text } } });
+    await voiceSend(f);
+    text = "send it";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    expect(message().value).toBe("");
+    expect(f.prompt).not.toHaveBeenCalled();
+  });
+
+  it("does not send from recognizer repeats while the ordinary send is busy", async () => {
+    let text = "";
+    const submitted = deferred<void>();
+    using f = renderDictation({
+      submissionReady: submitted.promise,
+      client: { dictation: { transcribe: async () => text } },
+    });
+    await voiceSend(f);
+    text = "prior text";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    text = "send it";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+    await f.audio.push(new Float32Array(65_536).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    expect(f.prompt).toHaveBeenCalledOnce();
+    text = "";
+    await act(async () => submitted.resolve());
+    expect(f.prompt).toHaveBeenCalledOnce();
+  });
+
+  it("preserves prior speech when manual Send overlaps pause-finalization cleanup", async () => {
+    let text = "";
+    const cleaned = deferred<string>();
+    const postProcessDictation = vi.fn<Client["workspaces"]["postProcessDictation"]>(
+      () => cleaned.promise,
+    );
+    const transcribe = vi.fn<Client["dictation"]["transcribe"]>(async (input) => {
+      const result = text;
+      if (input.final) text = ""; // native final releases the rolling transcript
+      return result;
+    });
+    using f = renderDictation({
+      client: { dictation: { transcribe }, workspaces: { postProcessDictation } },
+    });
+    await f.user.selectOptions(
+      screen.getByRole("combobox", { name: "Text processing" }),
+      "utility",
+    );
+    await voiceSend(f);
+    text = "previous words";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    await waitFor(() => expect(postProcessDictation).toHaveBeenCalledOnce());
+    await f.user.keyboard("{Enter}");
+    await act(async () => cleaned.resolve("Previous words."));
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+    expect(f.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Previous words." }),
+      expect.anything(),
+    );
+  });
+
   it("refreshes the vocabulary projection when another window or Cake control publishes a new revision", async () => {
     let words = emptyVocabulary();
     using f = renderDictation({

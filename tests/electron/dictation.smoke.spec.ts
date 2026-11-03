@@ -60,6 +60,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
   await wait(value => value.ready); reply({ ready: true });
   const requestPath = path.join(directory, 'request.json');
   let count = fs.existsSync(requestPath) ? JSON.parse(fs.readFileSync(requestPath, 'utf8')).count : 0;
+  let finals = 0;
   for await (const line of readline.createInterface({ input: process.stdin })) {
     const request = JSON.parse(line);
     if (request.operation === 'prepareVocabulary') { reply({ prepared: true }); continue; }
@@ -69,7 +70,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
       const data = Buffer.from(request.pcm, 'base64'); let energy = 0; for (let i = 0; i < data.length; i += 4) energy += data.readFloatLE(i) ** 2;
       reply({ speech: config().speech ?? (data.length > 0 && Math.sqrt(energy / (data.length / 4)) > 0.003) }); continue;
     }
-    fs.writeFileSync(path.join(directory, 'request.json'), JSON.stringify({ count: ++count, final: request.final, id: request.utteranceId, vocabulary: request.vocabulary }));
+    fs.writeFileSync(path.join(directory, 'request.json'), JSON.stringify({ count: ++count, finals: request.final ? ++finals : finals, final: request.final, id: request.utteranceId, vocabulary: request.vocabulary }));
     await wait(value => !value.hold); const value = config(); reply(value.error ? { error: value.error } : { text: request.final ? (value.finalText ?? value.text ?? '') : (value.text ?? '') });
     fs.writeFileSync(path.join(directory, 'response.json'), JSON.stringify({ count }));
   }
@@ -749,6 +750,48 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await expect(details).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(details).toHaveCount(0);
+
+    // Optional voice send uses an actual pause boundary and its retained DOM owner.
+    await page.getByRole("button", { name: "View 2 annotations", exact: true }).click();
+    await page.getByRole("button", { name: "Remove annotation 2", exact: true }).click();
+    await page.getByRole("button", { name: "Remove annotation 1", exact: true }).click();
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    const voiceSend = page.getByRole("switch", { name: "Send dictation by voice" });
+    await expect(voiceSend).not.toBeChecked();
+    await voiceSend.click();
+    await expect(page.getByLabel("Send phrase", { exact: true })).toHaveValue("send it");
+    await page.getByLabel("Send phrase", { exact: true }).fill("over and out");
+    await configure({ ready: true, speech: true, text: "" });
+    await page.getByRole("button", { name: "Back to chat" }).click();
+    await composer.focus();
+    await composer.fill("");
+    await page.getByRole("button", { name: "Unmute dictation" }).click();
+    await expect(composer).toBeFocused();
+    const beforeVoice = await requestCount();
+    await expect.poll(requestCount).toBeGreaterThanOrEqual(beforeVoice + 2);
+    const finalCount = async () =>
+      JSON.parse(await readFile(join(model, "request.json"), "utf8")).finals as number;
+    const beforePause = await finalCount();
+    await configure({ ready: true, speech: false, text: "" });
+    await expect.poll(finalCount, { timeout: 10_000 }).toBeGreaterThan(beforePause);
+    await configure({ ready: true, speech: true, text: "over and out" });
+    await expect(composer).toHaveValue("over and out"); // interim never sends
+    await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
+    await page
+      .getByText("Inspect this implementation before changing it.", { exact: true })
+      .click();
+    await expect(composer).not.toBeFocused();
+    await configure({ ready: true, speech: false, text: "OVER AND OUT." });
+    // Ordinary empty Send is rejected; the matched command is still removed, not submitted.
+    await expect(composer).toHaveValue("", { timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Mute dictation" }).click();
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await voiceSend.click();
+    await expect(voiceSend).not.toBeChecked();
+    await page.getByRole("button", { name: "Back to chat" }).click();
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await page.getByLabel("Text processing", { exact: true }).selectOption("raw");

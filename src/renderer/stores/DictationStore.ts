@@ -20,6 +20,7 @@ export interface DictationTarget {
   submitted?(): void;
   begin(): void;
   replace(text: string): ProvisionalTextSpan | void;
+  readonly submit?: () => void | Promise<void>;
 }
 export interface DictationSubmission {
   readonly target: DictationTarget;
@@ -27,6 +28,9 @@ export interface DictationSubmission {
 }
 interface Utterance {
   settings: SpeechRecognitionSettings;
+  sendPhrase?: string;
+  isolated: boolean;
+  voiceCommand: boolean;
   id: string;
   target: DictationTarget;
   controller: AbortController;
@@ -82,6 +86,15 @@ const recoverable = new Set([
   "transport",
   "observation",
 ]);
+
+/** Exact words only: ignore case, outer whitespace and benign terminal sentence punctuation. */
+function commandText(text: string) {
+  return text
+    .trim()
+    .replace(/[.!?…]+$/u, "")
+    .trim()
+    .toLowerCase();
+}
 
 /** Window-owned voice-input workflow. Focus is take-latest; drafts retain their existing owners.
  * Main owns installation. This window persists enablement, microphone and cleanup choice (last
@@ -424,6 +437,8 @@ export class DictationStore extends Store<{
       // Editing starts a new decoding generation, not a new microphone acquisition.
       run.quietSamples = 0;
       run.heardSpeech = false;
+      run.isolated = false;
+      run.voiceCommand = false;
       run.cleanupDue = false;
       run.cleanupController.abort();
       run.cleanupController = new AbortController();
@@ -446,6 +461,12 @@ export class DictationStore extends Store<{
     recordVoiceDiagnostic("dictation-start", { attempt: this.recoveryAttempt });
     const run: Utterance = {
       settings: speechRecognitionSettings(this.props.preferences.values),
+      sendPhrase:
+        this.props.preferences.values.dictationVoiceSend && target.submit
+          ? commandText(this.props.preferences.values.dictationSendPhrase) || undefined
+          : undefined,
+      isolated: false,
+      voiceCommand: false,
       id: crypto.randomUUID(),
       target,
       controller: new AbortController(),
@@ -479,7 +500,9 @@ export class DictationStore extends Store<{
             { signal: this.signal },
           ),
         (samples, speech) => {
-          if (this.utterance !== run || run.finishing) return;
+          if (this.utterance !== run) return;
+          if (run.sendPhrase) return this.voiceAudio(run, samples, speech);
+          if (run.finishing) return;
           if (speech) {
             this.capturedSpeech = true;
             run.heardSpeech = true;
@@ -523,6 +546,8 @@ export class DictationStore extends Store<{
               run.meterSamples = 0;
             }
           }
+          // Voice-send capture consumes only ordered, classified frames, never raw packets.
+          if (run.sendPhrase) return;
           run.chunks.push(samples);
           run.samples += samples.length;
           if (run.samples > 128_000) {
@@ -547,7 +572,7 @@ export class DictationStore extends Store<{
       if (this.utterance === run) this.captureFailed(error, "startup");
     }
   }
-  private async transcribe(run: Utterance, final: boolean) {
+  private async transcribe(run: Utterance, final: boolean, commandBoundary = false) {
     const utteranceId = run.id;
     const chunks = run.chunks;
     run.chunks = [];
@@ -566,6 +591,21 @@ export class DictationStore extends Store<{
       if (text.trim()) this.capturedSpeech = true;
       // Empty/no-change recognition is not an edit: preserve the user's selection until
       // words arrive, even when background noise triggers the speech detector.
+      const preferences = this.props.preferences.values;
+      run.voiceCommand = !!(
+        commandBoundary &&
+        run.sendPhrase &&
+        preferences.dictationVoiceSend &&
+        commandText(preferences.dictationSendPhrase) === run.sendPhrase &&
+        commandText(text) === run.sendPhrase &&
+        run.target.submit
+      );
+      if (run.voiceCommand) {
+        run.rawText = "";
+        run.target.replace("");
+        this.provisionalText = undefined;
+        return;
+      }
       if (text.trim() === run.rawText.trim()) return;
       run.rawText = text;
       const cleaned = this.textProcessingMode !== "raw" && run.cleanedRaw === text;
@@ -573,6 +613,49 @@ export class DictationStore extends Store<{
       this.provisionalText =
         this.textProcessingMode !== "raw" && !cleaned && span ? span : undefined;
     }
+  }
+  /** Three seconds of classified quiet bound a whole recognition generation. Native ASR
+   * endpoints/capacity commits and transport fragments are never command boundaries.
+   * Awaited by openSpeechCapture so later audio cannot leak into the final flush. */
+  private async voiceAudio(run: Utterance, samples: Float32Array, speech: boolean) {
+    const id = run.id;
+    run.chunks.push(samples);
+    run.samples += samples.length;
+    if (speech) {
+      this.capturedSpeech = true;
+      run.heardSpeech = true;
+      run.quietSamples = 0;
+    } else run.quietSamples += samples.length;
+    if (run.finishing) return;
+    if (run.quietSamples >= CLEANUP_SILENCE_SAMPLES) {
+      if (run.heardSpeech) {
+        await this.transcribe(run, true, run.isolated);
+        if (this.utterance !== run || run.id !== id) return;
+        if (run.voiceCommand && !run.finishing) {
+          const target = run.target;
+          // Invalidate before calling the ordinary Send owner, including synchronous draft reset.
+          this.endUtterance();
+          this.phase = "paused";
+          await target.submit?.();
+          this.resume(target.id);
+          return;
+        }
+        await this.clean(run);
+        if (this.utterance !== run || run.id !== id) return;
+        run.target.begin();
+        run.id = crypto.randomUUID();
+        run.rawText = "";
+        run.voiceCommand = false;
+        run.cleanedRaw = undefined;
+        run.cleanedText = undefined;
+        this.provisionalText = undefined;
+      }
+      run.heardSpeech = false;
+      run.isolated = true;
+      // No audio crosses this acoustic boundary, even during a long quiet period.
+      run.chunks = [];
+      run.samples = 0;
+    } else if (run.samples >= 12_800) await this.transcribe(run, false);
   }
   setTextProcessingMode(mode: TextProcessingMode): void {
     this.textProcessingMode = mode;
