@@ -1,5 +1,5 @@
 import { Effect, Stream, type Schema } from "effect";
-import { consumeSelection, prepareForChat } from "../projects/projectTodos";
+import { prepareForChat } from "../projects/projectTodos";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
@@ -125,7 +125,6 @@ export const start = Effect.fn("CakeChats.start")(function* (
       input.renderUserMessageAsMarkdown,
     ).pipe(asError("start")),
   );
-  yield* consumeSelection(prepared).pipe(asError("start"));
   yield* publishCatalogChange(input.sessionId, false);
   return turnId;
 });

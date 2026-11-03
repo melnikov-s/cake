@@ -1,5 +1,5 @@
 import * as artifactPresentationContext from "../artifacts/artifactPresentationContext";
-import { consumeSelection, prepareForChat } from "../projects/projectTodos";
+import { prepareForChat } from "../projects/projectTodos";
 import {
   passiveNoticeContext,
   type StoredPassiveNotice,
@@ -236,7 +236,6 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
             )
       ).pipe(asError("deliver")),
     );
-    yield* consumeSelection(prepared).pipe(asError("deliver"));
     if (storage && passiveTurnId && passive.length)
       yield* storage.markPassiveNoticeAdmission(
         passive.map((notice) => notice.id),

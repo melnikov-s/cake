@@ -12,7 +12,7 @@ import { ProjectTodoSnoozePicker } from "./project-todo-snooze-picker";
 import { ProjectTodoAttentionEditor } from "./project-todo-attention-editor";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
-import { CircleIcon, CheckIcon } from "@/components/ui/icons";
+import { CircleIcon, CheckIcon, ReplyIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
@@ -96,6 +96,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           wholeRowAction
           selectableText
           associated={selected || inspected}
+          title={`Focus to-do: ${item.title}`}
           aria-busy={store.busy}
           actionProps={{
             "aria-pressed": selected,
@@ -105,7 +106,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           onClick={() => void store.select(item)}
           className={cn(
             "grid items-start gap-x-2.5 gap-y-0 px-3 py-2.5 text-sm leading-snug [&>button:first-child]:col-start-2 [&>button:first-child]:row-start-1 [&>button:first-child]:items-start [&>[data-slot=nav-trailing]]:col-start-1 [&>[data-slot=nav-trailing]]:row-start-1 [&_a>svg]:hidden",
-            attention ? "grid-cols-[auto_minmax(0,1fr)_auto]" : "grid-cols-[auto_minmax(0,1fr)]",
+            "grid-cols-[auto_minmax(0,1fr)_auto]",
           )}
           label={
             <span
@@ -128,11 +129,18 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
             </IconButton>
           }
         >
+          <IconButton
+            className="col-start-3 row-start-1 size-5"
+            tooltip={`Use to-do for next message: ${item.title}`}
+            onClick={() => store.reply(item)}
+          >
+            <ReplyIcon />
+          </IconButton>
           {attention && (
             <Button
               variant="ghost"
               size="sm"
-              className="col-start-3 row-start-1 h-5 px-1 text-xs font-normal text-muted-foreground"
+              className="col-start-3 row-start-2 mt-1 h-5 px-1 text-xs font-normal text-muted-foreground"
               aria-label={`Dismiss attention: ${item.title}`}
               disabled={store.busy}
               onClick={() => void store.dismissAttention(item)}
@@ -141,9 +149,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
             </Button>
           )}
           {attention && (
-            <p className="col-start-2 col-span-2 mt-1 text-xs text-muted-foreground">
-              {item.title}
-            </p>
+            <p className="col-start-2 mt-1 text-xs text-muted-foreground">{item.title}</p>
           )}
           {!attention && description && (
             <p className="col-start-2 mt-1 w-full whitespace-pre-wrap break-words text-xs font-normal leading-snug text-muted-foreground">

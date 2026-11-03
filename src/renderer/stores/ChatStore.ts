@@ -100,6 +100,7 @@ export interface ChatStoreProps {
   attachments?(): Attachment[];
   addPastedImages?(files: readonly File[]): Promise<void>;
   addPastedText?(text: string): void;
+  addReplyContext?(name: string, text: string): void;
   removeAttachment?(index: number): void;
   annotations?(): readonly Annotation[];
   addAnnotation?(annotation: Omit<Annotation, "id">): void;
@@ -415,6 +416,20 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
   addPastedText(text: string) {
     this.props.addPastedText?.(text);
+  }
+
+  addReplyContext(name: string, text: string) {
+    this.props.addReplyContext?.(name, text);
+  }
+
+  replyToMessage(entryId: string) {
+    const quoted = this.parts.flatMap((part) =>
+      part.kind === "text" && part.entryId === entryId ? [part.text] : [],
+    );
+    this.addReplyContext(
+      "Reply to message",
+      `> replying to message: ${entryId}\n\n${quoted.join("\n\n")}`,
+    );
   }
 
   get canPasteImages() {

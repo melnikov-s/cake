@@ -11,8 +11,9 @@ export const ProjectTodoSelectionBar = observer(function ProjectTodoSelectionBar
   if (!selected) return null;
   return (
     <SelectionBar
+      label="Focused to-do:"
       title={selected.title}
-      clearLabel="Clear to-do selection"
+      clearLabel="Clear to-do focus"
       disabled={todos.busy}
       onClear={() => void todos.clearSelection()}
     />

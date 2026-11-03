@@ -466,13 +466,7 @@ export const Chat = observer(function Chat({
               ? {
                   ...transcriptBehavior,
                   onReplyToMessage: (entryId) => {
-                    const draft = store.draft;
-                    const separation =
-                      !draft || draft.endsWith("\n\n") ? "" : draft.endsWith("\n") ? "\n" : "\n\n";
-                    // A blank line ends the Markdown quote before the user starts typing.
-                    flushSync(() =>
-                      store.setDraft(`${draft}${separation}> replying to message: ${entryId}\n\n`),
-                    );
+                    flushSync(() => store.replyToMessage(entryId));
                     requestAnimationFrame(() => {
                       const input = composerInputRef.current;
                       if (!input) return;

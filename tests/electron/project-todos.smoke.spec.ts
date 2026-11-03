@@ -374,39 +374,30 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await review.getByText("Report delivered; awaiting your review", { exact: true }).click();
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
     await expect(reviewTitle).toHaveAttribute("aria-disabled", "false");
+    const reviewDone = review.getByRole("button", { name: "Mark done: Review conversations" });
+    const reviewReply = review.getByRole("button", {
+      name: "Use to-do for next message: Review conversations",
+    });
+    await expect(reviewDone).toBeEnabled();
     await review.getByRole("link", { name: "Investigation report" }).focus();
     await page.keyboard.press("Shift+Tab");
-    await expect(
-      review.getByRole("button", { name: "Mark done: Review conversations" }),
-    ).toBeFocused();
-    await page.keyboard.press("Shift+Tab");
+    await expect(reviewReply).toBeFocused();
+    await reviewReply.press("Shift+Tab");
+    await expect(reviewDone).toBeFocused();
+    await reviewDone.press("Shift+Tab");
     await expect(reviewTitle).toBeFocused();
     await expect(
       panel.getByRole("button", { name: "Review conversations", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
-    // A selection counts only while the panel is open, so send beside it.
+    // Sending leaves this view filter intact and does not attach it as context.
     await send("INPUT_SELECTED");
-    const selected = requests.find((request) => latestUser(request).includes("INPUT_SELECTED"));
-    expect(selected && latestUser(selected)).toContain("Project Chat user changes");
-    expect(selected && latestUser(selected)).toContain(reviewId);
-    const reviewPills = page.getByRole("button", {
-      name: "To-do · Review conversations",
-      exact: true,
-    });
-    await expect(reviewPills).toHaveCount(1);
+    await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
     await send("INPUT_UNCHANGED");
-    const unchanged = requests.find((request) => latestUser(request).includes("INPUT_UNCHANGED"));
-    expect(unchanged && latestUser(unchanged)).not.toContain("Project Chat user changes");
-    expect(unchanged && JSON.stringify(unchanged.messages)).toContain(reviewId);
-    await expect(reviewPills).toHaveCount(1);
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
+    await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
     await expect(panel).toBeVisible();
     const requestsBeforeDeselection = requests.length;
     await reviewTitle.click();
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
-    await reviewTitle.click();
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
-    await expect(reviewPills).toHaveCount(1);
     expect(requests.length).toBe(requestsBeforeDeselection);
     await reviewTitle.click();
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
@@ -417,7 +408,7 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await page.getByRole("button", { name: "Close To-do" }).click();
     await expect(input).toBeVisible();
     await expect(input).toBeFocused();
-    // Closing the panel ends the selection for the agent as well as the panel.
+    // Closing the panel clears view focus.
     await expect
       .poll(
         async () =>
@@ -439,7 +430,6 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
         .getByText("Review conversations", { exact: true }),
     ).toBeVisible();
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
-    await expect(reviewPills).toHaveCount(1);
     const linked = panel
       .locator("[data-todo-id]")
       .filter({ has: page.getByRole("link", { name: "First implementation", exact: true }) });
@@ -515,13 +505,9 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await expect(linkedTitle).toHaveAttribute("aria-disabled", "true");
     await linkedTitle.click({ force: true });
     await expect(linkedTitle).toHaveAttribute("aria-pressed", "false");
-    await expect(
-      page.getByRole("button", { name: "To-do · Implement startup improvement", exact: true }),
-    ).toHaveCount(1);
     await page.locator(".transcript").evaluate((element) => {
       element.scrollTop = 0;
     });
-    await expect(reviewPills).toHaveCount(1);
     await expect(
       panel.getByRole("button", { name: "Review conversations", exact: true }),
     ).toBeVisible(); // Source-only discussion stays open, despite resolved source work.
@@ -548,29 +534,11 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     );
     expect(resolveRequest && latestUser(resolveRequest)).toContain("First implementation");
     expect(resolveRequest && latestUser(resolveRequest)).toContain("SessionState");
-    const sentContent = resolveRequest!.messages.findLast(
-      (message) => message.role === "user",
-    )!.content;
-    const sentText =
-      typeof sentContent === "string"
-        ? sentContent
-        : (sentContent
-            ?.flatMap((part) =>
-              "text" in part && typeof part.text === "string" ? [part.text] : [],
-            )
-            .join("\n") ?? "");
-    const sentContext = JSON.parse(sentText.split("\n")[2]!) as {
-      selection: { state: string; description: string };
-    };
-    expect(sentContext.selection).toMatchObject({
-      state: "open",
-      description: "Implement startup improvement.",
-    });
     await panel.getByRole("link", { name: "Investigation report" }).click();
     await expect(page.getByText("Implementation report", { exact: true })).toBeVisible();
     await returnToTodos();
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
-    // Sent context is reconstructed from Pi Durable originals, not today’s selection/state.
+    // To-do lifecycle state is reconstructed after reload.
     const requestsBeforeReload = requests.length;
     await page.reload();
     await returnToTodos();
@@ -581,23 +549,7 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await page.locator(".transcript").evaluate((element) => {
       element.scrollTop = 0;
     });
-    await expect(reviewPills).toHaveCount(1);
-    const linkedPill = page.getByRole("button", {
-      name: "To-do · Implement startup improvement",
-      exact: true,
-    });
-    await page.locator(".transcript").evaluate((element) => {
-      element.scrollTop = element.scrollHeight;
-    });
-    await expect(linkedPill).toHaveCount(1);
-    await expect(page.getByLabel("Next message context")).toHaveCount(0);
     expect(requests.length).toBe(requestsBeforeReload);
-    await linkedPill.click();
-    const context = page.locator(`#${await linkedPill.getAttribute("aria-controls")}`);
-    await expect(context).toContainText('Selected to-do: "Implement startup improvement".');
-    await expect(context).toContainText('Session "First implementation" resolved.');
-    await expect(context).not.toContainText("<system-reminder>");
-    await linkedPill.click();
     // Resolved sessions cannot produce interviews. Explicitly restore the producer,
     // without reopening its completed to-do or sending another model turn.
     await linked.getByRole("link", { name: "First implementation", exact: true }).click();

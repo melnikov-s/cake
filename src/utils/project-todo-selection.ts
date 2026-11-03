@@ -1,32 +1,22 @@
 import type { ProjectTodos } from "../contracts/projects/project-todos";
 
-/** Clear the selection and tell the agent it changed, without touching session lifecycle. */
-export function clearProjectTodoSelection(
-  value: ProjectTodos,
-  newDeliveryToken: () => string,
-): ProjectTodos {
-  if (value.selectedId === null) return value;
-  const sequence = value.sequence + 1;
+/** View focus never creates agent reminders or changes session lifecycle. */
+export function clearProjectTodoSelection(value: ProjectTodos): ProjectTodos {
+  const pending = value.pending.filter((entry) => entry._tag !== "Selection");
+  if (value.selectedId === null && pending.length === value.pending.length) return value;
   return {
     ...value,
     selectedId: null,
-    sequence,
-    deliveryToken: newDeliveryToken(),
-    pending: [
-      ...value.pending.filter((entry) => entry._tag !== "Selection"),
-      { _tag: "Selection", selectedId: null, sequence },
-    ],
+    pending,
+    deliveryToken: pending.length ? value.deliveryToken : null,
   };
 }
 
-/** Only Active to-dos can supply a selection. Completion and snoozing clear it. */
-export function clearCompletedProjectTodoSelection(
-  value: ProjectTodos,
-  newDeliveryToken: () => string,
-): ProjectTodos {
+/** Completion and snoozing clear view focus, not a composed reply attachment. */
+export function clearCompletedProjectTodoSelection(value: ProjectTodos): ProjectTodos {
   return value.items.some(
     (item) => item.id === value.selectedId && item.state === "open" && !item.snoozedUntil,
   )
     ? value
-    : clearProjectTodoSelection(value, newDeliveryToken);
+    : clearProjectTodoSelection(value);
 }

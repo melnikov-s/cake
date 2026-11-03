@@ -2912,14 +2912,14 @@ const projectChatHeader: VisualCaptureScenario = {
 
 const projectChatTodos: VisualCaptureScenario = {
   name: "project-chat-todos",
-  description:
-    "Project Chat to-do selection, session readiness and compact destination-specific work links",
+  description: "Project Chat to-do focus, reply context, session readiness and compact work links",
   states: [
     "open",
     "hover",
     "done",
     "empty",
     "unselected",
+    "reply-context",
     "links-hover",
     "links-focus",
     "search",
@@ -3073,11 +3073,26 @@ const projectChatTodos: VisualCaptureScenario = {
     await input.fill("Let’s revisit the startup investigation.");
     await page.getByRole("button", { name: "To-do", exact: true }).click();
     await expect(page.getByRole("complementary", { name: "To-do" })).toBeVisible();
-    // A stored selection can be cleared while the pane is initially closed.
-    // Establish the scenario's context through the same action as the user.
+    // Stored view focus clears while the pane is initially closed.
+    // Establish focus through the same action as the user.
     const selected = page.getByRole("button", { name: "Startup investigation", exact: true });
     if ((await selected.getAttribute("aria-pressed")) !== "true") await selected.click();
     await expect(selected).toHaveAttribute("aria-pressed", "true");
+    if (state === "reply-context") {
+      await page
+        .getByRole("button", {
+          name: "Use to-do for next message: Improve project navigation",
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByRole("button", {
+          name: "Remove To-do · Improve project navigation",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(selected).toHaveAttribute("aria-pressed", "true");
+    }
     if (state === "unselected" || state === "empty")
       await page.getByRole("button", { name: "Startup investigation", exact: true }).click();
     if (state === "empty") {
@@ -3354,7 +3369,7 @@ const projectChatTaskRails: VisualCaptureScenario = {
       );
       if (state === "focused" || state === "focused-return") {
         await pane.getByRole("button", { name: taskTitle, exact: true }).click();
-        await expect(page.getByRole("button", { name: "Clear to-do selection" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Clear to-do focus" })).toBeVisible();
         await transcript.evaluate((element) => {
           element.scrollTop = 0;
         });

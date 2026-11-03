@@ -279,6 +279,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       addPastedText: (text) => this.composerStore.draftStore.addPastedText(text),
       removeAttachment: (index) => this.composerStore.draftStore.removeAttachment(index),
       annotations: () => this.composerStore.draftStore.annotationDraft.annotations,
+      addReplyContext: (name, text) => this.composerStore.draftStore.addReplyContext(name, text),
       addAnnotation: (annotation) => this.composerStore.draftStore.annotationDraft.add(annotation),
       updateAnnotation: (id, update) =>
         this.composerStore.draftStore.annotationDraft.update(id, update),

@@ -110,6 +110,11 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
       this.requestFocus();
   }
 
+  /** Message and to-do replies share the ordinary attachment lifecycle. */
+  addReplyContext(name: string, text: string) {
+    if (this.addTextAttachment(text, name)) this.requestFocus();
+  }
+
   private addTextAttachment(text: string, name: string) {
     this.clearError();
     if (

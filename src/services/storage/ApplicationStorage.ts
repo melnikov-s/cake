@@ -1,5 +1,4 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore, Struct } from "effect";
-import { randomUUID } from "node:crypto";
 import { ProjectTodo, ProjectTodos } from "../../contracts/projects/project-todos";
 import { clearProjectTodoSelection } from "../../utils/project-todo-selection";
 import {
@@ -603,7 +602,7 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
         let repaired = false;
         // A selection lives only while a to-do panel is open, and none is open at startup.
         const cakeChatTodos =
-          decoded.cakeChatTodos && clearProjectTodoSelection(decoded.cakeChatTodos, randomUUID);
+          decoded.cakeChatTodos && clearProjectTodoSelection(decoded.cakeChatTodos);
         if (cakeChatTodos !== decoded.cakeChatTodos) repaired = true;
         const state = {
           ...decoded,
@@ -611,7 +610,7 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
           projects: decoded.projects.map((project) => {
             if (!project.todos) return project;
             // A selection lives only while a to-do panel is open, and none is open at startup.
-            const todos = clearProjectTodoSelection(project.todos, randomUUID);
+            const todos = clearProjectTodoSelection(project.todos);
             if (todos === project.todos) return project;
             repaired = true;
             return { ...project, todos };

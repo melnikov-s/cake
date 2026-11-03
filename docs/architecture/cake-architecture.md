@@ -448,7 +448,7 @@ is a refactoring signal, not precedent.
   flagged), Active (open, unsnoozed, unflagged), Snoozed (open with a deadline), Done.
   Needs attention shows expanded only when its filtered list is nonempty; when empty, its
   heading, count and section spacing/divider are omitted. The other sections collapse independently. It presents the human action first, with quieter task identity and clickable
-  work/source links, no attention bell. Row selection is existing next-message context, not a send.
+  work/source links, no attention bell. Row selection focuses the transcript view, never outgoing context.
   The model invoking todo mutations owns attention; background refresh stays description-only.
   One-step Dismiss clears only the flag, retaining the hidden reason, selection and work state.
   An agent cannot reactivate an identical retained dismissed reason; genuinely new requests use
@@ -495,10 +495,9 @@ is a refactoring signal, not precedent.
   (revision and user/agent/sessions source). Requesting `done` on a done item is a no-op
   for state; a stale `done` edit whose only intervening change was that completion
   still applies its other fields, while any other intervening edit stays a revision
-  conflict. Selection is removable next-message
-  context, never a send action, and exists only while that Project Chat's To-do panel is open:
-  closing the panel clears it (a recorded user change), and app startup clears any persisted
-  selection because no panel is open then. Completion and snoozing also clear selection atomically. A faint
+  conflict. View focus exists only while that permanent chat's To-do panel is open:
+  closing the panel clears it without a user-change reminder, and app startup clears persisted
+  focus because no panel is open then. Completion and snoozing also clear focus atomically. A faint
   shared association cue on the selected to-do and its linked session/worker rows shows only while
   that Project Chat is the focused conversation with its panel open; it is distinct from actual
   navigation selection and never navigates or wakes work.
@@ -506,13 +505,15 @@ is a refactoring signal, not precedent.
   them into the existing recoverable input. A bound receipt is acknowledged only after
   Pi Durable has placed that input in originals, not on preparation or queue admission.
   Newer concurrent edits invalidate an older receipt and remain pending (at-least-once
-  context delivery, not exactly-once prose). Each input sent with an open selection includes
-  its snapshot in that same context block. Successful admission consumes that selection in
-  ApplicationStorage and the pane, without clearing a newer selection made during admission.
-  Failed sends retain it. Automatic deselection does not acknowledge other pending reminders;
-  those still wait for durable consumption. The shared transcript projects one compact pill
-  from the durable input, independent of later selection or lifecycle changes. A bounded
-  baseline in Project Chat’s live system context also survives recreation/reset.
+  context delivery, not exactly-once prose). View focus is excluded from these reminders and
+  the system baseline; submitting a message never consumes focus. Message replies and the
+  to-do row's reply action both add ordinary text attachments through the shared composer.
+  The existing attachment preview, removal, submission snapshot, queue and failure restoration
+  own their lifecycle, including normal attachment access. To-do attachments quote their
+  identity, scope and item snapshot; no persistent selection reminder or parallel context
+  queue is involved. Changing focus or editing the live to-do cannot rewrite draft or
+  submitted context. A bounded baseline in Project Chat’s live system context also survives
+  recreation/reset.
   Permanent Project Chat and Cake Chat group contiguous related conversation with a margin
   rail, labeling task switches rather than every message. A → B → A labels A again on return.
   Newly admitted human inputs start unresolved and ungrouped, including while queued or
@@ -526,7 +527,7 @@ is a refactoring signal, not precedent.
   classifier, classification-only tool round, extra inference, duplicate history payload
   or per-turn full-list fetch. Existing baseline/reminders and normal creation-tool results
   supply identities, including to-dos created during the response.
-  Selection is evidence, never an automatic assignment. Related follow-ups continue; genuine
+  Attached reply context is evidence, never an automatic assignment. Related follow-ups continue; genuine
   topic switches choose another identity or none, and returning to an earlier task labels it
   again. The provider-boundary adapter removes complete and split/incomplete trailers from
   live and persisted assistant text, validates successful final decisions against the exact
@@ -554,7 +555,7 @@ is a refactoring signal, not precedent.
   the complete title heading at every width. Wrapping headings retain their height
   in the reading flow, and consecutive sections leave a gap in the rule. Wide artifacts/widgets
   break the rule, not the heading. Revealing a task inspects its pane row without selecting
-  next-message context. Ordinary Project Sessions and secondary chats retain per-result controls.
+  view focus or attaching next-message context. Ordinary Project Sessions and secondary chats retain per-result controls.
   Their incoming message or source cards whose session, subagent or exact-message links
   match a to-do keep their association row visible, including historical updates, requests,
   batched completions and collapsed disclosures. The row renders the projected list item

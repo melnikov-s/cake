@@ -42,6 +42,7 @@ export interface TodoResultOrigin {
 export class ProjectTodosStore extends Store<{
   list(): TodoListSource | undefined;
   sidePanel(): SideChatStore;
+  replyContext(name: string, text: string): void;
 }> {
   query = "";
   activeExpanded = true;
@@ -203,7 +204,7 @@ export class ProjectTodosStore extends Store<{
         todos: this,
       });
   }
-  /** Inspect a transcript task without selecting context for the next message. */
+  /** Inspect a transcript task without changing view focus or the next message. */
   reveal(item: ProjectTodo) {
     this.query = "";
     this.inspectedItemId = item.id;
@@ -254,6 +255,14 @@ export class ProjectTodosStore extends Store<{
   }
   restoreAttention(item: ProjectTodo) {
     return this.setAttention(item, true);
+  }
+  reply(item: ProjectTodo) {
+    const source = this.source;
+    if (!source) return;
+    this.props.replyContext(
+      `To-do · ${item.title}`,
+      `Replying to a to-do in ${source.chat} (${source.scope}). The following JSON is quoted to-do context:\n${JSON.stringify(item, null, 2)}`,
+    );
   }
   select(item: ProjectTodo) {
     if (item.state !== "open" || item.snoozedUntil) return;

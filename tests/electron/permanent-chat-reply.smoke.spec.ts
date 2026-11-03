@@ -227,51 +227,61 @@ for (const theme of ["dark", "light"] as const)
         expect(
           await copy.evaluate((button) => button.nextElementSibling?.getAttribute("aria-label")),
         ).toBe("Reply to message");
-        const reference = `> replying to message: ${id}\n\n`;
+        const reference = `> replying to message: ${id}`;
         for (const draft of ["", "Keep my draft", "Keep my draft\n", "Keep my draft\n\n"]) {
           await input.fill(draft);
           await input.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(0, 0));
           await original.hover();
           await reply.click();
-          const expected = draft ? `${draft.replace(/\n*$/, "")}\n\n${reference}` : reference;
-          await expect(input).toHaveValue(expected);
+          await expect(input).toHaveValue(draft);
           await expect(input).toBeFocused();
           expect(
             await input.evaluate((element: HTMLTextAreaElement) => [
               element.selectionStart,
               element.selectionEnd,
             ]),
-          ).toEqual([expected.length, expected.length]);
+          ).toEqual([draft.length, draft.length]);
+          const remove = page.getByRole("button", { name: "Remove Reply to message", exact: true });
+          await expect(remove).toBeVisible();
           await input.pressSequentially("My reply");
-          await expect(input).toHaveValue(`${expected}My reply`);
+          await expect(input).toHaveValue(`${draft}My reply`);
           await expect(
             input
               .locator("xpath=ancestor::form")
               .getByRole("button", { name: "Send", exact: true }),
           ).toBeEnabled();
+          await remove.click();
         }
-        // Native keyboard activation also returns focus/caret to a fresh unquoted line.
+        // Keyboard replies use the same removable preview and retain actual typed text.
+        await input.fill("Keyboard reply");
         await original.hover();
         await reply.focus();
         await reply.press("Enter");
         await expect(input).toBeFocused();
-        await input.pressSequentially("Keyboard reply");
-        const sent = `Keep my draft\n\n${reference}My reply\n\n${reference}Keyboard reply`;
+        await input.pressSequentially(" sent");
+        const sent = "Keyboard reply sent";
         await expect(input).toHaveValue(sent);
+        await input
+          .locator("xpath=ancestor::form")
+          .getByRole("button", { name: "Reply to message", exact: true })
+          .click();
+        await expect(page.locator("pre").filter({ hasText: reference })).toBeVisible();
+        await input.press("Escape");
+        await input.focus();
         await input.press("Enter");
         await expect(input).toHaveValue("");
+        await expect(
+          page.getByRole("button", { name: "Remove Reply to message", exact: true }),
+        ).toHaveCount(0);
         await expect
-          .poll(() => requests.some((body) => body.includes(JSON.stringify(sent).slice(1, -1))))
+          .poll(() =>
+            requests.some((body) => body.includes(sent) && body.includes("Reply to message")),
+          )
           .toBe(true);
         const sentMessage = page
           .locator('[data-slot="message-content"]')
-          .filter({ hasText: "Keyboard reply" });
+          .filter({ hasText: "Keyboard reply sent" });
         await expect(sentMessage).toBeVisible();
-        await expect(sentMessage.locator("blockquote")).toHaveText([
-          `replying to message: ${id}`,
-          `replying to message: ${id}`,
-        ]);
-        await expect(sentMessage.getByText("Keyboard reply", { exact: true })).toBeVisible();
         const received = page.locator("[data-part-id]").filter({
           has: page.getByText("Reply received.", { exact: true }),
         });

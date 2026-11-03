@@ -90,10 +90,10 @@ export function createProjectTodoOperations(
     {
       command: "todos.select",
       topic: "todos",
-      summary: "Select optional next-message context, or clear it with selectedId=null.",
+      summary: "Focus a to-do in the transcript view, or clear focus with selectedId=null.",
       guidance: [
         "Pass an active to-do ID in this chat's list, or null to deselect without choosing a replacement. Selecting the same ID is idempotent, not a toggle. Only explicit selection chooses an item; completion and snoozing clear it without replacement.",
-        "Selection does not send a message, change transcript attribution or needs attention, or start/resolve work. Existing panel and next-message consumption rules still apply.",
+        "Focus only changes the transcript view while the panel is open. It never attaches context to a message, changes transcript attribution or needs attention, or starts/resolves work. Reply to a to-do from the UI to attach it to the next message.",
       ],
       inputSchema: ProjectTodoSelection,
       outputSchema: ProjectTodoSelection,

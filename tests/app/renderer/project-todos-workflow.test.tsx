@@ -842,8 +842,7 @@ it("closing the to-do panel clears the selection for the sidebar and the agent c
   expect(fixture.associated()).toEqual([]);
   expect(fixture.todos().selectedId).toBeNull();
   const baseline = projectTodoBaseline(fixture.todos());
-  expect(baseline).toContain('"selectedId":null');
-  expect(baseline).toContain('"selected":null');
+  expect(baseline).toContain('"activeCount":2');
   await act(async () => fixture.store.open());
   expect(
     screen.getByRole("button", { name: "Investigate startup" }).getAttribute("aria-pressed"),

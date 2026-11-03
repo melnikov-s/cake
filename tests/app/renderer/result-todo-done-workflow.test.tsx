@@ -441,7 +441,6 @@ it.each(chats)(
           },
           BACKGROUND_CONTEXT,
         );
-        await f.commit(projectTodos.consumeSelection(prepared));
         await started;
         if (!pendingDecision) await submission.wait(BACKGROUND_CONTEXT);
         if (pendingDecision) {

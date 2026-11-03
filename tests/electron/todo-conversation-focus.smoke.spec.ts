@@ -10,7 +10,7 @@ const titleA = "Investigate slow project startup and repeated configuration read
 const titleB = "Improve project navigation";
 
 for (const global of [false, true])
-  test(`to-do disclosures and header selection context (${global ? "Cake Chat" : "Project Chat"})`, async () => {
+  test(`to-do disclosures, independent focus and reply context (${global ? "Cake Chat" : "Project Chat"})`, async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-todo-focus-"));
     const paths = {
       cakeHome: join(root, "cake"),
@@ -107,11 +107,11 @@ for (const global of [false, true])
       const headingsA = transcript.getByRole("button", { name: titleA, exact: true });
       const headingB = transcript.getByRole("button", { name: titleB, exact: true });
       const bar = pane.locator('[data-slot="selection-bar"]');
-      const clear = bar.getByRole("button", { name: "Clear to-do selection" });
+      const clear = bar.getByRole("button", { name: "Clear to-do focus" });
       await expect(bar).toHaveCount(0);
       await selectA.click();
       await expect(selectA).toHaveAttribute("aria-pressed", "true");
-      await expect(bar).toContainText(`Currently selected:${titleA}`);
+      await expect(bar).toContainText(`Focused to-do:${titleA}`);
       await expect(headingsA).toHaveCount(2);
       await expect(headingsA.nth(0)).toHaveAttribute("aria-expanded", "true");
       await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "true");
@@ -152,6 +152,19 @@ for (const global of [false, true])
       await expect(composer).toHaveText("Keep this unsent draft.");
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
       await selectA.click();
+      await panel
+        .getByRole("button", { name: `Use to-do for next message: ${titleB}`, exact: true })
+        .click();
+      await expect(selectA).toHaveAttribute("aria-pressed", "true");
+      await expect(composer).toBeFocused();
+      await expect(composer).toHaveValue("Keep this unsent draft.");
+      await composer.pressSequentially(" With context.");
+      await expect(composer).toHaveValue("Keep this unsent draft. With context.");
+      const removeContext = pane.getByRole("button", {
+        name: `Remove To-do · ${titleB}`,
+        exact: true,
+      });
+      await expect(removeContext).toBeVisible();
       for (const width of [1800, 900, 600, 1800]) {
         await page.setViewportSize({ width, height: 1000 });
         await expect(clear).toBeVisible();
@@ -187,8 +200,9 @@ for (const global of [false, true])
         expect(Math.abs((await casual.boundingBox())!.y - casualY)).toBeLessThanOrEqual(2);
       }).toPass();
       expect(barY).toBeGreaterThan(0);
+      await expect(removeContext).toBeVisible();
       await expect(headingB).toHaveAttribute("aria-expanded", "true");
-      // Real domain mutations invalidate both context and visual focus.
+      // Real domain mutations clear view focus without changing the attached snapshot.
       await selectA.click();
       await panel.getByRole("button", { name: `Mark done: ${titleA}`, exact: true }).click();
       await expect(bar).toHaveCount(0);
@@ -202,6 +216,9 @@ for (const global of [false, true])
       await page.getByRole("menuitem", { name: "1 day", exact: true }).click();
       await expect(bar).toHaveCount(0);
       await expect(selectB).toHaveAttribute("aria-pressed", "false");
+      await expect(removeContext).toBeVisible();
+      await removeContext.click();
+      await expect(composer).toHaveValue("Keep this unsent draft. With context.");
       expect(
         await app.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows().every((window) => !window.isVisible()),

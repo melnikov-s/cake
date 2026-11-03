@@ -159,7 +159,7 @@ for (const global of [false, true]) {
       expect(store.selectedItem?.id).toBe(b);
       expect(expanded()).toEqual(["false", "false", "true"]);
       readableUnassigned();
-      expect(screen.getByText("Currently selected:")).toBeDefined();
+      expect(screen.getByText("Focused to-do:")).toBeDefined();
       await u.click(headingA()[1]!);
       expect(expanded()).toEqual(["false", "true", "true"]);
       await u.click(panel.getByRole("button", { name: "Task A" }));
@@ -167,7 +167,7 @@ for (const global of [false, true]) {
       await u.click(panel.getByRole("button", { name: "Task A" }));
       expect(store.selectedItem).toBeUndefined();
       expect(expanded()).toEqual(["true", "true", "true"]);
-      expect(screen.queryByText("Currently selected:")).toBeNull();
+      expect(screen.queryByText("Focused to-do:")).toBeNull();
 
       await u.click(panel.getByRole("button", { name: "Task A" }));
       act(() =>
@@ -193,7 +193,7 @@ for (const global of [false, true]) {
       ).toBeNull();
       act(() => applyPartUpdate(session.model.parts, user("pending", b), sessionId));
       expect(transcript.queryByText("pending-answer")).toBeNull();
-      await u.click(screen.getByRole("button", { name: "Clear to-do selection" }));
+      await u.click(screen.getByRole("button", { name: "Clear to-do focus" }));
       expect(todos.selectedId).toBeNull();
       expect(transcript.getByText("pending-answer")).toBeDefined();
       expect(
@@ -227,7 +227,7 @@ for (const global of [false, true]) {
           publish();
         });
         expect(store.selectedItem).toBeUndefined();
-        expect(screen.queryByRole("button", { name: "Clear to-do selection" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Clear to-do focus" })).toBeNull();
         expect(transcript.getByText("a1-answer")).toBeDefined();
         expect(transcript.getByText("pending-answer")).toBeDefined();
         act(() => {

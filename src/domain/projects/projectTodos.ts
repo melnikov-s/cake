@@ -110,15 +110,12 @@ const change = Effect.fn("ProjectTodos.change")(function* (
         const updated = yield* transition(previous);
         const modifiedAt = DateTime.formatIso(yield* DateTime.now);
         const revisions = new Map(previous.items.map((item) => [item.id, item.revision]));
-        const todos = clearCompletedProjectTodoSelection(
-          {
-            ...updated,
-            items: updated.items.map((item) =>
-              revisions.get(item.id) === item.revision ? item : { ...item, modifiedAt },
-            ),
-          },
-          randomUUID,
-        );
+        const todos = clearCompletedProjectTodoSelection({
+          ...updated,
+          items: updated.items.map((item) =>
+            revisions.get(item.id) === item.revision ? item : { ...item, modifiedAt },
+          ),
+        });
         return global
           ? { ...current, cakeChatTodos: todos }
           : {
@@ -428,14 +425,8 @@ export const mutateUser = Effect.fn("ProjectTodos.mutateUser")(function* (
       )
     )
       return Effect.fail(error("Select an active to-do in this list"));
-    return Effect.succeed(
-      value.selectedId === input.selectedId
-        ? value
-        : enqueue(
-            { ...value, selectedId: input.selectedId },
-            { _tag: "Selection", selectedId: input.selectedId, sequence: value.sequence + 1 },
-          ),
-    );
+    // View focus is presentation, never context for an outgoing message.
+    return Effect.succeed({ ...value, selectedId: input.selectedId });
   });
 });
 
@@ -539,7 +530,6 @@ export const prepareUserContext = Effect.fn("ProjectTodos.prepareUserContext")(f
       digest.reminder,
     ),
     sequence: value.sequence,
-    selectedId: value.selectedId,
   };
 });
 
@@ -562,41 +552,7 @@ export const prepareForChat = Effect.fn("ProjectTodos.prepareForChat")(function*
   const scope = yield* scopeForChat(sessionId);
   if (scope === undefined) return { text };
   const prepared = yield* prepareUserContext(scope, text);
-  return {
-    text: prepared.text,
-    selection: prepared.selectedId
-      ? { scope, id: prepared.selectedId, sequence: prepared.sequence }
-      : undefined,
-  };
-});
-
-/** Consume only the selection captured by an accepted user input, not its delivery receipt.
- * Other reminders still wait for durable consumption. A later selection (even A → B → A)
- * wins over an in-flight admission; unrelated edits do not prevent deselection.
- */
-export const consumeSelection = Effect.fn("ProjectTodos.consumeSelection")(function* (prepared: {
-  readonly selection?: { scope: string; id: string; sequence: number };
-}) {
-  const selection = prepared.selection;
-  if (!selection) return;
-  yield* change(selection.scope, (current) => {
-    if (
-      current.selectedId !== selection.id ||
-      current.pending.some(
-        (entry) => entry._tag === "Selection" && entry.sequence > selection.sequence,
-      )
-    )
-      return Effect.succeed(current);
-    // Automatic consumption is not another user selection change. Do not invalidate the
-    // admitted input's receipt or remove its other pending reminders.
-    const pending = current.pending.filter((entry) => entry._tag !== "Selection");
-    return Effect.succeed({
-      ...current,
-      selectedId: null,
-      pending,
-      deliveryToken: pending.length ? current.deliveryToken : null,
-    });
-  });
+  return { text: prepared.text };
 });
 
 export const acknowledge = Effect.fn("ProjectTodos.acknowledge")(function* (

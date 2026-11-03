@@ -164,7 +164,7 @@ test("to-do text selection and copying do not activate rows or their controls", 
       await unchanged();
       await clearSelection();
     }
-    // Clicking an already selected row clears durable next-message context.
+    // Clicking an already focused row clears the transcript view filter.
     const savedSelection = async () =>
       JSON.parse(await readFile(join(cakeHome, "state", "application.json"), "utf8")).data
         .projects[0].todos.selectedId;
@@ -189,10 +189,15 @@ test("to-do text selection and copying do not activate rows or their controls", 
     await expect(action).toHaveAttribute("aria-pressed", "true");
     await action.press("Enter");
     await expect(action).toHaveAttribute("aria-pressed", "false");
+    await expect(done).toBeEnabled();
+    const reply = row.getByRole("button", { name: `Use to-do for next message: ${title}` });
+    // Plain Tab intentionally returns to writing; Shift+Tab retains control traversal.
     await link.focus();
     await link.press("Shift+Tab");
+    await expect(reply).toBeFocused();
+    await reply.press("Shift+Tab");
     await expect(done).toBeFocused();
-    await page.keyboard.press("Shift+Tab");
+    await done.press("Shift+Tab");
     await expect(action).toBeFocused();
     await action.click();
     await expect(action).toHaveAttribute("aria-pressed", "true");

@@ -785,11 +785,9 @@ describe("ApplicationStorage", () => {
             yield* (yield* ApplicationState).initialize();
             const recovered = yield* projectTodos.list("/project");
             assert.deepEqual(recovered.items, [created]);
-            // No to-do panel is open at startup, so the agent learns the selection ended.
+            // No to-do panel is open at startup; view focus clears without a reminder.
             assert.equal(recovered.selectedId, null);
-            assert.deepEqual(recovered.pending, [
-              { _tag: "Selection", sequence: 2, selectedId: null },
-            ]);
+            assert.deepEqual(recovered.pending, []);
           }).pipe(Effect.provide(owner, { local: true }));
         });
       }),
@@ -870,12 +868,10 @@ describe("ApplicationStorage", () => {
           const loaded = yield* storage.load();
           const repaired = loaded.state.projects[0]?.todos;
           assert.equal(repaired?.selectedId, null);
-          assert.equal(repaired?.sequence, 5);
-          assert.notEqual(repaired?.deliveryToken, token);
+          assert.equal(repaired?.sequence, 4);
+          assert.equal(repaired?.deliveryToken, null);
           assert.deepEqual(repaired?.items, todos.items);
-          assert.deepEqual(repaired?.pending, [
-            { _tag: "Selection", sequence: 5, selectedId: null },
-          ]);
+          assert.deepEqual(repaired?.pending, []);
           assert.deepEqual(
             JSON.parse(controls.files.get(documentPath) ?? "{}").data.projects[0].todos,
             repaired,
@@ -944,11 +940,9 @@ describe("ApplicationStorage", () => {
             const recovered = loaded.state.projects[0]?.todos;
             assert.deepEqual(recovered?.items, expected.items);
             assert.equal(recovered?.selectedId, null);
-            assert.equal(recovered?.sequence, 3);
-            assert.notEqual(recovered?.deliveryToken, token);
-            assert.deepEqual(recovered?.pending, [
-              { _tag: "Selection", sequence: 3, selectedId: null },
-            ]);
+            assert.equal(recovered?.sequence, 2);
+            assert.equal(recovered?.deliveryToken, null);
+            assert.deepEqual(recovered?.pending, []);
             assert.equal(JSON.parse(controls.files.get(documentPath) ?? "{}").version, 10);
             assert.deepEqual((yield* storage.load()).state.projects[0]?.todos, recovered);
           }),

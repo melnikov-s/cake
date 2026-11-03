@@ -118,6 +118,7 @@ it.effect(
               return owner && { scope: project, chat: "Project Chat" as const, owner };
             },
             sidePanel: () => sidePanel,
+            replyContext: () => {},
           }),
         );
         const ready = yield* Deferred.make<void>();
