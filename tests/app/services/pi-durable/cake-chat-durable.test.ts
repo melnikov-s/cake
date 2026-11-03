@@ -245,7 +245,6 @@ it("delivers Project Chat context only on consumed originals, not preparation, c
   const id = "00000000-0000-4000-8000-000000000001";
   const reminder = projectTodoReminder({
     ...emptyProjectTodos(),
-    selectedId: id,
     sequence: 1,
     deliveryToken: "00000000-0000-4000-8000-000000000002",
     items: [
@@ -259,7 +258,7 @@ it("delivers Project Chat context only on consumed originals, not preparation, c
         associations: [],
       },
     ],
-    pending: [{ _tag: "Selection", selectedId: id, sequence: 1 }],
+    pending: [{ _tag: "Attention", id, title: "Follow up", needsAttention: true, sequence: 1 }],
   });
   const text = durableInputText(`${reminder}\n\nNext user input`, [], false);
   const active = await f.submit("Active input", "active-input");

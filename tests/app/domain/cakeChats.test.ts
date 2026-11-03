@@ -947,8 +947,9 @@ describe("permanent Cake Chat", () => {
             yield* Effect.promise(() => control.select({ selectedId: null }, todoSignal)),
           ).toEqual({ selectedId: null });
         }
-        expect(prompt()).toContain('"selectedId":null');
-        expect(globalPrompt()).toContain('"selectedId":null');
+        // View focus is presentation only; it never enters either chat's baseline.
+        expect(prompt()).not.toContain("selectedId");
+        expect(globalPrompt()).not.toContain("selectedId");
         expect(globalPrompt()).toContain(globalTodo.id);
         expect(global.runtime.cakeChatTodos?.().map((item) => item.id)).toEqual([globalTodo.id]);
         expect(options.runtime.cakeChatTodos?.().map((item) => item.id)).toEqual([todo.id]);

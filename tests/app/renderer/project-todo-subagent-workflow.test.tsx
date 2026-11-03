@@ -100,7 +100,7 @@ const todos = (parent: string): ProjectTodos => ({
   ],
 });
 
-it("matches a subagent by public handle AND parent, changes/clears the shared cue, and closing the panel clears the selection", async () => {
+it("matches a subagent by public handle AND parent, changes/clears the shared cue, and closing the panel clears focus", async () => {
   using fixture = renderSubagentActivity({
     projectChat: true,
     activity: workerActivity({ parentSessionId: projectChat }),
@@ -109,34 +109,34 @@ it("matches a subagent by public handle AND parent, changes/clears the shared cu
   });
   await fixture.user.click((await screen.findByText("Work log")).closest("summary")!);
   const row = () => fixture.container.querySelector(`[data-subagent-handle="${handleId}"]`)!;
-  const title = screen.getByRole("button", { name: "Review worker" });
+  const title = () => screen.getByRole("button", { name: "Review worker" });
   expect(row().hasAttribute("data-associated")).toBe(false);
-  await fixture.user.click(title);
-  expect(title.getAttribute("aria-pressed")).toBe("true");
+  await fixture.user.click(title());
+  expect(title().getAttribute("aria-pressed")).toBe("true");
   expect(row().getAttribute("data-associated")).toBe("true");
   expect(row().className).toContain("outline-dashed");
   const link = screen.getByRole("link", { name: "Investigation worker" });
   expect(link.getAttribute("href")).toBe(subagentLink(projectChat, handleId));
+  await fixture.user.click(screen.getByRole("button", { name: "Unfocus to-do: Review worker" }));
+  expect(row().hasAttribute("data-associated")).toBe(false);
+  // Same handle, different parent: focusing it never cues this chat's worker.
   await fixture.user.click(screen.getByRole("button", { name: "Other parent" }));
   expect(row().hasAttribute("data-associated")).toBe(false);
-  await fixture.user.click(title);
+  await fixture.user.click(title());
   expect(row().getAttribute("data-associated")).toBe("true");
-  await fixture.user.click(title);
-  expect(row().hasAttribute("data-associated")).toBe(false);
-  await fixture.user.click(title);
-  expect(fixture.todos()?.selectedId).toBe(first);
+  // Focus is idempotent, not a toggle.
+  await fixture.user.click(title());
+  expect(row().getAttribute("data-associated")).toBe("true");
+  // View focus is window-local; it never writes the persisted selection.
+  expect(fixture.todos()?.selectedId).toBeNull();
   await fixture.user.click(screen.getByRole("button", { name: "Close To-do" }));
   expect(screen.queryByRole("button", { name: "Review worker" })).toBeNull();
   expect(row().hasAttribute("data-associated")).toBe(false);
-  await act(async () => {});
-  expect(fixture.todos()?.selectedId).toBeNull();
   act(() => fixture.root.cakeChatCollectionStore.registry.find(projectChat)!.todos.open());
-  expect(screen.getByRole("button", { name: "Review worker" }).getAttribute("aria-pressed")).toBe(
-    "false",
-  );
+  expect(title().getAttribute("aria-pressed")).toBe("false");
 });
 
-it("shows no cue in another chat while the Project Chat's to-do panel holds a selection", async () => {
+it("shows no cue in another chat while the Project Chat's to-do panel holds focus", async () => {
   using fixture = renderSubagentActivity({
     activity: workerActivity(),
     parts: workerTranscript(),
@@ -144,9 +144,10 @@ it("shows no cue in another chat while the Project Chat's to-do panel holds a se
   });
   act(() => fixture.root.cakeChatCollectionStore.registry.find(projectChat)!.todos.open());
   await fixture.user.click((await screen.findByText("Work log")).closest("summary")!);
-  const title = screen.getByRole("button", { name: "Review worker" });
-  await fixture.user.click(title);
-  expect(title.getAttribute("aria-pressed")).toBe("true");
+  await fixture.user.click(screen.getByRole("button", { name: "Review worker" }));
+  expect(screen.getByRole("button", { name: "Review worker" }).getAttribute("aria-pressed")).toBe(
+    "true",
+  );
   expect(
     fixture.container
       .querySelector(`[data-subagent-handle="${handleId}"]`)!

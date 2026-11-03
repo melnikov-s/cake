@@ -597,7 +597,7 @@ it.each(["initial load", "snapshot hydration"] as const)(
   },
 );
 
-it("toggles Project Chat to-dos in the existing side pane, selects/deselects, completes/reopens and navigates titled work links", async () => {
+it("toggles Project Chat to-dos in the existing side pane, focuses/unfocuses, completes/reopens and navigates titled work links", async () => {
   const runtime = createTodoRuntime();
   try {
     await runtime.runPromise(upsertProject("/zombies", "zombies"));
@@ -654,28 +654,32 @@ it("toggles Project Chat to-dos in the existing side pane, selects/deselects, co
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
     expect(within(panel).getByText(item.description)).toBeTruthy();
     expect(within(panel).queryByText("Earlier question")).toBeNull();
-    const select = within(panel).getByRole("button", { name: item.title });
-    await f.user.click(select);
-    await waitFor(() => expect(select.getAttribute("aria-pressed")).toBe("true"));
+    const row = () => within(panel).getByRole("button", { name: item.title });
+    const focusList = () => within(panel).getByRole("list", { name: "Focus to-dos" });
+    await f.user.click(row());
+    expect(within(focusList()).getByRole("button", { name: item.title })).toBeTruthy();
+    expect(row().getAttribute("aria-pressed")).toBe("true");
     expect(f.models.cakeChatConversation(projectId).parts).toHaveLength(0);
-    await f.user.click(select);
-    await waitFor(() => expect(select.getAttribute("aria-pressed")).toBe("false"));
+    // Focus is idempotent; only the explicit unfocus action removes it.
+    await f.user.click(row());
+    expect(row().getAttribute("aria-pressed")).toBe("true");
+    await f.user.click(within(panel).getByRole("button", { name: `Unfocus to-do: ${item.title}` }));
+    expect(row().getAttribute("aria-pressed")).toBe("false");
     expect(f.models.cakeChatConversation(projectId).parts).toHaveLength(0);
-    await f.user.click(select);
-    await waitFor(() => expect(select.getAttribute("aria-pressed")).toBe("true"));
+    await f.user.click(row());
+    expect(row().getAttribute("aria-pressed")).toBe("true");
     await f.user.click(within(panel).getByRole("button", { name: `Mark done: ${item.title}` }));
-    await waitFor(() =>
-      expect(within(panel).queryByRole("list", { name: "Active to-dos" })).toBeNull(),
-    );
-    expect(toggle.textContent).toBe("0");
-    await f.user.click(within(panel).getByRole("button", { name: "Done (2)" }));
+    await waitFor(() => expect(toggle.textContent).toBe("0"));
+    expect(within(panel).queryByRole("list", { name: "Active to-dos" })).toBeNull();
+    // Completion keeps window-local focus; the row stays in Focus with its Reopen action.
+    expect(row().getAttribute("aria-pressed")).toBe("true");
     await f.user.click(within(panel).getByRole("button", { name: `Reopen: ${item.title}` }));
-    await waitFor(() =>
-      expect(within(panel).getByRole("list", { name: "Active to-dos" })).toBeTruthy(),
-    );
-    expect(toggle.textContent).toBe("1");
+    await waitFor(() => expect(toggle.textContent).toBe("1"));
+    await f.user.click(within(panel).getByRole("button", { name: `Unfocus to-do: ${item.title}` }));
     expect(
-      within(panel).getByRole("button", { name: item.title }).getAttribute("aria-pressed"),
+      within(within(panel).getByRole("list", { name: "Active to-dos" }))
+        .getByRole("button", { name: item.title })
+        .getAttribute("aria-pressed"),
     ).toBe("false");
     await f.user.click(screen.getByRole("button", { name: "Close To-do" }));
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
@@ -698,7 +702,6 @@ it.each(["response", "table"] as const)(
         ...projectRecord({ path: "/zombies", name: "zombies" }),
         todos: {
           ...emptyProjectTodos(),
-          selectedId: second,
           items: [first, second].map((id) => ({
             id,
             title: `Task ${id}`,
@@ -735,6 +738,8 @@ it.each(["response", "table"] as const)(
     f.publish(projectId, [input, answer], false);
     await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
     await f.user.click(screen.getByRole("button", { name: "To-do" }));
+    // Focus is window-local view state: focusing the other task folds sections attributed later.
+    await f.user.click(screen.getByRole("button", { name: `Task ${second}` }));
     const title = surface === "response" ? "Cake" : "Table";
     await f.user.click(await screen.findByRole("button", { name: `View ${surface} fullscreen` }));
     const reader = screen.getByRole("dialog", { name: title });
@@ -761,7 +766,6 @@ it.each(["response", "table"] as const)(
             ...projectRecord({ path: "/zombies", name: "zombies" }),
             todos: {
               ...emptyProjectTodos(),
-              selectedId: second,
               items: [first, second].map((id) => ({
                 id,
                 title: `Updated task ${id}`,

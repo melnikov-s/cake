@@ -19,6 +19,13 @@ permits, since it runs Oxlint first and then ESLint. Run focused tests and the
 relevant typecheck or build for the files changed. Preserve unrelated worktree
 changes.
 
+Before committing, run the full `pnpm typecheck && pnpm test` (about 1 minute and
+4 minutes locally). Focused tests alone do not catch tests elsewhere that encode
+the behavior you changed. Claim a failure as pre-existing only after reproducing
+the same test failing on the base commit, and name each one in the report. CI runs
+`format:check`, `lint`, `typecheck` and the sharded `test` suite on every PR and
+push to main.
+
 ### Workflow and feature test depth
 
 - For renderer workflows, follow `docs/development/renderer-store-testing.md`; `tests/app/renderer/project-settings-dialog.test.tsx` is the React workflow pilot. Start at the real feature UI with real Root/Models/Stores and typed service fakes. Replace overlapping direct Store tests rather than duplicating coverage; existing Store suites are migration backlog.

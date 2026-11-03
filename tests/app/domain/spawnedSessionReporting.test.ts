@@ -72,7 +72,6 @@ import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnC
 import * as pendingReports from "../../../src/domain/conversations/pendingReports";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import * as cakeChatOperations from "../../../src/domain/cake-chats/cakeChatOperations";
-import { projectTodoReceipt } from "../../../src/contracts/projects/project-todo-context";
 import { splitSessionDigestReminder } from "../../../src/contracts/cake-chats/session-digest-reminder";
 import { messageReference } from "../../../src/contracts/conversations/message-reference";
 import { splitContextReminders } from "../../../src/services/pi/runtime/session-context-reminders";
@@ -625,7 +624,7 @@ const onlyTurn = Effect.fn("SpawnedReportingTest.onlyTurn")(function* () {
   return turn;
 });
 
-describe("one-shot to-do selection admission", () => {
+describe("to-do view focus on admission", () => {
   const scopes = [
     { scope: CAKE_CHAT_TODO_SCOPE, sessionId: CAKE_CHAT_SESSION_ID },
     { scope: "/project", sessionId: projectChatSessionId("/project") },
@@ -638,14 +637,10 @@ describe("one-shot to-do selection admission", () => {
   });
 
   it.effect.each(
-    scopes.flatMap((scope) =>
-      [false, true].flatMap((busy) =>
-        ["start", "deliver"].map((path) => ({ ...scope, busy, path })),
-      ),
-    ),
-  )("snapshots then consumes selection for $sessionId ($path, busy=$busy)", (test) =>
+    scopes.flatMap((scope) => ["start", "deliver"].map((path) => ({ ...scope, path }))),
+  )("keeps focus out of $sessionId input and never consumes it ($path)", (test) =>
     Effect.gen(function* () {
-      const f = yield* fixture(test.busy);
+      const f = yield* fixture();
       yield* f.run(
         Effect.gen(function* () {
           yield* assembleCoordinator(test.sessionId);
@@ -656,216 +651,30 @@ describe("one-shot to-do selection admission", () => {
           yield* projectTodos.mutateUser(test.scope, { _tag: "Select", selectedId: item.id });
           yield* projectTodos.recordSessionChange(test.scope, "worker", "Investigation", true);
           const before = yield* projectTodos.list(test.scope);
-          const send = (text: string) =>
-            test.path === "start"
-              ? cakeChatOperations.start(
-                  { ...input(test.sessionId, text), tools: [], newSession: {} },
-                  {
-                    location: { workingDirectory: "/home", sessionDirectory: "/chat" },
-                    agentDirectory: "/cake",
-                  },
-                )
-              : sessionChats.deliver(
-                  input(test.sessionId, text),
-                  test.busy ? "follow-up" : "prompt",
-                );
-          yield* send("Explain this");
-          const after = yield* projectTodos.list(test.scope);
-          assert.equal(after.selectedId, null);
-          // Admission consumes only selection; lifecycle reminders still await SDK originals.
-          assert.deepEqual(
-            after.pending,
-            before.pending.filter((entry) => entry._tag !== "Selection"),
-          );
-          yield* send("Next question");
-          yield* Deferred.await(f.received);
-          if (test.busy) assert.equal(f.queue.length, 2);
-          else while (f.inputs.length < 2) yield* Effect.yieldNow;
-          const first = test.busy ? f.queue[0] : f.inputs[0]?.text;
-          const next = test.busy ? f.queue[1] : f.inputs[1]?.text;
-          assert.ok(first);
-          assert.ok(next);
-          const split = splitContextReminders(first);
-          assert.equal(split.text, "Explain this");
-          assert.deepEqual(
-            split.reminders.map((entry) => entry.title),
-            [`To-do · ${item.title}`],
-          );
-          const later = splitContextReminders(next);
-          assert.equal(later.text, "Next question");
-          assert.ok(later.reminders.every((entry) => !entry.title.startsWith("To-do ·")));
-          assert.ok(!next.includes(item.id));
-          // The old input still acknowledges its other delivered changes after deselection.
-          const receipt = projectTodoReceipt(first);
-          assert.ok(receipt);
-          yield* projectTodos.acknowledge(test.scope, receipt);
-          assert.deepEqual((yield* projectTodos.list(test.scope)).pending, []);
-          assert.ok(first.includes(item.id)); // Exact context remains in the model input.
-          assert.equal(
-            splitContextReminders(first).reminders[0]?.text,
-            `Selected to-do: ${JSON.stringify(item.title)}.\nTo-do selection changed.\nSession "Investigation" resolved.`,
-          );
-        }),
-      );
-    }),
-  );
-
-  it.effect.each(
-    scopes.flatMap((scope) => ["start", "deliver"].map((path) => ({ ...scope, path }))),
-  )("retains $sessionId selection on failed $path admission and consumes it on retry", (test) =>
-    Effect.gen(function* () {
-      const f = yield* fixture();
-      yield* f.run(
-        Effect.gen(function* () {
-          yield* assembleCoordinator(test.sessionId);
-          const item = yield* projectTodos.create(test.scope, {
-            title: "Retry",
-            description: "Try again.",
-          });
-          yield* projectTodos.mutateUser(test.scope, { _tag: "Select", selectedId: item.id });
-          const before = yield* projectTodos.list(test.scope);
-          const runtimes = yield* CakeSessionRuntimes;
-          const handle = yield* runtimes.acquireSession(test.sessionId);
-          const rejectedHandle = {
-            ...handle,
-            prompt: () =>
-              Effect.fail(new PiSessionError({ operation: "prompt", message: "Rejected" })),
-          };
-          const send = Effect.fn("TodoSelectionTest.send")(function* () {
-            return test.path === "start"
-              ? yield* cakeChatOperations.start(
-                  { ...input(test.sessionId, "Explain"), tools: [], newSession: {} },
-                  {
-                    location: { workingDirectory: "/home", sessionDirectory: "/chat" },
-                    agentDirectory: "/cake",
-                  },
-                )
-              : yield* sessionChats.deliver(input(test.sessionId, "Explain"), "prompt");
-          });
-          const failed = yield* send().pipe(
-            Effect.provideService(CakeSessionRuntimes, {
-              ...runtimes,
-              acquireSession: () => Effect.succeed(rejectedHandle),
-              acquire: () => Effect.succeed(rejectedHandle),
-            }),
-            Effect.result,
-          );
-          assert.equal(failed._tag, "Failure");
-          assert.deepEqual(yield* projectTodos.list(test.scope), before);
-          yield* send();
-          assert.equal((yield* projectTodos.list(test.scope)).selectedId, null);
-        }),
-      );
-    }),
-  );
-
-  it.effect.each(scopes)(
-    "does not consume selection for a cross-session input in $sessionId",
-    (test) =>
-      Effect.gen(function* () {
-        const f = yield* fixture();
-        yield* f.run(
-          Effect.gen(function* () {
-            yield* assembleCoordinator(test.sessionId);
-            const item = yield* projectTodos.create(test.scope, {
-              title: "Review",
-              description: "Review findings.",
-            });
-            yield* projectTodos.mutateUser(test.scope, { _tag: "Select", selectedId: item.id });
-            const before = yield* projectTodos.list(test.scope);
-            yield* sessionChats
-              .deliver(
+          const text = "Explain this";
+          yield* test.path === "start"
+            ? cakeChatOperations.start(
+                { ...input(test.sessionId, text), tools: [], newSession: {} },
                 {
-                  ...input(test.sessionId, "Independent question"),
-                  crossSession: {
-                    version: 1,
-                    messageId: "10000000-0000-4000-8000-000000000001",
-                    threadId: "10000000-0000-4000-8000-000000000001",
-                    sequence: 1,
-                    expectsResponse: true,
-                    resultDelivery: "reply",
-                    sender: { sessionId: parentId, title: "Worker", kind: "project-session" },
-                  },
+                  location: { workingDirectory: "/home", sessionDirectory: "/chat" },
+                  agentDirectory: "/cake",
                 },
-                "prompt",
               )
-              .pipe(
-                Effect.provide(
-                  Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
-                ),
-              );
-            assert.deepEqual(yield* projectTodos.list(test.scope), before);
-          }),
-        );
-      }),
-  );
-
-  it.effect.each(["different", "reselected", "unrelated"] as const)(
-    "compares the captured selection after in-flight edits (%s)",
-    (race) =>
-      Effect.gen(function* () {
-        const f = yield* fixture();
-        yield* f.run(
-          Effect.gen(function* () {
-            const sessionId = projectChatSessionId("/project");
-            yield* assembleCoordinator(sessionId);
-            const first = yield* projectTodos.create("/project", {
-              title: "First",
-              description: "First task.",
-            });
-            const second = yield* projectTodos.create("/project", {
-              title: "Second",
-              description: "Second task.",
-            });
-            yield* projectTodos.mutateUser("/project", { _tag: "Select", selectedId: first.id });
-            const runtimes = yield* CakeSessionRuntimes;
-            const handle = yield* runtimes.acquireSession(sessionId);
-            const entered = yield* Deferred.make<string>();
-            const release = yield* Deferred.make<void>();
-            const sending = yield* sessionChats
-              .deliver(input(sessionId, "Explain first"), "prompt")
-              .pipe(
-                Effect.provideService(CakeSessionRuntimes, {
-                  ...runtimes,
-                  acquireSession: () =>
-                    Effect.succeed({
-                      ...handle,
-                      prompt: (text, ...args) =>
-                        Deferred.succeed(entered, text).pipe(
-                          Effect.andThen(Deferred.await(release)),
-                          Effect.andThen(handle.prompt(text, ...args)),
-                        ),
-                    }),
-                }),
-                Effect.forkScoped,
-              );
-            const captured = yield* Deferred.await(entered);
-            assert.ok(captured.includes(first.id));
-            assert.equal((yield* projectTodos.list("/project")).selectedId, first.id);
-            if (race === "unrelated")
-              yield* projectTodos.recordSessionChange("/project", "worker", "New result", true);
-            else {
-              yield* projectTodos.mutateUser("/project", { _tag: "Select", selectedId: second.id });
-              if (race === "reselected")
-                yield* projectTodos.mutateUser("/project", {
-                  _tag: "Select",
-                  selectedId: first.id,
-                });
-            }
-            yield* Deferred.succeed(release, undefined);
-            yield* Fiber.join(sending);
-            const current = yield* projectTodos.list("/project");
-            assert.equal(
-              current.selectedId,
-              race === "unrelated" ? null : race === "reselected" ? first.id : second.id,
-            );
-            const oldReceipt = projectTodoReceipt(captured);
-            assert.ok(oldReceipt);
-            yield* projectTodos.acknowledge("/project", oldReceipt);
-            assert.deepEqual((yield* projectTodos.list("/project")).pending, current.pending);
-          }),
-        );
-      }),
+            : sessionChats.deliver(input(test.sessionId, text), "prompt");
+          const after = yield* projectTodos.list(test.scope);
+          assert.equal(after.selectedId, item.id);
+          // Lifecycle reminders still await SDK originals; admission does not touch them.
+          assert.deepEqual(after.pending, before.pending);
+          yield* Deferred.await(f.received);
+          const sent = f.inputs[0]?.text;
+          assert.ok(sent);
+          const split = splitContextReminders(sent);
+          assert.equal(split.text, text);
+          assert.ok(!sent.includes(item.id));
+          assert.equal(split.reminders[0]?.text, 'Session "Investigation" resolved.');
+        }),
+      );
+    }),
   );
 });
 

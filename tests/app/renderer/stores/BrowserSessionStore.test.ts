@@ -113,9 +113,12 @@ describe("BrowserSessionStore", () => {
       await f.subject.configuration.selectConfiguration(configuration);
       f.subject.chat.setDraft("First prompt");
       const submission = f.subject.chat.submit();
-      expect(f.start).toHaveBeenCalledWith(
-        expect.objectContaining({ text: "First prompt", configuration }),
-        expect.objectContaining({ signal: f.subject.signal }),
+      // Submission first lets any active dictation finalize the draft, so admission is async.
+      await vi.waitFor(() =>
+        expect(f.start).toHaveBeenCalledWith(
+          expect.objectContaining({ text: "First prompt", configuration }),
+          expect.objectContaining({ signal: f.subject.signal }),
+        ),
       );
       expect(f.subject.chat.canSubmit).toBe(false);
       expect(f.subject.chat.modelPickerVisible).toBe(false);

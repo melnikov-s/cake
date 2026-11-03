@@ -42,3 +42,7 @@ Before you add code for a race condition or security edge case that is unlikely 
 ## Verification baseline
 
 Preserve unrelated worktree changes. Format changed files with Oxfmt, run `pnpm format:check`, `pnpm lint:oxlint` for every source change, focused tests, and the relevant typecheck/build. Prefer final `pnpm lint` when scope permits. Use `pnpm build:slim` for ordinary work; full/native builds require native work or an explicit request. Read the verification guide for detailed testing and build procedures.
+
+Before every commit that changes source, tests or config, run the full `pnpm typecheck && pnpm test`, not only focused tests. Commit only when both pass. CI (`.github/workflows/ci.yml`) runs the same checks on every PR and push to main.
+
+You may call a failure "pre-existing" only after running that same test on the base commit (for example in a temporary `git worktree add` of the merge base) and seeing it fail there too. In the report, name each such test (file and test name) with the base commit you checked. Never wave failures off by count ("24 unrelated failures"); a failure you did not prove on the base commit is yours to fix or to report as a new regression.
