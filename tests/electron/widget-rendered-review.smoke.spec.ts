@@ -192,6 +192,7 @@ export default function DelayedReviewFixture() {
     expect(colors.magenta).toBe(0);
     expect(result.diagnostics).toContain("widget=560x480");
     expect(result.diagnostics).toContain("host=hidden-offscreen");
+    expect(result.diagnostics).toContain("deviceScaleFactor=2");
     expect(colors.size.width).toBeGreaterThan(800);
     expect(colors.size.width).toBeLessThan(1_200);
 

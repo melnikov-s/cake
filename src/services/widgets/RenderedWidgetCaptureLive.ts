@@ -105,7 +105,8 @@ const acquireWindow = Effect.acquireRelease(
           contextIsolation: true,
           nodeIntegration: false,
           sandbox: true,
-          offscreen: true,
+          // Keep review pixels at 2x independently of the display hosting this hidden window.
+          offscreen: { deviceScaleFactor: 2 },
           backgroundThrottling: false,
           spellcheck: false,
         },

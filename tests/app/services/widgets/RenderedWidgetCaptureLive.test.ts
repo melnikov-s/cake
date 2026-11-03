@@ -62,7 +62,7 @@ describe("RenderedWidgetCaptureLive", () => {
             contextIsolation: true,
             nodeIntegration: false,
             sandbox: true,
-            offscreen: true,
+            offscreen: { deviceScaleFactor: 2 },
           }),
         }),
       );
