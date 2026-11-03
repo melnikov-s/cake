@@ -142,9 +142,10 @@ const deliverBatch = Effect.fn("UpdateBatches.deliverBatch")(function* (
       );
       if (!batch) return;
       // An explicit stop or interrupted work awaiting review is not woken by deferred updates;
-      // they ride along with the user's next message instead.
+      // they ride along with the user's next message instead. Like resolution below, this
+      // changes only through a user action, so the pass rechecks a parked batch once a minute.
       const journal = yield* (yield* RuntimeRecoveryStorage).get(recipientSessionId);
-      if (journal?.state === "stopped" || journal?.state === "blocked") return;
+      if (journal?.state === "stopped" || journal?.state === "blocked") return "parked" as const;
       const presence = yield* Effect.serviceOption(CakeChatComposerPresence);
       if (Option.isSome(presence) && (yield* presence.value.holdsInterrupts(recipientSessionId)))
         return;
@@ -162,7 +163,7 @@ const deliverBatch = Effect.fn("UpdateBatches.deliverBatch")(function* (
           activeRoot: location.sessionDirectory,
           resolvedRoot: location.resolvedSessionDirectory,
         });
-        if (namespace !== "active") return;
+        if (namespace !== "active") return "parked" as const;
       }
       const handle =
         existing?.profile === "DiscussionSession"
@@ -267,21 +268,25 @@ export const runPass = Effect.fn("UpdateBatches.runPass")(function* () {
       continue;
     }
     if (now < Date.parse(batch.dueAt)) continue;
-    yield* Effect.scoped(deliverBatch(recipientSessionId)).pipe(
+    // Unavailable and parked recipients are checked again each minute rather than every pass.
+    const retryLater = Effect.gen(function* () {
+      const current = (yield* storage.state()).updateBatches?.find(
+        (item) => item.recipientSessionId === recipientSessionId,
+      );
+      if (current)
+        yield* storage.saveUpdateBatch({
+          ...current,
+          dueAt: new Date(now + UPDATE_BATCH_RETRY_MS).toISOString(),
+        });
+    });
+    const outcome = yield* Effect.scoped(deliverBatch(recipientSessionId)).pipe(
       Effect.catch((error) =>
-        Effect.gen(function* () {
-          yield* Effect.logWarning("Batched update delivery will retry", error);
-          // Unavailable recipients retry each minute rather than every pass.
-          const current = (yield* storage.state()).updateBatches?.find(
-            (item) => item.recipientSessionId === recipientSessionId,
-          );
-          if (current)
-            yield* storage.saveUpdateBatch({
-              ...current,
-              dueAt: new Date(now + UPDATE_BATCH_RETRY_MS).toISOString(),
-            });
-        }),
+        Effect.logWarning("Batched update delivery will retry", error).pipe(
+          Effect.andThen(retryLater),
+          Effect.as(undefined),
+        ),
       ),
     );
+    if (outcome === "parked") yield* retryLater;
   }
 });

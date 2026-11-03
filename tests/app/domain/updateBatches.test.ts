@@ -608,7 +608,11 @@ describe("timed batch delivery", () => {
       yield* advance(UPDATE_BATCH_WINDOW_MS);
       yield* f.pass();
       assert.equal(f.admitted.length, 0);
-      assert.ok(yield* f.batch());
+      // Parked until the user acts: rechecked once a minute, not on every one-second pass.
+      assert.equal(
+        (yield* f.batch())?.dueAt,
+        new Date(START + UPDATE_BATCH_WINDOW_MS + 60_000).toISOString(),
+      );
     }),
   );
 });

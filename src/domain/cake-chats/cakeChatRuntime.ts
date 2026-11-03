@@ -18,6 +18,7 @@ import * as messageReferences from "../conversations/messageReferences";
 import { messageNavigationTarget } from "../../contracts/conversations/message-reference";
 import { makeAttachmentReferenceControl } from "../conversations/attachmentReferences";
 import * as projectSessionCreation from "../project-sessions/projectSessionCreation";
+import { reuseRecent } from "../../utils/reuse-recent";
 import * as sessionReferences from "../project-sessions/sessionReferences";
 import * as projectSessionMetadata from "../project-sessions/projectSessionMetadata";
 import { projectChatSessionId } from "./cakeChatLocations";
@@ -278,6 +279,15 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     Option.isSome(drafts)
       ? Context.add(configuredContext, SavedDraftStorage, drafts.value)
       : configuredContext,
+  );
+  // Every model request whose context holds a cross-session message shortens its references
+  // against all known sessions. Share one discovery per minute; the full ID always resolves.
+  const sessionReferenceIds = reuseRecent(60_000, () =>
+    run(
+      sessionReferences
+        .catalog()
+        .pipe(Effect.map((roster) => roster.map((entry) => entry.sessionId))),
+    ),
   );
   const agentControl = makeSubagentControl({
     runEffect: (effect, signal) => run(effect, { signal }),
@@ -562,13 +572,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
             ? Promise.resolve(target.sessionId)
             : run(sessionReferences.resolve(reference, target.sessionId), { signal }),
         project: (value, signal) => run(sessionReferences.project(value), { signal }),
-        ids: (signal) =>
-          run(
-            sessionReferences
-              .catalog()
-              .pipe(Effect.map((roster) => roster.map((entry) => entry.sessionId))),
-            { signal },
-          ),
+        ids: () => sessionReferenceIds(),
       },
       trusted: !project || application.snapshot().trustedProjectPaths.includes(project.path),
       // A permanent Project Chat can already be open when the user grants trust.

@@ -20,6 +20,7 @@ import * as projectSessionAgentPolicy from "./projectSessionAgentPolicy";
 import { cakeModelCatalog, resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import * as projectSessionLocations from "./projectSessionLocations";
 import * as projectChatInstructions from "../projects/projectChatInstructions";
+import { reuseRecent } from "../../utils/reuse-recent";
 import * as sessionReferences from "./sessionReferences";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
 import * as worktreeMerges from "../worktrees/worktreeMerges";
@@ -207,6 +208,15 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     Option.isSome(savedDraftStorage)
       ? Context.add(configuredContext, SavedDraftStorage, savedDraftStorage.value)
       : configuredContext,
+  );
+  // Every model request whose context holds a cross-session message shortens its references
+  // against all known sessions. Share one discovery per minute; the full ID always resolves.
+  const sessionReferenceIds = reuseRecent(60_000, () =>
+    run(
+      sessionReferences
+        .catalog()
+        .pipe(Effect.map((roster) => roster.map((entry) => entry.sessionId))),
+    ),
   );
   const agentControl = makeSubagentControl({
     runEffect: (effect, signal) => run(effect, { signal }),
@@ -518,13 +528,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             ? Promise.resolve(sessionId)
             : run(sessionReferences.resolve(reference, sessionId), { signal }),
         project: (value, signal) => run(sessionReferences.project(value), { signal }),
-        ids: (signal) =>
-          run(
-            sessionReferences
-              .catalog()
-              .pipe(Effect.map((roster) => roster.map((entry) => entry.sessionId))),
-            { signal },
-          ),
+        ids: () => sessionReferenceIds(),
       },
       agentControl: agentControl(getRuntimeOptions, location.workingDirectory),
       projectChatInstructions: {
