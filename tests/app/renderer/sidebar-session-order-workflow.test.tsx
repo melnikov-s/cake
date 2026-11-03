@@ -404,7 +404,7 @@ for (const kind of ["project-session"] as const) {
       }
     });
 
-    it("keeps selected inactive rows in creation order when message timestamps change", async () => {
+    it("holds a selected row's place when its timestamp changes, then sorts it by last update once left", async () => {
       using fixture = renderOrdering();
       await fixture.openSession("previous");
       fixture.publish(
@@ -417,8 +417,38 @@ for (const kind of ["project-session"] as const) {
       expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
       expect(fixture.selected()).toBe("previous");
       await fixture.openSession("older");
-      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
+      expect(fixture.order()).toEqual(["previous", "newer", "older", "oldest"]);
       expect(fixture.selected()).toBe("older");
+    });
+
+    it("holds a selected unread row's place when its timestamp changes", async () => {
+      const unread = initialSessions.map((session) =>
+        ["older", "oldest"].includes(session.sessionId)
+          ? { ...session, unread: true, latestTurnOutcome: "complete" as const }
+          : session,
+      );
+      using fixture = renderOrdering(unread);
+      expect(fixture.order()).toEqual(["older", "oldest", "newer", "previous"]);
+      await fixture.openSession("oldest");
+      fixture.publish(
+        unread.map((session) =>
+          session.sessionId === "oldest"
+            ? { ...session, modifiedAt: "2026-02-01T00:00:00.000Z" }
+            : session,
+        ),
+      );
+      expect(fixture.order()).toEqual(["older", "oldest", "newer", "previous"]);
+      // Leaving reads it; it then leads the read rows by its latest update.
+      await fixture.openSession("newer");
+      expect(fixture.order()).toEqual(["older", "oldest", "newer", "previous"]);
+      expect(fixture.status("oldest")).toBeUndefined();
+      fixture.publishCatalogEvent({
+        _tag: "StatusChanged",
+        sessionId: "older",
+        resolved: false,
+        unread: false,
+      });
+      expect(fixture.order()).toEqual(["oldest", "newer", "previous", "older"]);
     });
   });
 }

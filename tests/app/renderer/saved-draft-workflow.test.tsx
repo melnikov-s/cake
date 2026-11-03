@@ -484,7 +484,7 @@ describe("Saved Draft workflows", () => {
   });
 
   it.each([fixtureTimestamp, "2026-02-02T00:00:00.000Z"])(
-    "keeps selection when activation unpins an older draft regardless of its message timestamp (%s)",
+    "keeps selection when activation unpins an older draft, paging it by its message timestamp (%s)",
     async (modifiedAt) => {
       const drafts = fakeSavedDrafts();
       const title = "Duplicate title";
@@ -519,9 +519,9 @@ describe("Saved Draft workflows", () => {
       expect(rowIds().sort()).toEqual([sessionId, otherId]);
       expect(screen.getByText(/This saved Draft may already have started/)).toBeDefined();
 
-      // Activation removes draft pinning; creation date, not activity, sets pagination.
+      // Activation removes draft pinning; its last update sets pagination.
       fixture.publishCatalog(title, modifiedAt);
-      expect(rowIds()).toEqual([otherId]);
+      expect(rowIds()).toEqual(modifiedAt === fixtureTimestamp ? [otherId] : [otherId, sessionId]);
       expect(screen.getByText(/This saved Draft may already have started/)).toBeDefined();
       await fixture.user.click(sidebar().getByRole("button", { name: "Show more" }));
       expect(rowIds().sort()).toEqual([sessionId, otherId]);

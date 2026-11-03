@@ -302,7 +302,7 @@ describe("Session catalog lifecycle workflows", () => {
     expect(setSessionUnread.mock.calls.map(([, unread]) => unread)).toEqual([true]);
   });
 
-  it("keeps an unopened session in creation order when its background turn settles", async () => {
+  it("moves an unopened session by its last update when its background turn settles", async () => {
     using fixture = await renderCatalog({
       sessions: [
         summary("newer", {
@@ -324,11 +324,12 @@ describe("Session catalog lifecycle workflows", () => {
         revision,
         event: { _tag: "ActivityChanged", sessionId: "background", running: false, modifiedAt },
       });
-    // Settlement updates transcript time without moving an existing row.
+    // Settlement updates transcript time, which orders read rows.
     await settled(2, "2026-01-03T00:00:00.000Z");
-    expect(order()).toEqual(["newer", "background"]);
+    expect(order()).toEqual(["background", "newer"]);
+    // An older, out-of-order time never moves it back.
     await settled(3, "2026-01-01T12:00:00.000Z");
-    expect(order()).toEqual(["newer", "background"]);
+    expect(order()).toEqual(["background", "newer"]);
   });
 
   it("shows background child activity without opening it, then clears it on settlement", async () => {
@@ -521,7 +522,7 @@ describe("Session catalog lifecycle workflows", () => {
     },
   );
 
-  it("pins saved drafts above newer sessions and keeps zero-message Pi sessions in creation order", async () => {
+  it("pins saved drafts above newer sessions and orders zero-message Pi sessions by last update", async () => {
     const draft: SavedDraft = {
       sessionId: "draft",
       projectPath,
@@ -553,8 +554,8 @@ describe("Session catalog lifecycle workflows", () => {
       });
     expect(rows().map((row) => row.textContent)).toEqual([
       expect.stringContaining("Saved plan"),
-      expect.stringContaining("Empty Pi session"),
       expect.stringContaining("Recent conversation"),
+      expect.stringContaining("Empty Pi session"),
     ]);
     await fixture.publish([
       summary("empty-pi", {

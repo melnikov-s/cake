@@ -670,6 +670,75 @@ describe("Sidebar navigation workflow", () => {
     expect(order()).toEqual(["idle", ...expected.filter((id) => id !== "idle")]);
   });
 
+  it("orders Project Sessions unread then read by last update, with running rows between in stable creation order", async () => {
+    const day = (n: number) => sidebarSummary("unused", n).modifiedAt;
+    const sessions = [
+      sidebarSummary("unread-stale", 9, {
+        modifiedAt: day(3),
+        unread: true,
+        latestTurnOutcome: "complete",
+      }),
+      sidebarSummary("unread-fresh", 1, { modifiedAt: day(8), unread: true }),
+      sidebarSummary("running-newer", 7, { modifiedAt: day(2), running: true }),
+      sidebarSummary("running-unread", 5, {
+        modifiedAt: day(10),
+        running: true,
+        unread: true,
+        latestTurnOutcome: "complete",
+      }),
+      sidebarSummary("running-older", 4, { modifiedAt: day(9), running: true }),
+      sidebarSummary("read-fresh", 2, { modifiedAt: day(6) }),
+      sidebarSummary("read-stale", 8, { modifiedAt: day(4) }),
+    ];
+    using fixture = renderSidebarNavigation({ projects: [project], sessions });
+    expect(order()).toEqual([
+      "unread-fresh",
+      "unread-stale",
+      "running-newer",
+      "running-unread",
+      "running-older",
+      "read-fresh",
+      "read-stale",
+    ]);
+    expect(within(row("running-unread")).getByRole("img", { name: "Running" })).toBeDefined();
+    // Running rows ignore their constant updates; read rows follow their latest update.
+    const update = (changes: Record<string, Partial<(typeof sessions)[number]>>) =>
+      sessions.map((session) => ({ ...session, ...changes[session.sessionId] }));
+    await fixture.publishSessions(
+      update({ "running-older": { modifiedAt: day(20) }, "read-stale": { modifiedAt: day(15) } }),
+    );
+    expect(order()).toEqual([
+      "unread-fresh",
+      "unread-stale",
+      "running-newer",
+      "running-unread",
+      "running-older",
+      "read-stale",
+      "read-fresh",
+    ]);
+    // Finishing unread moves a running row to the unread group by its last update.
+    await fixture.publishSessions(
+      update({
+        "running-older": { modifiedAt: day(20) },
+        "read-stale": { modifiedAt: day(15) },
+        "running-unread": { running: false },
+      }),
+    );
+    expect(order().slice(0, 3)).toEqual(["running-unread", "unread-fresh", "unread-stale"]);
+    expect(within(row("running-unread")).getByRole("img", { name: "Ready, unread" })).toBeDefined();
+    // Activity keeps its own creation order.
+    await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
+    expect(order()).toEqual([
+      "unread-stale",
+      "read-stale",
+      "running-newer",
+      "running-unread",
+      "running-older",
+      "read-fresh",
+      "unread-fresh",
+    ]);
+  });
+
   it("keeps status priority above labels and drafts, retaining those rules inside each group", async () => {
     const labelId = "10000000-0000-4000-8000-000000000001";
     const sessions = [
@@ -914,7 +983,7 @@ describe("Sidebar navigation workflow", () => {
   });
 
   it.each(["projects", "activity"] as const)(
-    "preserves selected and unselected inactive row positions in %s without changing the open conversation",
+    "holds the selected row while %s reorders other read rows by last update, without changing the open conversation",
     async (mode) => {
       const sessions = [
         sidebarSummary("newest", 3),
@@ -954,13 +1023,15 @@ describe("Sidebar navigation workflow", () => {
       ]);
       expect(order()).toEqual(["newest", "middle", "oldest"]);
       assertSelection();
-      // Background messages likewise leave both position and selection alone.
+      // A background message moves that Project Session up; Activity stays in creation order.
       await fixture.publishSessions([
         { ...sessions[2]!, modifiedAt: sidebarSummary("unused", 6).modifiedAt },
         { ...sessions[1]!, modifiedAt: sidebarSummary("unused", 5).modifiedAt },
         sessions[0]!,
       ]);
-      expect(order()).toEqual(["newest", "middle", "oldest"]);
+      expect(order()).toEqual(
+        mode === "projects" ? ["oldest", "newest", "middle"] : ["newest", "middle", "oldest"],
+      );
       assertSelection();
     },
   );

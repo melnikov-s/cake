@@ -42,8 +42,8 @@ export class SidebarSessionListStore extends Store<{
   @snapshot private readonly collapsedFamilies: Record<string, boolean> = observable({});
   resolvedLaneExpanded = false;
   private readonly orderedProjectGroups = new Map<string, ReadonlySignal<ProjectSessionRoots>>();
-  /** The selected row's root keeps the activity rank it had when selected, so the row never moves under the user. */
-  private heldRootRank: { sessionId: string; rank: number } | undefined;
+  /** The selected row's root keeps the rank and last-updated time it had when selected, so the row never moves under the user. */
+  private heldRoot: { sessionId: string; rank: number; modifiedAt: string } | undefined;
 
   constructor(props: SidebarSessionListStore["props"]) {
     super(props);
@@ -57,8 +57,13 @@ export class SidebarSessionListStore extends Store<{
     this.reaction(
       () => this.selectedActiveRootId(),
       (sessionId) => {
-        this.heldRootRank = sessionId
-          ? { sessionId, rank: this.activityRank(this.props.catalog.find(sessionId)!) }
+        const root = sessionId ? this.props.catalog.find(sessionId) : undefined;
+        this.heldRoot = root
+          ? {
+              sessionId: root.sessionId,
+              rank: this.activityRank(root),
+              modifiedAt: root.modifiedAt,
+            }
           : undefined;
       },
     );
@@ -374,8 +379,8 @@ export class SidebarSessionListStore extends Store<{
         !byId.has(session.familyParentSessionId),
     );
     // Rank active roots by the same activity shown on their rows, including
-    // collapsed-family indicators. Existing date/label rules break ties only.
-    const held = this.heldRootRank;
+    // collapsed-family indicators: unread, then running, then the rest.
+    const held = this.heldRoot;
     const activityPriorities = new Map(
       roots.map((session) => [
         session.sessionId,
@@ -386,16 +391,23 @@ export class SidebarSessionListStore extends Store<{
             : this.activityRank(session),
       ]),
     );
+    // Active rows sort by the time their row shows; resolved families by their latest member.
     const modifiedDates = resolved ? this.familyModifiedDates(byId) : undefined;
-    const latestActivity = (session: ProjectSession) => modifiedDates!.get(session.sessionId)!;
+    const latestActivity = (session: ProjectSession) =>
+      modifiedDates
+        ? modifiedDates.get(session.sessionId)!
+        : held?.sessionId === session.sessionId
+          ? held.modifiedAt
+          : session.modifiedAt;
+    // Running rows update constantly, so they keep creation order; every other
+    // group shows the most recently updated row first.
     const compareByDate = (left: (typeof roots)[number], right: (typeof roots)[number]) =>
-      resolved
-        ? compareSessionSummariesForSidebar(
+      activityPriorities.get(left.sessionId) === 1
+        ? compareSessionSummariesByCreation(left, right)
+        : compareSessionSummariesForSidebar(
             { modifiedAt: latestActivity(left), draft: left.draft },
             { modifiedAt: latestActivity(right), draft: right.draft },
-          ) || left.sessionId.localeCompare(right.sessionId)
-        : Number(Boolean(right.draft)) - Number(Boolean(left.draft)) ||
-          compareSessionSummariesByCreation(left, right);
+          ) || compareSessionSummariesByCreation(left, right);
     roots.sort((left, right) => {
       const activityOrder =
         activityPriorities.get(left.sessionId)! - activityPriorities.get(right.sessionId)!;
@@ -413,7 +425,7 @@ export class SidebarSessionListStore extends Store<{
     return { byId, roots };
   }
 
-  /** Green unread rows lead, then working rows, then the rest. */
+  /** Green unread rows lead, then working rows (including unread ones), then the rest. */
   private activityRank(session: ProjectSession) {
     const activity = this.sessionActivityForDisplay(session);
     return activity === "unread" ? 0 : isActiveSessionActivity(activity) ? 1 : 2;
