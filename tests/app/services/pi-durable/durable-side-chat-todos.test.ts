@@ -122,7 +122,6 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
         cwd: "/fixture",
         agentDir: "/agent",
         sessionDir: "/sessions",
-        trusted: true,
         requestUi: async () => undefined,
         coordinator: { operations: () => inheritedOperations.definitions() },
         onEvent: () => undefined,

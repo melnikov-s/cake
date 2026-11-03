@@ -189,7 +189,6 @@ for (const scenario of ["migrated", "unavailable"] as const) {
           projects: [
             { path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp },
           ],
-          trustedProjectPaths: [project, workingDirectory],
           utilityModel: {
             provider: "navigation-provider",
             modelId: "fixture-model",

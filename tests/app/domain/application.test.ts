@@ -26,8 +26,6 @@ import {
   setUtilityModel,
   setVscodeServerPath,
   touchProject,
-  trustProject,
-  revokeProjectTrust,
   upsertProject,
   upsertSessionPlugin,
 } from "../../../src/domain/application/application";
@@ -325,7 +323,7 @@ describe("Application domain", () => {
       ),
   );
 
-  it.effect("creates, touches, renames, and removes Projects with trust revocation", () =>
+  it.effect("creates, touches, renames, and removes Projects", () =>
     run(
       Effect.gen(function* () {
         const created = yield* upsertProject("/work/cake", "cake");
@@ -339,9 +337,6 @@ describe("Application domain", () => {
         assert.ok(touchedProject);
         assert.equal(touchedProject.addedAt, addedAt);
         assert.equal(touchedProject.lastOpenedAt, "2025-01-01T00:00:00.000Z");
-        yield* trustProject("/work/cake");
-        yield* revokeProjectTrust("/work/cake");
-        yield* trustProject("/work/cake");
         const renamed = yield* renameProject("/work/cake", "  Cake desktop  ");
         assert.equal(renamed.projects[0]?.name, "Cake desktop");
         const configured = yield* setProjectSettings("/work/cake", {
@@ -368,7 +363,6 @@ describe("Application domain", () => {
         });
         const removed = yield* removeProject("/work/cake");
         assert.deepEqual(removed.projects, []);
-        assert.deepEqual(removed.trustedProjectPaths, []);
       }),
     ),
   );
@@ -380,23 +374,6 @@ describe("Application domain", () => {
           yield* upsertProject(`/project/${index}`, `Project ${index}`);
         const error = yield* Effect.flip(upsertProject("/project/overflow", "Overflow"));
         assert.equal(error._tag, "ApplicationPolicyError");
-      }),
-    ),
-  );
-
-  it.effect("deduplicates trust without limiting the number of trusted paths", () =>
-    run(
-      Effect.gen(function* () {
-        yield* trustProject("/work/cake");
-        const duplicate = yield* trustProject("/work/cake");
-        assert.deepEqual(duplicate.trustedProjectPaths, ["/work/cake"]);
-        for (let index = 1; index <= 200; index++) yield* trustProject(`/work/${index}`);
-        const expanded = yield* trustProject("/work/beyond-the-project-registry-bound");
-        assert.equal(expanded.trustedProjectPaths.length, 202);
-        assert.equal(
-          expanded.trustedProjectPaths.at(-1),
-          "/work/beyond-the-project-registry-bound",
-        );
       }),
     ),
   );

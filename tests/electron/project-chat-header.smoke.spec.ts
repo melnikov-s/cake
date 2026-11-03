@@ -46,7 +46,6 @@ test("header project icon opens the owning Project Chat with keyboard activation
           addedAt: timestamp,
           lastOpenedAt: timestamp,
         })),
-        trustedProjectPaths: [project, other],
       }),
     );
     await writeFile(

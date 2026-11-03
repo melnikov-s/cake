@@ -130,7 +130,6 @@ test("merging and resolving a family root shows one consolidated toast", async (
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
 

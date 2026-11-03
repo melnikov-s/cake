@@ -58,7 +58,6 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [project],
     }),
   );
   // A persisted discussion is backed by its real Pi sidecar, not an orphaned

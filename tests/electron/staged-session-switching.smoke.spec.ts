@@ -30,7 +30,6 @@ test("switches Project Session, Project Chat and Cake Chat workspaces and restor
         addedAt: new Date(0).toISOString(),
         lastOpenedAt: new Date(0).toISOString(),
       })),
-      trustedProjectPaths: projects,
     }),
   );
 

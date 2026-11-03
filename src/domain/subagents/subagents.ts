@@ -394,11 +394,6 @@ const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
             operation: "preflight",
             message: "That project is not registered. Select an exact project root from app.state.",
           });
-        if (project && !application.trustedProjectPaths.includes(project.path))
-          throw new SubagentError({
-            operation: "preflight",
-            message: `Project ${JSON.stringify(project.path)} is not trusted. Ask the user through projects.request-trust in Cake Chat, or open the Project in Cake and choose “Trust and continue”, then retry the launch. Registration with projects.add does not grant trust.`,
-          });
         const workingDirectory =
           project?.path ?? generalLocation?.workingDirectory ?? parent.workingDirectory;
         const liveInDirectory = [...current.handles.values()].filter(
@@ -1070,7 +1065,6 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
       profile: { _tag: "SubagentSession" },
       runtime: {
         cwd: location.workingDirectory,
-        trusted: location.trusted,
         agentDir: location.agentDirectory,
         sessionDir: restored?.privateSessionDirectory ?? location.sessionDirectory,
         newSession: !lazy && persisted === undefined && !transcriptExpected,
@@ -1138,21 +1132,9 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
           Effect.fn("Subagents.hydrate")(function* () {
             const current = (yield* SubscriptionRef.get(coordinator.state)).handles.get(handleId);
             if (!current || current.piHandle) return;
-            const currentLocation = yield* environment
-              .location(prepared.workingDirectory)
-              .pipe(asError("restore"));
-            if (prepared.input.projectPath && !currentLocation.trusted)
-              return yield* new SubagentError({
-                operation: "restore",
-                message:
-                  "The worker’s Project is no longer trusted. Restore trust before continuing.",
-              });
             const parentPiHandle = yield* acquireParent;
             const piHandle = yield* sessions
-              .acquire({
-                ...runtimeOptions,
-                runtime: { ...runtimeOptions.runtime, trusted: currentLocation.trusted },
-              })
+              .acquire(runtimeOptions)
               .pipe(Effect.provideService(Scope.Scope, scope), asError("restore"));
             const snapshot = yield* piHandle.snapshot().pipe(asError("restore"));
             const result = snapshotResult(current, snapshot, current.status, current.error);
@@ -1251,17 +1233,7 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
     if (!lazy) yield* checkpoint(handleId);
     const hydration =
       restored && !lazy
-        ? yield* (
-            prepared.input.projectPath && !location.trusted
-              ? Effect.fail(
-                  new SubagentError({
-                    operation: "restore",
-                    message:
-                      "The worker’s Project is no longer trusted. Restore trust before continuing.",
-                  }),
-                )
-              : sessions.acquire(runtimeOptions).pipe(asError("restore"))
-          ).pipe(
+        ? yield* sessions.acquire(runtimeOptions).pipe(
             Effect.provideService(Scope.Scope, scope),
             asError("restore"),
             Effect.tap((piHandle) => mutateHandle(handleId, (value) => ({ ...value, piHandle }))),
@@ -2091,7 +2063,7 @@ export const deleteOwned = Effect.fn("Subagents.deleteOwned")(function* (parentS
     parentId: string,
   ): Effect.fn.Return<void, SubagentError, SubagentCoordinator | CakeSessionRuntimes> {
     yield* releaseParent(parentId);
-    // Include recovery records that could not be restored (unavailable parent/trust, etc.).
+    // Include recovery records that could not be restored (unavailable parent, etc.).
     const owned = new Map(
       (yield* coordinator.storage.history.list())
         .filter((record) => record.parentSessionId === parentId)

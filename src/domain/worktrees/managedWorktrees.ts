@@ -9,7 +9,7 @@ import {
   familyMember,
 } from "../../services/storage/SessionFamilyStorage";
 import { defaultProjectSettings } from "../../contracts/application/application-data";
-import { getState, revokeProjectTrust, trustProject } from "../application/application";
+import { getState } from "../application/application";
 import { generateWorktreeName, utilityModelSelection } from "../utility-work/utilityWork";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
@@ -94,10 +94,6 @@ export const create = Effect.fn("ManagedWorktrees.create")(function* (input: {
   yield* access
     .allow(record.worktreePath)
     .pipe(Effect.mapError((cause) => policyError("ManagedWorktrees.create", cause)));
-  if (state.trustedProjectPaths.includes(record.projectPath))
-    yield* trustProject(record.worktreePath).pipe(
-      Effect.mapError((cause) => policyError("ManagedWorktrees.create", cause)),
-    );
   return record;
 });
 
@@ -116,9 +112,6 @@ export const discard = Effect.fn("ManagedWorktrees.discard")(function* (
     .pipe(Effect.mapError((cause) => policyError("ManagedWorktrees.discard", cause)));
   const { lifecycle } = yield* worktreeLifecycle.forProject(record.projectPath);
   yield* (yield* ManagedWorktrees).discard(workingDirectory, keepBranch, lifecycle);
-  yield* revokeProjectTrust(workingDirectory).pipe(
-    Effect.mapError((cause) => policyError("ManagedWorktrees.discard", cause)),
-  );
 });
 
 const resolvedEntriesForProject = Effect.fn("ManagedWorktrees.resolvedEntriesForProject")(
@@ -390,7 +383,6 @@ export const discardResolvedForProject = Effect.fn("ManagedWorktrees.discardReso
             operation: "ManagedWorktrees.discardResolvedForProject",
             message: "Cake kept this worktree because it has uncommitted changes",
           });
-        yield* revokeProjectTrust(workingDirectory);
       }).pipe(
         Effect.mapError((cause) =>
           policyError("ManagedWorktrees.discardResolvedForProject", cause),
@@ -444,16 +436,10 @@ export const cleanupResolved = Effect.fn("ManagedWorktrees.cleanupResolved")(fun
     .closeWorkingDirectory(workingDirectory)
     .pipe(Effect.mapError((cause) => policyError("ManagedWorktrees.cleanupResolved", cause)));
   // An unlanded checkout with uncommitted work stays; the user still owns that work.
-  if (
-    !(yield* worktrees.cleanupResolved(workingDirectory, {
-      lifecycle,
-      retireActive: landsThroughPullRequests,
-    }))
-  )
-    return;
-  yield* revokeProjectTrust(workingDirectory).pipe(
-    Effect.mapError((cause) => policyError("ManagedWorktrees.cleanupResolved", cause)),
-  );
+  yield* worktrees.cleanupResolved(workingDirectory, {
+    lifecycle,
+    retireActive: landsThroughPullRequests,
+  });
 });
 
 /** Recreates a checkout retired by resolution before its first transcript is restored. */
@@ -466,9 +452,5 @@ export const restoreResolved = Effect.fn("ManagedWorktrees.restoreResolved")(fun
   );
   if (!record) return;
   const { lifecycle } = yield* worktreeLifecycle.forProject(record.projectPath);
-  const restored = yield* worktrees.restoreResolved(workingDirectory, lifecycle);
-  if (restored && (yield* getState()).trustedProjectPaths.includes(restored.projectPath))
-    yield* trustProject(restored.worktreePath).pipe(
-      Effect.mapError((cause) => policyError("ManagedWorktrees.restoreResolved", cause)),
-    );
+  yield* worktrees.restoreResolved(workingDirectory, lifecycle);
 });

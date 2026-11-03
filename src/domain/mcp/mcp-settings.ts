@@ -6,20 +6,14 @@ import {
   type McpSettingsMutation,
 } from "../../contracts/pi/mcp-settings-data";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
-import { ApplicationState } from "../../services/storage/ApplicationState";
 import { McpSettings } from "../../services/pi/McpSettings";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 
 const authorize = Effect.fn("McpSettings.authorize")(function* (scope: McpScope) {
   if (!scope.projectPath) return;
-  const access = yield* ProjectAccess;
-  const application = yield* ApplicationState;
-  if (
-    !(yield* access.isAllowed(scope.projectPath)) ||
-    !application.snapshot().trustedProjectPaths.includes(scope.projectPath)
-  )
+  if (!(yield* (yield* ProjectAccess).isAllowed(scope.projectPath)))
     return yield* new McpSettingsError({
-      message: "Open and trust this Project before editing its MCP configuration.",
+      message: "Open this Project before editing its MCP configuration.",
     });
 });
 export const loadMcpSettings = Effect.fn("McpSettings.loadAuthorized")(function* (

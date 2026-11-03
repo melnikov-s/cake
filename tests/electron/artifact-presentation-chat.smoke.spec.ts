@@ -40,10 +40,6 @@ for (const placement of ["old", "latest"] as const) {
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     await findVisualCaptureScenario("inline-artifact")!.seed(paths, "dark");
-    const applicationFile = join(paths.cakeHome, "state", "application.json");
-    const applicationState = JSON.parse(await readFile(applicationFile, "utf8"));
-    applicationState.trustedProjectPaths = [paths.project];
-    await writeFile(applicationFile, JSON.stringify(applicationState));
     await mkdir(join(paths.cakeHome, "pi"), { recursive: true });
     await writeFile(
       join(paths.cakeHome, "pi", "models.json"),

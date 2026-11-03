@@ -136,7 +136,6 @@ for (const { disabled, late } of [
           projects: [
             { path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp },
           ],
-          trustedProjectPaths: [project],
         }),
       );
       await writeFile(

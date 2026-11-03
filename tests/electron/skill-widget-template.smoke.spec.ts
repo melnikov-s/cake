@@ -41,7 +41,7 @@ test("a portable skill and added library create independent native drawings with
   });
   await writeFile(
     join(cakeHome, "state/application.json"),
-    JSON.stringify({ schemaVersion: 1, projects: [], trustedProjectPaths: [project] }),
+    JSON.stringify({ schemaVersion: 1, projects: [] }),
   );
   await seedCakeChatHistory(cakeHome, "Create a Hello World diagram in Excalidraw.");
   let app: ElectronApplication | undefined;

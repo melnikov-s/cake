@@ -43,7 +43,6 @@ it.skipIf(!existsSync("/opt/homebrew/bin/code-server"))(
             lastOpenedAt: timestamp,
           },
         ],
-        trustedProjectPaths: [project],
         vscodeServerPath: "/opt/homebrew/bin/code-server",
       }),
     );

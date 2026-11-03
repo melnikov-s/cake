@@ -45,7 +45,6 @@ test("selects multiple project sessions and Cake Chat with independent transcrip
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [project],
     }),
   );
   for (const directory of [projectSessions]) {

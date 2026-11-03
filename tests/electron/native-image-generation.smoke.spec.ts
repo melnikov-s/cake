@@ -122,7 +122,6 @@ test("native images appear in Chat and only explicitly requested originals are s
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   const application = await electron.launch({

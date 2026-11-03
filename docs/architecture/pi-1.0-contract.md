@@ -79,8 +79,8 @@ sets `PI_CODING_AGENT_DIR`. Cake and terminal Pi share configuration, resources
 and primary project transcripts. Eligible runtime construction rejects a root
 that disagrees with Pi's process-level home, rather than reading another
 configuration or credential directory. Pi owns personal
-`mcp.json`, `mcp-auth.json`, and `mcp.log` there; project `.pi/mcp.json` loads only
-with project trust and overrides same-name personal servers.
+`mcp.json`, `mcp-auth.json`, and `mcp.log` there; project `.pi/mcp.json` loads for
+every registered Project and overrides same-name personal servers.
 
 Explicit tool selections are preserved. Backend settings bootstrap seeds a missing
 Pi global `defaultTools` with `["+codemode"]`; resetting the Cake control restores

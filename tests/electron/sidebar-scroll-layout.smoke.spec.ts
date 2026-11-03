@@ -38,7 +38,6 @@ test("sidebar updates preserve row motion and highlights without reserving colla
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   for (const [index, id] of ids.entries()) {

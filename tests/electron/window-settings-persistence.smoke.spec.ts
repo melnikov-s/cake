@@ -31,7 +31,6 @@ for (const action of ["close", "quit"] as const) {
             lastOpenedAt: new Date(0).toISOString(),
           },
         ],
-        trustedProjectPaths: [project],
       }),
     );
     const launch = () =>

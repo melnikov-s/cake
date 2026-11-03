@@ -65,17 +65,13 @@ import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 
 async function fixture(
-  trusted = true,
   catalogs: {
     chat?: PiModel[];
     nonChat?: PiNonChatModel[];
     packages?: { name: string; version: string }[];
   } = {},
 ) {
-  let saved: ApplicationValue = {
-    ...defaultApplicationState(),
-    trustedProjectPaths: trusted ? ["/project"] : [],
-  };
+  let saved: ApplicationValue = defaultApplicationState();
   let document = "{}";
   const files = new Map<string, string>();
   const reads: string[] = [];
@@ -383,7 +379,7 @@ describe("Agent Settings through the real application-control/Client/domain boun
         authTypes: ["api_key"],
       },
     ];
-    const h = await fixture(true, { chat, nonChat });
+    const h = await fixture({ chat, nonChat });
     try {
       const first = value(await h.call("settings.providers.list"));
       expect(first).toMatchObject({ total: 62, offset: 0, nextOffset: 20 });
@@ -471,7 +467,7 @@ describe("Agent Settings through the real application-control/Client/domain boun
       name: `package-${index}`,
       version: "1.0.0",
     }));
-    const h = await fixture(true, { packages });
+    const h = await fixture({ packages });
     try {
       const first = value(await h.call("settings.widgets.list"));
       expect(first).toMatchObject({ total: 61, offset: 0, nextOffset: 20 });
@@ -795,15 +791,6 @@ describe("Agent Settings through the real application-control/Client/domain boun
     } finally {
       await h.dispose();
     }
-    const untrusted = await fixture(false);
-    try {
-      await expect(untrusted.call("settings.mcp.get", { scope: "project" })).rejects.toThrow(
-        "trust",
-      );
-      expect(untrusted.reads).toEqual([]);
-    } finally {
-      await untrusted.dispose();
-    }
   });
 
   it("persists independent non-chat preferences consumed by the native selector, with explicit overrides and no substitution", async () => {
@@ -867,7 +854,7 @@ describe("Agent Settings through the real application-control/Client/domain boun
     }
   });
 
-  it("launches only the real native MCP command in an explicitly targeted trusted idle session, not the focused or executing one", async () => {
+  it("launches only the real native MCP command in an explicitly targeted idle session, not the focused or executing one", async () => {
     const h = await fixture();
     try {
       const session = h.root.root.sessionRegistry.load("calling", "/project");

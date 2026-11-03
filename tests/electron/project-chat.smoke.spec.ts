@@ -116,7 +116,6 @@ test("Project Chat isolates history and restores its root workspace, while globa
           projects: [
             { path: project, name: "Zombies", addedAt: timestamp, lastOpenedAt: timestamp },
           ],
-          trustedProjectPaths: [project],
           unreadSessionIds: [sessionId],
           ...(existsSync(codeServerPath) ? { vscodeServerPath: codeServerPath } : null),
           modelPresets: [

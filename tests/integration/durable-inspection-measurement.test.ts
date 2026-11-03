@@ -34,7 +34,6 @@ it("measures cold regular-session inspection without provider calls", async () =
     const runtime = await createProjectSessionRuntime({
       cwd: directory,
       agentDir: join(directory, "agent"),
-      trusted: true,
       sessionDir,
       directSessionDir: true,
       sessionFile,

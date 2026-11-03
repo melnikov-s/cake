@@ -59,7 +59,6 @@ export const projectTodoLayer = (
         yield* (yield* ApplicationState).transact((state) =>
           Effect.succeed({
             ...state,
-            trustedProjectPaths: ["/project"],
             ...(settings.initialCakeChatTodos
               ? { cakeChatTodos: settings.initialCakeChatTodos }
               : {}),

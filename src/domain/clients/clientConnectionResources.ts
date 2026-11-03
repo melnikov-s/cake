@@ -1,7 +1,6 @@
 import { CakeChatDurable } from "../../services/pi-durable/CakeChatDurable";
 import { Effect, Option } from "effect";
 import { AttachmentUploads } from "../../services/filesystem/AttachmentUploads";
-import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { RewordingRequests } from "../../services/projects/RewordingRequests";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { Terminal } from "../../services/terminal/Terminal";
@@ -14,7 +13,6 @@ import * as workingDirectoryTerminals from "../terminals/workingDirectoryTermina
 export const releaseConnectionResources = Effect.fn("clients.releaseConnectionResources")(
   function* (owner: number) {
     const terminal = yield* Effect.serviceOption(Terminal);
-    const access = yield* Effect.serviceOption(ProjectAccess);
     const rewording = yield* Effect.serviceOption(RewordingRequests);
     const requests = yield* Effect.serviceOption(RendererRequestCoordinator);
     const vscode = yield* Effect.serviceOption(VsCodeServer);
@@ -31,7 +29,6 @@ export const releaseConnectionResources = Effect.fn("clients.releaseConnectionRe
               ),
             )
           : Effect.void,
-        Option.isSome(access) ? access.value.clearOwner(owner) : Effect.void,
         Option.isSome(rewording) ? rewording.value.disposeOwner(owner) : Effect.void,
         Option.isSome(requests) ? requests.value.releaseConnection(owner) : Effect.void,
         Option.isSome(vscode) ? vscode.value.releaseConnection(owner) : Effect.void,

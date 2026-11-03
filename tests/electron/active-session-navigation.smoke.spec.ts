@@ -89,7 +89,6 @@ async function verifyNavigation(activityOrdering: boolean) {
         addedAt: timestamp,
         lastOpenedAt: timestamp,
       })),
-      trustedProjectPaths: [alpha, beta],
     }),
   );
   await writeFile(

@@ -31,7 +31,6 @@ describe("ApplicationStorage filesystem integration", () => {
         projects: [],
         resolvedSessionIds: ["session-1"],
         unreadSessionIds: [],
-        trustedProjectPaths: [],
       }),
       "utf8",
     );
@@ -61,7 +60,6 @@ describe("ApplicationStorage filesystem integration", () => {
         { id: "00000000-0000-4000-8000-000000000004", name: "Chore", color: "amber" },
       ],
       unreadSessionIds: [],
-      trustedProjectPaths: [],
       fastModeSessionIds: [],
       modelPresets: [],
       cakePrompts: {},

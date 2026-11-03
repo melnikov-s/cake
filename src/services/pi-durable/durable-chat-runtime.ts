@@ -146,7 +146,7 @@ export async function createDurableCakeChatRuntime(
   };
   const sessionFile = durableChatDatabase(options.sessionDir);
   const settings = SettingsManager.create(options.cwd, options.agentDir, {
-    projectTrusted: options.trusted,
+    projectTrusted: true,
   });
   const commands = await createDurableChatCommands(options.cwd, options.agentDir, settings);
   const cakeDocsDirectory = await cakeAgentDocumentationDirectory(options.agentDir);

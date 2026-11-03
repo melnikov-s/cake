@@ -49,12 +49,6 @@ export const resolveContext = Effect.fn("Automations.resolveContext")(function* 
       "The selected project is no longer registered.",
       "unavailable",
     );
-  if (!application.trustedProjectPaths.includes(context.projectPath))
-    return yield* automationError(
-      "context",
-      "The selected project must be trusted before this automation can execute.",
-      "unavailable",
-    );
   if (
     !(yield* (yield* FileSystem.FileSystem)
       .exists(context.projectPath)

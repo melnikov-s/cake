@@ -37,7 +37,6 @@ for (const remote of [false, true]) {
             lastOpenedAt: new Date(0).toISOString(),
           },
         ],
-        trustedProjectPaths: [project],
       }),
     );
     await writeFile(

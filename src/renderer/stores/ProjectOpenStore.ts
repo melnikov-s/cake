@@ -32,10 +32,9 @@ interface PendingProjectInspection {
   restoring?: boolean;
 }
 
-/** Owns Project selection, inspection, trust authorization, and latest-open policy. */
+/** Owns Project selection, inspection, and latest-open policy. */
 export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
   @snapshot projectPath: string | undefined;
-  pendingTrustPath: string | undefined;
   error: string | undefined;
   errorDetails: string | undefined;
   private pendingInspection: PendingProjectInspection | undefined;
@@ -82,7 +81,6 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
   cancelPending() {
     this.openRevision += 1;
     this.pickerRevision += 1;
-    this.pendingTrustPath = undefined;
     this.error = undefined;
     this.errorDetails = undefined;
     const operationId = this.pendingInspection?.operationId;
@@ -157,7 +155,6 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
     const operationId = this.props.operations.start("project-open");
     this.error = undefined;
     this.errorDetails = undefined;
-    this.pendingTrustPath = undefined;
     this.pendingInspection = {
       operationId,
       revision,
@@ -176,38 +173,13 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
       this.props.operations.finish(inspection.operationId);
       const pending = this.pendingInspection;
       if (!pending || pending.operationId !== inspection.operationId) return;
-      if (inspection.trustRequired) this.pendingTrustPath = inspection.path;
-      else await this.accept(pending, inspection.path);
+      await this.accept(pending, inspection.path);
     } catch (error) {
       this.props.operations.finish(operationId);
       if (this.signal.aborted || revision !== this.openRevision) return;
       if (this.pendingInspection?.operationId === operationId) this.pendingInspection = undefined;
       this.setError(error);
     }
-  }
-
-  async resolveProjectTrust(trusted: boolean) {
-    const pending = this.pendingInspection;
-    if (!pending || !this.pendingTrustPath || pending.revision !== this.openRevision) return;
-    this.pendingTrustPath = undefined;
-    try {
-      await this.client.workspaces.respondToTrust({
-        operationId: pending.operationId,
-        path: pending.path,
-        approved: trusted,
-      });
-    } catch (error) {
-      if (this.signal.aborted || this.pendingInspection !== pending) return;
-      this.pendingInspection = undefined;
-      this.setError(error);
-      return;
-    }
-    if (this.pendingInspection !== pending || pending.revision !== this.openRevision) return;
-    if (!trusted) {
-      this.pendingInspection = undefined;
-      return;
-    }
-    await this.accept(pending);
   }
 
   receive(event: StoreEvent) {
@@ -222,10 +194,8 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
       this.props.operations.includes(event.operationId, "project-open")
     ) {
       this.props.operations.finish(event.operationId);
-      if (this.pendingInspection?.operationId === event.operationId) {
+      if (this.pendingInspection?.operationId === event.operationId)
         this.pendingInspection = undefined;
-        this.pendingTrustPath = undefined;
-      }
       this.error = event.message;
       this.errorDetails = event.details ?? event.message;
     }
@@ -234,7 +204,6 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
   private async accept(pending: PendingProjectInspection, inspectedPath = pending.path) {
     if (this.pendingInspection !== pending || pending.revision !== this.openRevision) return;
     this.pendingInspection = undefined;
-    this.pendingTrustPath = undefined;
     if (pending.newSession) {
       void this.registerProject(inspectedPath, pending.revision);
       await this.props.onAccepted({

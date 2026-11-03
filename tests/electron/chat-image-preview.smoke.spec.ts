@@ -35,7 +35,6 @@ test("opens attached images fullscreen from the uniform composer tile and from t
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   const application = await electron.launch({

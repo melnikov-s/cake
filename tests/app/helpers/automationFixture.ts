@@ -183,7 +183,6 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
   });
   let application: ApplicationStateValue = {
     ...defaultApplicationState(),
-    trustedProjectPaths: ["/projects/cake"],
     projects: [
       {
         path: "/projects/cake",

@@ -136,7 +136,6 @@ describe("Project Session runtime worktree controls", () => {
               },
             },
           ],
-          trustedProjectPaths: ["/project", isolatedChildPath],
         }),
       }),
       Layer.mock(ManagedWorktrees, {

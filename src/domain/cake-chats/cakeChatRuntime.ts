@@ -191,7 +191,6 @@ const CAKE_CHAT_OPERATIONS = [
   "projects.list",
   "projects.info",
   "projects.add",
-  "projects.request-trust",
   "projects.rename",
   "projects.remove",
   "projects.settings.get",
@@ -539,7 +538,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
             [
               "You are the user’s app-wide companion. Keep one continuous identity and your own conversation history across sessions, projects and modes. You run independently of the main agent; never interrupt it unless the user asks.",
               `Your own messaging address is ${SESSION_ASSISTANT_ID}. Use sessionId: "parent" when the user means the viewed session/chat ("this session"); it resolves from your current invoking context, not your own conversation. Omitting sessionId from sessions.schedule always schedules to yourself. If invoking context is unavailable, ask rather than inventing a target.`,
-              "Orientation entries are metadata, not requests: enter/exit only describe where the user is looking. Do not greet again, repeat reminders or import the invoking conversation. Use sessions.list/info and messages tools only when deeper context is needed. Prefer short answers and direct navigation via supported Cake tools, including sessions.open and vscode.open. Preserve trust and destructive-action safeguards.",
+              "Orientation entries are metadata, not requests: enter/exit only describe where the user is looking. Do not greet again, repeat reminders or import the invoking conversation. Use sessions.list/info and messages tools only when deeper context is needed. Prefer short answers and direct navigation via supported Cake tools, including sessions.open and vscode.open. Preserve destructive-action safeguards.",
               "You can directly author and run VS Code scripts with vscode.script.run, arrange editors and configure VS Code at the user's request; do not delegate these actions to or interrupt the main coding agent. VS Code tools target the currently viewed Project Chat or Project Session and its actual Working Directory, not your app-wide home directory. Call vscode.enter first. Scripts run trusted async JavaScript with vscode, input and require; return a JSON-compatible result. For settings use vscode.workspace.getConfiguration().inspect/get/update with an explicit ConfigurationTarget (Global or Workspace) matching the user's request, preserve unrelated settings and verify the result. If no project/editor context is available, ask the user to open the intended Project Chat or Project Session before retrying.",
               "You use the configured utility model. Your memory and instructions are separate, customizable in Settings → Application → Cake Chat → Companion or settings.get/update with companion.memoryViewBytes, companion.contextLimitTokens and companion.instructions. Change instructions only when the user requests lasting guidance: read first and preserve unrelated text. Shared Cake Chat instructions do not apply.",
             ].join("\n\n")
@@ -574,11 +573,6 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
         project: (value, signal) => run(sessionReferences.project(value), { signal }),
         ids: () => sessionReferenceIds(),
       },
-      trusted: !project || application.snapshot().trustedProjectPaths.includes(project.path),
-      // A permanent Project Chat can already be open when the user grants trust.
-      projectTrust: project
-        ? () => application.snapshot().trustedProjectPaths.includes(project.path)
-        : undefined,
       agentDir: configuration.agentDirectory,
       sessionDir: configuration.location.sessionDirectory,
       newSession,
@@ -653,13 +647,6 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           run(projects.infoForAgent(input).pipe(Effect.map(toJsonValue)), { signal }),
         add: (input, signal) =>
           run(projects.addForAgent(input).pipe(Effect.map(toJsonValue)), { signal }),
-        requestTrust: (input, signal) =>
-          run(
-            projects
-              .requestTrustForAgent(input, target.sessionId, signal)
-              .pipe(Effect.map(toJsonValue)),
-            { signal },
-          ),
         rename: (input, signal) =>
           run(projects.renameForAgent(input).pipe(Effect.map(toJsonValue)), { signal }),
         // Removal retires window navigation and session history, so it runs through the

@@ -300,7 +300,6 @@ describe("timed batch delivery", () => {
                 agentDir: "/cake",
                 sessionDir: "/cake/discussions",
                 directSessionDir: true,
-                trusted: true,
                 requestUi: async () => undefined,
               },
             });

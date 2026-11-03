@@ -42,15 +42,4 @@ describe("ProjectAccess", () => {
       assert.match(error.message, /collision/);
     }).pipe(Effect.provide(live)),
   );
-
-  it.effect("scopes pending trust requests to one renderer owner", () =>
-    Effect.gen(function* () {
-      const access = yield* ProjectAccess;
-      yield* access.requestTrust(7, "old", "/first");
-      yield* access.requestTrust(7, "current", "/second");
-      yield* access.consumeTrustRequest(7, "current", "/second");
-      const stale = yield* Effect.flip(access.consumeTrustRequest(7, "old", "/first"));
-      assert.equal(stale._tag, "ProjectAccessError");
-    }).pipe(Effect.provide(live)),
-  );
 });

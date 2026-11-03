@@ -85,7 +85,6 @@ test("topbar sharing supports keyboard access, real listener actions and Setting
       projects: [
         { path: project, name: "Sharing project", addedAt: timestamp, lastOpenedAt: timestamp },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

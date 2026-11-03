@@ -35,7 +35,6 @@ test("reorders projects by dragging in the desktop sidebar", async () => {
         addedAt: timestamp,
         lastOpenedAt: timestamp,
       })),
-      trustedProjectPaths: [firstProject, secondProject],
     }),
   );
 

@@ -25,7 +25,6 @@ export const piSettingSections = {
   collapseChangelog: "agent",
   quietStartup: "agent",
   enableInstallTelemetry: "network",
-  defaultProjectTrust: "network",
   doubleEscapeAction: "agent",
   treeFilterMode: "agent",
   anthropicExtraUsageWarning: "network",

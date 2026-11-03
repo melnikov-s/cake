@@ -45,7 +45,6 @@ test("captures and annotates through the hidden native overlay into the existing
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project, otherProject],
     }),
   );
   const application = await electron.launch({

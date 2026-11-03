@@ -19,7 +19,7 @@ const projectSettingsScope =
   "Global Cake Chat can target any registered Project. A Project Chat can target only its own registered Project; other paths are rejected.";
 
 const projectResult =
-  "The registered Project: exact path (use it verbatim as workspacePath or projectPath), display name, canonical projectChatId, addedAt, lastOpenedAt and whether the user has trusted its Pi resources.";
+  "The registered Project: exact path (use it verbatim as workspacePath or projectPath), display name, canonical projectChatId, addedAt and lastOpenedAt.";
 
 /** Cake Chat's Project registry: the registration, rename, removal and Project settings the sidebar offers.
  * Project Chats receive the settings operations restricted to their own Project. */
@@ -33,7 +33,7 @@ export function createCakeChatProjectOperations(
       summary:
         "List registered Projects with exact paths and canonical Project Chat messaging addresses.",
       guidance: [
-        'Filter names/paths with query; use projects.info for trust and timestamps. Send directly with sessions.send { sessionId: projectChatId, text, delivery: "fyi" } for a passive update; no filesystem lookup or hashing is needed.',
+        'Filter names/paths with query; use projects.info for timestamps. Send directly with sessions.send { sessionId: projectChatId, text, delivery: "fyi" } for a passive update; no filesystem lookup or hashing is needed.',
         compactDiscoveryGuidance,
       ],
       inputSchema: AgentListInput,
@@ -62,7 +62,6 @@ export function createCakeChatProjectOperations(
         "The directory must already exist. Getting the checkout there (clone, worktree, zone tree) is operational work: delegate it to an allowMutations worker first, then register the path it reports.",
         "Pass an absolute path; the name defaults to the directory's base name. Adding a path that is already registered returns that Project unchanged with alreadyRegistered: true; use projects.rename to change its name.",
         "The Project appears in the sidebar and app.state immediately. Use the returned path verbatim with sessions.create or subagents.start.",
-        "Registration does not grant trust. If trusted is false, call projects.request-trust with the returned exact path to ask for explicit in-app approval before launching project workers. This also works for already registered Projects, without reopening the folder. Decline or cancellation is not approval; do not create dummy Pi resources or change defaultProjectTrust to force approval.",
       ],
       inputSchema: AgentProjectAddInput,
       examples: [
@@ -84,27 +83,6 @@ export function createCakeChatProjectOperations(
           context.signal,
         );
       },
-    },
-    {
-      command: "projects.request-trust",
-      topic: "projects",
-      summary: "Ask the user to trust an exact registered Project in Cake, without reopening it.",
-      guidance: [
-        "Call after projects.add or projects.info reports trusted:false. Cake presents its own exact-path code-execution warning in the requesting chat's window; this operation cannot approve itself and accepts no approval flag.",
-        "The tool returns the actual user decision, not an admission receipt. Only approved or already-trusted permits continuing an already-authorized build with sessions.create using project.path verbatim as workspacePath. Keep the authorized task, initialPrompt and resultDelivery in that subsequent launch; trust approval alone launches nothing and is not proof of worker execution or completion.",
-        "On declined or cancelled, stop the launch handoff and report that no worker was launched. Do not retry approval unless the user asks. Creating or implementing a Project does not authorize its repository instructions, plugins or extensions.",
-      ],
-      inputSchema: AgentProjectInfoInput,
-      examples: [{ input: { path: "/Users/me/src/project" } }],
-      result: `decision is approved, declined, cancelled or already-trusted. ${projectResult}`,
-      limitations: [
-        "Requires a connected renderer for the requesting Cake Chat or Project Chat. No recipient is an error, never approval. The current conversation and navigation remain unchanged.",
-      ],
-      execute: (input, context) =>
-        control.requestTrust(
-          Schema.decodeUnknownSync(AgentProjectInfoInput)(input),
-          context.signal,
-        ),
     },
     {
       command: "projects.rename",

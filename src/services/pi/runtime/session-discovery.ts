@@ -1,8 +1,4 @@
-import {
-  SessionManager,
-  getPackageDir,
-  hasTrustRequiringProjectResources,
-} from "@earendil-works/pi-coding-agent";
+import { SessionManager, getPackageDir } from "@earendil-works/pi-coding-agent";
 import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { readdir } from "node:fs/promises";
@@ -122,10 +118,6 @@ export async function loadWorkspacePiSessionSummary(
         resolved: false,
       }
     : undefined;
-}
-
-export function inspectWorkspace(path: string) {
-  return { path, trustRequired: hasTrustRequiringProjectResources(path) };
 }
 
 /** Mirror Pi's documented per-workspace directory layout beneath Cake's session root. */

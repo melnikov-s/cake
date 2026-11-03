@@ -307,7 +307,6 @@ describe("Cake extension embedding boundaries", () => {
           cwd: fixture.cwd,
           agentDir: fixture.agentDir,
           sessionDir: join(fixture.cwd, "sessions"),
-          trusted: true,
           newSession: true,
           additionalSystemPrompt: "USER_POLICY_MUST_SURVIVE",
           reviewContextPath: () => review,

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -17,10 +17,6 @@ for (const dictation of [false, true]) {
     };
     const scenario = findVisualCaptureScenario("dictation-input")!;
     await scenario.seed(paths, dictation ? "dark" : "light");
-    // This fixture exercises companion UX, not the separate trust-onboarding flow.
-    const stateFile = join(paths.cakeHome, "state", "application.json");
-    const state = JSON.parse(await readFile(stateFile, "utf8"));
-    await writeFile(stateFile, JSON.stringify({ ...state, trustedProjectPaths: [paths.project] }));
     const application = await electron.launch({
       args: [repositoryRoot],
       cwd: repositoryRoot,

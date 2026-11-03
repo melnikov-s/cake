@@ -149,7 +149,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
       {
         page: "network",
         label: "Network & privacy",
-        introduction: "Host connection, remote access, provider transport, and workspace trust.",
+        introduction: "Host connection, remote access, provider transport, and privacy.",
         settings: [
           {
             label: "Remote access",
@@ -159,7 +159,6 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
           },
           { label: "Transport", targetId: "setting-transport", keywords: "websocket sse" },
           { label: "HTTP idle timeout", targetId: "setting-http-idle-timeout" },
-          { label: "Default project trust", targetId: "setting-default-project-trust" },
           {
             label: "Anthropic extra usage warning",
             targetId: "setting-anthropic-extra-usage-warning",

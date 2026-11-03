@@ -52,7 +52,6 @@ it("updates open preset and label settings from ordered authority, without repla
     projects: [],
     globalSessionLabels: [externalStatus],
     unreadSessionIds: [],
-    trustedProjectPaths: [],
     fastModeSessionIds: [],
     modelPresets: [externalPreset],
     defaultModelPresetId: externalPreset.id,

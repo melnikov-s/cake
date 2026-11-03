@@ -103,7 +103,7 @@ complete canonical Cake operation definitions: inspect conversations, send promp
 launch work, change settings, manage Projects and worktrees, and use the other
 available Cake operations. There are no MCP-specific Project or command allowlists.
 Only enable clients you trust with Cake and the work its agents can perform.
-Existing Cake/Pi trust checks, approvals and host capabilities still apply.
+Existing Cake approvals and host capabilities still apply.
 
 The server exposes exactly one tool, **`cake`**, using Cake's existing schema,
 discovery, help, validation and execution:

@@ -41,7 +41,6 @@ describe("role-specific prompt assembly", () => {
           ephemeral: true,
           projectInvestigation: true,
           allowMutations,
-          trusted: true,
           requestUi: async () => undefined,
           onEvent: () => undefined,
         },

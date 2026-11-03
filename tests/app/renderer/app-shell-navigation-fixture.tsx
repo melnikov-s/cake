@@ -64,7 +64,7 @@ export function renderAppShellNavigation(
         ...client.artifacts,
       },
       workspaces: {
-        inspect: async (request) => ({ ...request, trustRequired: false }),
+        inspect: async (request) => ({ ...request }),
         registerProject: async () => defaultApplicationState(),
         loadStagedSlashCommands: async () => [],
         ...client.workspaces,

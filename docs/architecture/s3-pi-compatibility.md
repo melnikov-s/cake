@@ -116,8 +116,9 @@ runtimes do not compile or advertise companion modules.
 Companions are trusted installed extension code, not model-presented widgets.
 They run as browser code in Cake's sandboxed renderer and therefore have no Node
 or Electron globals, but they can inspect or interfere with Cake's DOM and
-browser behavior. Installing a global package or trusting a project-local
-package is the trust decision for both its Pi runtime and declared companion.
+browser behavior. Installing a global package or registering a Project that
+declares a project-local package is the trust decision for both its Pi runtime
+and declared companion.
 Each contribution has an error boundary so one broken companion does not crash
 the renderer.
 

@@ -58,7 +58,6 @@ test("separate Node backend serves a real leased code-server workbench to remote
       projects: [
         { path: project, name: "Remote editor", addedAt: timestamp, lastOpenedAt: timestamp },
       ],
-      trustedProjectPaths: [project],
       vscodeServerPath: "/opt/homebrew/bin/code-server",
     }),
   );

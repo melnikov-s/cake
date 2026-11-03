@@ -4,7 +4,6 @@ const SubagentLocation = Schema.Struct({
   workingDirectory: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
   agentDirectory: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
   sessionDirectory: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
-  trusted: Schema.Boolean,
 });
 interface SubagentLocation extends Schema.Schema.Type<typeof SubagentLocation> {}
 
@@ -19,7 +18,7 @@ export interface SubagentEnvironmentService {
   ) => Effect.Effect<SubagentLocation, SubagentEnvironmentError>;
 }
 
-/** Temporary outside-world adapter for private Pi Session roots and project trust. */
+/** Temporary outside-world adapter for private Pi Session roots. */
 export class SubagentEnvironment extends Context.Service<
   SubagentEnvironment,
   SubagentEnvironmentService

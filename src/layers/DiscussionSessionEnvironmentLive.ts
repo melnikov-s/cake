@@ -1,7 +1,6 @@
 import { Effect, FileSystem, Layer, Path } from "effect";
 import { projectReviewThread, type ReviewThreadRecord } from "../contracts/reviews/review-contract";
 import { ReviewStorage } from "../services/storage/ReviewStorage";
-import { ApplicationState } from "../services/storage/ApplicationState";
 import {
   reviewSidecarSystemPrompt,
   writeDiscussionParentContext,
@@ -49,7 +48,6 @@ export const makeDiscussionSessionEnvironmentLive = (
   Layer.unwrap(
     Effect.gen(function* () {
       const storage = yield* ReviewStorage;
-      const application = yield* ApplicationState;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       return makeDiscussionSessionEnvironmentLayer({
@@ -120,7 +118,6 @@ export const makeDiscussionSessionEnvironmentLive = (
               record.id,
             ),
             parentSessionDirectory: options.parentSessionDirectory,
-            trusted: application.snapshot().trustedProjectPaths.includes(record.workingDirectory),
           }),
         ),
         sidecarSystemPrompt: Effect.fn("DiscussionSessionEnvironment.sidecarSystemPrompt")(

@@ -59,7 +59,7 @@ for (const language of ["html", "react"] as const) {
     ]);
     await writeFile(
       join(cakeHome, "state/application.json"),
-      JSON.stringify({ schemaVersion: 1, projects: [], trustedProjectPaths: [project] }),
+      JSON.stringify({ schemaVersion: 1, projects: [] }),
     );
     await seedCakeChatHistory(cakeHome, `cake://artifact/${templateId}`);
     const launch = () =>

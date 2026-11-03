@@ -96,7 +96,6 @@ describe("private worker restart recovery", () => {
         Layer.mock(ApplicationState, {
           snapshot: () => ({
             ...defaultApplicationState(),
-            trustedProjectPaths: ["/project"],
             projects: [{ path: "/project", name: "Project", addedAt: "now", lastOpenedAt: "now" }],
           }),
         }),

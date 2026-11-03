@@ -9,8 +9,9 @@ export async function loadPiResources(
   options?: { readonly noExtensions?: boolean },
 ) {
   signal?.throwIfAborted();
+  // Like Cake's session runtimes, load project resources without Pi's per-folder trust question.
   const settingsManager = SettingsManager.create(context.workingDirectory, agentDirectory, {
-    projectTrusted: context.projectTrusted,
+    projectTrusted: true,
   });
   const resourceLoader = new DefaultResourceLoader({
     cwd: context.workingDirectory,
@@ -29,7 +30,7 @@ export async function loadPiResources(
     noContextFiles: true,
     noExtensions: options?.noExtensions,
   });
-  await resourceLoader.reload({ resolveProjectTrust: async () => context.projectTrusted });
+  await resourceLoader.reload({ resolveProjectTrust: async () => true });
   signal?.throwIfAborted();
   return { resourceLoader, settingsManager };
 }

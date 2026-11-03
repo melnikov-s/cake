@@ -46,10 +46,11 @@ export interface CakeSessionRuntimeResourceLifecycle {
 
 export async function loadCakeSessionRuntimeResourceLoader(input: {
   readonly makeResourceLoader: () => ResourceLoader;
-  readonly trusted: boolean;
 }): Promise<ReloadableResourceLoader> {
   const resourceLoader = new ReloadableResourceLoader(input.makeResourceLoader);
-  await resourceLoader.reload({ resolveProjectTrust: async () => input.trusted });
+  // Cake only runs Pi in user-opened Projects, their worktrees and the home directory,
+  // so it never asks Pi's per-folder trust question.
+  await resourceLoader.reload({ resolveProjectTrust: async () => true });
   return resourceLoader;
 }
 
@@ -65,7 +66,6 @@ export async function shutdownCakeSessionExtensions(session: AgentSession): Prom
 export async function createCakeSessionRuntimeResourceLifecycle(input: {
   readonly resourceLoader: ReloadableResourceLoader;
   readonly settingsManager: SettingsManager;
-  readonly projectTrust?: () => boolean;
   readonly eventBus: EventBus;
   readonly loadCompanions: boolean;
   readonly workingDirectory: string;
@@ -189,7 +189,6 @@ export async function createCakeSessionRuntimeResourceLifecycle(input: {
             detail: "Refreshing settings, extensions, skills, prompts, and tools.",
           });
           pendingCompanionState.clear();
-          if (input.projectTrust) input.settingsManager.setProjectTrusted(input.projectTrust());
           await input.session.reload();
           loadedExtensionPaths = resourceLoader
             .getExtensions()

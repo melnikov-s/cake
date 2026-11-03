@@ -21,12 +21,8 @@ import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { PiAgentResources } from "../../services/pi/PiAgentResources";
 import { AgentAvailability } from "../../services/pi/AgentAvailability";
 import { ProjectSessionRuntimeHost } from "../../services/pi/ProjectSessionRuntimeHost";
-import {
-  inspectWorkspace as inspectPiWorkspace,
-  rewordProjectSelection,
-} from "../../services/pi/PiWorkflows";
+import { rewordProjectSelection } from "../../services/pi/PiWorkflows";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
-import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { ProjectConfiguration } from "../../services/projects/ProjectConfiguration";
 import { RewordingRequests } from "../../services/projects/RewordingRequests";
 import { Terminal } from "../../services/terminal/Terminal";
@@ -54,7 +50,6 @@ import {
   setProjectWorkflowSessionDetails,
   setProjectSettings as setApplicationProjectSettings,
   setSessionUnread as setApplicationSessionUnread,
-  trustProject,
   upsertProject,
 } from "../application/application";
 import {
@@ -198,14 +193,10 @@ export const loadStagedSlashCommands = Effect.fn("Projects.loadStagedSlashComman
   request: Payload<"load-staged-slash-commands">,
 ) {
   yield* requireAllowed(request.path);
-  const application = yield* ApplicationState;
   const resources = yield* PiAgentResources;
   const { skills, promptTemplates } = yield* mapProjectError(
     "loadStagedSlashCommands",
-    resources.loadPromptResources({
-      workingDirectory: request.path,
-      projectTrusted: application.snapshot().trustedProjectPaths.includes(request.path),
-    }),
+    resources.loadPromptResources({ workingDirectory: request.path }),
   );
   return {
     commands: [
@@ -263,14 +254,13 @@ const registerAllowed = Effect.fn("Projects.registerAllowed")(function* (
   return state;
 });
 
-const agentProjectView = (project: ProjectRecord, trustedPaths: readonly string[]) =>
+const agentProjectView = (project: ProjectRecord) =>
   ({
     path: project.path,
     name: project.name,
     projectChatId: projectChatSessionId(project.path),
     addedAt: project.addedAt,
     lastOpenedAt: project.lastOpenedAt,
-    trusted: trustedPaths.includes(project.path),
   }) satisfies AgentProjectView;
 
 /** Registry-only discovery includes the canonical chat target even before its first open. */
@@ -306,47 +296,12 @@ export const infoForAgent = Effect.fn("Projects.infoForAgent")(function* (
       operation: "inspectProject",
       message: "Project is not registered.",
     });
-  return { project: agentProjectView(project, state.trustedProjectPaths) };
-});
-
-/** Requests a user decision without opening a Project or changing the current conversation. */
-export const requestTrustForAgent = Effect.fn("Projects.requestTrustForAgent")(function* (
-  input: AgentProjectInfoInput,
-  sessionId: string,
-  signal: AbortSignal,
-) {
-  const { project } = yield* infoForAgent(input);
-  if (signal.aborted) return { decision: "cancelled" as const, project };
-  if (project.trusted) return { decision: "already-trusted" as const, project };
-  const response = yield* mapProjectError(
-    "requestTrust",
-    (yield* RendererRequestCoordinator).requestUiForTarget(
-      { _tag: "CakeChatSession", sessionId },
-      {
-        kind: "confirm",
-        title: "Trust this Project and continue?",
-        message: `Trust ${project.path} to run agents and load its project-local Pi instructions, skills, extensions and MCP. Extensions and MCP can execute code on your computer. Trust only projects whose contents you know. Creating or registering a Project does not grant this permission.`,
-        signal,
-      },
-    ),
-  );
-  if (signal.aborted || response === undefined)
-    return { decision: "cancelled" as const, ...(yield* infoForAgent(input)) };
-  if (response === "false")
-    return { decision: "declined" as const, ...(yield* infoForAgent(input)) };
-  if (response !== "true")
-    return yield* projectError("requestTrust", "Invalid Project trust decision.");
-  // The coordinator accepts only the captured renderer/session/request's response.
-  // Recheck registration before committing the same explicit user trust used by the picker.
-  yield* infoForAgent(input);
-  yield* mapProjectError("requestTrust", trustProject(project.path));
-  return { decision: "approved" as const, ...(yield* infoForAgent(input)) };
+  return { project: agentProjectView(project) };
 });
 
 /**
  * Registers a Project on behalf of the trusted application-level assistant. The user asked
- * the assistant to add this directory, which stands in for the picker's path selection;
- * Pi resource trust is still granted only by the user through a separate approval.
+ * the assistant to add this directory, which stands in for the picker's path selection.
  */
 export const addForAgent = Effect.fn("Projects.addForAgent")(function* (
   request: AgentProjectAddInput,
@@ -370,7 +325,7 @@ export const addForAgent = Effect.fn("Projects.addForAgent")(function* (
   const existing = application.snapshot().projects.find((project) => project.path === path);
   if (existing)
     return {
-      project: agentProjectView(existing, application.snapshot().trustedProjectPaths),
+      project: agentProjectView(existing),
       alreadyRegistered: true,
     };
   const worktrees = yield* ManagedWorktrees;
@@ -391,7 +346,7 @@ export const addForAgent = Effect.fn("Projects.addForAgent")(function* (
       message: `Cake could not register ${path}`,
     });
   return {
-    project: agentProjectView(project, state.trustedProjectPaths),
+    project: agentProjectView(project),
     alreadyRegistered: false,
   };
 });
@@ -412,7 +367,7 @@ export const renameForAgent = Effect.fn("Projects.renameForAgent")(function* (
       operation: "renameProject",
       message: `Cake could not rename ${request.path}`,
     });
-  return { project: agentProjectView(project, state.trustedProjectPaths) };
+  return { project: agentProjectView(project) };
 });
 
 export const rename = Effect.fn("Projects.rename")(function* (
@@ -694,42 +649,10 @@ export const inspect = Effect.fn("Projects.inspect")(function* (
   connectionId: number,
   request: Payload<"inspect-workspace">,
 ) {
-  const access = yield* ProjectAccess;
-  const application = yield* ApplicationState;
   const clientWorkspaces = yield* ClientWorkspaces;
   yield* requireAllowed(request.path);
-  yield* inspectPiWorkspace(request.path).pipe(
-    Effect.mapError((cause) => projectError("inspectWorkspace", cause)),
-  );
-  // Opening a folder is also the user's route to authorizing agent launches.
-  // Resource-free Projects need this decision too: registration is not trust.
-  const trustRequired = !application.snapshot().trustedProjectPaths.includes(request.path);
-  yield* mapProjectError("inspectWorkspace", access.clearOwner(connectionId));
   clientWorkspaces.associateWorkspace(connectionId, request.path);
-  if (trustRequired)
-    yield* mapProjectError(
-      "inspectWorkspace",
-      access.requestTrust(connectionId, request.requestId, request.path),
-    );
-  return {
-    requestId: request.requestId,
-    path: request.path,
-    trustRequired,
-  };
-});
-
-export const respondTrust = Effect.fn("Projects.respondTrust")(function* (
-  connectionId: number,
-  request: Payload<"respond-workspace-trust">,
-) {
-  const access = yield* ProjectAccess;
-  yield* requireAllowed(request.path);
-  yield* mapProjectError(
-    "respondTrust",
-    access.consumeTrustRequest(connectionId, request.requestId, request.path),
-  );
-  if (request.approved) yield* mapProjectError("respondTrust", trustProject(request.path));
-  return { requestId: request.requestId };
+  return { requestId: request.requestId, path: request.path };
 });
 
 /** Observes main-owned Project registration facts as a current-first renderer projection. */

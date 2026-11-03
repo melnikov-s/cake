@@ -101,7 +101,6 @@ for (const draft of [false, true]) {
               lastOpenedAt: new Date(0).toISOString(),
             },
           ],
-          trustedProjectPaths: [project],
           utilityModel: {
             provider: "title-provider",
             modelId: "fixture-model",

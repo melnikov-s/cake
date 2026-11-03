@@ -25,7 +25,6 @@ test("shows a restored session's startup failure in the window instead of loadin
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [project],
     }),
   );
   const application = await electron.launch({

@@ -6,7 +6,7 @@ import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("authorizes and opens a restored resource-free untrusted Project", async () => {
+test("opens a restored Project without an approval prompt", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-project-open-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -29,7 +29,6 @@ test("authorizes and opens a restored resource-free untrusted Project", async ()
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [],
     }),
   );
 
@@ -48,10 +47,6 @@ test("authorizes and opens a restored resource-free untrusted Project", async ()
 
   try {
     const page = await application.firstWindow();
-    const trust = page.getByRole("button", { name: "Trust and continue" });
-    await expect(trust).toBeVisible({ timeout: 20_000 });
-    await trust.click();
-    await expect(trust).toBeHidden();
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
       timeout: 20_000,
     });

@@ -25,8 +25,6 @@ export const makeProjectAccessLive = (
       const worktrees = yield* ManagedWorktrees;
       const allowed = new Set<string>();
       const sessionLocations = new Map<string, string>();
-      const pendingTrustRequests = new Map<string, string>();
-      const trustKey = (ownerId: number, requestId: string) => `${ownerId}:${requestId}`;
 
       const rememberSessionLocation = Effect.fn("ProjectAccess.rememberSessionLocation")(function* (
         workingDirectory: string,
@@ -123,31 +121,6 @@ export const makeProjectAccessLive = (
             }),
         ),
         resolveSessionWorkingDirectory,
-        requestTrust: Effect.fn("ProjectAccess.requestTrust")(
-          (ownerId, requestId, workingDirectory) =>
-            Effect.sync(() => {
-              for (const key of pendingTrustRequests.keys())
-                if (key.startsWith(`${ownerId}:`)) pendingTrustRequests.delete(key);
-              pendingTrustRequests.set(trustKey(ownerId, requestId), workingDirectory);
-            }),
-        ),
-        consumeTrustRequest: Effect.fn("ProjectAccess.consumeTrustRequest")(
-          function* (ownerId, requestId, workingDirectory) {
-            const key = trustKey(ownerId, requestId);
-            if (pendingTrustRequests.get(key) !== workingDirectory)
-              return yield* new ProjectAccessError({
-                operation: "consumeTrustRequest",
-                message: "Workspace trust request is no longer pending",
-              });
-            pendingTrustRequests.delete(key);
-          },
-        ),
-        clearOwner: Effect.fn("ProjectAccess.clearOwner")((ownerId) =>
-          Effect.sync(() => {
-            for (const key of pendingTrustRequests.keys())
-              if (key.startsWith(`${ownerId}:`)) pendingTrustRequests.delete(key);
-          }),
-        ),
       });
     }),
   );

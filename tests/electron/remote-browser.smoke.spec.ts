@@ -181,7 +181,6 @@ test("remote Pi Browser Mode controls desktop Chromium and previews backend loca
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

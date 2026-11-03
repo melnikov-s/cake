@@ -41,7 +41,6 @@ test("production widget review captures settled sandbox pixels before persistenc
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   const application = await electron.launch({

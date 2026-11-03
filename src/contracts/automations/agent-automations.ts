@@ -181,9 +181,8 @@ export const automationSessionToolDescriptions = [
   },
   {
     command: "projects.info",
-    summary: "Inspect a registered Project and its trust state by exact path.",
-    result:
-      "The registered Project's metadata and trust state, without opening it or reading conversations.",
+    summary: "Inspect a registered Project by exact path.",
+    result: "The registered Project's metadata, without opening it or reading conversations.",
   },
   {
     command: "sessions.create",

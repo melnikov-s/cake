@@ -41,7 +41,6 @@ test("selects mixed conversational entries once, in display order, only in the f
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [project],
     }),
   );
   const entries: object[] = [

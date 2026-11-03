@@ -536,7 +536,6 @@ it("disposing a side-chat runtime releases observation, not its shared Harness o
   });
   const runtime = await sideChats.open({
     cwd: "/fixture",
-    trusted: true,
     agentDir: "/fixture/agent",
     sessionDir: "/fixture/side-chat",
     sessionId: cakeChatSideChatSessionId(f.side.id),

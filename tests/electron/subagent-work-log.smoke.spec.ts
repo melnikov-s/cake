@@ -180,7 +180,6 @@ test("opens retained historical subagent conversations at exact original respons
       version: 9,
       data: {
         ...defaultApplicationState(),
-        trustedProjectPaths: [project],
         projects: [
           {
             path: project,
@@ -417,7 +416,6 @@ test("never restores an interrupted subagent as running", async () => {
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

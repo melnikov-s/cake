@@ -35,7 +35,6 @@ test("@foreground screenshot capture preserves macOS foreground process mode", a
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   const application = await electron.launch({

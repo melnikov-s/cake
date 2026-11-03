@@ -44,7 +44,6 @@ test("image/classifier preferences and native execution controls persist and rea
             lastOpenedAt: new Date(0).toISOString(),
           },
         ],
-        trustedProjectPaths: [project],
       },
     }),
   );

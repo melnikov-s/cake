@@ -53,7 +53,6 @@ const makeLayer = (options: {
   activeWorkingDirectories?: readonly string[];
   activateAfterCatalogChecks?: Readonly<Record<string, number>>;
   runningWorkingDirectories?: readonly string[];
-  trustedProjectPaths?: string[];
   discarded: string[];
   cleaned?: string[];
   restored?: string[];
@@ -66,7 +65,6 @@ const makeLayer = (options: {
 }) => {
   let applicationState: ApplicationStateValue = {
     ...defaultApplicationState(),
-    trustedProjectPaths: [...(options.trustedProjectPaths ?? [])],
     projects: [
       {
         path: "/project",
@@ -94,11 +92,6 @@ const makeLayer = (options: {
           Effect.tap((next) =>
             Effect.sync(() => {
               applicationState = next;
-              options.trustedProjectPaths?.splice(
-                0,
-                options.trustedProjectPaths.length,
-                ...next.trustedProjectPaths,
-              );
             }),
           ),
         ),
@@ -252,19 +245,16 @@ describe("Managed Worktrees domain cleanup", () => {
     }
   }
 
-  it.effect("revokes a worktree's trust after discarding it", () => {
+  it.effect("discards a worktree", () => {
     const discarded: string[] = [];
-    const trustedProjectPaths = ["/project", "/worktree"];
     return Effect.gen(function* () {
       yield* managedWorktrees.discard("/worktree", false);
       assert.deepEqual(discarded, ["/worktree"]);
-      assert.deepEqual(trustedProjectPaths, ["/project"]);
     }).pipe(
       Effect.provide(
         makeLayer({
           records: [record("/project", "/worktree", "active")],
           resolvedWorkingDirectories: [],
-          trustedProjectPaths,
           discarded,
           changes: [],
         }),
@@ -272,19 +262,16 @@ describe("Managed Worktrees domain cleanup", () => {
     );
   });
 
-  it.effect("revokes trust when retiring a resolved worktree", () => {
+  it.effect("retires a resolved worktree", () => {
     const cleaned: string[] = [];
-    const trustedProjectPaths = ["/project", "/worktree"];
     return Effect.gen(function* () {
       yield* managedWorktrees.cleanupResolved("/worktree", "/sessions/worktree");
       assert.deepEqual(cleaned, ["/worktree"]);
-      assert.deepEqual(trustedProjectPaths, ["/project"]);
     }).pipe(
       Effect.provide(
         makeLayer({
           records: [record("/project", "/worktree")],
           resolvedWorkingDirectories: [],
-          trustedProjectPaths,
           discarded: [],
           cleaned,
           changes: [],
@@ -293,19 +280,16 @@ describe("Managed Worktrees domain cleanup", () => {
     );
   });
 
-  it.effect("restores inherited trust when recreating a resolved worktree", () => {
+  it.effect("recreates a resolved worktree", () => {
     const restored: string[] = [];
-    const trustedProjectPaths = ["/project"];
     return Effect.gen(function* () {
       yield* managedWorktrees.restoreResolved("/worktree");
       assert.deepEqual(restored, ["/worktree"]);
-      assert.deepEqual(trustedProjectPaths, ["/project", "/worktree"]);
     }).pipe(
       Effect.provide(
         makeLayer({
           records: [record("/project", "/worktree", "resolved")],
           resolvedWorkingDirectories: [],
-          trustedProjectPaths,
           discarded: [],
           restored,
           changes: [],
@@ -317,7 +301,6 @@ describe("Managed Worktrees domain cleanup", () => {
   it.effect("selects eligible landed worktrees from main-owned project and session state", () => {
     const discarded: string[] = [];
     const changes: SessionCatalogChange[] = [];
-    const trustedProjectPaths = ["/project", "/eligible", "/active"];
     const cleaned: string[] = [];
     const records = [
       record("/project", "/eligible"),
@@ -330,7 +313,6 @@ describe("Managed Worktrees domain cleanup", () => {
       records,
       resolvedWorkingDirectories: ["/eligible", "/active", "/already-retired", "/other"],
       activeWorkingDirectories: ["/active"],
-      trustedProjectPaths,
       discarded,
       cleaned,
       changes,
@@ -343,7 +325,6 @@ describe("Managed Worktrees domain cleanup", () => {
       assert.deepEqual(result.failures, []);
       assert.deepEqual(discarded, []);
       assert.deepEqual(cleaned, ["/eligible"]);
-      assert.deepEqual(trustedProjectPaths, ["/project", "/active"]);
       assert.deepEqual(changes, [
         {
           _tag: "ProjectSessionChanged",
@@ -361,7 +342,6 @@ describe("Managed Worktrees domain cleanup", () => {
     () => {
       const cleaned: string[] = [];
       const cleanupOptions: Array<Parameters<ManagedWorktreesService["cleanupResolved"]>[1]> = [];
-      const trustedProjectPaths = ["/project", "/clean", "/dirty"];
       const records = [
         record("/project", "/clean", "active"),
         record("/project", "/dirty", "active"),
@@ -377,7 +357,6 @@ describe("Managed Worktrees domain cleanup", () => {
             worktreeLanding: landing,
           },
           retained: ["/dirty"],
-          trustedProjectPaths,
           discarded: [],
           cleaned,
           cleanupOptions,
@@ -408,7 +387,6 @@ describe("Managed Worktrees domain cleanup", () => {
             },
           ]);
           assert.deepEqual(cleaned, ["/clean"]);
-          assert.deepEqual(trustedProjectPaths, ["/project", "/dirty"]);
           assert.deepEqual(cleanupOptions, [
             {
               lifecycle: { removeCommand: "tree remove {worktreeName}", timeout: "30 seconds" },

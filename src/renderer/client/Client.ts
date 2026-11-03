@@ -313,11 +313,7 @@ interface WorkspaceCommands {
   inspect(
     input: { operationId: string; path: string },
     options?: ClientCommandOptions,
-  ): Promise<{ operationId: string; path: string; trustRequired: boolean }>;
-  respondToTrust(
-    input: { operationId: string; path: string; approved: boolean },
-    options?: ClientCommandOptions,
-  ): Promise<void>;
+  ): Promise<{ operationId: string; path: string }>;
 }
 
 interface ManagedWorktreeCommands {

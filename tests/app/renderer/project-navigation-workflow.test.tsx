@@ -57,7 +57,7 @@ function renderNavigation(
       cakeChats: { open: async () => undefined },
       electron: { chooseProject: async () => "/beta" },
       workspaces: {
-        inspect: async (request) => ({ ...request, trustRequired: false }),
+        inspect: async (request) => ({ ...request }),
         registerProject: async () => defaultApplicationState(),
         loadStagedSlashCommands: async () => [],
       },

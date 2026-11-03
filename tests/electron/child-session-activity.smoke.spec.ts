@@ -157,7 +157,6 @@ test("background family children show running activity and only offer Mark as Un
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   const application = await electron.launch({

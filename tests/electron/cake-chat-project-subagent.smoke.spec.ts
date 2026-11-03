@@ -160,7 +160,6 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
             lastOpenedAt: new Date(0).toISOString(),
           },
         ],
-        trustedProjectPaths: [project],
         modelPresets: [
           {
             id: presetId,

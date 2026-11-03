@@ -175,7 +175,7 @@ message or a selected passage. A Cake Chat side chat is a native fork of Cake Ch
 Durable conversation after the anchored exchange: it continues from Cake Chat's
 exact context, separately from Cake Chat, and keeps its quick-check tools. Both
 native forks and regular sidecars inherit their originating conversation's applicable
-permissions and tools, preserving project trust and explicit user restrictions. Their
+permissions and tools, preserving explicit user restrictions. Their
 own identity is used for messages; parent-scoped controls retain the originating authority.
 They can address the originating conversation with `sessionId: "parent"`.
 Permanent-chat forks share the actual parent's to-do list and can ask interview questions. To-do

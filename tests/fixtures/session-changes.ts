@@ -124,7 +124,6 @@ export async function seedSessionChanges(
       projects: [
         { path: paths.project, name: "Cake", addedAt: timestamp, lastOpenedAt: timestamp },
       ],
-      trustedProjectPaths: [paths.project, worktree],
     }),
   );
   await writeFile(

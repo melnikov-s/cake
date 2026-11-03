@@ -61,7 +61,7 @@ export function createSessionApplicationOperations(
       inputSchema: AgentListInput,
       examples: [{}],
       result:
-        "Compact path/name/projectChatId rows, total and next=N; send to projectChatId with sessions.send. projects.info supplies trust and timestamps.",
+        "Compact path/name/projectChatId rows, total and next=N; send to projectChatId with sessions.send. projects.info supplies timestamps.",
       execute: invokeAppControl("projects.list"),
     },
     {
@@ -71,7 +71,7 @@ export function createSessionApplicationOperations(
       summary: "Inspect one registered Project by its exact path.",
       inputSchema: AgentProjectInfoInput,
       examples: [{ input: { path: "/path/to/project" } }],
-      result: "Project path, full name, timestamps and Pi resource trust.",
+      result: "Project path, full name and timestamps.",
       execute: invokeAppControl("projects.info"),
     },
     {

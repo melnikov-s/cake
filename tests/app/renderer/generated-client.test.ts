@@ -183,7 +183,7 @@ describe("generated renderer command adaptation", () => {
     for (const operation of [
       "sessionChats.prompt",
       "artifacts.stateReplace",
-      "workspaces.respond-workspace-trust",
+      "workspaces.register-project",
       "models.login",
       "savedDrafts.activate",
       "future.mutation",

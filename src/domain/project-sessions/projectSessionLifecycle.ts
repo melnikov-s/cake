@@ -18,7 +18,6 @@ import {
   getState,
   setProjectSessionLabels,
   setSessionUnread,
-  trustProject,
 } from "../application/application";
 import { defaultProjectWorkflow } from "../../contracts/application/application-data";
 import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
@@ -268,7 +267,6 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
             // their storage without assigning them any lifecycle state.
             if (sessionId !== current.parentSessionId)
               yield* projectSessionLocations.restore(sessionId, location).pipe(asError(operation));
-            yield* trustProject(location.workingDirectory).pipe(asError(operation));
           }
           // Keep the family resolved until every required checkout is ready.
           yield* restoreAuthority(current.parentSessionId, rootLocation, operation, false);
@@ -324,8 +322,7 @@ const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(f
           yield* managedWorktrees
             .restoreResolved(location.workingDirectory)
             .pipe(asError(operation));
-          const restored = yield* restoreAuthority(target.sessionId, location, operation, publish);
-          yield* trustProject(restored.workingDirectory).pipe(asError(operation));
+          yield* restoreAuthority(target.sessionId, location, operation, publish);
         }
       }),
     )

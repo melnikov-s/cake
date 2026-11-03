@@ -35,7 +35,6 @@ const initialSettings: PiSettings = {
   collapseChangelog: false,
   quietStartup: false,
   enableInstallTelemetry: false,
-  defaultProjectTrust: "ask",
   doubleEscapeAction: "tree",
   treeFilterMode: "default",
   anthropicExtraUsageWarning: true,

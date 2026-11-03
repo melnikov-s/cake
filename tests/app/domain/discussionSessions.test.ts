@@ -314,7 +314,6 @@ const makeLayer = (
         agentDirectory: "/cake",
         sessionDirectory: "/cake/reviews/thread-1",
         parentSessionDirectory: "/cake/sessions",
-        trusted: true,
       }),
     sidecarSystemPrompt: () =>
       Effect.succeed("Read the bounded parent projection at /cake/reviews/context/parent.md"),
@@ -339,7 +338,6 @@ const makeLayer = (
         lastOpenedAt: "2026-01-01T00:00:00.000Z",
       },
     ],
-    trustedProjectPaths: ["/project"],
   };
   return {
     layer: Layer.mergeAll(
@@ -452,7 +450,6 @@ const assembleCakeChat = Effect.gen(function* () {
       profile: { _tag: "CakeChatSession" },
       runtime: {
         cwd: "/home",
-        trusted: true,
         agentDir: "/cake",
         sessionDir: "/cake/cake-chat",
         newSession: false,

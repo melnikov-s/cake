@@ -408,27 +408,6 @@ export const removeProject = Effect.fn("Application.removeProject")(function* (p
   return yield* update((current) => ({
     ...current,
     projects: current.projects.filter((project) => project.path !== path),
-    trustedProjectPaths: current.trustedProjectPaths.filter((trusted) => trusted !== path),
-  }));
-});
-
-export const trustProject = Effect.fn("Application.trustProject")(function* (path: string) {
-  const owner = yield* ApplicationStateOwner;
-  return yield* owner.transact((current) => {
-    if (current.trustedProjectPaths.includes(path)) return Effect.succeed(current);
-    return validate({
-      ...current,
-      trustedProjectPaths: [...current.trustedProjectPaths, path],
-    });
-  });
-});
-
-export const revokeProjectTrust = Effect.fn("Application.revokeProjectTrust")(function* (
-  path: string,
-) {
-  return yield* update((current) => ({
-    ...current,
-    trustedProjectPaths: current.trustedProjectPaths.filter((trusted) => trusted !== path),
   }));
 });
 

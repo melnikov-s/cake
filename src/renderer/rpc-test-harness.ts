@@ -124,10 +124,6 @@ function invokeSmokeCommand(
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["inspect-workspace"])(payload).pipe(
         Effect.flatMap(client.workspaces["inspect-workspace"]),
       );
-    case "respond-workspace-trust":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["respond-workspace-trust"])(
-        payload,
-      ).pipe(Effect.flatMap(client.workspaces["respond-workspace-trust"]));
     case "create-worktree":
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["create-worktree"])(payload).pipe(
         Effect.flatMap(client.managedWorktrees["create-worktree"]),

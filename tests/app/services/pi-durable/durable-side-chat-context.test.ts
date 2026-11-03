@@ -66,7 +66,6 @@ it("projects real fork context, publishes arrivals/model changes, and restores m
       cwd: "/fixture",
       agentDir: "/agent",
       sessionDir: "/sessions",
-      trusted: true,
       requestUi: async () => undefined,
       onEvent: (event: Parameters<Parameters<typeof chats.open>[0]["onEvent"]>[0]) => {
         if (event.type === "snapshot" && event.snapshot.usage?.context?.tokens === expectedArrival)
@@ -168,7 +167,6 @@ it("estimates inherited text without provider usage and reports unavailable cont
       cwd: "/fixture",
       agentDir: "/agent",
       sessionDir: "/sessions",
-      trusted: true,
       requestUi: async () => undefined,
       onEvent: () => undefined,
     });

@@ -139,7 +139,6 @@ test("rewords composer text and opens the focused session assistant", async () =
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
       modelPresets: [
         {
           id: "10000000-0000-4000-8000-000000000099",

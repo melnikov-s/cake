@@ -26,7 +26,6 @@ test("disconnected diagnostic pipes do not interrupt the hidden desktop app", as
   try {
     const page = await application.firstWindow();
     await page.getByRole("button", { name: "One-off chat", exact: true }).click();
-    await page.getByRole("button", { name: "Trust and continue", exact: true }).click();
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await application.evaluate(({ dialog }) => {

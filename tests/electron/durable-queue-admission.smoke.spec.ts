@@ -76,7 +76,6 @@ for (const scope of ["global", "project"] as const) {
             projects: [
               { path: project, name: "Project", addedAt: timestamp, lastOpenedAt: timestamp },
             ],
-            trustedProjectPaths: [project],
             modelPresets: [preset],
             defaultModelPresetId: preset.id,
           },

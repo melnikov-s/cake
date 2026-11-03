@@ -37,7 +37,6 @@ test("resolving in a large Activity feed does not force layout for every shifted
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   await Promise.all(

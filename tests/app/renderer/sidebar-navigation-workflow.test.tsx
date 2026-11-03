@@ -102,7 +102,6 @@ describe("Sidebar navigation workflow", () => {
     async (control) => {
       const inspect = vi.fn<Client["workspaces"]["inspect"]>(async (request) => ({
         ...request,
-        trustRequired: false,
       }));
       const start = vi.fn<Client["projectSessions"]["start"]>();
       using fixture = renderSidebarNavigation({

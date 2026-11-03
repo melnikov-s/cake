@@ -29,7 +29,6 @@ const persistenceUpdates = {
   collapseChangelog: { key: "collapseChangelog", value: true },
   quietStartup: { key: "quietStartup", value: true },
   enableInstallTelemetry: { key: "enableInstallTelemetry", value: false },
-  defaultProjectTrust: { key: "defaultProjectTrust", value: "never" },
   doubleEscapeAction: { key: "doubleEscapeAction", value: "none" },
   treeFilterMode: { key: "treeFilterMode", value: "labeled-only" },
   anthropicExtraUsageWarning: { key: "anthropicExtraUsageWarning", value: false },

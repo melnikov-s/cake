@@ -72,7 +72,6 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
     });
     const configured = configureCakeSessionRuntime({
       cwd: root,
-      trusted: true,
       agentDir: root,
       sessionDir: root,
       requestUi: async () => {

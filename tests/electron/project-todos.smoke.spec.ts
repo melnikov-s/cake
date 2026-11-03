@@ -255,7 +255,6 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
               },
             },
           ],
-          trustedProjectPaths: [project],
           modelPresets: [
             {
               id: preset,

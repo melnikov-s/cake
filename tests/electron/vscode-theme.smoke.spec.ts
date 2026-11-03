@@ -34,7 +34,6 @@ for (const initialTheme of ["dark", "light"] as const) {
         projects: [
           { path: project, name: "Theme fixture", addedAt: timestamp, lastOpenedAt: timestamp },
         ],
-        trustedProjectPaths: [project],
         vscodeServerPath: codeServer,
       }),
     );

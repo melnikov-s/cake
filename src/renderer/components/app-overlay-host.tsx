@@ -13,7 +13,6 @@ import { QuakeTerminal } from "./quake-terminal";
 import { SessionContinuationDialog } from "./session-continuation-dialog";
 import { TreeNavigationDialog } from "./tree-navigation-dialog";
 import { UiHintMode } from "./ui/ui-hint-mode";
-import { WorkspaceTrustDialog } from "./workspace-trust-dialog";
 
 export const AppOverlayHost = observer(function AppOverlayHost({
   workspaceMode,
@@ -50,7 +49,6 @@ export const AppOverlayHost = observer(function AppOverlayHost({
       <FileLocationPreview store={workbench.presentationStore} />
       <MessageReferencePreview store={root.navigationStore.messageReferencePreview} />
       <AttachmentReferencePreview store={root.navigationStore.attachmentReferencePreview} />
-      <WorkspaceTrustDialog />
       <SessionContinuationDialog store={workbench.sessionContinuationStore} />
       <TreeNavigationDialog store={workbench.commandPaneStore} />
       <ExtensionRequestDialog />

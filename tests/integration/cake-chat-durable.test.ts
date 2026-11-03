@@ -160,7 +160,6 @@ async function fixture() {
     const runtime = await serviceRuntime.runPromise(
       service.createRuntime({
         cwd: directory,
-        trusted: true,
         agentDir,
         sessionDir,
         sessionId: CAKE_CHAT_SESSION_ID,
@@ -217,7 +216,6 @@ async function fixture() {
     const runtime = await serviceRuntime.runPromise(
       service.createSideChatRuntime({
         cwd: directory,
-        trusted: true,
         agentDir,
         sessionDir: join(directory, "reviews", "side-chat"),
         directSessionDir: true,

@@ -55,6 +55,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { makeProjectAccessLive } from "../../../src/services/projects/ProjectAccessLive";
 import { ProjectConfiguration } from "../../../src/services/projects/ProjectConfiguration";
+import { RewordingRequests } from "../../../src/services/projects/RewordingRequests";
 import { RewordingRequestsLive } from "../../../src/services/projects/RewordingRequestsLive";
 import {
   RendererRequestCoordinator,
@@ -198,7 +199,6 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
             source: "missing" as const,
             state: {
               ...defaultApplicationState(),
-              trustedProjectPaths: [projectPath],
               projects: [
                 {
                   path: projectPath,
@@ -226,11 +226,21 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       }),
     ),
   ).pipe(Layer.provide(ClientEventsLive));
+  const observedRewording = Layer.effect(
+    RewordingRequests,
+    Effect.map(RewordingRequests, (service) =>
+      RewordingRequests.of({
+        ...service,
+        disposeOwner: (id) =>
+          service.disposeOwner(id).pipe(Effect.andThen(Queue.offer(cleaned, id))),
+      }),
+    ),
+  ).pipe(Layer.provide(RewordingRequestsLive));
   const clients = Layer.mergeAll(
     ClientConnectionsLive,
     observedEvents,
     ClientWorkspacesLive,
-    RewordingRequestsLive,
+    observedRewording,
   );
   const worktrees = Layer.mock(ManagedWorktrees, {
     records: () => Effect.succeed([]),
@@ -242,7 +252,6 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     Effect.map(ProjectAccess, (service) =>
       ProjectAccess.of({
         ...service,
-        clearOwner: (id) => service.clearOwner(id).pipe(Effect.andThen(Queue.offer(cleaned, id))),
         allow: (path) =>
           Effect.gen(function* () {
             const connection = yield* Effect.serviceOption(RendererConnection);

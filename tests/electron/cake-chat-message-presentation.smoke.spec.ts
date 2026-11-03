@@ -59,7 +59,6 @@ for (const [delivery, theme] of [
       const applicationPath = join(paths.cakeHome, "state", "application.json");
       const state = JSON.parse(await readFile(applicationPath, "utf8"));
       state.data.projects.push({ ...state.data.projects[0], path: producer, name: "Producer" });
-      state.data.trustedProjectPaths.push(producer);
       await writeFile(applicationPath, JSON.stringify(state));
       const pixels =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";

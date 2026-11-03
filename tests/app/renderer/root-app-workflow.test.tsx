@@ -49,9 +49,7 @@ describe("Root App workflow", () => {
     type Inspection = Awaited<ReturnType<Client["workspaces"]["inspect"]>>;
     const preparing = deferred<Inspection>();
     const inspect = vi.fn<Client["workspaces"]["inspect"]>((request) =>
-      request.path === "/beta"
-        ? preparing.promise
-        : Promise.resolve({ ...request, trustRequired: false }),
+      request.path === "/beta" ? preparing.promise : Promise.resolve({ ...request }),
     );
     const registerProject = vi.fn<Client["workspaces"]["registerProject"]>(async () => ({
       ...defaultApplicationState(),
@@ -65,7 +63,7 @@ describe("Root App workflow", () => {
     expect(screen.getAllByText("Current conversation").length).toBeGreaterThan(1);
     const request = inspect.mock.calls[0]?.[0];
     if (!request) throw new Error("Expected preparation request");
-    await act(async () => preparing.resolve({ ...request, trustRequired: false }));
+    await act(async () => preparing.resolve({ ...request }));
     await waitFor(() => expect(input().placeholder).toBe("Ask Cake to work in Beta…"));
     expect(input().value).toBe("");
     await fixture.user.type(input(), "Beta staged draft");

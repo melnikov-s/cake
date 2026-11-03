@@ -17,7 +17,6 @@ import {
 
 const context = {
   workingDirectory: "/project",
-  projectTrusted: true,
 };
 
 const snapshot: PiAgentResourcesSnapshot = {
@@ -148,7 +147,6 @@ describe("PiAgentResources", () => {
 
       const staged = await discoverPiAgentPromptResources(agentDirectory, {
         workingDirectory: directory,
-        projectTrusted: true,
         additionalExtensionPaths: [join(packageDirectory, "extensions", "fixture.ts")],
       });
       assert.ok(staged.skills.some((skill) => skill.name === "fixture-skill"));
@@ -162,7 +160,6 @@ describe("PiAgentResources", () => {
 
       const result = await discoverPiAgentResources(agentDirectory, {
         workingDirectory: directory,
-        projectTrusted: true,
       });
 
       assert.ok(result.skills.some((skill) => skill.name === "fixture-skill"));

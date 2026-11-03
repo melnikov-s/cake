@@ -38,7 +38,6 @@ test("theme tools persist, refresh Settings and drive the same live Cake/native 
       projects: [
         { path: project, name: "Theme tools", addedAt: timestamp, lastOpenedAt: timestamp },
       ],
-      trustedProjectPaths: [project],
       vscodeServerPath: codeServer,
     }),
   );

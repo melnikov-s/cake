@@ -404,7 +404,6 @@ export class CakeSessionRuntimes extends Context.Service<
 
 interface SharedRuntime {
   applicationLease: boolean;
-  requestedProjectTrust: boolean;
   readonly fingerprint: string;
   readonly acquireOptions: CakeSessionRuntimeAcquireOptions;
   readonly workingDirectory: string;
@@ -466,10 +465,6 @@ const runtimeFingerprint = (options: CakeSessionRuntimeAcquireOptions): string =
     // runtime policy and therefore is not part of the conflict fingerprint.
     sessionId: runtime.sessionId,
     sessionFile: runtime.sessionFile,
-    // Project trust is live user policy, not a different Session.
-    // Callers without live policy still reject changes to fixed trust configuration.
-    trusted: runtime.projectTrust ? undefined : runtime.trusted,
-    liveProjectTrust: runtime.projectTrust !== undefined,
     tools: runtime.tools ? [...runtime.tools].sort() : undefined,
     auxiliary: runtime.auxiliary ?? false,
     ephemeral: runtime.ephemeral ?? false,
@@ -693,7 +688,6 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 );
               const shared: SharedRuntime = {
                 applicationLease: false,
-                requestedProjectTrust: key.options.runtime.trusted,
                 initialTranscriptPersisted,
                 settledInputIds,
                 turnResults,
@@ -853,19 +847,6 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               });
             }
             yield* Scope.addFinalizer(ownerScope, Scope.close(leaseScope, Exit.void));
-            const trusted = options.runtime.projectTrust?.();
-            if (trusted !== undefined && trusted !== retained.requestedProjectTrust) {
-              // Keep the same Pi Session, observers and queued work. Pi's resource
-              // lifecycle applies the user's decision once the current response settles.
-              const reload = retained.runtime.reload;
-              if (!reload)
-                return yield* new PiSessionError({
-                  operation: "reloadProjectTrust",
-                  message: "This Pi Session does not support reloading project trust",
-                });
-              yield* runtimeOperation("reloadProjectTrust", () => reload.call(retained.runtime));
-              retained.requestedProjectTrust = trusted;
-            }
             // The permanent coordinator belongs to the application, not its visible pane.
             // Keep one ordinary RcMap lease so worker reports can wake it after observers leave.
             if (retained.profile === "CakeChatSession" && !retained.applicationLease) {

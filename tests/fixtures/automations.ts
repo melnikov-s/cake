@@ -142,7 +142,6 @@ export async function seedAutomationVisualFixture(
           projects: [
             { path: paths.project, name: "Cake", addedAt: timestamp, lastOpenedAt: timestamp },
           ],
-          trustedProjectPaths: [paths.project],
           unreadSessionIds: runs.map((run) => run.sessionId),
           modelPresets: [
             { id: "50000000-0000-4000-8000-000000000001", name: "Fixture", ...configuration },

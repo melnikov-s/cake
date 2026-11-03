@@ -21,17 +21,6 @@ export interface ProjectAccessService {
   readonly resolveSessionWorkingDirectory: (
     sessionId: string,
   ) => Effect.Effect<string, ProjectAccessError>;
-  readonly requestTrust: (
-    ownerId: number,
-    requestId: string,
-    workingDirectory: string,
-  ) => Effect.Effect<void>;
-  readonly consumeTrustRequest: (
-    ownerId: number,
-    requestId: string,
-    workingDirectory: string,
-  ) => Effect.Effect<void, ProjectAccessError>;
-  readonly clearOwner: (ownerId: number) => Effect.Effect<void>;
 }
 
 /** Main-owned authorization and ephemeral Project/Session location authority. */

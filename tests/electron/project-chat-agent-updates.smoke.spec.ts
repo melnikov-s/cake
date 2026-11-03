@@ -121,7 +121,6 @@ for (const timing of ["next-user", "timer"] as const)
               lastOpenedAt: new Date(0).toISOString(),
             },
           ],
-          trustedProjectPaths: [project],
           modelPresets: [
             {
               id: presetId,

@@ -82,7 +82,6 @@ test("remote Electron uses the full shell and only the server owns agent state",
       projects: [
         { path: project, name: "Remote project", addedAt: timestamp, lastOpenedAt: timestamp },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   const transcript = join(sessionDirectory, `1970-01-01T00-00-00-000Z_${id}.jsonl`);

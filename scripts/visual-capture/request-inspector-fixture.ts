@@ -101,7 +101,6 @@ export async function openRequestInspectorFixture(
               lastOpenedAt: new Date(0).toISOString(),
             },
           ],
-          trustedProjectPaths: [paths.project],
           modelPresets: [
             {
               id: presetId,

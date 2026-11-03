@@ -61,7 +61,6 @@ const environment = (disposed: Deferred.Deferred<void>) =>
     Layer.mock(ApplicationState, {
       snapshot: () => ({
         ...defaultApplicationState(),
-        trustedProjectPaths: ["/project"],
       }),
     }),
     Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),

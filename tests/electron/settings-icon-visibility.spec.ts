@@ -31,7 +31,6 @@ test("workspace settings icon visibility follows sidebar state", async () => {
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   const application = await electron.launch({

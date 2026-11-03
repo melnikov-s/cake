@@ -39,7 +39,6 @@ test("Project Chat's first transcript has its own history, including cross-proje
             addedAt: new Date(0).toISOString(),
             lastOpenedAt: new Date(0).toISOString(),
           })),
-          trustedProjectPaths: projects.map(({ path }) => path),
         },
       }),
     );

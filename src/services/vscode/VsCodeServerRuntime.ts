@@ -984,7 +984,7 @@ export class VsCodeServerRuntime {
     const settings = parsed.value;
     const updates: Array<{ key: string; value: unknown }> = [];
     if (settings["security.workspace.trust.enabled"] !== false) {
-      // Cake already gates project resources through its own persisted trust decision.
+      // Opening a Project in Cake is the user's decision to work in it; never ask again.
       updates.push({ key: "security.workspace.trust.enabled", value: false });
     }
     // The embedded editor is a Cake-managed surface: it always follows the app's

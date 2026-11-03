@@ -31,7 +31,6 @@ test("legacy Application storage migrates before normal renderer hydration", asy
       schemaVersion: 1,
       projects: [],
       unreadSessionIds: [],
-      trustedProjectPaths: [],
     }),
   );
   const application = await launch(temporaryRoot);

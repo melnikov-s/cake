@@ -91,7 +91,6 @@ async function verifyStreamingWorkLog(theme: "dark" | "light") {
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   const application = await electron.launch({

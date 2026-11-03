@@ -295,28 +295,8 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
         );
         if (response.requestId !== input.operationId)
           throw new Error("Cake returned the wrong workspace inspection");
-        return {
-          operationId: response.requestId,
-          path: response.path,
-          trustRequired: response.trustRequired,
-        };
+        return { operationId: response.requestId, path: response.path };
       },
-      respondToTrust: (input, options) =>
-        accepted(
-          "workspaces.respond-workspace-trust",
-          (client) =>
-            client.workspaces["respond-workspace-trust"]({
-              requestId: input.operationId,
-              path: input.path,
-              approved: input.approved,
-            }),
-          {
-            requestId: input.operationId,
-            path: input.path,
-            approved: input.approved,
-          }.requestId,
-          options,
-        ),
     },
     managedWorktrees: {
       inspectChanges: (input, options) =>

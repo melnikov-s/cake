@@ -30,7 +30,6 @@ test("splits project chats while retaining independent drafts and pane focus", a
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
 

@@ -80,9 +80,7 @@ function bootstrapBoundary() {
     mainOpen,
     async accept() {
       await waitFor(() => expect(inspect).toHaveBeenCalledTimes(1));
-      await act(async () =>
-        inspection.resolve({ ...inspect.mock.calls[0]![0], trustRequired: false }),
-      );
+      await act(async () => inspection.resolve({ ...inspect.mock.calls[0]![0] }));
       await waitFor(() => expect(registerProject).toHaveBeenCalledTimes(1));
       await act(async () => registration.resolve(defaultApplicationState()));
     },

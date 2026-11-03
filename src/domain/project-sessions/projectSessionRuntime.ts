@@ -574,8 +574,6 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           ),
       },
       cwd: location.workingDirectory,
-      trusted: application.snapshot().trustedProjectPaths.includes(location.projectPath),
-      projectTrust: () => application.snapshot().trustedProjectPaths.includes(location.projectPath),
       agentDir: configuration.agentDirectory,
       additionalSystemPrompt: [
         relationshipPrompt,

@@ -87,7 +87,6 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

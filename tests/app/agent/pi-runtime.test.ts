@@ -29,7 +29,6 @@ import {
 import {
   cakeWorkspaceSessionDirectory,
   forkWorkspaceSession,
-  inspectWorkspace,
   loadPiChangelog,
   loadWorkspacePiSessionPreview,
   streamWorkspaceSessions,
@@ -100,7 +99,6 @@ describe("Pi 1.0.0 foundation contract", () => {
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
-      trusted: false,
       newSession: true,
       requestUi: async () => undefined,
       generateInlineWidget: async () => ({
@@ -165,7 +163,6 @@ describe("Pi 1.0.0 foundation contract", () => {
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
-      trusted: false,
       newSession: true,
       requestUi: async () => undefined,
       currentSessionControl: {
@@ -213,7 +210,6 @@ describe("Pi 1.0.0 foundation contract", () => {
         cwd: directory,
         agentDir: join(directory, "agent"),
         sessionDir: join(directory, "sessions"),
-        trusted: false,
         newSession: true,
         requestUi: async () => undefined,
         onEvent: () => undefined,
@@ -345,7 +341,6 @@ describe("Pi 1.0.0 foundation contract", () => {
         cwd: directory,
         agentDir,
         sessionDir: join(directory, "sessions"),
-        trusted: true,
         newSession: true,
         requestUi: async () => undefined,
         hasLinkedArtifacts: async () => hasLinkedArtifacts,
@@ -518,7 +513,6 @@ describe("Pi 1.0.0 foundation contract", () => {
         cwd: directory,
         agentDir,
         sessionDir: join(directory, "sessions"),
-        trusted: true,
         newSession: true,
         requestUi: async () => undefined,
         ...(resolveModelSelection ? { resolveModelSelection } : null),
@@ -674,7 +668,6 @@ describe("Pi 1.0.0 foundation contract", () => {
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
-      trusted: false,
       newSession: true,
       requestUi: async () => undefined,
       onEvent: (event) => events.push(event),
@@ -779,7 +772,6 @@ describe("Pi 1.0.0 foundation contract", () => {
         cwd: directory,
         agentDir,
         sessionDir,
-        trusted: true,
         utilityModel: () => ({
           provider: "fixture-provider",
           modelId: "fixture-model",
@@ -988,7 +980,6 @@ describe("Pi 1.0.0 foundation contract", () => {
         cwd: directory,
         agentDir,
         sessionDir: join(directory, "sessions"),
-        trusted: true,
         newSession: true,
         requestUi: async () => undefined,
         currentSessionControl: {
@@ -1112,7 +1103,6 @@ describe("Pi 1.0.0 foundation contract", () => {
         cwd: directory,
         agentDir,
         sessionDir: join(directory, "sessions"),
-        trusted: true,
         newSession: true,
         requestUi: async () => undefined,
         currentSessionControl: {
@@ -1179,7 +1169,6 @@ describe("Pi 1.0.0 foundation contract", () => {
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
-      trusted: true,
       newSession: true,
       requestUi: async () => undefined,
       onEvent: (event) => {
@@ -2480,7 +2469,6 @@ describe("S1 Pi runtime", () => {
       cwd: directory,
       agentDir,
       sessionDir: join(directory, "sessions"),
-      trusted: true,
       newSession: true,
       requestUi: async () => undefined,
       onEvent: () => undefined,
@@ -2566,7 +2554,6 @@ describe("S1 Pi runtime", () => {
         cwd: directory,
         agentDir,
         sessionDir: join(directory, "sessions"),
-        trusted: true,
         newSession: true,
         requestUi: async () => undefined,
         onEvent: () => undefined,
@@ -2591,7 +2578,6 @@ describe("S1 Pi runtime", () => {
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
-      trusted: false,
       newSession: true,
       requestUi: async () => undefined,
       agentControl: {
@@ -2620,7 +2606,6 @@ describe("S1 Pi runtime", () => {
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
-      trusted: false,
       newSession: true,
       auxiliary: true,
       tools: ["read", "grep", "find", "ls"],
@@ -2642,7 +2627,6 @@ describe("S1 Pi runtime", () => {
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
-      trusted: true,
       newSession: true,
       auxiliary: true,
       isolatedSystemPrompt: "You are a focused subagent.",
@@ -2668,7 +2652,6 @@ describe("S1 Pi runtime", () => {
         cwd: directory,
         agentDir: join(directory, "agent"),
         sessionDir: join(directory, "sessions"),
-        trusted: false,
         requestUi: async () => undefined,
         onEvent: () => undefined,
       });
@@ -2686,17 +2669,6 @@ describe("S1 Pi runtime", () => {
     }
   });
 
-  it("detects project-local executable resources before loading them", async () => {
-    const directory = await createTemporaryDirectory();
-    await mkdir(join(directory, ".pi", "extensions"), { recursive: true });
-    await writeFile(
-      join(directory, ".pi", "extensions", "example.ts"),
-      "export default () => {}\n",
-    );
-
-    expect(inspectWorkspace(directory)).toEqual({ path: directory, trustRequired: true });
-  });
-
   it("persists Cake runtime settings and reloads Pi resources", async () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
@@ -2705,7 +2677,6 @@ describe("S1 Pi runtime", () => {
       cwd: directory,
       agentDir,
       sessionDir: join(directory, "sessions"),
-      trusted: false,
       requestUi: async () => undefined,
       onEvent,
     });
@@ -2759,7 +2730,6 @@ describe("S1 Pi runtime", () => {
       cwd: directory,
       agentDir,
       sessionDir: join(agentDir, "sessions"),
-      trusted: false,
       requestUi: async () => undefined,
       onEvent,
     });
@@ -2869,7 +2839,6 @@ describe("S1 Pi runtime", () => {
         agentDir,
         sessionDir,
         additionalSystemPrompt: "Unchanged session guidance",
-        trusted: true,
         newSession: true,
         requestUi: async () => undefined,
         onEvent: () => undefined,
@@ -2889,7 +2858,6 @@ describe("S1 Pi runtime", () => {
         sessionDir,
         sessionId: fork.sessionId,
         additionalSystemPrompt: "Unchanged session guidance",
-        trusted: true,
         requestUi: async () => undefined,
         onEvent: () => undefined,
       });
@@ -2936,7 +2904,6 @@ describe("S1 Pi runtime", () => {
         agentDir,
         sessionDir,
         sessionId: relocated.sessionId,
-        trusted: true,
         additionalSystemPrompt:
           "Unchanged session guidance\n\n<worktree_instructions>\nUse this checkout only\n</worktree_instructions>",
         requestUi: async () => undefined,
@@ -3041,7 +3008,6 @@ describe("S1 Pi runtime", () => {
       agentDir,
       sessionDir,
       sessionId: sourceSessionId,
-      trusted: false,
       requestUi: async () => undefined,
       onEvent: () => undefined,
     });
@@ -3162,7 +3128,6 @@ describe("S1 Pi runtime", () => {
         agentDir,
         sessionDir,
         sessionId: source.getSessionId(),
-        trusted: false,
         requestUi: async () => undefined,
         onEvent: () => undefined,
       });
@@ -3223,7 +3188,6 @@ describe("S1 Pi runtime", () => {
       agentDir: join(directory, "agent"),
       sessionDir,
       sessionId: source.getSessionId(),
-      trusted: false,
       requestUi: async () => undefined,
       onEvent: () => undefined,
     });
@@ -3255,7 +3219,6 @@ describe("S1 Pi runtime", () => {
       cwd: directory,
       agentDir,
       sessionDir: join(directory, "sessions"),
-      trusted: true,
       additionalSystemPrompt: "Session-specific instructions",
       requestUi: async () => undefined,
       onEvent: () => undefined,
@@ -3309,7 +3272,6 @@ describe("S1 Pi runtime", () => {
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
-      trusted: false,
       requestUi: async () => undefined,
       onEvent: () => undefined,
     };
@@ -3377,7 +3339,6 @@ describe("S1 Pi runtime", () => {
       cwd: directory,
       agentDir,
       sessionDir,
-      trusted: false,
       requestUi: async () => undefined,
       onEvent: () => undefined,
     });
@@ -3671,7 +3632,6 @@ describe("S1 Pi runtime", () => {
       cwd: directory,
       agentDir,
       sessionDir,
-      trusted: false,
       sessionTitleChanged: async (sessionId, title) => {
         titles.set(sessionId, title);
       },
@@ -3732,7 +3692,6 @@ describe("S1 Pi runtime", () => {
       cwd: directory,
       agentDir,
       sessionDir,
-      trusted: false,
       newSession: true,
       sessionId: requestedSessionId,
       requestUi: async () => undefined,
@@ -3777,7 +3736,6 @@ describe("S1 Pi runtime", () => {
       agentDir,
       sessionDir,
       sessionFile,
-      trusted: false,
       requestUi: async () => undefined,
       onEvent: () => undefined,
     });
@@ -3818,7 +3776,6 @@ describe("S3 Pi ecosystem compatibility", () => {
         cwd: directory,
         agentDir,
         sessionDir: join(agentDir, "sessions"),
-        trusted: false,
         newSession: true,
         requestUi: async () => undefined,
         onEvent: () => undefined,
@@ -3902,7 +3859,6 @@ export default function (pi) {
       cwd: directory,
       agentDir,
       sessionDir: join(directory, "sessions"),
-      trusted: true,
       requestUi: async (request) => {
         requests.push(request.kind);
         return request.kind === "select" ? "one" : request.kind === "editor" ? "edited" : "value";
@@ -3998,7 +3954,6 @@ export default function (pi) {
       cwd: directory,
       agentDir,
       sessionDir: join(directory, "sessions"),
-      trusted: true,
       requestUi: async () => undefined,
       onEvent: () => undefined,
     });

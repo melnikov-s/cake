@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeSocket } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
-import { Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Stream } from "effect";
+import { Context, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
 import { expect } from "vitest";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import {
@@ -828,13 +828,10 @@ it.live("disconnect_cleans_only_its_owner_and_cancels_pending_interactions", () 
     const eventsA = yield* observe(a.client["artifacts.observeEvents"]());
     const eventsB = yield* observe(b.client["artifacts.observeEvents"]());
     const workspaces = Context.get(backend.context, ClientWorkspaces);
-    const access = Context.get(backend.context, ProjectAccess);
     const rewording = Context.get(backend.context, RewordingRequests);
     const requests = Context.get(backend.context, RendererRequestCoordinator);
     workspaces.associateWorkspace(1, "/first");
     workspaces.associateWorkspace(2, "/second");
-    yield* access.requestTrust(1, "first", "/first");
-    yield* access.requestTrust(2, "second", "/second");
     const rewordA = yield* rewording.acquire(1);
     const rewordB = yield* rewording.acquire(2);
     const pendingA = yield* requests
@@ -853,10 +850,6 @@ it.live("disconnect_cleans_only_its_owner_and_cancels_pending_interactions", () 
     expect(workspaces.workspaceForConnection(2)).toBe("/second");
     expect(rewordA.signal.aborted).toBe(true);
     expect(rewordB.signal.aborted).toBe(false);
-    expect(
-      Exit.isFailure(yield* access.consumeTrustRequest(1, "first", "/first").pipe(Effect.exit)),
-    ).toBe(true);
-    yield* access.consumeTrustRequest(2, "second", "/second");
     expect(pendingB.pollUnsafe()).toBeUndefined();
     yield* b.client["artifacts.respond-ui"]({
       sessionId: "b",

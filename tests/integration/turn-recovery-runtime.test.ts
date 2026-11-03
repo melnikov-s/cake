@@ -102,7 +102,6 @@ async function createFixtureRuntime(directory: string, onEvent = vi.fn()) {
     cwd: directory,
     agentDir: join(directory, "agent"),
     sessionDir: join(directory, "sessions"),
-    trusted: true,
     newSession: true,
     requestUi: async () => undefined,
     onEvent,
@@ -187,7 +186,6 @@ describe("response retry and recovery", () => {
         agentDir: join(directory, "agent"),
         sessionDir: join(directory, "sessions"),
         sessionId: runtime.sessionId,
-        trusted: true,
         requestUi: async () => undefined,
         onEvent: () => undefined,
       });
@@ -268,7 +266,6 @@ describe("response retry and recovery", () => {
         agentDir: join(directory, "agent"),
         sessionDir: join(directory, "sessions"),
         sessionId: runtime.sessionId,
-        trusted: true,
         requestUi: async () => undefined,
         onEvent: (event: CakeSessionRuntimeEvent) => recoveryEvents.push(event),
       };
@@ -393,7 +390,6 @@ describe("response retry and recovery", () => {
         agentDir: join(directory, "agent"),
         sessionDir: join(directory, "sessions"),
         sessionId: runtime.sessionId,
-        trusted: true,
         requestUi: async () => undefined,
         onEvent: (event) => events.push(event),
       });
@@ -937,7 +933,6 @@ describe("send-now handoff presentation", () => {
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
       sessionId: runtime.sessionId,
-      trusted: true,
       requestUi: async () => undefined,
       onEvent: () => undefined,
     });

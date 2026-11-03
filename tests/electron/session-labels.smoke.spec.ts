@@ -76,7 +76,6 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
       projects: [
         { path: project, name: "Label project", addedAt: timestamp, lastOpenedAt: timestamp },
       ],
-      trustedProjectPaths: [project],
     }),
   );
 

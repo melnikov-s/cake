@@ -160,9 +160,6 @@ export interface CakeSessionRuntimeOptions {
   messageBoardControl?: MessageBoardControl;
   /** Child runtimes report their own costs separately. */
   partialPricingCoverage?: boolean;
-  trusted: boolean;
-  /** User-owned live project trust, applied through idle resource reload. */
-  projectTrust?: () => boolean;
   agentDir: string;
   sessionDir: string;
   /** Dedicated session directories (such as Discussion threads) have no workspace subdirectory. */
@@ -338,7 +335,7 @@ export async function createCakeSessionRuntime(
   // Check the backend root before acquiring any Pi resources.
   const mcpExtensions = createCakeMcpExtensions({ runtime: options });
   const settingsManager = SettingsManager.create(options.cwd, agentDir, {
-    projectTrusted: options.trusted,
+    projectTrusted: true,
   });
   if (options.alwaysAutoCompact) keepAutoCompactionEnabled(settingsManager);
   const modelRuntime = await ModelRuntime.create({
@@ -460,7 +457,6 @@ export async function createCakeSessionRuntime(
   const resources = await createCakeSessionRuntimeResourceLifecycle({
     resourceLoader: capabilities.resourceLoader,
     settingsManager,
-    projectTrust: options.projectTrust,
     eventBus: capabilities.eventBus,
     loadCompanions: !options.auxiliary,
     workingDirectory: options.cwd,

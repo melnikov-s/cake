@@ -10,7 +10,7 @@ import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { projectRecord } from "./fixtures/catalog-fixtures";
 
 const backendPath = "/remote-backend/pi/mcp.json";
-async function setup(project = false, trusted = true) {
+async function setup(project = false, allowed = true) {
   const contents = new Map<string, string>([
     [
       backendPath,
@@ -51,9 +51,9 @@ async function setup(project = false, trusted = true) {
           runtime: { status: "disabled" },
         }),
         get: (input, options) => {
-          if (input.projectPath && !trusted)
+          if (input.projectPath && !allowed)
             return Promise.reject(
-              new Error("Open and trust this Project before editing its MCP configuration."),
+              new Error("Open this Project before editing its MCP configuration."),
             );
           return runtime.runPromise(
             Effect.flatMap(McpSettings, (settings) => settings.load(input)),
@@ -226,13 +226,13 @@ describe("Native MCP Settings with real config storage and controlled service bo
     });
     expect(fixture.reloads).toEqual(["/project"]);
   });
-  it("rejects untrusted Project access before reading any Project config", async () => {
+  it("rejects unauthorized Project access before reading any Project config", async () => {
     using fixture = await setup(true, false);
     await fixture.user.selectOptions(
       screen.getByRole("combobox", { name: "MCP configuration scope" }),
       "project",
     );
-    await screen.findByText("Open and trust this Project before editing its MCP configuration.");
+    await screen.findByText("Open this Project before editing its MCP configuration.");
     expect(fixture.reads).not.toContain("/project/.pi/mcp.json");
   });
 });

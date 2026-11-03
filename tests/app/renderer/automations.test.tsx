@@ -116,7 +116,7 @@ function setup(
                 id: secondAutomationId,
                 name: "Project review",
                 context: { _tag: "Project", projectPath },
-                state: { _tag: "suspended", reason: "Project is no longer trusted" },
+                state: { _tag: "suspended", reason: "Project is no longer registered" },
                 activity: { runningSessions: 0, queuedOccurrences: 1 },
               }),
             ]
@@ -179,7 +179,7 @@ describe("automation product workflows", () => {
       projectPath,
     );
     expect(within(table()).queryByRole("button", { name: "Daily review" })).toBeNull();
-    expect(within(table()).getByText("Project is no longer trusted")).toBeTruthy();
+    expect(within(table()).getByText("Project is no longer registered")).toBeTruthy();
     await fixture.user.click(screen.getByRole("button", { name: "Active" }));
     expect(screen.getByText("No matching automations.")).toBeTruthy();
     await fixture.user.click(screen.getByRole("button", { name: "Suspended" }));

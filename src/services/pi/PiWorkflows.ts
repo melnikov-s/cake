@@ -1,18 +1,10 @@
 import { Effect } from "effect";
-import {
-  findSessionFile,
-  forkWorkspaceSession,
-  inspectWorkspace as inspectWorkspaceSync,
-} from "./runtime/session-discovery";
+import { findSessionFile, forkWorkspaceSession } from "./runtime/session-discovery";
 import { rewordSelectionWithProjectContext } from "./runtime/rewording-agent";
 
 type RewordSelectionOptions = Parameters<typeof rewordSelectionWithProjectContext>[0];
 
 const asError = (cause: unknown) => (cause instanceof Error ? cause : new Error(String(cause)));
-
-export const inspectWorkspace = Effect.fn("PiWorkflows.inspectWorkspace")((path: string) =>
-  Effect.try({ try: () => inspectWorkspaceSync(path), catch: asError }),
-);
 
 export const rewordProjectSelection = Effect.fn("PiWorkflows.rewordProjectSelection")(
   (options: RewordSelectionOptions) =>

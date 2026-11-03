@@ -48,7 +48,6 @@ test("a native-control draft remains in the limited sidebar when activated", asy
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
 

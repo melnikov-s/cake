@@ -47,7 +47,6 @@ export const seedMessageBoardFixture = async (
       projects: [
         { path: paths.project, name: "Workboard", addedAt: timestamp, lastOpenedAt: timestamp },
       ],
-      trustedProjectPaths: [paths.project],
     }),
   );
   for (const [sessionId, title] of [

@@ -177,7 +177,6 @@ export interface ProjectSessionIntegrationHostOptions {
     input: JsonValue,
     signal: AbortSignal,
   ) => Promise<VscodeActionResult<JsonValue>>;
-  readonly isTrusted?: () => boolean;
   readonly utilityModel?: () => UtilityModel | undefined;
   readonly generateSessionTitle?: NonNullable<CakeSessionRuntimeOptions["generateSessionTitle"]>;
   readonly modelPresets?: () => CakeModelPresetCatalog;
@@ -208,7 +207,6 @@ export class ProjectSessionIntegrationHost {
   private readonly openWidgetBrowser: NonNullable<
     ProjectSessionIntegrationHostOptions["openWidgetBrowser"]
   >;
-  private readonly isTrusted: () => boolean;
   private readonly runReviewedWidget: ProjectSessionIntegrationHostOptions["runReviewedWidget"];
   private readonly execute: ProjectSessionIntegrationHostOptions["execute"];
   private readonly captureWidget: NonNullable<
@@ -238,7 +236,6 @@ export class ProjectSessionIntegrationHost {
     this.runWidgetRepair = options.runWidgetRepair ?? runInlineWidgetRepair;
     this.runWidgetVisualReview = options.runWidgetVisualReview ?? runInlineWidgetVisualReview;
     this.compileWidget = options.compileWidget ?? compileInlineWidget;
-    this.isTrusted = options.isTrusted ?? (() => false);
     this.retainWidgetBrowser =
       options.retainWidgetBrowser ??
       (async () => {
@@ -408,7 +405,6 @@ export class ProjectSessionIntegrationHost {
         conversation: { type: "parent", origin: input.parentConversation },
         candidate,
         allowState,
-        projectTrusted: this.isTrusted(),
         brief: input.brief,
         language: input.language,
         data: input.data,
@@ -455,7 +451,6 @@ export class ProjectSessionIntegrationHost {
         capability: "artifact",
         candidate,
         allowState: true,
-        projectTrusted: this.isTrusted(),
         context,
         diagnostic: `Requested durable revision: ${input.instructions}`,
         model: input.model,
@@ -484,7 +479,6 @@ export class ProjectSessionIntegrationHost {
         conversation: { type: "continue" as const, sessionId: generationSessionId },
         candidate,
         allowState: !plugin,
-        projectTrusted: this.isTrusted(),
         model: input.model,
         signal: input.signal,
         onProgress: input.onProgress,

@@ -306,17 +306,15 @@ describe("Workbench conversation lifecycle", () => {
   });
 
   it.each([false, true])(
-    "restores trusted Project history without checkout authorization (resolved=%s)",
+    "restores Project history through its Project rather than the checkout (resolved=%s)",
     async (resolved) => {
       const inspect = vi.fn<Client["workspaces"]["inspect"]>(async (input) => ({
         ...input,
-        trustRequired: input.path !== "/project",
       }));
       const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
-      const respondToTrust = vi.fn<Client["workspaces"]["respondToTrust"]>(async () => undefined);
       using fixture = await renderRestoredWorkbench(
         {
-          workspaces: { inspect, respondToTrust },
+          workspaces: { inspect },
           projectSessions: { open },
         },
         resolved,
@@ -328,8 +326,6 @@ describe("Workbench conversation lifecycle", () => {
           expect.objectContaining({ path: "/project" }),
           expect.objectContaining({ signal: expect.any(AbortSignal) }),
         );
-      expect(respondToTrust).not.toHaveBeenCalled();
-      expect(screen.queryByRole("alertdialog", { name: "Trust this workspace?" })).toBeNull();
     },
   );
 
@@ -339,7 +335,7 @@ describe("Workbench conversation lifecycle", () => {
       const gate = deferredOpen();
       const inspect = vi.fn<Client["workspaces"]["inspect"]>(async (input) => {
         await gate.promise;
-        return { ...input, trustRequired: false };
+        return { ...input };
       });
       const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
       const loadStagedSlashCommands = vi.fn<Client["workspaces"]["loadStagedSlashCommands"]>(
@@ -383,27 +379,6 @@ describe("Workbench conversation lifecycle", () => {
       expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
     },
   );
-
-  it("still asks for consent when restoring an active session in an untrusted Project", async () => {
-    const inspect = vi.fn<Client["workspaces"]["inspect"]>(async (input) => ({
-      ...input,
-      trustRequired: true,
-    }));
-    const respondToTrust = vi.fn<Client["workspaces"]["respondToTrust"]>(async () => undefined);
-    const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
-    using fixture = await renderRestoredWorkbench({
-      workspaces: { inspect, respondToTrust },
-      projectSessions: { open },
-    });
-    const dialog = screen.getByRole("alertdialog", { name: "Trust this workspace?" });
-    expect(dialog.textContent).toContain("Trust /project to run agents");
-    expect(open).not.toHaveBeenCalled();
-    await fixture.user.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    expect(respondToTrust).toHaveBeenCalledWith(
-      expect.objectContaining({ path: "/project", approved: false }),
-    );
-    expect(open).not.toHaveBeenCalled();
-  });
 
   it("routes editor requests only to their working directory and replaces a selection chat with its source attachment", async () => {
     const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>

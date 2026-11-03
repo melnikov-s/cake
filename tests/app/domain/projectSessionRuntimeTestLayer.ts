@@ -62,7 +62,6 @@ export const makeHeadlessProjectSessionRuntimeMechanismTestLayer = (
           workingDirectory: workingDirectory ?? "/home",
           agentDirectory: "/cake",
           sessionDirectory: "/cake/subagents",
-          trusted: true,
         }),
     }),
     SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),

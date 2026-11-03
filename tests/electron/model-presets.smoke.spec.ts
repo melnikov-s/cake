@@ -99,7 +99,6 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "system" }));

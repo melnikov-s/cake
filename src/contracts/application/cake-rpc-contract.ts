@@ -767,11 +767,6 @@ export const cakeRpcPayloadSchemas = {
     ...requestBase,
     path: stringMax(4_096),
   }),
-  "respond-workspace-trust": Schema.Struct({
-    ...requestBase,
-    path: stringMax(4_096),
-    approved: Schema.Boolean,
-  }),
   "export-artifacts": Schema.Struct({
     sessionId: stringMax(256),
   }),
@@ -880,7 +875,6 @@ const cakeRpcResultSchemas = {
   "workspace-inspection": Schema.Struct({
     ...requestBase,
     path: stringMax(4_096),
-    trustRequired: Schema.Boolean,
   }),
   "worktree-created": Schema.Struct({
     ...requestBase,
@@ -945,7 +939,6 @@ export const cakeRpcSuccessSchemas = {
   "set-session-unread": cakeRpcResultSchemas["application-state-updated"],
   "restart-pi": cakeRpcResultSchemas.accepted,
   "inspect-workspace": cakeRpcResultSchemas["workspace-inspection"],
-  "respond-workspace-trust": cakeRpcResultSchemas.accepted,
   "create-worktree": cakeRpcResultSchemas["worktree-created"],
   "get-worktree-landing": cakeRpcResultSchemas["worktree-landing-loaded"],
   "start-worktree-landing": cakeRpcResultSchemas["worktree-landing-started"],

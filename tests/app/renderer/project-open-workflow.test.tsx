@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,7 +31,7 @@ function renderProjectOpen(
       electron: { chooseProject: async () => "/work/cake", ...client.electron },
       workspaces: {
         loadStagedSlashCommands: async () => [],
-        inspect: async (request) => ({ ...request, trustRequired: true }),
+        inspect: async (request) => ({ ...request }),
         ...client.workspaces,
       },
     },
@@ -83,7 +83,6 @@ describe("Project opening workflow", () => {
       .mockImplementationOnce(() => second.promise);
     const inspect = vi.fn<Client["workspaces"]["inspect"]>(async (request) => ({
       ...request,
-      trustRequired: false,
     }));
     const registerProject = vi.fn<Client["workspaces"]["registerProject"]>(async () =>
       defaultApplicationState(),
@@ -115,9 +114,7 @@ describe("Project opening workflow", () => {
       .mockResolvedValueOnce("/second")
       .mockResolvedValueOnce("/third");
     const inspect = vi.fn<Client["workspaces"]["inspect"]>((request) =>
-      request.path === "/first"
-        ? firstInspection.promise
-        : Promise.resolve({ ...request, trustRequired: false }),
+      request.path === "/first" ? firstInspection.promise : Promise.resolve({ ...request }),
     );
     const registerProject = vi.fn<Client["workspaces"]["registerProject"]>((path) =>
       path === "/second" ? secondRegistration.promise : Promise.resolve(defaultApplicationState()),
@@ -131,9 +128,7 @@ describe("Project opening workflow", () => {
     await waitFor(() =>
       expect(registerProject).toHaveBeenCalledWith("/second", "second", expect.anything()),
     );
-    await act(async () =>
-      firstInspection.resolve({ ...inspect.mock.calls[0]![0], trustRequired: true }),
-    );
+    await act(async () => firstInspection.resolve({ ...inspect.mock.calls[0]![0] }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
     expect(await screen.findByPlaceholderText("Ask Cake to work in third…")).toBeDefined();
@@ -146,9 +141,7 @@ describe("Project opening workflow", () => {
     type Inspection = Awaited<ReturnType<Client["workspaces"]["inspect"]>>;
     const pending = deferred<Inspection>();
     const inspect = vi.fn<Client["workspaces"]["inspect"]>((request) =>
-      request.path === "/existing"
-        ? Promise.resolve({ ...request, trustRequired: false })
-        : pending.promise,
+      request.path === "/existing" ? Promise.resolve({ ...request }) : pending.promise,
     );
     const chooseProject = vi
       .fn<Client["electron"]["chooseProject"]>()
@@ -165,7 +158,7 @@ describe("Project opening workflow", () => {
     expect(await screen.findByRole("combobox", { name: "Message" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
     await fixture.user.click(screen.getByRole("button", { name: "New chat in existing" }));
-    await act(async () => pending.resolve({ ...inspect.mock.calls[1]![0], trustRequired: true }));
+    await act(async () => pending.resolve({ ...inspect.mock.calls[1]![0] }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(registerProject).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("combobox", { name: "Message" }).getAttribute("placeholder")).toBe(
@@ -185,7 +178,7 @@ describe("Project opening workflow", () => {
       application: { getHomeDirectory },
       projectSessions: { start },
       workspaces: {
-        inspect: async (request) => ({ ...request, trustRequired: false }),
+        inspect: async (request) => ({ ...request }),
         registerProject,
       },
     });
@@ -201,51 +194,18 @@ describe("Project opening workflow", () => {
     );
     expect(start).not.toHaveBeenCalled();
   });
-  it("opens a staged conversation only after trusting the workspace", async () => {
-    const inspect = vi.fn<Client["workspaces"]["inspect"]>(async (request) => ({
-      ...request,
-      trustRequired: true,
-    }));
-    const respondToTrust = vi.fn<Client["workspaces"]["respondToTrust"]>(async () => undefined);
+  it("opens a picked folder as a Project without an approval prompt", async () => {
     const registerProject = vi.fn<Client["workspaces"]["registerProject"]>(async () =>
       defaultApplicationState(),
     );
-    using fixture = renderProjectOpen({ workspaces: { inspect, respondToTrust, registerProject } });
+    using fixture = renderProjectOpen({ workspaces: { registerProject } });
     await fixture.user.click(screen.getByRole("button", { name: "Open project" }));
-    const dialog = await screen.findByRole("alertdialog", { name: "Trust this workspace?" });
-    expect(registerProject).not.toHaveBeenCalled();
-    expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
-    await fixture.user.click(within(dialog).getByRole("button", { name: "Trust and continue" }));
-    await waitFor(() =>
-      expect(registerProject).toHaveBeenCalledWith(
-        "/work/cake",
-        "cake",
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      ),
+    expect(await screen.findByPlaceholderText("Ask Cake to work in cake…")).toBeDefined();
+    expect(registerProject).toHaveBeenCalledWith(
+      "/work/cake",
+      "cake",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(respondToTrust).toHaveBeenCalledWith({
-      operationId: inspect.mock.calls[0]![0].operationId,
-      path: "/work/cake",
-      approved: true,
-    });
-    expect(await screen.findByRole("combobox", { name: "Message" })).toBeDefined();
-    expect(screen.getByPlaceholderText("Ask Cake to work in cake…")).toBeDefined();
-  });
-  it("declines an untrusted workspace without registering or opening it", async () => {
-    const respondToTrust = vi.fn<Client["workspaces"]["respondToTrust"]>(async () => undefined);
-    const registerProject = vi.fn<Client["workspaces"]["registerProject"]>(async () =>
-      defaultApplicationState(),
-    );
-    using fixture = renderProjectOpen({ workspaces: { respondToTrust, registerProject } });
-    await fixture.user.click(screen.getByRole("button", { name: "Open project" }));
-    const dialog = await screen.findByRole("alertdialog", { name: "Trust this workspace?" });
-    expect(dialog.textContent).toContain("Trust /work/cake to run agents");
-    await fixture.user.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-    expect(respondToTrust).toHaveBeenCalledWith(
-      expect.objectContaining({ path: "/work/cake", approved: false }),
-    );
-    expect(registerProject).not.toHaveBeenCalled();
-    expect(screen.getByRole("heading", { name: "What should we build?" })).toBeDefined();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 });

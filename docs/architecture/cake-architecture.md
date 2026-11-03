@@ -164,7 +164,7 @@ projections needed by a surface. References do not transfer ownership.
 - Sidecar discussions and private subagents have independent Pi transcripts.
   Parent anchors, handles, and projections do not merge transcript ownership.
   User-created side chats inherit the originating conversation's applicable tools,
-  permissions, explicit user restrictions and live project trust. They are not read-only
+  permissions and explicit user restrictions. They are not read-only
   or to-do-only workers. Parent-scoped Cake controls retain originating authority;
   cross-conversation messages carry the side chat's own sender identity and can use
   the explicit `parent` target. Receipts alone do not prove delivery visibility or execution.
@@ -259,7 +259,7 @@ projections needed by a surface. References do not transfer ownership.
   bounded by a scratch working directory, a short bash timeout and capped output;
   its prompt policy keeps project changes in Project Sessions and never mutates a
   project root checkout. It delegates deeper project-dependent investigations to
-  an explicitly selected registered, trusted project root. These workers retain normal project
+  an explicitly selected registered project root. These workers retain normal project
   instructions, skills, extensions and MCP, excluding edit/write tools and adding
   an investigation-only system policy. `allowMutations: true` on a worker's start
   replaces that policy with scoped mutation mode for bounded operational work
@@ -639,7 +639,7 @@ global Cake Chat's context, including its ordinary session gateway. Full-control
 invocation bypasses model-facing catalog curation, not domain validation;
 ordinary agent catalogs keep their existing curation. There are no MCP-specific Project or command
 allowlists. A private persisted bearer token is required on every request;
-existing domain trust, approval and host-capability checks remain authoritative.
+existing domain validation, approval and host-capability checks remain authoritative.
 Configuration changes restart the MCP listener, not agent execution. This uses
 Cake's command contracts rather than exposing the renderer RPC protocol. See
 [local MCP setup and limitations](../../README.md#local-mcp-access) and the remote
@@ -652,6 +652,10 @@ Cake's command contracts rather than exposing the renderer RPC protocol. See
   intended Cake operations continue through the hosting surface's validated bridge.
 - Session Plugin state is main-owned; sandbox-local React state is mount-local.
   Hiding a plugin is a user preference, not deletion or permission to reopen it.
+- Registering a Project is the only approval Cake asks for. Cake answers Pi's
+  project-trust question itself, so every registered Project, its managed worktrees
+  and the home directory load their project-local Pi settings, skills, extensions
+  and MCP without a separate prompt.
 - Pi Extensions execute with main-process authority and are not sandboxed.
   Explicitly installed trusted React companions run in the renderer with a
   validated bridge and error boundary; they can inspect and interfere with its DOM.

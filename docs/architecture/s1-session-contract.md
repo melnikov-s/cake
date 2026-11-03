@@ -103,7 +103,7 @@ completion bookkeeping.
 - A Session Family **relates independent Project Sessions**. Membership is not
   Pi transcript ancestry and does not merge Conversations.
 
-## Commands, trust, and renderer ownership
+## Commands, access, and renderer ownership
 
 Project Session commands execute as main-process domain operations through
 Effect RPC. Prompt returns an accepted Turn ID; delivery, steer, follow-up,
@@ -111,7 +111,7 @@ abort, compaction, fork, rename, resolve, and restore preserve typed failures
 and cancellation. Scope ownership and repeated-call concurrency policy remain
 separate decisions.
 
-Main validates Project and Working Directory access before trusted Pi resources
+Main validates Project and Working Directory access before Pi resources
 load. Raw Pi and AI SDK values never cross RPC. The window-owned Model observer
 applies validated Conversation snapshots and ordered events to stable
 `Conversation` Models. It does not flatten focused authorities into those

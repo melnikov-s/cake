@@ -19,7 +19,6 @@ function renderPicker(options: Pick<RendererStoreFixtureOptions, "projects" | "s
   const inspect = vi.fn<Client["workspaces"]["inspect"]>(async ({ operationId, path }) => ({
     operationId,
     path,
-    trustRequired: false,
   }));
   const start = vi.fn<Client["projectSessions"]["start"]>();
   const fixture = createRendererStoreFixture({

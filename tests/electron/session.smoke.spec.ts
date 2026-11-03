@@ -31,7 +31,6 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
 
@@ -148,9 +147,6 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await page.getByRole("button", { name: "Network & privacy" }).click();
     await expect(
       page.getByRole("region", { name: "Network" }).getByLabel("Provider transport"),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("region", { name: "Safety & privacy" }).getByLabel("Default project trust"),
     ).toBeVisible();
     await page.getByRole("button", { name: "Appearance" }).click();
     await expect(page.getByRole("button", { name: "System", exact: true })).toHaveAttribute(

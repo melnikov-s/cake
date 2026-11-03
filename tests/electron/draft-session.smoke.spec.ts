@@ -57,7 +57,6 @@ test("restores, edits, resolves, and activates a project draft session", async (
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
 

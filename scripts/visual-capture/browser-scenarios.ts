@@ -96,7 +96,6 @@ export async function seedBrowserVisual(paths: BrowserPaths, rich = false) {
           lastOpenedAt: timestamp,
         },
       ],
-      trustedProjectPaths: [paths.project],
       ...(existsSync("/opt/homebrew/bin/code-server")
         ? { vscodeServerPath: "/opt/homebrew/bin/code-server" }
         : {}),

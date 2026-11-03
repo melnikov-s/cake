@@ -274,10 +274,6 @@ const acquireOptions = Effect.fn("Automations.acquireOptions")(function* (
       directSessionDir: true,
       sessionId: run.sessionId,
       newSession,
-      trusted: true,
-      projectTrust: () =>
-        run.context._tag === "Global" ||
-        application.snapshot().trustedProjectPaths.includes(run.context.projectPath),
       alwaysAutoCompact: true,
       additionalSystemPrompt: [
         "You are an Automation Session, one execution of a saved Cake automation. You are not a Project Session or a permanent chat. Use the current working directory and its normal instructions and skills. Do the assigned task, then report the actual result. Do not invent a worktree or Session Family. Your hosted Cake controls cover automations, shared memory, registered Project discovery, local session/model/context controls, and explicit independent Project Session launch. For broader Project workflows, use sessions.create with an explicit registered Project path; that does not create a family or automatically relay the result.",

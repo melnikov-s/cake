@@ -32,5 +32,4 @@ export const WorkspaceRpc = RpcGroup.make(
   workspaceRpc("workspaces.set-session-unread", "set-session-unread"),
   workspaceRpc("workspaces.restart-pi", "restart-pi"),
   workspaceRpc("workspaces.inspect-workspace", "inspect-workspace"),
-  workspaceRpc("workspaces.respond-workspace-trust", "respond-workspace-trust"),
 );

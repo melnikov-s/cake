@@ -8,14 +8,9 @@ import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-for (const { state, trusted } of [
-  { state: "active", trusted: true },
-  { state: "resolved", trusted: true },
-  { state: "active", trusted: false },
-  { state: "resolved", trusted: false },
-] as const) {
-  test(`reopening ${state} managed-worktree history uses Project consent (trusted=${trusted})`, async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-reopen-trust-"));
+for (const state of ["active", "resolved"] as const) {
+  test(`reopens ${state} managed-worktree history without an approval prompt`, async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-reopen-worktree-"));
     const userData = join(root, "user-data");
     const cakeHome = join(root, "cake-home");
     const project = join(root, "project");
@@ -41,8 +36,6 @@ for (const { state, trusted } of [
           projects: [
             { path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp },
           ],
-          // Trust belongs to the Project. Retirement intentionally revokes checkout trust.
-          trustedProjectPaths: trusted ? [project] : [],
         },
       }),
     );
@@ -112,20 +105,13 @@ for (const { state, trusted } of [
         const application = await launch();
         try {
           const page = await application.firstWindow();
-          if (state === "active" && !trusted && attempt === 0) {
-            const dialog = page.getByRole("alertdialog", { name: "Trust this workspace?" });
-            await expect(dialog).toContainText(`Trust ${project} to run agents`);
-            await dialog.getByRole("button", { name: "Trust and continue" }).click();
-          }
           await expect(
             page
               .locator('[data-slot="session-pane"]')
               .getByText("Retained conversation content", { exact: true })
               .first(),
           ).toBeVisible({ timeout: 20_000 });
-          await expect(
-            page.getByRole("alertdialog", { name: "Trust this workspace?" }),
-          ).toHaveCount(0);
+          await expect(page.getByRole("alertdialog")).toHaveCount(0);
           expect(
             await application.evaluate(({ BrowserWindow }) =>
               BrowserWindow.getAllWindows().every(
@@ -136,9 +122,6 @@ for (const { state, trusted } of [
         } finally {
           await application.close();
         }
-        expect(
-          JSON.parse(await readFile(applicationPath, "utf8")).data.trustedProjectPaths,
-        ).toEqual(trusted || state === "active" ? [project] : []);
         expect(JSON.parse(await readFile(worktreesPath, "utf8")).records[0].state).toBe(state);
         if (state === "resolved") {
           await expect(access(workingDirectory)).rejects.toThrow();

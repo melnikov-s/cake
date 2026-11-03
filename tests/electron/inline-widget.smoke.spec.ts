@@ -14,7 +14,7 @@ async function verifyInlineWidget(language: "react" | "html") {
   await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
     join(cakeHome, "state", "application.json"),
-    JSON.stringify({ schemaVersion: 1, projects: [], trustedProjectPaths: [] }),
+    JSON.stringify({ schemaVersion: 1, projects: [] }),
   );
   const application = await electron.launch({
     args: [repositoryRoot],

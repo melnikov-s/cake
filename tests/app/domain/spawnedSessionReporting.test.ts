@@ -3,12 +3,6 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import * as projects from "../../../src/domain/projects/projects";
-import { ClientConnectionsLive } from "../../../src/services/clients/ClientConnections";
-import { ClientEvents } from "../../../src/services/clients/ClientEvents";
-import { ClientEventsLive } from "../../../src/services/clients/ClientEventsLive";
-import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
 import type { InternalInput } from "../../../src/contracts/conversations/internal-input";
 import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
 import * as agentMessaging from "../../../src/domain/application/agentSessionMessaging";
@@ -18,7 +12,7 @@ import { CakeChatConfiguration } from "../../../src/services/pi-durable/CakeChat
 import { durableAnswer } from "../../fixtures/durable-chat";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
-import { Context, Deferred, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect";
+import { Deferred, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { describe } from "vitest";
 import * as boards from "../../../src/domain/artifacts/messageBoards";
@@ -29,6 +23,7 @@ import { acquireOptions as projectOptions } from "../../../src/domain/project-se
 import { acquireOptions as chatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { createPrompted } from "../../../src/domain/project-sessions/projectSessionCreation";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
+import { upsertProject } from "../../../src/domain/application/application";
 import {
   CAKE_CHAT_SESSION_ID,
   isCakeChatSessionId,
@@ -53,10 +48,7 @@ import {
   PiSessionError,
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import { PiModels } from "../../../src/services/pi/PiModels";
-import {
-  RendererRequestCoordinator,
-  RendererRequestCoordinatorLive,
-} from "../../../src/services/renderer-requests/RendererRequestCoordinator";
+import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
@@ -419,83 +411,23 @@ const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function
 });
 
 it.effect(
-  "an authorized Cake Chat launch resumes only after explicit Project trust, preserving its task and reply handoff",
+  "a Project Chat with no open window launches a worker in another registered subfolder Project without any approval",
   () =>
     Effect.gen(function* () {
       const f = yield* fixture();
-      const rendererContext = yield* Layer.build(
-        RendererRequestCoordinatorLive.pipe(
-          Layer.provideMerge(Layer.merge(ClientConnectionsLive, ClientEventsLive)),
-        ),
-      );
-      const coordinator = Context.get(rendererContext, RendererRequestCoordinator);
-      const events = yield* Queue.unbounded<CakeEvent>();
-      yield* Context.get(rendererContext, ClientEvents)
-        .artifacts(7)
-        .pipe(
-          Stream.runForEach((event) => Queue.offer(events, event)),
-          Effect.forkScoped,
-        );
-      yield* Queue.take(events);
-      yield* coordinator.bind({ _tag: "CakeChatSession", sessionId: CAKE_CHAT_SESSION_ID }, 7);
       yield* f.run(
         Effect.gen(function* () {
-          const application = yield* ApplicationState;
-          yield* application.transact((state) =>
-            Effect.succeed({ ...state, trustedProjectPaths: [] }),
-          );
-          const error = yield* createPrompted({
-            ...createArgs,
-            projectPath: "/project",
-            source: { sessionId: CAKE_CHAT_SESSION_ID, kind: "cake-chat", title: "Cake Chat" },
-            worktreeName: "must-not-create",
-            promptFiles: ["must-not-read.md"],
-          }).pipe(Effect.flip);
-          assert.match(error.message, /projects.request-trust/);
-          assert.equal(yield* Deferred.isDone(f.entered), false);
-          assert.deepEqual((yield* f.storage.state()).spawnedSessions, []);
-          const options = yield* assembleCoordinator();
-          assert.ok(options.runtime.cakeChatProjects);
+          // A subfolder of a larger repository, registered like any other Project.
+          const workspacePath = "/repo/src/system/agents";
+          yield* upsertProject(workspacePath, "agents");
+          // The fixture's renderer coordinator has no window and dies on any UI request.
+          const options = yield* assembleCoordinator(projectChatSessionId("/project"));
           assert.ok(options.runtime.globalControl);
-          const control = options.runtime.globalControl;
-          // Exercise the actual plural operation too; it cannot bypass the backend guard.
-          const refusal = yield* Effect.tryPromise(() =>
-            control.invoke(
-              { name: "sessions.create", arguments: { workspacePath: "/project", ...createArgs } },
-              new AbortController().signal,
-            ),
-          ).pipe(Effect.exit);
-          assert.equal(refusal._tag, "Failure");
-          assert.equal(yield* Deferred.isDone(f.entered), false);
-          const pending = yield* Effect.promise(() =>
-            options.runtime.cakeChatProjects!.requestTrust(
-              { path: "/project" },
-              new AbortController().signal,
-            ),
-          ).pipe(Effect.forkChild);
-          const event = yield* Queue.take(events);
-          assert.equal(event.type, "ui-request");
-          assert.ok(event.message.includes("/project"));
-          assert.equal((yield* projects.infoForAgent({ path: "/project" })).project.trusted, false);
-          assert.equal(yield* Deferred.isDone(f.entered), false);
-          yield* coordinator.respondUi(7, CAKE_CHAT_SESSION_ID, {
-            sessionId: CAKE_CHAT_SESSION_ID,
-            requestId: event.requestId,
-            uiRequestId: event.uiRequestId,
-            value: "true",
-            cancelled: false,
-          });
-          const approval = yield* Fiber.join(pending);
-          assert.deepEqual(approval, {
-            decision: "approved",
-            ...(yield* projects.infoForAgent({ path: "/project" })),
-          });
-          assert.equal(yield* Deferred.isDone(f.entered), false); // Approval launches nothing.
           const created = yield* Effect.promise(() =>
-            control.invoke(
+            options.runtime.globalControl!.invoke(
               {
                 name: "sessions.create",
-                arguments: { workspacePath: "/project", ...createArgs, resultDelivery: "reply" },
+                arguments: { workspacePath, ...createArgs, resultDelivery: "reply" },
               },
               new AbortController().signal,
             ),
@@ -507,18 +439,16 @@ it.effect(
               status: Schema.String,
             }),
           )(created);
-          assert.equal(receipt.workspacePath, "/project");
+          assert.equal(receipt.workspacePath, workspacePath);
           assert.equal(receipt.status, "started");
-          const entered = yield* Deferred.await(f.entered); // Actual fake Pi admission, not just a receipt.
+          const entered = yield* Deferred.await(f.entered); // Actual fake Pi admission.
           assert.equal(entered.sessionId, receipt.sessionId);
           const input = parseCrossSessionMessage(entered.text);
           assert.ok(input);
           assert.equal(input.text, createArgs.initialPrompt);
-          assert.equal(input.metadata.resultDelivery, "reply");
-          assert.equal(input.metadata.sender.sessionId, CAKE_CHAT_SESSION_ID);
-          assert.equal(yield* Deferred.isDone(f.finish), false);
+          assert.equal(input.metadata.sender.sessionId, projectChatSessionId("/project"));
           yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });
-        }).pipe(Effect.provideService(RendererRequestCoordinator, coordinator)),
+        }),
       );
     }).pipe(Effect.scoped),
 );

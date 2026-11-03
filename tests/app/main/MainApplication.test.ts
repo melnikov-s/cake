@@ -59,7 +59,6 @@ const testLayer = (input?: {
   readonly focusOrCreateWindow?: () => void;
   readonly closeTerminalOwner?: (ownerId: number) => void;
   readonly closeEditorForWindow?: (ownerId: number) => void;
-  readonly clearOwner?: (ownerId: number) => void;
   readonly disposeRewordingOwner?: (ownerId: number) => void;
   readonly releaseRendererConnection?: (ownerId: number) => void;
   readonly releaseUploads?: (ownerId: number) => void;
@@ -85,7 +84,6 @@ const testLayer = (input?: {
     }),
     Layer.mock(ProjectAccess, {
       allow: () => Effect.void,
-      clearOwner: (ownerId) => Effect.sync(() => input?.clearOwner?.(ownerId)),
       rememberSessionLocation: () => Effect.void,
     }),
     Layer.mock(RewordingRequests, {
@@ -322,7 +320,7 @@ describe("MainApplication", () => {
       const cleaned = yield* Deferred.make<void>();
       const record = (operation: string) => {
         operations.push(operation);
-        if (operations.length === 7) Deferred.doneUnsafe(cleaned, Effect.void);
+        if (operations.length === 6) Deferred.doneUnsafe(cleaned, Effect.void);
       };
       const fiber = yield* Effect.forkChild(
         program(
@@ -334,7 +332,6 @@ describe("MainApplication", () => {
             },
             closeTerminalOwner: (ownerId) => record(`terminal:${ownerId}`),
             closeEditorForWindow: (ownerId) => record(`editor:${ownerId}`),
-            clearOwner: (ownerId) => record(`access:${ownerId}`),
             disposeRewordingOwner: (ownerId) => record(`rewording:${ownerId}`),
             releaseRendererConnection: (ownerId) => record(`requests:${ownerId}`),
             releaseUploads: (ownerId) => record(`uploads:${ownerId}`),
@@ -349,7 +346,6 @@ describe("MainApplication", () => {
         [
           "terminal:17",
           "editor:42",
-          "access:17",
           "rewording:17",
           "requests:17",
           "uploads:17",

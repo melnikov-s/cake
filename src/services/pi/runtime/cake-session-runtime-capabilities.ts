@@ -244,7 +244,6 @@ export async function createCakeSessionRuntimeCapabilities(input: {
       ? await cakeBuiltinSkillsOverride(agentDir)
       : undefined;
   const resourceLoader = await loadCakeSessionRuntimeResourceLoader({
-    trusted: options.trusted,
     makeResourceLoader: () =>
       new DefaultResourceLoader({
         cwd: options.cwd,

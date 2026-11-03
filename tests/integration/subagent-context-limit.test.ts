@@ -167,7 +167,6 @@ async function setUp(work: (afterTool: boolean) => Reply) {
     Effect.gen(function* () {
       const value = {
         ...defaultApplicationState(),
-        trustedProjectPaths: [project],
         projects: [{ path: project, name: "project", addedAt: "now", lastOpenedAt: "now" }],
       };
       const projection = yield* SubscriptionRef.make({ revision: 0, state: value });
@@ -204,7 +203,6 @@ async function setUp(work: (afterTool: boolean) => Reply) {
           workingDirectory: workingDirectory ?? project,
           agentDirectory,
           sessionDirectory,
-          trusted: true,
         }),
     }),
   );
@@ -215,7 +213,6 @@ async function setUp(work: (afterTool: boolean) => Reply) {
       profile: { _tag: "ProjectSession" },
       runtime: {
         cwd: project,
-        trusted: true,
         agentDir: agentDirectory,
         sessionDir: join(root, "sessions"),
         sessionId: "parent",

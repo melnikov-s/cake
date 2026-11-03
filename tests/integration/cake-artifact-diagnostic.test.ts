@@ -64,7 +64,6 @@ it("runs /cake-artifacts without a provider and retains executable browser outpu
               sessionDir: join(root, "sessions"),
               sessionId: "diagnostic-session",
               newSession: true,
-              trusted: true,
               onEvent: () => undefined,
               persistArtifact: (artifact) => {
                 const input = {

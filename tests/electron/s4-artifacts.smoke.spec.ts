@@ -29,7 +29,6 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   let application: ElectronApplication | undefined;

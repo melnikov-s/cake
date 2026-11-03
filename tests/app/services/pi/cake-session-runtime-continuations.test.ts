@@ -34,7 +34,6 @@ function fixture(overrides: Partial<CakeSessionRuntimeOptions> = {}) {
       cwd: "/project",
       agentDir: "/agent",
       sessionDir: "/sessions",
-      trusted: true,
       requestUi: async () => undefined,
       onEvent: () => undefined,
       utilityModel: () => ({ provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" }),

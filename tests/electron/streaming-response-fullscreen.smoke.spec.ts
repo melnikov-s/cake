@@ -106,7 +106,6 @@ for (const surface of ["project", "global", "session"] as const) {
                 },
               },
             ],
-            trustedProjectPaths: [project],
             modelPresets: [
               {
                 id: presetId,

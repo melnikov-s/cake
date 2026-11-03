@@ -119,7 +119,6 @@ test("remote Electron loads backend widgets and companion actions, then Pi revie
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

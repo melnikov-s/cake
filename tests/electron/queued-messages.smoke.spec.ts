@@ -71,7 +71,6 @@ async function queuedMessagesFixture(dictation = false) {
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [project],
     }),
   );
   for (const [id, title, text] of [

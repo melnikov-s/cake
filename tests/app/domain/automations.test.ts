@@ -554,7 +554,7 @@ describe("automation lifecycle and execution", () => {
       }),
   );
   it.effect(
-    "loads global resources at home and project resources at the selected trusted project root",
+    "loads global resources at home and project resources at the selected project root",
     () =>
       Effect.gen(function* () {
         const f = yield* automationFixture();
@@ -583,7 +583,6 @@ describe("automation lifecycle and execution", () => {
           expect(result._tag).toBe("started");
           const started = yield* Queue.take(f.started);
           expect(started.options.cwd).toBe("/projects/cake");
-          expect(started.options.trusted).toBe(true);
           expect(started.options.isolatedSystemPrompt).toBeUndefined();
           expect(started.options.agentDir).toBe("/agent");
           expect(started.options.additionalSystemPrompt).toContain("Global user guidance");

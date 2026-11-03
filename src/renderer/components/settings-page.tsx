@@ -45,10 +45,6 @@ function transportMode(value: string) {
   throw new Error("Unsupported transport mode");
 }
 
-function projectTrust(value: string) {
-  if (value === "ask" || value === "always" || value === "never") return value;
-  throw new Error("Unsupported project trust mode");
-}
 import { SettingsToggle } from "./settings/settings-toggle";
 import { SettingsDesktopSharingSection } from "./settings-desktop-sharing-section";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
@@ -813,34 +809,6 @@ export const SettingsPage = observer(function SettingsPage({
                 </h2>
                 {pi ? (
                   <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
-                    <label
-                      id="setting-default-project-trust"
-                      className="scroll-mt-8 flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
-                    >
-                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <strong className="text-xs font-medium text-foreground">
-                          Default project trust
-                        </strong>
-                        <small className="text-xs text-muted-foreground">
-                          Fallback when no saved trust decision applies.
-                        </small>
-                      </span>
-                      <Select
-                        aria-label="Default project trust"
-                        className="h-8 w-44 rounded-sm text-xs max-[620px]:w-full"
-                        value={pi.defaultProjectTrust}
-                        onChange={(event) =>
-                          void providers.setPiSetting({
-                            key: "defaultProjectTrust",
-                            value: projectTrust(event.target.value),
-                          })
-                        }
-                      >
-                        <option value="ask">Ask</option>
-                        <option value="always">Always trust</option>
-                        <option value="never">Never trust</option>
-                      </Select>
-                    </label>
                     <SettingsToggle
                       id="setting-anthropic-extra-usage-warning"
                       label="Anthropic extra usage warning"

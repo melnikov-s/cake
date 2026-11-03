@@ -144,7 +144,6 @@ test("new session dialog supports filtering, keyboard, mouse and cancellation", 
         addedAt: new Date(0).toISOString(),
         lastOpenedAt: new Date(0).toISOString(),
       })),
-      trustedProjectPaths: [alpha, beta],
     }),
   );
   const application = await electron.launch({

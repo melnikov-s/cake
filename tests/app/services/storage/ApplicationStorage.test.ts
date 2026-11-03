@@ -403,6 +403,23 @@ describe("ApplicationStorage", () => {
     ),
   );
 
+  it.effect("loads a current document that still lists retired Project trust", () =>
+    withStorage(
+      {
+        [documentPath]: JSON.stringify({
+          version: 10,
+          data: { ...current, trustedProjectPaths: ["/work/cake"] },
+        }),
+      },
+      (storage) =>
+        Effect.gen(function* () {
+          const loaded = yield* storage.load();
+          assert.strictEqual(loaded.source, "current");
+          assert.deepStrictEqual(loaded.state, current);
+        }),
+    ),
+  );
+
   it.effect("defaults personal instructions in existing application and project settings", () =>
     withStorage(
       {
@@ -541,7 +558,7 @@ describe("ApplicationStorage", () => {
   );
 
   it.effect("uses unset Cake prompts when migrating a version-four document", () => {
-    const versionFour = { ...current };
+    const versionFour = { ...current, trustedProjectPaths: [] };
     Reflect.deleteProperty(versionFour, "cakePrompts");
     return withStorage(
       { [documentPath]: JSON.stringify({ version: 4, data: versionFour }) },

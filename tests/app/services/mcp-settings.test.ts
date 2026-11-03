@@ -1,14 +1,12 @@
 import { it } from "@effect/vitest";
 import { Effect, Exit, Layer } from "effect";
 import { describe, expect } from "vitest";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { loadMcpSettings, mutateMcpSettings } from "../../../src/domain/mcp/mcp-settings";
 import { McpSettings, makeMcpSettingsLayer } from "../../../src/services/pi/McpSettings";
 import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 
-function fixture(trusted = true, allowed = true, reloadFails = false) {
+function fixture(allowed = true, reloadFails = false) {
   const data = new Map<string, string>();
   const reads: string[] = [];
   const reloads: string[] = [];
@@ -23,12 +21,6 @@ function fixture(trusted = true, allowed = true, reloadFails = false) {
       },
     }),
     Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(allowed) }),
-    Layer.mock(ApplicationState, {
-      snapshot: () => ({
-        ...defaultApplicationState(),
-        trustedProjectPaths: trusted ? ["/project"] : [],
-      }),
-    }),
     Layer.mock(CakeSessionRuntimes, {
       reloadAll: () =>
         reloadFails
@@ -46,7 +38,7 @@ function fixture(trusted = true, allowed = true, reloadFails = false) {
 }
 describe("Backend native MCP configuration", () => {
   it.effect(
-    "uses backend-derived native paths, authorizes trust before reading and reloads the selected scope after commit",
+    "uses backend-derived native paths, authorizes access before reading and reloads the selected scope after commit",
     () => {
       const f = fixture();
       return Effect.gen(function* () {
@@ -95,19 +87,14 @@ describe("Backend native MCP configuration", () => {
       }).pipe(Effect.provide(f.layer));
     },
   );
-  it.effect("rejects untrusted and unauthorized scope before filesystem access", () =>
+  it.effect("rejects an unauthorized Project scope before filesystem access", () =>
     Effect.gen(function* () {
-      for (const [trusted, allowed] of [
-        [false, true],
-        [true, false],
-      ]) {
-        const f = fixture(trusted, allowed);
-        const result = yield* Effect.exit(
-          loadMcpSettings({ projectPath: "/project" }).pipe(Effect.provide(f.layer)),
-        );
-        expect(Exit.isFailure(result)).toBe(true);
-        expect(f.reads).toEqual([]);
-      }
+      const f = fixture(false);
+      const result = yield* Effect.exit(
+        loadMcpSettings({ projectPath: "/project" }).pipe(Effect.provide(f.layer)),
+      );
+      expect(Exit.isFailure(result)).toBe(true);
+      expect(f.reads).toEqual([]);
     }),
   );
   it.effect(
@@ -219,7 +206,7 @@ describe("Backend native MCP configuration", () => {
     },
   );
   it.effect("reports a saved configuration honestly when existing-session reload fails", () => {
-    const f = fixture(true, true, true);
+    const f = fixture(true, true);
     return Effect.gen(function* () {
       const initial = yield* loadMcpSettings({});
       const error = yield* Effect.flip(

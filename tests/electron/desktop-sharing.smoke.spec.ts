@@ -35,7 +35,6 @@ test("desktop Settings shares the existing backend; window closure, reopen, disa
       projects: [
         { path: project, name: "Sharing project", addedAt: timestamp, lastOpenedAt: timestamp },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   await writeFile(join(userData, "window-state.json"), windowState({ project, sessionId: id }));

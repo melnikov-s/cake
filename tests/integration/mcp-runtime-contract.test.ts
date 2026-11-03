@@ -601,7 +601,6 @@ describe("Cake native MCP runtime contract", () => {
         const runtime = await createCakeSessionRuntime({
           cwd,
           agentDir,
-          trusted: true,
           sessionDir: join(cwd, "sessions"),
           newSession: true,
           onEvent: () => {},
@@ -669,7 +668,6 @@ describe("Cake native MCP runtime contract", () => {
     const runtime = await createCakeSessionRuntime({
       cwd,
       agentDir,
-      trusted: true,
       sessionDir: join(cwd, "sessions"),
       newSession: true,
       requestUi: async () => undefined,

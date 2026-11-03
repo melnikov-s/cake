@@ -61,6 +61,4 @@ export const workspaceHandlers = WorkspaceRpc.of({
     withConnection((connectionId) => projects.restartPi(connectionId, request)),
   "workspaces.inspect-workspace": (request) =>
     withConnection((connectionId) => projects.inspect(connectionId, request)),
-  "workspaces.respond-workspace-trust": (request) =>
-    withConnection((connectionId) => projects.respondTrust(connectionId, request)),
 });

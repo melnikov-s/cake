@@ -29,7 +29,6 @@ test("remaps application hotkeys from Settings", async () => {
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
 

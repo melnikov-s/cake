@@ -81,7 +81,6 @@ export async function createPerformanceFixture(origin: string, samples: number) 
             lastOpenedAt: fixture.timestamp,
           },
         ],
-        trustedProjectPaths: [project],
         modelPresets: [
           {
             id: presetId,

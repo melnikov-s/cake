@@ -260,7 +260,6 @@ export const makeWorkerFixture = Effect.fn("WorkflowWorkersTest.fixture")(functi
         workingDirectory: workingDirectory ?? "/home",
         agentDirectory: options.agentPath ?? "/agent",
         sessionDirectory: "/private",
-        trusted: true,
       }),
   });
   return {

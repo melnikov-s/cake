@@ -73,7 +73,6 @@ for (const parent of ["Cake Chat", "Project Chat"] as const) {
             projects: [
               { path: project, name: "Project", addedAt: timestamp, lastOpenedAt: timestamp },
             ],
-            trustedProjectPaths: [project],
             modelPresets: [
               {
                 id: presetId,

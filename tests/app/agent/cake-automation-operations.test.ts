@@ -149,7 +149,7 @@ describe("automation Cake tools parity", () => {
           });
           expect(
             (yield* invoke(registry, "projects.info", { path: "/projects/cake" })).details,
-          ).toMatchObject({ project: { path: "/projects/cake", trusted: true } });
+          ).toMatchObject({ project: { path: "/projects/cake" } });
           const result = yield* invoke(registry, "sessions.create", {
             workspacePath: "/projects/cake",
             name: "Review",

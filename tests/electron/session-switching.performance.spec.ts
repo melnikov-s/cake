@@ -180,7 +180,6 @@ async function fixture(additionalChild = false) {
       projects: [
         { path: project, name: "Performance project", addedAt: timestamp, lastOpenedAt: timestamp },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

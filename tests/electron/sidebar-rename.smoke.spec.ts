@@ -32,7 +32,6 @@ test("uses native session menus and preserves Cake Chat settings context", async
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

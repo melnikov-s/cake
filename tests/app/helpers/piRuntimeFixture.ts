@@ -58,7 +58,6 @@ export const options = (overrides: Partial<CakeSessionRuntimeAcquireOptions["run
     profile: { _tag: "ProjectSession" },
     runtime: {
       cwd: "/project",
-      trusted: true,
       agentDir: "/agent",
       sessionDir: "/sessions",
       sessionId: "session-1",

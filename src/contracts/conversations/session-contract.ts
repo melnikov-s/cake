@@ -74,7 +74,6 @@ export const piSettingsSchema = Schema.Struct({
   collapseChangelog: Schema.Boolean,
   quietStartup: Schema.Boolean,
   enableInstallTelemetry: Schema.Boolean,
-  defaultProjectTrust: Schema.Literals(["ask", "always", "never"]),
   doubleEscapeAction: Schema.Literals(["fork", "tree", "none"]),
   treeFilterMode: Schema.Literals(["default", "no-tools", "user-only", "labeled-only", "all"]),
   anthropicExtraUsageWarning: Schema.Boolean,
@@ -124,10 +123,6 @@ export const piSettingUpdateSchema = Schema.Union([
   Schema.Struct({ key: Schema.Literal("collapseChangelog"), value: Schema.Boolean }),
   Schema.Struct({ key: Schema.Literal("quietStartup"), value: Schema.Boolean }),
   Schema.Struct({ key: Schema.Literal("enableInstallTelemetry"), value: Schema.Boolean }),
-  Schema.Struct({
-    key: Schema.Literal("defaultProjectTrust"),
-    value: Schema.Literals(["ask", "always", "never"]),
-  }),
   Schema.Struct({
     key: Schema.Literal("doubleEscapeAction"),
     value: Schema.Literals(["fork", "tree", "none"]),

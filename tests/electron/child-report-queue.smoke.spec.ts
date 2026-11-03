@@ -69,7 +69,6 @@ test("canceling child reports retires their outbox entries and Stop stays stoppe
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "Project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [project],
     }),
   );
   for (const id of [parentId, ...children]) {

@@ -79,7 +79,6 @@ async function openRuntime(
     cwd: directory,
     agentDir: join(directory, "agent"),
     sessionDir: join(directory, "sessions"),
-    trusted: true,
     newSession: true,
     requestUi: async () => undefined,
     onEvent: () => undefined,

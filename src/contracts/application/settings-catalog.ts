@@ -184,11 +184,6 @@ const piMetadata = {
     label: "HTTP idle timeout",
     description: "Milliseconds before an idle provider stream fails; 0 disables.",
   },
-  defaultProjectTrust: {
-    category: "Network & privacy",
-    label: "Default project trust",
-    description: "Whether project-local Pi resources load without asking.",
-  },
   anthropicExtraUsageWarning: {
     category: "Network & privacy",
     label: "Anthropic extra usage warning",

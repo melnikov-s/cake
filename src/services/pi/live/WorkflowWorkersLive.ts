@@ -64,7 +64,6 @@ export const WorkflowWorkersLive = Layer.effect(
               profile: { _tag: "SubagentSession" },
               runtime: {
                 cwd: location.workingDirectory,
-                trusted: location.trusted,
                 agentDir: location.agentDirectory,
                 sessionDir: location.sessionDirectory,
                 newSession: true,

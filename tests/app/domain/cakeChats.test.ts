@@ -975,7 +975,7 @@ describe("permanent Cake Chat", () => {
     },
   );
 
-  it.effect("uses the registered project's trust for permanent-chat resource discovery", () => {
+  it.effect("runs a permanent Project Chat in its registered project", () => {
     const f = fixture();
     const project = {
       path: "/zombies",
@@ -990,22 +990,13 @@ describe("permanent Cake Chat", () => {
         ...configuration,
         location: yield* chatLocations.resolve(location, sessionId),
       };
-      const options = () =>
-        acquireOptions({
-          configuration: projectConfiguration,
-          target: { sessionId, tools: [] },
-          newSession: false,
-        });
-      const untrusted = yield* options();
-      expect(untrusted.runtime.cwd).toBe(project.path);
-      expect(untrusted.runtime.trusted).toBe(false);
-      expect(untrusted.runtime.projectTrust?.()).toBe(false);
-      f.setState({ ...f.state(), trustedProjectPaths: [project.path] });
-      expect(untrusted.runtime.projectTrust?.()).toBe(true);
-      const trusted = yield* options();
-      expect(trusted.runtime.trusted).toBe(true);
-      expect(trusted.runtime.tools).toEqual(untrusted.runtime.tools);
-      expect(trusted.runtime.allowedCakeOperations).toEqual(
+      const options = yield* acquireOptions({
+        configuration: projectConfiguration,
+        target: { sessionId, tools: [] },
+        newSession: false,
+      });
+      expect(options.runtime.cwd).toBe(project.path);
+      expect(options.runtime.allowedCakeOperations).toEqual(
         expect.arrayContaining([
           "artifacts.link",
           "artifacts.present",
@@ -1014,11 +1005,11 @@ describe("permanent Cake Chat", () => {
           "artifacts.source",
         ]),
       );
-      expect(trusted.runtime.allowedCakeOperations).not.toContain("artifacts.resolve-reference");
-      expect(trusted.runtime.allowedCakeOperations).not.toContain("artifacts.preview");
-      expect(trusted.runtime.resolveArtifact).toBeTypeOf("function");
-      expect(trusted.runtime.linkArtifact).toBeTypeOf("function");
-      expect(trusted.runtime.readArtifactState).toBeTypeOf("function");
+      expect(options.runtime.allowedCakeOperations).not.toContain("artifacts.resolve-reference");
+      expect(options.runtime.allowedCakeOperations).not.toContain("artifacts.preview");
+      expect(options.runtime.resolveArtifact).toBeTypeOf("function");
+      expect(options.runtime.linkArtifact).toBeTypeOf("function");
+      expect(options.runtime.readArtifactState).toBeTypeOf("function");
     }).pipe(Effect.provide(f.layer));
   });
 
@@ -1076,7 +1067,6 @@ describe("permanent Cake Chat", () => {
         for (const command of [
           "projects.list",
           "projects.add",
-          "projects.request-trust",
           "projects.rename",
           "projects.remove",
           "projects.settings.get",

@@ -35,7 +35,6 @@ test("adapts extension dialogs and reports unsupported widgets", async () => {
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

@@ -157,7 +157,6 @@ describe("skill-supplied widget templates", () => {
       agentDir: join(f.root, "agent"),
       sessionDir: join(f.root, "sessions"),
       newSession: true,
-      trusted: true,
       requestUi: async () => undefined,
       compileArtifactBrowser: f.compile,
       captureWidgetInstance: f.captureWidgetInstance,

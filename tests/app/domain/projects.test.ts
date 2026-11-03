@@ -31,9 +31,8 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 
-const pi = vi.hoisted(() => ({ inspect: vi.fn(), reword: vi.fn() }));
+const pi = vi.hoisted(() => ({ reword: vi.fn() }));
 vi.mock("../../../src/services/pi/PiWorkflows", () => ({
-  inspectWorkspace: pi.inspect,
   rewordProjectSelection: pi.reword,
   locateSessionFile: vi.fn(),
   forkSessionToWorkingDirectory: vi.fn(),
@@ -46,7 +45,6 @@ vi.mock("node:fs/promises", async (importOriginal) => ({
 }));
 
 beforeEach(() => {
-  pi.inspect.mockReset().mockReturnValue(Effect.succeed({ trustRequired: true }));
   pi.reword.mockReset().mockReturnValue(Effect.succeed("Project rewrite"));
 });
 
@@ -181,112 +179,15 @@ describe("portable Project operations", () => {
       yield* initialize;
       const workspaces = yield* ClientWorkspaces;
       const result = yield* projects.inspect(7, { requestId: "inspect", path: "/project" });
-      expect(result).toEqual({ requestId: "inspect", path: "/project", trustRequired: true });
-      expect(pi.inspect).toHaveBeenCalledWith("/project");
+      expect(result).toEqual({ requestId: "inspect", path: "/project" });
       expect(workspaces.workspaceForConnection(7)).toBe("/project");
       expect(workspaces.workspaceForConnection(8)).toBeUndefined();
       const denied = yield* Effect.flip(
         projects.inspect(7, { requestId: "denied", path: "/unselected" }),
       );
       expect(denied.operation).toBe("authorizeWorkingDirectory");
-      expect(pi.inspect).toHaveBeenCalledOnce();
       expect(workspaces.workspaceForConnection(7)).toBe("/project");
-      // A denied inspection does not replace the previously correlated request.
-      yield* projects.respondTrust(7, { requestId: "inspect", path: "/project", approved: true });
-      const trusted = yield* projects.inspect(7, { requestId: "trusted", path: "/project" });
-      expect(trusted.trustRequired).toBe(false);
-      expect(
-        (yield* Effect.flip(
-          projects.respondTrust(7, { requestId: "trusted", path: "/project", approved: true }),
-        )).operation,
-      ).toBe("respondTrust");
     }).pipe(Effect.provide(testLayer())),
-  );
-
-  it.effect.each([false, true])(
-    "resource-free agent Projects require explicit trust (already registered=%s)",
-    (alreadyRegistered) =>
-      Effect.gen(function* () {
-        yield* initialize;
-        pi.inspect.mockReturnValue(Effect.succeed({ trustRequired: false }));
-        if (alreadyRegistered) yield* upsertProject("/project", "Existing untrusted");
-        const added = yield* projects.addForAgent({ path: "/project" });
-        expect(added.alreadyRegistered).toBe(alreadyRegistered);
-        expect(added.project.trusted).toBe(false);
-
-        expect(yield* projects.inspect(7, { requestId: "cancel", path: "/project" })).toMatchObject(
-          {
-            trustRequired: true,
-          },
-        );
-        yield* projects.respondTrust(7, { requestId: "cancel", path: "/project", approved: false });
-        expect((yield* projects.infoForAgent({ path: "/project" })).project.trusted).toBe(false);
-
-        expect(
-          yield* projects.inspect(7, { requestId: "approve", path: "/project" }),
-        ).toMatchObject({
-          trustRequired: true,
-        });
-        yield* projects.respondTrust(7, { requestId: "approve", path: "/project", approved: true });
-        expect((yield* projects.infoForAgent({ path: "/project" })).project.trusted).toBe(true);
-        expect(yield* projects.inspect(7, { requestId: "reopen", path: "/project" })).toMatchObject(
-          {
-            trustRequired: false,
-          },
-        );
-      }).pipe(Effect.provide(testLayer())),
-  );
-
-  it.effect("project_trust_response_is_connection_scoped", () =>
-    Effect.gen(function* () {
-      yield* initialize;
-      yield* projects.inspect(7, { requestId: "inspect", path: "/project" });
-      const request = { requestId: "inspect", path: "/project", approved: true };
-      expect((yield* Effect.flip(projects.respondTrust(8, request))).message).toContain(
-        "no longer pending",
-      );
-      expect(
-        (yield* Effect.flip(projects.respondTrust(7, { ...request, path: "/other" }))).message,
-      ).toContain("no longer pending");
-      expect((yield* ApplicationState).snapshot().trustedProjectPaths).toEqual([]);
-      yield* projects.respondTrust(7, request);
-      expect((yield* ApplicationState).snapshot().trustedProjectPaths).toEqual(["/project"]);
-      expect((yield* Effect.flip(projects.respondTrust(7, request))).message).toContain(
-        "no longer pending",
-      );
-      yield* projects.inspect(8, { requestId: "other", path: "/other" });
-      yield* projects.respondTrust(8, { requestId: "other", path: "/other", approved: false });
-      expect((yield* ApplicationState).snapshot().trustedProjectPaths).toEqual(["/project"]);
-    }).pipe(Effect.provide(testLayer())),
-  );
-
-  it.effect(
-    "reinspection and connection cleanup invalidate only that connection's trust request",
-    () =>
-      Effect.gen(function* () {
-        yield* initialize;
-        yield* projects.inspect(7, { requestId: "old", path: "/project" });
-        yield* projects.inspect(8, { requestId: "other-client", path: "/project" });
-        yield* projects.inspect(7, { requestId: "current", path: "/other" });
-        expect(
-          (yield* Effect.flip(
-            projects.respondTrust(7, { requestId: "old", path: "/project", approved: true }),
-          )).operation,
-        ).toBe("respondTrust");
-        yield* (yield* ProjectAccess).clearOwner(7);
-        (yield* ClientWorkspaces).releaseConnection(7);
-        expect(
-          (yield* Effect.flip(
-            projects.respondTrust(7, { requestId: "current", path: "/other", approved: true }),
-          )).operation,
-        ).toBe("respondTrust");
-        yield* projects.respondTrust(8, {
-          requestId: "other-client",
-          path: "/project",
-          approved: true,
-        });
-        expect((yield* ClientWorkspaces).workspaceForConnection(8)).toBe("/project");
-      }).pipe(Effect.provide(testLayer())),
   );
 
   it.effect("activation retains authorization without requiring a native window", () =>

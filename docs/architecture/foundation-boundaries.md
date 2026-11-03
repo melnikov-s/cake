@@ -25,7 +25,7 @@ renderer Store → Client Promise adapter
 ```
 
 Every request, success, typed failure, and streaming element is decoded at the
-receiving boundary. Main rechecks trust, path, and permission policy; successful
+receiving boundary. Main rechecks access, path, and permission policy; successful
 renderer decoding is never privilege authorization.
 
 The renderer never executes Cake domain modules. Renderer infrastructure calls

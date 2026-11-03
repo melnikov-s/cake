@@ -149,7 +149,6 @@ const assistantMarkdownCode: VisualCaptureScenario = {
               lastOpenedAt: timestamp,
             },
           ],
-          trustedProjectPaths: [paths.project],
         },
       }),
     );
@@ -796,7 +795,6 @@ const conversationEntryScenario: VisualCaptureScenario = {
         projects: [
           { path: paths.project, name: "Project", addedAt: timestamp, lastOpenedAt: timestamp },
         ],
-        trustedProjectPaths: [paths.project],
       }),
     );
     await writeFile(
@@ -918,7 +916,6 @@ const modelPickerScenario: VisualCaptureScenario = {
         projects: [
           { path: paths.project, name: "Project", addedAt: timestamp, lastOpenedAt: timestamp },
         ],
-        trustedProjectPaths: [paths.project],
         modelPresets: [
           {
             id: "00000000-0000-4000-8000-000000000001",
@@ -1278,7 +1275,6 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
             lastOpenedAt: timestamp,
           },
         ],
-        trustedProjectPaths: [paths.project, otherProject],
       }),
     );
   },
@@ -1576,7 +1572,6 @@ async function seedArtifactScenario(
           lastOpenedAt: timestamp,
         },
       ],
-      trustedProjectPaths: [paths.project],
     }),
   );
   await writeFile(
@@ -2095,7 +2090,6 @@ const automationApprovedWalkthrough: VisualCaptureScenario = {
               lastOpenedAt: timestamp,
             },
           ],
-          trustedProjectPaths: [paths.project],
         },
       }),
     );
@@ -2324,7 +2318,6 @@ const cakePromptsSettingsScenario: VisualCaptureScenario = {
             lastOpenedAt: timestamp,
           },
         ],
-        trustedProjectPaths: [paths.project],
       }),
     );
   },
@@ -3174,7 +3167,6 @@ const projectChatAttention: VisualCaptureScenario = {
     await projectChatTodos.seed(paths, theme);
     const file = join(paths.cakeHome, "state", "application.json");
     const application = JSON.parse(await readFile(file, "utf8"));
-    application.data.trustedProjectPaths = [paths.project];
     const items = application.data.projects[0].todos.items;
     items[0].needsAttention = true;
     items[0].attentionReason = "Review the startup findings";
@@ -5763,7 +5755,6 @@ const newSessionScenario: VisualCaptureScenario = {
             lastOpenedAt: timestamp,
           },
         ],
-        trustedProjectPaths: [paths.project],
       }),
     );
   },
@@ -5808,7 +5799,6 @@ const sessionSearchScenario: VisualCaptureScenario = {
           { path: paths.project, name: "Cake", addedAt: timestamp, lastOpenedAt: timestamp },
           { path: website, name: "Website", addedAt: timestamp, lastOpenedAt: timestamp },
         ],
-        trustedProjectPaths: [paths.project, website],
       }),
     );
     for (const [index, title] of [
@@ -6006,14 +5996,13 @@ const compactComposerScenario: VisualCaptureScenario = {
   environment: dictationInputScenario.environment,
   async seed(paths, theme) {
     await dictationInputScenario.seed(paths, theme);
-    // Composer fixtures exercise writing controls, not project trust/model onboarding.
+    // Composer fixtures exercise writing controls, not model onboarding.
     const stateFile = join(paths.cakeHome, "state", "application.json");
     const state = JSON.parse(await readFile(stateFile, "utf8"));
     await writeFile(
       stateFile,
       JSON.stringify({
         ...state,
-        trustedProjectPaths: [paths.project],
         utilityModel: { provider: "conversation-visual", modelId: "fixture", thinkingLevel: "off" },
       }),
     );
@@ -6259,7 +6248,6 @@ export const sessionPluginsScenario: VisualCaptureScenario = {
         data: {
           globalSessionLabels: [],
           unreadSessionIds: [],
-          trustedProjectPaths: [paths.project],
           fastModeSessionIds: [],
           modelPresets: [],
           sessionPluginSharedState: [],
@@ -6398,7 +6386,6 @@ const sourceSelectionScenario: VisualCaptureScenario = {
             lastOpenedAt: timestamp,
           },
         ],
-        trustedProjectPaths: [paths.project],
       }),
     );
     const attachment = {

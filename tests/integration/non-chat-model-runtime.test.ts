@@ -71,7 +71,6 @@ describe("Native non-chat model settings contract", () => {
     );
     const options = {
       ...h,
-      trusted: true,
       sessionDir: join(h.cwd, "sessions"),
       newSession: true,
       requestUi: async () => undefined,
@@ -209,7 +208,6 @@ describe("Native non-chat model settings contract", () => {
     };
     const runtime = await createCakeSessionRuntime({
       ...h,
-      trusted: true,
       sessionDir: join(h.cwd, "sessions"),
       newSession: true,
       requestUi: async () => undefined,
@@ -296,7 +294,6 @@ describe("Native non-chat model settings contract", () => {
     });
     const restricted = await createCakeSessionRuntime({
       ...h,
-      trusted: true,
       sessionDir: join(h.cwd, "restricted"),
       newSession: true,
       auxiliary: true,
@@ -333,7 +330,6 @@ describe("Native non-chat model settings contract", () => {
     const h = await setup();
     const runtime = await createCakeSessionRuntime({
       ...h,
-      trusted: true,
       sessionDir: join(h.cwd, "sessions"),
       newSession: true,
       requestUi: async () => undefined,

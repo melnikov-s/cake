@@ -38,7 +38,6 @@ export const toolCallRowsScenario = {
         projects: [
           { path: paths.project, name: "Tool rows", addedAt: timestamp, lastOpenedAt: timestamp },
         ],
-        trustedProjectPaths: [paths.project],
       }),
     );
     const calls = [

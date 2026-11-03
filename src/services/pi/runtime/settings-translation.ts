@@ -28,7 +28,6 @@ export function projectPiSettings(
     // Cake exposes the existing boolean control; Pi's "header" hides resource details too.
     quietStartup: settingsManager.getQuietStartup() !== false,
     enableInstallTelemetry: settingsManager.getEnableInstallTelemetry(),
-    defaultProjectTrust: settingsManager.getDefaultProjectTrust(),
     doubleEscapeAction: settingsManager.getDoubleEscapeAction(),
     treeFilterMode: settingsManager.getTreeFilterMode(),
     anthropicExtraUsageWarning: settingsManager.getWarnings().anthropicExtraUsage ?? true,
@@ -81,8 +80,6 @@ export function applyPiSetting(settingsManager: SettingsManager, update: PiSetti
   else if (update.key === "quietStartup") settingsManager.setQuietStartup(update.value);
   else if (update.key === "enableInstallTelemetry")
     settingsManager.setEnableInstallTelemetry(update.value);
-  else if (update.key === "defaultProjectTrust")
-    settingsManager.setDefaultProjectTrust(update.value);
   else if (update.key === "doubleEscapeAction") settingsManager.setDoubleEscapeAction(update.value);
   else if (update.key === "treeFilterMode") settingsManager.setTreeFilterMode(update.value);
   else if (update.key === "anthropicExtraUsageWarning")

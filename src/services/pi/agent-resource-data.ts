@@ -6,7 +6,6 @@ const nonEmptyBoundedString = (maximum: number) =>
 
 export const PiAgentResourceContext = Schema.Struct({
   workingDirectory: nonEmptyBoundedString(8_192),
-  projectTrusted: Schema.Boolean,
   additionalSkillPaths: Schema.optionalKey(
     Schema.Array(nonEmptyBoundedString(8_192)).check(Schema.isMaxLength(256)),
   ),

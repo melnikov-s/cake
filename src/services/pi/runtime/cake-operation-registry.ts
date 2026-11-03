@@ -67,8 +67,7 @@ const cakeTopics = [
   },
   {
     name: "projects",
-    summary:
-      "List, register (add), request trust for, rename, configure, and remove Projects in Cake.",
+    summary: "List, register (add), rename, configure, and remove Projects in Cake.",
   },
   {
     name: "sessions",

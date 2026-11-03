@@ -64,7 +64,6 @@ test("standalone app launches after relocation and manual replacement preserves 
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [],
     }),
   );
   const replaceApp = async () => {

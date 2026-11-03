@@ -220,7 +220,6 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "Project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [project],
       ...(postProcessedText !== undefined
         ? { utilityModel: { provider: "fixture", modelId: "fixture", thinkingLevel: "off" } }
         : {}),

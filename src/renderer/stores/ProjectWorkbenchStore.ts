@@ -304,8 +304,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         const summary = await this.props.catalog.lookup(sessionId);
         if (this.signal.aborted || revision !== this.sessionOpenRevision) return;
         if (!summary) throw new Error(`Cake could not find session ${sessionId}`);
-        // Resolved history needs no runtime or checkout trust. Live acquisition uses
-        // Project trust, so authorize that same identity rather than the checkout.
+        // Resolved history needs no runtime. Live acquisition opens through the owning
+        // Project rather than registering the checkout as a new Project.
         if (summary.resolved) await this.openSessionTarget(sessionId, false, true);
         else
           await this.projectOpenStore.inspectPath(summary.projectPath, {

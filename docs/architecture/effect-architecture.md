@@ -1144,7 +1144,7 @@ that imports backend composition.
 ## Security and extensibility
 
 The renderer remains sandboxed with no Node globals, raw Electron IPC, raw Pi,
-filesystem, or credentials. The backend validates trust, paths, and permissions
+filesystem, or credentials. The backend validates access, paths, and permissions
 even when renderer input has already decoded. Model-presented artifacts remain
 data and use validated or sandboxed protocols. Desktop sharing optionally authenticates Google
 accounts before any application HTTP route or WebSocket upgrade; its account bindings

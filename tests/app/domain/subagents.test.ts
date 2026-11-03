@@ -44,7 +44,6 @@ import { subagentCompletionMessage } from "../../../src/contracts/subagents/suba
 import type { PiTurnResult } from "../../../src/contracts/pi/turn-result-data";
 import { splitContextReminders } from "../../../src/services/pi/runtime/session-context-reminders";
 import * as subagents from "../../../src/domain/subagents/subagents";
-import { trustProject } from "../../../src/domain/application/application";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import {
   projectQueuedMessages,
@@ -82,8 +81,7 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 
 const applicationValue: ApplicationStateValue = {
   ...defaultApplicationState(),
-  trustedProjectPaths: ["/project", "/another"],
-  projects: ["/project", "/another", "/untrusted"].map((path) => ({
+  projects: ["/project", "/another", "/repo/src/system/agents"].map((path) => ({
     path,
     name: path.slice(1),
     addedAt: "2026-01-01T00:00:00.000Z",
@@ -429,7 +427,6 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
           workingDirectory: workingDirectory ?? "/home",
           agentDirectory: "/agent",
           sessionDirectory: "/private-sessions",
-          trusted: true,
         }),
     }),
   );
@@ -437,7 +434,6 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
     profile: { _tag: "ProjectSession" as const },
     runtime: {
       cwd: "/project",
-      trusted: true,
       agentDir: "/agent",
       sessionDir: "/sessions",
       sessionId: "parent",
@@ -1255,33 +1251,20 @@ describe("Cake Chat project investigators", () => {
     }),
   );
 
-  it.effect("validates registered trusted project roots before constructing a worker", () =>
+  it.effect("validates registered project roots before constructing a worker", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       yield* Effect.gen(function* () {
-        for (const projectPath of ["/missing", "/untrusted", "/project/worktree"])
+        for (const projectPath of ["/missing", "/project/worktree", "/repo"])
           assert.ok(
             (yield* subagents
               .start(
-                {
-                  continuation: "resume",
-                  task: "Inspect config",
-                  ...(projectPath ? { projectPath } : {}),
-                },
+                { continuation: "resume", task: "Inspect config", projectPath },
                 cakeChatParent(fixture),
               )
               .pipe(Effect.flip)) instanceof subagents.SubagentError,
           );
         assert.equal(yield* Ref.get(fixture.constructions), 0);
-        const untrusted = yield* subagents
-          .start(
-            { continuation: "resume", task: "Inspect config", projectPath: "/untrusted" },
-            cakeChatParent(fixture),
-          )
-          .pipe(Effect.flip);
-        assert.match(untrusted.message, /projects.request-trust/);
-        assert.match(untrusted.message, /Trust and continue/);
-        assert.match(untrusted.message, /projects.add does not grant trust/);
         const wrongCaller = yield* subagents
           .start(
             { continuation: "resume", task: "Inspect", projectPath: "/another" },
@@ -1289,18 +1272,31 @@ describe("Cake Chat project investigators", () => {
           )
           .pipe(Effect.flip);
         assert.match(wrongCaller.message, /only to Cake Chat/);
-        // This is the state change made by the user's correlated trust approval.
-        yield* trustProject("/untrusted");
+      }).pipe(Effect.provide(fixture.layer));
+    }),
+  );
+
+  it.effect("starts a worker in a registered subfolder Project without any approval", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      yield* Effect.gen(function* () {
         yield* subagents.start(
-          { continuation: "resume", task: "Retry approved project", projectPath: "/untrusted" },
+          {
+            continuation: "resume",
+            task: "Inspect the agents",
+            projectPath: "/repo/src/system/agents",
+          },
           cakeChatParent(fixture),
         );
         const sessionId = yield* Queue.take(fixture.childStarted);
         const constructed = yield* Ref.get(fixture.constructedOptions);
-        assert.equal(constructed.at(-1)?.trusted, true);
-        assert.equal(constructed.at(-1)?.cwd, "/untrusted");
+        assert.equal(constructed.at(-1)?.cwd, "/repo/src/system/agents");
         yield* completeChild(fixture, sessionId);
-        yield* Queue.take(fixture.reports);
+        assert.equal(
+          Schema.decodeUnknownSync(subagents.SubagentResult)(yield* Queue.take(fixture.reports))
+            .status,
+          "complete",
+        );
       }).pipe(Effect.provide(fixture.layer));
     }),
   );

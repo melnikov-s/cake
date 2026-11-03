@@ -21,7 +21,6 @@ interface DiscussionSessionLocation {
   readonly agentDirectory: string;
   readonly sessionDirectory: string;
   readonly parentSessionDirectory: string;
-  readonly trusted: boolean;
 }
 
 export class DiscussionSessionEnvironmentError extends Schema.TaggedError<DiscussionSessionEnvironmentError>()(

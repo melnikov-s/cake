@@ -50,7 +50,6 @@ test("authoritative chat discloses parallel script children, then restores metad
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   await writeFile(

@@ -62,7 +62,7 @@ function renderWorkbench(client: TestClientOverrides, resolved = false) {
     client: {
       ...client,
       workspaces: {
-        inspect: async (request) => ({ ...request, trustRequired: false }),
+        inspect: async (request) => ({ ...request }),
         registerProject: async () => defaultApplicationState(),
         loadStagedSlashCommands: async () => [],
         ...client.workspaces,

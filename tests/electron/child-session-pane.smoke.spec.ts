@@ -64,7 +64,6 @@ test("opens family children beside their parent and reuses the child pane", asyn
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [project],
     }),
   );
   await Promise.all([

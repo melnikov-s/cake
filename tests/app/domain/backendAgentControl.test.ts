@@ -214,7 +214,6 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
             ...defaultApplicationState(),
             globalSessionLabels: [],
             projects: [project],
-            trustedProjectPaths: ["/project"],
           },
           source: "current",
         }),

@@ -83,7 +83,6 @@ test("Companion discovers VS Code scripting, arranges editors and configures the
     stateFile,
     JSON.stringify({
       ...state,
-      trustedProjectPaths: [paths.project],
       utilityModel: { provider: "conversation-visual", modelId: "fixture", thinkingLevel: "off" },
     }),
   );

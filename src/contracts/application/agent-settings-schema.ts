@@ -104,7 +104,7 @@ function setting<const Name extends string, Input extends Schema.Constraint>(
 const mcpGuidance = [
   "Project scope means the calling Project Session's exact Working Directory, never an arbitrary path or the currently focused session. Cake Chat supports backend scope only.",
   "Call settings.mcp.get first and pass its revision. Stored values remain masked; preserve the stored-value placeholders to keep credentials. Secrets are never revealed through these operations.",
-  "Project scope requires existing Project access and trust. Native Pi validation and same-scope reload are unchanged. OAuth configuration is not authorization; authorize through Pi's existing interactive MCP flow.",
+  "Project scope requires existing Project access. Native Pi validation and same-scope reload are unchanged. OAuth configuration is not authorization; authorize through Pi's existing interactive MCP flow.",
 ];
 
 export const widgetPackageSettingsOperations = [
@@ -319,7 +319,7 @@ export const agentSettingsOperations = [
       authorization: Schema.Literal("interactive-not-confirmed"),
     }),
     [
-      "Omit sessionId to target the calling Project Session. The calling agent is busy during a tool call; Cake Chat can name an explicitly targeted idle Project Session instead. Requires its existing Project access/trust and built-in MCP command.",
+      "Omit sessionId to target the calling Project Session. The calling agent is busy during a tool call; Cake Chat can name an explicitly targeted idle Project Session instead. Requires its existing Project access and built-in MCP command.",
       "Submission is not authorization: follow Pi's existing dialogs/notices. No stored credentials or live connection status are returned.",
     ],
   ),

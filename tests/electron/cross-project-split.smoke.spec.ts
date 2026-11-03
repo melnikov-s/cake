@@ -28,7 +28,6 @@ test("renders newly opened Project Chats immediately in an existing split", asyn
     JSON.stringify({
       schemaVersion: 1,
       projects,
-      trustedProjectPaths: projects.map(({ path }) => path),
     }),
   );
   const application = await electron.launch({
