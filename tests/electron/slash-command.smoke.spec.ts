@@ -333,7 +333,8 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       await page.keyboard.press("Enter");
       await expect(composer).toHaveValue("");
       await expect(anchor).toBeFocused();
-      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+      // Parking DOM focus after send is not an explicit dictation stop.
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
       await page.keyboard.press("Tab");
       await expect(composer).toBeFocused();
       await page.keyboard.type("Next deliberate draft");

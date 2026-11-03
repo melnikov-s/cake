@@ -187,7 +187,8 @@ export class DictationStore extends Store<{
       this.reportError(new Error(this.state.message ?? "Dictation unavailable"));
     else if (this.phase !== "preparing" || replacingCapture) void this.start(target);
   }
-  blur(id: string) {
+  /** Release an unmounted or ineligible field. DOM blur alone retains the target. */
+  releaseTarget(id: string) {
     if (this.target?.id !== id) return;
     this.endUtterance(true);
     // Brief field/chat transitions reuse the device; no target means no audio is retained.

@@ -1,11 +1,4 @@
-import {
-  useLayoutEffect,
-  useId,
-  useRef,
-  type FocusEvent,
-  type KeyboardEvent,
-  type RefObject,
-} from "react";
+import { useLayoutEffect, useId, useRef, type KeyboardEvent, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import { useOptionalStore } from "r-state-tree/react";
 import { DictationStore, type DictationTarget } from "../stores/DictationStore";
@@ -20,7 +13,7 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
   enabledRef.current = enabled;
   const inserting = useRef(false);
   const replaying = useRef(false);
-  const insertion = useRef({ before: "", after: "", value: "", caret: -1 });
+  const insertion = useRef({ before: "", after: "", value: "", start: -1, caret: -1 });
   const target = useRef<DictationTarget>({
     id,
     begin() {
@@ -30,6 +23,7 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
         before: element.value.slice(0, element.selectionStart),
         after: element.value.slice(element.selectionEnd),
         value: element.value,
+        start: element.selectionStart,
         caret: element.selectionEnd,
       };
     },
@@ -38,7 +32,7 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
       if (
         !enabledRef.current ||
         !element ||
-        document.activeElement !== element ||
+        !element.isConnected ||
         element.disabled ||
         element.readOnly
       )
@@ -61,7 +55,7 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
           value,
         );
         element.setSelectionRange(caret, caret);
-        insertion.current = { ...range, value, caret };
+        insertion.current = { ...range, value, start: caret, caret };
         flushSync(() => element.dispatchEvent(new Event("input", { bubbles: true })));
         // Programmatic value/selection updates do not reveal the tail like native typing.
         // Measure after React commits so content-sized inputs have their final height.
@@ -95,9 +89,17 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
     return () => {
       window.removeEventListener("blur", blur);
       window.removeEventListener("focus", focused);
-      store.blur(id);
+      store.releaseTarget(id);
     };
   }, [enabled, id, input, store]);
+
+  // A controlled draft reset (for example, after Send) is not a DOM input event.
+  // Re-anchor now so the first subsequent recognition is not discarded as a stale edit.
+  useLayoutEffect(() => {
+    const element = input.current;
+    if (enabled && !inserting.current && element && element.value !== insertion.current.value)
+      store?.restart(id);
+  });
 
   return {
     id,
@@ -106,16 +108,10 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
       if (enabled && !input.current?.readOnly && !input.current?.disabled)
         store?.focus(target.current);
     },
-    onBlur(event: FocusEvent<HTMLTextAreaElement>) {
-      // Keyboard navigation into this field's inline or portaled control keeps its target.
-      if (
-        event.relatedTarget instanceof Element &&
-        event.relatedTarget
-          .closest('[data-slot="dictation-indicator"]')
-          ?.getAttribute("data-dictation-target") === id
-      )
-        return;
-      if (enabled) store?.blur(id);
+    onBlur() {
+      // Only remember an unfocused field while dictation is enabled. Enabling the
+      // preference later must not start recording into a previously visited field.
+      if (enabled && !store?.enabled) store?.releaseTarget(id);
     },
     onChange() {
       if (enabled && !inserting.current) store?.restart(id);
@@ -126,7 +122,7 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
         enabled &&
         !inserting.current &&
         element &&
-        (element.selectionStart !== insertion.current.caret ||
+        (element.selectionStart !== insertion.current.start ||
           element.selectionEnd !== insertion.current.caret)
       )
         store?.restart(id);

@@ -28,14 +28,6 @@ export const DictationIndicator = observer(function DictationIndicator({
       data-slot="dictation-indicator"
       data-dictation-target={targetId}
       className={cn("flex items-center", inline && "absolute top-2 left-2")}
-      onBlur={(event) => {
-        if (
-          event.relatedTarget === anchor.current ||
-          (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))
-        )
-          return;
-        store.blur(targetId);
-      }}
     >
       <IconButton
         className={cn(

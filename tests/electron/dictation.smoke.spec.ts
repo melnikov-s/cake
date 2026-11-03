@@ -71,6 +71,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     }
     fs.writeFileSync(path.join(directory, 'request.json'), JSON.stringify({ count: ++count, final: request.final, id: request.utteranceId, vocabulary: request.vocabulary }));
     await wait(value => !value.hold); const value = config(); reply(value.error ? { error: value.error } : { text: request.final ? (value.finalText ?? value.text ?? '') : (value.text ?? '') });
+    fs.writeFileSync(path.join(directory, 'response.json'), JSON.stringify({ count }));
   }
 })();
 `,
@@ -306,9 +307,9 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await postProcess.selectOption("raw");
     await expect(postProcess).toHaveValue("raw");
     await expect(page.locator('[data-slot="provisional-text"]')).toHaveCount(0);
-    // A path/search input is not a dictation target.
+    // A path/search input cannot claim speech; it does not revoke the last prose target.
     await page.getByLabel("Use an existing Core ML Parakeet model folder").focus();
-    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
     await expect(page.getByLabel("Use an existing Core ML Parakeet model folder")).toHaveValue("");
     await configure({ ready: true, speech: false, text: "" });
     await page.evaluate(() => {
@@ -335,6 +336,21 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await page.keyboard.type("Explicitly chosen input");
     await expect(composer).toHaveValue("Explicitly chosen input");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+
+    // Clicking transcript UI after DOM blur keeps listening and updates the same insertion.
+    await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
+    await page
+      .getByText("Inspect this implementation before changing it.", { exact: true })
+      .click();
+    await expect(composer).not.toBeFocused();
+    await expect(indicator).toHaveText("Listening");
+    await configure({ ready: true, text: "Still listening" });
+    await expect(composer).toHaveValue("Explicitly chosen input Still listening");
+    await configure({ ready: true, text: "Still listening after blur" });
+    await expect(composer).toHaveValue("Explicitly chosen input Still listening after blur");
+    await configure({ ready: true, speech: false, text: "" });
+    await composer.focus();
+    await composer.fill("Explicitly chosen input");
 
     // Detector false positives must not delete selected text or move the caret before words exist.
     await configure({ ready: true, hold: true, speech: true, text: "" });
@@ -526,8 +542,13 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await expect
       .poll(async () => JSON.parse(await readFile(join(model, "request.json"), "utf8")).count)
       .toBeGreaterThan(before);
+    const heldRequest = await requestCount();
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await configure({ ready: true, text: "Discard this tail" });
+    // Drain the held external reply before a later phase holds recognition again.
+    await expect
+      .poll(async () => JSON.parse(await readFile(join(model, "response.json"), "utf8")).count)
+      .toBeGreaterThanOrEqual(heldRequest);
     await page.getByRole("button", { name: "Back to chat" }).click();
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
     await expect(composer).toHaveValue("Typed first. Spoken next.");
@@ -606,11 +627,50 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await annotation.press("Enter");
     await expect(page.getByRole("dialog", { name: "Add annotation" })).toHaveCount(0);
     await configure({ ready: true, hold: true });
+    await prose.evaluate((element) => {
+      const range = document.createRange();
+      const text = document.createTreeWalker(element, NodeFilter.SHOW_TEXT).nextNode();
+      if (!text) throw new Error("Transcript text missing");
+      range.setStart(text, 0);
+      range.setEnd(text, "Inspect".length);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    });
+    await prose.dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
+    await expect(annotation).toBeFocused();
+    await annotation.pressSequentially("Second note");
+    await configure({ ready: true, text: "Second annotation speech" });
+    await expect(annotation).toHaveValue("Second note Second annotation speech");
+    await annotation.press("Enter");
+    await expect(annotation).toHaveCount(0);
+    await configure({ ready: true, hold: true });
     await page.getByRole("button", { name: "View annotation 1", exact: true }).click();
     await expect(page.getByText(annotationText, { exact: true })).toBeVisible();
     const details = page.getByRole("dialog", { name: "Annotation details" });
     await details.getByRole("button", { name: "Edit annotation" }).click();
     const edit = page.getByLabel("Edit annotation comment");
+    await expect(edit).toBeFocused();
+    await edit.press("End");
+    await details.getByRole("button", { name: "Save annotation", exact: true }).focus();
+    await expect(edit).not.toBeFocused();
+    await configure({ ready: true, text: "Continued off focus" });
+    await expect(edit).toHaveValue(annotationText + " Continued off focus");
+    await configure({ ready: true, hold: true });
+    await composer.click();
+    await expect(details).toHaveCount(0);
+    await expect(composer).toBeFocused();
+    await composer.press("End");
+    await configure({ ready: true, text: "Composer after annotation" });
+    await expect(composer).toHaveValue("Typed first. Spoken next. Composer after annotation");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await configure({ ready: true, hold: true });
+    await page.getByRole("button", { name: "View annotation 2", exact: true }).click();
+    await expect(
+      page.getByText("Second note Second annotation speech", { exact: true }),
+    ).toBeVisible();
+    await details.getByRole("button", { name: "Edit annotation" }).click();
+    await expect(edit).toHaveValue("Second note Second annotation speech");
     await expect(edit).toBeFocused();
     await expect(page.getByRole("button", { name: "Mute dictation" })).toBeVisible();
     await edit.press("Escape");
