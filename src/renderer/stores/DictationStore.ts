@@ -113,6 +113,8 @@ export class DictationStore extends Store<{
   busy = false;
   private target: DictationTarget | undefined;
   private targetFocused = false;
+  /** Keyboard focus moved from the field into its own indicator; keeps that control mounted. */
+  private indicatorFocused = false;
   /** Focus-period latch, independent of decoding generations and manual draft edits. */
   private capturedSpeech = false;
   private submission: DictationSubmission | undefined;
@@ -150,6 +152,16 @@ export class DictationStore extends Store<{
 
   get activeTargetId() {
     return this.target?.id;
+  }
+  /** Shown for live capture, plus the focused field's unmute/retry control; never while paused. */
+  indicatorVisible(id: string) {
+    if (!this.enabled || this.target?.id !== id) return false;
+    if (this.indicatorFocused) return true;
+    if (this.muted || this.phase === "error") return this.targetFocused;
+    return (
+      (this.targetFocused || this.capturedSpeech) &&
+      (this.phase === "preparing" || this.phase === "listening" || this.phase === "finishing")
+    );
   }
   get capturing() {
     return (
@@ -274,6 +286,7 @@ export class DictationStore extends Store<{
     this.endUtterance();
     this.target = undefined;
     this.targetFocused = false;
+    this.indicatorFocused = false;
     this.capturedSpeech = false;
     if (this.enabled) this.phase = "paused";
   }
@@ -308,6 +321,7 @@ export class DictationStore extends Store<{
   focus(target: DictationTarget, intentional = true) {
     if (!intentional && this.stoppedTargetId === target.id) return;
     this.stoppedTargetId = undefined;
+    this.indicatorFocused = false;
     if (this.target === target && this.targetFocused) return;
     // A field replacement cancels capture preparation, not mode enablement. Remember the
     // capture before ending it so its successor can prepare instead of waiting forever.
@@ -322,9 +336,10 @@ export class DictationStore extends Store<{
     if (this.phase !== "preparing" || replacingCapture) void this.start(target);
   }
   /** Only speech confirmed in this focus period permits capture to survive DOM blur. */
-  blur(id: string) {
+  blur(id: string, toIndicator = false) {
     if (this.target?.id !== id) return;
     this.targetFocused = false;
+    this.indicatorFocused = toIndicator;
     if (!this.enabled) {
       this.releaseTarget(id);
       return;
@@ -333,6 +348,9 @@ export class DictationStore extends Store<{
     this.endUtterance(true);
     this.releaseMicrophoneSoon();
     this.phase = "paused";
+  }
+  leaveIndicator(id: string) {
+    if (this.target?.id === id) this.indicatorFocused = false;
   }
   private releaseMicrophoneSoon() {
     // Brief field/chat transitions reuse the device; paused capture retains no audio.
@@ -349,6 +367,7 @@ export class DictationStore extends Store<{
     this.releaseMicrophoneSoon();
     this.target = undefined;
     this.targetFocused = false;
+    this.indicatorFocused = false;
     this.capturedSpeech = false;
     if (this.enabled) this.phase = "paused";
   }

@@ -132,8 +132,12 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
       if (enabled && !input.current?.readOnly && !input.current?.disabled)
         store?.focus(target.current);
     },
-    onBlur() {
-      if (enabled) store?.blur(id);
+    onBlur(next: EventTarget | null) {
+      const owner =
+        next instanceof Element
+          ? next.closest("[data-dictation-target]")?.getAttribute("data-dictation-target")
+          : undefined;
+      if (enabled) store?.blur(id, owner === id);
     },
     onChange() {
       if (enabled && !inserting.current) store?.restart(id);

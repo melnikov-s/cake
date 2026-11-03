@@ -1067,6 +1067,32 @@ describe("Dictation writing-field workflow", () => {
     expect(meter()).toBeNull();
   });
 
+  it("shows the composer indicator only while its field listens, hiding it after a silent blur", async () => {
+    using fixture = renderDictation();
+    await fixture.user.click(mode());
+    const indicator = () =>
+      document.querySelector('[data-slot="composer-dictation"] [data-slot="dictation-indicator"]');
+    expect(indicator()).toBeNull();
+    await fixture.user.click(message());
+    listening();
+    expect(indicator()).not.toBeNull();
+    await fixture.user.click(document.body);
+    expect(fixture.root.dictationStore.phase).toBe("paused");
+    expect(indicator()).toBeNull();
+    await fixture.user.click(message());
+    listening();
+    expect(indicator()).not.toBeNull();
+    // Keyboard focus into the field's own control keeps it, muted or not; leaving it hides it.
+    act(() => screen.getByRole<HTMLButtonElement>("button", { name: "Mute dictation" }).focus());
+    expect(indicator()).not.toBeNull();
+    await fixture.user.keyboard("{Enter}");
+    expect(document.activeElement).toBe(message());
+    act(() => screen.getByRole<HTMLButtonElement>("button", { name: "Unmute dictation" }).focus());
+    expect(indicator()).not.toBeNull();
+    await fixture.user.click(document.body);
+    expect(indicator()).toBeNull();
+  });
+
   it("waits for both model and microphone readiness, capturing only the latest focused field", async () => {
     const model = deferred<void>();
     const microphone = deferred<void>();
@@ -1940,7 +1966,7 @@ describe("Dictation writing-field workflow", () => {
     },
   );
 
-  it("successful admission still releases ownership if the user mutes while admission is pending", async () => {
+  it("hides the indicator while admission is pending and releases ownership once admitted", async () => {
     const admitted = deferred<void>();
     using f = renderDictation({ submissionReady: admitted.promise });
     await f.user.type(message(), "Typed request");
@@ -1950,11 +1976,11 @@ describe("Dictation writing-field workflow", () => {
     await waitFor(() => expect(f.requests).toHaveLength(1));
     await f.recognize(0, "");
     await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
-    await f.user.click(screen.getByRole("button", { name: "Mute dictation" }));
+    expect(f.root.dictationStore.phase).toBe("paused");
+    expect(screen.queryByRole("button", { name: "Mute dictation" })).toBeNull();
     await act(async () => admitted.resolve());
     expect(message().value).toBe("");
     expect(f.root.dictationStore.activeTargetId).toBeUndefined();
-    expect(f.root.dictationStore.muted).toBe(true);
     expect(f.root.dictationStore.phase).toBe("paused");
   });
 

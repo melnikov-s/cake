@@ -339,7 +339,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
 
     // A new owner cannot inherit speech from the settings input or from mere typing.
     await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
-    await expect(indicator).toHaveText("Dictation paused");
+    await expect(indicator).toHaveCount(0);
     await composer.focus();
     await configure({ ready: true, speech: true, text: "Spoken before blur" });
     await expect(composer).toHaveValue("Explicitly chosen input Spoken before blur");
@@ -359,7 +359,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await composer.fill("Explicitly chosen input");
     // Refocusing the same input resets the latch; its old speech no longer counts.
     await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
-    await expect(indicator).toHaveText("Dictation paused");
+    await expect(indicator).toHaveCount(0);
     await composer.focus();
     await expect(indicator).toHaveText("Listening");
     // Focused Escape is a stop, not a mute or an invitation to re-arm on typing.
@@ -704,7 +704,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await edit.press("End");
     await details.getByRole("button", { name: "Save annotation", exact: true }).focus();
     await expect(edit).not.toBeFocused();
-    await expect(indicator).toHaveText("Dictation paused");
+    await expect(indicator).toHaveCount(0);
     await edit.focus();
     await configure({ ready: true, speech: true, text: "First focused words" });
     await expect(edit).toHaveValue(annotationText + " First focused words");

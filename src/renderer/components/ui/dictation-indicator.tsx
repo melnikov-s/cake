@@ -19,7 +19,7 @@ export const DictationIndicator = observer(function DictationIndicator({
   anchor: RefObject<HTMLTextAreaElement | null>;
   inline?: boolean;
 }) {
-  if (!store.enabled || store.activeTargetId !== targetId) return null;
+  if (!store.indicatorVisible(targetId)) return null;
   const failed = store.phase === "error" && !store.muted;
   const loading = !store.muted && (store.phase === "preparing" || store.phase === "finishing");
   const action = failed ? "Retry dictation" : store.muted ? "Unmute dictation" : "Mute dictation";
@@ -43,6 +43,7 @@ export const DictationIndicator = observer(function DictationIndicator({
           event.preventDefault();
           event.stopPropagation();
         }}
+        onBlur={() => store.leaveIndicator(targetId)}
         onKeyDown={(event) => {
           if (event.key !== "Escape") return;
           event.preventDefault();

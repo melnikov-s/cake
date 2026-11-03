@@ -351,9 +351,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       await composer.focus();
       await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
       await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
-      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText(
-        "Dictation paused",
-      );
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
     }
   } finally {
     await application.close();

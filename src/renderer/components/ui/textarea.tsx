@@ -103,7 +103,7 @@ export const Textarea = observer(function Textarea({
         voice.onFocus();
       }}
       onBlur={(event) => {
-        voice.onBlur();
+        voice.onBlur(event.relatedTarget);
         onBlur?.(event);
       }}
       onChange={(event) => {
