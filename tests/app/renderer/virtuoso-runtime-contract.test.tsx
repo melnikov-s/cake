@@ -97,6 +97,93 @@ it.each(["normal", ""])(
   },
 );
 
+it("retains a focused row when its shrink measurement outruns scroll geometry", () => {
+  const observers = new Map<Element, () => void>();
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(private callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        observers.set(target, () => this.callback([{ target } as ResizeObserverEntry], this));
+      }
+      unobserve(target: Element) {
+        observers.delete(target);
+      }
+      disconnect() {}
+    },
+  );
+  const frames: FrameRequestCallback[] = [];
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => frames.push(callback));
+  vi.stubGlobal("cancelAnimationFrame", () => {});
+  vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockReturnValue(document.body);
+  let rowHeight = 1248;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      const owner = this === scroller;
+      return new DOMRect(
+        0,
+        owner ? 0 : -scroller.scrollTop,
+        800,
+        owner ? Math.min(512, rowHeight + 22) : rowHeight,
+      );
+    },
+  );
+  const scroller = document.createElement("div");
+  document.body.append(scroller);
+  Object.defineProperties(scroller, {
+    offsetHeight: { get: () => Math.min(512, rowHeight + 22) },
+    scrollHeight: { get: () => rowHeight + 22 },
+  });
+  const data = ["Tool"];
+  const handle = createRef<VirtuosoHandle>();
+  const content = () => (
+    <VirtualizedConversation
+      ref={handle}
+      data={data}
+      customScrollParent={scroller}
+      computeItemKey={(_, tool) => tool}
+      itemContent={(_, tool) => <button type="button">{tool}</button>}
+      skipUpwardScrollCompensation
+    />
+  );
+  try {
+    const view = render(content(), { container: scroller });
+    act(() => {
+      for (const [target, notify] of observers)
+        if (target.getAttribute("data-viewport-type") === "window") notify();
+      for (let step = 0; frames.length > 0 && step < 10; step++)
+        for (const frame of frames.splice(0)) frame(step * 16);
+    });
+    act(() => {
+      scroller.scrollTop = 800;
+      scroller.dispatchEvent(new Event("scroll"));
+    });
+    let cachedScrollTop: number | undefined;
+    handle.current!.getState((snapshot) => {
+      cachedScrollTop = snapshot.scrollTop;
+    });
+    expect(cachedScrollTop).toBe(800);
+    expect(scroller.querySelector('[data-known-size="1248"]')).not.toBeNull();
+    const button = view.getByRole("button", { name: "Tool" });
+    button.focus();
+    expect(document.activeElement).toBe(button);
+    // Control only the two independently delivered geometry inputs. Electron
+    // owns the real collapse, scroll clamping, keyboard, and ResizeObserver order.
+    scroller.scrollTop = 0;
+    rowHeight = 46;
+    view.rerender(content());
+    expect(view.getByRole("button", { name: "Tool" })).toBe(button);
+    expect(document.activeElement).toBe(button);
+    act(() => scroller.dispatchEvent(new Event("scroll")));
+    expect(scroller.querySelector('[data-known-size="46"]')).not.toBeNull();
+    expect(view.getByRole("button", { name: "Tool" })).toBe(button);
+    expect(document.activeElement).toBe(button);
+  } finally {
+    cleanup();
+    scroller.remove();
+  }
+});
+
 // Keep the installed virtualizer real: the transcript tests control this boundary
 // and cannot detect a stale dependency missing Cake's patched imperative API.
 it("exposes index-navigation cancellation on the installed Virtuoso handle", () => {

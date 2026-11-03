@@ -180,6 +180,7 @@ export default (pi) => {
     await page.keyboard.press("Space");
     await expect(parentTrigger).toHaveAttribute("aria-expanded", "false");
     await expect(activity).toBeHidden();
+    await expect(parentTrigger).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(activity).toBeVisible();
     await page.keyboard.press("Control+o");
