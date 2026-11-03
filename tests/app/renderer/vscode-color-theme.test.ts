@@ -121,6 +121,26 @@ describe("VS Code color data import", () => {
     },
   );
 
+  it("keeps an imported translucent input background for the composer", () => {
+    const theme = parse(
+      '{"colors":{"editor.background":"#faf4ed","input.background":"#f2e9e180"}}',
+    );
+    expect(cakeThemeTokens(theme)["--composer"]).toBe("#f2e9e180");
+  });
+
+  it("picks a running color that stays visible on the sidebar", () => {
+    const sidebar = { "editor.background": "#faf4ed", "sideBar.background": "#faf4ed" };
+    const tokens = (colors: Record<string, string>) =>
+      cakeThemeTokens(parse(JSON.stringify({ colors: { ...sidebar, ...colors } })));
+    expect(tokens({ focusBorder: "#286983" })["--running"]).toBe("#286983");
+    expect(
+      tokens({ focusBorder: "#6e6a8614", "textLink.foreground": "#907aa9" })["--running"],
+    ).toBe("#907aa9");
+    expect(tokens({ focusBorder: "#f2e9e1", "sideBar.foreground": "#575279" })["--running"]).toBe(
+      "#575279",
+    );
+  });
+
   it("infers light/dark from the editor canvas when type is missing", () => {
     expect(parse('{"colors":{"editor.background":"#fff"}}').type).toBe("light");
     expect(parse('{"colors":{"editor.background":"#111"}}').type).toBe("dark");

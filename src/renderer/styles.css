@@ -45,6 +45,7 @@
   --sidebar-selection-foreground: var(--foreground);
   --composer-foreground: var(--foreground);
   --selection: color-mix(in srgb, var(--accent) 30%, transparent);
+  --running: var(--accent);
 }
 
 :root,
@@ -188,6 +189,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-success: var(--success);
+  --color-running: var(--running);
   --color-attention: var(--attention);
   --color-warning: var(--warning);
   --color-destructive: var(--destructive);

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Schema } from "effect";
 import { ImportedColorTheme, editorThemeSettings } from "../../../src/contracts/themes/color-theme";
 import { bundledColorThemes } from "../../../src/utils/bundled-color-themes";
-import { cakeThemeTokens } from "../../../src/utils/vscode-theme";
+import { cakeThemeTokens, contrastRatio } from "../../../src/utils/vscode-theme";
 
 describe("bundled Cake theme collection", () => {
   it("ships distinct light/dark choices using the same color-data contract as imports", () => {
@@ -31,6 +31,25 @@ describe("bundled Cake theme collection", () => {
       expect(editorThemeSettings(theme)["workbench.colorCustomizations"]).toBe(theme.colors);
       expect(cakeThemeTokens(theme)["--background"]).toBe(theme.colors["editor.background"]);
     }
+  });
+
+  it("gives every built-in theme a solid composer and a visible running dot", () => {
+    for (const { theme } of bundledColorThemes) {
+      if (theme === "light" || theme === "dark") continue;
+      const tokens = cakeThemeTokens(theme);
+      expect(tokens["--composer"], theme.id).toMatch(/^#([\da-f]{3}|[\da-f]{6})$/i);
+      expect(
+        contrastRatio(tokens["--running"]!, tokens["--sidebar"]!),
+        theme.id,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("flattens Rosé Pine's translucent input over its editor background", () => {
+    const theme = bundledColorThemes.find(({ choice }) => choice === "bundled:rose-pine")?.theme;
+    if (!theme || typeof theme === "string") throw new Error("Missing Rosé Pine");
+    // Upstream input.background is #26233a80 on #191724.
+    expect(cakeThemeTokens(theme)["--composer"]).toBe("#201d2f");
   });
 
   it.each([

@@ -74,17 +74,42 @@ export function parseVsCodeTheme(
   return load(entry);
 }
 
+function hexChannels(hex: string) {
+  const digits = hex.slice(1);
+  const full = digits.length <= 4 ? [...digits].map((digit) => digit + digit).join("") : digits;
+  const channel = (offset: number) =>
+    offset < full.length ? parseInt(full.slice(offset, offset + 2), 16) / 255 : 1;
+  return [channel(0), channel(2), channel(4), channel(6)] as const;
+}
+
 function colorLightness(hex: string) {
-  const value =
-    hex.length <= 5
-      ? hex
-          .slice(1, 4)
-          .split("")
-          .map((c) => c + c)
-          .join("")
-      : hex.slice(1, 7);
-  const channels = [0, 2, 4].map((offset) => parseInt(value.slice(offset, offset + 2), 16) / 255);
-  return 0.2126 * (channels[0] ?? 0) + 0.7152 * (channels[1] ?? 0) + 0.0722 * (channels[2] ?? 0);
+  const [r, g, b] = hexChannels(hex);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** Flattens a possibly translucent color onto an opaque surface, keeping its visible hue. */
+export function opaqueColorOver(color: string, surface: string) {
+  const [r, g, b, alpha] = hexChannels(color);
+  const base = hexChannels(surface);
+  return `#${[r, g, b]
+    .map((channel, index) =>
+      Math.round((channel * alpha + base[index]! * (1 - alpha)) * 255)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
+/** WCAG contrast ratio between two opaque colors. */
+export function contrastRatio(color: string, surface: string) {
+  const luminance = (hex: string) => {
+    const [r, g, b] = hexChannels(hex).map((channel) =>
+      channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4,
+    );
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+  };
+  const [light, dark] = [luminance(color), luminance(surface)].sort((a, b) => b - a);
+  return (light! + 0.05) / (dark! + 0.05);
 }
 
 /** Missing roles use the existing light/dark CSS defaults; derived roles follow imported surfaces. */
@@ -161,6 +186,18 @@ export function cakeThemeTokens(theme: ImportedColorTheme) {
   tokens["--user-message"] = `color-mix(in srgb, ${fg} 9%, ${bg})`;
   tokens["--user-message-foreground"] = fg;
   tokens["--muted-foreground"] ??= `color-mix(in srgb, ${fg} 72%, ${bg})`;
+  // Focus borders are often faint or translucent rings, too weak for the sidebar's running dot.
+  tokens["--running"] =
+    [
+      c.focusBorder,
+      c["textLink.foreground"],
+      c["button.background"],
+      c["terminal.ansiBlue"],
+      c["progressBar.background"],
+    ].find(
+      (color) =>
+        color && hexChannels(color)[3] === 1 && contrastRatio(color, tokens["--sidebar"]!) >= 3,
+    ) ?? tokens["--sidebar-foreground"];
   tokens["--sidebar-hover"] ??= `color-mix(in srgb, ${fg} 7%, var(--sidebar))`;
   tokens["--sidebar-active"] ??= `color-mix(in srgb, ${fg} 13%, var(--sidebar))`;
   return tokens;

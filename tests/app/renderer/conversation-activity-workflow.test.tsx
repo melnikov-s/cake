@@ -204,7 +204,7 @@ it.each(["project", "cake-chat"] as const)(
     expect(
       within(menu)
         .getByRole("button", { name: "Inspect subagent: Inspect the boundary" })
-        .querySelector(".bg-accent"),
+        .querySelector(".bg-running"),
     ).not.toBeNull();
     expect(within(menu).getByText("Running · Temporary subagent")).toBeTruthy();
     await view.user.click(
@@ -386,7 +386,7 @@ it.each(["project", "cake-chat"] as const)(
       workerIcon.querySelector("path")?.getAttribute("d"),
     );
     for (const row of rows) {
-      expect(row.lastElementChild?.querySelector(".bg-accent")).not.toBeNull();
+      expect(row.lastElementChild?.querySelector(".bg-running")).not.toBeNull();
       expect(row.firstElementChild?.getAttribute("role")).toBe("img");
       expect(row.textContent).toContain("Running");
       expect(row.getAttribute("aria-description")).toMatch(/Project Session|Temporary subagent/);

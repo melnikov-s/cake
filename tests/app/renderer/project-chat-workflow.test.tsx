@@ -981,11 +981,11 @@ it.each(
           event: { _tag: "TurnAccepted", sessionId: model.sessionId, turnId, delivery: "prompt" },
         });
     });
-    assertDots("Running", "bg-accent");
+    assertDots("Running", "bg-running");
     // Selection must not turn either running dot neutral, or hide it.
     for (const [index, entry] of entries().entries()) {
       await openEntry(entry, index);
-      assertDots("Running", "bg-accent");
+      assertDots("Running", "bg-running");
     }
     await f.user.click(screen.getByRole("button", { name: "Cake Chat" }));
     act(() => {
@@ -1047,7 +1047,7 @@ it.each(
             },
           });
       });
-      assertDots("Running", "bg-accent");
+      assertDots("Running", "bg-running");
       act(() => {
         for (const model of models)
           applyConversationUpdate(model, {

@@ -9,11 +9,11 @@ it("transitions from idle to running, waiting, error, completion, read and stopp
   const view = render(<SessionActivityIndicator activity={undefined} />);
   expect(screen.queryByRole("img")).toBeNull();
   for (const [activity, label, color] of [
-    ["running", "Running", "bg-accent"],
+    ["running", "Running", "bg-running"],
     ["waiting", "Waiting for your answer", "bg-attention"],
     ["error", "Error", "bg-destructive"],
     ["unread", "Ready, unread", "bg-success"],
-    ["running", "Running", "bg-accent"],
+    ["running", "Running", "bg-running"],
   ] as const) {
     view.rerender(<SessionActivityIndicator activity={activity} />);
     const dot = screen.getByRole("img", { name: label });

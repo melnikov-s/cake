@@ -13,7 +13,7 @@ const statusDotVariants = cva("inline-block shrink-0 rounded-full", {
       ready: "bg-success",
       success: "bg-success",
       complete: "bg-success",
-      running: "bg-accent motion-safe:animate-pulse",
+      running: "bg-running motion-safe:animate-pulse",
       failed: "bg-destructive",
       error: "bg-destructive",
       // Deliberate stop: hollow and neutral, distinct from failures and pending work.

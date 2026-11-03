@@ -14,8 +14,9 @@ import type {
   ColorScheme,
   ColorThemeChoice,
   EditorColorTheme,
+  ImportedColorTheme,
 } from "../contracts/themes/color-theme";
-import { parseVsCodeTheme } from "./vscode-theme";
+import { opaqueColorOver, parseVsCodeTheme } from "./vscode-theme";
 
 export interface ColorThemeOption {
   readonly choice: ColorThemeChoice;
@@ -41,12 +42,25 @@ const popularThemes = [
   ["tokyo-night", tokyoNight],
 ] as const;
 const popularColorData = popularThemes.map(([id, source]) =>
-  parseVsCodeTheme(
-    "theme.json",
-    new Map([["theme.json", JSON.stringify({ ...source, name: source.displayName })]]),
-    id,
+  withOpaqueInput(
+    parseVsCodeTheme(
+      "theme.json",
+      new Map([["theme.json", JSON.stringify({ ...source, name: source.displayName })]]),
+      id,
+    ),
   ),
 );
+
+// Built-in composers stay solid; imported themes keep any authored input transparency.
+function withOpaqueInput(theme: ImportedColorTheme): ImportedColorTheme {
+  const input = theme.colors["input.background"];
+  const editor = theme.colors["editor.background"];
+  if (!input || !editor) return theme;
+  return {
+    ...theme,
+    colors: { ...theme.colors, "input.background": opaqueColorOver(input, editor) },
+  };
+}
 
 const macPalettes = [
   {
