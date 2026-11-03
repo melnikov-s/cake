@@ -52,7 +52,9 @@ test("authorizes and opens a restored resource-free untrusted Project", async ()
     await expect(trust).toBeVisible({ timeout: 20_000 });
     await trust.click();
     await expect(trust).toBeHidden();
-    await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(
       page.getByRole("button", { name: "New chat in project", exact: true }),
     ).toBeVisible();

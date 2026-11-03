@@ -50,7 +50,9 @@ test("header sidebar toggle only appears when the sidebar is collapsed", async (
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
 
     // Expanded: the duplicate header toggle must be hidden.
     await expect(page.locator('[data-slot="header-sidebar-toggle"]')).toBeHidden();

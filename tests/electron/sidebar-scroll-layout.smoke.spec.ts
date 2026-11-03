@@ -77,7 +77,9 @@ test("sidebar updates preserve row motion and highlights without reserving colla
   });
   try {
     const page = await application.firstWindow();
-    await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
     await page.setViewportSize({ width: 1100, height: 480 });
     const sidebar = page.locator('[data-slot="sidebar"]');
     const content = sidebar.locator('[data-slot="navigation-highlight"]');

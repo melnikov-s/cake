@@ -87,7 +87,9 @@ test("429 polling keeps the stop control available", async () => {
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
 
     // Select the fixture model.
     const configuration = page.getByRole("button", { name: "Model configuration" });

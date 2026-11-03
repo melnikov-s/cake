@@ -242,7 +242,9 @@ reply({ ready: true });
 
     try {
       const page = await application.firstWindow();
-      await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+        timeout: 20_000,
+      });
       if (dictationEnabled) {
         await page.getByRole("button", { name: "Open settings", exact: true }).click();
         await page.getByRole("button", { name: /Voice & Dictation/ }).click();
@@ -288,7 +290,7 @@ reply({ ready: true });
         }).observe(document.body, { childList: true, subtree: true });
       });
 
-      const composer = page.getByLabel("Message");
+      const composer = page.getByRole("combobox", { name: "Message", exact: true });
       await composer.fill("Interview me");
       await composer.press("Enter");
 

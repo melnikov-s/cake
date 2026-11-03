@@ -89,7 +89,9 @@ for (const resolveSelected of [true, false]) {
         rows.evaluateAll((elements) =>
           elements.map((element) => element.getAttribute("data-session-id")),
         );
-      await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+        timeout: 20_000,
+      });
       await expect.poll(order).toEqual(ids);
       const row = (id: string) => page.locator(`.session-item[data-session-id="${id}"]`);
       await row("previous").locator(".session-row").click();

@@ -59,7 +59,9 @@ test("production widget review captures settled sandbox pixels before persistenc
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
     await page.addStyleTag({
       content: '[role="dialog"][aria-modal="true"]{background:rgb(255,0,255)!important}',
     });

@@ -76,7 +76,7 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
       timeout: 20_000,
     });
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();
-    const composer = page.getByLabel("Message");
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     const newWorktree = page.getByRole("button", { name: "New worktree" });
     await expect(newWorktree).toBeVisible({ timeout: 5_000 });

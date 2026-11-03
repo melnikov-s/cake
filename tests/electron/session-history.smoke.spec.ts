@@ -82,7 +82,9 @@ test("navigates session history with back, forward, and resolve", async () => {
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
 
     const back = page.getByRole("button", { name: "Go back in session history" });
     const forward = page.getByRole("button", { name: "Go forward in session history" });

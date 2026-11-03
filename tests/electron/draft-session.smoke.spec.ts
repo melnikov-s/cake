@@ -92,7 +92,7 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await expect(page.getByText("Draft", { exact: true })).toBeVisible();
     const draftSidebarItem = page.locator(`[data-session-id="${sessionId}"]`);
     await expect(draftSidebarItem.getByText("main", { exact: true })).toHaveCount(0);
-    await expect(page.getByLabel("Message")).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Current checkout" })).toBeVisible();
     await expect(page.getByRole("button", { name: "New worktree" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Draft", exact: true })).toHaveCount(0);
@@ -128,7 +128,7 @@ test("restores, edits, resolves, and activates a project draft session", async (
 
     await page.getByText("Original plan", { exact: true }).hover();
     await page.getByRole("button", { name: "Edit latest prompt" }).click();
-    const composer = page.getByLabel("Message");
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeFocused();
     await expect(composer).toHaveValue("Original plan");
     await expect(page.getByRole("button", { name: "Draft", exact: true })).toHaveAttribute(
@@ -139,7 +139,7 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to chat" }).click();
-    await expect(page.getByLabel("Message")).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toHaveCount(0);
     await expect(page.getByText("Original plan", { exact: true })).toBeVisible();
 
     await page.getByText("Original plan", { exact: true }).hover();
@@ -152,7 +152,7 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await expect
       .poll(async () => JSON.parse(await readFile(savedDraftFile, "utf8")).records[0]?.text)
       .toBe("Edited plan");
-    await expect(page.getByLabel("Message")).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Current checkout" }).click();
     await page.getByRole("button", { name: "Activate draft" }).click();

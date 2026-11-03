@@ -78,7 +78,9 @@ test("Quake terminal runs a shell and retains tabs when a Project Session is res
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
 
     // Menu items remain clickable while configurable keyboard shortcuts are
     // handled centrally by the renderer.

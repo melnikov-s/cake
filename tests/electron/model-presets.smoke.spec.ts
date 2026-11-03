@@ -185,7 +185,9 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
       defaultPresetId: unavailable.id,
     });
 
-    await expect(mainPage.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    await expect(mainPage.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
     await mainPage.getByRole("button", { name: "New chat in project", exact: true }).click();
     await expect(mainPage.getByRole("button", { name: "Model configuration" })).toContainText(
       "Unavailable but editable",

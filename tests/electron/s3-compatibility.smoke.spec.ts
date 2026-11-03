@@ -131,11 +131,13 @@ export default function (pi) {
     const page = await application.firstWindow();
     const rendererErrors: string[] = [];
     page.on("pageerror", (error) => rendererErrors.push(error.message));
-    await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
     expect(rendererErrors).toEqual([]);
     // Extension commands must not fall through to an inherited model provider.
     await installLocalModelHttpGuard(application, "http://127.0.0.1:1");
-    const composer = page.getByLabel("Message");
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await composer.fill("/desktop-fixture");
     await expect(composer).toHaveValue("/desktop-fixture");
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
@@ -145,7 +147,9 @@ export default function (pi) {
     await expect(page.getByText("Extension connected", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     await expect(page).toHaveTitle("Extension workspace · Cake");
-    await expect(page.getByLabel("Message")).toHaveValue("draft from extension once");
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toHaveValue(
+      "draft from extension once",
+    );
     await expect(page.getByText("fixture ready", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Increment companion" }).click();
     await expect(page.getByText("Companion count: 2", { exact: true })).toBeVisible();

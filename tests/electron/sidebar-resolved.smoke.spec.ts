@@ -75,7 +75,9 @@ test("resolves and restores the selected project session in the desktop sidebar"
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(page.getByRole("button", { name: "Cake Chat", exact: true })).toBeVisible();
     await expect(page.getByRole("region", { name: "Expand Resolved" })).toHaveCount(0);
 

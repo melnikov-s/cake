@@ -245,7 +245,7 @@ test("selects mixed conversational entries once, in display order, only in the f
     await pane.getByRole("button", { name: "Split right" }).click();
     const panes = page.locator('[data-slot="session-pane"]');
     await expect(panes).toHaveCount(2);
-    const secondComposer = panes.nth(1).getByLabel("Message");
+    const secondComposer = panes.nth(1).getByRole("combobox", { name: "Message", exact: true });
     await expect(secondComposer).toBeFocused();
     await page.keyboard.press("ArrowUp");
     await expect(selected).toHaveCount(0);

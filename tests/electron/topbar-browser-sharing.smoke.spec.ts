@@ -187,7 +187,7 @@ test("topbar sharing supports keyboard access, real listener actions and Setting
     await page.setViewportSize({ width: 1280, height: 900 });
     await checkResponsiveNavigation(page);
     await page.locator('[data-slot="cake-chat-group"]').click();
-    await expect(page.getByLabel("Message")).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
     await checkResponsiveNavigation(page);
   } finally {
     await application.close();

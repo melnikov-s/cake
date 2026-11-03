@@ -53,7 +53,7 @@ test("splits project chats while retaining independent drafts and pane focus", a
     await expect(panes).toHaveCount(1, { timeout: 20_000 });
     await expect(panes.nth(0).getByRole("button", { name: "Close pane" })).toHaveCount(0);
     await expect(page.locator('[data-slot="workspace-header"]')).toHaveCount(1);
-    const firstInput = panes.nth(0).getByLabel("Message");
+    const firstInput = panes.nth(0).getByRole("combobox", { name: "Message", exact: true });
     await firstInput.click();
     await expect(firstInput).toBeFocused();
     await firstInput.pressSequentially("left draft");
@@ -70,7 +70,7 @@ test("splits project chats while retaining independent drafts and pane focus", a
     await expect(panes).toHaveCount(2);
     await expect(page.locator('[data-slot="workspace-header"]')).toHaveCount(2);
     await expect(panes.nth(1)).toHaveAttribute("data-focused", "true");
-    const secondInput = panes.nth(1).getByLabel("Message");
+    const secondInput = panes.nth(1).getByRole("combobox", { name: "Message", exact: true });
     await expect(secondInput).toBeFocused();
 
     const splitHandleBounds = await page

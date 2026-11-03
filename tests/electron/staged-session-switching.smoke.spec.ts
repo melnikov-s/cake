@@ -49,7 +49,7 @@ test("switches Project Session, Project Chat and Cake Chat workspaces and restor
 
   try {
     const page = await application.firstWindow();
-    const composer = page.getByLabel("Message");
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     const newFirst = page.getByRole("button", { name: "New chat in first", exact: true });
     const newSecond = page.getByRole("button", { name: "New chat in second", exact: true });
