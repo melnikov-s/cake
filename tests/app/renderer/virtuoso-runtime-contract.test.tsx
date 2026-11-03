@@ -124,15 +124,19 @@ it("retains a focused row when its shrink measurement outruns scroll geometry", 
         0,
         owner ? 0 : -scroller.scrollTop,
         800,
-        owner ? Math.min(512, rowHeight + 22) : rowHeight,
+        owner
+          ? Math.min(512, data.length * rowHeight + 22)
+          : this.dataset.index === undefined
+            ? data.length * rowHeight
+            : rowHeight,
       );
     },
   );
   const scroller = document.createElement("div");
   document.body.append(scroller);
   Object.defineProperties(scroller, {
-    offsetHeight: { get: () => Math.min(512, rowHeight + 22) },
-    scrollHeight: { get: () => rowHeight + 22 },
+    offsetHeight: { get: () => Math.min(512, data.length * rowHeight + 22) },
+    scrollHeight: { get: () => data.length * rowHeight + 22 },
   });
   let data = [{ id: "tool", label: "Tool" }];
   const handle = createRef<VirtuosoHandle>();
@@ -182,6 +186,18 @@ it("retains a focused row when its shrink measurement outruns scroll geometry", 
     expect(scroller.querySelector('[data-known-size="46"]')).not.toBeNull();
     expect(view.getByRole("button", { name: "Saved tool" })).toBe(button);
     expect(document.activeElement).toBe(button);
+    // Overscan extending past the bottom is normal, not an invalid range.
+    rowHeight = 100;
+    data = Array.from({ length: 20 }, (_, index) => ({
+      id: `tool-${index}`,
+      label: `Tool ${index}`,
+    }));
+    view.rerender(content());
+    act(() => {
+      scroller.scrollTop = 1400;
+      scroller.dispatchEvent(new Event("scroll"));
+    });
+    expect(scroller.querySelector("[data-index]")?.getAttribute("data-index")).toBe("10");
   } finally {
     cleanup();
     scroller.remove();
