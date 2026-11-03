@@ -95,7 +95,7 @@ it.effect(
 );
 
 it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
-  "records activity for item creation and edits in %s, not selection or redundant completion",
+  "preserves creation time through content and lifecycle changes in %s while recording activity",
   (scope) => {
     const f = fixture();
     return Effect.gen(function* () {
@@ -103,12 +103,14 @@ it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
       yield* TestClock.setTime(1_000);
       const first = yield* todos.create(scope, { title: "First", description: "Initial update." });
       expect(first.modifiedAt).toBe("1970-01-01T00:00:01.000Z");
+      expect(first.createdAt).toBe(first.modifiedAt);
       expect(yield* todos.read(scope, first.id)).toEqual(first);
       yield* TestClock.setTime(2_000);
       const second = yield* todos.create(scope, {
         title: "Second",
         description: "Another update.",
       });
+      expect(second.createdAt).toBe("1970-01-01T00:00:02.000Z");
       yield* TestClock.setTime(3_000);
       yield* todos.mutateUser(scope, { _tag: "Select", selectedId: first.id });
       expect(yield* todos.read(scope, first.id)).toEqual(first);
@@ -117,18 +119,22 @@ it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
           id: first.id,
           expectedRevision: 0,
           description: "New finding.",
+          status: "Ready for review",
         },
       ]);
       expect(edited?.modifiedAt).toBe("1970-01-01T00:00:03.000Z");
+      expect(edited?.createdAt).toBe(first.createdAt);
       expect(yield* todos.read(scope, second.id)).toEqual(second);
       yield* TestClock.setTime(4_000);
       yield* todos.applyReportDescription(scope, edited!, "Report delivered.");
       const reported = yield* todos.read(scope, first.id);
       expect(reported.modifiedAt).toBe("1970-01-01T00:00:04.000Z");
+      expect(reported.createdAt).toBe(first.createdAt);
       yield* TestClock.setTime(5_000);
       yield* todos.completeResolved(scope, [reported]);
       const done = yield* todos.read(scope, first.id);
       expect(done.modifiedAt).toBe("1970-01-01T00:00:05.000Z");
+      expect(done.createdAt).toBe(first.createdAt);
       yield* TestClock.setTime(6_000);
       yield* todos.update(scope, { id: done.id, expectedRevision: done.revision, state: "done" });
       expect(yield* todos.read(scope, first.id)).toEqual(done);
@@ -138,7 +144,12 @@ it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
         expectedRevision: done.revision,
         state: "open",
       });
-      expect((yield* todos.read(scope, first.id)).modifiedAt).toBe("1970-01-01T00:00:06.000Z");
+      const reopened = yield* todos.read(scope, first.id);
+      expect(reopened.modifiedAt).toBe("1970-01-01T00:00:06.000Z");
+      expect(reopened.createdAt).toBe(first.createdAt);
+      const saved = f.persisted();
+      const savedTodos = scope === project ? saved.projects[0]?.todos : saved.cakeChatTodos;
+      expect(savedTodos?.items.find((item) => item.id === first.id)).toEqual(reopened);
     }).pipe(Effect.provide(f.layer));
   },
 );

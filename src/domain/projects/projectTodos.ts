@@ -113,7 +113,13 @@ const change = Effect.fn("ProjectTodos.change")(function* (
         const todos = clearCompletedProjectTodoSelection({
           ...updated,
           items: updated.items.map((item) =>
-            revisions.get(item.id) === item.revision ? item : { ...item, modifiedAt },
+            revisions.get(item.id) === item.revision
+              ? item
+              : {
+                  ...item,
+                  ...(!revisions.has(item.id) ? { createdAt: modifiedAt } : null),
+                  modifiedAt,
+                },
           ),
         });
         return global

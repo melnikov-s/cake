@@ -15,8 +15,6 @@ import { localSnoozeDateTime } from "../../../src/renderer/lib/project-todo-snoo
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
 import { SideChatLayout } from "../../../src/renderer/components/side-chat-layout";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
-import { applyPartUpdate } from "../../../src/renderer/reducers/SessionPartReducer";
-import type { InterviewRecord } from "../../../src/contracts/interviews/interview";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -416,7 +414,7 @@ it("uses a manual reason editor for Mark/Edit, rejects blank, supports cancel, a
   ).toBeDefined();
 });
 
-function todo(id: number, modifiedAt?: string, sessionIds: string[] = []): ProjectTodo {
+function todo(id: number, createdAt?: string, sessionIds: string[] = []): ProjectTodo {
   return {
     id: `00000000-0000-4000-8000-${String(id).padStart(12, "0")}`,
     title: `Task ${id}`,
@@ -424,7 +422,7 @@ function todo(id: number, modifiedAt?: string, sessionIds: string[] = []): Proje
     status: "",
     state: "open",
     revision: 0,
-    ...(modifiedAt ? { modifiedAt } : {}),
+    ...(createdAt ? { createdAt } : {}),
     associations: sessionIds.map((sessionId) => ({ kind: "session", sessionId, title: sessionId })),
   };
 }
@@ -436,239 +434,142 @@ const openOrder = () =>
     (row) => row.getAttribute("data-todo-id"),
   );
 
-it("groups unread, other and active work with newest activity first and running overriding unread", () => {
-  const sessions = [
-    sessionSummary({
-      sessionId: "unread-old",
-      projectPath: "/cake",
-      unread: true,
-      latestTurnOutcome: "complete",
-      modifiedAt: activityTime(1),
-    }),
-    sessionSummary({
-      sessionId: "unread-new",
-      projectPath: "/cake",
-      unread: true,
-      latestTurnOutcome: "complete",
-      modifiedAt: activityTime(3),
-    }),
-    sessionSummary({
-      sessionId: "read-old",
-      projectPath: "/cake",
-      latestTurnOutcome: "complete",
-      modifiedAt: activityTime(2),
-    }),
-    sessionSummary({
-      sessionId: "read-new",
-      projectPath: "/cake",
-      latestTurnOutcome: "complete",
-      modifiedAt: activityTime(9),
-    }),
-    sessionSummary({
-      sessionId: "running-old",
-      projectPath: "/cake",
-      running: true,
-      modifiedAt: activityTime(8),
-    }),
-    sessionSummary({
-      sessionId: "running-new",
-      projectPath: "/cake",
-      running: true,
-      unread: true,
-      modifiedAt: activityTime(10),
-    }),
-  ];
-  const items = [
-    todo(8, undefined, ["running-new", "unread-old"]),
-    todo(1, undefined, ["read-old"]),
-    todo(7, undefined, ["running-old"]),
-    todo(3, undefined, ["unread-old"]),
-    {
-      ...todo(6, activityTime(7)),
-      // Context must not acquire the running/unread state of its target.
-      associations: [
-        { kind: "source" as const, ref: "cake://session/running-new", title: "Context" },
-      ],
-    },
-    todo(4, undefined, ["unread-new"]),
-    todo(5), // Older saved item, with neither a timestamp nor known work.
-    todo(2, undefined, ["read-new"]),
-  ];
-  using fixture = renderTodos(false, { todos: { ...emptyProjectTodos(), items }, sessions });
-  expect(openOrder()).toEqual([4, 3, 2, 6, 1, 5, 8, 7].map((id) => todo(id).id));
-  expect(screen.queryByRole("combobox", { name: "Sort to-dos" })).toBeNull();
-  expect(fixture.todos().items).toEqual(items); // Ordering never rewrites storage.
-});
-
-it("puts pending interviews and input blockers ahead of unread and running work, updating when the interview settles", async () => {
-  const sessions = [
-    sessionSummary({
-      sessionId: "unread",
-      projectPath: "/cake",
-      unread: true,
-      latestTurnOutcome: "complete",
-      modifiedAt: activityTime(10),
-    }),
-    sessionSummary({
-      sessionId: "read",
-      projectPath: "/cake",
-      latestTurnOutcome: "complete",
-      modifiedAt: activityTime(9),
-    }),
-    sessionSummary({
-      sessionId: "running",
-      projectPath: "/cake",
-      running: true,
-      modifiedAt: activityTime(8),
-    }),
-    sessionSummary({
-      sessionId: "interview",
-      projectPath: "/cake",
-      running: true,
-      unread: true,
-      modifiedAt: activityTime(2),
-    }),
-    sessionSummary({
-      sessionId: "blocked",
-      projectPath: "/cake",
-      recoveryIssue: "Choose the next step",
-      unread: true,
-      modifiedAt: activityTime(3),
-    }),
-  ];
-  const items = [
-    todo(1, undefined, ["unread"]),
-    todo(2, undefined, ["read"]),
-    todo(3, undefined, ["running"]),
-    todo(4, undefined, ["interview"]),
-    todo(5, undefined, ["blocked"]),
-    todo(6, undefined, ["blocked", "running", "unread"]),
-    todo(7, undefined, ["blocked"]), // Same input-blocked activity; ID breaks the tie.
-  ];
-  using fixture = renderTodos(false, { todos: { ...emptyProjectTodos(), items }, sessions });
-  const order = (ids: number[]) => ids.map((id) => todo(id).id);
-  expect(openOrder()).toEqual(order([6, 5, 7, 1, 2, 3, 4]));
-  await fixture.user.click(screen.getByRole("button", { name: "Task 4" }));
-
-  const record: InterviewRecord = {
-    id: "choose-target",
-    sessionId: "interview",
-    request: {
-      protocol: "cake.request/v1",
-      id: "target",
-      title: "Choose target",
-      responseSchema: { type: "object" },
-      view: { type: "form", fields: [{ id: "target", label: "Target", type: "text" }] },
-      fallback: { markdown: "Which target?" },
-    },
+it("renders newest creation first within all four sections, including live additions and search", async () => {
+  const categories = ["Needs attention", "Active", "Snoozed", "Done"];
+  const inSection = (item: ProjectTodo, section: number): ProjectTodo =>
+    section === 0
+      ? { ...item, needsAttention: true, attentionReason: "Review this finding" }
+      : section === 2
+        ? { ...item, snoozedUntil: "2099-01-01T00:00:00.000Z" }
+        : section === 3
+          ? { ...item, state: "done" }
+          : item;
+  // Deliberately neither creation nor ID order.
+  const items = categories.flatMap((_, section) =>
+    [2, 1, 3].map((day) => inSection(todo(section * 10 + day, activityTime(day)), section)),
+  );
+  using fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items },
+    sessions: [],
+  });
+  await fixture.user.click(screen.getByRole("button", { name: "Done (3)" }));
+  const sectionOrder = (category: string) =>
+    Array.from(
+      screen.getByRole("list", { name: `${category} to-dos` }).querySelectorAll("[data-todo-id]"),
+      (row) => row.getAttribute("data-todo-id"),
+    );
+  const checkOrder = (days: number[]) => {
+    expect(
+      screen.getAllByRole("region").map((region) => region.getAttribute("aria-label")),
+    ).toEqual(categories);
+    categories.forEach((category, section) =>
+      expect(sectionOrder(category)).toEqual(days.map((day) => todo(section * 10 + day).id)),
+    );
   };
-  act(() =>
-    fixture.root.sessionRegistry.load("interview", "/cake").receive({
-      type: "interview-requested",
-      operationId: "operation",
-      interviewRequestId: "request",
-      record,
-    }),
+  checkOrder([3, 2, 1]);
+  const additions = categories.map((_, section) =>
+    inSection(todo(section * 10 + 4, activityTime(4)), section),
   );
-  expect(openOrder()).toEqual(order([6, 5, 7, 4, 1, 2, 3]));
-  expect(screen.getByRole("img", { name: "Waiting for your answer" })).toBeDefined();
-  expect(screen.getByRole("button", { name: "Task 4" }).getAttribute("aria-pressed")).toBe("true");
-
-  // Pi's settled tool projection clears the live request; the still-running task returns last.
-  act(() =>
-    applyPartUpdate(
-      fixture.root.sessionRegistry.findModel("interview")!.parts,
-      {
-        id: "tool-interview",
-        kind: "tool",
-        name: "cake",
-        command: "interview.open",
-        input: "",
-        state: "success",
-        interview: record,
-        interviewResult: {
-          interviewId: record.id,
-          cancelled: false,
-          value: { target: "production" },
-        },
-      },
-      "interview",
-    ),
+  await fixture.updateTodos({ ...fixture.todos(), items: [...items, ...additions] });
+  checkOrder([4, 3, 2, 1]);
+  expect(fixture.todos().items).toEqual([...items, ...additions]);
+  // Search filters the sorted projection rather than falling back to storage order.
+  await fixture.user.type(
+    screen.getByRole("searchbox", { name: "Search to-dos" }),
+    "Latest finding",
   );
-  expect(openOrder()).toEqual(order([6, 5, 7, 1, 2, 3, 4]));
-  await fixture.updateSessions(
-    sessions.map((session) =>
-      session.sessionId === "blocked"
-        ? { ...session, recoveryIssue: undefined, unread: false }
-        : session,
-    ),
-  );
-  expect(openOrder()).toEqual(order([1, 2, 5, 7, 6, 3, 4]));
+  checkOrder([4, 3, 2, 1]);
 });
 
-it("breaks equal and missing activity ties by ID, independent of incoming storage order", () => {
-  const items = [todo(4), todo(2, activityTime(2)), todo(3), todo(1, activityTime(2))];
-  const expected = [1, 2, 3, 4].map((id) => todo(id).id);
+it("breaks equal creation timestamps by ID independently of storage order", () => {
+  const items = [
+    todo(4, activityTime(1)),
+    todo(2, activityTime(2)),
+    todo(3, activityTime(1)),
+    todo(1, activityTime(2)),
+  ];
   for (const order of [items, [...items].reverse()]) {
     using fixture = renderTodos(false, {
       todos: { ...emptyProjectTodos(), items: order },
       sessions: [],
     });
-    expect(openOrder()).toEqual(expected);
+    expect(openOrder()).toEqual([1, 2, 3, 4].map((id) => todo(id).id));
     expect(fixture.todos().items).toEqual(order);
   }
 });
 
-it("reorders live on read, running, settlement and activity changes without reopening or losing selection", async () => {
-  const items = [todo(1, undefined, ["first"]), todo(2, undefined, ["second"])];
-  let sessions = ["first", "second"].map((sessionId, index) =>
+it("keeps untimestamped saved items in reverse creation order, unaffected by later edits", async () => {
+  const items = [todo(9), todo(2), todo(6)];
+  using fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items },
+    sessions: [],
+  });
+  const expected = [6, 2, 9].map((id) => todo(id).id);
+  expect(openOrder()).toEqual(expected);
+  await fixture.updateTodos({
+    ...fixture.todos(),
+    items: items.map((item, index) =>
+      index === 0
+        ? { ...item, description: "Edited old item", modifiedAt: activityTime(10), revision: 1 }
+        : item,
+    ),
+  });
+  expect(openOrder()).toEqual(expected);
+  await fixture.updateTodos({
+    ...fixture.todos(),
+    items: [...fixture.todos().items, todo(1, activityTime(1))],
+  });
+  expect(openOrder()).toEqual([todo(1).id, ...expected]);
+});
+
+it("keeps creation order and selection through description/status edits and linked-session activity changes", async () => {
+  const items = [todo(1, activityTime(1), ["first"]), todo(2, activityTime(2), ["second"])];
+  const sessions = ["first", "second"].map((sessionId) =>
     sessionSummary({
       sessionId,
       projectPath: "/cake",
       unread: true,
       latestTurnOutcome: "complete",
-      modifiedAt: activityTime(index + 1),
+      modifiedAt: activityTime(2),
     }),
   );
   using fixture = renderTodos(false, { todos: { ...emptyProjectTodos(), items }, sessions });
-  const ids = items.map(({ id }) => id);
-  expect(openOrder()).toEqual([...ids].reverse());
-  await fixture.user.click(screen.getByRole("button", { name: "Task 2" }));
-  // Read acknowledgement demotes a task even though its work chip remains green/ready.
-  sessions = sessions.map((session) => ({ ...session, unread: session.sessionId === "first" }));
-  await fixture.updateSessions(sessions);
-  expect(openOrder()).toEqual(ids);
-  expect(screen.getAllByRole("img", { name: "Ready for review" })).toHaveLength(2);
-  sessions = sessions.map((session) => ({ ...session, running: session.sessionId === "first" }));
-  await fixture.updateSessions(sessions);
-  expect(openOrder()).toEqual([...ids].reverse());
-  sessions = sessions.map((session) => ({ ...session, running: false }));
-  await fixture.updateSessions(sessions);
-  expect(openOrder()).toEqual(ids);
-  sessions = sessions.map((session) => ({ ...session, unread: false }));
-  await fixture.updateSessions(sessions);
-  expect(openOrder()).toEqual([...ids].reverse());
-  sessions = sessions.map((session) =>
-    session.sessionId === "first" ? { ...session, modifiedAt: activityTime(3) } : session,
-  );
-  await fixture.updateSessions(sessions);
-  expect(openOrder()).toEqual(ids);
-  // Accepted live turns take precedence before the catalog's running flag catches up.
+  const expected = [items[1]!.id, items[0]!.id];
+  expect(openOrder()).toEqual(expected);
+  await fixture.user.click(screen.getByRole("button", { name: "Task 1" }));
+  for (const changes of [
+    { unread: false },
+    { running: true },
+    { running: false, modifiedAt: activityTime(9) },
+    { recoveryIssue: "Choose the next step" },
+  ]) {
+    await fixture.updateSessions(
+      sessions.map((session) =>
+        session.sessionId === "first" ? { ...session, ...changes } : session,
+      ),
+    );
+    expect(openOrder()).toEqual(expected);
+  }
   act(() => fixture.root.sessionRegistry.load("first", "/cake").model.activeTurnIds.push("turn"));
-  expect(openOrder()).toEqual([...ids].reverse());
+  expect(openOrder()).toEqual(expected);
   act(() => fixture.root.sessionRegistry.findModel("first")!.activeTurnIds.splice(0));
-  expect(openOrder()).toEqual(ids);
   await fixture.updateTodos({
     ...fixture.todos(),
-    items: items.map((item) =>
-      item.id === ids[1]
-        ? { ...item, modifiedAt: activityTime(4), revision: 1, description: "New finding." }
+    items: items.map((item, index) =>
+      index === 0
+        ? {
+            ...item,
+            modifiedAt: activityTime(10),
+            revision: 1,
+            description: "New finding.",
+            status: "Ready for review",
+          }
         : item,
     ),
   });
-  expect(openOrder()).toEqual([...ids].reverse());
+  expect(openOrder()).toEqual(expected);
   expect(screen.getByText("New finding.")).toBeDefined();
-  expect(screen.getByRole("button", { name: "Task 2" }).getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByRole("button", { name: "Task 1" }).getAttribute("aria-pressed")).toBe("true");
 });
 
 it("filters titles and descriptions without changing selection or the authoritative list", async () => {

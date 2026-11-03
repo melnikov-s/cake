@@ -477,17 +477,13 @@ is a refactoring signal, not precedent.
   restart. Normal durable reporting remains unchanged.
   Summary calls have a ten-second deadline, without retries or foreground-model
   fallback. To-do ordering never calls a model and has no user sort controls.
-  The pane derives one live order: items needing user input, unread non-active items,
-  other non-active items, then active items (including active+unread), newest activity
-  first within each group. Pending interviews (`waiting`) and recovery issues
-  (`blocked`) take precedence even when another required session is running or unread.
-  Required session links use the shared session activity authority;
-  source links are context only. Activity is the latest item
-  `modifiedAt` or linked session `modifiedAt`. Item creation and revision changes
-  record the timestamp in ApplicationStorage; selection/read acknowledgement does not.
-  Older saved items without timestamps use linked activity where available.
-  Equal or missing timestamps break ties by ascending item ID. Needs attention, Active, Snoozed and Done
-  sections and search preserve this order, reacting immediately to metadata changes.
+  Each section shows newest-created items first by immutable `createdAt`, with
+  ascending item ID breaking equal timestamp ties. Older saved items without creation
+  timestamps follow timestamped items in reverse append-only storage order.
+  Description/status edits and linked-session activity never promote older items.
+  Search preserves this order. ApplicationStorage records creation time only for new
+  items and continues recording `modifiedAt` for content/lifecycle changes; selection
+  and read acknowledgement change neither timestamp.
   One metadata-index snapshot and family snapshot join a bounded page, with filename-only
   identity enumeration per directory, never per item.
   Tools default to title/id/state/revision rows, attention flag and retained reason (plus snoozedUntil when set) and compact mutation receipts with canonical attention outcomes; content is

@@ -9,8 +9,6 @@ import {
 import { parseSessionLink } from "../../contracts/conversations/message-reference";
 import { parseSubagentLink } from "../../contracts/subagents/subagent-reference";
 import { ClientContext } from "./context/ClientContext";
-import { SessionMetadataContext } from "./context/SessionMetadataContext";
-import { isActiveSessionActivity } from "../lib/session-activity";
 import type { SideChatStore } from "./SideChatStore";
 import { describeError } from "../lib/error-details";
 
@@ -124,32 +122,15 @@ export class ProjectTodosStore extends Store<{
     return this.filteredItems.filter((item) => item.state === "done");
   }
   get orderedItems() {
-    const metadata = SessionMetadataContext.consume(this)!;
     return (this.value?.items ?? [])
-      .map((item) => {
-        let needsInput = false;
-        let active = false;
-        let unread = false;
-        let modifiedAt = item.modifiedAt ?? "";
-        // Required work links use the same activity authority as session dots.
-        // Source links are context, not the activity of the task they reference.
-        for (const link of item.associations) {
-          if (link.kind !== "session") continue;
-          const activity = metadata.sessionActivity(link.sessionId);
-          needsInput ||= activity === "waiting" || activity === "blocked";
-          active ||= isActiveSessionActivity(activity);
-          unread ||= activity === "unread";
-          const sessionModifiedAt = metadata.sessionModifiedAt(link.sessionId) ?? "";
-          if (sessionModifiedAt > modifiedAt) modifiedAt = sessionModifiedAt;
-        }
-        return { item, group: needsInput ? 0 : active ? 3 : unread ? 1 : 2, modifiedAt };
+      .map((item, index) => ({ item, index }))
+      .sort((a, b) => {
+        const byCreation = (b.item.createdAt ?? "").localeCompare(a.item.createdAt ?? "");
+        if (byCreation) return byCreation;
+        // Before creation timestamps, storage appended new items and edits kept their positions.
+        if (!a.item.createdAt && !b.item.createdAt) return b.index - a.index;
+        return a.item.id.localeCompare(b.item.id);
       })
-      .sort(
-        (a, b) =>
-          a.group - b.group ||
-          b.modifiedAt.localeCompare(a.modifiedAt) ||
-          a.item.id.localeCompare(b.item.id),
-      )
       .map(({ item }) => item);
   }
   setQuery(query: string) {

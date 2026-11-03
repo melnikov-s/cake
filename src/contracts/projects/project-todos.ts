@@ -145,6 +145,8 @@ export const ProjectTodo = Schema.Struct({
   /** Snoozed takes visibility precedence over attention. Completion clears the deadline. */
   snoozedUntil: Schema.optionalKey(ProjectTodoSnoozeUntil),
   revision,
+  /** Immutable creation time; older saved items retain their append-only creation order. */
+  createdAt: Schema.optionalKey(Schema.String),
   /** Latest creation/content/lifecycle change; older saved items may have no timestamp. */
   modifiedAt: Schema.optionalKey(Schema.String),
   associations: Associations,
