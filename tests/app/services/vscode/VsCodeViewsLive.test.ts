@@ -6,7 +6,11 @@ import {
   ClientConnectionsLive,
 } from "../../../../src/services/clients/ClientConnections";
 import { ClientEventsLive } from "../../../../src/services/clients/ClientEventsLive";
-import { Electron } from "../../../../src/services/electron/Electron";
+import {
+  CAKE_TITLE_BAR_HEIGHT,
+  Electron,
+  VSCODE_TITLE_BAR_HEIGHT,
+} from "../../../../src/services/electron/Electron";
 import { VsCodeViewsLive } from "../../../../src/services/vscode/VsCodeViewsLive";
 import { VsCodeViews } from "../../../../src/services/vscode/VsCodeViews";
 
@@ -96,5 +100,55 @@ it.effect("closes the native view after its logical connection has already been 
       });
     }).pipe(Effect.scoped, Effect.provide(layer));
     expect(native.close).toHaveBeenCalledTimes(2);
+  }),
+);
+
+it.effect("centers the traffic lights on whichever title bar fills the top-left corner", () =>
+  Effect.gen(function* () {
+    native.windows.clear();
+    native.windows.set(49, {
+      webContents: { id: 49 },
+      isDestroyed: () => false,
+      contentView: { addChildView() {}, removeChildView() {} },
+    });
+    const heights: number[] = [];
+    const Native = Layer.unwrap(
+      Effect.gen(function* () {
+        const connections = yield* ClientConnections;
+        return Layer.mock(Electron, {
+          fullscreenSurfaceChanges: () => Stream.empty,
+          centerTrafficLights: (_window, height) => heights.push(height),
+          windowsForWorkspace: () => [],
+          requireRendererConnection: (id) => {
+            const nativeId = connections.nativeId(id);
+            if (nativeId === undefined) throw new Error("Disconnected");
+            return { id: nativeId } as never;
+          },
+        });
+      }),
+    );
+    const Clients = Layer.merge(ClientConnectionsLive, ClientEventsLive);
+    const layer = VsCodeViewsLive.pipe(
+      Layer.provide(Native.pipe(Layer.provide(Clients))),
+      Layer.provideMerge(Clients),
+    );
+    yield* Effect.gen(function* () {
+      const views = yield* VsCodeViews;
+      const connection = (yield* ClientConnections).desktop(49);
+      const editor = { x: 0, y: 0, width: 900, height: 700, projectSidebarWidth: 0 };
+      // VS Code's own title bar is at the window's top-left corner.
+      yield* views.updateBounds(connection, { ...editor, visible: true });
+      // The top terminal pushes the editor down; its Cake-height header now holds the corner.
+      yield* views.updateBounds(connection, { ...editor, visible: true, y: 365, height: 335 });
+      // The project sidebar's Cake-height header holds the corner.
+      yield* views.updateBounds(connection, { ...editor, visible: true, x: 280 });
+      yield* views.updateBounds(connection, { ...editor, visible: false });
+    }).pipe(Effect.scoped, Effect.provide(layer));
+    expect(heights).toEqual([
+      VSCODE_TITLE_BAR_HEIGHT,
+      CAKE_TITLE_BAR_HEIGHT,
+      CAKE_TITLE_BAR_HEIGHT,
+      CAKE_TITLE_BAR_HEIGHT,
+    ]);
   }),
 );

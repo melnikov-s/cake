@@ -5,13 +5,20 @@ import { ClientEvents } from "../clients/ClientEvents";
 import { CAKE_TITLE_BAR_HEIGHT, Electron, VSCODE_TITLE_BAR_HEIGHT } from "../electron/Electron";
 import { VsCodeServerError } from "../../contracts/vscode/vs-code-server-errors";
 import { VsCodeViews } from "./VsCodeViews";
-import { VsCodeViewsRuntime } from "./VsCodeViewsRuntime";
+import { VsCodeViewsRuntime, type VsCodeViewBounds } from "./VsCodeViewsRuntime";
 
 const nativeError = (operation: string, cause: unknown) =>
   new VsCodeServerError({
     operation,
     message: cause instanceof Error ? cause.message : String(cause),
   });
+
+/** The traffic lights center on whichever title bar fills the window's top-left corner:
+ * VS Code's only while its view starts there, otherwise Cake's (sidebar or top terminal). */
+const trafficLightTitleBarHeight = (bounds: VsCodeViewBounds) =>
+  bounds.visible && Math.round(bounds.x) === 0 && Math.round(bounds.y) === 0
+    ? VSCODE_TITLE_BAR_HEIGHT
+    : CAKE_TITLE_BAR_HEIGHT;
 
 /** Scope owns native views and native callbacks, never an editor process or workspace read. */
 export const VsCodeViewsLive = Layer.effect(
@@ -58,11 +65,7 @@ export const VsCodeViewsLive = Layer.effect(
           try: () => {
             const sender = electron.requireRendererConnection(connectionId);
             const window = BrowserWindow.fromWebContents(sender);
-            if (window)
-              electron.centerTrafficLights(
-                window,
-                bounds.visible ? VSCODE_TITLE_BAR_HEIGHT : CAKE_TITLE_BAR_HEIGHT,
-              );
+            if (window) electron.centerTrafficLights(window, trafficLightTitleBarHeight(bounds));
             runtime.updateBounds(sender.id, bounds);
           },
           catch: (cause) => nativeError("updateBounds", cause),

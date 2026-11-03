@@ -98,6 +98,32 @@ test("Quake terminal runs a shell and retains tabs when a Project Session is res
     await toggleTerminalViaMenu();
     await expect(panel).toHaveAttribute("aria-hidden", "false");
     await expect(panel.locator(".xterm-screen:visible")).toBeVisible();
+    if (process.platform === "darwin") {
+      // The top terminal header is the title bar: every control shares the traffic
+      // lights' centerline and starts clear of the zoom button.
+      const lights = await (
+        await application.browserWindow(page)
+      ).evaluate((window) => window.getWindowButtonPosition());
+      expect(lights).not.toBeNull();
+      const centerline = lights!.y + 7;
+      const header = panel.locator("header");
+      const centers = () =>
+        header.locator(":scope > *, [role=tab], button").evaluateAll((nodes) =>
+          nodes.map((node) => {
+            const box = node.getBoundingClientRect();
+            return box.top + box.height / 2;
+          }),
+        );
+      // Poll past the slide-in transition.
+      await expect
+        .poll(async () => (await centers()).every((center) => Math.abs(center - centerline) < 0.25))
+        .toBe(true);
+      expect((await centers()).length).toBeGreaterThan(5);
+      // macOS 26 spaces the 14px buttons 23px apart; older releases are tighter.
+      const zoomRight = lights!.x + 2 * 23 + 14;
+      const first = await header.locator(":scope > *").first().boundingBox();
+      expect(first!.x - zoomRight).toBeGreaterThanOrEqual(lights!.x);
+    }
     const terminalRows = panel.locator(".xterm-rows:visible");
     await expect(terminalRows).toHaveCSS("font-size", "14px");
     await page.evaluate(() => {
