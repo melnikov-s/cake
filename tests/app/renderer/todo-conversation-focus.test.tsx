@@ -48,7 +48,7 @@ const answer = (id: string): UiPart => ({
 });
 
 for (const global of [false, true]) {
-  it(`folds chronological stretches without changing messages or optional context (${global ? "Cake Chat" : "Project Chat"})`, async () => {
+  it(`folds around all focused tasks without changing messages or context (${global ? "Cake Chat" : "Project Chat"})`, async () => {
     const sessionId = global ? CAKE_CHAT_SESSION_ID : "project-chat:" + "a".repeat(64);
     let todos: ProjectTodos = {
       ...emptyProjectTodos(),
@@ -62,10 +62,7 @@ for (const global of [false, true]) {
         projectTodos: {
           mutateUser: async ({ mutation }) => {
             mutations.push(mutation);
-            if (mutation._tag !== "Select") throw new Error("Unexpected mutation");
-            todos = { ...todos, selectedId: mutation.selectedId };
-            publish();
-            return todos;
+            throw new Error("View focus must not mutate to-dos");
           },
         },
       },
@@ -77,13 +74,7 @@ for (const global of [false, true]) {
     publish();
     applySnapshot(fixture.models.cakeChatCatalog, {
       loaded: true,
-      sessions: [
-        {
-          sessionId,
-          title: global ? "Cake Chat" : "Project Chat",
-          ...(global ? {} : { projectPath: "/cake" }),
-        },
-      ],
+      sessions: [{ sessionId, title: "Chat", ...(global ? {} : { projectPath: "/cake" }) }],
     });
     const session = fixture.root.cakeChatCollectionStore.registry.load(sessionId);
     const store = session.todos;
@@ -92,14 +83,10 @@ for (const global of [false, true]) {
       answer("casual-answer"),
       user("a1", a),
       answer("a1-answer"),
-      user("a-followup", a),
-      answer("a-followup-answer"),
       user("b1", b),
       answer("b1-answer"),
       user("a2", a),
       answer("a2-answer"),
-      user("unassigned", null),
-      answer("unassigned-answer"),
     ];
     parts.forEach((part) => applyPartUpdate(session.model.parts, part, sessionId));
     store.open();
@@ -123,60 +110,38 @@ for (const global of [false, true]) {
       const transcript = within(screen.getByRole("region", { name: "Test transcript" }));
       const panel = within(screen.getByRole("complementary", { name: "To-do" }));
       const headingA = () => transcript.getAllByRole("button", { name: "Task A" });
-      const headingB = () => transcript.getByRole("button", { name: "Task B" });
+      const headingB = () => transcript.getAllByRole("button", { name: "Task B" })[0]!;
       const expanded = () =>
         [...headingA(), headingB()].map((h) => h.getAttribute("aria-expanded"));
-      const readableUnassigned = () => {
-        for (const text of ["casual", "casual-answer", "unassigned", "unassigned-answer"]) {
-          const message = transcript.getByText(text, { exact: true });
-          expect(message.closest("[hidden]")).toBeNull();
-          expect(
-            message
-              .closest('[data-slot="transcript-item"]')
-              ?.querySelector('[data-slot="margin-rail"]'),
-          ).toBeNull();
-        }
-      };
       expect(expanded()).toEqual(["true", "true", "true"]);
       const navigation = transcript.getAllByRole("button", { name: "Show in To-do: Task A" })[0]!;
       act(() => store.setQuery("not a matching task"));
       await u.click(navigation);
-      expect(store.visible).toBe(true);
-      expect(store.inspectedItemId).toBe(a);
       expect(store.query).toBe("");
-      expect(store.selectedItem).toBeUndefined();
-      expect(mutations).toEqual([]);
-      expect(expanded()).toEqual(["true", "true", "true"]);
+      expect(store.focusedItems).toEqual([]);
       await u.click(headingA()[0]!);
       expect(expanded()).toEqual(["false", "true", "true"]);
-      expect(transcript.queryByText("a1-answer", { exact: true })).toBeNull();
-      await u.click(navigation);
-      expect(expanded()).toEqual(["false", "true", "true"]);
-      expect(store.selectedItem).toBeUndefined();
-      expect(mutations).toEqual([]);
-      expect(transcript.getByText("a2-answer", { exact: true })).toBeDefined();
       await u.click(panel.getByRole("button", { name: "Task B" }));
-      expect(store.selectedItem?.id).toBe(b);
       expect(expanded()).toEqual(["false", "false", "true"]);
-      readableUnassigned();
-      expect(screen.getByText("Focused to-do:")).toBeDefined();
-      await u.click(headingA()[1]!);
-      expect(expanded()).toEqual(["false", "true", "true"]);
+      expect(transcript.getByText("casual-answer")).toBeDefined();
       await u.click(panel.getByRole("button", { name: "Task A" }));
-      expect(expanded()).toEqual(["true", "true", "false"]);
-      await u.click(panel.getByRole("button", { name: "Task A" }));
-      expect(store.selectedItem).toBeUndefined();
       expect(expanded()).toEqual(["true", "true", "true"]);
-      expect(screen.queryByText("Focused to-do:")).toBeNull();
-
+      expect(screen.getByText("Focused to-dos:")).toBeDefined();
       await u.click(panel.getByRole("button", { name: "Task A" }));
+      expect(expanded()).toEqual(["true", "true", "true"]);
+      await u.click(panel.getByRole("button", { name: "Unfocus to-do: Task B" }));
+      expect(expanded()).toEqual(["true", "true", "false"]);
+      // Explicit manual expansion and message navigation still work outside the focused set.
+      await u.click(headingB());
+      expect(transcript.getByText("b1-answer")).toBeDefined();
+      await u.click(headingB());
       act(() =>
         session.conversationSessionStore.chatStore.transcriptInteraction.navigateToMessage(
           "b1-answer",
         ),
       );
       expect(transcript.getByText("b1-answer")).toBeDefined();
-      expect(store.selectedItem?.id).toBe(a);
+      expect(store.focusedItems.map((item) => item.id)).toEqual([a]);
       act(() =>
         session.conversationSessionStore.chatStore.transcriptInteraction.clearMessageSelection(),
       );
@@ -194,53 +159,39 @@ for (const global of [false, true]) {
       act(() => applyPartUpdate(session.model.parts, user("pending", b), sessionId));
       expect(transcript.queryByText("pending-answer")).toBeNull();
       await u.click(screen.getByRole("button", { name: "Clear to-do focus" }));
-      expect(todos.selectedId).toBeNull();
       expect(transcript.getByText("pending-answer")).toBeDefined();
-      expect(
-        transcript
-          .getAllByRole("button", { name: "Task B" })
-          .map((h) => h.getAttribute("aria-expanded")),
-      ).toEqual(["true", "true"]);
+      expect(expanded()).toEqual(["true", "true", "true"]);
 
-      // Authoritative item disappearance invalidates the focus, including manual folds.
-      for (const state of ["done", "snoozed", "removed"] as const) {
-        await u.click(panel.getByRole("button", { name: "Task A" }));
-        await u.click(headingA()[0]!);
+      // Focus survives lifecycle/attention changes; only removal invalidates it.
+      await u.click(panel.getByRole("button", { name: "Task A" }));
+      for (const changes of [
+        { state: "done" as const },
+        { state: "open" as const, snoozedUntil: "2099-01-01T00:00:00Z", needsAttention: true },
+      ]) {
         act(() => {
           todos = {
             ...todos,
-            selectedId: null,
-            items:
-              state === "removed"
-                ? todos.items.filter((item) => item.id !== a)
-                : todos.items.map((item) =>
-                    item.id !== a
-                      ? item
-                      : {
-                          ...item,
-                          ...(state === "done"
-                            ? { state: "done" as const }
-                            : { snoozedUntil: "2099-01-01T00:00:00Z" }),
-                        },
-                  ),
+            items: todos.items.map((item) => (item.id === a ? { ...item, ...changes } : item)),
           };
           publish();
         });
-        expect(store.selectedItem).toBeUndefined();
-        expect(screen.queryByRole("button", { name: "Clear to-do focus" })).toBeNull();
-        expect(transcript.getByText("a1-answer")).toBeDefined();
-        expect(transcript.getByText("pending-answer")).toBeDefined();
-        act(() => {
-          todos = { ...todos, items: [todo(a, "Task A"), todo(b, "Task B")] };
-          publish();
-        });
+        expect(store.focusedItems.map((item) => item.id)).toEqual([a]);
+        expect(expanded()).toEqual(["true", "true", "false"]);
       }
+      await u.click(headingA()[0]!);
+      act(() => {
+        todos = { ...todos, items: todos.items.filter((item) => item.id !== a) };
+        publish();
+      });
+      expect(store.focusedItems).toEqual([]);
+      expect(transcript.getByText("a1-answer")).toBeDefined();
+      expect(transcript.getByText("b1-answer")).toBeDefined();
       expect(session.model.uiParts.map((part) => part.id)).toEqual([
         ...parts.map((part) => part.id),
         "pending",
         "pending-answer",
       ]);
-      expect(mutations.every((mutation) => mutation._tag === "Select")).toBe(true);
+      expect(mutations).toEqual([]);
     } finally {
       view.unmount();
     }
@@ -330,7 +281,7 @@ it("interrupts source rows without changing the discussion or borrowing pane sel
       view.container.querySelector(`[data-transcript-anchor-id="${id}"]`)!;
     const rail = (id: string) => row(id).querySelector('[data-slot="margin-rail"]');
     const headings = () => screen.getAllByRole("button", { name: /^Task [AB]$/ });
-    expect(session.todos.selectedItem).toBeUndefined();
+    expect(session.todos.focusedItems).toEqual([]);
     expect(headings().map((h) => h.getAttribute("aria-label"))).toEqual([
       "Task A",
       "Task B",
@@ -358,7 +309,7 @@ it("interrupts source rows without changing the discussion or borrowing pane sel
     expect(screen.getByText("Unknown source")).toBeDefined();
     await u.click(screen.getByRole("button", { name: "Task B" }));
     expect(rail("b-card")).not.toBeNull();
-    expect(session.todos.selectedItem).toBeUndefined();
+    expect(session.todos.focusedItems).toEqual([]);
     expect(session.model.uiParts.map((part) => part.id)).toEqual(parts.map((part) => part.id));
   } finally {
     view.unmount();

@@ -22,8 +22,8 @@ export class SubagentActivityStore extends Store<{
   sessionId: string;
   model: SubagentCatalog;
   parts(): readonly UiPart[];
-  /** The owning Project Chat's to-do selection while its panel is open; absent elsewhere. */
-  selectedTodo?(): ProjectTodo | undefined;
+  /** The owning chat's focused to-dos while its panel is open; absent elsewhere. */
+  focusedTodos?(): readonly ProjectTodo[];
 }> {
   private commandErrors: Record<string, string | undefined> = {};
 
@@ -144,12 +144,14 @@ export class SubagentActivityStore extends Store<{
     return Boolean(
       run?.handleId &&
       this.props
-        .selectedTodo?.()
-        ?.associations.some(
-          (association) =>
-            association.kind === "subagent" &&
-            association.parentSessionId === this.props.sessionId &&
-            association.handleId === run.handleId,
+        .focusedTodos?.()
+        ?.some((todo) =>
+          todo.associations.some(
+            (association) =>
+              association.kind === "subagent" &&
+              association.parentSessionId === this.props.sessionId &&
+              association.handleId === run.handleId,
+          ),
         ),
     );
   }

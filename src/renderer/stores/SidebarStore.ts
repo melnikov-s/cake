@@ -112,18 +112,20 @@ export class SidebarStore extends Store<SidebarStoreProps> {
    * rows do not subscribe to every change of the selected conversation.
    */
   @computed
-  private get selectedTodo() {
+  private get focusedTodos() {
     const conversation = this.props.selectedConversation?.();
     return conversation?.kind === "cake-chat"
-      ? this.props.cakeChat().registry.find(conversation.sessionId)?.todos.selectedItem
+      ? this.props.cakeChat().registry.find(conversation.sessionId)?.todos.focusedItems
       : undefined;
   }
 
-  /** A to-do selection is shown only while its chat is focused with its panel open. */
-  isSessionAssociatedWithSelectedTodo(sessionId: string) {
+  /** Focus cues are shown only while their chat is focused with its panel open. */
+  isSessionAssociatedWithFocusedTodos(sessionId: string) {
     return (
-      this.selectedTodo?.associations.some(
-        (association) => association.kind === "session" && association.sessionId === sessionId,
+      this.focusedTodos?.some((todo) =>
+        todo.associations.some(
+          (association) => association.kind === "session" && association.sessionId === sessionId,
+        ),
       ) ?? false
     );
   }

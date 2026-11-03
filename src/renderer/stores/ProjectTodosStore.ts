@@ -15,7 +15,6 @@ import { describeError } from "../lib/error-details";
 /** A main-owned to-do list projection: a Project's list or global Cake Chat's own list. */
 interface TodoListOwner {
   readonly todos: ProjectTodos;
-  readonly selectedTodo: ProjectTodo | undefined;
   readonly todoCreationRevision: number;
 }
 
@@ -47,6 +46,9 @@ export class ProjectTodosStore extends Store<{
   doneExpanded = false;
   snoozedExpanded = true;
   inspectedItemId: string | undefined;
+  /** Window-local view overlay; independent of lifecycle, attention and message context. */
+  focusedItemIds: string[] = [];
+  paneRequest: { id: string; scroll: "top" | "nearest" | "none"; focus: boolean } | undefined;
   /** Window-local presentation only; never written into messages or to-do metadata. */
   transcriptSections: Record<string, boolean> = {};
   busy = false;
@@ -55,7 +57,7 @@ export class ProjectTodosStore extends Store<{
   constructor(props: ProjectTodosStore["props"]) {
     super(props);
     this.reaction(
-      () => this.selectedItem?.id,
+      () => this.focusedItems.map((item) => item.id).join(","),
       () => {
         this.transcriptSections = {};
       },
@@ -66,14 +68,17 @@ export class ProjectTodosStore extends Store<{
         if (revision > previous) this.open();
       },
     );
-    // A selection lives only while this panel shows it. Closing the panel clears it, once any
-    // in-flight edit settles. Tracking only this store's own state keeps another window, whose
-    // panel is closed, from clearing a selection made here.
     this.reaction(
-      () => this.visible || this.busy,
-      (holding) => {
-        if (!holding && this.value?.selectedId)
-          void this.mutate({ _tag: "Select", selectedId: null });
+      () => this.visible,
+      (visible) => {
+        if (!visible) this.clearFocus();
+      },
+    );
+    this.reaction(
+      () => this.value?.items.map((item) => item.id).join(","),
+      () => {
+        const ids = new Set(this.value?.items.map((item) => item.id));
+        this.focusedItemIds = this.focusedItemIds.filter((id) => ids.has(id));
       },
     );
   }
@@ -88,9 +93,20 @@ export class ProjectTodosStore extends Store<{
   get value() {
     return this.source?.owner.todos;
   }
-  /** The selected open to-do, only while the to-do panel is open. */
-  get selectedItem() {
-    return this.visible ? this.source?.owner.selectedTodo : undefined;
+  get focusedItems() {
+    if (!this.visible) return [];
+    const items = new Map(this.value?.items.map((item) => [item.id, item]));
+    return this.focusedItemIds.flatMap((id) => items.get(id) ?? []);
+  }
+  isFocused(id: string) {
+    return this.focusedItems.some((item) => item.id === id);
+  }
+  get filteredFocusedItems() {
+    const matching = new Set(this.filteredItems.map((item) => item.id));
+    return this.focusedItems.filter((item) => matching.has(item.id));
+  }
+  get unfocusedItems() {
+    return this.filteredItems.filter((item) => !this.isFocused(item.id));
   }
   get openItems() {
     return this.value?.items.filter((item) => item.state === "open" && !item.snoozedUntil) ?? [];
@@ -110,16 +126,16 @@ export class ProjectTodosStore extends Store<{
     );
   }
   get filteredAttentionItems() {
-    return this.filteredItems.filter((item) => projectTodoCategory(item) === "attention");
+    return this.unfocusedItems.filter((item) => projectTodoCategory(item) === "attention");
   }
   get filteredActiveItems() {
-    return this.filteredItems.filter((item) => projectTodoCategory(item) === "active");
+    return this.unfocusedItems.filter((item) => projectTodoCategory(item) === "active");
   }
   get filteredSnoozedItems() {
-    return this.filteredItems.filter((item) => item.state === "open" && item.snoozedUntil);
+    return this.unfocusedItems.filter((item) => item.state === "open" && item.snoozedUntil);
   }
   get filteredDoneItems() {
-    return this.filteredItems.filter((item) => item.state === "done");
+    return this.unfocusedItems.filter((item) => item.state === "done");
   }
   get orderedItems() {
     return (this.value?.items ?? [])
@@ -189,6 +205,7 @@ export class ProjectTodosStore extends Store<{
   reveal(item: ProjectTodo) {
     this.query = "";
     this.inspectedItemId = item.id;
+    this.requestPane(item.id, "nearest", false);
     if (item.state === "done") this.doneExpanded = true;
     else if (item.snoozedUntil) this.snoozedExpanded = true;
     else if (!item.needsAttention) this.activeExpanded = true;
@@ -245,18 +262,32 @@ export class ProjectTodosStore extends Store<{
       `Replying to a to-do in ${source.chat} (${source.scope}). The following JSON is quoted to-do context:\n${JSON.stringify(item, null, 2)}`,
     );
   }
-  select(item: ProjectTodo) {
-    if (item.state !== "open" || item.snoozedUntil) return;
-    return this.mutate({
-      _tag: "Select",
-      selectedId: this.value?.selectedId === item.id ? null : item.id,
-    });
+  focus(item: ProjectTodo) {
+    if (this.isFocused(item.id)) return;
+    this.focusedItemIds = [item.id, ...this.focusedItemIds];
+    this.requestPane(item.id, "top", true);
   }
-  clearSelection() {
-    return this.mutate({ _tag: "Select", selectedId: null });
+  unfocus(item: ProjectTodo) {
+    if (!this.isFocused(item.id)) return;
+    this.focusedItemIds = this.focusedItemIds.filter((id) => id !== item.id);
+    if (item.state === "done") this.doneExpanded = true;
+    else if (item.snoozedUntil) this.snoozedExpanded = true;
+    else if (!item.needsAttention) this.activeExpanded = true;
+    this.requestPane(item.id, "none", true);
+  }
+  clearFocus() {
+    this.focusedItemIds = [];
+  }
+  completePaneRequest() {
+    this.paneRequest = undefined;
+  }
+  private requestPane(id: string, scroll: "top" | "nearest" | "none", focus: boolean) {
+    this.paneRequest = { id, scroll, focus };
   }
   transcriptSectionExpanded(key: string, todoId: string) {
-    return this.transcriptSections[key] ?? (!this.selectedItem || this.selectedItem.id === todoId);
+    return (
+      this.transcriptSections[key] ?? (this.focusedItems.length === 0 || this.isFocused(todoId))
+    );
   }
   expandTranscriptSection(key: string) {
     this.transcriptSections = { ...this.transcriptSections, [key]: true };

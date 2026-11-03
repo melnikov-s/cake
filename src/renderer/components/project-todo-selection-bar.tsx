@@ -7,15 +7,14 @@ export const ProjectTodoSelectionBar = observer(function ProjectTodoSelectionBar
 }: {
   todos: ProjectTodosStore;
 }) {
-  const selected = todos.selectedItem;
-  if (!selected) return null;
+  const focused = todos.focusedItems;
+  if (focused.length === 0) return null;
   return (
     <SelectionBar
-      label="Focused to-do:"
-      title={selected.title}
+      label={focused.length === 1 ? "Focused to-do:" : "Focused to-dos:"}
+      title={focused.map((item) => item.title).join(", ")}
       clearLabel="Clear to-do focus"
-      disabled={todos.busy}
-      onClear={() => void todos.clearSelection()}
+      onClear={() => todos.clearFocus()}
     />
   );
 });

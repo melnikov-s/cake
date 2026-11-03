@@ -9,6 +9,9 @@ const EASING = "cubic-bezier(0.2, 0, 0, 1)";
 
 interface AnimatedListProps extends HTMLAttributes<HTMLElement> {
   as?: "div" | "ul";
+  /** Track grouped rows sharing this container as their offsetParent. */
+  nested?: boolean;
+  animateRemovals?: boolean;
 }
 
 /**
@@ -20,6 +23,8 @@ export function AnimatedList({
   as: Element = "div",
   className,
   children,
+  nested = false,
+  animateRemovals = false,
   ...props
 }: AnimatedListProps) {
   const listRef = useRef<HTMLElement | null>(null);
@@ -28,14 +33,27 @@ export function AnimatedList({
   const animationsRef = useRef(new Map<string, Animation>());
   // Entrances outlive re-renders: unrelated updates must not cut them short.
   const entrancesRef = useRef(new Map<string, Animation>());
+  const previousRowsRef = useRef(
+    new Map<
+      string,
+      { element: HTMLElement; top: number; left: number; width: number; height: number }
+    >(),
+  );
+  const exitsRef = useRef(new Map<HTMLElement, Animation>());
 
   useLayoutEffect(() => {
     const items = Array.from(
-      listRef.current?.querySelectorAll<HTMLElement>(`:scope > ${ITEM_SELECTOR}`) ?? [],
+      listRef.current?.querySelectorAll<HTMLElement>(
+        nested ? ITEM_SELECTOR : `:scope > ${ITEM_SELECTOR}`,
+      ) ?? [],
     );
     const nextKeys = new Set<string>();
     const nextTops = new Map<string, number>();
     const moves: { item: HTMLElement; offset: number }[] = [];
+    const nextRows = new Map<
+      string,
+      { element: HTMLElement; top: number; left: number; width: number; height: number }
+    >();
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
     for (const item of items) {
@@ -45,6 +63,14 @@ export function AnimatedList({
       // Layout coordinates ignore scrolling and in-flight row transforms.
       const nextTop = item.offsetTop;
       nextTops.set(key, nextTop);
+      if (animateRemovals)
+        nextRows.set(key, {
+          element: item,
+          top: nextTop,
+          left: item.offsetLeft,
+          width: item.offsetWidth,
+          height: item.offsetHeight,
+        });
       const previousTop = previousTopsRef.current.get(key);
       const offset = previousTop === undefined ? 0 : previousTop - nextTop;
       if (!reduceMotion && Math.abs(offset) >= 0.5) moves.push({ item, offset });
@@ -66,6 +92,47 @@ export function AnimatedList({
       animation.cancel();
       animationsRef.current.delete(key);
     }
+
+    for (const [copy, animation] of exitsRef.current) {
+      if (!reduceMotion) continue;
+      animation.cancel();
+      copy.remove();
+      exitsRef.current.delete(copy);
+    }
+    if (animateRemovals && !reduceMotion) {
+      for (const [key, row] of previousRowsRef.current) {
+        if (nextKeys.has(key)) continue;
+        // Retain only inert pixels, never a second interactive row or mounted Store.
+        // SAFETY: cloneNode preserves the tag of the measured HTMLElement row.
+        const copy = row.element.cloneNode(true) as HTMLElement;
+        // Keep appearance but strip the live row identity from the outgoing root.
+        for (const attribute of Array.from(copy.attributes)) {
+          if (attribute.name !== "class" && attribute.name !== "style")
+            copy.removeAttribute(attribute.name);
+        }
+        for (const element of copy.querySelectorAll("[id]")) element.removeAttribute("id");
+        copy.inert = true;
+        copy.setAttribute("aria-hidden", "true");
+        copy.classList.add("pointer-events-none", "absolute", "m-0!");
+        Object.assign(copy.style, {
+          top: `${row.top}px`,
+          left: `${row.left}px`,
+          width: `${row.width}px`,
+          height: `${row.height}px`,
+        });
+        listRef.current?.append(copy);
+        const animation = copy.animate(
+          [{ opacity: 1 }, { opacity: 0, transform: "translateY(-4px) scale(0.97)" }],
+          { duration: REORDER_DURATION_MS, easing: EASING },
+        );
+        exitsRef.current.set(copy, animation);
+        animation.onfinish = () => {
+          copy.remove();
+          exitsRef.current.delete(copy);
+        };
+      }
+    }
+    previousRowsRef.current = nextRows;
 
     // Measure the entire list before starting any animations. Interleaving
     // animate() with layout reads forces layout for every shifted row.
@@ -109,6 +176,10 @@ export function AnimatedList({
     () => () => {
       for (const animation of animationsRef.current.values()) animation.cancel();
       for (const animation of entrancesRef.current.values()) animation.cancel();
+      for (const [copy, animation] of exitsRef.current) {
+        animation.cancel();
+        copy.remove();
+      }
     },
     [],
   );

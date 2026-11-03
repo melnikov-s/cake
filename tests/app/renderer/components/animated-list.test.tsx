@@ -189,6 +189,80 @@ describe("AnimatedList", () => {
     expect(animate).not.toHaveBeenCalled();
   });
 
+  it("tracks a row moving between groups as a reorder, not a new arrival", () => {
+    const renderGroup = (focused: boolean) =>
+      act(() =>
+        root.render(
+          <AnimatedList nested animateRemovals>
+            <section key="focus">
+              {focused && <div data-animated-list-key="first">First</div>}
+            </section>
+            <section key="active">
+              {!focused && <div data-animated-list-key="first">First</div>}
+            </section>
+          </AnimatedList>,
+        ),
+      );
+    itemTops.set("first", 200);
+    renderGroup(false);
+    itemTops.set("first", 0);
+    renderGroup(true);
+    expect(animate).toHaveBeenCalledExactlyOnceWith(
+      [{ translate: "0 200px" }, { translate: "none" }],
+      expect.objectContaining({ duration: 160 }),
+    );
+    expect(container.querySelectorAll('[aria-hidden="true"]')).toHaveLength(0);
+  });
+
+  it("fades removed rows as inert snapshots and cleans them up on finish or unmount", () => {
+    const renderRemoval = (show: boolean) =>
+      act(() =>
+        root.render(
+          <AnimatedList animateRemovals>
+            {show && (
+              <div id="original" data-animated-list-key="first">
+                <button id="control">First</button>
+              </div>
+            )}
+          </AnimatedList>,
+        ),
+      );
+    renderRemoval(true);
+    renderRemoval(false);
+    const ghost = container.querySelector<HTMLElement>('[aria-hidden="true"]')!;
+    expect(ghost.textContent).toBe("First");
+    expect(ghost.inert).toBe(true);
+    expect(ghost.querySelector("[id]")).toBeNull();
+    expect(ghost.hasAttribute("id")).toBe(false);
+    expect(ghost.hasAttribute("data-animated-list-key")).toBe(false);
+    const exit = animate.mock.results.at(-1)!.value;
+    act(() => exit.onfinish());
+    expect(ghost.isConnected).toBe(false);
+    renderRemoval(true);
+    renderRemoval(false);
+    const nextExit = animate.mock.results.at(-1)!.value;
+    act(() => root.render(null));
+    expect(nextExit.cancel).toHaveBeenCalledOnce();
+    expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it("omits removal snapshots and animations with reduced motion", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true })),
+    );
+    act(() =>
+      root.render(
+        <AnimatedList animateRemovals>
+          <div data-animated-list-key="first" />
+        </AnimatedList>,
+      ),
+    );
+    act(() => root.render(<AnimatedList animateRemovals />));
+    expect(animate).not.toHaveBeenCalled();
+    expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+
   it("updates measured positions without animation when reduced motion is requested", () => {
     vi.stubGlobal(
       "matchMedia",

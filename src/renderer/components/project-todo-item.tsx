@@ -1,5 +1,4 @@
 import { observer } from "r-state-tree/react";
-import { useEffect, useRef } from "react";
 import {
   projectTodoAssociationKey,
   projectTodoCategory,
@@ -12,7 +11,7 @@ import { ProjectTodoSnoozePicker } from "./project-todo-snooze-picker";
 import { ProjectTodoAttentionEditor } from "./project-todo-attention-editor";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
-import { CircleIcon, CheckIcon, ReplyIcon } from "@/components/ui/icons";
+import { CircleIcon, CheckIcon, ReplyIcon, CloseIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
@@ -24,12 +23,8 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
   item: ProjectTodo;
   store: ProjectTodosStore;
 }) {
-  const selected = store.selectedItem?.id === item.id;
+  const selected = store.isFocused(item.id);
   const inspected = store.visible && store.inspectedItemId === item.id;
-  const row = useRef<HTMLLIElement>(null);
-  useEffect(() => {
-    if (inspected) row.current?.scrollIntoView?.({ block: "nearest" });
-  }, [inspected]);
   const attention = projectTodoCategory(item) === "attention";
   const description = item.description !== item.title ? item.description : "";
   const menuItems: ContextMenuItem[] =
@@ -90,7 +85,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
         ]
       : [];
   return (
-    <li ref={row} data-todo-id={item.id} data-animated-list-key={item.id}>
+    <li data-todo-id={item.id} data-animated-list-key={item.id}>
       <ContextMenu label={`Actions for ${item.title}`} items={menuItems}>
         <NavItem
           wholeRowAction
@@ -101,9 +96,9 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           actionProps={{
             "aria-pressed": selected,
             "aria-label": item.title,
-            "aria-disabled": store.busy || item.state === "done" || Boolean(item.snoozedUntil),
+            "aria-disabled": false,
           }}
-          onClick={() => void store.select(item)}
+          onClick={() => store.focus(item)}
           className={cn(
             "grid items-start gap-x-2.5 gap-y-0 px-3 py-2.5 text-sm leading-snug [&>button:first-child]:col-start-2 [&>button:first-child]:row-start-1 [&>button:first-child]:items-start [&>[data-slot=nav-trailing]]:col-start-1 [&>[data-slot=nav-trailing]]:row-start-1 [&_a>svg]:hidden",
             "grid-cols-[auto_minmax(0,1fr)_auto]",
@@ -136,6 +131,15 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           >
             <ReplyIcon />
           </IconButton>
+          {selected && (
+            <IconButton
+              className="col-start-3 row-start-3 mt-1 size-5"
+              tooltip={`Unfocus to-do: ${item.title}`}
+              onClick={() => store.unfocus(item)}
+            >
+              <CloseIcon />
+            </IconButton>
+          )}
           {attention && (
             <Button
               variant="ghost"

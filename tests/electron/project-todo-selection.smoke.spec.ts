@@ -164,13 +164,15 @@ test("to-do text selection and copying do not activate rows or their controls", 
       await unchanged();
       await clearSelection();
     }
-    // Clicking an already focused row clears the transcript view filter.
+    // Repeated activation is idempotent; only the explicit control clears view focus.
     const savedSelection = async () =>
       JSON.parse(await readFile(join(cakeHome, "state", "application.json"), "utf8")).data
         .projects[0].todos.selectedId;
     await action.click();
     await expect(action).toHaveAttribute("aria-pressed", "true");
     await action.click();
+    await expect(action).toHaveAttribute("aria-pressed", "true");
+    await row.getByRole("button", { name: `Unfocus to-do: ${title}` }).click();
     await expect(action).toHaveAttribute("aria-pressed", "false");
     await expect.poll(savedSelection).toBeNull();
     await page.setViewportSize({ width: 1400, height: 900 });
@@ -184,10 +186,14 @@ test("to-do text selection and copying do not activate rows or their controls", 
     await expect(action).toBeFocused();
     await expect(action).toHaveAttribute("aria-pressed", "true");
     await action.press("Space");
+    await expect(action).toHaveAttribute("aria-pressed", "true");
+    await row.getByRole("button", { name: `Unfocus to-do: ${title}` }).click();
     await expect(action).toHaveAttribute("aria-pressed", "false");
     await row.click({ position: { x: 8, y: 8 } });
     await expect(action).toHaveAttribute("aria-pressed", "true");
     await action.press("Enter");
+    await expect(action).toHaveAttribute("aria-pressed", "true");
+    await row.getByRole("button", { name: `Unfocus to-do: ${title}` }).click();
     await expect(action).toHaveAttribute("aria-pressed", "false");
     await expect(done).toBeEnabled();
     const reply = row.getByRole("button", { name: `Use to-do for next message: ${title}` });
@@ -204,8 +210,9 @@ test("to-do text selection and copying do not activate rows or their controls", 
     await done.click();
     await expect.poll(savedSelection).toBeNull();
     await expect(toggle).toHaveText("0");
-    await panel.getByRole("button", { name: "Done (1)" }).click();
-    await expect(action).toHaveAttribute("aria-disabled", "true");
+    await expect(action).toHaveAttribute("aria-pressed", "true");
+    await row.getByRole("button", { name: `Unfocus to-do: ${title}` }).click();
+    await expect(action).toHaveAttribute("aria-disabled", "false");
     const completedPoints = await textPoints(prose);
     await page.mouse.move(completedPoints.start.x, completedPoints.start.y);
     await page.mouse.down();

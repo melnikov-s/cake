@@ -2918,6 +2918,7 @@ const projectChatTodos: VisualCaptureScenario = {
     "done",
     "empty",
     "unselected",
+    "multi-focus",
     "reply-context",
     "links-hover",
     "links-focus",
@@ -3072,8 +3073,7 @@ const projectChatTodos: VisualCaptureScenario = {
     await input.fill("Let’s revisit the startup investigation.");
     await page.getByRole("button", { name: "To-do", exact: true }).click();
     await expect(page.getByRole("complementary", { name: "To-do" })).toBeVisible();
-    // Stored view focus clears while the pane is initially closed.
-    // Establish focus through the same action as the user.
+    // Focus is a window-local overlay. Establish it through the user action.
     const selected = page.getByRole("button", { name: "Startup investigation", exact: true });
     if ((await selected.getAttribute("aria-pressed")) !== "true") await selected.click();
     await expect(selected).toHaveAttribute("aria-pressed", "true");
@@ -3092,8 +3092,16 @@ const projectChatTodos: VisualCaptureScenario = {
       ).toBeVisible();
       await expect(selected).toHaveAttribute("aria-pressed", "true");
     }
+    if (state === "multi-focus") {
+      await page.getByRole("button", { name: "Improve project navigation", exact: true }).click();
+      await expect(
+        page.getByRole("list", { name: "Focus to-dos", exact: true }).locator("[data-todo-id]"),
+      ).toHaveCount(2);
+    }
     if (state === "unselected" || state === "empty")
-      await page.getByRole("button", { name: "Startup investigation", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Unfocus to-do: Startup investigation", exact: true })
+        .click();
     if (state === "empty") {
       const panel = page.getByRole("complementary", { name: "To-do" });
       await panel.getByRole("button", { name: "Mark done: Startup investigation" }).click();

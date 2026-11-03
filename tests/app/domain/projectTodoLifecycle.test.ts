@@ -138,7 +138,7 @@ it.effect(
         yield* initialize(); // Same startup path as BackendLive, no Project Chat or Pi runtime loaded.
         yield* Deferred.await(updated);
         expect(store.openItems.map((item) => item.id)).toEqual([ids.source]);
-        expect(store.selectedItem).toBeUndefined();
+        expect(store.focusedItems).toEqual([]);
         expect(sidePanel.target).toBeUndefined(); // Reconciliation never opens a pane.
         expect(f.persisted().projects[0]?.todos?.selectedId).toBeNull();
         expect(store.doneItems.map((item) => item.id)).toEqual([

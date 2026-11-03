@@ -151,7 +151,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       sessionId: this.sessionId,
       model: this.props.subagentCatalog,
       parts: () => this.model.uiParts,
-      selectedTodo: () => this.todos.selectedItem,
+      focusedTodos: () => this.todos.focusedItems,
     });
   }
 

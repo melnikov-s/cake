@@ -116,7 +116,7 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await action.click();
     await expect(action).toHaveAttribute("aria-pressed", "true");
     await row.getByRole("button", { name: `Dismiss attention: ${title}` }).click();
-    await expect(category("Active").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
+    await expect(category("Focus").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
     await expect(action).toHaveText(title);
     await expect(action).toHaveAttribute("aria-pressed", "true");
     await expect(panel.getByRole("region", { name: "Needs attention", exact: true })).toHaveCount(
@@ -143,7 +143,7 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await composer.fill("Discuss these findings");
     await row.getByRole("button", { name: `Dismiss attention: ${title}` }).click();
     await expect(composer).toHaveValue("Discuss these findings");
-    await expect(category("Active").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
+    await expect(category("Focus").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
     await expect(action).toHaveText(title);
     // Restore reuses the retained reason without a model. Reload persistence is checked below.
     await action.press("Shift+F10");
@@ -152,6 +152,8 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await row.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Snooze", exact: true }).click();
     await page.getByRole("menuitem", { name: "1 day", exact: true }).click();
+    await expect(category("Focus").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
+    await row.getByRole("button", { name: `Unfocus to-do: ${title}` }).click();
     await expect(category("Snoozed").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
     await expect(action).toHaveText(title);
     const snoozedDeadline = await row.locator("time").getAttribute("datetime");

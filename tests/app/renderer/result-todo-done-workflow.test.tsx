@@ -567,7 +567,7 @@ it.each(chats)(
     );
     expect(screen.getByRole("complementary", { name: "To-do" })).toBeDefined();
     expect(f.mutateUser).not.toHaveBeenCalled();
-    expect(f.chat.todos.selectedItem).toBeUndefined();
+    expect(f.chat.todos.focusedItems).toEqual([]);
     const item = await f.read(A);
     await f.commit(
       projectTodos.update(f.scope, {

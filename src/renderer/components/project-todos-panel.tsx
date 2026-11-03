@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import { observer } from "r-state-tree/react";
 import { AnimatedList } from "@/components/ui/animated-list";
 import { Callout } from "@/components/ui/callout";
@@ -11,9 +12,34 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
 }: {
   store: ProjectTodosStore;
 }) {
-  const attentionItems = store.filteredAttentionItems;
+  const pane = useRef<HTMLDivElement>(null);
+  // Only explicit row actions may scroll or restore keyboard focus after a section move.
+  // Mounting, filtering and authority updates must not replay an old request.
+  const request = store.paneRequest;
+  useLayoutEffect(() => {
+    if (!request) return;
+    const element = pane.current;
+    if (!element) return;
+    store.completePaneRequest();
+    const row = Array.from(element.querySelectorAll<HTMLElement>("[data-todo-id]")).find(
+      (candidate) => candidate.dataset.todoId === request.id,
+    );
+    if (request.focus)
+      row?.querySelector<HTMLButtonElement>("[aria-pressed]")?.focus({ preventScroll: true });
+    if (request.scroll === "nearest") row?.scrollIntoView?.({ block: "nearest" });
+    if (request.scroll === "top") {
+      element.scrollTo?.({
+        top: 0,
+        behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+          ? "instant"
+          : "smooth",
+      });
+    }
+  }, [request, store]);
   const searching = Boolean(store.query.trim());
   const sections = [
+    { title: "Focus", items: store.filteredFocusedItems, open: true },
+    { title: "Needs attention", items: store.filteredAttentionItems, open: true },
     {
       title: "Active",
       items: store.filteredActiveItems,
@@ -34,51 +60,54 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
     },
   ].filter((section) => section.items.length > 0);
   return (
-    <div className="h-full overflow-y-auto px-3 pb-4 pt-4">
+    <div
+      ref={pane}
+      data-slot="todo-scroll-pane"
+      className="h-full overflow-y-auto [overflow-anchor:none] px-3 pb-4 pt-4"
+    >
       {store.error && (
         <Callout variant="error" role="alert">
           {store.error}
         </Callout>
       )}
-      {attentionItems.length > 0 && (
-        <section aria-label="Needs attention">
-          <h2 className="mb-3 px-3 text-xs font-semibold">
-            Needs attention{" "}
-            <span className="ml-1 font-normal tabular-nums text-muted-foreground">
-              {attentionItems.length}
-            </span>
-          </h2>
-          <AnimatedList as="ul" aria-label="Needs attention to-dos" className="space-y-2">
-            {attentionItems.map((item) => (
-              <ProjectTodoItem key={item.id} item={item} store={store} />
-            ))}
-          </AnimatedList>
-        </section>
-      )}
-      {sections.map((section, index) => (
-        <section
-          key={section.title}
-          aria-label={section.title}
-          className={cn(
-            "px-1",
-            (attentionItems.length > 0 || index > 0) && "mt-4 border-t border-border pt-2",
-          )}
-        >
-          <DisclosureTrigger
-            title={`${section.title} (${section.items.length})`}
-            open={section.open}
-            onClick={section.toggle}
-          />
-          {section.open && (
-            <AnimatedList as="ul" aria-label={`${section.title} to-dos`} className="mt-2 space-y-2">
-              {section.items.map((item) => (
-                <ProjectTodoItem key={item.id} item={item} store={store} />
-              ))}
-            </AnimatedList>
-          )}
-        </section>
-      ))}
-      {attentionItems.length === 0 && sections.length === 0 && (
+      <AnimatedList nested animateRemovals>
+        {sections.map((section, index) => (
+          <section
+            key={section.title}
+            aria-label={section.title}
+            className={cn(
+              section.toggle && "px-1",
+              index > 0 && "mt-4 border-t border-border pt-2",
+            )}
+          >
+            {section.toggle ? (
+              <DisclosureTrigger
+                title={`${section.title} (${section.items.length})`}
+                open={section.open}
+                onClick={section.toggle}
+              />
+            ) : (
+              <h2 className="mb-3 px-3 text-xs font-semibold">
+                {section.title}{" "}
+                <span className="ml-1 font-normal tabular-nums text-muted-foreground">
+                  {section.items.length}
+                </span>
+              </h2>
+            )}
+            {section.open && (
+              <ul
+                aria-label={`${section.title} to-dos`}
+                className={cn("space-y-2", section.toggle && "mt-2")}
+              >
+                {section.items.map((item) => (
+                  <ProjectTodoItem key={item.id} item={item} store={store} />
+                ))}
+              </ul>
+            )}
+          </section>
+        ))}
+      </AnimatedList>
+      {sections.length === 0 && (
         <p role="status" className="px-2 py-3 text-xs text-muted-foreground">
           {searching ? "No matching to-dos." : "No to-dos."}
         </p>

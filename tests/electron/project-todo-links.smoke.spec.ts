@@ -58,6 +58,10 @@ for (const theme of ["light", "dark"] as const) {
         .toBe(true);
       await expect(startup).not.toHaveAttribute("aria-current");
       await startup.click();
+      await expect(startup).toHaveAttribute("aria-pressed", "true");
+      await panel
+        .getByRole("button", { name: "Unfocus to-do: Startup investigation", exact: true })
+        .click();
       await expect(startup).toHaveAttribute("aria-pressed", "false");
       await expect(startupSession).not.toHaveAttribute("data-associated");
       await navigation.click();
@@ -65,7 +69,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(navigationSession).toHaveAttribute("data-associated", "true");
       await startup.click();
       await expect(startupSession).toHaveAttribute("data-associated", "true");
-      await expect(navigationSession).not.toHaveAttribute("data-associated");
+      await expect(navigationSession).toHaveAttribute("data-associated", "true");
       await startupSession.locator(".session-row").hover();
       await expect(startupSession).toHaveCSS("outline-style", "dashed");
       const hover = page.locator('[data-slot="navigation-hover"]');
@@ -122,6 +126,17 @@ for (const theme of ["light", "dark"] as const) {
         await expect(page.getByRole("tooltip")).toHaveText(href!);
         await expect(link).toHaveCSS("outline-style", "solid");
       }
+      await page.keyboard.press("Shift+Tab");
+      await expect(
+        panel.getByRole("button", { name: "Unfocus to-do: Startup investigation", exact: true }),
+      ).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(
+        panel.getByRole("button", {
+          name: "Use to-do for next message: Startup investigation",
+          exact: true,
+        }),
+      ).toBeFocused();
       await page.keyboard.press("Shift+Tab");
       await expect(
         panel.getByRole("button", { name: "Mark done: Startup investigation", exact: true }),
