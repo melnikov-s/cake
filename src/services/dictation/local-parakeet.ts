@@ -22,9 +22,10 @@ import {
   type VocabularyEntry,
 } from "../../contracts/dictation/vocabulary";
 import vadManifest from "../../../native/dictation/vad-manifest.json";
-import type {
-  DictationAudio,
-  SpeechDetectionAudio,
+import {
+  DictationError,
+  type DictationAudio,
+  type SpeechDetectionAudio,
 } from "../../contracts/dictation/dictation-data";
 
 export async function loadVocabulary(root: string): Promise<DictationVocabulary> {
@@ -241,6 +242,7 @@ export class ParakeetWorker {
   };
   private failure?: Error;
   private errors = "";
+  private started = false;
   readonly ready: Promise<void>;
 
   constructor(executable: string, modelPath: string, vocabularyPath: string) {
@@ -253,6 +255,7 @@ export class ParakeetWorker {
     );
     this.ready = this.response(180_000).then((reply) => {
       if (!("ready" in reply)) throw new Error("Invalid native dictation startup response");
+      this.started = true;
     });
     const lines = createInterface({ input: this.process.stdout });
     lines.on("line", (line) => {
@@ -272,11 +275,23 @@ export class ParakeetWorker {
     this.process.stderr.on("data", (data: Buffer) => {
       this.errors = (this.errors + data.toString()).slice(-4000);
     });
-    this.process.stdin.on("error", (error) => this.fail(error));
+    this.process.stdin.on("error", () =>
+      this.fail(
+        new DictationError({
+          code: this.started ? "engine-exit" : "unknown",
+          message: "Native speech engine connection closed",
+        }),
+      ),
+    );
     this.process.once("error", (error) => this.fail(error));
     this.process.once("exit", () => {
       lines.close();
-      this.fail(new Error(this.errors || "Native speech engine stopped"));
+      this.fail(
+        new DictationError({
+          code: this.started ? "engine-exit" : "unknown",
+          message: this.errors || "Native speech engine stopped",
+        }),
+      );
     });
   }
 
@@ -290,9 +305,10 @@ export class ParakeetWorker {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.fail(
-          new Error(
-            "The native speech engine stopped responding. Disable dictation and enable it again to retry.",
-          ),
+          new DictationError({
+            code: "engine-timeout",
+            message: "The native speech engine stopped responding.",
+          }),
         );
         this.process.kill("SIGKILL");
       }, timeoutMs);
@@ -334,7 +350,7 @@ export class ParakeetWorker {
     return reply.speech;
   }
   close() {
-    this.fail(new Error("Dictation stopped"));
+    this.fail(new DictationError({ code: "stopped", message: "Dictation stopped" }));
     this.process.kill("SIGKILL");
   }
 }

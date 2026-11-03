@@ -22,7 +22,7 @@ export const DictationIndicator = observer(function DictationIndicator({
   if (!store.enabled || store.activeTargetId !== targetId) return null;
   const failed = store.phase === "error" && !store.muted;
   const loading = !store.muted && (store.phase === "preparing" || store.phase === "finishing");
-  const action = store.muted ? "Unmute dictation" : "Mute dictation";
+  const action = failed ? "Retry dictation" : store.muted ? "Unmute dictation" : "Mute dictation";
   return (
     <div
       data-slot="dictation-indicator"
@@ -34,7 +34,7 @@ export const DictationIndicator = observer(function DictationIndicator({
           "size-6 shrink-0 rounded-full border border-border text-foreground aria-pressed:text-muted-foreground aria-pressed:hover:bg-muted aria-pressed:hover:text-foreground",
           failed && "border-destructive text-destructive",
         )}
-        tooltip={failed ? `${store.label} — ${action}` : action}
+        tooltip={failed || loading ? `${store.label} — ${action}` : action}
         ariaLabel={action}
         aria-pressed={store.muted}
         aria-busy={loading}
@@ -51,7 +51,8 @@ export const DictationIndicator = observer(function DictationIndicator({
           anchor.current?.focus();
         }}
         onClick={() => {
-          store.setMuted(targetId, !store.muted);
+          if (failed) store.retry(targetId);
+          else store.setMuted(targetId, !store.muted);
           anchor.current?.focus();
         }}
       >

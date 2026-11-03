@@ -8,10 +8,14 @@ import {
   TurnId,
   type ConversationEvent,
 } from "../../../src/contracts/conversations/conversation-data";
-import type {
-  DictationAudio,
-  DictationState,
+import {
+  DictationError,
+  type DictationAudio,
+  type DictationErrorCode,
+  type DictationState,
 } from "../../../src/contracts/dictation/dictation-data";
+import { ClientError } from "../../../src/renderer/client/Client";
+import { voiceDiagnosticReport } from "../../../src/renderer/speech/diagnostics";
 import { builtinSlashCommands } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
@@ -290,6 +294,23 @@ const trial = () => screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Tr
 const message = () => screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
 const mode = () => screen.getByRole("switch", { name: "Dictation mode" });
 const listening = () => expect(screen.getAllByText("Listening").length).toBeGreaterThan(0);
+const engineFailure = (
+  code: DictationErrorCode = "engine-timeout",
+  message = "Engine interrupted",
+) =>
+  new ClientError("rejected", "dictation.transcribe", message, "private details", {
+    dictationFailure: new DictationError({ code, message }),
+  });
+const advanceRecovery = async (ms: number) => {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+};
+const endMicrophone = async (f: ReturnType<typeof renderDictation>) => {
+  await act(async () => {
+    f.audio.tracks.at(-1)!.dispatchEvent(new Event("ended"));
+  });
+};
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
@@ -1771,6 +1792,322 @@ describe("Dictation writing-field workflow", () => {
     expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
   });
 
+  it("recovers a transient decode failure once, preserves text and owner, and ignores duplicate/stale capture events", async () => {
+    using f = renderDictation();
+    await f.user.type(message(), "Typed draft");
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.audio.push(new Float32Array(12_800));
+    await f.recognize(0, "visible speech");
+    const owner = f.root.dictationStore.activeTargetId;
+    const oldTrack = f.audio.tracks[0]!;
+    await f.audio.push(new Float32Array(12_800));
+    vi.useFakeTimers();
+    await act(async () => {
+      f.requests[1]!.reply.reject(engineFailure());
+    });
+    expect(message().value).toBe("Typed draft visible speech");
+    expect(f.root.dictationStore.activeTargetId).toBe(owner);
+    expect(screen.getByText("Reconnecting dictation… (1/3)")).toBeDefined();
+    await act(async () => {
+      oldTrack.dispatchEvent(new Event("ended"));
+      oldTrack.dispatchEvent(new Event("ended"));
+    });
+    await f.audio.push(new Float32Array(12_800), 0);
+    await advanceRecovery(499);
+    expect(f.audio.getUserMedia).toHaveBeenCalledTimes(1);
+    await advanceRecovery(1);
+    listening();
+    expect(f.audio.getUserMedia).toHaveBeenCalledTimes(2);
+    await f.audio.push(new Float32Array(12_800));
+    expect(f.requests[2]!.audio.utteranceId).not.toBe(f.requests[1]!.audio.utteranceId);
+    await f.recognize(2, "new speech");
+    expect(message().value).toBe("Typed draft visible speech new speech");
+    expect(f.root.dictationStore.activeTargetId).toBe(owner);
+  });
+
+  it("bounds repeated end/start failures at three retries with backoff; startup alone never resets the budget", async () => {
+    using f = renderDictation();
+    await f.user.click(mode());
+    await f.user.click(message());
+    vi.useFakeTimers();
+    for (const [index, delay] of [500, 1500, 4000].entries()) {
+      await endMicrophone(f);
+      await advanceRecovery(delay - 1);
+      expect(f.audio.getUserMedia).toHaveBeenCalledTimes(index + 1);
+      await advanceRecovery(1);
+      listening();
+    }
+    await endMicrophone(f);
+    expect(screen.getByText(/Automatic recovery stopped/)).toBeDefined();
+    await advanceRecovery(60_000);
+    expect(f.audio.getUserMedia).toHaveBeenCalledTimes(4);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry dictation" }));
+    });
+    listening();
+    await endMicrophone(f);
+    await advanceRecovery(500);
+    expect(f.audio.getUserMedia).toHaveBeenCalledTimes(6);
+  });
+
+  it("recovers detector failure and observation interruption without a backend-ready focus veto", async () => {
+    const detectSpeech = vi
+      .fn<Client["dictation"]["detectSpeech"]>()
+      .mockRejectedValueOnce(engineFailure("engine-exit"))
+      .mockResolvedValue(true);
+    using f = renderDictation({ client: { dictation: { detectSpeech } } });
+    await f.user.click(mode());
+    await f.user.click(message());
+    vi.useFakeTimers();
+    await f.audio.push(new Float32Array(4096));
+    act(() =>
+      f.root.dictationStore.applyState({
+        ...installedDictationState,
+        status: "error",
+        message: "Worker exited",
+      }),
+    );
+    await advanceRecovery(500);
+    listening();
+    await act(async () => f.root.dictationStore.reportObservationError());
+    await advanceRecovery(1500);
+    listening();
+    expect(f.audio.getUserMedia).toHaveBeenCalledTimes(3);
+  });
+
+  it("recovers bounded audio backlog by discarding uninserted audio, never replaying it", async () => {
+    using f = renderDictation();
+    await f.user.type(message(), "Keep text");
+    await f.user.click(mode());
+    await f.user.click(message());
+    vi.useFakeTimers();
+    await f.audio.push(new Float32Array(128_001));
+    expect(screen.getByText("Reconnecting dictation… (1/3)")).toBeDefined();
+    await advanceRecovery(500);
+    listening();
+    expect(f.requests).toHaveLength(0);
+    expect(message().value).toBe("Keep text");
+    await f.audio.push(new Float32Array(12_800));
+    await f.recognize(0, "Fresh speech");
+    expect(message().value).toBe("Keep text Fresh speech");
+  });
+
+  it("preserves recovery eligibility across speech-owning DOM blur, but unmount cancels it", async () => {
+    using f = renderDictation();
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.audio.push(new Float32Array(12_800).fill(0.1));
+    await f.recognize(0, "Captured speech");
+    await f.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+    vi.useFakeTimers();
+    await endMicrophone(f);
+    await advanceRecovery(500);
+    listening();
+    expect(message().value).toBe("Captured speech");
+    await endMicrophone(f);
+    act(() => f.remountComposer());
+    await advanceRecovery(60_000);
+    expect(f.audio.getUserMedia).toHaveBeenCalledTimes(2);
+  });
+
+  it("resets the retry budget only after 30 seconds of listening and a successful decode", async () => {
+    using f = renderDictation();
+    await f.user.click(mode());
+    await f.user.click(message());
+    vi.useFakeTimers();
+    await endMicrophone(f);
+    await advanceRecovery(500);
+    await advanceRecovery(30_000);
+    await f.audio.push(new Float32Array(12_800));
+    await f.recognize(0, "Healthy speech");
+    await endMicrophone(f);
+    await advanceRecovery(500);
+    expect(f.audio.getUserMedia).toHaveBeenCalledTimes(3);
+    expect(message().value).toBe("Healthy speech");
+  });
+
+  it.each([
+    "mute",
+    "disable",
+    "window-pause",
+    "owner-release",
+    "send-or-Escape-owner-reset",
+  ] as const)(
+    "cancels pending recovery on %s and only fresh intentional activation starts another lifecycle",
+    async (stop) => {
+      using f = renderDictation();
+      await f.user.type(message(), "Keep draft");
+      await f.user.click(mode());
+      await f.user.click(message());
+      const owner = f.root.dictationStore.activeTargetId!;
+      vi.useFakeTimers();
+      await endMicrophone(f);
+      await act(async () => {
+        if (stop === "mute") f.root.dictationStore.setMuted(owner, true);
+        else if (stop === "disable") await f.root.dictationStore.setEnabled(false);
+        else if (stop === "owner-release") f.root.dictationStore.releaseTarget(owner);
+        // Successful Send and Escape route through this owner-reset boundary. Their
+        // key/submit wiring is covered by the separate blur/lifecycle implementation.
+        else f.root.dictationStore.pauseCapture();
+      });
+      await endMicrophone(f);
+      await advanceRecovery(60_000);
+      expect(f.audio.getUserMedia).toHaveBeenCalledTimes(1);
+      expect(message().value).toBe("Keep draft");
+      if (stop === "owner-release" || stop === "send-or-Escape-owner-reset") {
+        act(() => {
+          fireEvent.blur(message());
+          fireEvent.focus(message());
+        });
+        await act(async () => {});
+        listening();
+        await endMicrophone(f);
+        await advanceRecovery(500);
+        expect(f.audio.getUserMedia).toHaveBeenCalledTimes(3);
+      }
+    },
+  );
+
+  it("moves ownership during backoff without the old timer or recognition result inserting into either field", async () => {
+    using f = renderDictation();
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.audio.push(new Float32Array(12_800));
+    vi.useFakeTimers();
+    await endMicrophone(f);
+    await act(async () => {
+      trial().focus();
+    });
+    await f.recognize(0, "Late old speech");
+    await advanceRecovery(10_000);
+    expect(f.audio.getUserMedia).toHaveBeenCalledTimes(2);
+    expect(message().value).toBe("");
+    expect(trial().value).toBe("");
+    await f.audio.push(new Float32Array(12_800));
+    await f.recognize(1, "Correct field");
+    expect(trial().value).toBe("Correct field");
+  });
+
+  it("ignores a failed decode from an insertion sealed by manual editing", async () => {
+    using f = renderDictation();
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.audio.push(new Float32Array(12_800));
+    await f.user.type(message(), "Manual edit");
+    await act(async () => {
+      f.requests[0]!.reply.reject(engineFailure());
+    });
+    listening();
+    expect(message().value).toBe("Manual edit");
+    expect(f.audio.getUserMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not recover finish/Enter failures or submit a truncated draft", async () => {
+    using f = renderDictation();
+    await f.user.type(message(), "Keep draft");
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.user.keyboard("{Enter}");
+    vi.useFakeTimers();
+    await act(async () => {
+      f.requests[0]!.reply.reject(engineFailure());
+    });
+    await advanceRecovery(60_000);
+    expect(screen.getByRole("button", { name: "Retry dictation" })).toBeDefined();
+    expect(f.prompt).not.toHaveBeenCalled();
+    expect(message().value).toBe("Keep draft");
+    expect(f.audio.getUserMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["configuration", "unknown", "stopped"] as const)(
+    "keeps %s errors actionable, with no automatic or typing-triggered retry",
+    async (code) => {
+      using f = renderDictation();
+      await f.user.click(mode());
+      await f.user.click(message());
+      await f.audio.push(new Float32Array(12_800));
+      vi.useFakeTimers();
+      await act(async () => {
+        f.requests[0]!.reply.reject(engineFailure(code));
+      });
+      act(() => {
+        fireEvent.change(message(), { target: { value: "Still writable" } });
+      });
+      await advanceRecovery(60_000);
+      expect(screen.getByRole("button", { name: "Retry dictation" })).toBeDefined();
+      expect(f.audio.getUserMedia).toHaveBeenCalledTimes(1);
+      expect(message().value).toBe("Still writable");
+    },
+  );
+
+  it("retries temporary microphone acquisition failure and cancels a recovery still awaiting startup", async () => {
+    using f = renderDictation();
+    f.audio.getUserMedia.mockRejectedValueOnce(new DOMException("Device busy", "NotReadableError"));
+    await f.user.click(mode());
+    vi.useFakeTimers();
+    await act(async () => {
+      message().focus();
+    });
+    expect(screen.getByText("Reconnecting dictation… (1/3)")).toBeDefined();
+    const opening = deferred<Awaited<ReturnType<typeof f.audio.getUserMedia>>>();
+    f.audio.getUserMedia.mockImplementationOnce(() => opening.promise);
+    await advanceRecovery(500);
+    const owner = f.root.dictationStore.activeTargetId!;
+    act(() => f.root.dictationStore.releaseTarget(owner));
+    const track = new (class extends EventTarget {
+      stop = vi.fn();
+    })();
+    await act(async () => {
+      opening.resolve({ getTracks: () => [track], getAudioTracks: () => [] });
+    });
+    await advanceRecovery(60_000);
+    expect(track.stop).toHaveBeenCalledOnce();
+    expect(f.audio.getUserMedia).toHaveBeenCalledTimes(2);
+    expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+  });
+
+  it("never retries microphone permission denial", async () => {
+    using f = renderDictation();
+    f.audio.getUserMedia.mockRejectedValue(
+      new DOMException("Microphone permission denied", "NotAllowedError"),
+    );
+    await f.user.click(mode());
+    await f.user.click(message());
+    vi.useFakeTimers();
+    await advanceRecovery(60_000);
+    expect(screen.getByRole("button", { name: "Retry dictation" })).toBeDefined();
+    expect(f.audio.getUserMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels backoff on disposal and emits only bounded metadata, not dictated text or raw errors", async () => {
+    const f = renderDictation();
+    try {
+      await f.user.click(mode());
+      await f.user.click(message());
+      await f.audio.push(new Float32Array(12_800));
+      await f.recognize(0, "SECRET DICTATED SENTENCE");
+      await f.audio.push(new Float32Array(12_800));
+      vi.useFakeTimers();
+      await act(async () => {
+        f.requests[1]!.reply.reject(
+          engineFailure("engine-timeout", "SECRET RAW ERROR /private/path"),
+        );
+      });
+      const report = voiceDiagnosticReport();
+      expect(report).toContain('"code": "engine-timeout"');
+      expect(report).toContain('"stage": "transcription"');
+      expect(report).not.toContain("SECRET");
+      expect(report).not.toContain("private details");
+      expect(report).not.toContain(f.requests[0]!.audio.utteranceId);
+      expect(JSON.parse(report).events.length).toBeLessThanOrEqual(100);
+    } finally {
+      f[Symbol.dispose]();
+    }
+    await advanceRecovery(60_000);
+    expect(f.audio.getUserMedia).toHaveBeenCalledTimes(1);
+  });
+
   it("shows recognition failure, stops capture, and never submits a truncated draft", async () => {
     using fixture = renderDictation();
     await fixture.user.type(message(), "Keep draft");
@@ -1785,20 +2122,19 @@ describe("Dictation writing-field workflow", () => {
     const errorStatus = screen.getByText("Engine stopped", { selector: "span" });
     expect(errorStatus.classList.contains("sr-only")).toBe(true);
     expect(
-      screen.getByRole("button", { name: "Mute dictation" }).classList.contains("text-destructive"),
+      screen
+        .getByRole("button", { name: "Retry dictation" })
+        .classList.contains("text-destructive"),
     ).toBe(true);
     expect(
       screen
-        .getByRole("button", { name: "Mute dictation" })
+        .getByRole("button", { name: "Retry dictation" })
         .closest('[data-slot="composer-dictation"]'),
     ).not.toBeNull();
     expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
     expect(fixture.prompt).not.toHaveBeenCalled();
     expect(message().value).toBe("Keep draft");
-    await fixture.user.click(mode());
-    expect(fixture.release).toHaveBeenCalledOnce();
-    await fixture.user.click(mode());
-    await fixture.user.click(message());
+    await fixture.user.click(screen.getByRole("button", { name: "Retry dictation" }));
     listening();
     await fixture.audio.push(new Float32Array(12_800));
     await fixture.recognize(1, "Recovered speech");

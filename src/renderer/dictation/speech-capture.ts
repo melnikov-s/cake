@@ -4,6 +4,12 @@ import { encodePcm, type Microphone, type MicrophoneCapture } from "./microphone
 const FRAME_SAMPLES = 4096;
 const MAX_PENDING_SAMPLES = 128_000;
 
+export class SpeechCaptureBacklogError extends Error {
+  constructor(readonly queuedSeconds: number) {
+    super("Dictation cannot keep up with microphone audio.");
+  }
+}
+
 /** Capture adapter: ordered native detection with bounded, capture-local PCM buffering.
  * Stores still own utterances, send policy and interruption decisions. No audio is persisted.
  */
@@ -61,8 +67,9 @@ export async function openSpeechCapture(
     queue.push(samples);
     queuedSamples += samples.length;
     if (queuedSamples > MAX_PENDING_SAMPLES) {
+      const error = new SpeechCaptureBacklogError(queuedSamples / 16_000);
       stop();
-      onError(new Error("Speech detection cannot keep up. Re-enter conversation mode to retry."));
+      onError(error);
       return;
     }
     pump();

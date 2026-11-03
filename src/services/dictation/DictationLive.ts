@@ -29,7 +29,12 @@ import {
 } from "./local-parakeet";
 
 const failure = (error: unknown) =>
-  new DictationError({ message: error instanceof Error ? error.message : String(error) });
+  error instanceof DictationError
+    ? error
+    : new DictationError({
+        code: "unknown",
+        message: error instanceof Error ? error.message : String(error),
+      });
 
 /** Installation, model changes and inference serialize; a warm process lives until disabled or main exits. */
 export const makeDictationLive = (root: string, supported: boolean, helperPath: string) =>
@@ -89,10 +94,12 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
       const requireSupported = Effect.fn("Dictation.requireSupported")(function* () {
         if (!supported)
           return yield* new DictationError({
+            code: "configuration",
             message: "Local Parakeet dictation requires Apple Silicon and macOS 14 or later.",
           });
         if (!(yield* native(() => helperAvailable(helperPath))))
           return yield* new DictationError({
+            code: "configuration",
             message: "Cake's bundled speech engine is missing. Reinstall or update Cake.",
           });
       });
@@ -108,6 +115,7 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
           Effect.catch((error) =>
             Effect.gen(function* () {
               stop();
+              yield* Effect.logWarning("Dictation operation failed", { code: error.code });
               yield* patch({ status: "error", message: error.message });
               return yield* error;
             }),
@@ -128,6 +136,7 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
         listVocabulary: Effect.fn("Dictation.listVocabulary")(function* (input) {
           if (!vocabulary)
             return yield* new DictationError({
+              code: "configuration",
               message: "Vocabulary could not be loaded; edits are disabled.",
             });
           return listVocabulary(vocabulary, input);
@@ -138,6 +147,7 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
               const current = vocabulary;
               if (!current)
                 return yield* new DictationError({
+                  code: "configuration",
                   message: "Vocabulary could not be loaded; edits are disabled.",
                 });
               const next = yield* Effect.try({
@@ -238,6 +248,7 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
               }
               if (!current.modelPath || !current.engineAvailable)
                 return yield* new DictationError({
+                  code: "configuration",
                   message: "Install Parakeet in Settings → Voice & Dictation first.",
                 });
               yield* patch({ status: "loading", message: "Preparing dictation…" });
@@ -255,6 +266,7 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
                 }
               });
               yield* patch({ status: "ready", message: undefined });
+              yield* Effect.logInfo("Dictation engine ready");
             }),
           );
         }),
@@ -269,6 +281,7 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
               const active = worker;
               if (!active)
                 return yield* new DictationError({
+                  code: "engine-not-ready",
                   message: "The speech detector is not ready. Enable dictation again to retry.",
                 });
               return yield* native((signal) => {
@@ -287,6 +300,7 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
               const active = worker;
               if (!active)
                 return yield* new DictationError({
+                  code: "engine-not-ready",
                   message: "The speech model is not ready. Enable dictation again to retry.",
                 });
               const installed = (yield* SubscriptionRef.get(state)).vocabularyInstalled;

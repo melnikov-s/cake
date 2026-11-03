@@ -6,9 +6,10 @@ import type {
 } from "../../contracts/dictation/dictation-data";
 import type { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
 import { speechRecognitionSettings } from "../../utils/speech-input-settings";
-import type { Client } from "../client/Client";
+import { ClientError, type Client } from "../client/Client";
 import { encodePcm, type Microphone, type MicrophoneCapture } from "../dictation/microphone";
-import { openSpeechCapture } from "../dictation/speech-capture";
+import { openSpeechCapture, SpeechCaptureBacklogError } from "../dictation/speech-capture";
+import { recordVoiceDiagnostic } from "../speech/diagnostics";
 import { createReusableMicrophone } from "../dictation/reusable-microphone";
 import { DictationVocabularyStore } from "./DictationVocabularyStore";
 import type { ProvisionalTextSpan } from "../dictation/provisional-text";
@@ -38,10 +39,42 @@ interface Utterance {
   heardSpeech: boolean;
   cleanupDue: boolean;
   cleanupPending?: Promise<void>;
+  listeningSince: number;
 }
 export type DictationPhase = "off" | "paused" | "preparing" | "listening" | "finishing" | "error";
 const CLEANUP_SILENCE_SAMPLES = 3 * 16_000;
 const MICROPHONE_HANDOFF_MS = 500;
+const RECOVERY_DELAYS_MS = [500, 1500, 4000] as const;
+const HEALTHY_LISTENING_MS = 30_000;
+
+type FailureStage = "startup" | "detection" | "transcription" | "microphone" | "observation";
+const recoveryCode = (error: unknown): string => {
+  if (error instanceof SpeechCaptureBacklogError) return "audio-backlog";
+  if (error instanceof ClientError) return error.dictationFailure?.code ?? error.kind;
+  if (error instanceof DOMException) {
+    if (
+      [
+        "NotAllowedError",
+        "NotFoundError",
+        "NotReadableError",
+        "SecurityError",
+        "OverconstrainedError",
+      ].includes(error.name)
+    )
+      return error.name;
+  }
+  return "unknown";
+};
+const recoverable = new Set([
+  "engine-timeout",
+  "engine-exit",
+  "engine-not-ready",
+  "audio-backlog",
+  "microphone-ended",
+  "NotReadableError",
+  "transport",
+  "observation",
+]);
 
 /** Window-owned voice-input workflow. Focus is take-latest; drafts retain their existing owners.
  * Main owns installation. This window persists enablement, microphone and cleanup choice (last
@@ -75,6 +108,9 @@ export class DictationStore extends Store<{
   private utterance: Utterance | undefined;
   private installation: AbortController | undefined;
   private modeRevision = 0;
+  private recoveryAttempt = 0;
+  private recoveryRevision = 0;
+  private recoveryTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly microphone: ReturnType<typeof createReusableMicrophone>;
   private microphoneReleaseTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -117,10 +153,16 @@ export class DictationStore extends Store<{
   }
   get label() {
     if (this.muted) return "Dictation muted";
-    if (this.phase === "preparing") return "Preparing dictation… Wait to speak";
+    if (this.phase === "preparing")
+      return this.recoveryAttempt
+        ? `Reconnecting dictation… (${this.recoveryAttempt}/${RECOVERY_DELAYS_MS.length})`
+        : "Preparing dictation… Wait to speak";
     if (this.phase === "listening") return "Listening";
     if (this.phase === "finishing") return "Finishing…";
-    if (this.phase === "error") return this.error ?? "Dictation unavailable";
+    if (this.phase === "error")
+      return this.recoveryAttempt >= RECOVERY_DELAYS_MS.length
+        ? `Automatic recovery stopped. ${this.error ?? "Dictation unavailable"}`
+        : (this.error ?? "Dictation unavailable");
     return "Dictation paused";
   }
   applyState(state: DictationState) {
@@ -131,10 +173,71 @@ export class DictationStore extends Store<{
     this.error = error instanceof Error ? error.message : String(error);
     this.phase = "error";
   }
+  /** Observation reconnects itself; capture recovery still belongs to the current owner. */
+  reportObservationError() {
+    if (!this.utterance && !this.recoveryTimer) return;
+    this.captureFailed(
+      new Error("Dictation connection interrupted."),
+      "observation",
+      "observation",
+    );
+  }
+  private captureFailed(error: unknown, stage: FailureStage, code = recoveryCode(error)) {
+    const finishing = this.utterance?.finishing;
+    const queuedSeconds =
+      error instanceof SpeechCaptureBacklogError
+        ? error.queuedSeconds
+        : (this.utterance?.samples ?? 0) / 16_000;
+    const target = this.target;
+    this.reportError(error);
+    const delay = RECOVERY_DELAYS_MS[this.recoveryAttempt];
+    const retry =
+      !finishing &&
+      recoverable.has(code) &&
+      delay !== undefined &&
+      target &&
+      this.enabled &&
+      !this.muted &&
+      !this.busy &&
+      !this.signal.aborted;
+    recordVoiceDiagnostic("dictation-error", {
+      stage,
+      code,
+      queuedSeconds,
+      attempt: this.recoveryAttempt,
+      decision: retry ? "retry" : recoverable.has(code) ? "stopped-or-exhausted" : "manual",
+    });
+    if (!retry) return;
+    this.recoveryAttempt++;
+    this.phase = "preparing";
+    const revision = this.recoveryRevision;
+    this.recoveryTimer = setTimeout(() => {
+      this.recoveryTimer = undefined;
+      if (
+        revision !== this.recoveryRevision ||
+        this.target !== target ||
+        !this.enabled ||
+        this.muted ||
+        this.busy ||
+        this.signal.aborted
+      )
+        return;
+      recordVoiceDiagnostic("dictation-retry", { stage, code, attempt: this.recoveryAttempt });
+      void this.start(target, true);
+    }, delay);
+  }
+  /** The error microphone is a direct manual retry, not a mute/unmute dance. */
+  retry(id: string) {
+    if (this.target?.id === id && this.phase === "error") void this.start(this.target);
+  }
   private endUtterance(retainMicrophone = false) {
+    ++this.recoveryRevision;
+    clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = undefined;
     clearTimeout(this.microphoneReleaseTimer);
     this.microphoneReleaseTimer = undefined;
     const run = this.utterance;
+    if (run) recordVoiceDiagnostic("dictation-stop", { phase: this.phase });
     this.utterance = undefined;
     this.provisionalText = undefined;
     this.audioLevel = 0;
@@ -156,6 +259,7 @@ export class DictationStore extends Store<{
   async setEnabled(enabled: boolean) {
     const revision = ++this.modeRevision;
     this.enabled = enabled;
+    this.recoveryAttempt = 0;
     this.muted = false;
     this.error = undefined;
     this.endUtterance();
@@ -172,20 +276,22 @@ export class DictationStore extends Store<{
       this.phase = "paused";
       if (this.target && !this.muted) await this.start(this.target);
     } catch (error) {
-      if (revision === this.modeRevision && !this.signal.aborted) this.reportError(error);
+      if (revision === this.modeRevision && !this.signal.aborted) {
+        if (enabled && this.target) this.captureFailed(error, "startup");
+        else this.reportError(error);
+      }
     }
   }
   focus(target: DictationTarget) {
     if (this.target === target) return;
     // A field replacement cancels capture preparation, not mode enablement. Remember the
     // capture before ending it so its successor can prepare instead of waiting forever.
-    const replacingCapture = this.utterance !== undefined;
+    const replacingCapture = this.utterance !== undefined || this.recoveryTimer !== undefined;
     this.endUtterance(true);
     this.target = target;
     if (!this.enabled || this.muted || this.busy) return;
-    if (this.state?.status === "error")
-      this.reportError(new Error(this.state.message ?? "Dictation unavailable"));
-    else if (this.phase !== "preparing" || replacingCapture) void this.start(target);
+    // prepare() can rebuild a failed worker; an observed backend error is not a focus veto.
+    if (this.phase !== "preparing" || replacingCapture) void this.start(target);
   }
   /** Release an unmounted or ineligible field. DOM blur alone retains the target. */
   releaseTarget(id: string) {
@@ -202,6 +308,8 @@ export class DictationStore extends Store<{
   /** Manual editing/cursor movement seals visible speech and starts a new insertion. */
   restart(id: string) {
     if (this.target?.id !== id || !this.enabled || this.muted) return;
+    // Typing/selection changes must not bypass recovery backoff or retry a permanent error.
+    if (this.phase === "error" || this.recoveryTimer) return;
     if (this.phase === "finishing") {
       this.endUtterance();
       this.phase = "paused";
@@ -227,9 +335,13 @@ export class DictationStore extends Store<{
       run.target.begin();
     } else if (this.state?.status === "ready") void this.start(this.target);
   }
-  private async start(target: DictationTarget) {
-    if (!this.enabled || this.muted || this.busy || this.signal.aborted) return;
+  private async start(target: DictationTarget, recovering = false) {
+    if (this.target !== target || !this.enabled || this.muted || this.busy || this.signal.aborted)
+      return;
     this.endUtterance(true);
+    if (!recovering) this.recoveryAttempt = 0;
+    this.error = undefined;
+    recordVoiceDiagnostic("dictation-start", { attempt: this.recoveryAttempt });
     const run: Utterance = {
       settings: speechRecognitionSettings(this.props.preferences.values),
       id: crypto.randomUUID(),
@@ -245,6 +357,7 @@ export class DictationStore extends Store<{
       quietSamples: 0,
       heardSpeech: false,
       cleanupDue: false,
+      listeningSince: 0,
     };
     this.utterance = run;
     this.phase = "preparing";
@@ -279,14 +392,16 @@ export class DictationStore extends Store<{
           }
         },
         (error) => {
-          if (this.utterance === run) this.reportError(error);
+          if (this.utterance === run) this.captureFailed(error, "detection");
         },
         run.controller.signal,
         this.deviceId,
         () => {
           if (this.utterance === run)
-            this.reportError(
-              new Error("Microphone disconnected. Choose a microphone and enable dictation again."),
+            this.captureFailed(
+              new Error("Microphone disconnected. Check the selected microphone."),
+              "microphone",
+              "microphone-ended",
             );
         },
         (samples) => {
@@ -308,7 +423,10 @@ export class DictationStore extends Store<{
           run.chunks.push(samples);
           run.samples += samples.length;
           if (run.samples > 128_000) {
-            this.reportError(new Error("Dictation cannot keep up. Re-enable dictation to retry."));
+            this.captureFailed(
+              new SpeechCaptureBacklogError(run.samples / 16_000),
+              "transcription",
+            );
             return;
           }
           if (run.samples >= 12_800 && !run.pending && !run.finishing) this.pump(run);
@@ -320,8 +438,10 @@ export class DictationStore extends Store<{
       }
       run.capture = capture;
       this.phase = "listening";
+      run.listeningSince = performance.now();
+      recordVoiceDiagnostic("dictation-ready", { attempt: this.recoveryAttempt });
     } catch (error) {
-      if (this.utterance === run) this.reportError(error);
+      if (this.utterance === run) this.captureFailed(error, "startup");
     }
   }
   private async transcribe(run: Utterance, final: boolean) {
@@ -334,6 +454,12 @@ export class DictationStore extends Store<{
       { signal: this.signal },
     );
     if (this.utterance === run && run.id === utteranceId) {
+      // A warm microphone alone is not proof of recovery. Reset only after sustained
+      // listening AND a successful decode, including a successful silent decode.
+      if (this.recoveryAttempt && performance.now() - run.listeningSince >= HEALTHY_LISTENING_MS) {
+        recordVoiceDiagnostic("dictation-recovered", { attempt: this.recoveryAttempt });
+        this.recoveryAttempt = 0;
+      }
       // Empty/no-change recognition is not an edit: preserve the user's selection until
       // words arrive, even when background noise triggers the speech detector.
       if (text.trim() === run.rawText.trim()) return;
@@ -404,9 +530,10 @@ export class DictationStore extends Store<{
     }
   }
   private pump(run: Utterance) {
+    const id = run.id;
     run.pending = this.transcribe(run, false)
       .catch((error) => {
-        if (this.utterance === run) this.reportError(error);
+        if (this.utterance === run && run.id === id) this.captureFailed(error, "transcription");
       })
       .finally(() => {
         run.pending = undefined;
@@ -443,7 +570,14 @@ export class DictationStore extends Store<{
       this.phase = "paused";
       return true;
     } catch (error) {
-      if (this.utterance === run) this.reportError(error);
+      if (this.utterance === run) {
+        recordVoiceDiagnostic("dictation-error", {
+          stage: "finish",
+          code: recoveryCode(error),
+          decision: "manual",
+        });
+        this.reportError(error);
+      }
       return false;
     }
   }

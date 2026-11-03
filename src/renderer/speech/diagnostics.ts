@@ -1,6 +1,12 @@
 import type { SpeechInputPreferences } from "../../utils/speech-input-settings";
 
 type VoiceDiagnosticEvent =
+  | "dictation-start"
+  | "dictation-ready"
+  | "dictation-stop"
+  | "dictation-error"
+  | "dictation-retry"
+  | "dictation-recovered"
   | "enter"
   | "active"
   | "input-mute"
@@ -26,6 +32,9 @@ type VoiceDiagnosticEvent =
   | "playback-chunk";
 
 interface VoiceDiagnosticMetadata {
+  code?: string;
+  stage?: string;
+  attempt?: number;
   preferences?: SpeechInputPreferences;
   provider?: string;
   state?: string;

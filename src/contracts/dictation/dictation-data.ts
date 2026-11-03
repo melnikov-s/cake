@@ -65,6 +65,18 @@ export const SpeechDetectionAudio = Schema.Struct({
 });
 export interface SpeechDetectionAudio extends Schema.Schema.Type<typeof SpeechDetectionAudio> {}
 
+/** Stable recovery categories, never inferred from native stderr or user-facing messages. */
+export const DictationErrorCode = Schema.Literals([
+  "configuration",
+  "engine-timeout",
+  "engine-exit",
+  "engine-not-ready",
+  "stopped",
+  "unknown",
+]);
+export type DictationErrorCode = typeof DictationErrorCode.Type;
+
 export class DictationError extends Schema.TaggedError<DictationError>()("DictationError", {
+  code: DictationErrorCode,
   message: Schema.String,
 }) {}

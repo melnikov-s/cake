@@ -1,3 +1,4 @@
+import type { DictationError } from "../../contracts/dictation/dictation-data";
 import type { EditorColorTheme } from "../../contracts/themes/color-theme";
 import type {
   PrepareFileLocation,
@@ -648,16 +649,21 @@ export type ClientDomainFailure = ProjectSessionResolutionDomainFailure;
 export class ClientError extends Error {
   readonly _tag = "ClientError";
   readonly domainFailure: ClientDomainFailure | undefined;
+  readonly dictationFailure: DictationError | undefined;
 
   constructor(
     readonly kind: ClientErrorKind,
     readonly operation: string,
     message: string,
     readonly details: string,
-    options?: ErrorOptions & { readonly domainFailure?: ClientDomainFailure },
+    options?: ErrorOptions & {
+      readonly domainFailure?: ClientDomainFailure;
+      readonly dictationFailure?: DictationError;
+    },
   ) {
     super(message, options);
     this.name = "ClientError";
     this.domainFailure = options?.domainFailure;
+    this.dictationFailure = options?.dictationFailure;
   }
 }

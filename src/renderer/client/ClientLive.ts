@@ -6,6 +6,7 @@ import { makeCommandGroup } from "./command-group";
 import { requiresDeliveryReview } from "./command-delivery-policy";
 import type { Runtime } from "../runtime";
 import { ClientError, type Client, type ClientCommandOptions } from "./Client";
+import { DictationError } from "../../contracts/dictation/dictation-data";
 import type { Attachment } from "../../contracts/conversations/session-contract";
 import type { BrowserFiles } from "./BrowserFiles";
 import { browserFileChunk } from "./BrowserFiles";
@@ -103,6 +104,11 @@ const clientError = (operation: string, error: unknown, signal?: AbortSignal): C
       "The operation was cancelled",
       `Interrupted Client command: ${operation}`,
     );
+  const dictation = Schema.decodeUnknownResult(DictationError)(error);
+  if (dictation._tag === "Success")
+    return new ClientError("rejected", operation, dictation.success.message, errorDetails(error), {
+      dictationFailure: dictation.success,
+    });
   const tag = errorTag(error);
   const kind = tag?.includes("RpcClient") ? "transport" : tag ? "rejected" : "unexpected";
   return new ClientError(kind, operation, errorMessage(error), errorDetails(error));

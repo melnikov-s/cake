@@ -552,6 +552,30 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await page.getByRole("button", { name: "Back to chat" }).click();
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
     await expect(composer).toHaveValue("Typed first. Spoken next.");
+    // Kill only this fixture's external recognizer: capture recovers without refocus,
+    // preserving inserted text and creating exactly one replacement native worker.
+    await configure({ ready: true, hold: true });
+    await composer.focus();
+    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+    const recoveryStarts = (await readFile(join(model, "starts.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    process.kill(recoveryStarts.at(-1).pid, "SIGKILL");
+    await expect
+      .poll(
+        async () => (await readFile(join(model, "starts.jsonl"), "utf8")).trim().split("\n").length,
+      )
+      .toBe(recoveryStarts.length + 1);
+    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+    await expect(composer).toHaveValue("Typed first. Spoken next.");
+    await expect(composer).toBeFocused();
+    await composer.press("End");
+    await composer.pressSequentially(" Recovery typing.");
+    await expect(composer).toHaveValue("Typed first. Spoken next. Recovery typing.");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await composer.fill("Typed first. Spoken next.");
+    // Unclassified provider errors remain actionable, not blindly retried.
     // Recognition failure stays in the icon, without adding input padding or a status row.
     await configure({ ready: true, hold: true });
     await composer.focus();
@@ -571,7 +595,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     const errorStatus = page.locator('[data-slot="dictation-indicator"] [aria-live="polite"]');
     await expect(errorStatus).toHaveText("Speech engine stopped");
     await expect(errorStatus).toHaveClass("sr-only");
-    const errorControl = page.getByRole("button", { name: "Mute dictation", exact: true });
+    const errorControl = page.getByRole("button", { name: "Retry dictation", exact: true });
     await expect(errorControl).toHaveClass(/text-destructive/);
     expect(await fieldLayout()).toEqual(listeningLayout);
     await errorControl.hover();
@@ -584,7 +608,6 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await configure({ ready: true, hold: true });
     await errorControl.click();
-    await page.getByRole("button", { name: "Unmute dictation", exact: true }).click();
     await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
     await composer.fill("Typed first. Spoken next.");
     // Select transcript prose and exercise the real native context-menu path.

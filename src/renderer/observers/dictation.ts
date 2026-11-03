@@ -5,5 +5,5 @@ export const observeDictation = (runtime: Runtime, store: DictationStore) =>
   runtime.observe(
     (client) => client.dictation.observeState(),
     (state) => store.applyState(state),
-    { reportFailure: (error) => store.reportError(error) },
+    { reportFailure: () => store.reportObservationError() },
   );

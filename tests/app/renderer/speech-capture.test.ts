@@ -107,7 +107,10 @@ describe("native speech capture adapter", () => {
     );
     mic.push(new Float32Array(33 * 4096));
     expect(error).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ message: expect.stringContaining("cannot keep up") }),
+      expect.objectContaining({
+        message: expect.stringContaining("cannot keep up"),
+        queuedSeconds: (32 * 4096) / 16_000,
+      }),
     );
     expect(mic.stop).toHaveBeenCalledTimes(1);
     result.resolve(true);

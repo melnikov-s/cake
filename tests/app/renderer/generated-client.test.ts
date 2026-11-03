@@ -239,6 +239,33 @@ describe("generated renderer command adaptation", () => {
     },
   );
 
+  it("preserves the classified dictation failure through encoded RPC and the Promise Client", async () => {
+    const failure = {
+      _tag: "DictationError",
+      code: "engine-timeout",
+      message: "Native speech engine timed out",
+    };
+    const test = harness((message, respond) =>
+      respond({
+        _tag: "Exit",
+        requestId: message.id,
+        exit: { _tag: "Failure", cause: [{ _tag: "Fail", error: failure }] },
+      }),
+    );
+    try {
+      await expect(
+        test.client.dictation.transcribe({ utteranceId: "field", pcm: "", final: false }),
+      ).rejects.toMatchObject({
+        kind: "rejected",
+        operation: "dictation.transcribe",
+        dictationFailure: failure,
+      });
+      expect(requests(test.messages)).toHaveLength(1);
+    } finally {
+      await test.runtime.dispose();
+    }
+  });
+
   it("decodes committed IDs and both batch failure lists", async () => {
     const result = {
       projectPath: "/project",

@@ -1,8 +1,8 @@
 import { beforeEach, vi } from "vitest";
 import { expect, it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, Schema, Stream } from "effect";
+import { Deferred, Effect, Fiber, Logger, Schema, Stream } from "effect";
 import type { DictationVocabulary } from "../../../src/contracts/dictation/vocabulary";
-import { DictationState } from "../../../src/contracts/dictation/dictation-data";
+import { DictationError, DictationState } from "../../../src/contracts/dictation/dictation-data";
 import { Dictation } from "../../../src/services/dictation/Dictation";
 import { makeDictationLive } from "../../../src/services/dictation/DictationLive";
 
@@ -356,6 +356,41 @@ it.effect("interrupted speech detection discards the worker and allows re-prepar
     yield* service.prepare();
     expect(native.constructed).toHaveBeenCalledTimes(2);
   }).pipe(Effect.provide(live())),
+);
+
+it.effect(
+  "preserves typed transient codes, replaces failed workers, and logs metadata without raw native errors",
+  () => {
+    const logs: unknown[] = [];
+    return Effect.gen(function* () {
+      const service = yield* Dictation;
+      yield* service.prepare();
+      native.transcribe.mockRejectedValueOnce(
+        new DictationError({ code: "engine-timeout", message: "SECRET speech /private/model" }),
+      );
+      const failed = yield* service
+        .transcribe({ utteranceId: "SECRET-ID", pcm: "AAAAAA==", final: false })
+        .pipe(Effect.result);
+      expect(failed).toMatchObject({ _tag: "Failure", failure: { code: "engine-timeout" } });
+      expect((yield* state(service)).status).toBe("error");
+      yield* service.prepare();
+      expect(native.constructed).toHaveBeenCalledTimes(2);
+      expect((yield* state(service)).status).toBe("ready");
+      const report = JSON.stringify(logs);
+      expect(report).toContain("engine-timeout");
+      expect(report).not.toContain("SECRET");
+      expect(report).not.toContain("AAAAAA==");
+    }).pipe(
+      Effect.provide(live()),
+      Effect.provide(
+        Logger.layer([
+          Logger.make((entry) => {
+            logs.push(entry.message);
+          }),
+        ]),
+      ),
+    );
+  },
 );
 
 it.effect("interrupting inference discards the worker and permits a fresh warmup", () =>
