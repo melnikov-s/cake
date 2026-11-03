@@ -73,17 +73,17 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   constructor(props: ProjectWorkbenchStore["props"]) {
     super(props);
-    // A turn that finishes while its session is selected was seen, so clear the
-    // backend's finished-turn unread mark; a reminder the user set stays.
+    // A turn that finishes while its session stays selected was seen, so clear the
+    // backend's finished-turn unread mark; a reminder the user set stays. Selecting an
+    // already-unread session acknowledges nothing until the user leaves it.
     this.reaction(
       () => {
         const sessionId = this.activeSessionId;
-        return sessionId && this.props.catalog.find(sessionId)?.unread ? sessionId : undefined;
+        return { sessionId, unread: !!sessionId && !!this.props.catalog.find(sessionId)?.unread };
       },
-      (sessionId) => {
-        const management = SessionManagementContext.consume(this);
-        if (sessionId && management && !management.isUserMarkedUnread(sessionId))
-          void management.setSessionUnread(sessionId, false);
+      (current, previous) => {
+        if (current.sessionId && current.sessionId === previous.sessionId && !previous.unread)
+          void SessionManagementContext.consume(this)?.acknowledgeVisit(current.sessionId);
       },
     );
   }
@@ -235,11 +235,23 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return this.props.paneNumber?.(sessionId);
   }
 
-  private markSessionRead(sessionId: string) {
-    this.sessionRegistry.findSession(sessionId)?.markRead();
-    // Opening a session also settles a user-marked unread reminder.
-    if (this.props.catalog.find(sessionId)?.unread)
-      void SessionManagementContext.consume(this)!.setSessionUnread(sessionId, false);
+  /**
+   * Reading settles when the user leaves a session, never on arrival, so the row they
+   * clicked keeps its unread look and sidebar position while they read it.
+   */
+  changeSelectedSession(current: string | undefined, previous: string | undefined) {
+    const management = SessionManagementContext.consume(this)!;
+    if (previous) {
+      this.sessionRegistry.findSession(previous)?.depart();
+      void management.acknowledgeVisit(previous);
+    }
+    if (current) management.beginVisit(current);
+  }
+
+  /** Closing the window ends the current visit too. */
+  async acknowledgeSelectedSession() {
+    const sessionId = this.activeSessionId;
+    if (sessionId) await SessionManagementContext.consume(this)!.acknowledgeVisit(sessionId);
   }
 
   startOperation() {
@@ -442,7 +454,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.presentationStore.suspend();
     this.projectOpenStore.activate(path);
     this.props.selectSession(sessionId);
-    this.markSessionRead(sessionId);
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     session.conversationSessionStore.composerStore.draftStore.requestFocus();
@@ -655,7 +666,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     batch(() => {
       this.props.selectSession(sessionId);
       this.showLoadedSessionTarget(sessionId, true, preserveEditor);
-      this.markSessionRead(sessionId);
     });
   }
 

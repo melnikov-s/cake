@@ -42,7 +42,7 @@ export interface AppShellStoreProps {
   ): string | undefined;
   automationSessionResolved?(sessionId: string): boolean;
   sessionInNavigationScope(entry: SessionHistoryEntry): boolean;
-  onProjectSessionDeparted(sessionId: string): void;
+  onProjectSessionSelectionChanged(current: string | undefined, previous: string | undefined): void;
 }
 
 const sameSessionEntry = (left: SessionHistoryEntry, right: SessionHistoryEntry) =>
@@ -98,9 +98,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     super(props);
     this.reaction(
       () => (this.selection.kind === "project-session" ? this.selection.sessionId : undefined),
-      (current, previous) => {
-        if (previous && previous !== current) this.props.onProjectSessionDeparted(previous);
-      },
+      (current, previous) => this.props.onProjectSessionSelectionChanged(current, previous),
     );
     this.reaction(
       () => {

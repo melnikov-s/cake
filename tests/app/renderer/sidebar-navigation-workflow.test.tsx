@@ -763,19 +763,28 @@ describe("Sidebar navigation workflow", () => {
       expect(order()).toEqual(workingOrder);
       expect(row("oldest").dataset.navigationActive).toBe("true");
       expect(row("oldest").querySelector("time")?.textContent).toBe("Working");
+      // The selected row keeps its Working rank until the user leaves it.
       await fixture.publishStreaming(["oldest"], false);
       expect(order()).toEqual(
         mode === "projects"
-          ? ["middle", "newest", "oldest", "idle"]
+          ? ["middle", "oldest", "newest", "idle"]
           : ["newest", "middle", "oldest", "idle"],
       );
       expect(row("oldest").querySelector("time")?.dateTime).toBe(
         sidebarSummary("oldest", 7).modifiedAt,
       );
       await fixture.publishStreaming(["middle"], false);
-      expect(order()).toEqual(["newest", "middle", "oldest", "idle"]);
+      expect(order()).toEqual(
+        mode === "projects"
+          ? ["oldest", "newest", "middle", "idle"]
+          : ["newest", "middle", "oldest", "idle"],
+      );
       await fixture.publishStreaming(["newest"], true);
-      expect(order()).toEqual(["newest", "middle", "oldest", "idle"]);
+      expect(order()).toEqual(
+        mode === "projects"
+          ? ["newest", "oldest", "middle", "idle"]
+          : ["newest", "middle", "oldest", "idle"],
+      );
       expect(row("oldest").dataset.navigationActive).toBe("true");
       expect(row("oldest")).toBe(originalRow);
       expect(row("oldest").closest("section")).toBe(originalSection);
@@ -787,7 +796,7 @@ describe("Sidebar navigation workflow", () => {
       ]);
       expect(order()).toEqual(
         mode === "projects"
-          ? ["newest", "brand-new", "oldest", "idle"]
+          ? ["newest", "oldest", "brand-new", "idle"]
           : ["brand-new", "newest", "oldest", "idle"],
       );
     },
@@ -1110,7 +1119,7 @@ describe("Sidebar navigation workflow", () => {
     using fixture = renderSidebarNavigation({
       projects: [project],
       sessions: sidebarFamily,
-      loadedIds: ["worker"],
+      loadedIds: ["worker", "root"],
       client: { projectSessions: { open: async () => undefined } },
     });
     const header = () =>
@@ -1147,9 +1156,15 @@ describe("Sidebar navigation workflow", () => {
     await waitFor(() => expect(row("worker").getAttribute("data-navigation-active")).toBe("true"));
     const pane = document.querySelector('[data-slot="session-pane"]');
     await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
-    expect(headerStatus()).toBeNull();
+    // Selecting a session never reads it; leaving does.
+    expect(headerStatus()?.getAttribute("aria-label")).toBe("Ready, unread");
     expect(document.querySelector('[data-slot="session-pane"]')).toBe(pane);
     expect(pane?.getAttribute("data-session-id")).toBe("worker");
+    await fixture.user.click(screen.getByRole("button", { name: "Expand cake" }));
+    await fixture.user.click(rowButton("root"));
+    await waitFor(() => expect(row("root").getAttribute("data-navigation-active")).toBe("true"));
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
+    expect(headerStatus()).toBeNull();
   });
 
   it.each([

@@ -983,8 +983,8 @@ export class RootStore extends Store<{
             : this.sessionLayoutStore.focusedSessionId,
       automationSessionResolved: (sessionId) => this.automationSessionsStore.isResolved(sessionId),
       sessionInNavigationScope: (entry) => this.navigationStore.sessionInNavigationScope(entry),
-      onProjectSessionDeparted: (sessionId) =>
-        this.sessionRegistry.findSession(sessionId)?.depart(),
+      onProjectSessionSelectionChanged: (current, previous) =>
+        this.projectWorkbenchStore.changeSelectedSession(current, previous),
     });
   }
 

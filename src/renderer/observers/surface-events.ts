@@ -6,9 +6,11 @@ export const observeSurfaceEvents = (runtime: Runtime, root: RootStore) =>
   runtime.observe(
     (client) => client.events.surfaces(),
     (event) => {
+      // Main requests this flush only before closing the window or quitting.
       if (event.type === "window-state-flush-requested")
-        void root.props
-          .flushWindowState()
+        void root.projectWorkbenchStore
+          .acknowledgeSelectedSession()
+          .then(() => root.props.flushWindowState())
           .then(
             () => root.props.client.windowState.respondFlush({ requestId: event.requestId }),
             (error: unknown) =>

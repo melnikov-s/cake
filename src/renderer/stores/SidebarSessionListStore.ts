@@ -42,6 +42,8 @@ export class SidebarSessionListStore extends Store<{
   @snapshot private readonly collapsedFamilies: Record<string, boolean> = observable({});
   resolvedLaneExpanded = false;
   private readonly orderedProjectGroups = new Map<string, ReadonlySignal<ProjectSessionRoots>>();
+  /** The selected row's root keeps the activity rank it had when selected, so the row never moves under the user. */
+  private heldRootRank: { sessionId: string; rank: number } | undefined;
 
   constructor(props: SidebarSessionListStore["props"]) {
     super(props);
@@ -51,6 +53,14 @@ export class SidebarSessionListStore extends Store<{
     this.reaction(
       () => this.selectedSessionAncestorKey(),
       () => this.revealSelectedSession(),
+    );
+    this.reaction(
+      () => this.selectedActiveRootId(),
+      (sessionId) => {
+        this.heldRootRank = sessionId
+          ? { sessionId, rank: this.activityRank(this.props.catalog.find(sessionId)!) }
+          : undefined;
+      },
     );
   }
 
@@ -170,6 +180,15 @@ export class SidebarSessionListStore extends Store<{
       session?.resolved,
       ...this.sidebarAncestorIds(selected.sessionId),
     ].join("\n");
+  }
+
+  /** The active-lane root whose position decides where the selected row appears. */
+  private selectedActiveRootId() {
+    const selected = this.props.selectedConversation?.();
+    if (selected?.kind !== "project-session") return undefined;
+    const session = this.props.catalog.find(selected.sessionId);
+    if (!session || session.resolved) return undefined;
+    return this.sidebarAncestorIds(selected.sessionId).at(-1) ?? selected.sessionId;
   }
 
   /** Parents that nest this session in the sidebar: same Project and lane, else it is a root. */
@@ -356,14 +375,16 @@ export class SidebarSessionListStore extends Store<{
     );
     // Rank active roots by the same activity shown on their rows, including
     // collapsed-family indicators. Existing date/label rules break ties only.
+    const held = this.heldRootRank;
     const activityPriorities = new Map(
-      roots.map((session) => {
-        const activity = resolved ? undefined : this.sessionActivityForDisplay(session);
-        return [
-          session.sessionId,
-          activity === "unread" ? 0 : isActiveSessionActivity(activity) ? 1 : 2,
-        ];
-      }),
+      roots.map((session) => [
+        session.sessionId,
+        resolved
+          ? 2
+          : held?.sessionId === session.sessionId
+            ? held.rank
+            : this.activityRank(session),
+      ]),
     );
     const modifiedDates = resolved ? this.familyModifiedDates(byId) : undefined;
     const latestActivity = (session: ProjectSession) => modifiedDates!.get(session.sessionId)!;
@@ -390,6 +411,12 @@ export class SidebarSessionListStore extends Store<{
       return leftOrder - rightOrder || compareByDate(left, right);
     });
     return { byId, roots };
+  }
+
+  /** Green unread rows lead, then working rows, then the rest. */
+  private activityRank(session: ProjectSession) {
+    const activity = this.sessionActivityForDisplay(session);
+    return activity === "unread" ? 0 : isActiveSessionActivity(activity) ? 1 : 2;
   }
 
   private familyModifiedDates(byId: ReadonlyMap<string, ProjectSession>) {

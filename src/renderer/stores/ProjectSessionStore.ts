@@ -88,6 +88,15 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         if (ready && this.pendingSideChatThreadId) this.openSideChat(this.pendingSideChatThreadId);
       },
     );
+    // A turn that settles while this session stays selected was seen. Selecting an
+    // unread session changes nothing; leaving it (depart) reads it.
+    this.reaction(
+      () => ({ selected: this.selected, revision: this.model.settledTurnRevision }),
+      (current, previous) => {
+        if (current.selected && previous.selected && current.revision !== previous.revision)
+          this.markRead();
+      },
+    );
   }
 
   private get pending() {
@@ -224,8 +233,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     );
     // Reading acknowledges a response, not an unresolved execution failure.
     if (settled === "error" || settled === "stopped") return settled;
-    if (this.selected || this.model.settledTurnRevision <= this.readSettledTurnRevision)
-      return undefined;
+    if (this.model.settledTurnRevision <= this.readSettledTurnRevision) return undefined;
     return settled;
   }
 

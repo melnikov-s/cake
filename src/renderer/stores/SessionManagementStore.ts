@@ -19,7 +19,7 @@ export interface SessionManagementStoreProps {
 /** Owns Project Session rename, labels, archive/restore, deletion, and unread commands. */
 export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   private readonly transitioningSessionIds = observable(new Set<string>());
-  /** Unread reminders this window's user set; finished-turn unread is the backend's. */
+  /** Unread reminders this window's user set since visiting; finished-turn unread is the backend's. */
   private readonly userMarkedUnreadIds = new Set<string>();
 
   get client() {
@@ -207,8 +207,16 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     }
   }
 
-  isUserMarkedUnread(sessionId: string) {
-    return this.userMarkedUnreadIds.has(sessionId);
+  /** A new visit settles earlier reminders when it ends; only one set during the visit survives. */
+  beginVisit(sessionId: string) {
+    this.userMarkedUnreadIds.delete(sessionId);
+  }
+
+  /** Marks what the user has seen read, keeping a reminder they set during this visit. */
+  async acknowledgeVisit(sessionId: string) {
+    if (!this.props.catalog.find(sessionId)?.unread || this.userMarkedUnreadIds.has(sessionId))
+      return;
+    await this.setSessionUnread(sessionId, false);
   }
 
   async setSessionUnread(sessionId: string, unread: boolean) {

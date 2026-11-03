@@ -1,10 +1,13 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { StoreProvider } from "r-state-tree/react";
+import { Effect, Queue, Stream, type Schema } from "effect";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SessionCatalogUpdate } from "../../../src/contracts/application/catalog-data";
+import type { surfaceEventSchema } from "../../../src/contracts/application/cake-rpc-contract";
+import type { Client } from "../../../src/renderer/client/Client";
 import {
   TurnId,
   type ConversationEvent,
@@ -12,6 +15,7 @@ import {
 } from "../../../src/contracts/conversations/conversation-data";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
+import { observeSurfaceEvents } from "../../../src/renderer/observers/surface-events";
 import {
   applyConversationSnapshot,
   applyConversationUpdate,
@@ -21,6 +25,7 @@ import {
   sessionSummary,
   type SessionSummaryFixture,
 } from "./fixtures/catalog-fixtures";
+import { observerClient, observerRuntime } from "./observers/observer-test-runtime";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 const projectPath = "/project";
@@ -31,6 +36,11 @@ const initialSessions = ["newer", "previous", "older", "oldest"].map((sessionId,
     createdAt: new Date(Date.UTC(2026, 0, 4 - index)).toISOString(),
     modifiedAt: new Date(Date.UTC(2026, 0, 4 - index)).toISOString(),
   }),
+);
+const withUnreadOlder = initialSessions.map((session) =>
+  session.sessionId === "older"
+    ? { ...session, unread: true, latestTurnOutcome: "complete" as const }
+    : session,
 );
 function conversation(sessionId: string): ConversationSnapshot {
   return {
@@ -48,21 +58,40 @@ function conversation(sessionId: string): ConversationSnapshot {
     tree: [],
   };
 }
-function renderOrdering() {
+function renderOrdering(sessions: SessionSummaryFixture[] = initialSessions) {
   let completeResolve!: () => void;
   const resolving = new Promise<void>((complete) => {
     completeResolve = complete;
   });
   const resolve = vi.fn(async () => resolving);
+  let eventRevision = 0;
+  const publishCatalogEvent = (event: Extract<SessionCatalogUpdate, { _tag: "Event" }>["event"]) =>
+    act(() =>
+      applySessionCatalogGroupUpdate(
+        models.sessionCatalog,
+        { projectPath, resolved: false },
+        { _tag: "Event", revision: ++eventRevision, event },
+      ),
+    );
+  const respondFlush = vi.fn<Client["windowState"]["respondFlush"]>(async () => undefined);
+  // The backend persists the flag and projects it back through the catalog.
+  const setSessionUnread = vi.fn<Client["workspaces"]["setSessionUnread"]>(
+    async (sessionId, unread) => {
+      publishCatalogEvent({ _tag: "StatusChanged", sessionId, resolved: false, unread });
+      return {} as never;
+    },
+  );
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: projectPath, name: "Project" })],
-    sessions: initialSessions,
+    sessions,
     client: {
       projectSessions: { open: async () => undefined, resolve },
+      workspaces: { setSessionUnread },
+      windowState: { respondFlush },
     },
   });
   const { root, models } = fixture;
-  for (const session of initialSessions) {
+  for (const session of sessions) {
     root.sessionRegistry.load(session.sessionId, projectPath);
     applyConversationSnapshot(
       models.projectConversation(session.sessionId, projectPath),
@@ -96,7 +125,6 @@ function renderOrdering() {
       />
     </StoreProvider>,
   );
-  let eventRevision = 0;
   const user = userEvent.setup();
   const selected = () =>
     view.container
@@ -118,18 +146,21 @@ function renderOrdering() {
       );
     },
     publishActivity(running: boolean, workingStartedAt: number | null) {
-      act(() =>
-        applySessionCatalogGroupUpdate(
-          models.sessionCatalog,
-          { projectPath, resolved: false },
-          {
-            _tag: "Event",
-            revision: ++eventRevision,
-            event: { _tag: "ActivityChanged", sessionId: "previous", running, workingStartedAt },
-          },
-        ),
-      );
+      publishCatalogEvent({
+        _tag: "ActivityChanged",
+        sessionId: "previous",
+        running,
+        workingStartedAt,
+      });
     },
+    publishCatalogEvent,
+    setSessionUnread,
+    respondFlush,
+    root,
+    status: (sessionId: string) =>
+      within(view.container.querySelector<HTMLElement>(`[data-session-id="${sessionId}"]`)!)
+        .queryByRole("img")
+        ?.getAttribute("aria-label"),
     resolve,
     finishResolve() {
       act(() => completeResolve());
@@ -256,6 +287,122 @@ for (const kind of ["project-session"] as const) {
         expect(fixture.order()).toEqual(["previous", "older", "oldest"]);
       },
     );
+
+    it("keeps a selected unread row in place and unread until the user leaves it", async () => {
+      using fixture = renderOrdering(withUnreadOlder);
+      expect(fixture.order()).toEqual(["older", "newer", "previous", "oldest"]);
+      await fixture.openSession("older");
+      expect(fixture.order()).toEqual(["older", "newer", "previous", "oldest"]);
+      expect(fixture.status("older")).toBe("Ready, unread");
+      expect(fixture.setSessionUnread).not.toHaveBeenCalled();
+      // Leaving is what reads it; only then does it take its normal place.
+      await fixture.openSession("newer");
+      expect(fixture.setSessionUnread).toHaveBeenCalledExactlyOnceWith(
+        "older",
+        false,
+        expect.anything(),
+      );
+      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
+      expect(fixture.status("older")).toBeUndefined();
+    });
+
+    it("reads a turn the user watches finish without moving the selected row", async () => {
+      using fixture = renderOrdering();
+      await fixture.openSession("previous");
+      fixture.publishCatalogEvent({
+        _tag: "ActivityChanged",
+        sessionId: "previous",
+        running: true,
+      });
+      expect(fixture.status("previous")).toBe("Running");
+      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
+      fixture.publishCatalogEvent({
+        _tag: "ActivityChanged",
+        sessionId: "previous",
+        running: false,
+        latestTurnOutcome: "complete",
+        unread: true,
+      });
+      expect(fixture.setSessionUnread).toHaveBeenCalledExactlyOnceWith(
+        "previous",
+        false,
+        expect.anything(),
+      );
+      expect(fixture.status("previous")).toBeUndefined();
+      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
+      await fixture.openSession("older");
+      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
+    });
+
+    it("moves a selected row that started working only after the user leaves it", async () => {
+      using fixture = renderOrdering();
+      await fixture.openSession("older");
+      fixture.publishCatalogEvent({ _tag: "ActivityChanged", sessionId: "older", running: true });
+      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
+      await fixture.openSession("newer");
+      expect(fixture.order()).toEqual(["older", "newer", "previous", "oldest"]);
+      // Finishing unseen in the background makes it unread, at the top.
+      fixture.publishCatalogEvent({
+        _tag: "ActivityChanged",
+        sessionId: "older",
+        running: false,
+        latestTurnOutcome: "complete",
+        unread: true,
+      });
+      expect(fixture.status("older")).toBe("Ready, unread");
+      expect(fixture.order()).toEqual(["older", "newer", "previous", "oldest"]);
+      expect(fixture.setSessionUnread).not.toHaveBeenCalled();
+    });
+
+    it("keeps an unread reminder set during the visit, and a later visit settles it", async () => {
+      using fixture = renderOrdering();
+      await fixture.openSession("previous");
+      await act(() => fixture.root.sidebarStore.setSessionUnread("previous", true));
+      expect(fixture.status("previous")).toBe("Ready, unread");
+      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
+      await fixture.openSession("older");
+      expect(fixture.setSessionUnread.mock.calls.map(([id, unread]) => [id, unread])).toEqual([
+        ["previous", true],
+      ]);
+      expect(fixture.order()).toEqual(["previous", "newer", "older", "oldest"]);
+      await fixture.openSession("previous");
+      expect(fixture.order()).toEqual(["previous", "newer", "older", "oldest"]);
+      await fixture.openSession("older");
+      expect(fixture.setSessionUnread.mock.calls.map(([id, unread]) => [id, unread])).toEqual([
+        ["previous", true],
+        ["previous", false],
+      ]);
+      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
+    });
+
+    it("reads the selected session before the window saves for close or quit", async () => {
+      using fixture = renderOrdering(withUnreadOlder);
+      const events = Effect.runSync(
+        Queue.unbounded<Schema.Schema.Type<typeof surfaceEventSchema>>(),
+      );
+      const runtime = observerRuntime(
+        observerClient({ events: { surfaces: () => Stream.fromQueue(events) } }),
+      );
+      const cancel = observeSurfaceEvents(runtime, fixture.root);
+      try {
+        await fixture.openSession("older");
+        expect(fixture.setSessionUnread).not.toHaveBeenCalled();
+        Queue.offerUnsafe(events, { type: "window-state-flush-requested", requestId: "close" });
+        await waitFor(() =>
+          expect(fixture.respondFlush).toHaveBeenCalledExactlyOnceWith({ requestId: "close" }),
+        );
+        expect(fixture.setSessionUnread).toHaveBeenCalledExactlyOnceWith(
+          "older",
+          false,
+          expect.anything(),
+        );
+        expect(fixture.setSessionUnread.mock.invocationCallOrder[0]).toBeLessThan(
+          fixture.respondFlush.mock.invocationCallOrder[0]!,
+        );
+      } finally {
+        cancel();
+      }
+    });
 
     it("keeps selected inactive rows in creation order when message timestamps change", async () => {
       using fixture = renderOrdering();
