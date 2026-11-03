@@ -75,8 +75,15 @@ test("to-do text selection and copying do not activate rows or their controls", 
     await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
     await page.locator('[data-slot="project-header"] [data-slot="project-label"]').first().click();
     const toggle = page.getByRole("button", { name: "To-do", exact: true });
-    await toggle.click();
     const panel = page.getByRole("complementary", { name: "To-do", exact: true });
+    const openTodos = async () => {
+      await expect(
+        page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
+      ).toBeVisible();
+      if (!(await panel.isVisible())) await toggle.click();
+      await expect(panel).toBeVisible();
+    };
+    await openTodos();
     const row = panel.locator("[data-todo-id]");
     const action = row.getByRole("button", { name: title, exact: true });
     const prose = row.getByText(description, { exact: true });
@@ -169,7 +176,7 @@ test("to-do text selection and copying do not activate rows or their controls", 
     await page.setViewportSize({ width: 1400, height: 900 });
     await expect(action).toHaveAttribute("aria-pressed", "false");
     await page.reload();
-    await toggle.click();
+    await openTodos();
     await expect(action).toHaveAttribute("aria-pressed", "false");
     await expect.poll(savedSelection).toBeNull();
     // Intentional clicks and native keyboard activation retain their semantics.
