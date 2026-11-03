@@ -354,8 +354,17 @@ export class SidebarSessionListStore extends Store<{
         session.familyParentSessionId === session.sessionId ||
         !byId.has(session.familyParentSessionId),
     );
-    // Only resolved history follows activity. Active roots keep their creation
-    // order, including when a descendant starts working or receives a message.
+    // Rank active roots by the same activity shown on their rows, including
+    // collapsed-family indicators. Existing date/label rules break ties only.
+    const activityPriorities = new Map(
+      roots.map((session) => {
+        const activity = resolved ? undefined : this.sessionActivityForDisplay(session);
+        return [
+          session.sessionId,
+          activity === "unread" ? 0 : isActiveSessionActivity(activity) ? 1 : 2,
+        ];
+      }),
+    );
     const modifiedDates = resolved ? this.familyModifiedDates(byId) : undefined;
     const latestActivity = (session: ProjectSession) => modifiedDates!.get(session.sessionId)!;
     const compareByDate = (left: (typeof roots)[number], right: (typeof roots)[number]) =>
@@ -367,6 +376,9 @@ export class SidebarSessionListStore extends Store<{
         : Number(Boolean(right.draft)) - Number(Boolean(left.draft)) ||
           compareSessionSummariesByCreation(left, right);
     roots.sort((left, right) => {
+      const activityOrder =
+        activityPriorities.get(left.sessionId)! - activityPriorities.get(right.sessionId)!;
+      if (activityOrder) return activityOrder;
       if (this.projectSessionSort(projectPath) === "date") return compareByDate(left, right);
       const labelOrder = new Map(
         this.metadata.projectLabels(projectPath).map((label, index) => [label.id, index]),

@@ -3,6 +3,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
 import { applySnapshot } from "r-state-tree";
+import { StoreProvider } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   TurnId,
@@ -202,7 +203,7 @@ for (const kind of ["project-session"] as const) {
       fixture.publishActivity(true, startedAt);
       expect(timestamp().textContent).toBe("Working 1m 5s");
       expect(timestamp().getAttribute("datetime")).toBe(new Date(startedAt).toISOString());
-      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
+      expect(fixture.order()).toEqual(["previous", "newer", "older", "oldest"]);
       expect(vi.getTimerCount()).toBe(baselineTimers + 1);
       act(() => vi.advanceTimersByTime(2_000));
       expect(timestamp().textContent).toBe("Working 1m 7s");

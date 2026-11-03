@@ -159,7 +159,7 @@ describe("Sidebar navigation workflow", () => {
     await fixture.user.click(screen.getByRole("menuitemradio", { name: "By label" }));
     expect(order()).toEqual(["older", "newer"]);
     await fixture.publishStreaming(["newer"], true);
-    expect(order()).toEqual(["older", "newer"]);
+    expect(order()).toEqual(["newer", "older"]);
     await fixture.user.click(screen.getByRole("button", { name: "Project actions for cake" }));
     expect(
       screen.getByRole("menuitemradio", { name: "By label" }).getAttribute("aria-checked"),
@@ -408,6 +408,7 @@ describe("Sidebar navigation workflow", () => {
       sidebarSummary("running", 2),
       sidebarSummary("failed", 3, { workingDirectory: "/worktree" }),
       sidebarSummary("main", 4, { title }),
+      sidebarSummary("green", 1, { unread: true }),
     ];
     const worktree: WorktreeRecord = {
       projectPath: "/cake",
@@ -479,6 +480,8 @@ describe("Sidebar navigation workflow", () => {
     ).toBeDefined();
     expect(within(row("running")).getByRole("img", { name: "Running" })).toBeDefined();
     expect(within(row("failed")).getByRole("img", { name: "Error" })).toBeDefined();
+    // Waiting still owns an active turn, so shares Working's priority below green.
+    expect(order()).toEqual(["green", "running", "waiting", "main", "failed"]);
     for (const id of ["waiting", "running", "failed"]) {
       expect(within(row(id)).queryByRole("button", { name: `Resolve ${id}` })).toBeNull();
       if (id === "failed") {
@@ -614,8 +617,120 @@ describe("Sidebar navigation workflow", () => {
     },
   );
 
+  it("ranks green unread rows before Working rows, then other statuses, preserving creation and identity ties", async () => {
+    const sessions = [
+      sidebarSummary("idle", 10),
+      sidebarSummary("blocked", 9, { recoveryIssue: "Needs recovery", unread: true }),
+      sidebarSummary("failed", 8, { latestTurnOutcome: "failed", unread: true }),
+      sidebarSummary("stopped", 7, { latestTurnOutcome: "aborted" }),
+      sidebarSummary("read-complete", 6, { latestTurnOutcome: "complete" }),
+      sidebarSummary("working-beta", 4, { running: true, unread: true }),
+      sidebarSummary("working-alpha", 4, { running: true }),
+      sidebarSummary("green-beta", 2, { unread: true, latestTurnOutcome: "complete" }),
+      sidebarSummary("green-alpha", 2, { unread: true }),
+    ];
+    using fixture = renderSidebarNavigation({ projects: [project], sessions });
+    const expected = [
+      "green-alpha",
+      "green-beta",
+      "working-alpha",
+      "working-beta",
+      "idle",
+      "blocked",
+      "failed",
+      "stopped",
+      "read-complete",
+    ];
+    expect(order()).toEqual(expected);
+    for (const id of expected.slice(0, 2))
+      expect(within(row(id)).getByRole("img", { name: "Ready, unread" })).toBeDefined();
+    expect(row("working-beta").querySelector("time")?.textContent).toBe("Working");
+    expect(within(row("blocked")).getByRole("img", { name: "Needs your input" })).toBeDefined();
+    expect(within(row("failed")).getByRole("img", { name: "Error" })).toBeDefined();
+    await fixture.publishSessions(
+      [...sessions].reverse().map((session) => ({
+        ...session,
+        modifiedAt: sidebarSummary("unused", 20).modifiedAt,
+      })),
+    );
+    expect(order()).toEqual(expected);
+    // Clearing unread moves the former green row into its normal creation group.
+    await fixture.publishSessions(
+      sessions.map((session) =>
+        session.sessionId === "green-alpha" ? { ...session, unread: false } : session,
+      ),
+    );
+    expect(order()).toEqual([...expected.filter((id) => id !== "green-alpha"), "green-alpha"]);
+    // A new unread projection moves an idle row above even the existing green rows.
+    await fixture.publishSessions(
+      sessions.map((session) =>
+        session.sessionId === "idle" ? { ...session, unread: true } : session,
+      ),
+    );
+    expect(order()).toEqual(["idle", ...expected.filter((id) => id !== "idle")]);
+  });
+
+  it("keeps status priority above labels and drafts, retaining those rules inside each group", async () => {
+    const labelId = "10000000-0000-4000-8000-000000000001";
+    const sessions = [
+      sidebarSummary("idle-draft", 10, { draft: true }),
+      sidebarSummary("working", 9, { running: true }),
+      sidebarSummary("green-newer", 8, { unread: true }),
+      sidebarSummary("green-labeled", 1, { unread: true }),
+      sidebarSummary("idle-labeled", 2),
+      sidebarSummary("idle", 3),
+    ];
+    using fixture = renderSidebarNavigation({
+      projects: [
+        projectRecord({
+          ...project,
+          workflow: {
+            sessionDetails: [],
+            labels: [{ id: labelId, name: "Feature", color: "blue" }],
+            assignments: ["green-labeled", "idle-labeled"].map((sessionId) => ({
+              sessionId,
+              labelIds: [labelId],
+            })),
+          },
+        }),
+      ],
+      sessions,
+      snapshot: {
+        state: {},
+        children: {
+          sidebarStore: {
+            state: {},
+            children: {
+              sessionListStore: {
+                state: { projectSessionSorts: { "/cake": "label" } },
+                children: {},
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(order()).toEqual([
+      "green-labeled",
+      "green-newer",
+      "working",
+      "idle-labeled",
+      "idle-draft",
+      "idle",
+    ]);
+    await fixture.publishSessions([...sessions].reverse());
+    expect(order()).toEqual([
+      "green-labeled",
+      "green-newer",
+      "working",
+      "idle-labeled",
+      "idle-draft",
+      "idle",
+    ]);
+  });
+
   it.each(["projects", "activity"] as const)(
-    "keeps rows in creation order through streaming, timestamp updates and refreshes in %s",
+    "preserves creation order within priorities through streaming, timestamp updates and refreshes in %s",
     async (mode) => {
       const sessions = ["newest", "middle", "oldest", "idle"].map((id, index) =>
         sidebarSummary(id, 4 - index),
@@ -632,7 +747,11 @@ describe("Sidebar navigation workflow", () => {
       const originalSection = originalRow.closest("section");
       const originalHeading = originalSection?.querySelector("h2")?.textContent;
       await fixture.publishStreaming(["middle", "oldest"], true);
-      expect(order()).toEqual(["newest", "middle", "oldest", "idle"]);
+      const workingOrder =
+        mode === "projects"
+          ? ["middle", "oldest", "newest", "idle"]
+          : ["newest", "middle", "oldest", "idle"];
+      expect(order()).toEqual(workingOrder);
       await fixture.user.click(rowButton("oldest"));
       await waitFor(() => expect(row("oldest").dataset.navigationActive).toBe("true"));
       await fixture.publishSessions(
@@ -641,11 +760,15 @@ describe("Sidebar navigation workflow", () => {
           modifiedAt: sidebarSummary("unused", 6 + index).modifiedAt,
         })),
       );
-      expect(order()).toEqual(["newest", "middle", "oldest", "idle"]);
+      expect(order()).toEqual(workingOrder);
       expect(row("oldest").dataset.navigationActive).toBe("true");
       expect(row("oldest").querySelector("time")?.textContent).toBe("Working");
       await fixture.publishStreaming(["oldest"], false);
-      expect(order()).toEqual(["newest", "middle", "oldest", "idle"]);
+      expect(order()).toEqual(
+        mode === "projects"
+          ? ["middle", "newest", "oldest", "idle"]
+          : ["newest", "middle", "oldest", "idle"],
+      );
       expect(row("oldest").querySelector("time")?.dateTime).toBe(
         sidebarSummary("oldest", 7).modifiedAt,
       );
@@ -662,7 +785,11 @@ describe("Sidebar navigation workflow", () => {
         sidebarSummary("brand-new", 20),
         ...sessions.map((session) => ({ ...session, resolved: session.sessionId === "middle" })),
       ]);
-      expect(order()).toEqual(["brand-new", "newest", "oldest", "idle"]);
+      expect(order()).toEqual(
+        mode === "projects"
+          ? ["newest", "brand-new", "oldest", "idle"]
+          : ["brand-new", "newest", "oldest", "idle"],
+      );
     },
   );
 
@@ -876,7 +1003,7 @@ describe("Sidebar navigation workflow", () => {
     expect(row("planner").querySelector("time")?.textContent).toBe("Working");
     expect(within(row("root")).queryByRole("img", { name: "Running" })).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
-    expect(order()).toEqual(["standalone", "root"]);
+    expect(order()).toEqual(["root", "standalone"]);
     expect(within(row("root")).getByRole("img", { name: "Running" })).toBeDefined();
     expect(row("root").querySelector("time")?.textContent).toBe("Working");
     await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
@@ -1110,7 +1237,7 @@ describe("Sidebar navigation workflow", () => {
   it("includes unpaginated sessions but not other Projects or standalone resolved rows, and retains Project Chat's own activity", async () => {
     const sessions = [
       ...Array.from({ length: 11 }, (_, index) =>
-        sidebarSummary(`task-${index}`, index + 1, { running: index === 0 }),
+        sidebarSummary(`task-${index}`, index + 1, { running: index === 0, unread: index > 0 }),
       ),
       sidebarSummary("resolved", 20, { resolved: true, recoveryIssue: "Needs recovery" }),
       sidebarSummary("other-project", 20, { projectPath: "/pi", running: true }),
@@ -1138,9 +1265,7 @@ describe("Sidebar navigation workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
     expect(status()?.getAttribute("aria-label")).toBe("Running");
     await fixture.publishSessions(
-      sessions.map((session) =>
-        session.sessionId === "task-0" ? { ...session, running: false } : session,
-      ),
+      sessions.map((session) => ({ ...session, running: false, unread: false })),
     );
     expect(status()?.getAttribute("aria-label")).toBe("Ready, unread");
     await fixture.publishProjectChats([{ ...chat, unread: false }]);
