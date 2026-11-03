@@ -659,6 +659,56 @@ describe("SessionArchiveStorage", () => {
     ),
   );
 
+  it.effect("lists a project's resolved sessions with one resolution-index read", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const transcript = yield* fs.readFileString(location.sessionFile);
+        for (const id of ["session-2", "session-3"])
+          yield* fs.writeFileString(
+            path.join(path.dirname(location.sessionFile), `2026-01-01T00-00-00-000Z_${id}.jsonl`),
+            transcript.replace('"id":"session-1"', `"id":"${id}"`),
+          );
+        for (const id of ["session-1", "session-2", "session-3"])
+          yield* runArchive(metadataRoot, (storage) =>
+            storage.resolveProject(id, location, {
+              projectPath: "/projects/cake",
+              projectName: "Cake",
+            }),
+          );
+        const indexPath = path.join(metadataRoot, "resolution.json");
+        let indexReads = 0;
+        const counting = FileSystem.makeNoop({
+          ...fs,
+          readFileString: (file, encoding) => {
+            if (file === indexPath) indexReads++;
+            return fs.readFileString(file, encoding);
+          },
+        });
+        const listed = yield* Effect.flatMap(SessionArchiveStorage, (storage) =>
+          storage.resolvedProjects("/projects/cake").pipe(Stream.runCollect),
+        ).pipe(
+          Effect.provide(
+            makeSessionArchiveStorageLive(metadataRoot, location).pipe(
+              Layer.provide(
+                Layer.mergeAll(Layer.succeed(FileSystem.FileSystem)(counting), NodePath.layer),
+              ),
+            ),
+          ),
+        );
+        expect(listed.map((entry) => entry.sessionId).sort()).toEqual([
+          "session-1",
+          "session-2",
+          "session-3",
+        ]);
+        expect(indexReads).toBe(1);
+      }),
+    ),
+  );
+
   it.effect("rolls resolution metadata back when project metadata persistence is interrupted", () =>
     withPlatform(
       Effect.gen(function* () {

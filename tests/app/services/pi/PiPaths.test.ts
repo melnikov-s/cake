@@ -59,26 +59,34 @@ describe("Shared Pi session routing", () => {
     expect(piProjectSessionDirectory(f.cwd, join(f.root, "archive")).shared).toBe(false);
   });
 
-  it("resolves settings once per filesystem enumeration or exact metadata lookup", async () => {
+  it("parses Pi settings once, then again only after a settings file changes", async () => {
     const f = await fixture();
+    const project = join(f.cwd, ".pi", "settings.json");
+    const settings = vi.spyOn(SettingsManager, "create");
     const directory = workingDirectorySessionPath(f.cwd, f.sessionsRoot);
     await mkdir(directory, { recursive: true });
     for (let index = 0; index < 100; index++)
       await writeFile(join(directory, `2026-01-01T00-00-00-000Z_${index}.jsonl`), "");
-    const settings = vi.spyOn(SettingsManager, "create");
     const input = { workingDirectory: f.cwd, root: f.sessionsRoot };
     expect(
       await Effect.runPromise(streamSessionFileIds(input).pipe(Stream.runCollect)),
     ).toHaveLength(100);
-    expect(settings).toHaveBeenCalledTimes(1);
-    settings.mockClear();
     expect(await Effect.runPromise(streamSessionFiles(input).pipe(Stream.runCollect))).toHaveLength(
       100,
     );
-    expect(settings).toHaveBeenCalledTimes(1);
-    settings.mockClear();
     expect((await findSessionFileMetadataById("0", input))?.id).toBe("0");
     expect(settings).toHaveBeenCalledTimes(1);
+
+    await writeFile(project, '{"sessionDir":"./a"}');
+    expect(workingDirectorySessionPath(f.cwd, f.sessionsRoot)).toBe(join(f.cwd, "a"));
+    // A same-size rewrite is still a change.
+    await writeFile(project, '{"sessionDir":"./b"}');
+    expect(workingDirectorySessionPath(f.cwd, f.sessionsRoot)).toBe(join(f.cwd, "b"));
+    await writeFile(join(f.agent, "settings.json"), '{"theme":"dark"}');
+    expect(workingDirectorySessionPath(f.cwd, f.sessionsRoot)).toBe(join(f.cwd, "b"));
+    await rm(project);
+    expect(workingDirectorySessionPath(f.cwd, f.sessionsRoot)).toBe(directory);
+    expect(settings).toHaveBeenCalledTimes(5);
   });
 
   it("filters custom shared directories by Pi's header cwd for lookup and active discovery", async () => {

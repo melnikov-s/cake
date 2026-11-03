@@ -462,6 +462,32 @@ describe("SessionFamilyStorage", () => {
     }).pipe(Effect.provide(testLayer())),
   );
 
+  it.effect("decodes the stored document again only after the file changes", () => {
+    const harness = familyStorageHarness();
+    const documentPath = "state/session-families.json";
+    return Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      yield* storage.recordTurn(turn());
+      const reads = harness.reads();
+      for (let index = 0; index < 5; index++) yield* storage.state();
+      yield* storage.familyForMember("child");
+      assert.equal(harness.reads(), reads + 1);
+
+      // Another writer replaced the file.
+      const stored = JSON.parse(harness.files.get(documentPath) ?? "{}");
+      harness.files.set(
+        documentPath,
+        JSON.stringify({ ...stored, data: { ...stored.data, turns: [] } }),
+      );
+      assert.deepEqual((yield* storage.state()).turns, []);
+      yield* storage.recordTurn(turn({ turnId: "next" }));
+      assert.deepEqual(
+        (yield* storage.state()).turns.map((item) => item.turnId),
+        ["next"],
+      );
+    }).pipe(Effect.provide(harness.layer));
+  });
+
   it.effect("migrates version 6 journals to explicit reply obligations only", () => {
     const files = new Map<string, string>();
     const legacy = (turnId: string, expectsResponse: boolean) => ({

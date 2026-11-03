@@ -16,6 +16,7 @@ import {
   Effect,
   FileSystem,
   Layer,
+  Option,
   Path,
   Schema,
   Semaphore,
@@ -429,13 +430,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
       const lock = yield* Semaphore.make(1);
       const noticeDeliveryLock = yield* Semaphore.make(1);
 
-      const loadUnlocked = Effect.fn("SessionFamilyStorage.loadUnlocked")(function* () {
-        if (
-          !(yield* fileSystem
-            .exists(documentPath)
-            .pipe(Effect.mapError((e) => storageError("load", e))))
-        )
-          return { families: [], turns: [], spawnedSessions: [] } satisfies SessionFamilyDocument;
+      const decodeDocument = Effect.fn("SessionFamilyStorage.decodeDocument")(function* () {
         const text = yield* fileSystem
           .readFileString(documentPath)
           .pipe(Effect.mapError((e) => storageError("load", e)));
@@ -615,6 +610,32 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         });
       });
 
+      // Delivery passes read this document once per family member every second. Decode it
+      // again only after the file changes; every atomic rewrite replaces the file's identity.
+      let decoded:
+        | { readonly version: string; readonly document: SessionFamilyDocument }
+        | undefined;
+      const loadUnlocked = Effect.fn("SessionFamilyStorage.loadUnlocked")(function* () {
+        if (
+          !(yield* fileSystem
+            .exists(documentPath)
+            .pipe(Effect.mapError((e) => storageError("load", e))))
+        )
+          return { families: [], turns: [], spawnedSessions: [] } satisfies SessionFamilyDocument;
+        const info = yield* fileSystem
+          .stat(documentPath)
+          .pipe(Effect.mapError((e) => storageError("load", e)));
+        const version = [
+          Option.getOrUndefined(info.ino),
+          info.size,
+          Option.getOrUndefined(info.mtime)?.getTime(),
+        ].join(":");
+        if (decoded?.version === version) return decoded.document;
+        const document = yield* decodeDocument();
+        decoded = { version, document };
+        return document;
+      });
+
       const writeError = (stage: AtomicFileStage, cause: unknown) =>
         storageError(`save:${stage}`, cause);
       const saveUnlocked = Effect.fn("SessionFamilyStorage.saveUnlocked")(function* (
@@ -627,6 +648,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         const data = yield* Schema.encodeEffect(SessionFamilyDocument)(validated).pipe(
           Effect.mapError((cause) => storageError("save", cause)),
         );
+        decoded = undefined;
         yield* atomicWriteFile(
           fileSystem,
           path,

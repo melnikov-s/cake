@@ -640,6 +640,7 @@ export const makeSessionArchiveStorageLive = (
           ),
       );
 
+      /** Authoritative entries currently owned by this project, resolved or not. */
       const projectEntries = (projectPath: string) =>
         Stream.unwrap(
           fileSystem.exists(projectDirectory(projectPath)).pipe(
@@ -661,7 +662,12 @@ export const makeSessionArchiveStorageLive = (
                     StoredProjectSessionArchiveMetadata,
                   ).pipe(
                     Effect.flatMap((entry) =>
-                      entry ? resolvedProjectEntry(entry.sessionId) : Effect.succeed(undefined),
+                      entry
+                        ? withUpdateLock(
+                            locatorPath(entry.sessionId),
+                            readProjectEntry("resolvedProjects", entry.sessionId),
+                          )
+                        : Effect.succeed(undefined),
                     ),
                   ),
                 ),
@@ -680,12 +686,19 @@ export const makeSessionArchiveStorageLive = (
             Stream.runCollect,
             Effect.flatMap((entries) =>
               Effect.gen(function* () {
+                // Many entries share a worktree: migrate each location once, then read
+                // the resolution index once for the whole project.
+                const locations = new Map<string, SessionArchiveLocation>();
                 for (const entry of entries)
-                  yield* migrateLocation({
-                    cwd: entry.workingDirectory,
-                    activeRoot: entry.activeRoot,
-                    resolvedRoot: entry.resolvedRoot,
-                  });
+                  locations.set(
+                    JSON.stringify([entry.workingDirectory, entry.activeRoot, entry.resolvedRoot]),
+                    {
+                      cwd: entry.workingDirectory,
+                      activeRoot: entry.activeRoot,
+                      resolvedRoot: entry.resolvedRoot,
+                    },
+                  );
+                for (const location of locations.values()) yield* migrateLocation(location);
                 const index = yield* readIndex();
                 return Stream.fromIterable(
                   entries.filter((entry) =>
@@ -716,7 +729,7 @@ export const makeSessionArchiveStorageLive = (
         sources: ReadonlyArray<ProjectSessionArchiveMigrationSource>,
       ) => {
         const seenSessionIds = new Set<string>();
-        const retainedLocations = projectEntries(projectPath).pipe(
+        const retainedLocations = resolvedProjects(projectPath).pipe(
           Stream.map((entry) => {
             const source: ProjectSessionArchiveMigrationSource = {
               location: {

@@ -1,4 +1,10 @@
-import { getAgentDir, SettingsManager, SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+  CONFIG_DIR_NAME,
+  getAgentDir,
+  SettingsManager,
+  SessionManager,
+} from "@earendil-works/pi-coding-agent";
+import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -11,15 +17,46 @@ const absolute = (value: string, cwd: string) =>
     value === "~" ? homedir() : value.startsWith("~/") ? join(homedir(), value.slice(2)) : value,
   );
 
+/** Any rewrite of a settings file changes its inode, size or nanosecond modification time. */
+const settingsFileVersion = (path: string) => {
+  try {
+    const { ino, size, mtimeNs } = statSync(path, { bigint: true });
+    return `${ino}:${size}:${mtimeNs}`;
+  } catch {
+    return "absent";
+  }
+};
+
+const configuredSessionDirectories = new Map<
+  string,
+  { readonly version: string; readonly sessionDir: string | undefined }
+>();
+
+/** Routing runs for every stored session, so parse Pi settings (under Pi's file lock) only
+ * after one of the two settings files changes, not on every lookup. */
+function configuredSessionDirectory(cwd: string, agentDir: string) {
+  const key = `${agentDir}\0${resolve(cwd)}`;
+  const version = [
+    join(agentDir, "settings.json"),
+    join(resolve(cwd), CONFIG_DIR_NAME, "settings.json"),
+  ]
+    .map(settingsFileVersion)
+    .join("|");
+  const cached = configuredSessionDirectories.get(key);
+  if (cached?.version === version) return cached.sessionDir;
+  // Like Pi CLI's startup selector, read project routing before runtime trust.
+  // SettingsManager only reads configuration; no resource loader runs here.
+  const sessionDir = SettingsManager.create(cwd, agentDir).getSessionDir();
+  configuredSessionDirectories.set(key, { version, sessionDir });
+  return sessionDir;
+}
+
 /** Read-only session routing, matching Pi CLI precedence before project trust. */
 export function piProjectSessionDirectory(cwd: string, root: string) {
   const agentDir = piAgentDirectory();
   if (resolve(root) === join(agentDir, "sessions")) {
     const configured =
-      process.env.PI_CODING_AGENT_SESSION_DIR ||
-      // Like Pi CLI's startup selector, read project routing before runtime trust.
-      // SettingsManager only reads configuration; no resource loader runs here.
-      SettingsManager.create(cwd, agentDir).getSessionDir();
+      process.env.PI_CODING_AGENT_SESSION_DIR || configuredSessionDirectory(cwd, agentDir);
     if (configured) return { directory: absolute(configured, cwd), shared: true };
   }
   // Pi does not export its directory encoder from the public SDK.
