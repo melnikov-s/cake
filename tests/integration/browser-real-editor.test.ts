@@ -25,6 +25,11 @@ it.skipIf(!existsSync("/opt/homebrew/bin/code-server"))(
       "export const original = 42;\n" +
         Array.from({ length: 180 }, (_, line) => `// qualification line ${line + 2}\n`).join(""),
     );
+    // Keep TypeScript package discovery inside the isolated qualification project.
+    await writeFile(
+      join(project, "package.json"),
+      JSON.stringify({ name: "browser-editor-fixture", private: true }),
+    );
     const timestamp = new Date(0).toISOString();
     await writeFile(
       join(home, "state", "application.json"),
