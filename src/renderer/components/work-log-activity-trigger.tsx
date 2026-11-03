@@ -4,7 +4,7 @@ import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
 import { formatVisibleElapsed } from "@/components/ui/loading-state";
 import type { ChatStore } from "@/stores/ChatStore";
 
-/** Keeps the 100 ms work-log clock subscribed to only this small label. */
+/** Keeps the one-second work-log clock subscribed to only this small label. */
 export const WorkLogActivityTrigger = observer(function WorkLogActivityTrigger({
   store,
   firstPartId,

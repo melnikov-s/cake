@@ -60,9 +60,10 @@ for (const { theme, width } of [
         exact: true,
       });
       await expect(prefix).toBeVisible();
-      await expect(home.getByLabel("elapsed time")).toHaveText("0ms");
-      await expect(row("prefix").getByLabel("elapsed time")).toHaveText("49ms");
-      await expect(row("project").getByLabel("elapsed time")).toHaveText("50ms");
+      // Sub-second tools show no time.
+      await expect(home.getByLabel("elapsed time")).toHaveCount(0);
+      await expect(row("prefix").getByLabel("elapsed time")).toHaveCount(0);
+      await expect(row("project").getByLabel("elapsed time")).toHaveCount(0);
       await expect(row("bash").getByLabel("elapsed time")).toHaveText("1s");
 
       const dotLabelSpacing = (target: Locator) =>

@@ -71,9 +71,9 @@ it.each(["Inspect the file", ""])(
       using fixture = renderWorkLog(live, { streaming: true });
       await revealReasoning(thinking, fixture);
       // The request began earlier; we time only the reasoning actually observed here.
-      expect(elapsed()).toBe("0ms");
-      act(() => vi.advanceTimersByTime(500));
-      expect(elapsed()).toBe("500ms");
+      expect(screen.queryByLabelText("elapsed time")).toBeNull();
+      act(() => vi.advanceTimersByTime(1_000));
+      expect(elapsed()).toBe("1s");
       fixture.publish(
         project({
           type: "message_update",
@@ -88,7 +88,7 @@ it.each(["Inspect the file", ""])(
         true,
       );
       act(() => vi.advanceTimersByTime(2_000));
-      expect(elapsed()).toBe("500ms");
+      expect(elapsed()).toBe("1s");
       // Later answer streaming must not restart or extend the reasoning clock.
       const answer: AssistantMessage = {
         ...message,
@@ -111,9 +111,9 @@ it.each(["Inspect the file", ""])(
       act(() => vi.advanceTimersByTime(1_000));
       fixture.publish(project({ type: "message_end", message: answer }));
       fixture.publish(saved(answer));
-      expect(elapsed()).toBe("500ms");
+      expect(elapsed()).toBe("1s");
       act(() => vi.advanceTimersByTime(5_000));
-      expect(elapsed()).toBe("500ms");
+      expect(elapsed()).toBe("1s");
     }
     // A fresh view cannot recover a per-block duration from a response-wide duration.
     using reloaded = renderWorkLog(saved({ ...message, durationMs: 3_500 }));
@@ -142,7 +142,7 @@ it("freezes earlier reasoning blocks while a later block is streaming", async ()
     { streaming: true },
   );
   await revealReasoning("First thought", fixture);
-  act(() => vi.advanceTimersByTime(500));
+  act(() => vi.advanceTimersByTime(2_000));
   const second: AssistantMessage = {
     ...first,
     content: [...first.content, { type: "thinking", thinking: "Next thought" }],
@@ -157,13 +157,13 @@ it("freezes earlier reasoning blocks while a later block is streaming", async ()
   );
   act(() => vi.advanceTimersByTime(1_000));
   expect(screen.getAllByLabelText("elapsed time").map((chip) => chip.textContent)).toEqual([
-    "500ms",
+    "2s",
     "1s",
   ]);
 });
 
 it.each([0, 5, 999, 1_000])(
-  "shows nested tool duration %sms with the same units",
+  "shows nested tool duration %sms only once it reaches a second",
   async (durationMs) => {
     using fixture = renderWorkLog([
       {
@@ -177,8 +177,8 @@ it.each([0, 5, 999, 1_000])(
     if (!summary) throw new Error("Missing work log disclosure");
     await fixture.user.click(summary);
     await fixture.user.click(screen.getByRole("button", { name: /read parent.ts/ }));
-    expect(screen.getByLabelText("elapsed time").textContent).toBe(
-      durationMs < 1_000 ? `${durationMs}ms` : "1s",
+    expect(screen.queryByLabelText("elapsed time")?.textContent).toBe(
+      durationMs < 1_000 ? undefined : "1s",
     );
   },
 );

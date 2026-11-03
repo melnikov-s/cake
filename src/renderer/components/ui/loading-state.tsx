@@ -26,10 +26,9 @@ export function formatElapsed(milliseconds: number) {
   return `${Math.floor(total / 60)}m ${total % 60}s`;
 }
 
-/** Work-log timing stays visible for fast operations; missing timing stays absent. */
+/** Work-log timing appears once an operation has taken at least a second. */
 export function formatVisibleElapsed(milliseconds: number | undefined) {
-  if (milliseconds === undefined) return undefined;
-  if (milliseconds < 1_000) return `${Math.floor(Math.max(0, milliseconds))}ms`;
+  if (milliseconds === undefined || milliseconds < 1_000) return undefined;
   return formatElapsed(milliseconds);
 }
 

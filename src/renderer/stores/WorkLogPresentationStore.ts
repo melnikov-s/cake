@@ -143,9 +143,10 @@ export class WorkLogPresentationStore extends Store<WorkLogPresentationStoreProp
   private startTick() {
     if (this.tickInterval !== undefined) return;
     this.tickNow = Date.now();
+    // Labels show whole seconds only.
     this.tickInterval = setInterval(() => {
       this.tickNow = Date.now();
-    }, 100);
+    }, 1_000);
   }
 
   private stopTick() {
