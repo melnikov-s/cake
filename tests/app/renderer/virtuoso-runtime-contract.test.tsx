@@ -134,15 +134,15 @@ it("retains a focused row when its shrink measurement outruns scroll geometry", 
     offsetHeight: { get: () => Math.min(512, rowHeight + 22) },
     scrollHeight: { get: () => rowHeight + 22 },
   });
-  const data = ["Tool"];
+  let data = [{ id: "tool", label: "Tool" }];
   const handle = createRef<VirtuosoHandle>();
   const content = () => (
     <VirtualizedConversation
       ref={handle}
       data={data}
       customScrollParent={scroller}
-      computeItemKey={(_, tool) => tool}
-      itemContent={(_, tool) => <button type="button">{tool}</button>}
+      computeItemKey={(_, tool) => tool.id}
+      itemContent={(_, tool) => <button type="button">{tool.label}</button>}
       skipUpwardScrollCompensation
     />
   );
@@ -174,9 +174,13 @@ it("retains a focused row when its shrink measurement outruns scroll geometry", 
     view.rerender(content());
     expect(view.getByRole("button", { name: "Tool" })).toBe(button);
     expect(document.activeElement).toBe(button);
+    data = [{ id: "tool", label: "Saved tool" }];
+    view.rerender(content());
+    expect(view.getByRole("button", { name: "Saved tool" })).toBe(button);
+    expect(document.activeElement).toBe(button);
     act(() => scroller.dispatchEvent(new Event("scroll")));
     expect(scroller.querySelector('[data-known-size="46"]')).not.toBeNull();
-    expect(view.getByRole("button", { name: "Tool" })).toBe(button);
+    expect(view.getByRole("button", { name: "Saved tool" })).toBe(button);
     expect(document.activeElement).toBe(button);
   } finally {
     cleanup();
