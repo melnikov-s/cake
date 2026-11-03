@@ -9,7 +9,6 @@ import { formatSnoozeDeadline, snoozeTimeZone } from "../lib/project-todo-snooze
 import { ProjectTodoWorkLink } from "./project-todo-work-link";
 import { ProjectTodoSnoozePicker } from "./project-todo-snooze-picker";
 import { ProjectTodoAttentionEditor } from "./project-todo-attention-editor";
-import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { CircleIcon, CheckIcon, ReplyIcon, CloseIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
@@ -141,16 +140,14 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
             </IconButton>
           )}
           {attention && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="col-start-3 row-start-2 mt-1 h-5 px-1 text-xs font-normal text-muted-foreground"
-              aria-label={`Dismiss attention: ${item.title}`}
+            <IconButton
+              className="col-start-3 row-start-2 mt-1 size-5"
+              tooltip={`Dismiss attention: ${item.title}`}
               disabled={store.busy}
               onClick={() => void store.dismissAttention(item)}
             >
-              Dismiss
-            </Button>
+              <CloseIcon />
+            </IconButton>
           )}
           {attention && (
             <p className="col-start-2 mt-1 text-xs text-muted-foreground">{item.title}</p>
