@@ -336,6 +336,10 @@ export class SessionFamilyStorage extends Context.Service<
     readonly closeUpdateBatch: (
       recipientSessionId: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
+    /** Drops everything still waiting for a resolved conversation, including its batch timer. */
+    readonly discardUpdates: (
+      recipientSessionId: string,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
     /** Removes digest items once they were attached to an accepted Cake Chat message. */
     readonly removeDigest: (
       ids: ReadonlyArray<string>,
@@ -1233,6 +1237,32 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
               : document,
           ),
       );
+      const discardUpdates = Effect.fn("SessionFamilyStorage.discardUpdates")(
+        (recipientSessionId: string) =>
+          update((document) => ({
+            ...document,
+            ...(document.passiveNotices && {
+              passiveNotices: document.passiveNotices.filter(
+                (notice) => notice.delivered || notice.recipientSessionId !== recipientSessionId,
+              ),
+            }),
+            ...(document.deferredReferences && {
+              deferredReferences: document.deferredReferences.filter(
+                (item) => item.recipientSessionId !== recipientSessionId,
+              ),
+            }),
+            ...(document.coordinatorDigest && {
+              coordinatorDigest: document.coordinatorDigest.filter(
+                (item) => item.coordinatorSessionId !== recipientSessionId,
+              ),
+            }),
+            ...(document.updateBatches && {
+              updateBatches: document.updateBatches.filter(
+                (item) => item.recipientSessionId !== recipientSessionId,
+              ),
+            }),
+          })),
+      );
       const withdrawNotices = Effect.fn("SessionFamilyStorage.withdrawNotices")(
         (recipientSessionId: string, messageIds: ReadonlyArray<string>) =>
           update((document) => {
@@ -1344,6 +1374,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         removeDigest,
         saveUpdateBatch,
         closeUpdateBatch,
+        discardUpdates,
         withNoticeDelivery: (effect) => noticeDeliveryLock.withPermit(effect),
         withdrawNotices,
         removeUnmaterializedChild,

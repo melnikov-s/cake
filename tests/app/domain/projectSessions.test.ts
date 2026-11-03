@@ -503,6 +503,7 @@ const makeLayer = (
       removeDigest: () => Effect.void,
       saveUpdateBatch: () => Effect.void,
       closeUpdateBatch: () => Effect.void,
+      discardUpdates: () => Effect.void,
       deferReferenceNotice: () => Effect.void,
       markReferenceAdmissions: () => Effect.void,
       acknowledgeReports: () => Effect.void,

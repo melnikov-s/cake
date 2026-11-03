@@ -70,6 +70,7 @@ const fixture = Effect.fn("UpdateBatchTest.fixture")(function* (
     cache?: SessionContextMetadata;
     familyFiles?: Map<string, string>;
     records?: ReadonlyArray<RuntimeRecoveryRecord>;
+    resolved?: boolean;
   } = {},
 ) {
   const family = familyStorageHarness(settings.familyFiles);
@@ -99,7 +100,8 @@ const fixture = Effect.fn("UpdateBatchTest.fixture")(function* (
         awaitSetup: () => Effect.void,
       }),
       Layer.mock(SessionArchiveStorage, {
-        locate: () => Effect.succeed("active" as const),
+        locate: () =>
+          Effect.succeed(settings.resolved ? ("resolved" as const) : ("active" as const)),
         resolvedProjectEntry: () => Effect.succeed(undefined),
         resolvedProjects: () => Stream.empty,
       }),
@@ -613,6 +615,32 @@ describe("timed batch delivery", () => {
         (yield* f.batch())?.dueAt,
         new Date(START + UPDATE_BATCH_WINDOW_MS + 60_000).toISOString(),
       );
+    }),
+  );
+});
+
+describe("resolved recipients", () => {
+  it.effect("drops a resolved conversation's waiting updates instead of holding them", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(START);
+      const f = yield* fixture({ resolved: true });
+      yield* f.notice("FYI");
+      yield* f.result("Child finished");
+      yield* f.pass();
+      assert.ok(yield* f.batch());
+      yield* advance(UPDATE_BATCH_WINDOW_MS);
+      yield* f.pass();
+      assert.equal(f.admitted.length, 0);
+      const state = yield* f.state();
+      assert.equal(yield* f.batch(), undefined);
+      assert.deepEqual(
+        (state.passiveNotices ?? []).filter((notice) => !notice.delivered),
+        [],
+      );
+      assert.deepEqual(state.coordinatorDigest ?? [], []);
+      // Nothing is left to reopen a timer.
+      yield* f.pass();
+      assert.equal(yield* f.batch(), undefined);
     }),
   );
 });

@@ -142,8 +142,8 @@ const deliverBatch = Effect.fn("UpdateBatches.deliverBatch")(function* (
       );
       if (!batch) return;
       // An explicit stop or interrupted work awaiting review is not woken by deferred updates;
-      // they ride along with the user's next message instead. Like resolution below, this
-      // changes only through a user action, so the pass rechecks a parked batch once a minute.
+      // they ride along with the user's next message instead. That changes only through a user
+      // action, so the pass rechecks a parked batch once a minute.
       const journal = yield* (yield* RuntimeRecoveryStorage).get(recipientSessionId);
       if (journal?.state === "stopped" || journal?.state === "blocked") return "parked" as const;
       const presence = yield* Effect.serviceOption(CakeChatComposerPresence);
@@ -163,7 +163,8 @@ const deliverBatch = Effect.fn("UpdateBatches.deliverBatch")(function* (
           activeRoot: location.sessionDirectory,
           resolvedRoot: location.resolvedSessionDirectory,
         });
-        if (namespace !== "active") return "parked" as const;
+        // A resolved conversation never receives deferred updates; they are dropped, not held.
+        if (namespace !== "active") return yield* storage.discardUpdates(recipientSessionId);
       }
       const handle =
         existing?.profile === "DiscussionSession"
@@ -268,7 +269,7 @@ export const runPass = Effect.fn("UpdateBatches.runPass")(function* () {
       continue;
     }
     if (now < Date.parse(batch.dueAt)) continue;
-    // Unavailable and parked recipients are checked again each minute rather than every pass.
+    // Unavailable and stopped recipients are checked again each minute rather than every pass.
     const retryLater = Effect.gen(function* () {
       const current = (yield* storage.state()).updateBatches?.find(
         (item) => item.recipientSessionId === recipientSessionId,
