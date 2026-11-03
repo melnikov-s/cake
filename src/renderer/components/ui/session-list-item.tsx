@@ -109,7 +109,8 @@ export const SessionListItem = observer(function SessionListItem({
   const isFamilyParent = Boolean(session.familyChildSessionIds?.length);
   const isFamilyChild =
     Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
-  const canResolve = (!activity || activity === "unread") && !isFamilyChild && Boolean(onResolve);
+  // Resolve is never gated by activity: on hover/focus it replaces whatever status dot is shown.
+  const canResolve = !isFamilyChild && Boolean(onResolve);
   const canSetLabels = !session.draft && !resolved && Boolean(onSetLabels);
   const branch = session.draft
     ? undefined
