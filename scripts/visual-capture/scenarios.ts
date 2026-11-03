@@ -1335,11 +1335,10 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
       )
       .toBe(dimensions.width);
     if (state === "destination") {
-      await overlay.getByRole("button", { name: "Attach full display" }).click();
-      const destination = page.getByRole("dialog", { name: "Screenshot destination" });
-      await expect(destination.locator('[data-slot="sidebar"]')).toBeVisible();
-      captureOverlayRegions.set(page, destination);
-      await page.mouse.move(1, 1);
+      await overlay.getByRole("button", { name: "Screenshot destination", exact: true }).click();
+      await expect(overlay.getByRole("dialog", { name: "Screenshot destination" })).toBeVisible();
+      captureOverlayRegions.set(page, overlay.getByLabel("Screen capture", { exact: true }));
+      await overlay.mouse.move(1, 1);
       return;
     }
     const annotationState =

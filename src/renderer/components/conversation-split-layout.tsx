@@ -24,6 +24,7 @@ interface ConversationSplitLayoutProps<T extends PrimarySessionStore> {
   renderNavigation?(pane: SessionPaneNode): ReactNode;
   wrapPane?(session: NoInfer<T>, children: ReactNode): ReactNode;
   onFocus(paneId: string): void;
+  onInteract?(sessionId: string): void;
   onSplit?(axis: SessionSplitAxis): void;
   onClose(paneId: string): void;
 }
@@ -40,6 +41,7 @@ export function ConversationSplitLayout<T extends PrimarySessionStore>({
   renderNavigation,
   wrapPane,
   onFocus,
+  onInteract,
   onSplit,
   onClose,
 }: ConversationSplitLayoutProps<T>) {
@@ -73,6 +75,7 @@ export function ConversationSplitLayout<T extends PrimarySessionStore>({
           />
         );
       }}
+      onInteract={onInteract}
       onFocus={onFocus}
       onSplit={onSplit}
       onClose={onClose}

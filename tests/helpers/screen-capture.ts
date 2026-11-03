@@ -2,8 +2,16 @@ import type { CapturePreferences } from "../../src/contracts/desktop/screen-capt
 
 export const captureRouting: CapturePreferences = {
   annotationColor: "yellow",
+  projects: [],
+  cakeChats: [
+    { sessionId: "chat", title: "Cake Chat", modifiedAt: "", activityTime: "", labels: [] },
+  ],
+  defaultDestination: { kind: "cake-chat", sessionId: "chat" },
   appearance: {
     theme: "dark",
+    projectAvatarsEnabled: false,
+    sessionAvatarsEnabled: false,
+    sidebarCharactersEnabled: false,
   },
   dictation: {
     enabled: false,

@@ -1,4 +1,5 @@
 import { observer, useStore } from "r-state-tree/react";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { ProjectChatHeaderLink } from "./project-chat-header-link";
 import { ErrorNotice } from "@/components/error-notice";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -175,6 +176,12 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
         ) : (
           <ProjectPaneHeader pane={pane} session={session} browserMode={browserMode} />
         )
+      }
+      onInteract={(sessionId) =>
+        root.appShellStore.recordConversationInteraction({
+          kind: isCakeChatSessionId(sessionId) ? "cake-chat" : "project-session",
+          sessionId,
+        })
       }
       onFocus={(paneId) => root.navigationStore.focusSessionPane(paneId)}
       onSplit={(axis) => root.navigationStore.splitFocusedSession(axis)}

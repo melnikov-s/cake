@@ -6,6 +6,7 @@ import { AgentActionNotice } from "./agent-action-notice";
 import { WidgetBrowserOutput } from "../widgets/widget-browser-output";
 import {
   CaptureImage,
+  CaptureDestination,
   CapturePreferences,
   CaptureCompletion,
   CaptureAnnotationColor,
@@ -446,6 +447,7 @@ export const cakeRpcPayloadSchemas = {
       Schema.Struct({
         image: CaptureImage,
         annotationText: Schema.String,
+        destination: CaptureDestination,
       }),
     ),
   }),

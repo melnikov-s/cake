@@ -315,8 +315,13 @@ describe("Client transport and device integration", () => {
               maximumUtteranceSeconds: 30,
             },
           },
+          projects: [],
+          cakeChats: [],
           appearance: {
             theme: "dark",
+            projectAvatarsEnabled: false,
+            sessionAvatarsEnabled: false,
+            sidebarCharactersEnabled: false,
           },
         }),
       () => client.electron.configureScreenCapture({ shortcut: "Mod+Shift+6", maxDimension: 2048 }),

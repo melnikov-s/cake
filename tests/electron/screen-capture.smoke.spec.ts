@@ -408,62 +408,39 @@ test("captures and annotates through the hidden native overlay into the existing
     });
     await restoreClipboardSnapshot(application, "previousCaptureClipboard");
     clipboardSaved = false;
-    // Enter commits a label; cancelling a draft does not close capture.
-    await overlay.getByRole("button", { name: "Crop", exact: true }).click();
-    await expect(overlay.getByRole("button", { name: "Undo drawing" })).toBeEnabled();
-    await overlay.keyboard.press("Enter");
-    await expect.poll(() => application.windows().length).toBe(1);
-    const destinationMenu = page.getByRole("dialog", { name: "Screenshot destination" });
-    const destinationTrigger = page.getByRole("button", {
+    // Destination choice is already available in the native editor. Escape dismisses only the menu.
+    const destinationMenu = overlay.getByRole("dialog", { name: "Screenshot destination" });
+    const destinationTrigger = overlay.getByRole("button", {
       name: "Screenshot destination",
       exact: true,
     });
-    // The picker lives in the owner, not the native editor: it is the actual sidebar.
-    await expect(
-      destinationMenu.locator('[data-slot="sidebar"][data-view="destination"]'),
-    ).toBeVisible();
-    await page.keyboard.press("Escape");
+    await destinationTrigger.click();
+    await expect(destinationMenu).toBeVisible();
+    await overlay.keyboard.press("Escape");
     await expect(destinationMenu).toHaveCount(0);
     await expect(destinationTrigger).toBeFocused();
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     const mainSidebar = page.locator('[data-slot="sidebar"][data-view="navigation"]');
-    await mainSidebar
-      .getByRole("button", { name: "Open Project Chat for project", exact: true })
-      .click({ button: "right" });
-    await expect
-      .poll(() => application.evaluate(() => Reflect.get(globalThis, "captureSidebarMenus").length))
-      .toBe(1);
     await mainSidebar.getByRole("button", { name: "Collapse project", exact: true }).click();
     await destinationTrigger.click();
     await expect(
-      destinationMenu.getByRole("button", { name: "Expand project", exact: true }),
-    ).toHaveAttribute("aria-expanded", "false");
-    await destinationMenu.getByRole("button", { name: "Expand project", exact: true }).click();
-    await expect(
-      mainSidebar.getByRole("button", { name: "Collapse project", exact: true }),
+      destinationMenu.getByRole("button", { name: "Collapse project", exact: true }),
     ).toHaveAttribute("aria-expanded", "true");
     await destinationMenu.getByRole("button", { name: "Collapse project", exact: true }).click();
-    await page.keyboard.press("Escape");
+    await mainSidebar.getByRole("button", { name: "Expand project", exact: true }).click();
+    await expect(
+      destinationMenu.getByRole("button", { name: "Expand project", exact: true }),
+    ).toHaveAttribute("aria-expanded", "false");
+    await overlay.keyboard.press("Escape");
     await destinationTrigger.click();
     await expect(
       destinationMenu.getByRole("button", { name: "Expand project", exact: true }),
     ).toBeVisible();
-    await expect(
-      destinationMenu.getByRole("button", { name: /Project actions|New chat in|Resolve / }),
-    ).toHaveCount(0);
-    await expect(destinationMenu.locator('[draggable="true"]')).toHaveCount(0);
-    await destinationMenu
-      .getByRole("button", { name: "Open Project Chat for project", exact: true })
-      .click({ button: "right" });
-    expect(
-      await application.evaluate(() => Reflect.get(globalThis, "captureSidebarMenus").length),
-    ).toBe(1);
-    await expect(destinationMenu).toBeVisible();
-    await destinationMenu.getByRole("button", { name: "Attach to current chat" }).click();
-    const attachCurrent = async () => {
-      await expect(destinationMenu).toBeVisible();
-      await destinationMenu.getByRole("button", { name: "Attach to current chat" }).click();
-    };
+    await overlay.keyboard.press("Escape");
+    await overlay.getByRole("button", { name: "Crop", exact: true }).click();
+    await expect(overlay.getByRole("button", { name: "Undo drawing" })).toBeEnabled();
+    await overlay.keyboard.press("Enter");
+    await expect.poll(() => application.windows().length).toBe(1);
     const preview = page.getByRole("button", { name: /^View Screenshot-/ });
     await expect(preview).toHaveCount(1);
     const source = await preview.locator("img").getAttribute("src");
@@ -594,7 +571,6 @@ test("captures and annotates through the hidden native overlay into the existing
     await overlay.mouse.move(cropEnd.x, cropEnd.y);
     await overlay.mouse.up();
     await expect.poll(() => application.windows().length).toBe(1);
-    await attachCurrent();
     await expect(preview).toHaveCount(2);
     const cropped = await preview.last().locator("img").getAttribute("src");
     const size = await application.evaluate(
@@ -630,18 +606,19 @@ test("captures and annotates through the hidden native overlay into the existing
       await overlay.mouse.move(bounds.x + bounds.width * 0.4, bounds.y + bounds.height * 0.6);
       await overlay.mouse.up();
       await expect.poll(() => application.windows().length).toBe(1);
-      await attachCurrent();
       await expect(preview).toHaveCount(3 + index);
     }
 
     await settings.click();
     overlay = await begin();
+    // A project label selects its permanent Project Chat before attaching.
+    await overlay.getByRole("button", { name: "Screenshot destination", exact: true }).click();
+    await overlay
+      .getByRole("dialog", { name: "Screenshot destination" })
+      .getByRole("button", { name: "Open Project Chat for Other Project" })
+      .click();
     await overlay.getByRole("button", { name: "Attach full display" }).click();
     await expect.poll(() => application.windows().length).toBe(1);
-    // A project label targets its permanent Project Chat, never a newly created session.
-    await destinationMenu
-      .getByRole("button", { name: "Open Project Chat for other-project" })
-      .click();
     await expect(preview).toHaveCount(1);
     const projectComposer = page.getByRole("combobox", {
       name: "Message Project Chat",
@@ -655,11 +632,12 @@ test("captures and annotates through the hidden native overlay into the existing
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Go back in session history" }).click();
     await expect(preview).toHaveCount(6);
+    // Back changes navigation, not interaction. Explicitly interact with this draft before capturing again.
+    await composer.click();
     await settings.click();
     overlay = await begin();
     await overlay.getByRole("button", { name: "Attach full display" }).click();
     await expect.poll(() => application.windows().length).toBe(1);
-    await attachCurrent();
     await expect(preview).toHaveCount(7);
     await expect(composer).toHaveValue(
       /1\. Look here\n {3}Second line\n2\. Freehand note plus screenshot/,

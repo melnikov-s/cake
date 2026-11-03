@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 import { SpeechRecognitionSettings, TextProcessingMode } from "../dictation/dictation-data";
+import { ProjectIcon, SessionLabel } from "../application/application-data";
+import { WorktreeRecord } from "../worktrees/managed-worktree-data";
 import { ImportedColorTheme } from "../themes/color-theme";
 
 import { CAPTURE_ANNOTATION_COLORS } from "../../utils/capture-annotation-colors";
@@ -16,12 +18,55 @@ export const ScreenCaptureSettings = Schema.Struct({
 });
 export interface ScreenCaptureSettings extends Schema.Schema.Type<typeof ScreenCaptureSettings> {}
 
-/** Native editing preferences; destinations stay in the owning renderer. */
+export const CaptureDestination = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("project-session"), sessionId: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("cake-chat"), sessionId: Schema.String }),
+]);
+export type CaptureDestination = Schema.Schema.Type<typeof CaptureDestination>;
+
+/** Frozen sidebar presentation facts; the overlay does not create another session catalog. */
+export const CaptureSessionOption = Schema.Struct({
+  sessionId: Schema.String,
+  title: Schema.String,
+  modifiedAt: Schema.String,
+  activityTime: Schema.String,
+  labels: Schema.Array(SessionLabel),
+  activity: Schema.optionalKey(
+    Schema.Literals(["waiting", "running", "blocked", "unread", "error", "stopped"]),
+  ),
+  draft: Schema.optionalKey(Schema.Boolean),
+  worktreeName: Schema.optionalKey(Schema.String),
+  familyParentSessionId: Schema.optionalKey(Schema.String),
+  familyChildSessionIds: Schema.optionalKey(Schema.Array(Schema.String)),
+  familyDepth: Schema.optionalKey(Schema.Int),
+  managedWorktree: Schema.optionalKey(
+    Schema.Struct({
+      branch: WorktreeRecord.fields.branch,
+      baseBranch: WorktreeRecord.fields.baseBranch,
+      parentWorktreePath: WorktreeRecord.fields.parentWorktreePath,
+      state: WorktreeRecord.fields.state,
+    }),
+  ),
+});
+export interface CaptureSessionOption extends Schema.Schema.Type<typeof CaptureSessionOption> {}
 export const CapturePreferences = Schema.Struct({
   annotationColor: CaptureAnnotationColor,
+  projects: Schema.Array(
+    Schema.Struct({
+      path: Schema.String,
+      name: Schema.String,
+      icon: Schema.optionalKey(ProjectIcon),
+      sessions: Schema.Array(CaptureSessionOption),
+      chatSessionId: Schema.optionalKey(Schema.String),
+    }),
+  ),
+  cakeChats: Schema.Array(CaptureSessionOption),
   appearance: Schema.Struct({
     theme: Schema.Literals(["system", "light", "dark"]),
     importedTheme: Schema.optional(ImportedColorTheme),
+    projectAvatarsEnabled: Schema.Boolean,
+    sessionAvatarsEnabled: Schema.Boolean,
+    sidebarCharactersEnabled: Schema.Boolean,
   }),
   dictation: Schema.Struct({
     enabled: Schema.Boolean,
@@ -29,6 +74,7 @@ export const CapturePreferences = Schema.Struct({
     textProcessingMode: TextProcessingMode,
     recognition: SpeechRecognitionSettings,
   }),
+  defaultDestination: Schema.optionalKey(CaptureDestination),
 });
 export interface CapturePreferences extends Schema.Schema.Type<typeof CapturePreferences> {}
 
@@ -36,6 +82,7 @@ const CaptureAnnotationText = Schema.String;
 export const CaptureResult = Schema.Struct({
   data: Schema.String.check(Schema.isMaxLength(20_000_000)),
   annotationText: CaptureAnnotationText,
+  destination: CaptureDestination,
 });
 export interface CaptureResult extends Schema.Schema.Type<typeof CaptureResult> {}
 

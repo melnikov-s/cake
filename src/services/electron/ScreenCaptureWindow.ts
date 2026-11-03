@@ -15,6 +15,7 @@ import {
   DEFAULT_CAPTURE_MAX_DIMENSION,
   DEFAULT_CAPTURE_SHORTCUT,
   type CapturePreferences,
+  type CaptureDestination,
   type CaptureResult,
   type CaptureCompletion,
   type CaptureAnnotationColor,
@@ -225,7 +226,7 @@ export class ScreenCaptureWindow {
 
   finish(
     senderId: number,
-    capture: { image: string; annotationText: string } | undefined,
+    capture: { image: string; annotationText: string; destination: CaptureDestination } | undefined,
     annotationColor: CaptureAnnotationColor,
   ) {
     const snapshot = this.state(senderId);
@@ -236,7 +237,9 @@ export class ScreenCaptureWindow {
     }
     this.overlay?.hide();
     this.complete?.(
-      data && capture ? { data, annotationText: capture.annotationText } : undefined,
+      data && capture
+        ? { data, annotationText: capture.annotationText, destination: capture.destination }
+        : undefined,
       annotationColor,
     );
   }

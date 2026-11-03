@@ -121,6 +121,7 @@ it("routes overlay screenshots only to Cake Chat and attaches them to its draft"
   const startScreenCapture = vi.fn<Client["electron"]["startScreenCapture"]>(async (routing) => ({
     annotationColor: routing.annotationColor,
     capture: {
+      destination: routing.defaultDestination!,
       data: "c2NyZWVu",
       annotationText: "1. Inspect this\n   and this",
     },

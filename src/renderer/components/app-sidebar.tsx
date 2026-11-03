@@ -2,14 +2,9 @@ import { useCallback } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import { Sidebar } from "@/components/sidebar";
 import { RootStore } from "../stores/RootStore";
-import type { WindowConversationSelection } from "../stores/AppShellStore";
 import { isPhoneLayout } from "../lib/phone-layout";
 
-export const AppSidebar = observer(function AppSidebar({
-  onSelectDestination,
-}: {
-  onSelectDestination?(destination: WindowConversationSelection): void;
-}) {
+export const AppSidebar = observer(function AppSidebar() {
   const root = useStore(RootStore);
   const store = root.projectWorkbenchStore;
   const sidebar = root.sidebarStore;
@@ -27,6 +22,8 @@ export const AppSidebar = observer(function AppSidebar({
   const openCakeChat = useCallback(
     (sessionId?: string) => {
       closeNarrowNavigation();
+      if (sessionId)
+        root.appShellStore.recordConversationInteraction({ kind: "cake-chat", sessionId });
       void root.navigationStore.openCakeChat(sessionId);
     },
     [root, closeNarrowNavigation],
@@ -34,6 +31,7 @@ export const AppSidebar = observer(function AppSidebar({
   const openSession = useCallback(
     (sessionId: string) => {
       closeNarrowNavigation();
+      root.appShellStore.recordConversationInteraction({ kind: "project-session", sessionId });
       void root.navigationStore.openSession(sessionId);
     },
     [root, closeNarrowNavigation],
@@ -58,7 +56,6 @@ export const AppSidebar = observer(function AppSidebar({
   }, [root, closeNarrowNavigation]);
   return (
     <Sidebar
-      view={onSelectDestination ? "destination" : "navigation"}
       store={sidebar}
       sessionList={sidebar.sessionListStore}
       sessionMetadata={root.sessionMetadataStore}
@@ -70,22 +67,12 @@ export const AppSidebar = observer(function AppSidebar({
       appearance={root.settingsStore.appearance}
       onToggle={toggleSidebar}
       onOpenSettings={openSettings}
-      onOpenCakeChat={
-        onSelectDestination
-          ? (sessionId) => {
-              if (sessionId) onSelectDestination({ kind: "cake-chat", sessionId });
-            }
-          : openCakeChat
-      }
+      onOpenCakeChat={openCakeChat}
       onNewSession={() => {
         closeNarrowNavigation();
         root.newSessionStore.show();
       }}
-      onOpenSession={
-        onSelectDestination
-          ? (sessionId) => onSelectDestination({ kind: "project-session", sessionId })
-          : openSession
-      }
+      onOpenSession={openSession}
       onCreateSession={createSession}
       onRemoveProject={(path, deleteSessions) =>
         root.projectRemovalStore.remove(path, deleteSessions)

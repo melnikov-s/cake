@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect } from "react";
 import { StoreProvider, observer } from "r-state-tree/react";
 import type { ScreenCaptureOverlayStore } from "../stores/ScreenCaptureOverlayStore";
 import { CaptureCanvas } from "./ui/capture-canvas";
+import { CaptureDestinationPicker } from "./capture-destination-picker";
 import { CaptureToolbar } from "./ui/capture-toolbar";
 import { AnnotationDraftPopover } from "./annotation-draft-popover";
 import { AnnotationItemPopover } from "./annotation-item-popover";
@@ -112,6 +113,14 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
         </StoreProvider>
       )}
       <CaptureToolbar
+        destination={
+          store.destinationPicker && (
+            <StoreProvider store={store.destinationPicker}>
+              <CaptureDestinationPicker disabled={store.busy || store.cancelled} />
+            </StoreProvider>
+          )
+        }
+        canAttach={Boolean(store.destinationPicker?.destination)}
         mode={store.mode}
         color={store.annotationColor}
         onColor={(color) => store.selectColor(color)}

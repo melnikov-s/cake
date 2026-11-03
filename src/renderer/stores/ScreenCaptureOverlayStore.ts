@@ -16,6 +16,7 @@ import {
 } from "../../utils/capture-annotation-colors";
 import { DictationStore } from "./DictationStore";
 import { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
+import { CaptureDestinationPickerStore } from "./CaptureDestinationPickerStore";
 
 /** Ephemeral overlay editing state; image and numbered text share one export projection. */
 export class ScreenCaptureOverlayStore extends Store<{
@@ -44,6 +45,13 @@ export class ScreenCaptureOverlayStore extends Store<{
   cancelled = false;
   error: string | undefined;
   annotationColor: CaptureAnnotationColor = DEFAULT_CAPTURE_ANNOTATION_COLOR;
+
+  @child
+  get destinationPicker(): CaptureDestinationPickerStore | undefined {
+    return this.snapshot
+      ? createStore(CaptureDestinationPickerStore, { routing: this.snapshot.routing })
+      : undefined;
+  }
 
   selectColor(color: CaptureAnnotationColor) {
     if (this.busy || this.cancelled) return;
@@ -198,6 +206,11 @@ export class ScreenCaptureOverlayStore extends Store<{
   }
   async capture(rect?: CaptureRect, copy = false) {
     if (!this.snapshot || this.busy || this.cancelled) return;
+    const destination = this.destinationPicker?.destination;
+    if (!copy && !destination) {
+      this.error = "Choose a destination before attaching the screenshot.";
+      return;
+    }
     this.commitLabel();
     const drawings = this.drawings.slice();
     const annotationText = captureAnnotationText(drawings, rect);
@@ -215,9 +228,9 @@ export class ScreenCaptureOverlayStore extends Store<{
       if (copy) {
         await this.props.copy(image, annotationText);
         this.copied = true;
-      } else {
+      } else if (destination) {
         await this.props.client.finishScreenCapture(
-          { image, annotationText },
+          { image, annotationText, destination },
           this.annotationColor,
           { signal: this.signal },
         );

@@ -29,6 +29,7 @@ interface SessionSplitLayoutProps {
   renderNavigation?(pane: SessionPaneNode): ReactNode;
   renderPane(pane: SessionPaneNode): ReactNode;
   onFocus(paneId: string): void;
+  onInteract?(sessionId: string): void;
   onSplit?(axis: SessionSplitAxis): void;
   onClose(paneId: string): void;
   /** Shared by recursive nodes to distinguish keyboard traversal from programmatic focus. */
@@ -45,6 +46,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
   renderNavigation,
   renderPane,
   onFocus,
+  onInteract,
   onSplit,
   onClose,
   keyboardFocusIntent: inheritedKeyboardFocusIntent,
@@ -105,12 +107,16 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
             focused &&
             "border-accent/40 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_10%,transparent)]",
         )}
+        onWheelCapture={() => onInteract?.(sessionId)}
+        onKeyDownCapture={() => onInteract?.(sessionId)}
         onPointerDownCapture={() => {
+          onInteract?.(sessionId);
           keyboardFocusIntent.current = false;
           onFocus(node.paneId);
         }}
         onFocusCapture={() => {
           if (!keyboardFocusIntent.current) return;
+          onInteract?.(sessionId);
           keyboardFocusIntent.current = false;
           onFocus(node.paneId);
         }}
@@ -206,6 +212,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
           renderHeader,
           renderPane,
           onFocus,
+          onInteract,
           onSplit,
           onClose,
           keyboardFocusIntent,
@@ -233,6 +240,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
           renderHeader,
           renderPane,
           onFocus,
+          onInteract,
           onSplit,
           onClose,
           keyboardFocusIntent,

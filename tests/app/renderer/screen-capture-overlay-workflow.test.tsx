@@ -67,6 +67,22 @@ function draw(store: ScreenCaptureOverlayStore) {
 }
 
 describe("Screen capture overlay", () => {
+  it("allows Copy but requires a destination to attach when none are available", async () => {
+    using fixture = await renderOverlay(undefined, {
+      ...captureRouting,
+      projects: [],
+      cakeChats: [],
+      defaultDestination: undefined,
+    });
+    expect(
+      screen.getByRole("button", { name: "Attach full display" }).hasAttribute("disabled"),
+    ).toBe(true);
+    await fixture.user.click(screen.getByRole("button", { name: "Copy image and text" }));
+    expect(fixture.copy).toHaveBeenCalledOnce();
+    expect(fixture.finishScreenCapture).not.toHaveBeenCalled();
+    await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
+  });
+
   it.each(["light", "dark"] as const)(
     "picks explicit annotation ink in %s and passes it to copy/export and cancellation",
     async (theme) => {
@@ -150,6 +166,7 @@ describe("Screen capture overlay", () => {
       ]);
       expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
         {
+          destination: captureRouting.defaultDestination,
           image: "data:image/png;base64,drawing",
           annotationText: "1. First line\n   Second line",
         },
@@ -277,6 +294,7 @@ describe("Screen capture overlay", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
     expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
       {
+        destination: captureRouting.defaultDestination,
         image: "data:image/png;base64,retry",
         annotationText: "",
       },

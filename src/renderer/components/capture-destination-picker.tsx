@@ -1,53 +1,125 @@
+import { useState } from "react";
 import { observer, useStore } from "r-state-tree/react";
-import { RootStore } from "../stores/RootStore";
-import { AppSidebar } from "./app-sidebar";
+import type { CaptureSessionOption } from "../../contracts/desktop/screen-capture-data";
+import { CaptureDestinationPickerStore } from "../stores/CaptureDestinationPickerStore";
+import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
-import { CloseIcon, ChevronDownIcon } from "./ui/icons";
+import { CakeIcon, ChevronIcon, ChevronDownIcon, FolderIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Avatar } from "./ui/avatar";
+import { SessionListItem } from "./ui/session-list-item";
 
-/** The native editor returns pixels; this owning window composes its actual live sidebar. */
-export const CaptureDestinationPicker = observer(function CaptureDestinationPicker() {
-  const root = useStore(RootStore);
-  const capture = root.screenCaptureStore;
-  if (!capture.pendingCapture || capture.cakeChatOnly) return null;
-  const current = capture.currentDestination;
+/** The original capture menu, composed from shared sidebar rows with capture-scoped disclosures. */
+export const CaptureDestinationPicker = observer(function CaptureDestinationPicker({
+  disabled,
+}: {
+  disabled: boolean;
+}) {
+  const store = useStore(CaptureDestinationPickerStore);
+  const [open, setOpen] = useState(false);
+  const routing = store.routing;
+  const globalChats = routing.cakeChats.filter(
+    (session) => !routing.projects.some((project) => project.chatSessionId === session.sessionId),
+  );
+  const rows = (sessions: readonly CaptureSessionOption[], kind: "project-session" | "cake-chat") =>
+    store.visibleSessions(sessions).map((session) => (
+      <SessionListItem
+        key={session.sessionId}
+        session={session}
+        managedWorktree={session.managedWorktree}
+        selected={
+          store.destination?.kind === kind && store.destination.sessionId === session.sessionId
+        }
+        resolved={false}
+        activity={session.activity}
+        activityTime={session.activityTime}
+        labels={session.labels}
+        avatarSeed={session.sessionId}
+        avatarsEnabled={routing.appearance.sessionAvatarsEnabled}
+        charactersEnabled={routing.appearance.sidebarCharactersEnabled}
+        familyCollapsed={store.isFamilyCollapsed(session.sessionId)}
+        onToggleFamily={(id) => store.toggleFamily(id)}
+        onOpen={(sessionId) => {
+          if (disabled) return;
+          store.select({ kind, sessionId });
+          setOpen(false);
+        }}
+      />
+    ));
   return (
-    <div className="fixed top-14 left-1/2 z-50 -translate-x-1/2">
-      <Popover defaultOpen>
-        <PopoverTrigger aria-label="Screenshot destination" variant="outline" size="sm">
-          Screenshot destination <ChevronDownIcon />
-        </PopoverTrigger>
-        <PopoverContent
-          aria-label="Screenshot destination"
-          align="center"
-          className="flex w-80 max-h-[min(32rem,calc(100dvh-8rem))] flex-col overflow-hidden bg-sidebar p-0"
-        >
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/65 p-2">
-            {current && (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        aria-label="Screenshot destination"
+        title={store.label}
+        disabled={disabled}
+        variant="ghost"
+        size="sm"
+        className="h-7.5 w-52 min-w-0 justify-between gap-2 px-2 text-xs font-normal"
+      >
+        <span className="truncate">{store.label}</span>
+        <ChevronDownIcon />
+      </PopoverTrigger>
+      <PopoverContent
+        aria-label="Screenshot destination"
+        align="start"
+        className="w-80 max-h-[min(22rem,calc(100vh-9rem))] overflow-y-auto bg-sidebar p-1.5"
+      >
+        {globalChats.length > 0 && (
+          <section aria-label="Cake Chat">
+            <div className="flex items-center gap-2 px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">
+              <CakeIcon /> Cake Chat
+            </div>
+            <div className="flex flex-col gap-1">{rows(globalChats, "cake-chat")}</div>
+          </section>
+        )}
+        {routing.projects.map((project) => (
+          <section key={project.path} aria-label={project.name}>
+            <div className="flex items-center gap-1">
+              <IconButton
+                tooltip={store.isProjectCollapsed(project.path) ? "Expand" : "Collapse"}
+                ariaLabel={`${store.isProjectCollapsed(project.path) ? "Expand" : "Collapse"} ${project.name}`}
+                aria-expanded={!store.isProjectCollapsed(project.path)}
+                onClick={() => store.toggleProject(project.path)}
+              >
+                <ChevronIcon
+                  className={cn(store.isProjectCollapsed(project.path) && "-rotate-90")}
+                />
+              </IconButton>
+              {routing.appearance.projectAvatarsEnabled ? (
+                <Avatar
+                  kind="project"
+                  seed={project.name}
+                  customIcon={project.icon}
+                  aria-hidden="true"
+                />
+              ) : (
+                <FolderIcon />
+              )}
               <Button
+                data-slot="project-label"
                 variant="ghost"
                 size="sm"
-                disabled={capture.busy}
-                onClick={() => void capture.attachTo(current)}
+                className="min-w-0 flex-1 justify-start"
+                aria-label={`Open Project Chat for ${project.name}`}
+                disabled={!project.chatSessionId || disabled}
+                onClick={() => {
+                  if (!project.chatSessionId || disabled) return;
+                  store.select({ kind: "cake-chat", sessionId: project.chatSessionId });
+                  setOpen(false);
+                }}
               >
-                Attach to current chat
+                <span className="truncate">{project.name}</span>
               </Button>
+            </div>
+            {!store.isProjectCollapsed(project.path) && (
+              <div className="flex flex-col gap-1 pl-4">
+                {rows(project.sessions, "project-session")}
+              </div>
             )}
-            <IconButton
-              className="ml-auto"
-              tooltip="Cancel screenshot attachment"
-              disabled={capture.busy}
-              onClick={() => capture.cancelDestination()}
-            >
-              <CloseIcon />
-            </IconButton>
-          </div>
-          <div className="flex min-h-0 flex-1 flex-col" inert={capture.busy}>
-            <AppSidebar onSelectDestination={(destination) => void capture.attachTo(destination)} />
-          </div>
-        </PopoverContent>
-      </Popover>
-    </div>
+          </section>
+        ))}
+      </PopoverContent>
+    </Popover>
   );
 });

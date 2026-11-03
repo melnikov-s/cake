@@ -199,6 +199,7 @@ describe("Native screen capture lifetime", () => {
     capture.finish(
       window.webContents.id,
       {
+        destination: { kind: "cake-chat", sessionId: "chat" },
         image: "data:image/png;base64,composed",
         annotationText: "1. First\n   second",
       },
@@ -207,6 +208,7 @@ describe("Native screen capture lifetime", () => {
     expect(await running).toEqual({
       annotationColor: "cyan",
       capture: {
+        destination: { kind: "cake-chat", sessionId: "chat" },
         data: Buffer.from("resized").toString("base64"),
         annotationText: "1. First\n   second",
       },

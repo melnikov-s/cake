@@ -49,6 +49,15 @@ const sameSessionEntry = (left: SessionHistoryEntry, right: SessionHistoryEntry)
   left.kind === right.kind && left.sessionId === right.sessionId;
 
 export class AppShellStore extends Store<AppShellStoreProps> {
+  /** Explicit sidebar/pane pointer or keyboard interaction, never programmatic navigation/focus. */
+  @snapshot lastInteractedConversation:
+    | Exclude<WindowConversationSelection, { kind: "automation-session" }>
+    | undefined;
+
+  recordConversationInteraction(target: WindowConversationSelection) {
+    if (target.kind !== "automation-session") this.lastInteractedConversation = { ...target };
+  }
+
   @snapshot readonly navigationVersion = 3;
   @snapshot workspace: ConversationWorkspace = "home";
   @snapshot coveringSurface: "settings" | "artifact-library" | "automations" | undefined;
@@ -131,6 +140,11 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   }
 
   replaceProjectSession(from: string, to: string) {
+    if (
+      this.lastInteractedConversation?.kind === "project-session" &&
+      this.lastInteractedConversation.sessionId === from
+    )
+      this.lastInteractedConversation = { kind: "project-session", sessionId: to };
     for (let index = 0; index < this.sessionHistory.length; index++) {
       const entry = this.sessionHistory[index]!;
       if (entry.kind === "project-session" && entry.sessionId === from)

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { CaptureMode } from "../../../contracts/desktop/screen-capture-data";
 import type { CaptureAnnotationColor } from "../../../utils/capture-annotation-colors";
 import { AnnotationColorPicker } from "./annotation-color-picker";
@@ -16,6 +17,8 @@ import {
 
 /** Compact movable capture controls, outside the exported canvas. */
 export function CaptureToolbar({
+  destination,
+  canAttach = true,
   mode,
   color,
   onColor,
@@ -28,6 +31,8 @@ export function CaptureToolbar({
   onCapture,
   onCancel,
 }: {
+  destination?: ReactNode;
+  canAttach?: boolean;
   mode: CaptureMode;
   color: CaptureAnnotationColor;
   onColor(color: CaptureAnnotationColor): void;
@@ -49,6 +54,7 @@ export function CaptureToolbar({
       // Lower only the initial strip by 40 CSS pixels; dragged geometry stays with the primitive.
       className="top-14"
     >
+      {destination}
       <IconButton
         tooltip="Crop · drag to attach"
         ariaLabel="Crop"
@@ -91,7 +97,7 @@ export function CaptureToolbar({
       <IconButton
         tooltip={busy ? "Attaching screenshot…" : "Attach full display · Enter"}
         ariaLabel="Attach full display"
-        disabled={busy}
+        disabled={busy || !canAttach}
         onClick={onCapture}
       >
         <CaptureDisplayIcon />

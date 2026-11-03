@@ -15,6 +15,7 @@ import type {
   CapturePreferences,
   CaptureCompletion,
   CaptureAnnotationColor,
+  CaptureDestination,
   ScreenCaptureSettings,
   ScreenCaptureSnapshot,
 } from "../../contracts/desktop/screen-capture-data";
@@ -135,7 +136,7 @@ interface ElectronCommands {
   ): Promise<void>;
   copyImage(dataUrl: string, options?: ClientCommandOptions): Promise<void>;
   finishScreenCapture(
-    capture: { image: string; annotationText: string } | undefined,
+    capture: { image: string; annotationText: string; destination: CaptureDestination } | undefined,
     annotationColor: CaptureAnnotationColor,
     options?: ClientCommandOptions,
   ): Promise<void>;

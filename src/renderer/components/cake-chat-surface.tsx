@@ -60,6 +60,9 @@ export const CakeChatSurface = observer(function CakeChatSurface({
       renderHeader={(pane, session) => (
         <CakeChatPaneHeader pane={pane} session={session} overlay={overlay} />
       )}
+      onInteract={(sessionId) =>
+        root.appShellStore.recordConversationInteraction({ kind: "cake-chat", sessionId })
+      }
       onFocus={(paneId) => root.navigationStore.focusCakeChatPane(paneId)}
       onClose={(paneId) => root.navigationStore.closeCakeChatPane(paneId)}
     />
