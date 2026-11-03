@@ -63,7 +63,7 @@ import {
 import { subagentCompletionInput } from "../../contracts/subagents/subagent-report";
 import { CakeChatDurable } from "../pi-durable/CakeChatDurable";
 import { cakeChatSideChatConversationId } from "../../contracts/cake-chats/cake-chat-identity";
-import { TurnCanceledError } from "./runtime/RuntimeTurnCompletion";
+import { TurnCanceledError, TurnDetachedError } from "./runtime/RuntimeTurnCompletion";
 import {
   loadDurableArtifactReferences,
   loadPiChangelog,
@@ -1074,6 +1074,23 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             }
             retained.settledInputIds.delete(turnId);
           });
+          // The runtime closed under durable input that has no outcome yet. Settling it
+          // here would report a failure while another engine or restart recovery still
+          // finishes it, so only this runtime's claim ends; the recovery input remains.
+          const detach = Effect.fn("CakeSessionRuntimes.detachTurn")(function* (message: string) {
+            yield* Ref.update(retained.activeTurns, (turns) => {
+              const next = new Map(turns);
+              next.delete(turnId);
+              return next;
+            });
+            retained.turnResults.delete(turnId);
+            yield* Effect.logWarning("Runtime closed before its accepted input settled", {
+              sessionId: retained.runtime.sessionId,
+              turnId,
+              message,
+            });
+            yield* key.options.onTurnActivityChanged ?? Effect.void;
+          });
           const finished = yield* Deferred.make<void, PiSessionError>();
           // Input the user withdrew (abort, removed queue row, cleared queue) is a
           // cancellation of accepted work, not a failure of the session.
@@ -1107,17 +1124,19 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             Effect.matchEffect({
               onSuccess: () => settle("complete"),
               onFailure: (cause) =>
-                (cause instanceof TurnCanceledError
-                  ? settle("aborted")
-                  : settle("failed", messageOf(cause))
-                ).pipe(
-                  Effect.andThen(
-                    Deferred.fail(
-                      finished,
-                      new PiSessionError({ operation: delivery, message: messageOf(cause) }),
+                cause instanceof TurnDetachedError
+                  ? detach(cause.message)
+                  : (cause instanceof TurnCanceledError
+                      ? settle("aborted")
+                      : settle("failed", messageOf(cause))
+                    ).pipe(
+                      Effect.andThen(
+                        Deferred.fail(
+                          finished,
+                          new PiSessionError({ operation: delivery, message: messageOf(cause) }),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
             }),
             Effect.ensuring(Scope.close(turnScope, Exit.void)),
           );

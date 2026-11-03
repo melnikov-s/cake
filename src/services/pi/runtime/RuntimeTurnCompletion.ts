@@ -8,6 +8,15 @@ export class TurnCanceledError extends Error {
   override readonly name = "TurnCanceledError";
 }
 
+/**
+ * Rejection when a runtime closed while durable storage still owns the accepted
+ * input. The input has no outcome yet: whichever engine next opens the
+ * conversation continues it, and restart recovery re-attaches to its result.
+ */
+export class TurnDetachedError extends Error {
+  override readonly name = "TurnDetachedError";
+}
+
 /** Correlates accepted Pi input with consumption and the actual settled run. */
 export class RuntimeTurnCompletion {
   private readonly pending = new Map<

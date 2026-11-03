@@ -27,7 +27,15 @@ import {
   type CakeSessionRuntimeAcquireOptions,
 } from "../../../../src/services/pi/CakeSessionRuntimes";
 import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
-import { TurnCanceledError } from "../../../../src/services/pi/runtime/RuntimeTurnCompletion";
+import {
+  TurnCanceledError,
+  TurnDetachedError,
+} from "../../../../src/services/pi/runtime/RuntimeTurnCompletion";
+import { admitTurn } from "../../../../src/domain/session-families/sessionFamilies";
+import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
+import { SessionFamilyStorage } from "../../../../src/services/storage/SessionFamilyStorage";
+import { SessionArchiveStorage } from "../../../../src/services/storage/SessionArchiveStorage";
+import { familyStorageHarness } from "../../helpers/familyStorageHarness";
 import { currentSessionOutcome } from "../../../../src/contracts/project-sessions/session-reporting";
 import {
   RuntimeRecoveryStorage,
@@ -38,6 +46,24 @@ import {
   options,
   fakeRuntime,
 } from "../../helpers/piRuntimeFixture";
+
+const archiveLocation = { cwd: "/project", activeRoot: "/sessions", resolvedRoot: "/resolved" };
+/** A reply-mode request from an independent Project Chat, as `sessions.send` encodes it. */
+const crossSessionRequest = (body: string) => {
+  const id = crypto.randomUUID();
+  return {
+    id,
+    text: encodeCrossSessionMessage(body, {
+      version: 1,
+      messageId: id,
+      threadId: crypto.randomUUID(),
+      sequence: 1,
+      expectsResponse: true,
+      resultDelivery: "reply",
+      sender: { sessionId: "project-chat:requester", title: "Project Chat", kind: "cake-chat" },
+    }),
+  };
+};
 
 const adapter = (
   acquisitions: Ref.Ref<number>,
@@ -515,6 +541,92 @@ describe("CakeSessionRuntimes", () => {
         ],
       );
     }),
+  );
+
+  it.effect(
+    "reports a requester only for real outcomes, never for input its closed runtime left running",
+    () =>
+      Effect.gen(function* () {
+        const families = yield* SessionFamilyStorage;
+        const settled = yield* Queue.unbounded<string>();
+        const released = yield* Queue.unbounded<void>();
+        const requests = {
+          detached: crossSessionRequest("Still running elsewhere"),
+          failed: crossSessionRequest("Provider rejects this"),
+          complete: crossSessionRequest("Answer this"),
+        };
+        const context = yield* Layer.build(
+          makeCakeSessionRuntimesLayer({
+            sessionIds: () => Stream.empty,
+            catalog: () => Stream.empty,
+            catalogEntry: () => Effect.succeed(undefined),
+            inspect: () => Effect.succeed(undefined),
+            changelog: () => Effect.succeed(""),
+            createRuntime: (runtimeOptions) =>
+              Effect.succeed({
+                ...fakeRuntime(runtimeOptions, () => undefined),
+                // Durable storage still owns the first input after its engine closed;
+                // the second fails for real; the third answers.
+                prompt: (text: string) =>
+                  text === requests.detached.text
+                    ? Promise.reject(new TurnDetachedError("Harness is closed"))
+                    : text === requests.failed.text
+                      ? Promise.reject(new Error("Provider unavailable"))
+                      : Promise.resolve(),
+              }),
+          }).pipe(Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer())),
+        );
+        const sessions = Context.get(context, CakeSessionRuntimes);
+        const target = {
+          workingDirectory: "/project",
+          sessionDirectory: "/sessions",
+          sessionId: "session-1",
+        };
+        const handle = yield* sessions.acquire({
+          ...options(),
+          admitTurn: (input, accept) =>
+            admitTurn("session-1", archiveLocation, input, accept).pipe(
+              Effect.provideService(SessionFamilyStorage, families),
+              Effect.provide(Layer.mock(SessionArchiveStorage, {})),
+            ),
+          onTurnActivityChanged: sessions.currentTurnIds(target).pipe(
+            Effect.flatMap((turnIds) =>
+              turnIds.length === 0 ? Queue.offer(released, undefined) : Effect.void,
+            ),
+            Effect.asVoid,
+          ),
+          onTurnSettled: (event) =>
+            families
+              .settleTurn(event.turnId, event.outcome)
+              .pipe(Effect.andThen(Queue.offer(settled, event.turnId)), Effect.asVoid),
+        });
+
+        yield* handle.prompt(requests.detached.text);
+        yield* Queue.take(released);
+        yield* handle.prompt(requests.failed.text);
+        yield* handle.prompt(requests.complete.text);
+        const outcomes = [yield* Queue.take(settled), yield* Queue.take(settled)];
+
+        assert.deepEqual(
+          outcomes.toSorted(),
+          [requests.complete.id, requests.failed.id].toSorted(),
+        );
+        const turns = new Map(
+          (yield* families.state()).turns.map((turn) => [turn.turnId, turn.outcome]),
+        );
+        // No outcome means no generated notice: the obligation waits for the real result.
+        assert.equal(turns.get(requests.detached.id), undefined);
+        assert.equal(turns.has(requests.detached.id), true);
+        assert.equal(turns.get(requests.failed.id), "failed");
+        assert.equal(turns.get(requests.complete.id), "complete");
+        assert.deepEqual(yield* sessions.currentTurnIds(target), []);
+        // Restart recovery re-attaches to the durable input and reports what it produced.
+        const record = yield* Context.get(context, RuntimeRecoveryStorage).get("session-1");
+        assert.deepEqual(
+          record?.inputs.map((input) => input.turnId),
+          [requests.detached.id],
+        );
+      }).pipe(Effect.provide(familyStorageHarness().layer)),
   );
 
   it.effect("settles a run without a final answer as failed with its reason, never complete", () =>

@@ -44,7 +44,7 @@ import { applyPiSetting, projectPiSettings } from "../pi/runtime/settings-transl
 import { projectSessionEntries } from "../pi/runtime/session-projection";
 import { projectModelCatalog } from "../pi/live/PiModelsLive";
 import { supportsFastMode } from "../pi/fast-mode";
-import { TurnCanceledError } from "../pi/runtime/RuntimeTurnCompletion";
+import { TurnCanceledError, TurnDetachedError } from "../pi/runtime/RuntimeTurnCompletion";
 import {
   type CakeSessionRuntime,
   type CakeSessionRuntimeOptions,
@@ -820,7 +820,11 @@ export async function createDurableCakeChatRuntime(
         internal,
         presentationMode,
       );
-      const settled = await submission.wait(BACKGROUND_CONTEXT);
+      // The wait rejects only when this engine closes or fails. The submission
+      // stays queued or placed in storage, so that is not the request's outcome.
+      const settled = await submission.wait(BACKGROUND_CONTEXT).catch((cause: unknown) => {
+        throw new TurnDetachedError(cause instanceof Error ? cause.message : String(cause));
+      });
       if (turnId && settled.status !== "unanswered") {
         // Attribute the final answer to the latest consumed conversational input,
         // not necessarily the request that initially started a steered run.

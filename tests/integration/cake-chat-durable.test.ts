@@ -40,6 +40,7 @@ import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-i
 import type { CakeSessionRuntime } from "../../src/services/pi/runtime/cake-session-runtime";
 import type { ConversationSnapshot } from "../../src/contracts/conversations/session-contract";
 import { durableAnswer, durableModel } from "../fixtures/durable-chat";
+import { TurnDetachedError } from "../../src/services/pi/runtime/RuntimeTurnCompletion";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -1318,6 +1319,30 @@ it("restart resumes a placed run and a linked worker continuation without resubm
   expect(
     retried.parts.filter(
       (part) => part.kind === "text" && part.subagentReport?.handleId === ids.third,
+    ),
+  ).toHaveLength(1);
+});
+
+it("closing under a placed run detaches its prompt without failing it, and the reopened chat answers that input", async () => {
+  const f = await fixture();
+  f.hold(true);
+  const first = await f.open();
+  const active = first.runtime
+    .prompt("Answer after reopen", "prompt", [], false, ids.first)
+    .catch((error: unknown) => error);
+  await Effect.runPromise(Deferred.await(f.started));
+  await first.close();
+  // Storage still owns the placed input: this is not the request's outcome.
+  expect(await active).toBeInstanceOf(TurnDetachedError);
+  f.hold(false);
+  const second = await f.open();
+  // Restart recovery resubmits the same input ID and receives the run's real result.
+  await second.runtime.prompt("Answer after reopen", "prompt", [], false, ids.first);
+  expect(f.results.at(-1)).toMatchObject({ stopReason: "stop", text: "Done" });
+  const parts = (await second.runtime.snapshot()).parts;
+  expect(
+    parts.filter(
+      (part) => part.kind === "text" && part.role === "user" && part.text === "Answer after reopen",
     ),
   ).toHaveLength(1);
 });
