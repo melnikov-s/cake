@@ -327,19 +327,33 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 
       await composer.fill("");
-      await page.keyboard.type("Send without restarting dictation");
-      await expect(composer).toHaveValue("Send without restarting dictation");
+      await page.keyboard.type("Send and stop dictation");
+      await expect(composer).toHaveValue("Send and stop dictation");
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
       await page.keyboard.press("Enter");
       await expect(composer).toHaveValue("");
       await expect(anchor).toBeFocused();
-      // Parking DOM focus after send is not an explicit dictation stop.
-      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+      // Successful admission ends dictation, rather than recording into the cleared draft.
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
       await page.keyboard.press("Tab");
       await expect(composer).toBeFocused();
       await page.keyboard.type("Next deliberate draft");
       await expect(composer).toHaveValue("Next deliberate draft");
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(composer).toHaveValue("");
+      await expect(composer).not.toBeFocused();
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+      // Deliberate entry starts over: typing/silence still cannot make this new period sticky.
+      await composer.focus();
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+      await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText(
+        "Dictation paused",
+      );
     }
   } finally {
     await application.close();

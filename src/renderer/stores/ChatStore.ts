@@ -1,5 +1,7 @@
 import { child, computed, createStore, snapshot, Store } from "r-state-tree";
 import { ChatPresentationContext } from "./context/ChatPresentationContext";
+import { DictationContext } from "./context/DictationContext";
+import type { DictationSubmission } from "./DictationStore";
 import { MessageReferencePreviewStore } from "./MessageReferencePreviewStore";
 import { incomingMessageReferences } from "../lib/incoming-message-references";
 import { messageReferencesInText } from "../../contracts/conversations/message-reference-forwarding";
@@ -561,6 +563,7 @@ export class ChatStore extends Store<ChatStoreProps> {
       return false;
     }
     if (value !== this.draft) this.setDraft(value);
+    const dictation = DictationContext.consume(this)?.();
     const empty = !value.trim() && this.attachments.length === 0 && this.annotations.length === 0;
     const own = empty ? this.ownQueuedPrompt() : undefined;
     if (own?.state === "steering" && this.canStopAndSendQueuedPrompt) {
@@ -571,21 +574,32 @@ export class ChatStore extends Store<ChatStoreProps> {
       await this.steerQueuedPrompt(own.id);
       return true;
     }
-    if (!this.props.canSubmit(value)) {
-      if (this.enterContinuation?.generation === options?.enterContinuation)
-        this.cancelEnterContinuation();
-      return false;
-    }
-    // Sending a message is the only time the transcript scrolls to the bottom.
-    // Editing an earlier message rewrites history in place instead.
-    if (!this.editingMessage) this.transcriptInteraction.noteSentMessage();
     this.submittingLocally = true;
-    const submittedRevision = this.draftRevision;
+    let submission: DictationSubmission | undefined;
+    let accepted = false;
     try {
+      if (!this.editingMessage && !empty) submission = await dictation?.prepareSubmission(this.id);
+      if (submission) {
+        if (!submission.ready) return false;
+        // Final recognition updates the bound draft before admission takes its snapshot.
+        value = this.draft;
+      }
+      if (!this.props.canSubmit(value)) {
+        if (this.enterContinuation?.generation === options?.enterContinuation)
+          this.cancelEnterContinuation();
+        return false;
+      }
+      // Sending a message is the only time the transcript scrolls to the bottom.
+      // Editing an earlier message rewrites history in place instead.
+      if (!this.editingMessage) this.transcriptInteraction.noteSentMessage();
+      const submittedRevision = this.draftRevision;
       const submitted = await this.props.submit(value, {
         renderUserMessageAsMarkdown:
           options?.renderUserMessageAsMarkdown ?? shouldRenderMarkdown(value),
       });
+      accepted = submitted !== false;
+      // End ownership before clearing the controlled draft can request an insertion restart.
+      dictation?.completeSubmission(submission, accepted);
       if (submitted !== false && this.draft === value && this.draftRevision === submittedRevision)
         this.setDraft("");
       if (submitted && submitted !== true) this.lastSentTurnId = submitted.turnId;
@@ -597,6 +611,7 @@ export class ChatStore extends Store<ChatStoreProps> {
       }
       return submitted !== false;
     } finally {
+      dictation?.completeSubmission(submission, accepted);
       if (
         this.enterContinuation?.generation === options?.enterContinuation &&
         !this.enterContinuation?.turnId

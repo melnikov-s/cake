@@ -48,6 +48,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
       parkFocusWhileDictating={parkFocusWhileDictating}
       focusRef={focusRef}
       data-cake-hint-key="i"
+      data-dictation-submission-owner={store.id}
       aria-label={store.inputLabel}
       aria-busy={store.rewording}
       inputRef={(input) => {

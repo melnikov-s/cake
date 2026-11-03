@@ -337,7 +337,13 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await expect(composer).toHaveValue("Explicitly chosen input");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 
-    // Clicking transcript UI after DOM blur keeps listening and updates the same insertion.
+    // A new owner cannot inherit speech from the settings input or from mere typing.
+    await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
+    await expect(indicator).toHaveText("Dictation paused");
+    await composer.focus();
+    await configure({ ready: true, speech: true, text: "Spoken before blur" });
+    await expect(composer).toHaveValue("Explicitly chosen input Spoken before blur");
+    // Once this focus period captures speech, transcript UI does not revoke its insertion.
     await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
     await page
       .getByText("Inspect this implementation before changing it.", { exact: true })
@@ -351,6 +357,23 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await configure({ ready: true, speech: false, text: "" });
     await composer.focus();
     await composer.fill("Explicitly chosen input");
+    // Refocusing the same input resets the latch; its old speech no longer counts.
+    await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
+    await expect(indicator).toHaveText("Dictation paused");
+    await composer.focus();
+    await expect(indicator).toHaveText("Listening");
+    // Focused Escape is a stop, not a mute or an invitation to re-arm on typing.
+    await composer.press("Escape");
+    await expect(indicator).toHaveCount(0);
+    await composer.pressSequentially(" kept typing");
+    await expect(indicator).toHaveCount(0);
+    await expect(composer).toHaveValue("Explicitly chosen input kept typing");
+    await composer.fill("Explicitly chosen input");
+    await composer.evaluate((element: HTMLTextAreaElement) => {
+      element.blur();
+      element.focus();
+    });
+    await expect(indicator).toHaveText("Listening");
 
     // Detector false positives must not delete selected text or move the caret before words exist.
     await configure({ ready: true, hold: true, speech: true, text: "" });
@@ -377,7 +400,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await composer.fill("");
 
     // Temporary mute preserves typing-mode convenience focus, even across sessions.
-    await composer.press("Escape");
+    await page.getByRole("button", { name: "Mute dictation", exact: true }).click();
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();
     await expect(composer).toBeFocused();
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
@@ -543,6 +566,10 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
       .poll(async () => JSON.parse(await readFile(join(model, "request.json"), "utf8")).count)
       .toBeGreaterThan(before);
     const heldRequest = await requestCount();
+    // The owner is sticky, but Escape must stop it even when its input lacks focus.
+    await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
+    await page.keyboard.press("Escape");
+    await expect(indicator).toHaveCount(0);
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await configure({ ready: true, text: "Discard this tail" });
     // Drain the held external reply before a later phase holds recognition again.
@@ -667,7 +694,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await expect(annotation).toHaveValue("Second note Second annotation speech");
     await annotation.press("Enter");
     await expect(annotation).toHaveCount(0);
-    await configure({ ready: true, hold: true });
+    await configure({ ready: true, speech: false, text: "" });
     await page.getByRole("button", { name: "View annotation 1", exact: true }).click();
     await expect(page.getByText(annotationText, { exact: true })).toBeVisible();
     const details = page.getByRole("dialog", { name: "Annotation details" });
@@ -677,6 +704,12 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await edit.press("End");
     await details.getByRole("button", { name: "Save annotation", exact: true }).focus();
     await expect(edit).not.toBeFocused();
+    await expect(indicator).toHaveText("Dictation paused");
+    await edit.focus();
+    await configure({ ready: true, speech: true, text: "First focused words" });
+    await expect(edit).toHaveValue(annotationText + " First focused words");
+    await details.getByRole("button", { name: "Save annotation", exact: true }).focus();
+    await expect(indicator).toHaveText("Listening");
     await configure({ ready: true, text: "Continued off focus" });
     await expect(edit).toHaveValue(annotationText + " Continued off focus");
     await configure({ ready: true, hold: true });
@@ -696,7 +729,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await expect(edit).toHaveValue("Second note Second annotation speech");
     await expect(edit).toBeFocused();
     await expect(page.getByRole("button", { name: "Mute dictation" })).toBeVisible();
-    await edit.press("Escape");
+    await page.getByRole("button", { name: "Mute dictation", exact: true }).click();
     await expect(page.getByRole("button", { name: "Unmute dictation" })).toBeVisible();
     await expect(edit).toBeFocused();
     await expect(details).toBeVisible();

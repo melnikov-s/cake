@@ -8,6 +8,7 @@ import {
 import { DictationStore } from "./DictationStore";
 import { ScreenCaptureAttachmentStore } from "./ScreenCaptureAttachmentStore";
 import { microphone, type Microphone } from "../dictation/microphone";
+import { DictationContext } from "./context/DictationContext";
 import { createSpeechPlayback, type SpeechPlayback } from "../speech/playback";
 import { ConversationModeStore, ConversationModeContext } from "./ConversationModeStore";
 import { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
@@ -159,6 +160,10 @@ export class RootStore extends Store<{
   }
   get cakeChatCatalogModel() {
     return this.props.projection.cakeChatCatalog;
+  }
+
+  [DictationContext.provide]() {
+    return () => this.dictationStore;
   }
 
   [ClientContext.provide]() {

@@ -16,8 +16,14 @@ import type { ProvisionalTextSpan } from "../dictation/provisional-text";
 
 export interface DictationTarget {
   readonly id: string;
+  submissionOwner?(): string | undefined;
+  submitted?(): void;
   begin(): void;
   replace(text: string): ProvisionalTextSpan | void;
+}
+export interface DictationSubmission {
+  readonly target: DictationTarget;
+  ready: boolean;
 }
 interface Utterance {
   settings: SpeechRecognitionSettings;
@@ -31,6 +37,7 @@ interface Utterance {
   meterSamples: number;
   pending?: Promise<void>;
   finishing: boolean;
+  completion?: Promise<boolean>;
   rawText: string;
   cleanedRaw?: string;
   cleanedText?: string;
@@ -105,6 +112,11 @@ export class DictationStore extends Store<{
   devices: ReadonlyArray<{ id: string; label: string }> = [];
   busy = false;
   private target: DictationTarget | undefined;
+  private targetFocused = false;
+  /** Focus-period latch, independent of decoding generations and manual draft edits. */
+  private capturedSpeech = false;
+  private submission: DictationSubmission | undefined;
+  private stoppedTargetId: string | undefined;
   private utterance: Utterance | undefined;
   private installation: AbortController | undefined;
   private modeRevision = 0;
@@ -139,16 +151,22 @@ export class DictationStore extends Store<{
   get activeTargetId() {
     return this.target?.id;
   }
+  get capturing() {
+    return (
+      this.utterance !== undefined || this.submission !== undefined || this.phase === "preparing"
+    );
+  }
   /** Muting seals visible speech and drops pending results; unmuting starts at the current caret. */
   setMuted(id: string, muted: boolean) {
     if (!this.enabled || this.target?.id !== id || this.muted === muted) return;
     this.muted = muted;
     if (muted) {
+      this.capturedSpeech = false;
       this.endUtterance();
       this.phase = "paused";
     } else {
       this.error = undefined;
-      void this.start(this.target);
+      if (!this.submission) void this.start(this.target);
     }
   }
   get label() {
@@ -252,14 +270,19 @@ export class DictationStore extends Store<{
   }
   /** Pause the current field without changing the user's dictation preference. */
   pauseCapture(): void {
+    this.submission = undefined;
     this.endUtterance();
     this.target = undefined;
+    this.targetFocused = false;
+    this.capturedSpeech = false;
     if (this.enabled) this.phase = "paused";
   }
   async setEnabled(enabled: boolean) {
     const revision = ++this.modeRevision;
     this.enabled = enabled;
     this.recoveryAttempt = 0;
+    this.submission = undefined;
+    this.capturedSpeech = false;
     this.muted = false;
     this.error = undefined;
     this.endUtterance();
@@ -274,7 +297,7 @@ export class DictationStore extends Store<{
       await this.props.client.prepare({ signal: this.signal });
       if (revision !== this.modeRevision || this.signal.aborted) return;
       this.phase = "paused";
-      if (this.target && !this.muted) await this.start(this.target);
+      if (this.target && this.targetFocused && !this.muted) await this.start(this.target);
     } catch (error) {
       if (revision === this.modeRevision && !this.signal.aborted) {
         if (enabled && this.target) this.captureFailed(error, "startup");
@@ -282,35 +305,95 @@ export class DictationStore extends Store<{
       }
     }
   }
-  focus(target: DictationTarget) {
-    if (this.target === target) return;
+  focus(target: DictationTarget, intentional = true) {
+    if (!intentional && this.stoppedTargetId === target.id) return;
+    this.stoppedTargetId = undefined;
+    if (this.target === target && this.targetFocused) return;
     // A field replacement cancels capture preparation, not mode enablement. Remember the
     // capture before ending it so its successor can prepare instead of waiting forever.
     const replacingCapture = this.utterance !== undefined || this.recoveryTimer !== undefined;
     this.endUtterance(true);
+    this.submission = undefined;
     this.target = target;
+    this.targetFocused = true;
+    this.capturedSpeech = false;
     if (!this.enabled || this.muted || this.busy) return;
     // prepare() can rebuild a failed worker; an observed backend error is not a focus veto.
     if (this.phase !== "preparing" || replacingCapture) void this.start(target);
   }
-  /** Release an unmounted or ineligible field. DOM blur alone retains the target. */
-  releaseTarget(id: string) {
+  /** Only speech confirmed in this focus period permits capture to survive DOM blur. */
+  blur(id: string) {
     if (this.target?.id !== id) return;
+    this.targetFocused = false;
+    if (!this.enabled) {
+      this.releaseTarget(id);
+      return;
+    }
+    if (this.capturedSpeech) return;
     this.endUtterance(true);
-    // Brief field/chat transitions reuse the device; no target means no audio is retained.
+    this.releaseMicrophoneSoon();
+    this.phase = "paused";
+  }
+  private releaseMicrophoneSoon() {
+    // Brief field/chat transitions reuse the device; paused capture retains no audio.
     this.microphoneReleaseTimer = setTimeout(() => {
       this.microphoneReleaseTimer = undefined;
       this.microphone.release();
     }, MICROPHONE_HANDOFF_MS);
+  }
+  /** Release an unmounted or ineligible field regardless of its speech latch. */
+  releaseTarget(id: string) {
+    if (this.target?.id !== id) return;
+    this.submission = undefined;
+    this.endUtterance(true);
+    this.releaseMicrophoneSoon();
     this.target = undefined;
+    this.targetFocused = false;
+    this.capturedSpeech = false;
     if (this.enabled) this.phase = "paused";
+  }
+  /** Explicit stop keeps the visible draft, but no focus/restart callback can re-arm it. */
+  stop(id: string) {
+    if (this.target?.id !== id) return;
+    this.stoppedTargetId = id;
+    this.pauseCapture();
+  }
+  async prepareSubmission(owner: string): Promise<DictationSubmission | undefined> {
+    const target = this.target;
+    if (!target || target.submissionOwner?.() !== owner) return;
+    const ticket: DictationSubmission = { target, ready: true };
+    this.submission = ticket;
+    if (this.phase === "listening") ticket.ready = await this.finish(target.id);
+    else if (this.phase === "finishing") ticket.ready = (await this.utterance?.completion) ?? false;
+    else if (this.phase === "preparing") {
+      this.endUtterance(true);
+      this.phase = "paused";
+    }
+    if (this.submission !== ticket) ticket.ready = false;
+    return ticket;
+  }
+  completeSubmission(ticket: DictationSubmission | undefined, submitted: boolean) {
+    if (!ticket || this.submission !== ticket) return;
+    this.submission = undefined;
+    if (submitted) {
+      this.stop(ticket.target.id);
+      ticket.target.submitted?.();
+    } else this.resume(ticket.target.id);
   }
   /** Manual editing/cursor movement seals visible speech and starts a new insertion. */
   restart(id: string) {
-    if (this.target?.id !== id || !this.enabled || this.muted) return;
+    if (
+      this.target?.id !== id ||
+      !this.enabled ||
+      this.muted ||
+      (this.submission !== undefined && this.phase !== "finishing") ||
+      (!this.targetFocused && !this.capturedSpeech)
+    )
+      return;
     // Typing/selection changes must not bypass recovery backoff or retry a permanent error.
     if (this.phase === "error" || this.recoveryTimer) return;
     if (this.phase === "finishing") {
+      this.submission = undefined;
       this.endUtterance();
       this.phase = "paused";
       void this.start(this.target);
@@ -379,6 +462,7 @@ export class DictationStore extends Store<{
         (samples, speech) => {
           if (this.utterance !== run || run.finishing) return;
           if (speech) {
+            this.capturedSpeech = true;
             run.heardSpeech = true;
             run.quietSamples = 0;
             run.cleanupDue = false;
@@ -460,6 +544,7 @@ export class DictationStore extends Store<{
         recordVoiceDiagnostic("dictation-recovered", { attempt: this.recoveryAttempt });
         this.recoveryAttempt = 0;
       }
+      if (text.trim()) this.capturedSpeech = true;
       // Empty/no-change recognition is not an edit: preserve the user's selection until
       // words arrive, even when background noise triggers the speech detector.
       if (text.trim() === run.rawText.trim()) return;
@@ -549,10 +634,15 @@ export class DictationStore extends Store<{
     return !!run && run.target.id === id && (run.heardSpeech || !!run.rawText.trim());
   }
   /** Returns false if focus changed or recognition failed: never submit a truncated draft. */
-  async finish(id: string): Promise<boolean> {
+  finish(id: string): Promise<boolean> {
     const run = this.utterance;
-    if (!this.enabled) return true;
-    if (!run || run.target.id !== id || run.finishing || this.phase !== "listening") return false;
+    if (!this.enabled) return Promise.resolve(true);
+    if (!run || run.target.id !== id || run.finishing || this.phase !== "listening")
+      return Promise.resolve(false);
+    run.completion = this.finishRun(run);
+    return run.completion;
+  }
+  private async finishRun(run: Utterance): Promise<boolean> {
     run.finishing = true;
     this.phase = "finishing";
     this.audioLevel = 0;
@@ -582,7 +672,14 @@ export class DictationStore extends Store<{
     }
   }
   resume(id: string) {
-    if (this.target?.id === id && this.enabled && !this.muted && this.phase === "paused")
+    if (
+      this.target?.id === id &&
+      !this.submission &&
+      (this.targetFocused || this.capturedSpeech) &&
+      this.enabled &&
+      !this.muted &&
+      this.phase === "paused"
+    )
       void this.start(this.target);
   }
   async refreshDevices() {
@@ -594,7 +691,14 @@ export class DictationStore extends Store<{
   }
   setDevice(id: string) {
     this.deviceId = id;
-    if (this.target && this.enabled && !this.muted && this.state?.status === "ready")
+    if (
+      this.target &&
+      !this.submission &&
+      (this.targetFocused || this.capturedSpeech) &&
+      this.enabled &&
+      !this.muted &&
+      this.state?.status === "ready"
+    )
       void this.start(this.target);
   }
   get installing() {

@@ -16,6 +16,15 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
   const insertion = useRef({ before: "", after: "", value: "", start: -1, caret: -1 });
   const target = useRef<DictationTarget>({
     id,
+    submissionOwner: () => input.current?.dataset.dictationSubmissionOwner,
+    submitted() {
+      const element = input.current;
+      if (element && document.activeElement === element) {
+        // Transfer directly: an intermediate body focus would cancel rapid-Enter continuation.
+        if (element.parentElement?.hasAttribute("tabindex")) element.parentElement.focus();
+        else element.blur();
+      }
+    },
     begin() {
       const element = input.current;
       if (!enabledRef.current || !element) return;
@@ -80,13 +89,28 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
         !element?.disabled &&
         !element?.readOnly
       )
-        store.focus(field);
+        store.focus(field, false);
     };
     const blur = () => store.pauseCapture();
+    const escape = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        !store.enabled ||
+        store.muted ||
+        store.activeTargetId !== id ||
+        !store.capturing
+      )
+        return;
+      event.preventDefault();
+      store.stop(id);
+    };
+    window.addEventListener("keydown", escape);
     window.addEventListener("blur", blur);
     window.addEventListener("focus", focused);
     focused();
     return () => {
+      window.removeEventListener("keydown", escape);
       window.removeEventListener("blur", blur);
       window.removeEventListener("focus", focused);
       store.releaseTarget(id);
@@ -109,9 +133,7 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
         store?.focus(target.current);
     },
     onBlur() {
-      // Only remember an unfocused field while dictation is enabled. Enabling the
-      // preference later must not start recording into a previously visited field.
-      if (enabled && !store?.enabled) store?.releaseTarget(id);
+      if (enabled) store?.blur(id);
     },
     onChange() {
       if (enabled && !inserting.current) store?.restart(id);
@@ -133,11 +155,13 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
         store?.enabled &&
         store.activeTargetId === id &&
         !store.muted &&
-        event.key === "Escape"
+        store.capturing &&
+        event.key === "Escape" &&
+        event.currentTarget.getAttribute("aria-expanded") !== "true"
       ) {
         event.preventDefault();
         event.stopPropagation();
-        store.setMuted(id, true);
+        store.stop(id);
         return true;
       }
       if (

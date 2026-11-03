@@ -207,7 +207,7 @@ function renderDictation(
       loaded: true,
       sessions: [{ sessionId, title: "Dictation chat" }],
     });
-  const session = isCakeChat
+  let session = isCakeChat
     ? fixture.root.cakeChatCollectionStore.registry.load(sessionId)
     : fixture.root.sessionRegistry.load(sessionId, "/project");
   if (isCakeChat) fixture.root.navigationStore.selectCakeChat(sessionId);
@@ -220,8 +220,8 @@ function renderDictation(
     status: options.modelReady ? "loading" : "ready",
     ...options.state,
   });
-  applyConversationUpdate(session.model, {
-    _tag: "Snapshot",
+  const initialUpdate = {
+    _tag: "Snapshot" as const,
     revision: 1,
     snapshot: {
       sessionId,
@@ -237,7 +237,8 @@ function renderDictation(
       extensionUi: { statuses: [] },
       tree: [],
     },
-  });
+  } satisfies Parameters<typeof applyConversationUpdate>[1];
+  applyConversationUpdate(session.model, initialUpdate);
   let revision = 1;
   const surface = (composerKey: number) => (
     <StoreProvider store={fixture.root.dictationStore}>
@@ -260,6 +261,21 @@ function renderDictation(
     remountComposer() {
       view.rerender(surface(++composerKey));
     },
+    switchProjectSession() {
+      const nextId = "other-dictation-session";
+      session = fixture.root.sessionRegistry.load(nextId, "/project");
+      applyConversationUpdate(session.model, {
+        _tag: "Snapshot",
+        revision: 1,
+        snapshot: {
+          ...initialUpdate.snapshot,
+          sessionId: nextId,
+        },
+      });
+      fixture.root.navigationStore.selectProjectSession(nextId);
+      fixture.root.projectWorkbenchStore.showLoadedSession(nextId);
+      view.rerender(surface(composerKey));
+    },
     user: userEvent.setup(),
     root: fixture.root,
     client: fixture.client,
@@ -268,6 +284,7 @@ function renderDictation(
     release,
     requests,
     prompt: options.client?.sessionChats?.prompt ?? prompt,
+    submitContract: () => session.conversationSessionStore.chatStore.submit(),
     publish(event: ConversationEvent) {
       act(() =>
         applyConversationUpdate(session.model, { _tag: "Event", revision: ++revision, event }),
@@ -532,7 +549,7 @@ describe("Dictation writing-field workflow", () => {
     await f.user.type(message(), "Explicit input");
     expect(message().value).toBe("Explicit input");
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Send" }).disabled).toBe(false);
-    await f.user.keyboard("{Escape}");
+    await f.user.click(screen.getByRole("button", { name: "Mute dictation" }));
     expect(f.root.dictationStore.muted).toBe(true);
     await f.user.click(screen.getByLabelText("Use an existing Core ML Parakeet model folder"));
     f.requestFocus();
@@ -545,7 +562,7 @@ describe("Dictation writing-field workflow", () => {
     expect(f.audio.getUserMedia).toHaveBeenCalledOnce();
   });
 
-  it("parks focus after a real asynchronous send without treating DOM blur as stop", async () => {
+  it("parks focus after a silent asynchronous send and requires focus before more dictation", async () => {
     const submission = deferred<void>();
     using f = renderDictation({ composerFocusEnabled: true, submissionReady: submission.promise });
     await f.user.click(mode());
@@ -561,12 +578,13 @@ describe("Dictation writing-field workflow", () => {
     await act(async () => submission.resolve());
     expect(document.activeElement).toBe(message().parentElement);
     expect(message().value).toBe("");
-    listening();
-    // The controlled draft reset starts a fresh insertion, not a new focus requirement.
+    // A typed-only send did not capture speech in this focus period.
+    expect(f.root.dictationStore.phase).toBe("paused");
+    await f.user.tab();
+    await waitFor(listening);
     await f.audio.push(new Float32Array(12_800));
     await f.recognize(1, "Next request");
     expect(message().value).toBe("Next request");
-    await f.user.tab();
     expect(document.activeElement).toBe(message());
   });
 
@@ -1140,33 +1158,107 @@ describe("Dictation writing-field workflow", () => {
     expect(fixture.requests[3]!.audio.utteranceId).not.toBe(fixture.requests[0]!.audio.utteranceId);
   });
 
-  it("keeps capture and its insertion across non-input focus and refocus without duplicating speech", async () => {
+  it.each(["silence", "empty transcription", "pending detection", "preparing"])(
+    "stops on blur after %s and drops unconfirmed late results",
+    async (kind) => {
+      const ready = deferred<void>();
+      const detection = deferred<boolean>();
+      using fixture = renderDictation({
+        microphoneReady: kind === "preparing" ? ready.promise : undefined,
+        client: {
+          dictation: {
+            detectSpeech:
+              kind === "pending detection" ? () => detection.promise : async () => false,
+          },
+        },
+      });
+      await fixture.user.click(mode());
+      await fixture.user.click(message());
+      if (kind === "preparing") {
+        await waitFor(() => expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce());
+      } else {
+        await fixture.audio.push(new Float32Array(12_800));
+        if (kind === "empty transcription") await fixture.recognize(0, " \n ");
+      }
+      await fixture.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+      expect(fixture.root.dictationStore.phase).toBe("paused");
+      await act(async () => {
+        ready.resolve();
+        detection.resolve(true);
+      });
+      if (kind !== "preparing" && kind !== "empty transcription")
+        await fixture.recognize(0, "Late unconfirmed speech");
+      await fixture.audio.push(new Float32Array(12_800).fill(0.1));
+      expect(message().value).toBe("");
+      expect(fixture.root.dictationStore.phase).toBe("paused");
+      expect(mode().getAttribute("aria-checked")).toBe("true");
+    },
+  );
+
+  it("resets the speech latch on transfer and same-input refocus, without late predecessor results", async () => {
     using fixture = renderDictation();
-    await fixture.user.type(message(), "Existing draft");
     await fixture.user.click(mode());
     await fixture.user.click(message());
+    await fixture.audio.push(new Float32Array(12_800).fill(0.1));
+    await fixture.recognize(0, "First speech");
+    await fixture.audio.push(new Float32Array(12_800));
+    await fixture.user.click(trial());
+    // A late blur from the predecessor must not stop the new target.
+    fireEvent.blur(message());
     listening();
+    await fixture.recognize(1, "Old tail");
+    await fixture.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+    expect(fixture.root.dictationStore.phase).toBe("paused");
+    expect(trial().value).toBe("");
+    expect(message().value).toBe("First speech");
+
+    await fixture.user.click(message());
+    await fixture.audio.push(new Float32Array(12_800).fill(0.1));
+    await fixture.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+    listening();
+    await fixture.recognize(2, "Second speech");
+    await fixture.user.click(message());
     await fixture.audio.push(new Float32Array(12_800));
     await fixture.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
-    await fixture.recognize(0, "Spoken");
-    expect(message().value).toBe("Existing draft Spoken");
-    expect(document.activeElement).not.toBe(message());
-    listening();
-    expect(fixture.audio.tracks[0]!.stop).not.toHaveBeenCalled();
-
-    // Keyboard navigation away from the indicator must also retain the writing target.
-    act(() => screen.getByRole<HTMLButtonElement>("button", { name: "Mute dictation" }).focus());
-    await fixture.user.tab();
-    await fixture.audio.push(new Float32Array(12_800));
-    await fixture.recognize(1, "Spoken revision");
-    expect(message().value).toBe("Existing draft Spoken revision");
-    act(() => message().focus());
-    await fixture.audio.push(new Float32Array(12_800));
-    await fixture.recognize(2, "Spoken revision continued");
-    expect(message().value).toBe("Existing draft Spoken revision continued");
-    expect(fixture.requests[2]!.audio.utteranceId).toBe(fixture.requests[0]!.audio.utteranceId);
-    expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
+    await fixture.recognize(3, "Old focus-period tail");
+    expect(fixture.root.dictationStore.phase).toBe("paused");
+    expect(message().value).toBe("First speech Second speech");
   });
+
+  it.each(["detected speech", "transcription"])(
+    "keeps %s across blur and starts a fresh insertion on refocus",
+    async (kind) => {
+      using fixture = renderDictation();
+      await fixture.user.type(message(), "Existing draft");
+      await fixture.user.click(mode());
+      await fixture.user.click(message());
+      listening();
+      await fixture.audio.push(new Float32Array(12_800).fill(kind === "detected speech" ? 0.1 : 0));
+      if (kind === "transcription") await fixture.recognize(0, "Spoken");
+      await fixture.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+      if (kind === "detected speech") await fixture.recognize(0, "Spoken");
+      expect(message().value).toBe("Existing draft Spoken");
+      expect(document.activeElement).not.toBe(message());
+      listening();
+      expect(fixture.audio.tracks[0]!.stop).not.toHaveBeenCalled();
+
+      // Keyboard navigation away from the indicator must also retain the writing target.
+      act(() => screen.getByRole<HTMLButtonElement>("button", { name: "Mute dictation" }).focus());
+      await fixture.user.tab();
+      await fixture.audio.push(new Float32Array(12_800));
+      await fixture.recognize(1, "Spoken revision");
+      expect(message().value).toBe("Existing draft Spoken revision");
+      await act(async () => message().focus());
+      await waitFor(listening);
+      await fixture.audio.push(new Float32Array(12_800));
+      await fixture.recognize(2, "continued");
+      expect(message().value).toBe("Existing draft Spoken revision continued");
+      expect(fixture.requests[2]!.audio.utteranceId).not.toBe(
+        fixture.requests[0]!.audio.utteranceId,
+      );
+      expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
+    },
+  );
 
   it("releases an unmounted target but does not release its explicitly focused successor", async () => {
     using fixture = renderDictation();
@@ -1189,6 +1281,66 @@ describe("Dictation writing-field workflow", () => {
     await fixture.recognize(2, "Fresh speech");
     expect(message().value).toBe("Retained draft");
     expect(trial().value).toBe("Other draft Fresh speech");
+  });
+
+  it("ends speech ownership on session switch and ignores its delayed transcription", async () => {
+    using fixture = renderDictation();
+    await fixture.user.click(mode());
+    await fixture.user.click(message());
+    await fixture.audio.push(new Float32Array(12_800).fill(0.1));
+    await fixture.recognize(0, "Original session draft");
+    await fixture.audio.push(new Float32Array(12_800));
+    act(() => fixture.switchProjectSession());
+    expect(fixture.root.dictationStore.activeTargetId).toBeUndefined();
+    await fixture.user.click(message());
+    await fixture.recognize(1, "Late previous session tail");
+    expect(message().value).toBe("");
+    await fixture.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+    expect(fixture.root.dictationStore.phase).toBe("paused");
+    await fixture.user.click(message());
+    await fixture.audio.push(new Float32Array(12_800));
+    await fixture.recognize(2, "New session speech");
+    expect(message().value).toBe("New session speech");
+  });
+
+  it("stops silent annotation blur, then retains only speech from its fresh focus period", async () => {
+    using fixture = renderDictation();
+    await fixture.user.click(mode());
+    const close = vi.fn();
+    const view = render(
+      <StoreProvider store={fixture.root.dictationStore}>
+        <AnnotationItemPopover
+          anchor={document.body}
+          annotation={{ selectedText: "Selected passage", comment: "Existing note" }}
+          onClose={close}
+          onSave={close}
+          onRemove={close}
+        />
+      </StoreProvider>,
+    );
+    try {
+      await fixture.user.click(screen.getByRole("button", { name: "Edit annotation" }));
+      const edit = screen.getByRole<HTMLTextAreaElement>("textbox", {
+        name: "Edit annotation comment",
+      });
+      await fixture.audio.push(new Float32Array(12_800));
+      await act(async () =>
+        screen.getByRole<HTMLButtonElement>("button", { name: "Save annotation" }).focus(),
+      );
+      await fixture.recognize(0, "Unconfirmed late speech");
+      expect(edit.value).toBe("Existing note");
+      expect(fixture.root.dictationStore.phase).toBe("paused");
+      await fixture.user.click(edit);
+      await fixture.audio.push(new Float32Array(12_800).fill(0.1));
+      await act(async () =>
+        screen.getByRole<HTMLButtonElement>("button", { name: "Save annotation" }).focus(),
+      );
+      listening();
+      await fixture.recognize(1, "Confirmed speech");
+      expect(edit.value).toContain("Confirmed speech");
+    } finally {
+      view.unmount();
+    }
   });
 
   it("isolates delayed annotation speech across annotation replacement and composer focus", async () => {
@@ -1218,7 +1370,7 @@ describe("Dictation writing-field workflow", () => {
         edit().setSelectionRange(edit().value.length, edit().value.length);
         fireEvent.select(edit());
       });
-      await fixture.audio.push(new Float32Array(12_800));
+      await fixture.audio.push(new Float32Array(12_800).fill(0.1));
       act(() => screen.getByRole<HTMLButtonElement>("button", { name: "Save annotation" }).focus());
       await fixture.recognize(0, "Visible first speech");
       expect(edit().value).toBe("First note Visible first speech");
@@ -1301,6 +1453,25 @@ describe("Dictation writing-field workflow", () => {
     expect(fixture.root.dictationStore.activeTargetId).toBeUndefined();
     await fixture.audio.push(new Float32Array(16_384).fill(0.1));
     expect(fixture.requests).toHaveLength(0);
+  });
+
+  it.each(["mute", "disable"])("explicit %s wins over speech retained after blur", async (stop) => {
+    using fixture = renderDictation();
+    await fixture.user.click(mode());
+    await fixture.user.click(message());
+    await fixture.audio.push(new Float32Array(12_800).fill(0.1));
+    await fixture.recognize(0, "Keep visible speech");
+    await fixture.audio.push(new Float32Array(12_800));
+    await fixture.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+    listening();
+    await fixture.user.click(
+      stop === "mute" ? screen.getByRole("button", { name: "Mute dictation" }) : mode(),
+    );
+    await fixture.recognize(1, "Late stopped speech");
+    await fixture.audio.push(new Float32Array(12_800).fill(0.1));
+    expect(message().value).toBe("Keep visible speech");
+    expect(fixture.root.dictationStore.phase).toBe(stop === "mute" ? "paused" : "off");
+    expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
   });
 
   it("releases a retained microphone when dictation is disabled", async () => {
@@ -1721,6 +1892,229 @@ describe("Dictation writing-field workflow", () => {
     expect(postProcessDictation).not.toHaveBeenCalled();
   });
 
+  it.each(["keyboard", "button", "normal submit contract"])(
+    "%s submission drains speech once, releases ownership and needs new intentional focus",
+    async (path) => {
+      const admitted = deferred<void>();
+      using f = renderDictation({ composerFocusEnabled: true, submissionReady: admitted.promise });
+      await f.user.type(message(), "Typed");
+      await f.user.click(mode());
+      await f.user.click(message());
+      await f.audio.push(new Float32Array(12_800).fill(0.1));
+      let contract: Promise<boolean> | undefined;
+      if (path === "keyboard") await f.user.keyboard("{Enter}");
+      else if (path === "button") await f.user.click(screen.getByRole("button", { name: "Send" }));
+      else
+        act(() => {
+          contract = f.submitContract();
+        });
+      await f.recognize(0, "Pending speech");
+      await waitFor(() => expect(f.requests).toHaveLength(2));
+      await f.recognize(1, "Pending speech and final words");
+      await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+      expect(f.prompt).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Typed Pending speech and final words" }),
+        expect.any(Object),
+      );
+      await f.audio.push(new Float32Array(12_800).fill(0.1));
+      expect(f.requests).toHaveLength(2);
+      await act(async () => {
+        admitted.resolve();
+        await contract;
+      });
+      expect(message().value).toBe("");
+      expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+      expect(f.root.dictationStore.phase).toBe("paused");
+      expect(document.activeElement).not.toBe(message());
+      f.requestFocus();
+      await waitFor(() => expect(document.activeElement).toBe(message().parentElement));
+      fireEvent.select(message());
+      fireEvent(window, new Event("focus"));
+      await f.audio.push(new Float32Array(12_800).fill(0.1));
+      expect(f.requests).toHaveLength(2);
+      expect(message().value).toBe("");
+      await f.user.click(message());
+      listening();
+      await f.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+      expect(f.root.dictationStore.phase).toBe("paused");
+    },
+  );
+
+  it("successful admission still releases ownership if the user mutes while admission is pending", async () => {
+    const admitted = deferred<void>();
+    using f = renderDictation({ submissionReady: admitted.promise });
+    await f.user.type(message(), "Typed request");
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.user.keyboard("{Enter}");
+    await waitFor(() => expect(f.requests).toHaveLength(1));
+    await f.recognize(0, "");
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+    await f.user.click(screen.getByRole("button", { name: "Mute dictation" }));
+    await act(async () => admitted.resolve());
+    expect(message().value).toBe("");
+    expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+    expect(f.root.dictationStore.muted).toBe(true);
+    expect(f.root.dictationStore.phase).toBe("paused");
+  });
+
+  it("a typed send during microphone preparation cannot rearm from late permission", async () => {
+    const permission = deferred<void>();
+    using f = renderDictation({ permission: permission.promise });
+    await f.user.type(message(), "Typed before microphone readiness");
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+    await act(async () => permission.resolve());
+    expect(message().value).toBe("");
+    expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+    expect(f.root.dictationStore.phase).toBe("paused");
+    expect(f.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
+    expect(f.requests).toHaveLength(0);
+  });
+
+  it("a Send click during Enter finishing waits for the same complete transcription and submits once", async () => {
+    using f = renderDictation();
+    await f.user.type(message(), "Typed");
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.audio.push(new Float32Array(12_800).fill(0.1));
+    await f.user.keyboard("{Enter}");
+    await f.user.click(screen.getByRole("button", { name: "Send" }));
+    expect(f.prompt).not.toHaveBeenCalled();
+    await f.recognize(0, "Pending words");
+    await waitFor(() => expect(f.requests).toHaveLength(2));
+    expect(f.prompt).not.toHaveBeenCalled();
+    await f.recognize(1, "All words");
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+    expect(f.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Typed All words" }),
+      expect.any(Object),
+    );
+    expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+  });
+
+  it("editing while a Send click drains speech cancels that submission without losing the edit", async () => {
+    using f = renderDictation();
+    await f.user.type(message(), "Typed");
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.audio.push(new Float32Array(12_800).fill(0.1));
+    await f.user.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.change(message(), { target: { value: "Intentional edit" } });
+    await f.recognize(0, "Late words");
+    expect(f.prompt).not.toHaveBeenCalled();
+    expect(message().value).toBe("Intentional edit");
+  });
+
+  it.each(["finishing", "admission"])(
+    "Escape during %s cancels dictation ownership without rearm",
+    async (stage) => {
+      const admitted = deferred<void>();
+      using f = renderDictation({ submissionReady: admitted.promise });
+      await f.user.type(message(), "Typed");
+      await f.user.click(mode());
+      await f.user.click(message());
+      await f.audio.push(new Float32Array(12_800).fill(0.1));
+      await f.user.keyboard("{Enter}");
+      if (stage === "admission") {
+        await f.recognize(0, "Speech");
+        await waitFor(() => expect(f.requests).toHaveLength(2));
+        await f.recognize(1, "Final speech");
+        await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+      }
+      await f.user.keyboard("{Escape}");
+      if (stage === "finishing") await f.recognize(0, "Stale words");
+      await act(async () => admitted.resolve());
+      expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+      expect(f.root.dictationStore.phase).toBe("paused");
+      expect(f.prompt).toHaveBeenCalledTimes(stage === "admission" ? 1 : 0);
+      if (stage === "finishing") expect(message().value).toBe("Typed");
+      await f.audio.push(new Float32Array(12_800).fill(0.1));
+      expect(f.requests).toHaveLength(stage === "admission" ? 2 : 1);
+    },
+  );
+
+  it("retains the dictated draft and resumes the same owner when submission is rejected", async () => {
+    const rejected = deferred<TurnId>();
+    using f = renderDictation({ client: { sessionChats: { prompt: () => rejected.promise } } });
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.audio.push(new Float32Array(12_800).fill(0.1));
+    await f.recognize(0, "Preserved speech");
+    await f.user.keyboard("{Enter}");
+    await waitFor(() => expect(f.requests).toHaveLength(2));
+    await f.recognize(1, "Preserved final speech");
+    await act(async () => {
+      rejected.reject(new Error("Admission rejected"));
+      await rejected.promise.catch(() => undefined);
+    });
+    await waitFor(listening);
+    expect(message().value).toBe("Preserved final speech");
+    expect(f.root.dictationStore.activeTargetId).toBeDefined();
+    await f.audio.push(new Float32Array(12_800));
+    await f.recognize(2, "Retry draft");
+    expect(message().value).toBe("Preserved final speech Retry draft");
+  });
+
+  it.each(["focused", "blurred sticky", "indicator-focused"])(
+    "Escape stops a %s owner without stale results or automatic rearm",
+    async (where) => {
+      using f = renderDictation({ composerFocusEnabled: true });
+      await f.user.click(mode());
+      await f.user.click(message());
+      await f.audio.push(new Float32Array(12_800).fill(0.1));
+      await f.recognize(0, "Keep dictated draft");
+      await f.audio.push(new Float32Array(12_800));
+      if (where === "blurred sticky")
+        await f.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+      if (where === "indicator-focused")
+        act(() =>
+          screen.getByRole<HTMLButtonElement>("button", { name: "Mute dictation" }).focus(),
+        );
+      await f.user.keyboard("{Escape}");
+      expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+      expect(f.root.dictationStore.phase).toBe("paused");
+      await f.recognize(1, "Stale speech after Escape");
+      const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      fireEvent(window, new Event("focus"));
+      hasFocus.mockRestore();
+      expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+      f.requestFocus();
+      await waitFor(() => expect(document.activeElement).toBe(message().parentElement));
+      fireEvent.select(message());
+      fireEvent(window, new Event("focus"));
+      await f.audio.push(new Float32Array(12_800).fill(0.1));
+      expect(message().value).toBe("Keep dictated draft");
+      expect(f.requests).toHaveLength(2);
+      expect(f.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
+      await f.user.click(message());
+      listening();
+      await f.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+      expect(f.root.dictationStore.phase).toBe("paused");
+    },
+  );
+
+  it("leaves inactive Escape and already handled Escape alone", async () => {
+    using f = renderDictation();
+    await f.user.type(message(), "Typed draft");
+    expect(fireEvent.keyDown(message(), { key: "Escape" })).toBe(true);
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.audio.push(new Float32Array(12_800).fill(0.1));
+    await f.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+    const handled = new window.KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    handled.preventDefault();
+    fireEvent(window, handled);
+    listening();
+    expect(message().value).toBe("Typed draft");
+  });
+
   it("drains pending and final audio before Enter submits exactly one complete message", async () => {
     using fixture = renderDictation();
     await fixture.user.click(mode());
@@ -1756,7 +2150,12 @@ describe("Dictation writing-field workflow", () => {
       ),
     );
     expect(message().value).toBe("");
-    listening();
+    expect(fixture.root.dictationStore.activeTargetId).toBeUndefined();
+    expect(fixture.root.dictationStore.phase).toBe("paused");
+    expect(document.activeElement).not.toBe(message());
+    await fixture.audio.push(new Float32Array(12_800).fill(0.1));
+    expect(fixture.requests).toHaveLength(2);
+    expect(message().value).toBe("");
   });
 
   it("cancels a finishing submission when focus changes without modifying either draft", async () => {
@@ -1775,21 +2174,22 @@ describe("Dictation writing-field workflow", () => {
     listening();
   });
 
-  it("continues microphone preparation after DOM blur without requesting permission again", async () => {
+  it("cancels silent microphone preparation on blur without stopping its pending successor", async () => {
     const permission = deferred<void>();
     using fixture = renderDictation({ permission: permission.promise });
     await fixture.user.click(mode());
     await fixture.user.click(trial());
     expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
     await fixture.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+    await fixture.user.click(message());
     await act(async () => permission.resolve());
     listening();
-    expect(fixture.audio.tracks[0]!.stop).not.toHaveBeenCalled();
-    expect(fixture.audio.processors).toHaveLength(1);
+    expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
+    expect(fixture.audio.tracks[1]!.stop).not.toHaveBeenCalled();
     await fixture.audio.push(new Float32Array(12_800));
     await fixture.recognize(0, "After permission");
-    expect(trial().value).toBe("After permission");
-    expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
+    expect(message().value).toBe("After permission");
+    expect(trial().value).toBe("");
   });
 
   it("recovers a transient decode failure once, preserves text and owner, and ignores duplicate/stale capture events", async () => {

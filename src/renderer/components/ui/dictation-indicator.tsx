@@ -47,8 +47,11 @@ export const DictationIndicator = observer(function DictationIndicator({
           if (event.key !== "Escape") return;
           event.preventDefault();
           event.stopPropagation();
-          store.setMuted(targetId, true);
-          anchor.current?.focus();
+          if (!store.muted && store.capturing) store.stop(targetId);
+          else {
+            store.setMuted(targetId, true);
+            anchor.current?.focus();
+          }
         }}
         onClick={() => {
           if (failed) store.retry(targetId);
