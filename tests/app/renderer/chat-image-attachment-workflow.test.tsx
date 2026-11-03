@@ -19,7 +19,7 @@ import { AttachmentReferencePreview } from "../../../src/renderer/components/att
 import { attachmentLink } from "../../../src/contracts/conversations/message-reference";
 import { CakeChatSurface } from "../../../src/renderer/components/cake-chat-surface";
 import { Chat } from "../../../src/renderer/components/chat";
-import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import {
   imageContent,
   projectSessionEntries,
@@ -122,11 +122,18 @@ function mountCakeChat(sessionId: string, client: TestClientOverrides, parts = [
     ],
   });
   const chat = fixture.root.cakeChatCollectionStore.registry.load(sessionId);
+  let revision = 0;
+  const publish = (parts: UiPart[]) =>
+    applyConversationUpdate(chat.model, {
+      _tag: "Snapshot",
+      revision: ++revision,
+      snapshot: conversationSnapshot(sessionId, parts),
+    });
   act(() => {
     fixture.root.cakeChatCollectionStore.pendingSessions.markMaterialized(sessionId);
     fixture.root.cakeChatCollectionStore.sessionLayoutStore.showSession(sessionId);
     fixture.root.navigationStore.selectCakeChat(sessionId);
-    applyConversationSnapshot(chat.model, conversationSnapshot(sessionId, parts));
+    publish(parts);
     chat.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
       kind: "top",
     });
@@ -147,8 +154,7 @@ function mountCakeChat(sessionId: string, client: TestClientOverrides, parts = [
     view,
     session: chat.conversationSessionStore,
     openSession,
-    publish: (next: UiPart[]) =>
-      applyConversationSnapshot(chat.model, conversationSnapshot(sessionId, next)),
+    publish,
     [Symbol.dispose]() {
       view.unmount();
       fixture[Symbol.dispose]();
@@ -164,8 +170,15 @@ function mountProjectSession(client: TestClientOverrides) {
     client,
   });
   const session = fixture.root.sessionRegistry.load(sessionId, "/project");
+  let revision = 0;
+  const publish = (parts: UiPart[]) =>
+    applyConversationUpdate(session.model, {
+      _tag: "Snapshot",
+      revision: ++revision,
+      snapshot: conversationSnapshot(sessionId, parts),
+    });
   act(() => {
-    applyConversationSnapshot(session.model, conversationSnapshot(sessionId, [assistantPart]));
+    publish([assistantPart]);
     fixture.root.navigationStore.selectProjectSession(sessionId);
     fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
     session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
@@ -186,8 +199,7 @@ function mountProjectSession(client: TestClientOverrides) {
   );
   return {
     view,
-    publish: (next: UiPart[]) =>
-      applyConversationSnapshot(session.model, conversationSnapshot(sessionId, next)),
+    publish,
     [Symbol.dispose]() {
       view.unmount();
       fixture[Symbol.dispose]();

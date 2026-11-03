@@ -10,7 +10,7 @@ import type { UiPart } from "../../../src/contracts/conversations/session-contra
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import type { Microphone } from "../../../src/renderer/dictation/microphone";
-import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import type { SpeechPlayback } from "../../../src/renderer/speech/playback";
 import { detectFixtureSpeech } from "../../helpers/speech-detection";
@@ -81,21 +81,26 @@ function cakeChatVoiceFixture(options: { materialized?: boolean; streaming?: boo
     });
   const chat = root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID);
   root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
+  let revision = 0;
   const publish = (parts: UiPart[]) =>
     act(() => {
-      applyConversationSnapshot(chat.model, {
-        sessionId: CAKE_CHAT_SESSION_ID,
-        sessionFile: "/cake-chat.sqlite",
-        parts,
-        models: [],
-        thinkingLevel: "off",
-        availableThinkingLevels: ["off"],
-        streaming: options.streaming ?? false,
-        diagnostics: [],
-        commands: [],
-        compatibility: { resources: [], diagnostics: [] },
-        extensionUi: { statuses: [] },
-        tree: [],
+      applyConversationUpdate(chat.model, {
+        _tag: "Snapshot",
+        revision: ++revision,
+        snapshot: {
+          sessionId: CAKE_CHAT_SESSION_ID,
+          sessionFile: "/cake-chat.sqlite",
+          parts,
+          models: [],
+          thinkingLevel: "off",
+          availableThinkingLevels: ["off"],
+          streaming: options.streaming ?? false,
+          diagnostics: [],
+          commands: [],
+          compatibility: { resources: [], diagnostics: [] },
+          extensionUi: { statuses: [] },
+          tree: [],
+        },
       });
     });
   publish([

@@ -10,7 +10,7 @@ import {
 } from "../../../src/contracts/editor/editor-selection";
 import type { Client } from "../../../src/renderer/client/Client";
 import { App } from "../../../src/renderer/components/app";
-import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
@@ -57,19 +57,23 @@ export async function createSelectionCommandFixture(
   });
   for (const sessionId of [selectionSessionId, ...(options.secondary ? ["other-tour"] : [])]) {
     const session = fixture.root.sessionRegistry.load(sessionId, selectionWorkspace);
-    applyConversationSnapshot(session.model, {
-      sessionId,
-      sessionFile: `/sessions/${sessionId}.jsonl`,
-      parts: [],
-      models: [],
-      thinkingLevel: "off",
-      availableThinkingLevels: ["off"],
-      streaming: false,
-      diagnostics: [],
-      commands: [],
-      compatibility: { resources: [], diagnostics: [] },
-      extensionUi: { statuses: [] },
-      tree: [],
+    applyConversationUpdate(session.model, {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: {
+        sessionId,
+        sessionFile: `/sessions/${sessionId}.jsonl`,
+        parts: [],
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      },
     });
   }
   fixture.root.navigationStore.selectProjectSession(selectionSessionId);

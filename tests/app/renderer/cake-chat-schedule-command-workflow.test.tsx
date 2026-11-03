@@ -9,7 +9,7 @@ import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-cha
 import { cakeChatBuiltinSlashCommands } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { CakeChatSurface } from "../../../src/renderer/components/cake-chat-surface";
-import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { applyScheduledMessageUpdate } from "../../../src/renderer/reducers/ScheduledMessageReducer";
 import { projectRecord } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -57,19 +57,23 @@ function renderChat(sessionId: string, options: { fail?: boolean; pending?: bool
   if (options.pending) collection.pendingSessions.create(sessionId);
   collection.sessionLayoutStore.showSession(sessionId);
   fixture.root.navigationStore.selectCakeChat(sessionId);
-  applyConversationSnapshot(chat.model, {
-    sessionId,
-    sessionFile: options.pending ? "" : "/chat.sqlite",
-    parts: [],
-    models: [],
-    thinkingLevel: "off",
-    availableThinkingLevels: ["off"],
-    streaming: false,
-    diagnostics: [],
-    commands: cakeChatBuiltinSlashCommands,
-    compatibility: { resources: [], diagnostics: [] },
-    extensionUi: { statuses: [] },
-    tree: [],
+  applyConversationUpdate(chat.model, {
+    _tag: "Snapshot",
+    revision: 1,
+    snapshot: {
+      sessionId,
+      sessionFile: options.pending ? "" : "/chat.sqlite",
+      parts: [],
+      models: [],
+      thinkingLevel: "off",
+      availableThinkingLevels: ["off"],
+      streaming: false,
+      diagnostics: [],
+      commands: cakeChatBuiltinSlashCommands,
+      compatibility: { resources: [], diagnostics: [] },
+      extensionUi: { statuses: [] },
+      tree: [],
+    },
   });
   const catalog = fixture.models.scheduledMessageCatalog(sessionId);
   applyScheduledMessageUpdate(catalog, { _tag: "Snapshot", revision: 1, messages: [] });

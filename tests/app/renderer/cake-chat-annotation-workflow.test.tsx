@@ -10,7 +10,7 @@ import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { CakeChatSurface } from "../../../src/renderer/components/cake-chat-surface";
-import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 const assistantText = "Ship the release after the database migration finishes.";
@@ -77,7 +77,7 @@ it("adds a selected Cake Chat passage as a composer annotation sent with the nex
     fixture.root.cakeChatCollectionStore.pendingSessions.markMaterialized(CAKE_CHAT_SESSION_ID);
     fixture.root.cakeChatCollectionStore.sessionLayoutStore.showSession(CAKE_CHAT_SESSION_ID);
     fixture.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
-    applyConversationSnapshot(chat.model, snapshot);
+    applyConversationUpdate(chat.model, { _tag: "Snapshot", revision: 1, snapshot });
     chat.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
       kind: "top",
     });
@@ -153,12 +153,16 @@ it("adds a selected Cake Chat passage as a composer annotation sent with the nex
   >;
   expect(screen.getAllByRole("button", { name: "View 1 annotation" })).toHaveLength(1);
   act(() =>
-    applyConversationSnapshot(chat.model, {
-      ...snapshot,
-      parts: [
-        ...parts,
-        { id: "entry-8-annotation-0", kind: "annotation", annotations: sent.annotations },
-      ],
+    applyConversationUpdate(chat.model, {
+      _tag: "Snapshot",
+      revision: 2,
+      snapshot: {
+        ...snapshot,
+        parts: [
+          ...parts,
+          { id: "entry-8-annotation-0", kind: "annotation", annotations: sent.annotations },
+        ],
+      },
     }),
   );
   await waitFor(() =>
