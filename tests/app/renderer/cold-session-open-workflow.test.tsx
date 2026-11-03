@@ -13,6 +13,30 @@ afterEach(cleanup);
 // Authority updates control initialization; these tests prove displayed history
 // and form-to-service admission, not Chromium focus or native scrolling.
 describe("cold Project Session history", () => {
+  it("holds a loaded session send until its first observed live projection", async () => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000003"),
+    );
+    using fixture = renderConversationSession(
+      "project",
+      { sessionChats: { prompt } },
+      [originalUserPart],
+      "Unobserved",
+    );
+    const input = screen.getByRole("combobox", { name: "Message" });
+    await fixture.user.type(input, "Wait for the runtime");
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    expect(prompt).not.toHaveBeenCalled();
+    fixture.publish({ streaming: false });
+    await waitFor(() =>
+      expect(prompt).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ sessionId: fixture.sessionId, text: "Wait for the runtime" }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    await waitFor(() => expect(input).toHaveProperty("value", ""));
+  });
+
   it("displays saved messages and holds a send until the live agent snapshot arrives", async () => {
     const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
       TurnId.make("10000000-0000-4000-8000-000000000001"),

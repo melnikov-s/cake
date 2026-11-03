@@ -400,7 +400,9 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
     const active = this.props.ensureSessionActive();
     if (active === false) return false;
     if (active === true)
-      return this.model.historyOnly ? this.waitForActiveProjection(observedSnapshotRevision) : true;
+      return !this.model.historyOnly && this.model.observedSnapshotRevision > 0
+        ? true
+        : this.waitForActiveProjection(observedSnapshotRevision);
     const restored = await active;
     return restored ? this.waitForActiveProjection(observedSnapshotRevision) : false;
   }

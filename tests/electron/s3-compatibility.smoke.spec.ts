@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
+import { installLocalModelHttpGuard } from "./main-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -132,6 +133,8 @@ export default function (pi) {
     page.on("pageerror", (error) => rendererErrors.push(error.message));
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
     expect(rendererErrors).toEqual([]);
+    // Extension commands must not fall through to an inherited model provider.
+    await installLocalModelHttpGuard(application, "http://127.0.0.1:1");
     const composer = page.getByLabel("Message");
     await composer.fill("/desktop-fixture");
     await expect(composer).toHaveValue("/desktop-fixture");

@@ -6,7 +6,10 @@ import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-cha
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
-import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
+import {
+  applyConversationUpdate,
+  unloadConversationProjection,
+} from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
@@ -49,7 +52,7 @@ export function renderConversationSession(
   profile: ConversationSessionProfile,
   client: TestClientOverrides,
   parts: UiPart[] = [originalUserPart, workingAssistantPart],
-  initialUpdate: "Snapshot" | "Preview" = "Snapshot",
+  initialUpdate: "Snapshot" | "Preview" | "Unobserved" = "Snapshot",
 ) {
   const sessionId =
     profile === "project"
@@ -73,7 +76,7 @@ export function renderConversationSession(
     sessionFile: `/sessions/${sessionId}.jsonl`,
     parts,
     models: [],
-    ...(initialUpdate === "Snapshot"
+    ...(initialUpdate !== "Preview"
       ? { model: { provider: "openai", id: "gpt-4.1", name: "GPT-4.1" } }
       : {}),
     thinkingLevel: "off",
@@ -92,7 +95,8 @@ export function renderConversationSession(
     snapshot = { ...snapshot, ...changes };
     applyConversationUpdate(model, { _tag: tag, revision: ++revision, snapshot });
   };
-  publish({}, initialUpdate);
+  publish({}, initialUpdate === "Unobserved" ? "Snapshot" : initialUpdate);
+  if (initialUpdate === "Unobserved") unloadConversationProjection(model);
   if (profile === "project") {
     fixture.root.navigationStore.selectProjectSession(sessionId);
     fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
