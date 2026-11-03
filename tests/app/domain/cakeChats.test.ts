@@ -848,8 +848,11 @@ describe("permanent Cake Chat", () => {
         expect(options.runtime.persistArtifact).toBeDefined();
         expect(options.runtime.allowedCakeOperations).toContain("settings.project-chat.update");
         expect(options.runtime.allowedCakeOperations).not.toContain("settings.cake-chat.update");
-        expect(options.runtime.allowedCakeOperations).not.toContain("projects.settings.get");
-        expect(options.runtime.allowedCakeOperations).not.toContain("projects.settings.update");
+        // Its own Project's settings, scoped by the backend handler.
+        for (const command of ["projects.settings.get", "projects.settings.update"]) {
+          expect(options.runtime.allowedCakeOperations).toContain(command);
+          expect(commands).toContain(command);
+        }
         // Project Chats can inspect and change every user setting the Settings UI offers.
         for (const command of [
           "settings.list",

@@ -344,7 +344,8 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     return (yield* projectSessionMetadata.findLocation({ sessionId })).workingDirectory;
   });
   const title = companion ? "Companion" : project ? `${project.name} / Project Chat` : "Cake Chat";
-  /** Same backend authority, receipts and ProjectAccess check as every other settings writer. */
+  /** Same backend authority, receipts and ProjectAccess check as every other settings writer.
+   * A Project Chat's caller carries its Project, so the handler rejects every other path. */
   const invokeProjectSettings = (
     command: "projects.settings.get" | "projects.settings.update",
     input: ProjectSettingsGetInput | ProjectSettingsUpdateInput,
@@ -354,6 +355,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
         kind: "cake-chat",
         sessionId: target.sessionId,
         title,
+        ...(project ? { projectPath: project.path } : null),
       }),
     ).pipe(
       Effect.flatMap((result) => {
@@ -580,13 +582,10 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       // Pin the complete Cake Chat toolset instead of relying on Pi's default-tool
       // selection, which does not necessarily activate extension tools.
       tools: ["cake", "zoom", "date", "read", "bash", "mcp"],
-      // A Project Chat never writes shared Cake Chat guidance or another Project's settings.
+      // A Project Chat never writes shared Cake Chat guidance; projects.settings.* is
+      // restricted to its own Project by the backend handler.
       allowedCakeOperations: project
-        ? CAKE_CHAT_OPERATIONS.filter(
-            (command) =>
-              !command.startsWith("settings.cake-chat.") &&
-              !command.startsWith("projects.settings."),
-          )
+        ? CAKE_CHAT_OPERATIONS.filter((command) => !command.startsWith("settings.cake-chat."))
         : CAKE_CHAT_OPERATIONS,
       persistArtifact: (artifact) =>
         runArtifact(

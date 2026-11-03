@@ -462,9 +462,11 @@ fall back to the shared writer. Coding sessions can also patch their own Project
 `project.settings.update`, whose field guidance distinguishes the two instruction scopes;
 prefer the dedicated instruction operations for their read-before-write protection.
 Global Cake Chat and its user-created side chats may read and patch any registered Project's settings through
-`projects.settings.get/update` with an exact `projectPath`; Project Chats, Project
-Sessions and their side chats do not receive this cross-Project writer. It runs the same
-backend handler, so writes still require the Project's selected-project authorization
+`projects.settings.get/update` with an exact `projectPath`. Project Chats and their side
+chats receive the same operations, but the backend handler rejects any `projectPath`
+other than the chat's own registered root; this covers every field, including the icon.
+Project Sessions use `project.settings.*` instead. All callers run the same backend
+handler, so writes still require the Project's selected-project authorization
 (granted to every registered Project at startup and on registration).
 
 Side chats fork the coordinator conversation with Durable `fork()` after the

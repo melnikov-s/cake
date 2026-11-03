@@ -203,6 +203,15 @@ export const invoke: (
             "projectPath" in invocation.arguments
               ? invocation.arguments.projectPath
               : caller.projectPath;
+          // A Project Chat names its Project explicitly but may only target its own registered root.
+          if (
+            "projectPath" in invocation.arguments &&
+            caller.projectPath !== undefined &&
+            invocation.arguments.projectPath !== caller.projectPath
+          )
+            return fail(
+              "A Project Chat can only read or update its own registered Project's settings.",
+            );
           const project = owner.snapshot().projects.find((project) => project.path === projectPath);
           if (!project) return fail("Cake could not find that Project.");
           const changes =

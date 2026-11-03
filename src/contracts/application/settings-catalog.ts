@@ -365,7 +365,7 @@ export const settingsElsewhere = [
   ["Cake Chat / Project Chat instructions", "settings.cake-chat.*, settings.project-chat.*"],
   [
     "Project settings",
-    "project.settings.* (Project Session, own Project), projects.settings.* (global Cake Chat, any Project)",
+    "project.settings.* (Project Session, own Project), projects.settings.* (global Cake Chat, any Project; Project Chat, own Project)",
   ],
   ["Appearance, VS Code, hotkeys (this window)", "settings.window.*"],
   ["Create/import/apply color themes (this window)", "themes.list/read/add/apply"],

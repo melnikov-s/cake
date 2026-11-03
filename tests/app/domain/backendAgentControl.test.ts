@@ -1884,6 +1884,58 @@ it.effect("permanent Project Chat and global Cake Chat discover and execute tool
   }),
 );
 
+it.effect("Project Chat reads and patches only its own Project's settings, icon included", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture(true);
+    const project = f.state().projects[0];
+    assert.ok(project);
+    yield* Context.get(f.context, ApplicationState).transact((state) =>
+      Effect.succeed({
+        ...state,
+        projects: [...state.projects, { ...project, path: "/other", name: "Other" }],
+      }),
+    );
+    const options = yield* cakeChatRuntime
+      .acquireOptions({
+        configuration: {
+          location: { workingDirectory: "/project", sessionDirectory: "/cake/project" },
+          agentDirectory: "/cake",
+        },
+        target: { sessionId: projectChatSessionId("/project"), tools: backendAgentTools() },
+        newSession: false,
+      })
+      .pipe(Effect.provide(f.context));
+    expect(options.runtime.allowedCakeOperations).toContain("projects.settings.update");
+    const control = options.runtime.cakeChatProjects;
+    assert.ok(control);
+    const icon = { mimeType: "image/png" as const, data: "iVBORw0KGgo=" };
+    expect(
+      yield* Effect.promise(() =>
+        control.updateSettings(
+          { projectPath: "/project", changes: { icon, worktreeLanding: "pull-request" } },
+          signal(),
+        ),
+      ),
+    ).toMatchObject({ ok: true, projectPath: "/project", settings: { icon } });
+    expect(
+      yield* Effect.promise(() => control.getSettings({ projectPath: "/project" }, signal())),
+    ).toMatchObject({
+      projectPath: "/project",
+      settings: { icon, worktreeLanding: "pull-request" },
+    });
+    for (const attempt of [
+      () => control.getSettings({ projectPath: "/other" }, signal()),
+      () => control.updateSettings({ projectPath: "/other", changes: { icon } }, signal()),
+    ])
+      expect(yield* Effect.flip(Effect.tryPromise(attempt))).toMatchObject({
+        cause: { message: expect.stringContaining("only read or update its own") },
+      });
+    expect(f.state().projects.find((item) => item.path === "/other")?.settings?.icon).toBe(
+      undefined,
+    );
+  }),
+);
+
 it.effect(
   "tool compaction shares project authorization and skips busy targets without queuing",
   () =>
