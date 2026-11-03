@@ -43,6 +43,8 @@ Before you add code for a race condition or security edge case that is unlikely 
 
 Preserve unrelated worktree changes. Format changed files with Oxfmt, run `pnpm format:check`, `pnpm lint:oxlint` for every source change, focused tests, and the relevant typecheck/build. Prefer final `pnpm lint` when scope permits. Use `pnpm build:slim` for ordinary work; full/native builds require native work or an explicit request. Read the verification guide for detailed testing and build procedures.
 
+Never attach a debugger or inspector to, or inject code into, the user's running Cake (`kill -USR1`, inspector attach, `--inspect` eval); profile only a separate instance you launched. See "Never debug the user's running Cake" in the verification guide.
+
 Run the full `pnpm typecheck && pnpm test` (3-6 minutes) before committing a change to behavior, not only focused tests. Behavior changes include: changing or removing what a feature does; editing stores, domain, contracts, services or shared components; renaming exports or changing signatures; and changing config, dependencies or test infrastructure. Tests elsewhere may encode the old behavior, and focused tests will not find them. Commit only when both pass.
 
 A small presentation-only change can skip the full suite. That covers styling, layout, spacing, icons, or copy in one component, with no change to state, props or logic. Docs-only changes can skip it too. Run format, `pnpm lint:oxlint` and the tests for that component instead. If you changed visible text or an accessible name, search `tests/` for the old string and run every file that matches. If in doubt, run the full suite. CI (`.github/workflows/ci.yml`) runs the full checks on every PR and push to main as the backstop.

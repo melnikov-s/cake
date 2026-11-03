@@ -199,6 +199,35 @@ settlements. Compare with `desktop.log` for existing failure details. Remote
 Electron records only its local desktop teardown, not the separate server's
 shutdown. No live quit/hang reproduction is implied by in-process test coverage.
 
+### Never debug the user's running Cake
+
+The Cake you are running inside is the user's app. Profile, debug or inspect only
+a separate Cake instance that you launched. Never touch a live Cake PID: no
+`kill -USR1` (it opens the Node inspector), no inspector or DevTools attach, no
+`--inspect` eval, and no other code injection. Evaluated code runs in the user's
+main process, where any uncaught error is fatal by design
+(`src/main/process-errors.ts`), so one mistyped expression crashes their Cake and
+interrupts every session.
+
+To profile instead:
+
+- Prefer the repository harnesses, which launch isolated instances with generated
+  state: `pnpm perf:collect` (renderer CPU profile and trace; see
+  `docs/development/user-performance.md`) and `pnpm measure:session-switch`.
+- For ad hoc main-process inspection, launch your own instance with its own state
+  and the inspector enabled from the start, on a non-default port:
+
+  ```sh
+  CAKE_HOME=$(mktemp -d) CAKE_ELECTRON_USER_DATA=$(mktemp -d) \
+    pnpm exec electron-vite dev --inspect 9230
+  ```
+
+  `--remoteDebuggingPort <port>` adds renderer DevTools. If you need realistic
+  data, copy `~/.cake` into the temporary `CAKE_HOME` (and `~/.pi/agent` into a
+  temporary `PI_CODING_AGENT_DIR` if sessions are involved); never point a debug
+  instance at the user's live directories. A shared `userData` profile hits the
+  single-instance lock and exits instead of starting.
+
 ### Debugging discipline
 
 - Reproduce a reported UI defect in the smallest real Electron fixture before refactoring shared abstractions.
