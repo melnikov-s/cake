@@ -62,7 +62,13 @@ export class SidebarSessionListStore extends Store<{
           ? {
               sessionId: root.sessionId,
               rank: this.activityRank(root),
-              modifiedAt: root.modifiedAt,
+              modifiedAt: this.familyModifiedDates(
+                new Map(
+                  this.props.catalog
+                    .projectSessions(root.projectPath, false)
+                    .map((session) => [session.sessionId, session]),
+                ),
+              ).get(root.sessionId)!,
             }
           : undefined;
       },
@@ -391,16 +397,14 @@ export class SidebarSessionListStore extends Store<{
             : this.activityRank(session),
       ]),
     );
-    // Active rows sort by the time their row shows; resolved families by their latest member.
-    const modifiedDates = resolved ? this.familyModifiedDates(byId) : undefined;
+    // A family's time is its latest update anywhere in the family.
+    const modifiedDates = this.familyModifiedDates(byId);
     const latestActivity = (session: ProjectSession) =>
-      modifiedDates
-        ? modifiedDates.get(session.sessionId)!
-        : held?.sessionId === session.sessionId
-          ? held.modifiedAt
-          : session.modifiedAt;
+      !resolved && held?.sessionId === session.sessionId
+        ? held.modifiedAt
+        : modifiedDates.get(session.sessionId)!;
     // Running rows update constantly, so they keep creation order; every other
-    // group shows the most recently updated row first.
+    // group shows the most recently updated family first.
     const compareByDate = (left: (typeof roots)[number], right: (typeof roots)[number]) =>
       activityPriorities.get(left.sessionId) === 1
         ? compareSessionSummariesByCreation(left, right)

@@ -566,7 +566,7 @@ describe("Sidebar navigation workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Project actions for cake" }));
     await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on cake" }));
     expect(screen.getByRole("button", { name: "Exit focus mode for cake" })).toBeDefined();
-    expect(order()).toEqual(["standalone", "root"]);
+    expect(order()).toEqual(["root", "standalone"]);
     await fixture.user.pointer({
       target: screen.getByRole("button", { name: "Open Project Chat for cake" }),
       keys: "[MouseRight]",
@@ -578,7 +578,7 @@ describe("Sidebar navigation workflow", () => {
     expect(screen.getByRole("button", { name: "Project actions for pi" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Collapse cake" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Expand children of root" }));
-    expect(order()).toEqual(["standalone", "root", "planner", "worker", "sibling"]);
+    expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
   });
 
   it.each([false, true])(
@@ -1036,11 +1036,33 @@ describe("Sidebar navigation workflow", () => {
     },
   );
 
+  it("sorts a family by its latest update anywhere in it, so child updates move the family", async () => {
+    const day = (n: number) => sidebarSummary("unused", n).modifiedAt;
+    const others = [sidebarSummary("standalone", 31), sidebarSummary("middle", 20)];
+    using fixture = renderSidebarNavigation({
+      projects: [project],
+      sessions: [...sidebarFamily, ...others],
+    });
+    // The root was last updated on day 1, but its grandchild on day 30.
+    expect(order()).toEqual(["standalone", "root", "planner", "worker", "sibling", "middle"]);
+    expect(row("root").querySelector("time")?.dateTime).toBe(day(1));
+    await fixture.publishSessions([
+      ...sidebarFamily.map((session) =>
+        session.sessionId === "sibling" ? { ...session, modifiedAt: day(40) } : session,
+      ),
+      ...others,
+    ]);
+    expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone", "middle"]);
+    // Collapsed, the family keeps the same place.
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
+    expect(order()).toEqual(["root", "standalone", "middle"]);
+  });
+
   it("keeps a family in place on selected descendant activity without changing its selected child or open pane", async () => {
     using fixture = renderSidebarNavigation({
       projects: [project],
       sessions: [...sidebarFamily, sidebarSummary("standalone", 31)],
-      loadedIds: ["worker"],
+      loadedIds: ["worker", "standalone"],
       client: { projectSessions: { open: async () => undefined } },
     });
     await fixture.user.click(rowButton("worker"));
@@ -1063,6 +1085,10 @@ describe("Sidebar navigation workflow", () => {
     expect(row("worker").getAttribute("data-navigation-active")).toBe("true");
     expect(document.querySelector('[data-slot="session-pane"]')).toBe(pane);
     expect(pane?.getAttribute("data-session-id")).toBe("worker");
+    // Once the user moves on, the child's update moves its family up.
+    await fixture.user.click(rowButton("standalone"));
+    await waitFor(() => expect(row("standalone").dataset.navigationActive).toBe("true"));
+    expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
   });
 
   it("flattens nested families parent-first and moves descendant activity onto collapsed ancestors", async () => {
@@ -1071,14 +1097,14 @@ describe("Sidebar navigation workflow", () => {
       sessions: [...sidebarFamily, sidebarSummary("standalone", 3)],
       loadedIds: ["worker"],
     });
-    expect(order()).toEqual(["standalone", "root", "planner", "worker", "sibling"]);
+    expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
     await fixture.publishStreaming(["worker"], true);
     expect(within(row("root")).queryByRole("img", { name: "Running" })).toBeNull();
     expect(within(row("worker")).getByRole("img", { name: "Running" })).toBeDefined();
     expect(row("worker").querySelector("time")?.textContent).toBe("Working");
     expect(row("root").querySelector("time")).not.toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Collapse children of planner" }));
-    expect(order()).toEqual(["standalone", "root", "planner", "sibling"]);
+    expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
     expect(within(row("planner")).getByRole("img", { name: "Running" })).toBeDefined();
     expect(row("planner").querySelector("time")?.textContent).toBe("Working");
     expect(within(row("root")).queryByRole("img", { name: "Running" })).toBeNull();
@@ -1091,10 +1117,10 @@ describe("Sidebar navigation workflow", () => {
     expect(order()).toEqual(["standalone", "root"]);
     await fixture.user.click(screen.getByRole("button", { name: "Show projects" }));
     await fixture.user.click(screen.getByRole("button", { name: "Expand children of root" }));
-    expect(order()).toEqual(["standalone", "root", "planner", "sibling"]);
+    expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
     expect(within(row("root")).queryByRole("img", { name: "Running" })).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Expand children of planner" }));
-    expect(order()).toEqual(["standalone", "root", "planner", "worker", "sibling"]);
+    expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
   });
 
   describe("revealing a selected family descendant", () => {
@@ -1141,7 +1167,7 @@ describe("Sidebar navigation workflow", () => {
         using fixture = renderFamily(collapsed({ root: true, planner: true }, true));
         expect(order()).toEqual([]);
         await fixture.openSessionLink("worker");
-        expect(order()).toEqual(["standalone", "root", "planner", "worker", "sibling"]);
+        expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
         expect(row("worker").getAttribute("data-navigation-active")).toBe("true");
         expect(scrollIntoView.mock.contexts).toContain(row("worker"));
         expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
@@ -1149,13 +1175,13 @@ describe("Sidebar navigation workflow", () => {
       })();
       // Like a manual expand, the reveal persists with window presentation…
       using fixture = renderFamily(saved);
-      expect(order()).toEqual(["standalone", "root", "planner", "worker", "sibling"]);
+      expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
       // …and is one-time: collapsing the selected row's parent or Project afterwards sticks.
       await fixture.openSessionLink("worker");
       await fixture.user.click(
         screen.getByRole("button", { name: "Collapse children of planner" }),
       );
-      expect(order()).toEqual(["standalone", "root", "planner", "sibling"]);
+      expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
       await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
       expect(order()).toEqual([]);
     });
@@ -1163,7 +1189,7 @@ describe("Sidebar navigation workflow", () => {
     it("expands only the ancestors of a linked child, leaving its own children collapsed", async () => {
       using fixture = renderFamily(collapsed({ root: true, planner: true }));
       await fixture.openSessionLink("planner");
-      expect(order()).toEqual(["standalone", "root", "planner", "sibling"]);
+      expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
       expect(row("planner").getAttribute("data-navigation-active")).toBe("true");
       expect(screen.getByRole("button", { name: "Expand children of planner" })).toBeDefined();
     });
@@ -1174,13 +1200,13 @@ describe("Sidebar navigation workflow", () => {
       await waitFor(() =>
         expect(row("sibling").getAttribute("data-navigation-active")).toBe("true"),
       );
-      expect(order()).toEqual(["standalone", "root", "planner", "sibling"]);
+      expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
       await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
       await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
       expect(order()).toEqual([]);
       await fixture.openSessionLink("standalone");
       expect(row("standalone").getAttribute("data-navigation-active")).toBe("true");
-      expect(order()).toEqual(["standalone", "root"]);
+      expect(order()).toEqual(["root", "standalone"]);
       await fixture.user.click(screen.getByRole("button", { name: "Expand children of root" }));
       expect(screen.getByRole("button", { name: "Expand children of planner" })).toBeDefined();
     });
@@ -1420,9 +1446,14 @@ describe("Sidebar navigation workflow", () => {
       projects: [project, projectRecord({ path: "/pi" })],
       sessions: [...sidebarFamily, ...singles, ...piSessions, ...archives],
     });
-    expect(order(projectGroup("cake"))).toEqual(
-      singles.slice(0, 10).map((session) => session.sessionId),
-    );
+    // The family's latest child update (day 30) puts it ahead of every single.
+    expect(order(projectGroup("cake"))).toEqual([
+      "root",
+      "planner",
+      "worker",
+      "sibling",
+      ...singles.slice(0, 9).map((session) => session.sessionId),
+    ]);
     expect(order(projectGroup("pi"))).toHaveLength(10);
     await fixture.user.click(
       within(projectGroup("cake")).getByRole("button", { name: "Show more" }),
