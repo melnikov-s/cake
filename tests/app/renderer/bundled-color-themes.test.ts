@@ -33,15 +33,16 @@ describe("bundled Cake theme collection", () => {
     }
   });
 
-  it("gives every built-in theme a solid composer and a visible running dot", () => {
+  it("gives every built-in theme a solid composer and a visible accent", () => {
     for (const { theme } of bundledColorThemes) {
       if (theme === "light" || theme === "dark") continue;
       const tokens = cakeThemeTokens(theme);
       expect(tokens["--composer"], theme.id).toMatch(/^#([\da-f]{3}|[\da-f]{6})$/i);
-      expect(
-        contrastRatio(tokens["--running"]!, tokens["--sidebar"]!),
-        theme.id,
-      ).toBeGreaterThanOrEqual(3);
+      for (const surface of ["--sidebar", "--background"] as const)
+        expect(
+          contrastRatio(tokens["--accent"]!, tokens[surface]!),
+          `${theme.id} ${surface}`,
+        ).toBeGreaterThanOrEqual(3);
     }
   });
 

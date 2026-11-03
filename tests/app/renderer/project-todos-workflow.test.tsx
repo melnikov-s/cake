@@ -751,7 +751,7 @@ it("keeps each associated session link and projects readiness across read, new w
   await fixture.read();
   expect(screen.getAllByRole("img", { name: "Ready for review" })).toHaveLength(2);
   await fixture.status({ running: true, unread: false });
-  expect(screen.getByRole("img", { name: "Running" }).className).toContain("bg-running");
+  expect(screen.getByRole("img", { name: "Running" }).className).toContain("bg-accent");
   expect(screen.getAllByRole("img", { name: "Ready for review" })).toHaveLength(1);
   await fixture.status({ running: false, recoveryIssue: "Needs a decision", unread: false });
   expect(screen.getByRole("img", { name: "Needs your input" }).className).toContain("bg-attention");

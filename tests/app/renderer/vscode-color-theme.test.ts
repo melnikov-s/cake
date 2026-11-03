@@ -128,15 +128,25 @@ describe("VS Code color data import", () => {
     expect(cakeThemeTokens(theme)["--composer"]).toBe("#f2e9e180");
   });
 
-  it("picks a running color that stays visible on the sidebar", () => {
+  it("picks an accent that stays visible on the canvas and sidebar", () => {
     const sidebar = { "editor.background": "#faf4ed", "sideBar.background": "#faf4ed" };
     const tokens = (colors: Record<string, string>) =>
       cakeThemeTokens(parse(JSON.stringify({ colors: { ...sidebar, ...colors } })));
-    expect(tokens({ focusBorder: "#286983" })["--running"]).toBe("#286983");
+    expect(tokens({ focusBorder: "#286983", "button.foreground": "#faf4ed" })).toMatchObject({
+      "--accent": "#286983",
+      "--accent-foreground": "#faf4ed",
+    });
     expect(
-      tokens({ focusBorder: "#6e6a8614", "textLink.foreground": "#907aa9" })["--running"],
-    ).toBe("#907aa9");
-    expect(tokens({ focusBorder: "#f2e9e1", "sideBar.foreground": "#575279" })["--running"]).toBe(
+      tokens({
+        focusBorder: "#6e6a8614",
+        "button.background": "#286983",
+        "button.foreground": "#faf4ed",
+      }),
+    ).toMatchObject({ "--accent": "#286983", "--accent-foreground": "#ffffff" });
+    expect(tokens({ focusBorder: "#6e6a8614", "textLink.foreground": "#907aa9" })["--accent"]).toBe(
+      "#907aa9",
+    );
+    expect(tokens({ focusBorder: "#f2e9e1", "sideBar.foreground": "#575279" })["--accent"]).toBe(
       "#575279",
     );
   });

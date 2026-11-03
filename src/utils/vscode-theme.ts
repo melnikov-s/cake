@@ -131,8 +131,6 @@ export function cakeThemeTokens(theme: ImportedColorTheme) {
     "secondary-foreground": ["button.secondaryForeground", "editor.foreground", "foreground"],
     muted: ["input.background", "sideBar.background"],
     "muted-foreground": ["descriptionForeground"],
-    accent: ["focusBorder", "textLink.foreground", "button.background"],
-    "accent-foreground": ["button.foreground"],
     ring: ["focusBorder"],
     border: ["panel.border", "widget.border", "sideBar.border"],
     input: ["input.border", "panel.border"],
@@ -186,18 +184,34 @@ export function cakeThemeTokens(theme: ImportedColorTheme) {
   tokens["--user-message"] = `color-mix(in srgb, ${fg} 9%, ${bg})`;
   tokens["--user-message-foreground"] = fg;
   tokens["--muted-foreground"] ??= `color-mix(in srgb, ${fg} 72%, ${bg})`;
-  // Focus borders are often faint or translucent rings, too weak for the sidebar's running dot.
-  tokens["--running"] =
-    [
-      c.focusBorder,
-      c["textLink.foreground"],
-      c["button.background"],
-      c["terminal.ansiBlue"],
-      c["progressBar.background"],
-    ].find(
-      (color) =>
-        color && hexChannels(color)[3] === 1 && contrastRatio(color, tokens["--sidebar"]!) >= 3,
-    ) ?? tokens["--sidebar-foreground"];
+  // Focus borders are often faint or translucent rings; accent is drawn as text, dots and fills.
+  const accent = [
+    c.focusBorder,
+    c["textLink.foreground"],
+    c["button.background"],
+    c["terminal.ansiBlue"],
+    c["progressBar.background"],
+  ].find(
+    (color) =>
+      color &&
+      hexChannels(color)[3] === 1 &&
+      contrastRatio(color, bg) >= 3 &&
+      contrastRatio(color, tokens["--sidebar"]!) >= 3,
+  );
+  if (accent) {
+    tokens["--accent"] = accent;
+    // An accent the theme already chose keeps its button text; a substituted one gets readable text.
+    const authored = c.focusBorder ?? c["textLink.foreground"] ?? c["button.background"];
+    tokens["--accent-foreground"] =
+      accent === authored && c["button.foreground"]
+        ? c["button.foreground"]
+        : contrastRatio("#111111", accent) >= contrastRatio("#ffffff", accent)
+          ? "#111111"
+          : "#ffffff";
+  } else {
+    tokens["--accent"] = tokens["--sidebar-foreground"]!;
+    tokens["--accent-foreground"] = bg;
+  }
   tokens["--sidebar-hover"] ??= `color-mix(in srgb, ${fg} 7%, var(--sidebar))`;
   tokens["--sidebar-active"] ??= `color-mix(in srgb, ${fg} 13%, var(--sidebar))`;
   return tokens;
