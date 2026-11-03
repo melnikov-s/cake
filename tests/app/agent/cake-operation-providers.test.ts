@@ -683,6 +683,34 @@ describe("Backend-owned Cake operation composition", () => {
     ).rejects.toThrow();
     expect(control.updateSettings).toHaveBeenCalledTimes(1);
 
+    // Icons arrive only as a local file path; Cake reads the image itself.
+    expect(updateHelp).toContain("iconPath");
+    expect(updateHelp).not.toContain("base64");
+    await registry.invoke(
+      {
+        command: "projects.settings.update",
+        input: { projectPath: project.path, changes: { iconPath: "~/icon.png" } },
+      },
+      context,
+    );
+    expect(control.updateSettings).toHaveBeenLastCalledWith(
+      { projectPath: project.path, changes: { iconPath: "~/icon.png" } },
+      context.signal,
+    );
+    await expect(
+      registry.invoke(
+        {
+          command: "projects.settings.update",
+          input: {
+            projectPath: project.path,
+            changes: { icon: { mimeType: "image/png", data: "iVBORw0KGgo=" } },
+          },
+        },
+        context,
+      ),
+    ).rejects.toThrow();
+    expect(control.updateSettings).toHaveBeenCalledTimes(2);
+
     // Ordinary Project Sessions never receive Cake Chat's Project registry authority.
     const projectSession = new CakeOperationRegistry(
       projectCakeOperations({ cwd: "/workspace", cakeChatProjects: control })(bridge()),

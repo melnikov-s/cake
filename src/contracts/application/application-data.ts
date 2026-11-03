@@ -84,6 +84,8 @@ const IsoTimestamp = Schema.String.check(
 );
 
 export const PROJECT_ICON_DATA_MAX_LENGTH = 1_000_000;
+/** Largest image file whose base64 encoding fits PROJECT_ICON_DATA_MAX_LENGTH. */
+export const PROJECT_ICON_FILE_MAX_BYTES = (PROJECT_ICON_DATA_MAX_LENGTH / 4) * 3;
 
 export const ProjectIcon = Schema.Struct({
   mimeType: Schema.Literals(["image/png", "image/jpeg", "image/gif", "image/webp"]),

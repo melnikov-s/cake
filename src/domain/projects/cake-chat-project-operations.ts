@@ -12,6 +12,7 @@ import {
 import {
   ProjectSettingsGetInput,
   ProjectSettingsUpdateInput,
+  projectIconPathGuidance,
 } from "../../contracts/projects/project-settings-schema";
 
 const projectSettingsScope =
@@ -174,7 +175,7 @@ export function createCakeChatProjectOperations(
         "Call projects.settings.get first. Only the fields in changes are written; unspecified settings stay unchanged. Read back with projects.settings.get before claiming success.",
         "Worktree fields: worktreeCreateCommand checks out {branchName} (empty runs git worktree add); worktreeSetupCommands run in each new worktree; worktreeRemoveCommand removes a checkout (empty runs git worktree remove); worktreeCommandTimeoutSeconds limits each of those commands (0 waits indefinitely); worktreeLanding is merge (Cake lands locally) or pull-request (landing happens outside Cake).",
         "customInstructions guide only coding Project Sessions; projectChatInstructions guide only that Project's permanent Project Chat. Never move or swap text between them without user authorization. For Project Chat guidance prefer settings.project-chat.get/update, which check expectedInstructions for conflicts.",
-        "icon is { mimeType, data }: mimeType is image/png, image/jpeg, image/gif or image/webp, and data is the image file's base64 bytes without a data: prefix (at most 1,000,000 characters). Encode a local file such as a transparent PNG with `base64 -i icon.png`; transparency is preserved.",
+        projectIconPathGuidance,
         projectSettingsScope,
       ],
       inputSchema: ProjectSettingsUpdateInput,

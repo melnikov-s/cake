@@ -164,6 +164,27 @@ describe("Project Session operation capabilities", () => {
     }
   });
 
+  it("accepts a Project icon only as a local file path", async () => {
+    const registry = new CakeOperationRegistry(
+      operations({ currentSessionControl: control({ invokeAppControl: async () => null }) }),
+    );
+    const help = registry.operationHelp("project.settings.update");
+    expect(help).toContain("iconPath");
+    expect(help).not.toContain("base64");
+    const invoke = (changes: object) =>
+      registry.invoke(
+        { command: "project.settings.update", input: { changes } },
+        { signal: new AbortController().signal, toolCallId: "icon", runtime: {} },
+      );
+    // A valid input passes decoding and reaches the lazy runtime API, which this bridge forbids.
+    await expect(invoke({ iconPath: "/tmp/icon.png" })).rejects.toThrow(
+      "must not access the lazy runtime API",
+    );
+    await expect(invoke({ icon: { mimeType: "image/png", data: "iVBORw0KGgo=" } })).rejects.toThrow(
+      /icon/,
+    );
+  });
+
   it("keeps real Project Session discovery within reviewed character budgets", () => {
     const registry = new CakeOperationRegistry(
       operations({

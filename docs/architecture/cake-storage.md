@@ -465,6 +465,8 @@ Global Cake Chat and its user-created side chats may read and patch any register
 `projects.settings.get/update` with an exact `projectPath`. Project Chats and their side
 chats receive the same operations, but the backend handler rejects any `projectPath`
 other than the chat's own registered root; this covers every field, including the icon.
+Agents set the icon with `iconPath`, a local file path; the backend handler reads the
+file, checks its type from its bytes and its size, and stores it as `{ mimeType, data }`.
 Project Sessions use `project.settings.*` instead. All callers run the same backend
 handler, so writes still require the Project's selected-project authorization
 (granted to every registered Project at startup and on registration).

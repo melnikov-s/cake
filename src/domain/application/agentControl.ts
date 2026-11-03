@@ -1,4 +1,4 @@
-import { Clock, Effect, Option, Schema, type Scope } from "effect";
+import { Clock, Effect, Option, Result, Schema, type Scope } from "effect";
 import {
   CAKE_CHAT_SESSION_ID,
   isCakeChatSessionId,
@@ -34,7 +34,11 @@ import { SessionCoordination } from "../../services/session-catalogs/SessionCoor
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import * as application from "./application";
 import * as automationControl from "../automations/automationControl";
-import { defaultProjectSettings } from "../../contracts/application/application-data";
+import {
+  defaultProjectSettings,
+  type ProjectSettings,
+} from "../../contracts/application/application-data";
+import { readProjectIconFile } from "../projects/projectIconFile";
 import * as agentSettings from "./agentSettings";
 import * as pendingReports from "../conversations/pendingReports";
 import * as completionInbox from "../conversations/completionInbox";
@@ -218,7 +222,17 @@ export const invoke: (
             "changes" in invocation.arguments ? invocation.arguments.changes : undefined;
           if (changes && !(yield* (yield* ProjectAccess).isAllowed(project.path)))
             return fail("Project path was not selected by the user");
-          if (changes)
+          let settingsChanges: Partial<ProjectSettings> | undefined;
+          if (changes) {
+            const { iconPath, ...rest } = changes;
+            if (iconPath === undefined) settingsChanges = rest;
+            else {
+              const icon = yield* readProjectIconFile(iconPath).pipe(Effect.result);
+              if (Result.isFailure(icon)) return fail(icon.failure);
+              settingsChanges = { ...rest, icon: icon.success };
+            }
+          }
+          if (settingsChanges)
             yield* owner.transact((current) =>
               Effect.succeed({
                 ...current,
@@ -226,7 +240,10 @@ export const invoke: (
                   item.path === project.path
                     ? {
                         ...item,
-                        settings: { ...(item.settings ?? defaultProjectSettings()), ...changes },
+                        settings: {
+                          ...(item.settings ?? defaultProjectSettings()),
+                          ...settingsChanges,
+                        },
                       }
                     : item,
                 ),

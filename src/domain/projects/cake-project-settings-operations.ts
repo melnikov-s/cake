@@ -3,6 +3,7 @@ import { type JsonObject } from "../../contracts/serialization/json-contract";
 import {
   CurrentProjectSettingsGetInput,
   CurrentProjectSettingsUpdateInput,
+  projectIconPathGuidance,
 } from "../../contracts/projects/project-settings-schema";
 
 import type { RuntimeOperationApi } from "../../contracts/agent/cake-operation-api";
@@ -40,6 +41,7 @@ export function createAgentProjectSettingsOperations(
       guidance: [
         "Call project.settings.get before updating the Project. Unspecified settings remain unchanged.",
         "customInstructions applies only to coding Project Sessions. projectChatInstructions applies only to the permanent Project Chat and appears in Project settings → Project Chat instructions. Never move text between these fields without user authorization. Read back before claiming success.",
+        projectIconPathGuidance,
         "For Project Chat guidance prefer settings.project-chat.get/update: explicit registered project identity, exact expectedInstructions, and conflict-safe persistence. Never fall back silently to shared settings.cake-chat.update.",
         "This singular project.* operation always targets the calling Project and never accepts a project path.",
       ],

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { NodeFileSystem } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
 import { TestClock } from "effect/testing";
 import {
@@ -10,6 +11,7 @@ import {
   Deferred,
   Effect,
   Fiber,
+  FileSystem,
   Layer,
   Logger,
   Queue,
@@ -20,6 +22,7 @@ import { expect, vi } from "vitest";
 import {
   defaultApplicationState,
   defaultProjectSettings,
+  PROJECT_ICON_FILE_MAX_BYTES,
 } from "../../../src/contracts/application/application-data";
 import {
   jsonObjectSchema,
@@ -479,6 +482,14 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
           return attachments;
         }),
     }),
+    // Project icon updates read real image files; every other file operation stays a no-op.
+    Layer.effect(
+      FileSystem.FileSystem,
+      Effect.gen(function* () {
+        const node = yield* FileSystem.FileSystem;
+        return FileSystem.makeNoop({ stat: node.stat, readFile: node.readFile });
+      }),
+    ).pipe(Layer.provide(NodeFileSystem.layer)),
   );
   const context = yield* Layer.build(dependencies);
   const requests: RendererRequestCoordinator["Service"] = Context.get(
@@ -1890,9 +1901,107 @@ it.effect("permanent Project Chat and global Cake Chat discover and execute tool
   }),
 );
 
+const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]);
+const pngIcon = { mimeType: "image/png", data: pngBytes.toString("base64") } as const;
+
+const iconFiles = Effect.acquireRelease(
+  Effect.promise(() => mkdtemp(join(tmpdir(), "cake-project-icon-"))),
+  (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+).pipe(
+  Effect.tap((root) =>
+    Effect.promise(async () => {
+      await writeFile(join(root, "icon.png"), pngBytes);
+      await writeFile(join(root, "photo.jpg"), Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]));
+      await writeFile(join(root, "notes.png"), "not an image");
+      const large = Buffer.alloc(PROJECT_ICON_FILE_MAX_BYTES + 1);
+      pngBytes.copy(large);
+      await writeFile(join(root, "large.png"), large);
+    }),
+  ),
+);
+
+const projectChatSettings = (f: Effect.Success<ReturnType<typeof fixture>>, sessionId: string) =>
+  cakeChatRuntime
+    .acquireOptions({
+      configuration: {
+        location: { workingDirectory: "/project", sessionDirectory: "/cake/project" },
+        agentDirectory: "/cake",
+      },
+      target: { sessionId, tools: backendAgentTools() },
+      newSession: false,
+    })
+    .pipe(
+      Effect.provide(f.context),
+      Effect.map((options) => {
+        expect(options.runtime.allowedCakeOperations).toContain("projects.settings.update");
+        const control = options.runtime.cakeChatProjects;
+        assert.ok(control);
+        return control;
+      }),
+    );
+
+it.effect("Project Session and global Cake Chat set the Project icon from a local file path", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture(true);
+    const root = yield* iconFiles;
+    expect(
+      yield* f.call("project.settings.update", {
+        changes: { iconPath: join(root, "icon.png") },
+      }),
+    ).toMatchObject({ ok: true, settings: { icon: pngIcon } });
+    // Global Cake Chat targets the Project explicitly; a leading ~ resolves to the home directory.
+    vi.stubEnv("HOME", root);
+    yield* Effect.addFinalizer(() => Effect.sync(() => vi.unstubAllEnvs()));
+    const control = yield* projectChatSettings(f, CAKE_CHAT_SESSION_ID);
+    expect(
+      yield* Effect.promise(() =>
+        control.updateSettings(
+          { projectPath: "/project", changes: { iconPath: "~/photo.jpg" } },
+          signal(),
+        ),
+      ),
+    ).toMatchObject({
+      ok: true,
+      settings: { icon: { mimeType: "image/jpeg", data: "/9j/4AAQ" } },
+    });
+  }),
+);
+
+it.effect("rejects unusable icon files by path and reason without writing settings", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const root = yield* iconFiles;
+    yield* f.call("project.settings.update", { changes: { iconPath: join(root, "icon.png") } });
+    for (const [iconPath, reason] of [
+      [join(root, "missing.png"), "the file does not exist"],
+      [root, "it is not a file"],
+      [join(root, "notes.png"), "it is not a PNG, JPEG, GIF or WebP image"],
+      [
+        join(root, "large.png"),
+        `it is ${(PROJECT_ICON_FILE_MAX_BYTES + 1).toLocaleString("en-US")} bytes; the limit is ${PROJECT_ICON_FILE_MAX_BYTES.toLocaleString("en-US")} bytes`,
+      ],
+      ["icon.png", "use an absolute path or ~/ path"],
+    ] as const)
+      expect(
+        yield* f.call("project.settings.update", {
+          changes: { iconPath, worktreeLanding: "pull-request" },
+        }),
+      ).toEqual({
+        ok: false,
+        command: "project.settings.update",
+        error: `Cannot use icon file ${iconPath}: ${reason}.`,
+      });
+    expect(f.state().projects[0]?.settings).toMatchObject({
+      icon: pngIcon,
+      worktreeLanding: "merge",
+    });
+  }),
+);
+
 it.effect("Project Chat reads and patches only its own Project's settings, icon included", () =>
   Effect.gen(function* () {
     const f = yield* fixture(true);
+    const root = yield* iconFiles;
     const project = f.state().projects[0];
     assert.ok(project);
     yield* Context.get(f.context, ApplicationState).transact((state) =>
@@ -1901,37 +2010,25 @@ it.effect("Project Chat reads and patches only its own Project's settings, icon 
         projects: [...state.projects, { ...project, path: "/other", name: "Other" }],
       }),
     );
-    const options = yield* cakeChatRuntime
-      .acquireOptions({
-        configuration: {
-          location: { workingDirectory: "/project", sessionDirectory: "/cake/project" },
-          agentDirectory: "/cake",
-        },
-        target: { sessionId: projectChatSessionId("/project"), tools: backendAgentTools() },
-        newSession: false,
-      })
-      .pipe(Effect.provide(f.context));
-    expect(options.runtime.allowedCakeOperations).toContain("projects.settings.update");
-    const control = options.runtime.cakeChatProjects;
-    assert.ok(control);
-    const icon = { mimeType: "image/png" as const, data: "iVBORw0KGgo=" };
+    const control = yield* projectChatSettings(f, projectChatSessionId("/project"));
+    const iconPath = join(root, "icon.png");
     expect(
       yield* Effect.promise(() =>
         control.updateSettings(
-          { projectPath: "/project", changes: { icon, worktreeLanding: "pull-request" } },
+          { projectPath: "/project", changes: { iconPath, worktreeLanding: "pull-request" } },
           signal(),
         ),
       ),
-    ).toMatchObject({ ok: true, projectPath: "/project", settings: { icon } });
+    ).toMatchObject({ ok: true, projectPath: "/project", settings: { icon: pngIcon } });
     expect(
       yield* Effect.promise(() => control.getSettings({ projectPath: "/project" }, signal())),
     ).toMatchObject({
       projectPath: "/project",
-      settings: { icon, worktreeLanding: "pull-request" },
+      settings: { icon: pngIcon, worktreeLanding: "pull-request" },
     });
     for (const attempt of [
       () => control.getSettings({ projectPath: "/other" }, signal()),
-      () => control.updateSettings({ projectPath: "/other", changes: { icon } }, signal()),
+      () => control.updateSettings({ projectPath: "/other", changes: { iconPath } }, signal()),
     ])
       expect(yield* Effect.flip(Effect.tryPromise(attempt))).toMatchObject({
         cause: { message: expect.stringContaining("only read or update its own") },

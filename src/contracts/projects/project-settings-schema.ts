@@ -1,8 +1,10 @@
 import { Schema } from "effect";
-import { ProjectSettings } from "../application/application-data";
+import { PROJECT_ICON_FILE_MAX_BYTES, ProjectSettings } from "../application/application-data";
 import { ProjectChatInstructions } from "./project-chat-instructions";
 
 const boundedProjectPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
+
+export const projectIconPathGuidance = `Set the icon with iconPath: an absolute or ~/ path to a local PNG, JPEG, GIF or WebP file of at most ${PROJECT_ICON_FILE_MAX_BYTES.toLocaleString("en-US")} bytes. Cake reads and stores the image; never send image bytes. Transparency is preserved.`;
 
 const ProjectSettingsChanges = Schema.Struct({
   browserDefaultUrl: ProjectSettings.fields.browserDefaultUrl,
@@ -16,7 +18,8 @@ const ProjectSettingsChanges = Schema.Struct({
   worktreeLanding: Schema.optionalKey(Schema.Literals(["merge", "pull-request"])),
   customInstructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
   projectChatInstructions: Schema.optionalKey(ProjectChatInstructions.fields.instructions),
-  icon: Schema.optionalKey(ProjectSettings.fields.icon),
+  /** Absolute or ~/ path to a PNG, JPEG, GIF or WebP file; Cake reads and stores the image itself. */
+  iconPath: Schema.optionalKey(boundedProjectPath),
 }).check(
   Schema.makeFilter((changes) => Object.values(changes).some((value) => value !== undefined), {
     expected: "at least one project setting",
