@@ -1,7 +1,10 @@
 import { SessionAssistantStore } from "./SessionAssistantStore";
 import { AutomationsStore } from "./AutomationsStore";
 import { AutomationSessionsStore } from "./AutomationSessionsStore";
-import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  SESSION_ASSISTANT_ID,
+  isProjectChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { DictationStore } from "./DictationStore";
 import { ScreenCaptureAttachmentStore } from "./ScreenCaptureAttachmentStore";
 import { microphone, type Microphone } from "../dictation/microphone";
@@ -524,13 +527,47 @@ export class RootStore extends Store<{
           return null;
         const session = this.workspaceSession;
         if (!session) return null;
-        const title =
-          this.sessionCatalogStore.find(session.sessionId)?.title ??
-          this.cakeChatCollectionStore.summaries.find(
-            (item) => item.sessionId === session.sessionId,
-          )?.title ??
-          "New chat";
-        return { sessionId: session.sessionId, title, mode: session.presentationMode };
+        const active = this.appShellStore.activeConversation;
+        const summary = this.sessionCatalogStore.find(session.sessionId);
+        const chat = this.cakeChatCollectionStore.summaries.find(
+          (item) => item.sessionId === session.sessionId,
+        );
+        const workingDirectory =
+          active.kind === "cake-chat"
+            ? (chat?.projectPath ?? null)
+            : (this.sessionMetadataStore.workingDirectory(session.sessionId) ?? null);
+        const projectPath =
+          active.kind === "cake-chat"
+            ? chat?.projectPath
+            : (summary?.projectPath ??
+              (workingDirectory
+                ? this.sessionCatalogStore.projectPathFor(workingDirectory)
+                : undefined));
+        const worktree = workingDirectory
+          ? this.sessionCatalogStore.managedWorktree(workingDirectory)
+          : undefined;
+        return {
+          sessionId: session.sessionId,
+          title: summary?.title ?? chat?.title ?? "New chat",
+          kind:
+            active.kind === "cake-chat"
+              ? isProjectChatSessionId(session.sessionId)
+                ? "project-chat"
+                : "cake-chat"
+              : "project-session",
+          mode: session.presentationMode,
+          project: projectPath
+            ? { path: projectPath, name: this.projectCatalogStore.nameForPath(projectPath) }
+            : null,
+          workingDirectory,
+          worktree: worktree
+            ? {
+                path: worktree.worktreePath,
+                checkoutPath: worktree.checkoutPath ?? worktree.worktreePath,
+                branch: worktree.branch,
+              }
+            : null,
+        };
       },
     });
   }

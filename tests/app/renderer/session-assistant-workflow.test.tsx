@@ -2,7 +2,12 @@
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
-import { SESSION_ASSISTANT_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  SESSION_ASSISTANT_ID,
+} from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { applySnapshot } from "r-state-tree";
+import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import type { Client } from "../../../src/renderer/client/Client";
 import { renderSessionAssistant } from "./session-assistant-workflow-fixture";
 import { applyCakeChatControlUpdate } from "../../../src/renderer/reducers/CakeChatControlReducer";
@@ -207,13 +212,130 @@ describe("Shared companion", () => {
     expect(await screen.findByText("I remember.")).toBeDefined();
   });
 
+  it("updates invoking project, worktree and title facts, then clears them for projectless and absent contexts", async () => {
+    const orientation = vi.fn<Client["cakeChats"]["assistantContext"]>(async () => undefined);
+    const open = vi.fn<Client["cakeChats"]["open"]>(async () => undefined);
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>();
+    using f = renderSessionAssistant({
+      cakeChats: { assistantContext: orientation, open },
+      sessionChats: { prompt },
+    });
+    const shared = f.root.cakeChatCollectionStore.registry.load(SESSION_ASSISTANT_ID);
+    await f.user.pointer({
+      target: screen.getByRole("button", { name: "Ask session assistant" }),
+      keys: "[MouseRight]",
+    });
+    await waitFor(() => expect(orientation).toHaveBeenCalledTimes(1));
+    expect(orientation.mock.calls[0]?.[0].context).toEqual({
+      sessionId: "parent-1",
+      title: "parent-1",
+      kind: "project-session",
+      mode: "normal",
+      project: { path: "/project", name: "Project" },
+      workingDirectory: "/project",
+      worktree: null,
+    });
+    f.observe([
+      { id: "shared", kind: "text", role: "assistant", text: "Shared history", status: "complete" },
+    ]);
+    act(() => {
+      applySnapshot(f.models.worktrees, {
+        worktrees: [
+          {
+            projectPath: "/project",
+            worktreePath: "/checkout/app",
+            checkoutPath: "/checkout",
+            branch: "agent/topic",
+            baseBranch: "main",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      });
+      applySnapshot(f.models.sessionCatalog, {
+        sessions: [
+          sessionSummary({
+            sessionId: "parent-1",
+            title: "Renamed session",
+            projectPath: "/project",
+            workingDirectory: "/checkout/app",
+          }),
+        ],
+      });
+    });
+    await waitFor(() => expect(orientation).toHaveBeenCalledTimes(2));
+    expect(orientation.mock.calls[1]?.[0].context).toMatchObject({
+      title: "Renamed session",
+      project: { path: "/project", name: "Project" },
+      workingDirectory: "/checkout/app",
+      worktree: { path: "/checkout/app", checkoutPath: "/checkout", branch: "agent/topic" },
+    });
+    const projectChat = `project-chat:${"b".repeat(64)}`;
+    act(() => {
+      applySnapshot(f.models.projects, {
+        projects: [
+          projectRecord({ path: "/project", name: "Project" }),
+          projectRecord({ path: "/other", name: "Other Project" }),
+        ],
+      });
+      applySnapshot(f.models.cakeChatCatalog, {
+        loaded: true,
+        sessions: [
+          { sessionId: projectChat, title: "Other Project Chat", projectPath: "/other" },
+          { sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+        ],
+      });
+      f.root.cakeChatCollectionStore.registry.load(projectChat);
+      f.root.navigationStore.selectCakeChat(projectChat);
+    });
+    await waitFor(() => expect(orientation).toHaveBeenCalledTimes(3));
+    expect(orientation.mock.calls[2]?.[0].context).toEqual({
+      sessionId: projectChat,
+      title: "Other Project Chat",
+      kind: "project-chat",
+      mode: "normal",
+      project: { path: "/other", name: "Other Project" },
+      workingDirectory: "/other",
+      worktree: null,
+    });
+    act(() => {
+      f.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID);
+      f.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
+    });
+    await waitFor(() => expect(orientation).toHaveBeenCalledTimes(4));
+    expect(orientation.mock.calls[3]?.[0].context).toEqual({
+      sessionId: CAKE_CHAT_SESSION_ID,
+      title: "Cake Chat",
+      kind: "cake-chat",
+      mode: "normal",
+      project: null,
+      workingDirectory: null,
+      worktree: null,
+    });
+    act(() => f.root.navigationStore.showEmptyWorkbench());
+    await waitFor(() => expect(orientation).toHaveBeenCalledTimes(5));
+    expect(orientation.mock.calls[4]?.[0].context).toBeNull();
+    expect(f.root.cakeChatCollectionStore.registry.load(SESSION_ASSISTANT_ID)).toBe(shared);
+    act(() => f.root.navigationStore.selectProjectSession("parent-1"));
+    await f.user.pointer({
+      target: screen.getByRole("button", { name: "Ask session assistant" }),
+      keys: "[MouseRight]",
+    });
+    await waitFor(() => expect(orientation).toHaveBeenCalledTimes(6));
+    expect(await screen.findByText("Shared history")).toBeDefined();
+    expect(
+      open.mock.calls.filter(([target]) => target.sessionId === SESSION_ASSISTANT_ID),
+    ).toHaveLength(6);
+    expect(prompt).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])(
     "does not import invoking history, including staged sessions (%s)",
     async (staged) => {
       const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => turnId);
       const open = vi.fn<Client["cakeChats"]["open"]>(async () => undefined);
+      const orientation = vi.fn<Client["cakeChats"]["assistantContext"]>(async () => undefined);
       using f = renderSessionAssistant(
-        { cakeChats: { open }, sessionChats: { prompt } },
+        { cakeChats: { open, assistantContext: orientation }, sessionChats: { prompt } },
         { staged },
       );
       await f.user.pointer({
@@ -227,6 +349,13 @@ describe("Shared companion", () => {
       await f.user.click(screen.getByRole("button", { name: "Send" }));
       await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
       expect(open.mock.calls[0]?.[0].sessionId).toBe(SESSION_ASSISTANT_ID);
+      expect(orientation.mock.calls[0]?.[0].context).toMatchObject({
+        sessionId: "parent-1",
+        kind: "project-session",
+        project: { path: "/project", name: "Project" },
+        workingDirectory: "/project",
+        worktree: null,
+      });
       expect(JSON.stringify(open.mock.calls)).not.toContain("Draft the plan");
       expect(JSON.stringify(prompt.mock.calls)).not.toContain("Draft the plan");
       expect(prompt.mock.calls[0]?.[0]).toMatchObject({

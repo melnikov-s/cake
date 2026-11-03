@@ -199,8 +199,12 @@ projections needed by a surface. References do not transfer ownership.
   context limit, customizable through Settings and companion.* setting keys. Window-owned
   presentation reuses the existing quick-click and right-click chats in Project Sessions,
   Project Chat and global Cake Chat. Real context entries/exits are passive Durable originals
-  (session ID/title and mode), including disconnect cleanup; ordinary messages add no
-  reminder and transitions never wake or interrupt an agent. Deeper session context and
+  using Cake's system-reminder format (invoking session ID/title/type/mode, Project name/path,
+  Working Directory and Managed Worktree checkout/branch when present), including disconnect
+  cleanup. These location values are data, not instructions or the companion's own working
+  directory. Title and location changes refresh orientation; projectless chats and context
+  exits clear prior scope. Ordinary messages add no reminder and transitions never wake or
+  interrupt an agent. Deeper session context and
   navigation use existing validated Cake tools, with unchanged trust and action safeguards.
   Explicit session target `parent` resolves at admission: companion → current invoking
   context, child → actual family parent, top-level Project Session → owning Project

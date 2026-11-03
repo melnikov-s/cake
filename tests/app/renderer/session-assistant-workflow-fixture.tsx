@@ -127,6 +127,7 @@ export function renderSessionAssistant(
   const view = render(<Surface root={fixture.root} parentComposer={options.parentComposer} />);
   return {
     root: fixture.root,
+    models: fixture.models,
     assistant,
     user: userEvent.setup(),
     observe,
