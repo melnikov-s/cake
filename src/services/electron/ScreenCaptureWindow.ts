@@ -1,6 +1,7 @@
 import {
   BrowserWindow,
   clipboard,
+  ClipboardItem,
   desktopCapturer,
   dialog,
   globalShortcut,
@@ -211,12 +212,15 @@ export class ScreenCaptureWindow {
     return result;
   }
 
-  copy(senderId: number, capture: { image: string; annotationText: string }) {
+  async copy(senderId: number, capture: { image: string; annotationText: string }) {
     const snapshot = this.state(senderId);
-    clipboard.write({
-      image: this.decodeImage(capture.image, snapshot.maxDimension),
-      text: capture.annotationText,
-    });
+    const image = this.decodeImage(capture.image, snapshot.maxDimension);
+    await clipboard.write([
+      new ClipboardItem({
+        "image/png": new Blob([new Uint8Array(image.toPNG())], { type: "image/png" }),
+        "text/plain": capture.annotationText,
+      }),
+    ]);
   }
 
   finish(

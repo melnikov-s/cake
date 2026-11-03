@@ -45,7 +45,13 @@ it("parents the error to the active window and keeps it open after copying detai
   native.showMessageBox
     .mockResolvedValueOnce({ response: 1 })
     .mockResolvedValueOnce({ response: 0 });
-  await reportMainFailure("Failure details");
+  const written = Promise.withResolvers<void>();
+  native.writeText.mockReturnValueOnce(written.promise);
+  const reporting = reportMainFailure("Failure details");
+  await vi.waitFor(() => expect(native.writeText).toHaveBeenCalledOnce());
+  expect(native.showMessageBox).toHaveBeenCalledTimes(1);
+  written.resolve();
+  await reporting;
   expect(native.showMessageBox).toHaveBeenCalledTimes(2);
   expect(native.showMessageBox).toHaveBeenCalledWith(
     parent,

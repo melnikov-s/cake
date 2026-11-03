@@ -17,7 +17,9 @@ const native = vi.hoisted(() => ({
   permission: "granted",
   blocked: "",
   sources: vi.fn(),
-  copy: vi.fn(),
+  copy: vi
+    .fn<(items: { data: Record<string, Blob | string> }[]) => Promise<void>>()
+    .mockResolvedValue(undefined),
   output: { width: 2400, height: 1200 },
 }));
 vi.mock("electron", () => ({
@@ -52,6 +54,9 @@ vi.mock("electron", () => ({
     }
   },
   clipboard: { write: native.copy },
+  ClipboardItem: class {
+    constructor(readonly data: Record<string, Blob | string>) {}
+  },
   desktopCapturer: { getSources: native.sources },
   screen: {
     getCursorScreenPoint: () => ({ x: -100, y: 10 }),
@@ -97,7 +102,7 @@ beforeEach(() => {
   native.blocked = "";
   native.permission = "granted";
   native.output = { width: 2400, height: 1200 };
-  native.copy.mockReset();
+  native.copy.mockReset().mockResolvedValue(undefined);
   native.sources.mockReset();
   native.sources.mockResolvedValue([
     {
@@ -214,14 +219,22 @@ describe("Native screen capture lifetime", () => {
     const { owner, capture } = fixture();
     const { running, created } = startOverlay(capture, owner);
     const window = await created;
-    capture.copy(window.webContents.id, {
+    await capture.copy(window.webContents.id, {
       image: "data:image/png;base64,copy",
       annotationText: "1. Arrow\n   continued\n2. Stroke",
     });
-    expect(native.copy).toHaveBeenCalledExactlyOnceWith({
-      image: expect.objectContaining({ toPNG: expect.any(Function) }),
-      text: "1. Arrow\n   continued\n2. Stroke",
-    });
+    expect(native.copy).toHaveBeenCalledExactlyOnceWith([
+      expect.objectContaining({
+        data: {
+          "image/png": expect.any(Blob),
+          "text/plain": "1. Arrow\n   continued\n2. Stroke",
+        },
+      }),
+    ]);
+    const png = native.copy.mock.calls[0]![0][0]!.data["image/png"];
+    if (!(png instanceof Blob)) throw new Error("Missing PNG payload");
+    expect(png.type).toBe("image/png");
+    expect(await png.text()).toBe("resized");
     expect(window.isDestroyed()).toBe(false);
     expect(() => capture.state(window.webContents.id)).not.toThrow();
     capture.finish(window.webContents.id, undefined, "yellow");

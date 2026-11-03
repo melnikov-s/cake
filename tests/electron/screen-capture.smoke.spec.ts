@@ -4,6 +4,11 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type Page } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
 import { installCaptureMicrophone, seedCaptureDictation } from "../fixtures/capture-dictation";
+import {
+  readClipboardImage,
+  restoreClipboardSnapshot,
+  saveClipboardSnapshot,
+} from "./clipboard-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -388,31 +393,21 @@ test("captures and annotates through the hidden native overlay into the existing
         await overlay.locator("canvas").evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL()),
       ).toBe(painted);
     }
-    await application.evaluate(({ clipboard }) => {
-      const previous = {
-        text: clipboard.readText(),
-        html: clipboard.readHTML(),
-        rtf: clipboard.readRTF(),
-      };
-      const image = clipboard.readImage();
-      if (!image.isEmpty()) Object.assign(previous, { image });
-      Reflect.set(globalThis, "previousCaptureClipboard", previous);
-    });
+    await saveClipboardSnapshot(application, "previousCaptureClipboard");
     clipboardSaved = true;
     await overlay.getByRole("button", { name: "Copy image and text", exact: true }).click();
     await expect(overlay.getByRole("alert")).toHaveCount(0);
     await expect(overlay.getByRole("button", { name: "Copy image and text" })).toBeEnabled();
     await expect
-      .poll(() =>
-        application
-          .evaluate(({ clipboard }) => ({ text: clipboard.readText() }))
-          .then((result) => result.text),
-      )
+      .poll(() => application.evaluate(({ clipboard }) => clipboard.readText()))
       .toBe("1. Look here\n   Second line\n2. Freehand note");
-    expect(await application.evaluate(({ clipboard }) => clipboard.readImage().getSize())).toEqual({
+    const copied = await readClipboardImage(application);
+    expect(copied.size).toEqual({
       width: 1024,
       height: 512,
     });
+    await restoreClipboardSnapshot(application, "previousCaptureClipboard");
+    clipboardSaved = false;
     // Enter commits a label; cancelling a draft does not close capture.
     await overlay.getByRole("button", { name: "Crop", exact: true }).click();
     await expect(overlay.getByRole("button", { name: "Undo drawing" })).toBeEnabled();
@@ -690,11 +685,8 @@ test("captures and annotates through the hidden native overlay into the existing
       overlay.waitForEvent("close"),
       overlay.getByRole("button", { name: "Cancel", exact: true }).click(),
     ]);
-    // Feed the actual copied formats through Cake's native DOM paste handler.
-    const copied = await application.evaluate(({ clipboard }) => ({
-      text: clipboard.readText(),
-      data: clipboard.readImage().toPNG().toString("base64"),
-    }));
+    // Feed the formats captured at Copy time through Cake's native DOM paste handler;
+    // the system clipboard need not stay unchanged through the intervening workflow.
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     const imageCount = await preview.count();
     await composer.fill("Clipboard review:\n");
@@ -720,11 +712,6 @@ test("captures and annotates through the hidden native overlay into the existing
       page.getByRole("button", { name: "View Copied screenshot.png enlarged", exact: true }),
     ).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    await application.evaluate(({ clipboard }) => {
-      clipboard.write(Reflect.get(globalThis, "previousCaptureClipboard"));
-      return true;
-    });
-    clipboardSaved = false;
     // Reproduce launchers whose diagnostic readers have disconnected. Capture teardown can
     // emit Node warnings; those writes must not become an uncaught EPIPE desktop dialog.
     for (const channel of ["stdout", "stderr"] as const) {
@@ -780,11 +767,7 @@ test("captures and annotates through the hidden native overlay into the existing
       ).toEqual({ failures: [], dialogs: [] });
     }
   } finally {
-    if (clipboardSaved)
-      await application.evaluate(({ clipboard }) => {
-        clipboard.write(Reflect.get(globalThis, "previousCaptureClipboard"));
-        return true;
-      });
+    if (clipboardSaved) await restoreClipboardSnapshot(application, "previousCaptureClipboard");
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
   }

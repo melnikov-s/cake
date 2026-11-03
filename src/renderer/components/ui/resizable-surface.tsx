@@ -29,7 +29,7 @@ export function ResizableSurface({
       else {
         // A normal append/reparent reloads iframe documents. Chromium's atomic
         // move preserves the browsing context, including unsaved editor state.
-        // SAFETY: Electron 43's Chromium supports Element.moveBefore; our pinned
+        // SAFETY: Electron 44's Chromium supports Element.moveBefore; our pinned
         // TypeScript DOM declarations predate this standard DOM method.
         (
           target as HTMLDivElement & { moveBefore(node: Node, child: Node | null): void }

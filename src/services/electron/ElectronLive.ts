@@ -3,6 +3,7 @@ import { Effect, Layer, Queue, Stream } from "effect";
 import {
   BrowserWindow,
   clipboard,
+  ClipboardItem,
   dialog,
   Menu,
   nativeImage,
@@ -650,21 +651,25 @@ const makeElectronService = (
       }),
     ),
     copyScreenCapture: Effect.fn("Electron.copyScreenCapture")((connectionId, request) =>
-      Effect.try({
-        try: () => {
-          capture.copy(requireRendererConnection(connectionId).id, request);
+      Effect.tryPromise({
+        try: async () => {
+          await capture.copy(requireRendererConnection(connectionId).id, request);
           return {};
         },
         catch: electronError,
       }),
     ),
     copyImage: Effect.fn("Electron.copyImage")((connectionId, request) =>
-      Effect.try({
-        try: () => {
+      Effect.tryPromise({
+        try: async () => {
           requireRendererConnection(connectionId);
           const image = nativeImage.createFromDataURL(request.dataUrl);
           if (image.isEmpty()) throw new Error("This image could not be decoded for copying.");
-          clipboard.writeImage(image);
+          await clipboard.write([
+            new ClipboardItem({
+              "image/png": new Blob([new Uint8Array(image.toPNG())], { type: "image/png" }),
+            }),
+          ]);
           return {};
         },
         catch: electronError,

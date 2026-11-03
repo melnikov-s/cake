@@ -29,7 +29,9 @@ const native = vi.hoisted(() => ({
   fromWebContents: vi.fn(() => undefined as unknown),
   popup: vi.fn<(options: PopupOptions) => void>(),
   decodeImage: vi.fn(),
-  writeImage: vi.fn(),
+  writeClipboard: vi
+    .fn<(items: { data: Record<string, Blob | string> }[]) => Promise<void>>()
+    .mockResolvedValue(undefined),
 }));
 vi.mock("electron", () => ({
   BrowserWindow: class extends EventEmitter {
@@ -88,7 +90,10 @@ vi.mock("electron", () => ({
     setApplicationMenu: () => {},
   },
   nativeImage: { createFromDataURL: native.decodeImage },
-  clipboard: { writeImage: native.writeImage },
+  clipboard: { write: native.writeClipboard },
+  ClipboardItem: class {
+    constructor(readonly data: Record<string, Blob | string>) {}
+  },
   dialog: { showMessageBox: native.confirm },
   Notification: {},
   shell: {},
@@ -112,7 +117,7 @@ afterEach(() => {
   native.fromWebContents.mockReset();
   native.popup.mockReset();
   native.decodeImage.mockReset();
-  native.writeImage.mockReset();
+  native.writeClipboard.mockReset().mockResolvedValue(undefined);
 });
 
 describe("ElectronLive client state", () => {
@@ -156,22 +161,26 @@ describe("ElectronLive client state", () => {
       const service = Context.get(context, Electron);
       const connectionId = Context.get(context, ClientConnections).desktop(42);
       native.fromId.mockReturnValue({ id: 42, isDestroyed: () => false });
-      const image = { isEmpty: () => false };
+      const image = { isEmpty: () => false, toPNG: () => Buffer.from("pixels") };
       native.decodeImage.mockReturnValue(image);
       yield* service.copyImage(connectionId, { dataUrl: "data:image/png;base64,cGl4ZWxz" });
       expect(native.decodeImage).toHaveBeenCalledWith("data:image/png;base64,cGl4ZWxz");
-      expect(native.writeImage).toHaveBeenCalledExactlyOnceWith(image);
-      native.writeImage.mockClear();
+      expect(native.writeClipboard).toHaveBeenCalledExactlyOnceWith([
+        expect.objectContaining({ data: { "image/png": expect.any(Blob) } }),
+      ]);
+      const png = native.writeClipboard.mock.calls[0]![0][0]!.data["image/png"];
+      if (!(png instanceof Blob)) throw new Error("Missing PNG payload");
+      expect(png.type).toBe("image/png");
+      expect(yield* Effect.promise(() => png.text())).toBe("pixels");
+      native.writeClipboard.mockClear();
       native.decodeImage.mockReturnValue({ isEmpty: () => true });
       const invalid = yield* service
         .copyImage(connectionId, { dataUrl: "invalid" })
         .pipe(Effect.flip);
       expect(invalid.message).toContain("could not be decoded");
-      expect(native.writeImage).not.toHaveBeenCalled();
+      expect(native.writeClipboard).not.toHaveBeenCalled();
       native.decodeImage.mockReturnValue(image);
-      native.writeImage.mockImplementation(() => {
-        throw new Error("Clipboard unavailable");
-      });
+      native.writeClipboard.mockRejectedValue(new Error("Clipboard unavailable"));
       const failed = yield* service.copyImage(connectionId, { dataUrl: "valid" }).pipe(Effect.flip);
       expect(failed.message).toBe("Clipboard unavailable");
       native.fromId.mockReturnValue(undefined);

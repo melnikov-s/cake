@@ -27,6 +27,6 @@ export async function reportMainFailure(details: string) {
         ? await dialog.showMessageBox(parent, options)
         : await dialog.showMessageBox(options);
     if (result.response !== 1) return;
-    clipboard.writeText(details);
+    await clipboard.writeText(details);
   }
 }
