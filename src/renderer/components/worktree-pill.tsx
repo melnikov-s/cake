@@ -1,6 +1,9 @@
 import { useRef, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
-import type { WorktreeCreationStore } from "../stores/WorktreeCreationStore";
+import type {
+  ExistingWorktreeCandidate,
+  WorktreeCreationStore,
+} from "../stores/WorktreeCreationStore";
 import type { WorktreeStore } from "../stores/WorktreeStore";
 import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
 import {
@@ -16,7 +19,6 @@ import { IconButton } from "./ui/icon-button";
 import {
   BranchIcon,
   CautionIcon,
-  CheckIcon,
   ChevronDownIcon,
   CloseIcon,
   FolderIcon,
@@ -35,6 +37,28 @@ import { WorktreePillAction } from "./worktree-pill-action";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
 import { cn } from "@/lib/utils";
 import { ComposerCap } from "./ui/composer-cap";
+import { SearchableChoiceList } from "./ui/searchable-choice-list";
+
+/** Case-insensitive title or branch match, presented as title over `branch → base`. */
+function existingWorktreeChoices(candidates: readonly ExistingWorktreeCandidate[], query: string) {
+  const needle = query.trim().toLocaleLowerCase();
+  return candidates
+    .filter(
+      (record) =>
+        !needle ||
+        record.sessionTitle.toLocaleLowerCase().includes(needle) ||
+        record.branch
+          .replace(/^agent\//, "")
+          .toLocaleLowerCase()
+          .includes(needle),
+    )
+    .map((record) => ({
+      id: record.worktreePath,
+      label: record.sessionTitle,
+      description: `${record.branch.replace(/^agent\//, "")} → ${record.baseBranch.replace(/^agent\//, "")}`,
+      icon: <PullRequestIcon />,
+    }));
+}
 
 export interface WorktreePillProps {
   creation: WorktreeCreationStore;
@@ -154,7 +178,6 @@ export const WorktreePill = observer(function WorktreePill({
           <PopoverIconTrigger
             disabled={busy || candidates.length === 0}
             tooltip="Choose existing worktree"
-            aria-haspopup="menu"
             className={cn(
               "flex h-7.5 w-auto shrink-0 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-normal shadow-none @max-[460px]/worktree:w-7.5 @max-[460px]/worktree:gap-0 @max-[460px]/worktree:px-0",
               choice.kind === "reuse" &&
@@ -172,35 +195,18 @@ export const WorktreePill = observer(function WorktreePill({
           <PopoverContent
             align="start"
             side="top"
-            role="menu"
             aria-label="Existing worktrees"
-            className="!max-h-72 !w-72 !rounded-lg !border-border !bg-popover !p-1 !shadow-xl"
+            initialFocusSelector='[role="combobox"]'
+            className="flex w-96 flex-col overflow-hidden p-0"
           >
-            {candidates.map((record) => {
-              const selected =
-                choice.kind === "reuse" && choice.worktreePath === record.worktreePath;
-              return (
-                <Button
-                  key={record.worktreePath}
-                  type="button"
-                  variant="ghost"
-                  role="menuitemradio"
-                  aria-checked={selected}
-                  className="h-8 w-full justify-start gap-2 rounded-md px-2 text-xs font-normal"
-                  onClick={() => choose({ kind: "reuse", worktreePath: record.worktreePath })}
-                >
-                  <span className="flex w-4 justify-center">{selected && <CheckIcon />}</span>
-                  <PullRequestIcon />
-                  <span className="flex min-w-0 flex-1 flex-col text-left">
-                    <span className="truncate">{record.sessionTitle}</span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {record.branch.replace(/^agent\//, "")} →{" "}
-                      {record.baseBranch.replace(/^agent\//, "")}
-                    </span>
-                  </span>
-                </Button>
-              );
-            })}
+            <SearchableChoiceList
+              searchLabel="Filter worktrees"
+              choicesLabel="Worktrees"
+              emptyMessage="No matching worktrees"
+              choices={(query) => existingWorktreeChoices(candidates, query)}
+              selectedId={choice.kind === "reuse" ? choice.worktreePath : undefined}
+              onSelect={(worktreePath) => choose({ kind: "reuse", worktreePath })}
+            />
           </PopoverContent>
         </Popover>
         {configurationMode !== "activate-draft" && (

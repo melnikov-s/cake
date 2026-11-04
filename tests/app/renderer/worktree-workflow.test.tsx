@@ -685,3 +685,141 @@ describe("Worktree operation workflows", () => {
     expect(screen.getByRole("button", { name: "Merging…" })).toHaveProperty("disabled", true);
   });
 });
+
+describe("Existing worktree picker", () => {
+  const candidates = [
+    { path: "/worktrees/run-pages", branch: "agent/run-pages-53c116", title: "Run pages via API" },
+    { path: "/worktrees/capacity", branch: "agent/team-capacity-c48410", title: "Team capacity" },
+    { path: "/worktrees/stats", branch: "agent/stats-whitespace", title: "Stats page whitespace" },
+  ];
+  function renderPicker() {
+    const fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project" })],
+      sessions: [
+        sessionSummary({ sessionId: "draft", projectPath: "/project" }),
+        ...candidates.map((candidate, index) =>
+          sessionSummary({
+            sessionId: `worktree-session-${index}`,
+            projectPath: "/project",
+            workingDirectory: candidate.path,
+            title: candidate.title,
+          }),
+        ),
+      ],
+    });
+    applySnapshot(fixture.models.worktrees, {
+      worktrees: candidates.map((candidate, index) => ({
+        projectPath: "/project",
+        worktreePath: candidate.path,
+        branch: candidate.branch,
+        baseBranch: "main",
+        createdAt: `2026-01-0${3 - index}T00:00:00.000Z`,
+        state: "active",
+      })),
+    });
+    const session = fixture.root.sessionRegistry.load("draft", "/project");
+    const creation = fixture.root.projectSessionCreationStore.worktrees;
+    const view = render(
+      <WorktreePill
+        creation={creation}
+        actions={session.worktreeStore}
+        sessionId="draft"
+        projectPath="/project"
+        configurationMode="new-session"
+        onConfigured={() => undefined}
+      />,
+    );
+    return {
+      user: userEvent.setup(),
+      creation,
+      async open() {
+        await this.user.click(screen.getByRole("button", { name: "Choose existing worktree" }));
+        const filter = await screen.findByRole("combobox", { name: "Filter worktrees" });
+        await waitFor(() => expect(document.activeElement).toBe(filter));
+        return filter;
+      },
+      titles: () =>
+        within(screen.getByRole("listbox", { name: "Worktrees" }))
+          .getAllByRole("option")
+          .map((option) => option.title.split("\n")[0]),
+      activeTitle: () => screen.getByRole("option", { selected: true }).title.split("\n")[0] ?? "",
+      [Symbol.dispose]() {
+        view.unmount();
+        fixture[Symbol.dispose]();
+      },
+    };
+  }
+
+  it("filters by title or branch without case sensitivity and reports no matches", async () => {
+    using fixture = renderPicker();
+    const filter = await fixture.open();
+    expect(fixture.titles()).toEqual([
+      "Run pages via API",
+      "Team capacity",
+      "Stats page whitespace",
+    ]);
+    expect(screen.getByRole("option", { name: /Team capacity/ }).title).toBe(
+      "Team capacity\nteam-capacity-c48410 → main",
+    );
+
+    await fixture.user.type(filter, "PAGE");
+    expect(fixture.titles()).toEqual(["Run pages via API", "Stats page whitespace"]);
+
+    await fixture.user.clear(filter);
+    await fixture.user.type(filter, "c48410");
+    expect(fixture.titles()).toEqual(["Team capacity"]);
+
+    await fixture.user.clear(filter);
+    await fixture.user.type(filter, "agent");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("No matching worktrees");
+  });
+
+  it("moves through filtered results with arrow keys and selects with Enter", async () => {
+    using fixture = renderPicker();
+    const filter = await fixture.open();
+    await fixture.user.type(filter, "a");
+    expect(fixture.activeTitle()).toBe("Run pages via API");
+    await fixture.user.keyboard("{ArrowDown}");
+    expect(fixture.activeTitle()).toBe("Team capacity");
+    expect(filter.getAttribute("aria-activedescendant")).toBe(
+      screen.getByRole("option", { selected: true }).id,
+    );
+    await fixture.user.keyboard("{ArrowUp}{ArrowUp}");
+    expect(fixture.activeTitle()).toBe("Stats page whitespace");
+    await fixture.user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+
+    expect(fixture.creation.choice("draft")).toEqual({
+      kind: "reuse",
+      worktreePath: "/worktrees/capacity",
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("button", { name: "Choose existing worktree" }).textContent).toContain(
+      "Team capacity · team-capacity-c48410",
+    );
+
+    // Reopening starts from the current choice and marks it.
+    await fixture.open();
+    expect(fixture.activeTitle()).toBe("Team capacity");
+    expect(screen.getByRole("option", { name: /Team capacity/ }).getAttribute("aria-checked")).toBe(
+      "true",
+    );
+  });
+
+  it("clears the filter on the first Escape and closes on the second", async () => {
+    using fixture = renderPicker();
+    const filter = await fixture.open();
+    await fixture.user.type(filter, "missing");
+    await fixture.user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "Existing worktrees" })).toBeDefined();
+    expect((filter as HTMLInputElement).value).toBe("");
+    expect(fixture.titles()).toHaveLength(3);
+
+    await fixture.user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Choose existing worktree" }),
+    );
+    expect(fixture.creation.choice("draft")).toEqual({ kind: "current" });
+  });
+});

@@ -38,7 +38,9 @@ See `AGENTS.md` for renderer implementation rules.
 
 [`Calendar`](../../src/renderer/components/ui/calendar.tsx) wraps React DayPicker with Cake buttons and theme tokens, following shadcn’s calendar approach. [`DateTimePicker`](../../src/renderer/components/ui/date-time-picker.tsx) combines it with separate local date/time inputs; callers own validation and conversion to an instant.
 
-[`SearchInput`](../../src/renderer/components/ui/search-input.tsx) composes `Input` with a search icon, accessible clear action and Escape-to-clear. Callers own the query and filtering.
+[`SearchInput`](../../src/renderer/components/ui/search-input.tsx) composes `Input` with a search icon, accessible clear action and Escape-to-clear. Callers own the query and filtering, and may pass input attributes such as combobox semantics and a key handler that runs after Escape-to-clear.
+
+[`SearchableChoiceList`](../../src/renderer/components/ui/searchable-choice-list.tsx) is popover content for picking one item from a short list: a focused `SearchInput`, a scrollable listbox of two-line rows (title, muted description, leading icon aligned to the title line, check for the current choice), and an empty-state message. Arrow keys move the active row and Enter selects it while focus stays in the field; Escape clears the query, then reaches the popover's dismissal. Callers supply filtering through `choices(query)`. Use `SearchableChoiceDialog` for larger modal destination searches.
 
 `StatusDot` exports `statusDotGapClassName` for the shared compact dot-to-label gap
 used by disclosure, tool, subagent, reasoning and work-log rows.

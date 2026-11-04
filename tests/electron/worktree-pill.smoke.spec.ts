@@ -190,6 +190,146 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
   }
 });
 
+test("filters existing worktrees from the keyboard in the new-chat composer", async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-existing-worktree-picker-"));
+  const userData = join(temporaryRoot, "user-data");
+  const project = join(temporaryRoot, "project");
+  const cakeHome = join(temporaryRoot, "cake-home");
+  const worktrees = [
+    { branch: "run-pages-via-api-53c116", title: "Run pages: read run data through the API" },
+    { branch: "team-capacity-c48410", title: "Team capacity planning" },
+    { branch: "stats-whitespace-77ad20", title: "Stats page trailing whitespace" },
+  ];
+  await Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]);
+  const git = (args: string[]) => execFileAsync("git", args, { cwd: project });
+  await git(["init", "-b", "main"]);
+  await git(["config", "user.email", "cake@example.test"]);
+  await git(["config", "user.name", "Cake Test"]);
+  await writeFile(join(project, "README.md"), "fixture\n");
+  await git(["add", "-A"]);
+  await git(["commit", "-m", "fixture"]);
+  const records = [];
+  for (const [index, worktree] of worktrees.entries()) {
+    const worktreePath = join(temporaryRoot, "worktrees", worktree.branch);
+    await git(["worktree", "add", "-b", `agent/${worktree.branch}`, worktreePath]);
+    const sessionId = `existing-worktree-${index}`;
+    const timestamp = new Date(Date.UTC(2026, 0, 1) - index * 60_000).toISOString();
+    const sessionDirectory = cakeWorkspaceSessionDirectory(
+      worktreePath,
+      join(cakeHome, "pi", "sessions"),
+    );
+    await mkdir(sessionDirectory, { recursive: true });
+    await writeFile(
+      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+      `${[
+        { type: "session", version: 3, id: sessionId, timestamp, cwd: worktreePath },
+        { type: "session_info", id: "title", parentId: null, timestamp, name: worktree.title },
+        ...sessionEntries(sessionId, worktreePath).slice(1),
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n")}\n`,
+    );
+    records.push({
+      projectPath: project,
+      worktreePath,
+      branch: `agent/${worktree.branch}`,
+      baseBranch: "main",
+      state: "active",
+      createdAt: timestamp,
+    });
+  }
+  await mkdir(join(cakeHome, "state"), { recursive: true });
+  await writeFile(
+    join(cakeHome, "state", "worktrees.json"),
+    JSON.stringify({ schemaVersion: 1, records }),
+  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "system" }));
+  await writeFile(
+    join(cakeHome, "state", "application.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      projects: [
+        {
+          path: project,
+          name: "project",
+          addedAt: new Date(0).toISOString(),
+          lastOpenedAt: new Date(0).toISOString(),
+        },
+      ],
+    }),
+  );
+
+  const application = await electron.launch({
+    args: [repositoryRoot],
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      CAKE_ELECTRON_SMOKE: "1",
+      CAKE_ELECTRON_USER_DATA: userData,
+      CAKE_HOME: cakeHome,
+      PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
+    },
+  });
+
+  try {
+    const page = await application.firstWindow();
+    const newChat = page.getByRole("button", { name: "New chat in project", exact: true });
+    await expect(newChat).toBeVisible({ timeout: 20_000 });
+    await newChat.click();
+    const trigger = page.getByRole("button", { name: "Choose existing worktree" });
+    await expect(trigger).toBeEnabled({ timeout: 20_000 });
+    await trigger.click();
+
+    const picker = page.getByRole("dialog", { name: "Existing worktrees" });
+    const filter = picker.getByRole("combobox", { name: "Filter worktrees" });
+    const options = picker.getByRole("option");
+    await expect(filter).toBeFocused();
+    await expect(options).toHaveCount(3);
+
+    // Rows are separated: each option sits entirely below the previous one.
+    const bounds = await options.evaluateAll((elements) =>
+      elements.map((element) => element.getBoundingClientRect()),
+    );
+    for (let index = 1; index < bounds.length; index++)
+      expect(bounds[index]!.top).toBeGreaterThanOrEqual(bounds[index - 1]!.bottom - 0.5);
+
+    await page.keyboard.type("C48410");
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.type("x");
+    await expect(picker.getByRole("status")).toHaveText("No matching worktrees");
+
+    await page.keyboard.press("Escape");
+    await expect(filter).toHaveValue("");
+    await expect(filter).toBeFocused();
+    await expect(options).toHaveCount(3);
+
+    await page.keyboard.type("page");
+    await expect(options).toHaveCount(2);
+    await page.keyboard.press("ArrowDown");
+    await expect(picker.getByRole("option", { selected: true })).toContainText(
+      "Stats page trailing whitespace",
+    );
+    await page.keyboard.press("Enter");
+    await expect(picker).toHaveCount(0);
+    await expect(trigger).toContainText("Stats page trailing whitespace");
+
+    await trigger.click();
+    await expect(filter).toBeFocused();
+    await expect(picker.getByRole("option", { selected: true })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await page.keyboard.press("Escape");
+    await expect(picker).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  } finally {
+    await application.close();
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
 test("keeps target-warning tooltips and merges directly while preserving dirty target changes", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-worktree-tooltip-"));
   const userData = join(temporaryRoot, "user-data");

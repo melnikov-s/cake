@@ -5448,6 +5448,135 @@ const activityWorktreeScenario: VisualCaptureScenario = {
   region: (page) => page.locator('[data-slot="composer-dock"]'),
 };
 
+const existingWorktreeTitles = [
+  [
+    "quick-run-route-guards-523811",
+    "Quick-proxy run guards: log site failures and keep the proxy alive",
+  ],
+  [
+    "run-pages-via-api-53c116",
+    "Run pages: read run data through the public API instead of the store",
+  ],
+  ["team-capacity-c48410", "Team capacity (replace per-slice estimates with weekly capacity)"],
+  [
+    "planner-goal-prior-unified-ranking-9f2a71",
+    "Planner tuning: per-goal first-visit priors and unified ranking",
+  ],
+  [
+    "goal-activity-tab-prototypes-ef0b12",
+    "Goal page Activity tab: HTML prototypes for the timeline",
+  ],
+  [
+    "staging2-demo-combined-e31c4d",
+    "Temp demo branch: all no-migration changes combined for staging",
+  ],
+  ["task-pr-state-machine-530341", "State machine library choice + task PR lifecycle states"],
+  ["stats-whitespace-flower-sway-77ad20", "Stats page trailing whitespace + flower sway animation"],
+  ["record-rejection-cause-b8e911", "Record rejection cause on rejected suggestions"],
+  ["settings-search-keyboard-0c4f88", "Settings search keyboard navigation"],
+  ["sidebar-unread-badges-14e7a2", "Sidebar unread badges for background sessions"],
+  ["pdf-export-margins-6d2b90", "PDF export: respect page margins in print preview"],
+  ["fix", "Fix"],
+  ["dark-mode-chart-contrast-a1c3e5", "Dark mode chart contrast"],
+] as const;
+
+const existingWorktreePickerScenario: VisualCaptureScenario = {
+  name: "existing-worktree-picker",
+  description: "New-session existing worktree picker with a long list, filtering and no matches",
+  states: ["default", "filtered", "empty", "keyboard"],
+  async seed(paths, theme) {
+    const git = (args: string[]) => promisify(execFile)("git", args, { cwd: paths.project });
+    const sessionsRoot = join(paths.cakeHome, "pi", "sessions");
+    await Promise.all([
+      mkdir(paths.userData, { recursive: true }),
+      mkdir(paths.project, { recursive: true }),
+      mkdir(join(paths.cakeHome, "state"), { recursive: true }),
+    ]);
+    await git(["init", "-b", "main"]);
+    await git(["config", "user.email", "cake@example.test"]);
+    await git(["config", "user.name", "Cake Visual Fixture"]);
+    await writeFile(join(paths.project, "README.md"), "Visual capture fixture\n");
+    await git(["add", "-A"]);
+    await git(["commit", "-m", "fixture"]);
+    const records = [];
+    for (const [index, [branch, title]] of existingWorktreeTitles.entries()) {
+      const worktreePath = resolve(paths.project, `../worktrees/${branch}`);
+      await git(["worktree", "add", "-b", `agent/${branch}`, worktreePath]);
+      const timestamp = new Date(Date.UTC(2026, 0, 1) - index * 60_000).toISOString();
+      const sessionId = `visual-existing-worktree-${index}`;
+      const sessionDirectory = workspaceSessionDirectory(worktreePath, sessionsRoot);
+      await mkdir(sessionDirectory, { recursive: true });
+      await writeFile(
+        join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+        [
+          { type: "session", version: 3, id: sessionId, timestamp, cwd: worktreePath },
+          { type: "session_info", id: "title", parentId: null, timestamp, name: title },
+          {
+            type: "message",
+            id: "input",
+            parentId: "title",
+            timestamp,
+            message: { role: "user", content: title, timestamp: 0 },
+          },
+        ]
+          .map((entry) => JSON.stringify(entry))
+          .join("\n") + "\n",
+      );
+      records.push({
+        projectPath: paths.project,
+        worktreePath,
+        branch: `agent/${branch}`,
+        baseBranch: "main",
+        state: "active",
+        createdAt: timestamp,
+      });
+    }
+    await writeFile(
+      join(paths.cakeHome, "state", "worktrees.json"),
+      JSON.stringify({ schemaVersion: 1, records }),
+    );
+    await writeFile(
+      join(paths.userData, "window-state.json"),
+      windowState({ project: paths.project, theme }),
+    );
+    const timestamp = new Date(0).toISOString();
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        projects: [
+          { path: paths.project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp },
+        ],
+      }),
+    );
+  },
+  async prepare(page, state) {
+    const newChat = page.getByRole("button", { name: "New chat in project", exact: true });
+    await newChat.waitFor({ state: "visible", timeout: 20_000 });
+    await newChat.click();
+    const trigger = page.getByRole("button", { name: "Choose existing worktree" });
+    await expect(trigger).toBeEnabled({ timeout: 20_000 });
+    await trigger.click();
+    await expect(existingWorktreePopover(page)).toBeVisible();
+    const filter = page.getByRole("combobox", { name: "Filter worktrees" });
+    if (state === "filtered") await filter.fill("run");
+    if (state === "empty") await filter.fill("missing");
+    if (state === "keyboard") {
+      await filter.fill("page");
+      await page.keyboard.press("ArrowDown");
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator("body"),
+};
+
+function existingWorktreePopover(page: Page) {
+  return page
+    .getByRole("dialog", { name: "Existing worktrees" })
+    .or(page.getByRole("menu", { name: "Existing worktrees" }));
+}
+
 const contextOutlineScenario: VisualCaptureScenario = {
   name: "context-outline",
   description: "Cake Chat and Project Chat context sources, memory depths and retained originals",
@@ -7000,6 +7129,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   sessionUpdateReportsScenario,
   cakeChatSessionUpdatesScenario,
   activityWorktreeScenario,
+  existingWorktreePickerScenario,
   conversationEntryScenario,
   modelPickerScenario,
   conversationCountdownScenario,

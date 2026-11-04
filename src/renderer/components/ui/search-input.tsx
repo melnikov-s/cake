@@ -1,15 +1,19 @@
 import { useRef } from "react";
 import { CloseIcon, SearchIcon } from "./icons";
 import { IconButton } from "./icon-button";
-import { Input } from "./input";
+import { Input, type InputProps } from "./input";
 import { cn } from "@/lib/utils";
 
+/** Callers may add combobox semantics and key handling; Escape clears a non-empty query first. */
 export function SearchInput({
   label,
   value,
   onValueChange,
   className,
-}: {
+  onKeyDown,
+  placeholder = "Search…",
+  ...inputProps
+}: Omit<InputProps, "value" | "onChange" | "type" | "size" | "variant"> & {
   label: string;
   value: string;
   onValueChange(value: string): void;
@@ -24,10 +28,11 @@ export function SearchInput({
     <div className={cn("relative min-w-0", className)}>
       <SearchIcon className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
       <Input
+        {...inputProps}
         ref={ref}
         type="search"
         aria-label={label}
-        placeholder="Search…"
+        placeholder={placeholder}
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
         onKeyDown={(event) => {
@@ -35,7 +40,9 @@ export function SearchInput({
             event.preventDefault();
             event.stopPropagation();
             clear();
+            return;
           }
+          onKeyDown?.(event);
         }}
         className="h-7 rounded-md pl-7 pr-7 text-xs [&::-webkit-search-cancel-button]:appearance-none"
       />
