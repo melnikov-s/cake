@@ -1,12 +1,12 @@
 import { Schema } from "effect";
 import type { VscodeControl } from "../../contracts/editor/vscode-agent-control";
 import {
-  EditorSelectionOpenResult,
+  EditorSelectionReveal,
+  EditorSelectionsWriteResult,
   EditorSelectionState,
   EditorSelectionUpdate,
 } from "../../contracts/editor/editor-selection";
 import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
-import { agentEditorLocation } from "../../utils/agent-editor-location";
 
 /** Shared reverse-RPC adapter; selection state remains renderer-owned. */
 export function makeVscodeControl(options: {
@@ -22,23 +22,46 @@ export function makeVscodeControl(options: {
       throw new Error(status.error ?? "The owning renderer's VS Code controls are unavailable");
     return response;
   };
+  const writeSelections = async (
+    command: string,
+    input: Parameters<VscodeControl["addSelections"]>[0],
+    signal: AbortSignal,
+  ): ReturnType<VscodeControl["addSelections"]> => {
+    try {
+      const response = await request(
+        command,
+        { selections: input.selections.map((selection) => ({ ...selection })) },
+        signal,
+      );
+      const { update } = await Schema.decodeUnknownPromise(
+        Schema.Struct({ update: EditorSelectionsWriteResult }),
+      )(response);
+      return { status: "completed", value: update };
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("VSCODE_MODE_REQUIRED:"))
+        return { status: "mode-required" };
+      throw error;
+    }
+  };
   return {
     enter: async (signal) => {
       await request("vscode.enter", {}, signal);
     },
     open: async (location, signal) => {
       try {
-        const response = await request("vscode.open", agentEditorLocation(location), signal);
-        const { selection } = await Schema.decodeUnknownPromise(
-          Schema.Struct({ selection: EditorSelectionOpenResult }),
+        const response = await request("vscode.open", { ...location }, signal);
+        const { reveal } = await Schema.decodeUnknownPromise(
+          Schema.Struct({ reveal: EditorSelectionReveal }),
         )(response);
-        return { status: "completed", value: selection };
+        return { status: "completed", value: reveal };
       } catch (error) {
         if (error instanceof Error && error.message.startsWith("VSCODE_MODE_REQUIRED:"))
           return { status: "mode-required" };
         throw error;
       }
     },
+    addSelections: (input, signal) => writeSelections("vscode.selections.add", input, signal),
+    setSelections: (input, signal) => writeSelections("vscode.selections.set", input, signal),
     listSelections: async (signal) => {
       const response = await request("vscode.selections.list", {}, signal);
       return (

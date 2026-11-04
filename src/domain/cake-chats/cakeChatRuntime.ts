@@ -106,6 +106,8 @@ const SHARED_VSCODE_OPERATIONS = [
   "vscode.enter",
   "vscode.open",
   "vscode.script.run",
+  "vscode.selections.add",
+  "vscode.selections.set",
   "vscode.selections.list",
   "vscode.selections.remove",
   "vscode.selections.clear",

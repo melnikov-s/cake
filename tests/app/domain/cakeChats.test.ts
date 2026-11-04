@@ -595,6 +595,8 @@ describe("permanent Cake Chat", () => {
               ...[
                 "vscode.enter",
                 "vscode.open",
+                "vscode.selections.add",
+                "vscode.selections.set",
                 "vscode.selections.list",
                 "vscode.selections.remove",
                 "vscode.selections.clear",

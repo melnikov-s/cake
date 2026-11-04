@@ -102,7 +102,7 @@ export const EditorSelectionUpdate = Schema.Struct({
 });
 export interface EditorSelectionUpdate extends Schema.Schema.Type<typeof EditorSelectionUpdate> {}
 
-/** Ranged open adds/reuses IDs in the Store; plain file open returns an empty array. */
+/** Source-link navigation adds/reuses IDs in the Store. Not the vscode.open tool result. */
 export const EditorSelectionOpenResult = Schema.Struct({
   reveal: EditorSelectionReveal,
   selectionIds: Schema.Array(EditorSelectionId),
@@ -110,4 +110,14 @@ export const EditorSelectionOpenResult = Schema.Struct({
 });
 export interface EditorSelectionOpenResult extends Schema.Schema.Type<
   typeof EditorSelectionOpenResult
+> {}
+
+/** A single coherent selection mutation, after all requested locations resolve. */
+export const EditorSelectionsWriteResult = Schema.Struct({
+  ...EditorSelectionUpdate.fields,
+  selectionIds: Schema.Array(EditorSelectionId),
+  reveals: Schema.Array(EditorSelectionReveal),
+});
+export interface EditorSelectionsWriteResult extends Schema.Schema.Type<
+  typeof EditorSelectionsWriteResult
 > {}

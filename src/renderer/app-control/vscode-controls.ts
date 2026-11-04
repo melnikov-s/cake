@@ -1,77 +1,48 @@
 import { Schema } from "effect";
-import {
-  editorLocationFromPath,
-  type EditorLocation,
-} from "../../contracts/editor/editor-location";
 import type { VscodeEditorAction } from "../../contracts/vscode/vscode-editor-action";
 import { EditorSelectionId } from "../../contracts/editor/editor-selection";
 import {
-  gitRevisionSchema,
-  type SourceLocation,
-  type SourcePosition,
-} from "../../contracts/editor/source-location";
+  VscodeOpenInput,
+  VscodeSelectionsInput,
+  navigationEditorLocation,
+  selectionEditorLocation,
+} from "../../contracts/editor/vscode-tool-input";
 import type { AppControlResult } from "./app-control-data";
 import { trimmed, emptyArgumentsSchema } from "./control-arguments";
 import { defineControl } from "./control-definition";
-const vscodeOpenArgs = Schema.Struct({
-  path: trimmed(1, 8192),
-  view: Schema.optionalKey(Schema.Literal("changes")),
-  side: Schema.optionalKey(Schema.Literals(["before", "after"])),
-  base: Schema.optionalKey(gitRevisionSchema),
-  group: Schema.optionalKey(
-    Schema.Literals([
-      "active",
-      "beside",
-      "one",
-      "two",
-      "three",
-      "four",
-      "five",
-      "six",
-      "seven",
-      "eight",
-      "nine",
-    ]),
-  ),
-  preview: Schema.optionalKey(Schema.Boolean),
-  preserveFocus: Schema.optionalKey(Schema.Boolean),
-  line: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10000001 }))),
-  column: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10000001 }))),
-  endLine: Schema.optionalKey(
-    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10000001 })),
-  ),
-  endColumn: Schema.optionalKey(
-    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10000001 })),
-  ),
-}).check(
-  Schema.makeFilter((input) => {
-    if (input.line === undefined && input.column !== undefined) return "column requires line";
-    if (input.line === undefined && input.endLine !== undefined) return "endLine requires line";
-    if (input.line === undefined && input.endColumn !== undefined) return "endColumn requires line";
-    if (input.endLine !== undefined && input.line !== undefined && input.endLine < input.line)
-      return "endLine cannot precede line";
-    return undefined;
-  }),
-);
-type VscodeOpenInput = typeof vscodeOpenArgs.Type;
-function sourceLocation(input: VscodeOpenInput): SourceLocation {
-  const presentation = {
-    ...(input.view ? { view: input.view } : null),
-    ...(input.side ? { side: input.side } : null),
-    ...(input.base ? { base: input.base } : null),
-  };
-  if (input.line === undefined) return { path: input.path, ...presentation };
-  const start: SourcePosition =
-    input.column === undefined
-      ? { line: input.line - 1 }
-      : { line: input.line - 1, column: input.column - 1 };
-  const end: SourcePosition =
-    input.endColumn === undefined
-      ? { line: (input.endLine ?? input.line) - 1 }
-      : { line: (input.endLine ?? input.line) - 1, column: input.endColumn - 1 };
-  return { path: input.path, ...presentation, range: { start, end } };
-}
 export const vscodeControls = [
+  ...(["vscode.selections.add", "vscode.selections.set"] as const).map((command) =>
+    defineControl({
+      command,
+      args: VscodeSelectionsInput,
+      scope: "session-assistant",
+      discovery: {
+        topic: "vscode",
+        summary: command.endsWith(".add")
+          ? "Append source selections to the calling session."
+          : "Replace the calling session's source selections.",
+        guidance: [
+          "One-based source ranges, with optional changes view, side and base. All locations resolve before state changes. Empty set clears; empty add is a no-op.",
+        ],
+        result:
+          "The updated selection state, requested IDs, resolved reveals and any projection warning.",
+      },
+      run: async (input, { host, source }, operation): Promise<AppControlResult> => {
+        if (!source?.workingDirectory)
+          return {
+            ok: false,
+            command: operation,
+            error: "Embedded VS Code requires a Project Chat or Project Session Working Directory.",
+          };
+        const update = await host.vscode.writeSelections(
+          source,
+          input.selections.map(selectionEditorLocation),
+          operation === "vscode.selections.set",
+        );
+        return { ok: true, command: operation, update };
+      },
+    }),
+  ),
   defineControl({
     command: "vscode.selections.list",
     args: Schema.Struct({}),
@@ -80,7 +51,7 @@ export const vscodeControls = [
       topic: "vscode",
       summary: "List the parent session's code-tour selections.",
       guidance: [
-        "Ranged opens accumulate session-local selections until explicitly removed or cleared. Clear the previous tour step before presenting another.",
+        "Use vscode.selections.add to accumulate ranges or vscode.selections.set to replace the current tour step.",
         "Selection state is ephemeral and not persisted across Cake restarts. List/remove/clear work while VS Code is hidden.",
       ],
     },
@@ -106,7 +77,7 @@ export const vscodeControls = [
       topic: "vscode",
       summary: "Remove one parent-session selection by ID.",
       guidance: [
-        "Ranged opens accumulate session-local selections until explicitly removed or cleared. Clear the previous tour step before presenting another.",
+        "Use vscode.selections.add to accumulate ranges or vscode.selections.set to replace the current tour step.",
         "Selection state is ephemeral and not persisted across Cake restarts. List/remove/clear work while VS Code is hidden.",
       ],
     },
@@ -132,7 +103,7 @@ export const vscodeControls = [
       topic: "vscode",
       summary: "Clear the parent session's code-tour selections.",
       guidance: [
-        "Ranged opens accumulate session-local selections until explicitly removed or cleared. Clear the previous tour step before presenting another.",
+        "Use vscode.selections.add to accumulate ranges or vscode.selections.set to replace the current tour step.",
         "Selection state is ephemeral and not persisted across Cake restarts. List/remove/clear work while VS Code is hidden.",
       ],
     },
@@ -177,36 +148,17 @@ export const vscodeControls = [
   }),
   defineControl({
     command: "vscode.open",
-    args: vscodeOpenArgs,
+    args: VscodeOpenInput,
     scope: "session-assistant",
     discovery: {
       topic: "vscode",
       summary:
-        "Open a Working Directory or absolute local file in embedded VS Code and highlight an optional source range.",
+        "Open a file, optionally at a one-based line; never creates selections or highlights.",
       guidance: [
-        "These operations target the parent Project Session and its Working Directory.",
-        "Paths may be relative to the parent Project Session's Working Directory or absolute local file paths.",
-        "Opening an absolute path does not add it to the project or change the Working Directory. Lines and columns are one-based.",
-        "Call vscode.enter before vscode.open when the user asks to open a file in embedded VS Code.",
+        "Use vscode.selections.add/set for source ranges and diff context. Call vscode.enter first.",
       ],
-      examples: [
-        {
-          input: {
-            path: "src/main.ts",
-            line: 1,
-          },
-        },
-        {
-          input: {
-            path: "tests/main.test.ts",
-            group: "beside",
-            preview: false,
-          },
-          description: "Open a test beside the current editor.",
-        },
-      ],
-      result:
-        "The opened location, resolved ranges and selection IDs. Selections accumulate until removed or cleared.",
+      examples: [{ input: { path: "src/main.ts", line: 1 } }],
+      result: "The opened location and navigation outcome.",
     },
     run: async (input, { host, source }, command): Promise<AppControlResult> => {
       if (!source?.workingDirectory)
@@ -215,14 +167,9 @@ export const vscodeControls = [
           command,
           error: "Embedded VS Code requires a Project Chat or Project Session Working Directory.",
         };
-      const location = {
-        ...editorLocationFromPath(sourceLocation(input)),
-        ...(input.group ? { group: input.group } : null),
-        ...(input.preview !== undefined ? { preview: input.preview } : null),
-        ...(input.preserveFocus !== undefined ? { preserveFocus: input.preserveFocus } : null),
-      } satisfies EditorLocation;
-      const selection = await host.vscode.open(source, location);
-      return { ok: true, command, opened: location, selection };
+      const location = navigationEditorLocation(input);
+      const reveal = await host.vscode.open(source, location);
+      return { ok: true, command, opened: location, reveal };
     },
   }),
   defineControl({

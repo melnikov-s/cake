@@ -1,7 +1,9 @@
 import { Schema } from "effect";
 import { sourceLocationSchema, type SourceLocation } from "./source-location";
 
-const editorPresentationFields = {
+export const editorPresentationFields = {
+  /** Zero-based scroll target; never a source selection. */
+  line: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 10_000_000 }))),
   group: Schema.optionalKey(
     Schema.Literals([
       "active",

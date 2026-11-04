@@ -28,7 +28,8 @@ import { type EditorLocation } from "../../contracts/editor/editor-location";
 import type { VscodeEditorAction } from "../../contracts/vscode/vscode-editor-action";
 import type {
   EditorSelectionId,
-  EditorSelectionOpenResult,
+  EditorSelectionReveal,
+  EditorSelectionsWriteResult,
   EditorSelectionState,
   EditorSelectionUpdate,
 } from "../../contracts/editor/editor-selection";
@@ -118,7 +119,12 @@ export interface AgentActionReceipt {
  * An unavailable source Store is an error, not a fallback to main-owned state.
  */
 interface AppControlVscodeSelectionsHost {
-  open(source: AgentControlSource, location: EditorLocation): Promise<EditorSelectionOpenResult>;
+  open(source: AgentControlSource, location: EditorLocation): Promise<EditorSelectionReveal>;
+  writeSelections(
+    source: AgentControlSource,
+    locations: readonly EditorLocation[],
+    replace: boolean,
+  ): Promise<EditorSelectionsWriteResult>;
   listSelections(source: AgentControlSource): EditorSelectionState;
   removeSelection(
     source: AgentControlSource,
@@ -498,7 +504,12 @@ type AppControlSuccess =
       ok: true;
       command: "vscode.open";
       opened: EditorLocation;
-      selection: EditorSelectionOpenResult;
+      reveal: EditorSelectionReveal;
+    }
+  | {
+      ok: true;
+      command: "vscode.selections.add" | "vscode.selections.set";
+      update: EditorSelectionsWriteResult;
     }
   | { ok: true; command: "vscode.selections.list"; state: EditorSelectionState }
   | {

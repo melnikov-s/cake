@@ -60,6 +60,5 @@ export const sourceLocationSchema = Schema.Struct({
   ),
 });
 
-export type SourcePosition = typeof sourcePositionSchema.Type;
 export type SourceRange = typeof sourceRangeSchema.Type;
 export type SourceLocation = typeof sourceLocationSchema.Type;

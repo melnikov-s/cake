@@ -213,7 +213,21 @@ export function createRootApplicationControlHost(
           capabilities.cakeChatCollectionStore.registry.find(source.sessionId)!;
         if (session.presentationMode !== "vscode")
           throw new Error("VSCODE_MODE_REQUIRED: Call vscode.enter before opening code.");
-        return store.open(location);
+        return store.navigateFile(location);
+      },
+      writeSelections: (source, locations, replace) => {
+        const store = selectionStore(source.sessionId);
+        const session =
+          capabilities.sessionRegistry.findSession(source.sessionId) ??
+          capabilities.cakeChatCollectionStore.registry.find(source.sessionId)!;
+        if (
+          session.presentationMode !== "vscode" ||
+          capabilities.appShellStore.activeConversation?.sessionId !== source.sessionId
+        )
+          throw new Error(
+            "VSCODE_MODE_REQUIRED: Select the calling session and call vscode.enter before selecting code.",
+          );
+        return store.write(locations, replace);
       },
       listSelections: (source) => selectionStore(source.sessionId).list(),
       removeSelection: (source, id) => selectionStore(source.sessionId).remove(id),

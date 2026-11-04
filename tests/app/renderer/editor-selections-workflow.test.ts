@@ -72,7 +72,11 @@ function harness() {
     expect(await invoke("vscode.enter", {}, sessionId)).toMatchObject({ ok: true });
   };
   const open = async (path = "src/a.ts", line = 2, sessionId = "a") => {
-    const result = await invoke("vscode.open", { path, line, endLine: line + 1 }, sessionId);
+    const result = await invoke(
+      "vscode.selections.add",
+      { selections: [{ path, line, endLine: line + 1 }] },
+      sessionId,
+    );
     expect(result).toMatchObject({ ok: true });
     return result;
   };
@@ -97,7 +101,7 @@ function gate<Value>() {
 describe("Editor selection command-boundary integration", () => {
   it("reuses an ID when native ranges differ only by omitted zero columns", async () => {
     using fixture = await createSelectionCommandFixture();
-    const first = await fixture.open();
+    const first = await fixture.add();
     fixture.reveal.mockResolvedValueOnce({
       outcome: { view: "file" },
       locations: [
@@ -109,7 +113,7 @@ describe("Editor selection command-boundary integration", () => {
         },
       ],
     });
-    const second = await fixture.open();
+    const second = await fixture.add();
     expect(second.selectionIds).toEqual(first.selectionIds);
     expect(first.selectionIds).toHaveLength(1);
     expect((await fixture.list()).selections).toHaveLength(1);
@@ -117,8 +121,8 @@ describe("Editor selection command-boundary integration", () => {
 
   it("keeps overlapping ranges and distinct diff sides or bases in insertion order", async () => {
     using fixture = await createSelectionCommandFixture();
-    await fixture.open({ path: "src/tour.ts", line: 2 });
-    await fixture.open({ path: "src/tour.ts", line: 2, endLine: 5 });
+    await fixture.add({ path: "src/tour.ts", line: 2 });
+    await fixture.add({ path: "src/tour.ts", line: 2, endLine: 5 });
     for (const [side, base] of [
       ["before", "HEAD"],
       ["after", "HEAD"],
@@ -137,7 +141,7 @@ describe("Editor selection command-boundary integration", () => {
           },
         ],
       });
-      await fixture.open({ path: "src/tour.ts", line: 2, view: "changes", side, base });
+      await fixture.add({ path: "src/tour.ts", line: 2, view: "changes", side, base });
     }
     const { selections } = await fixture.list();
     expect(new Set(selections.map((selection) => selection.id)).size).toBe(5);
@@ -165,7 +169,7 @@ describe("Editor selection command-boundary integration", () => {
 
   it("returns detached command replies that callers cannot use to mutate authoritative selections", async () => {
     using fixture = await createSelectionCommandFixture();
-    await fixture.open();
+    await fixture.add();
     const copy = await fixture.list();
     Reflect.set(copy.selections[0]!.location.range.start, "line", 99);
     Array.prototype.pop.call(copy.selections);
@@ -181,9 +185,9 @@ describe("Editor selection command-boundary integration", () => {
   // do not fabricate a stale click/callback to claim an honest UI replacement.
   it("rejects a stale reveal ID after clearing and reopening the same location", async () => {
     using fixture = await createSelectionCommandFixture();
-    const first = await fixture.open();
+    const first = await fixture.add();
     await fixture.invoke("vscode.selections.clear");
-    const replacement = await fixture.open();
+    const replacement = await fixture.add();
     expect(replacement.selectionIds[0]).not.toBe(first.selectionIds[0]);
     const reveals = fixture.reveal.mock.calls.length;
     const session = fixture.root.sessionRegistry.findSession("tour-session");
@@ -198,9 +202,9 @@ describe("Editor selection command-boundary integration", () => {
   it("rejects failed native opening before registration and permits a fresh open", async () => {
     using fixture = await createSelectionCommandFixture();
     fixture.reveal.mockRejectedValueOnce(new Error("Native unavailable"));
-    await expect(fixture.open()).rejects.toThrow("Native unavailable");
+    await expect(fixture.add()).rejects.toThrow("Native unavailable");
     expect((await fixture.list()).selections).toEqual([]);
-    await fixture.open();
+    await fixture.add();
     expect((await fixture.list()).selections).toHaveLength(1);
   });
 
@@ -212,7 +216,7 @@ describe("Editor selection command-boundary integration", () => {
       entered.resolve();
       return native.promise;
     });
-    const opening = fixture.open();
+    const opening = fixture.add();
     await entered.promise;
     const removing = fixture.invoke("vscode.selections.remove", { id: "missing" });
     const clearing = fixture.invoke("vscode.selections.clear");
@@ -248,7 +252,7 @@ describe("Editor selection command-boundary integration", () => {
       entered.resolve();
       return native.promise;
     });
-    const pending = fixture.open();
+    const pending = fixture.add();
     await entered.promise;
     fixture[Symbol.dispose]();
     expect(fixture.reveal.mock.calls[0]?.[2]?.signal?.aborted).toBe(true);
@@ -270,7 +274,7 @@ describe("Editor selection command-boundary integration", () => {
 
   it("keeps selection locations out of persisted window snapshots", async () => {
     using fixture = await createSelectionCommandFixture();
-    await fixture.open({ path: "src/ephemeral-tour-only.ts", line: 2 });
+    await fixture.add({ path: "src/ephemeral-tour-only.ts", line: 2 });
     expect((await fixture.list()).selections).toHaveLength(1);
     expect(JSON.stringify(toSnapshot(fixture.root))).not.toContain("ephemeral-tour-only.ts");
   });
@@ -280,6 +284,148 @@ describe("Editor selection command-boundary integration", () => {
 // operations over native Clients. Visible reveal/dismiss/session restoration
 // behavior is consolidated in editor-selection-ui-workflow.test.tsx.
 describe("session-owned VS Code selection workflow", () => {
+  it("opens at a navigation line without creating selections or changing existing ones", async () => {
+    const h = harness();
+    await h.enter();
+    h.updateSelectionHighlights.mockClear();
+    await h.invoke("vscode.open", { path: "src/a.ts", line: 100 });
+    expect(h.reveal).toHaveBeenLastCalledWith(
+      workspace,
+      { kind: "working-directory", path: "src/a.ts", line: 99 },
+      expect.any(Object),
+    );
+    expect(h.a.editorSelectionsStore.list().selections).toEqual([]);
+    expect(
+      h.updateSelectionHighlights.mock.calls.every(([, payload]) => payload.locations.length === 0),
+    ).toBe(true);
+    await h.open();
+    const before = h.a.editorSelectionsStore.list();
+    h.updateSelectionHighlights.mockClear();
+    await h.invoke("vscode.open", { path: "src/b.ts", line: 20 });
+    expect(h.a.editorSelectionsStore.list()).toEqual(before);
+    for (const [, payload] of h.updateSelectionHighlights.mock.calls)
+      expect(payload.locations).toEqual(before.selections.map(({ location }) => location));
+    const invalidInputs: JsonObject[] = [
+      { path: "src/a.ts", line: 1, endLine: 2 },
+      { path: "src/a.ts", range: {} },
+      { path: "src/a.ts", view: "changes" },
+    ];
+    for (const input of invalidInputs) {
+      await expect(h.invoke("vscode.open", input)).rejects.toThrow();
+    }
+    expect(h.a.editorSelectionsStore.list()).toEqual(before);
+  });
+
+  it("accumulates repeated add, replaces coherently with set, and retains IDs for unchanged ranges", async () => {
+    const h = harness();
+    await h.enter();
+    await h.open("src/a.ts", 2);
+    await h.open("src/b.ts", 8);
+    const previous = h.a.editorSelectionsStore.list().selections;
+    expect(previous).toHaveLength(2);
+    h.updateSelectionHighlights.mockClear();
+    const result = await h.invoke("vscode.selections.set", {
+      selections: [
+        { path: "src/b.ts", line: 8, endLine: 9 },
+        { path: "src/c.ts", line: 10 },
+      ],
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      update: {
+        state: {
+          sessionId: "a",
+          selections: [
+            { id: previous[1]!.id, location: { path: "src/b.ts" } },
+            { location: { path: "src/c.ts" } },
+          ],
+        },
+      },
+    });
+    const finalLocations = h.a.editorSelectionsStore
+      .list()
+      .selections.map(({ location }) => location);
+    expect(h.updateSelectionHighlights).toHaveBeenLastCalledWith(
+      workspace,
+      { locations: finalLocations },
+      expect.any(Object),
+    );
+    // Navigation and editor observers may reproject, but never see a partial replacement.
+    const allowed = [previous.map(({ location }) => location), finalLocations].map((locations) =>
+      JSON.stringify(locations),
+    );
+    for (const [, payload] of h.updateSelectionHighlights.mock.calls)
+      expect(allowed).toContain(JSON.stringify(payload.locations));
+    const before = h.a.editorSelectionsStore.list();
+    h.updateSelectionHighlights.mockClear();
+    await h.invoke("vscode.selections.add", { selections: [] });
+    expect(h.a.editorSelectionsStore.list()).toEqual(before);
+    expect(h.updateSelectionHighlights).not.toHaveBeenCalled();
+    await h.invoke("vscode.selections.set", { selections: [] });
+    expect(h.a.editorSelectionsStore.list().selections).toEqual([]);
+  });
+
+  it("validates all inputs and resolves the whole batch before destructive set or partial add", async () => {
+    const h = harness();
+    await h.enter();
+    await h.open();
+    const before = h.a.editorSelectionsStore.list();
+    for (const command of ["vscode.selections.set", "vscode.selections.add"]) {
+      const calls = h.reveal.mock.calls.length;
+      await expect(
+        h.invoke(command, {
+          selections: [
+            { path: "src/good.ts", line: 1 },
+            { path: "src/bad.ts", line: 9, endLine: 3 },
+          ],
+        }),
+      ).rejects.toThrow();
+      expect(h.reveal).toHaveBeenCalledTimes(calls);
+      h.reveal.mockImplementationOnce(async (_workspace, location) => ({
+        outcome: { view: "file" },
+        locations: [
+          { kind: location.kind, path: location.path, view: "file", range: location.range! },
+        ],
+      }));
+      h.reveal.mockRejectedValueOnce(new Error("File not found"));
+      await expect(
+        h.invoke(command, {
+          selections: [
+            { path: "src/good.ts", line: 1 },
+            { path: "src/missing.ts", line: 2 },
+          ],
+        }),
+      ).rejects.toThrow("File not found");
+      expect(h.a.editorSelectionsStore.list()).toEqual(before);
+      h.reveal.mockResolvedValueOnce({
+        outcome: { view: "file", fallback: "external-file" },
+        locations: [],
+      });
+      await expect(
+        h.invoke(command, { selections: [{ path: "/tmp/external", line: 1 }] }),
+      ).rejects.toThrow("could not be resolved");
+      expect(h.a.editorSelectionsStore.list()).toEqual(before);
+    }
+  });
+
+  it("never replaces another session's set and rejects background set navigation", async () => {
+    const h = harness();
+    await h.enter();
+    await h.open();
+    const a = h.a.editorSelectionsStore.list();
+    h.select("b");
+    await h.enter("b");
+    await h.open("src/b.ts", 3, "b");
+    await h.invoke("vscode.selections.set", { selections: [{ path: "src/c.ts", line: 5 }] }, "b");
+    expect(h.a.editorSelectionsStore.list()).toEqual(a);
+    expect(
+      h.b.editorSelectionsStore.list().selections.map(({ location }) => location.path),
+    ).toEqual(["src/c.ts"]);
+    await expect(
+      h.invoke("vscode.selections.set", { selections: [{ path: "src/a.ts", line: 10 }] }),
+    ).rejects.toThrow("VSCODE_MODE_REQUIRED");
+    expect(h.a.editorSelectionsStore.list()).toEqual(a);
+  });
   it("does not create a tour selection for a file-only open or a manual text selection", async () => {
     const h = harness();
     await h.enter();
@@ -335,7 +481,9 @@ describe("session-owned VS Code selection workflow", () => {
       outcome: { view: "file", fallback: "no-changes" },
       locations: [resolved],
     });
-    await h.invoke("vscode.open", { path: "src/a.ts", line: 999, view: "changes" });
+    await h.invoke("vscode.selections.add", {
+      selections: [{ path: "src/a.ts", line: 999, view: "changes" }],
+    });
     expect(h.a.editorSelectionsStore.selections[0]?.location).toEqual(resolved);
   });
 
@@ -378,7 +526,7 @@ describe("session-owned VS Code selection workflow", () => {
       { locations: [selection.location] },
       expect.any(Object),
     );
-    expect(reply).toMatchObject({ selection: { selectionIds: [selection.id] } });
+    expect(reply).toMatchObject({ update: { selectionIds: [selection.id] } });
     expect(JSON.stringify(h.updateSelectionHighlights.mock.calls)).not.toContain(selection.id);
   });
 

@@ -839,6 +839,13 @@ async function activate(context) {
       preserveFocus: payload.preserveFocus ?? false,
       viewColumn: editorViewColumn(vscode, payload.group),
     });
+    if (Number.isInteger(payload.line)) {
+      const position = boundedPosition(vscode, document, { line: payload.line }, false);
+      editor.revealRange(
+        new vscode.Range(position, position),
+        vscode.TextEditorRevealType.InCenter,
+      );
+    }
     const locations = resolvedRanges(vscode, editor, requestedRanges).map((range) => ({
       kind: payload.kind,
       path: payload.kind === "absolute-file" ? target : workspaceRelative(target),

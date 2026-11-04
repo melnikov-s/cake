@@ -8,6 +8,7 @@ import type {
   EditorSelectionReveal,
   EditorSelectionState,
   EditorSelectionUpdate,
+  EditorSelectionsWriteResult,
 } from "../../contracts/editor/editor-selection";
 
 export interface EditorSelectionsStoreProps {
@@ -104,6 +105,48 @@ export class EditorSelectionsStore extends Store<EditorSelectionsStoreProps> {
       });
       const warning = selectionIds.length > 0 ? await this.refresh() : undefined;
       return warning ? { reveal, selectionIds, warning } : { reveal, selectionIds };
+    });
+  }
+
+  /** Navigation-only tool path: never registers ranges or refreshes highlights. */
+  navigateFile(location: EditorLocation): Promise<EditorSelectionReveal> {
+    return this.serialize(() => this.navigate(location));
+  }
+
+  /** Resolve the entire batch before publishing one replacement/append and one projection. */
+  write(
+    locations: readonly EditorLocation[],
+    replace: boolean,
+  ): Promise<EditorSelectionsWriteResult> {
+    return this.serialize(async () => {
+      if (locations.length === 0 && !replace)
+        return { state: this.list(), selectionIds: [], reveals: [] };
+      const reveals: EditorSelectionReveal[] = [];
+      for (const location of locations) {
+        const reveal = await this.navigate(location);
+        if (reveal.locations.length === 0)
+          throw new Error("The requested source range could not be resolved for selection.");
+        reveals.push(reveal);
+      }
+      const next = replace ? [] : [...this.selections];
+      const selectionIds = reveals.flatMap((reveal) =>
+        reveal.locations.map((location) => {
+          const key = locationKey(location);
+          const existing =
+            next.find((selection) => locationKey(selection.location) === key) ??
+            this.selections.find((selection) => locationKey(selection.location) === key);
+          // SAFETY: crypto.randomUUID() satisfies EditorSelectionId's nonempty length bounds.
+          const selection = existing ?? {
+            id: crypto.randomUUID() as EditorSelectionId,
+            location: structuredClone(location),
+          };
+          if (!next.some(({ id }) => id === selection.id)) next.push(selection);
+          return selection.id;
+        }),
+      );
+      this.selections.splice(0, this.selections.length, ...next);
+      const warning = await this.refresh();
+      return { state: this.list(), selectionIds, reveals, ...(warning ? { warning } : null) };
     });
   }
 

@@ -191,8 +191,10 @@ async function fixture() {
       });
     await expect.poll(selectionResetRevision).toBeGreaterThan(0);
     const pills = page.locator('[aria-label="Editor selections"]');
-    const open = async (path = "src/a.ts", line = 100, extra: JsonObject = {}) => {
-      await command("vscode.open", { path, line, endLine: line + 2, ...extra });
+    const add = async (path = "src/a.ts", line = 100, extra: JsonObject = {}) => {
+      await command("vscode.selections.add", {
+        selections: [{ path, line, endLine: line + 2, ...extra }],
+      });
       await expect(
         pills
           .getByRole("button", { name: new RegExp(`^Reveal .*${path.replaceAll(".", "\\.")}`) })
@@ -205,7 +207,7 @@ async function fixture() {
       project,
       command,
       pills,
-      open,
+      add,
       selectionResetRevision,
       close,
     };
@@ -231,11 +233,36 @@ test.beforeEach(() => {
   test.setTimeout(60_000);
 });
 
+test("open only navigates while add accumulates and set replaces visible selection pills", async () => {
+  const h = await fixture();
+  try {
+    await h.command("vscode.open", { path: "src/a.ts", line: 100 });
+    await expect
+      .poll(() => editorState(h.application))
+      .toMatchObject({ tabs: ["a.ts"], text: expect.stringContaining("line100") });
+    await expect(h.pills).toHaveCount(0);
+    await h.add();
+    await h.add("src/b.ts", 20);
+    await expect(h.pills.getByRole("button", { name: /^Reveal / })).toHaveCount(2);
+    await h.command("vscode.open", { path: "src/a.ts", line: 150 });
+    await expect(h.pills.getByRole("button", { name: /^Reveal / })).toHaveCount(2);
+    await h.command("vscode.selections.set", {
+      selections: [{ path: "src/b.ts", line: 40, endLine: 42 }],
+    });
+    await expect(h.pills.getByRole("button", { name: /^Reveal / })).toHaveCount(1);
+    await expect(h.pills.getByRole("button", { name: /^Reveal .*src\/b\.ts/ })).toBeVisible();
+    await h.command("vscode.selections.set", { selections: [] });
+    await expect(h.pills).toHaveCount(0);
+  } finally {
+    await h.close();
+  }
+});
+
 test("agent selections appear outside the input above the composer and clicks reveal the exact range", async () => {
   const h = await fixture();
   try {
-    await h.open();
-    await h.open("src/b.ts", 20);
+    await h.add();
+    await h.add("src/b.ts", 20);
     await expect(h.pills.getByRole("button", { name: /^Reveal / })).toHaveCount(2);
     await h.pills.getByRole("button", { name: /^Reveal .*src\/a\.ts/ }).click();
     await expect
@@ -254,8 +281,8 @@ test("agent selections appear outside the input above the composer and clicks re
 test("mouse and keyboard dismissal remove only the chosen pill without invoking navigation", async () => {
   const h = await fixture();
   try {
-    await h.open();
-    await h.open("src/b.ts", 20);
+    await h.add();
+    await h.add("src/b.ts", 20);
     await expect.poll(() => editorState(h.application)).toMatchObject({ tabs: ["b.ts"] });
     await h.pills.getByRole("button", { name: /^Remove .*src\/a\.ts/ }).click();
     await expect(h.pills.getByRole("button", { name: /^Reveal / })).toHaveCount(1);
@@ -274,14 +301,14 @@ test("mouse and keyboard dismissal remove only the chosen pill without invoking 
 test("switching files and showing the same document in two editors retains one pill per selection", async () => {
   const h = await fixture();
   try {
-    await h.open();
-    await h.open("src/b.ts", 20);
-    await h.open("src/a.ts", 100, { group: "beside", preview: false });
+    await h.add();
+    await h.add("src/b.ts", 20);
+    await h.add("src/a.ts", 100, { group: "beside", preview: false });
     await expect
       .poll(() => editorState(h.application))
       .toMatchObject({ tabs: expect.arrayContaining(["a.ts", "b.ts"]) });
     await expect(h.pills.getByRole("button", { name: /^Reveal / })).toHaveCount(2);
-    await h.open("src/a.ts", 100, { group: "one", preview: false });
+    await h.add("src/a.ts", 100, { group: "one", preview: false });
     await expect.poll(() => editorState(h.application)).toMatchObject({ tabs: ["a.ts", "a.ts"] });
     await expect(h.pills.getByRole("button", { name: /^Reveal / })).toHaveCount(2);
   } finally {
@@ -293,7 +320,7 @@ test("a user-selected source opens on click, appears in the sent message, and le
   const h = await fixture();
   try {
     const beforeOpen = await h.selectionResetRevision();
-    await h.open("src/b.ts", 20);
+    await h.add("src/b.ts", 20);
     await expect.poll(() => editorState(h.application)).toMatchObject({ tabs: ["b.ts"] });
     await expect.poll(h.selectionResetRevision).toBeGreaterThan(beforeOpen);
     await emitRendererEvent(h.application, {
@@ -330,8 +357,8 @@ test("a user-selected source opens on click, appears in the sent message, and le
 test("pill interactions preserve normal composer focus, typing, submission, and retained selections", async () => {
   const h = await fixture();
   try {
-    await h.open();
-    await h.open("src/b.ts", 20);
+    await h.add();
+    await h.add("src/b.ts", 20);
     await h.pills.getByRole("button", { name: /^Reveal .*src\/a\.ts/ }).click();
     await h.pills.getByRole("button", { name: /^Remove .*src\/b\.ts/ }).click();
     const input = h.page.getByLabel("Message", { exact: true });

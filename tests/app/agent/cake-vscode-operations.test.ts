@@ -7,7 +7,8 @@ import type {
   EditorSelectionLocation,
   EditorSelectionState,
   EditorSelectionUpdate,
-  EditorSelectionOpenResult,
+  EditorSelectionReveal,
+  EditorSelectionsWriteResult,
 } from "../../../src/contracts/editor/editor-selection";
 import type { JsonValue } from "../../../src/contracts/serialization/json-contract";
 import type { VscodeActionResult } from "../../../src/contracts/vscode/vscode-action-result";
@@ -53,23 +54,37 @@ const context = () => ({
   runtime: {},
 });
 
+import {
+  selectionEditorLocation,
+  type VscodeOpenInput,
+  type VscodeSelectionsInput,
+} from "../../../src/contracts/editor/vscode-tool-input";
 function registry() {
   const enter = vi.fn(async () => undefined);
-  const open = vi.fn(
-    async (location: EditorLocation): Promise<VscodeActionResult<EditorSelectionOpenResult>> => ({
+  const open = vi.fn<
+    (location: VscodeOpenInput) => Promise<VscodeActionResult<EditorSelectionReveal>>
+  >(async () => ({
+    status: "completed",
+    value: { outcome: { view: "file" }, locations: [] },
+  }));
+  const write = async (
+    input: VscodeSelectionsInput,
+  ): Promise<VscodeActionResult<EditorSelectionsWriteResult>> => {
+    const locations = input.selections.map(selectionEditorLocation).map(resolvedLocation);
+    return {
       status: "completed",
       value: {
-        reveal: {
-          outcome:
-            location.kind === "working-directory" && location.view === "changes"
-              ? { view: "changes" }
-              : { view: "file" },
-          locations: location.range ? [resolvedLocation(location)] : [],
-        },
-        selectionIds: location.range ? ["selection-1" as EditorSelectionId] : [],
+        state: state(locations.map((location, i) => selection(`selection-${i + 1}`, location))),
+        selectionIds: locations.map((_, i) => `selection-${i + 1}` as EditorSelectionId),
+        reveals: locations.map((location) => ({
+          outcome: { view: location.view },
+          locations: [location],
+        })),
       },
-    }),
-  );
+    };
+  };
+  const addSelections = vi.fn(write);
+  const setSelections = vi.fn(write);
   const listSelections = vi.fn(async (): Promise<EditorSelectionState> => state());
   const removeSelection = vi.fn(async (): Promise<EditorSelectionUpdate> => ({ state: state() }));
   const clearSelections = vi.fn(async (): Promise<EditorSelectionUpdate> => ({ state: state() }));
@@ -79,53 +94,170 @@ function registry() {
       value: input,
     }),
   );
-  return {
+  const control = {
     enter,
     open,
-    runScript,
+    addSelections,
+    setSelections,
     listSelections,
     removeSelection,
     clearSelections,
-    operations: new CakeOperationRegistry(
-      createCakeVscodeOperations({
-        enter,
-        open,
-        runScript,
-        listSelections,
-        removeSelection,
-        clearSelections,
-      }),
-    ),
+    runScript,
   };
+  return { ...control, operations: new CakeOperationRegistry(createCakeVscodeOperations(control)) };
 }
 
-describe("Cake VS Code session selection operations", () => {
-  it("returns stable selection IDs from ranged vscode.open and no IDs for a file-only open", async () => {
-    const { open, operations } = registry();
-    const ranged = await operations.invoke(
-      { command: "vscode.open", input: { path: "src/main.ts", line: 4 } },
-      context(),
-    );
-    expect(ranged.details).toMatchObject({
-      result: {
-        opened: true,
-        selectionIds: ["selection-1"],
-        location: { path: "src/main.ts", line: 4, endLine: 4 },
+describe("Cake VS Code navigation and selection operations", () => {
+  it("opens a file at a navigation line without invoking selection management", async () => {
+    const { open, addSelections, setSelections, operations } = registry();
+    for (const path of ["src/main.ts", "/tmp/cake.log"]) {
+      const result = await operations.invoke(
+        { command: "vscode.open", input: { path, line: 4 } },
+        context(),
+      );
+      expect(result.details).toMatchObject({
+        result: { opened: true, location: { path, line: 4 }, view: "file" },
+      });
+      expect(open).toHaveBeenLastCalledWith({ path, line: 4 }, expect.any(AbortSignal));
+    }
+    expect(addSelections).not.toHaveBeenCalled();
+    expect(setSelections).not.toHaveBeenCalled();
+  });
+
+  it.each(["column", "endLine", "endColumn", "range", "ranges", "view", "side", "base", "symbol"])(
+    "rejects selection field %s on open",
+    async (field) => {
+      const { open, operations } = registry();
+      await expect(
+        operations.invoke(
+          { command: "vscode.open", input: { path: "src/main.ts", line: 4, [field]: 5 } },
+          context(),
+        ),
+      ).rejects.toThrow();
+      expect(open).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["add", "set"] as const)(
+    "provides typed source ranges and diff context for %s",
+    async (operation) => {
+      const { operations, addSelections, setSelections } = registry();
+      const input = {
+        selections: [
+          {
+            path: "src/main.ts",
+            line: 804,
+            column: 5,
+            endLine: 812,
+            endColumn: 6,
+            view: "changes",
+            side: "before",
+            base: "main",
+          },
+        ],
+      };
+      const result = await operations.invoke(
+        { command: `vscode.selections.${operation}`, input },
+        context(),
+      );
+      expect(operation === "add" ? addSelections : setSelections).toHaveBeenCalledWith(
+        input,
+        expect.any(AbortSignal),
+      );
+      expect(result.details).toMatchObject({
+        result: {
+          selectionIds: ["selection-1"],
+          selections: [{ id: "selection-1", location: input.selections[0] }],
+        },
+      });
+    },
+  );
+
+  it("rejects invalid batches before either selection handler runs", async () => {
+    const { operations, addSelections, setSelections } = registry();
+    for (const operation of ["add", "set"]) {
+      for (const bad of [
+        { path: "src/a.ts" },
+        { path: "src/a.ts", line: 0 },
+        { path: "src/a.ts", line: 5, endLine: 4 },
+        { path: "src/a.ts", line: 5, column: 9, endColumn: 3 },
+        { path: "src/a.ts", line: 5, side: "before" },
+        { path: "src/a.ts", line: 5, base: "main" },
+        { path: "src/a.ts", line: 5, view: "changes", base: "--invalid" },
+        { path: "src/a.ts", line: 5, unexpected: true },
+      ]) {
+        await expect(
+          operations.invoke(
+            {
+              command: `vscode.selections.${operation}`,
+              input: { selections: [{ path: "src/good.ts", line: 1 }, bad] },
+            },
+            context(),
+          ),
+        ).rejects.toThrow();
+      }
+    }
+    expect(addSelections).not.toHaveBeenCalled();
+    expect(setSelections).not.toHaveBeenCalled();
+  });
+
+  it("preserves diff fallback and projection warnings in mutation results", async () => {
+    const { operations, addSelections } = registry();
+    addSelections.mockResolvedValueOnce({
+      status: "completed",
+      value: {
+        state: state([selection("one", source(3))]),
+        selectionIds: ["one" as EditorSelectionId],
+        reveals: [{ outcome: { view: "file", fallback: "no-changes" }, locations: [source(3)] }],
+        warning: "Could not refresh highlights",
       },
     });
-    const repeated = await operations.invoke(
-      { command: "vscode.open", input: { path: "src/main.ts", line: 4 } },
+    const result = await operations.invoke(
+      {
+        command: "vscode.selections.add",
+        input: { selections: [{ path: "src/main.ts", line: 100, view: "changes" }] },
+      },
       context(),
     );
-    expect(repeated.details).toMatchObject({ result: { selectionIds: ["selection-1"] } });
-    const plain = await operations.invoke(
-      { command: "vscode.open", input: { path: "src/main.ts" } },
-      context(),
-    );
-    expect(plain.details).toMatchObject({
-      result: { location: { path: "src/main.ts" }, selectionIds: [] },
+    expect(result.details).toMatchObject({
+      result: {
+        warning: "Could not refresh highlights",
+        reveals: [{ outcome: { view: "file", fallback: "no-changes" } }],
+        selections: [{ location: { line: 4 } }],
+      },
     });
-    expect(open).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(["add", "set"] as const)("returns typed mode recovery for %s", async (operation) => {
+    const { operations, addSelections, setSelections } = registry();
+    (operation === "add" ? addSelections : setSelections).mockResolvedValueOnce({
+      status: "mode-required",
+    });
+    const result = await operations.invoke(
+      { command: `vscode.selections.${operation}`, input: { selections: [] } },
+      context(),
+    );
+    expect(result.structuredContent).toMatchObject({
+      command: `vscode.selections.${operation}`,
+      result: { ok: false, error: { code: "VSCODE_MODE_REQUIRED" } },
+    });
+    expect(operations.operationHelp(`vscode.selections.${operation}`)).toContain("output-schema");
+  });
+
+  it("advertises separate navigation and selection contracts", () => {
+    const { operations } = registry();
+    expect(operations.operationHelp("vscode.open")).toContain("no selections");
+    expect(operations.operationHelp("vscode.selections.set")).toContain(
+      "before changing the collection",
+    );
+    for (const command of [
+      "vscode.open",
+      "vscode.selections.add",
+      "vscode.selections.set",
+      "vscode.script.run",
+      "vscode.debug.start",
+    ])
+      expect(operations.topicHelp("vscode")).toContain(command);
   });
 
   it("lists current selection IDs and one-based locations in insertion order", async () => {
@@ -289,262 +421,11 @@ describe("Cake VS Code session selection operations", () => {
     const help = operations.operationHelp("vscode.selections.list");
     expect(help).toContain("calling session");
     expect(help).toMatch(/not persisted/i);
-    expect(help).toMatch(/clear the previous tour step/i);
+    expect(help).toMatch(/use set for the next tour step/i);
     expect(help).toContain("vscode.selections.list");
     expect(operations.topicHelp("vscode")).toContain("vscode.selections.remove");
     expect(operations.topicHelp("vscode")).toContain("vscode.selections.clear");
     expect(help).toMatch(/until removed\/cleared/i);
-  });
-
-  it("preserves diff fallback and companion projection warnings in tool results", async () => {
-    const { open, removeSelection, operations } = registry();
-    open.mockResolvedValueOnce({
-      status: "completed",
-      value: {
-        reveal: { outcome: { view: "file", fallback: "no-changes" }, locations: [source(3)] },
-        selectionIds: ["selection-1" as EditorSelectionId],
-        warning: "The companion could not refresh highlights.",
-      },
-    });
-    const result = await operations.invoke(
-      {
-        command: "vscode.open",
-        input: {
-          path: "src/main.ts",
-          view: "changes",
-          line: 100,
-        },
-      },
-      context(),
-    );
-    expect(result.details).toMatchObject({
-      result: {
-        view: "file",
-        selectionIds: ["selection-1"],
-        location: { path: "src/main.ts", line: 4, column: 3, endLine: 4, endColumn: 9 },
-        warning: expect.stringMatching(
-          /no uncommitted changes.*companion could not refresh highlights/i,
-        ),
-      },
-    });
-    removeSelection.mockResolvedValueOnce({
-      state: state([]),
-      warning: "Highlight rendering failed.",
-    });
-    const removed = await operations.invoke(
-      { command: "vscode.selections.remove", input: { id: "selection-1" } },
-      context(),
-    );
-    expect(removed.details).toMatchObject({
-      result: { selections: [], warning: "Highlight rendering failed." },
-    });
-  });
-});
-
-describe("Cake VS Code operations", () => {
-  it("opens a one-based agent range through the zero-based editor contract", async () => {
-    const { open, operations } = registry();
-
-    const result = await operations.invoke(
-      {
-        command: "vscode.open",
-        input: {
-          path: "src/main/main.ts",
-          line: 804,
-          column: 5,
-          endLine: 812,
-          endColumn: 6,
-          view: "changes",
-          side: "before",
-        },
-      },
-      {
-        signal: new AbortController().signal,
-        toolCallId: "tool-1",
-        runtime: {},
-      },
-    );
-
-    expect(open).toHaveBeenCalledWith(
-      {
-        kind: "working-directory",
-        path: "src/main/main.ts",
-        view: "changes",
-        side: "before",
-        range: {
-          start: { line: 803, column: 4 },
-          end: { line: 811, column: 5 },
-        },
-      },
-      expect.any(AbortSignal),
-    );
-    expect(result.details).toMatchObject({
-      command: "vscode.open",
-      result: {
-        opened: true,
-        view: "changes",
-        location: {
-          path: "src/main/main.ts",
-          line: 804,
-          column: 5,
-          endLine: 812,
-          endColumn: 6,
-          view: "changes",
-          side: "before",
-        },
-      },
-    });
-    expect(result.details).not.toHaveProperty("result.warning");
-    expect(result.details).toMatchObject({ result: { selectionIds: ["selection-1"] } });
-  });
-
-  it.each([
-    ["no-changes", undefined, /no uncommitted changes.*pass base/],
-    ["no-changes", "main", /does not differ from main/],
-    ["unknown-base", "nope", /could not compare it with nope/],
-    ["git-unavailable", undefined, /Git extension did not report/],
-  ] as const)(
-    "reports the actual view and a warning when a changes request falls back (%s, base %s)",
-    async (fallback, base, warning) => {
-      const { open, operations } = registry();
-      const requested = {
-        path: "src/main.ts",
-        view: "changes" as const,
-        ...(base ? { base } : null),
-      };
-      open.mockResolvedValueOnce({
-        status: "completed",
-        value: {
-          reveal: {
-            locations: [source(3)],
-            outcome: { view: "file", fallback },
-          },
-          selectionIds: ["selection-1" as EditorSelectionId],
-        },
-      });
-
-      const result = await operations.invoke(
-        { command: "vscode.open", input: { line: 4, ...requested } },
-        { signal: new AbortController().signal, toolCallId: "tool-fallback", runtime: {} },
-      );
-
-      expect(open).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: "working-directory", ...requested }),
-        expect.any(AbortSignal),
-      );
-      expect(result.details).toMatchObject({
-        result: {
-          opened: true,
-          view: "file",
-          location: { path: requested.path, line: 4, column: 3, endLine: 4, endColumn: 9 },
-          selectionIds: ["selection-1"],
-          warning: expect.stringMatching(warning),
-        },
-      });
-    },
-  );
-
-  it("passes a base revision through and echoes it, but only with the changes view", async () => {
-    const { open, operations } = registry();
-    const context = { signal: new AbortController().signal, toolCallId: "tool-base", runtime: {} };
-
-    const result = await operations.invoke(
-      { command: "vscode.open", input: { path: "src/main.ts", view: "changes", base: "HEAD~1" } },
-      context,
-    );
-
-    expect(open).toHaveBeenCalledWith(
-      { kind: "working-directory", path: "src/main.ts", view: "changes", base: "HEAD~1" },
-      expect.any(AbortSignal),
-    );
-    expect(result.details).toMatchObject({
-      result: {
-        view: "changes",
-        selectionIds: [],
-        location: { path: "src/main.ts", view: "changes", base: "HEAD~1" },
-      },
-    });
-
-    await expect(
-      operations.invoke(
-        { command: "vscode.open", input: { path: "src/main.ts", base: "main" } },
-        context,
-      ),
-    ).rejects.toThrow("base requires changes view");
-    for (const base of ["--output=/tmp/x", "main..HEAD", "HEAD:src/main.ts", "a b"]) {
-      await expect(
-        operations.invoke(
-          { command: "vscode.open", input: { path: "src/main.ts", view: "changes", base } },
-          context,
-        ),
-      ).rejects.toThrow();
-    }
-    expect(open).toHaveBeenCalledTimes(1);
-  });
-
-  it("opens a whole file and advertises the progressively disclosed topic", async () => {
-    const { open, operations } = registry();
-
-    expect(operations.help()).toContain("vscode —");
-    expect(operations.topicHelp("vscode")).toContain("code tours and walkthroughs");
-    expect(operations.operationHelp("vscode.enter")).toContain(
-      "users do not need to ask for VS Code explicitly",
-    );
-    expect(operations.operationHelp("vscode.open")).toContain(
-      "Use vscode.open whenever showing code or directing the user's attention",
-    );
-    expect(operations.operationHelp("vscode.open")).toContain(
-      "Do not recreate source opening or selection with vscode.script.run",
-    );
-    expect(operations.topicHelp("vscode")).toContain("vscode.enter");
-    expect(operations.topicHelp("vscode")).toContain("vscode.open");
-    expect(operations.topicHelp("vscode")).toContain("vscode.script.run");
-    expect(operations.topicHelp("vscode")).toContain("vscode.debug.start");
-    expect(operations.topicHelp("vscode")).toContain("vscode.debug.stack");
-    expect(operations.topicHelp("vscode")).toContain("vscode.debug.evaluate");
-    await operations.invoke(
-      { command: "vscode.open", input: { path: "src/main.ts" } },
-      {
-        signal: new AbortController().signal,
-        toolCallId: "tool-2",
-        runtime: {},
-      },
-    );
-
-    expect(open).toHaveBeenCalledWith(
-      { kind: "working-directory", path: "src/main.ts" },
-      expect.any(AbortSignal),
-    );
-  });
-
-  it("opens an absolute local file without changing the Working Directory", async () => {
-    const { open, operations } = registry();
-
-    const result = await operations.invoke(
-      { command: "vscode.open", input: { path: "/tmp/cake.log", line: 3 } },
-      {
-        signal: new AbortController().signal,
-        toolCallId: "tool-absolute-file",
-        runtime: {},
-      },
-    );
-
-    expect(open).toHaveBeenCalledWith(
-      {
-        kind: "absolute-file",
-        path: "/tmp/cake.log",
-        range: { start: { line: 2 }, end: { line: 2 } },
-      },
-      expect.any(AbortSignal),
-    );
-    expect(result.details).toMatchObject({
-      result: {
-        opened: true,
-        view: "file",
-        selectionIds: ["selection-1"],
-        location: { path: "/tmp/cake.log", line: 3 },
-      },
-    });
   });
 
   it("enters VS Code mode explicitly", async () => {
@@ -683,31 +564,5 @@ describe("Cake VS Code operations", () => {
       operations.invoke({ command: "vscode.debug.clearBreakpoints", input: { line: 10 } }, context),
     ).rejects.toThrow("line requires path");
     expect(runScript).not.toHaveBeenCalled();
-  });
-
-  it("rejects incomplete and reversed ranges before opening VS Code", async () => {
-    const { open, operations } = registry();
-    const context = {
-      signal: new AbortController().signal,
-      toolCallId: "tool-3",
-      runtime: {},
-    };
-
-    await expect(
-      operations.invoke(
-        { command: "vscode.open", input: { path: "src/main.ts", column: 2 } },
-        context,
-      ),
-    ).rejects.toThrow("column requires line");
-    await expect(
-      operations.invoke(
-        {
-          command: "vscode.open",
-          input: { path: "src/main.ts", line: 20, endLine: 10 },
-        },
-        context,
-      ),
-    ).rejects.toThrow("endLine cannot precede line");
-    expect(open).not.toHaveBeenCalled();
   });
 });

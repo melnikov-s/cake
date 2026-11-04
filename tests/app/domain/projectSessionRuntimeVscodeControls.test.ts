@@ -54,7 +54,7 @@ function environment(
 
 describe("Project Session runtime renderer-owned VS Code controls", () => {
   it.effect(
-    "routes entry, ranged open and collection operations through renderer controls with validated replies",
+    "routes navigation and collection operations through renderer controls with validated replies",
     () => {
       const calls: ProjectSessionControlInvocation[] = [];
       const id = EditorSelectionId.make("selection-one");
@@ -86,15 +86,30 @@ describe("Project Session runtime renderer-owned VS Code controls", () => {
           yield* Effect.promise(() =>
             control.open(
               {
-                kind: "working-directory",
                 path: "src/main.ts",
-                range: { start: { line: 3 }, end: { line: 5 } },
+                line: 4,
               },
               signal,
             ),
           ),
-          { status: "completed", value: { reveal, selectionIds: [id] } },
+          { status: "completed", value: reveal },
         );
+        const selections = [
+          {
+            path: "src/main.ts",
+            line: 4,
+            endLine: 6,
+            view: "changes" as const,
+            side: "before" as const,
+            base: "main",
+          },
+        ];
+        for (const write of [control.addSelections, control.setSelections]) {
+          assert.deepEqual(yield* Effect.promise(() => write({ selections }, signal)), {
+            status: "completed",
+            value: { state, selectionIds: [id], reveals: [reveal] },
+          });
+        }
         assert.deepEqual(yield* Effect.promise(() => control.listSelections(signal)), state);
         assert.deepEqual(yield* Effect.promise(() => control.removeSelection(id, signal)), {
           state: { sessionId: "session-a", selections: [] },
@@ -105,8 +120,10 @@ describe("Project Session runtime renderer-owned VS Code controls", () => {
           {
             _tag: "InvokeAppControl",
             command: "vscode.open",
-            input: { path: "src/main.ts", line: 4, endLine: 6 },
+            input: { path: "src/main.ts", line: 4 },
           },
+          { _tag: "InvokeAppControl", command: "vscode.selections.add", input: { selections } },
+          { _tag: "InvokeAppControl", command: "vscode.selections.set", input: { selections } },
           { _tag: "InvokeAppControl", command: "vscode.selections.list", input: {} },
           { _tag: "InvokeAppControl", command: "vscode.selections.remove", input: { id } },
           { _tag: "InvokeAppControl", command: "vscode.selections.clear", input: {} },
@@ -117,8 +134,12 @@ describe("Project Session runtime renderer-owned VS Code controls", () => {
             assert.equal(signal.aborted, false);
             calls.push(invocation);
             assert.equal(invocation._tag, "InvokeAppControl");
-            if (invocation.command === "vscode.open")
-              return { ok: true, selection: { reveal, selectionIds: [id] } };
+            if (invocation.command === "vscode.open") return { ok: true, reveal };
+            if (
+              invocation.command === "vscode.selections.add" ||
+              invocation.command === "vscode.selections.set"
+            )
+              return { ok: true, update: { state, selectionIds: [id], reveals: [reveal] } };
             if (invocation.command === "vscode.selections.list") return { ok: true, state };
             return { ok: true, update: { state: { sessionId: "session-a", selections: [] } } };
           }),
@@ -143,9 +164,7 @@ describe("Project Session runtime renderer-owned VS Code controls", () => {
         const control = options.runtime.vscodeControl!;
         const signal = new AbortController().signal;
         assert.deepEqual(
-          yield* Effect.promise(() =>
-            control.open({ kind: "working-directory", path: "src/main.ts" }, signal),
-          ),
+          yield* Effect.promise(() => control.open({ path: "src/main.ts" }, signal)),
           { status: "mode-required" },
         );
         reply = { ok: false, error: "Owning renderer unavailable" };

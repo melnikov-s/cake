@@ -75,7 +75,15 @@ export function defineControl<
         : undefined,
     async invoke(untrustedInput, context) {
       const decoded = await decode(untrustedInput);
-      const input = await Schema.decodeUnknownPromise(definition.args)(decoded.arguments);
+      const input = await Schema.decodeUnknownPromise(definition.args, {
+        onExcessProperty: [
+          "vscode.open",
+          "vscode.selections.add",
+          "vscode.selections.set",
+        ].includes(definition.command)
+          ? "error"
+          : "ignore",
+      })(decoded.arguments);
       return { result: await definition.run(input, context, definition.command) };
     },
   };

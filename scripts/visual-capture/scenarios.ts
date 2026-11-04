@@ -6455,12 +6455,8 @@ const sourceSelectionScenario: VisualCaptureScenario = {
         controlRequestId: randomUUID(),
         invocation: {
           _tag: "InvokeAppControl",
-          command: "vscode.open",
-          input: {
-            path: "src/example.ts",
-            line: 1,
-            endLine: 1,
-          },
+          command: "vscode.selections.add",
+          input: { selections: [{ path: "src/example.ts", line: 1, endLine: 1 }] },
         },
       });
       await page.locator('[aria-label="Editor selections"]').waitFor({ state: "visible" });

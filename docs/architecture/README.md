@@ -37,6 +37,11 @@ distinguished from established policy.
 [Session references](./session-references.md) defines suffix-based agent identities,
 canonical routing, collision handling, and typed output projection boundaries.
 
+## VS Code tools
+
+[VS Code tools](./vscode-tools.md) separates file navigation from session-owned
+source selection management, including batch replacement and diff context.
+
 ## Saved drafts and unsent input
 
 Unsent composer input and explicitly saved Draft records are different concepts.

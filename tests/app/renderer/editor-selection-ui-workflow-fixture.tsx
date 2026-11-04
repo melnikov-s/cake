@@ -5,7 +5,7 @@ import { StoreProvider } from "r-state-tree/react";
 import { vi } from "vitest";
 import type { JsonObject } from "../../../src/contracts/serialization/json-contract";
 import {
-  EditorSelectionOpenResult,
+  EditorSelectionsWriteResult,
   EditorSelectionState,
 } from "../../../src/contracts/editor/editor-selection";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -111,15 +111,15 @@ export async function createSelectionCommandFixture(
     reveal,
     highlights,
     invoke,
-    async open(args: JsonObject = { path: "src/tour.ts", line: 2, endLine: 3 }) {
+    async add(args: JsonObject = { path: "src/tour.ts", line: 2, endLine: 3 }) {
       const result = Schema.decodeUnknownSync(
         Schema.Struct({
           ok: Schema.Literal(true),
-          command: Schema.Literal("vscode.open"),
-          selection: EditorSelectionOpenResult,
+          command: Schema.Literal("vscode.selections.add"),
+          update: EditorSelectionsWriteResult,
         }),
-      )(await invoke("vscode.open", args));
-      return result.selection;
+      )(await invoke("vscode.selections.add", { selections: [args] }));
+      return result.update;
     },
     async list() {
       const result = Schema.decodeUnknownSync(
@@ -142,8 +142,8 @@ export async function renderSelectionUi(
   try {
     // Establish a completed agent tour through the authoritative command boundary.
     // No native editor, iframe contents, geometry or manual selection is simulated.
-    await fixture.open();
-    await fixture.open({ path: "src/next.ts", line: 8 });
+    await fixture.add();
+    await fixture.add({ path: "src/next.ts", line: 8 });
     const view = render(
       <StoreProvider store={fixture.root}>
         <App />

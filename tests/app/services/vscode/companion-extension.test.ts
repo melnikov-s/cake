@@ -765,6 +765,27 @@ describe("companion editor reveals", () => {
     expect(after.revealRange).toHaveBeenCalledOnce();
   });
 
+  it("scrolls to a navigation line without changing text selection or adding decorations", async () => {
+    const editor = visibleEditor(FakeUri.file(`${WORKSPACE}/src/run.ts`));
+    const selection = editor.selection;
+    showTextDocument.mockResolvedValueOnce(editor);
+    const result = await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      line: 2,
+    });
+    expect(result).toEqual({ outcome: { view: "file" }, locations: [] });
+    expect(editor.selection).toBe(selection);
+    expect(editor.setDecorations).not.toHaveBeenCalled();
+    expect(editor.revealRange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        start: expect.objectContaining({ line: 2, character: 0 }),
+        end: expect.objectContaining({ line: 2, character: 0 }),
+      }),
+      expect.anything(),
+    );
+  });
+
   it("falls back to a resolved file range when the requested diff side never appears", async () => {
     vi.useFakeTimers();
     gitRepository = fakeGitRepository({ diff: "@@ -1 +1 @@\n-old\n+new\n" });

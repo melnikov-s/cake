@@ -63,7 +63,11 @@ describe("Editor selection pills workflow", () => {
       ),
     );
     await act(async () => {
-      await fixture.invoke("vscode.open", { path: "src/other.ts", line: 4 }, "other-tour");
+      await fixture.invoke(
+        "vscode.selections.add",
+        { selections: [{ path: "src/other.ts", line: 4 }] },
+        "other-tour",
+      );
     });
     expect(screen.getByRole("button", { name: /^Reveal src\/other.ts/ })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: /^tour-session / }));
