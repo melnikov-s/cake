@@ -1453,35 +1453,69 @@ describe("Dictation writing-field workflow", () => {
       state: {},
       children: { dictationStore: { state: { enabled: true }, children: {} } },
     };
-    const launch = (modelReady: Promise<void>) =>
-      renderDictation({
+    /** Mounts like a restarted window, then preloads as the desktop entry point does. */
+    const launch = (modelReady: Promise<void>, snapshot: StoreSnapshot = restored) => {
+      const f = renderDictation({
         modelReady,
-        snapshot: restored,
+        snapshot,
         state: { ...installedDictationState, status: "installed" },
       });
+      act(() => f.root.dictationStore.preloadOnLaunch());
+      return f;
+    };
     const control = () => screen.getByRole("button", { name: /dictation$/ });
     /** Desktop-log entries sent so far, after fire-and-forget delivery. */
     const logged = async (f: ReturnType<typeof renderDictation>) => {
       await act(async () => {});
       return f.trace.mock.calls.map(([entry]) => entry);
     };
+    /** The click's own startup attempt, apart from the background preload's lines. */
+    const clickAttempt = async (f: ReturnType<typeof renderDictation>) => {
+      const lines = await logged(f);
+      const attempt = lines.find(({ step }) => step === "start-requested")!.attempt;
+      return lines.filter((line) => line.attempt === attempt);
+    };
 
-    it("first focus loads the model and the same focused field starts listening without refocus", async () => {
+    it("preloads the model in the background without a field or the microphone", async () => {
       const model = deferred<void>();
       using f = launch(model.promise);
+      expect(f.prepare).toHaveBeenCalledOnce();
+      expect(f.audio.getUserMedia).not.toHaveBeenCalled();
+      expect(f.root.dictationStore.phase).toBe("paused");
+      expect(document.querySelector('[data-slot="dictation-indicator"]')).toBeNull();
+      await act(async () => model.resolve());
+      const lines = await logged(f);
+      expect(lines).toEqual([
+        expect.objectContaining({ step: "model-load-requested", reason: "launch" }),
+        expect.objectContaining({ step: "model-load-finished", elapsedMs: expect.any(Number) }),
+      ]);
+      expect(lines[1]!.attempt).toBe(lines[0]!.attempt);
+    });
+
+    it("does not preload when dictation is disabled", async () => {
+      using f = launch(Promise.resolve(), { state: {}, children: {} });
+      await act(async () => {});
       expect(f.prepare).not.toHaveBeenCalled();
+      expect(await logged(f)).toEqual([]);
+    });
+
+    it("a click during the preload joins it and the same field listens when it finishes", async () => {
+      const model = deferred<void>();
+      using f = launch(model.promise);
       await f.user.click(message());
       expect(control().getAttribute("aria-busy")).toBe("true");
       expect(f.audio.getUserMedia).not.toHaveBeenCalled();
       await act(async () => model.resolve());
       await waitFor(listening);
+      // One load: the click waited for the preload instead of starting or restarting another.
+      expect(f.prepare).toHaveBeenCalledOnce();
       expect(document.activeElement).toBe(message());
       expect(control().getAttribute("aria-busy")).toBe("false");
       expect(f.audio.getUserMedia).toHaveBeenCalledOnce();
       await f.audio.push(new Float32Array(12_800));
       await f.recognize(0, "Ready after first load");
       expect(message().value).toBe("Ready after first load");
-      const lines = await logged(f);
+      const lines = await clickAttempt(f);
       expect(lines.map(({ step }) => step)).toEqual([
         "start-requested",
         "model-load-requested",
@@ -1491,13 +1525,13 @@ describe("Dictation writing-field workflow", () => {
         "mic-opened",
         "listening",
       ]);
-      // One attempt ID ties the steps together; durations, never speech or draft text.
-      expect(new Set(lines.map(({ attempt }) => attempt)).size).toBe(1);
+      // Durations and reasons, never speech or draft text.
       expect(lines[0]).toMatchObject({ reason: "focus", field: expect.any(String) });
+      expect(lines[1]).toMatchObject({ reason: "joined" });
       expect(lines.find(({ step }) => step === "model-load-finished")).toMatchObject({
         elapsedMs: expect.any(Number),
       });
-      expect(JSON.stringify(lines)).not.toContain("Ready after first load");
+      expect(JSON.stringify(await logged(f))).not.toContain("Ready after first load");
     });
 
     it("logs an ignored re-click while loading, with whether an attempt is still alive", async () => {
@@ -1505,16 +1539,15 @@ describe("Dictation writing-field workflow", () => {
       using f = launch(model.promise);
       await f.user.click(message());
       act(() => fireEvent(window, new Event("focus")));
-      const ignored = (await logged(f)).filter(({ step }) => step === "focus-ignored");
+      const ignored = (await clickAttempt(f)).filter(({ step }) => step === "focus-ignored");
       expect(ignored).toEqual([
         expect.objectContaining({ reason: "already-preparing", field: expect.any(String) }),
       ]);
-      expect(ignored[0]!.attempt).toBe(f.trace.mock.calls[0]![0].attempt);
       await act(async () => model.resolve());
       await waitFor(listening);
     });
 
-    it("a failed first load offers Retry instead of an endless spinner", async () => {
+    it("a load failure during the click offers Retry instead of an endless spinner", async () => {
       const model = deferred<void>();
       using f = launch(model.promise);
       await f.user.click(message());
@@ -1523,14 +1556,32 @@ describe("Dictation writing-field workflow", () => {
       expect(retry.getAttribute("aria-busy")).toBe("false");
       expect(f.root.dictationStore.phase).toBe("error");
       expect(f.audio.getUserMedia).not.toHaveBeenCalled();
-      const lines = await logged(f);
-      expect(lines.at(-1)).toMatchObject({
+      expect((await clickAttempt(f)).at(-1)).toMatchObject({
         step: "failed",
         stage: "startup",
         code: "unknown",
-        attempt: lines[0]!.attempt,
       });
-      expect(JSON.stringify(lines)).not.toContain("Model failed to load");
+      expect(JSON.stringify(await logged(f))).not.toContain("Model failed to load");
+    });
+
+    it("a preload failure stays silent until the next click, which offers Retry", async () => {
+      const model = deferred<void>();
+      using f = launch(model.promise);
+      await act(async () => model.reject(new Error("Model failed to load")));
+      expect(f.root.dictationStore.phase).toBe("paused");
+      expect(f.root.dictationStore.error).toBeUndefined();
+      expect(screen.queryByText("Model failed to load")).toBeNull();
+      expect((await logged(f)).at(-1)).toMatchObject({ step: "failed", stage: "preload" });
+      await f.user.click(message());
+      const retry = await screen.findByRole("button", { name: "Retry dictation" });
+      expect(f.root.dictationStore.label).toBe("Model failed to load");
+      expect(f.prepare).toHaveBeenCalledOnce();
+      f.prepare.mockImplementation(async () => {
+        f.root.dictationStore.applyState({ ...installedDictationState, status: "ready" });
+      });
+      await f.user.click(retry);
+      await waitFor(listening);
+      expect(f.prepare).toHaveBeenCalledTimes(2);
     });
 
     it("blurring during the first load keeps the attempt, which listens once the model loads", async () => {
@@ -1546,11 +1597,40 @@ describe("Dictation writing-field workflow", () => {
       await f.audio.push(new Float32Array(12_800));
       await f.recognize(0, "Loaded while unfocused");
       expect(message().value).toBe("Loaded while unfocused");
-      const lines = await logged(f);
-      expect(new Set(lines.map(({ attempt }) => attempt)).size).toBe(1);
+      const lines = await clickAttempt(f);
       expect(lines.map(({ step }) => step)).not.toContain("cancelled");
       expect(lines.at(-1)).toMatchObject({ step: "listening" });
     });
+  });
+
+  it("turning dictation on preloads the model, and a click during that load joins it", async () => {
+    const model = deferred<void>();
+    using f = renderDictation({
+      modelReady: model.promise,
+      state: { ...installedDictationState, status: "installed" },
+    });
+    await f.user.click(mode());
+    expect(f.prepare).toHaveBeenCalledOnce();
+    expect(f.audio.getUserMedia).not.toHaveBeenCalled();
+    await f.user.click(message());
+    expect(screen.getByRole("button", { name: "Mute dictation" }).getAttribute("aria-busy")).toBe(
+      "true",
+    );
+    await act(async () => model.resolve());
+    await waitFor(listening);
+    expect(f.prepare).toHaveBeenCalledOnce();
+    expect(f.audio.getUserMedia).toHaveBeenCalledOnce();
+    await act(async () => {});
+    const lines = f.trace.mock.calls.map(([entry]) => entry);
+    const preload = lines.find(({ reason }) => reason === "enable")!;
+    expect(preload).toMatchObject({ step: "model-load-requested" });
+    expect(lines).toContainEqual(
+      expect.objectContaining({
+        attempt: preload.attempt,
+        step: "model-load-finished",
+        elapsedMs: expect.any(Number),
+      }),
+    );
   });
 
   it("inserts progressive speech with bounded PCM and discards unfinished speech on field changes", async () => {

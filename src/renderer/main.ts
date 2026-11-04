@@ -283,6 +283,8 @@ async function mountDesktop(
       },
     }),
   );
+  // The window is already visible; the model loads in main's speech process, off this thread.
+  if (!overlay) rootStore.dictationStore.preloadOnLaunch();
   window.addEventListener(
     "pagehide",
     () => {

@@ -836,10 +836,14 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await expect(unmute).toHaveAttribute("aria-pressed", "true");
     await expect.poll(savedEnabled).toBe(true);
     await application.close();
-    // The relaunched engine stays loading until the restored field has asked for it.
+    // The relaunched window preloads the engine before any field asks; it stays loading here.
+    const engineStarts = async () =>
+      (await readFile(join(model, "starts.jsonl"), "utf8")).trim().split("\n").length;
+    const startsBeforeRelaunch = await engineStarts();
     await configure({ ready: false, speech: false, text: "" });
     application = await launch();
     const restarted = await application.firstWindow();
+    await expect.poll(engineStarts, { timeout: 15_000 }).toBe(startsBeforeRelaunch + 1);
     // Settings and enablement are restored; temporary mute is not.
     await restarted.getByRole("button", { name: /Voice & Dictation/ }).click();
     const restartedMode = restarted.getByRole("switch", { name: "Dictation mode" });
@@ -850,22 +854,34 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     const restartedControl = restarted.getByRole("button", { name: "Mute dictation" });
     await expect(restartedControl).toHaveAttribute("aria-pressed", "false");
     await expect(restartedControl).toHaveAttribute("aria-busy", "true");
-    // First-load completion reaches the field that is still focused, with no refocus.
+    // Preload completion reaches the field that is still focused, with no refocus or reload.
     await configure({ ready: true, speech: false, text: "" });
     await expect(restarted.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening", {
       timeout: 15_000,
     });
     await expect(restartedControl).toHaveAttribute("aria-busy", "false");
     await expect(restartedSample).toBeFocused();
+    expect(await engineStarts()).toBe(startsBeforeRelaunch + 1);
     // The relaunched attempt's steps reach Cake's on-disk desktop log under one attempt ID.
-    const restartedSteps = async () => {
-      const lines = (await readFile(join(cakeHome, "logs", "desktop.log"), "utf8").catch(() => ""))
+    const loggedSteps = async () =>
+      (await readFile(join(cakeHome, "logs", "desktop.log"), "utf8").catch(() => ""))
         .split("\n")
         .filter((line) => line.includes('"Dictation step"'))
-        .map((line) => JSON.parse(line).message[1] as { attempt: string; step: string });
-      const attempt = lines.findLast(({ step }) => step === "listening")?.attempt;
+        .map(
+          (line) =>
+            JSON.parse(line).message[1] as { attempt: string; step: string; reason?: string },
+        );
+    const stepsOf = async (first: (line: { step: string; reason?: string }) => boolean) => {
+      const lines = await loggedSteps();
+      const attempt = lines.findLast(first)?.attempt;
       return lines.filter((line) => line.attempt === attempt).map(({ step }) => step);
     };
+    const restartedSteps = () => stepsOf(({ step }) => step === "listening");
+    await expect
+      .poll(() =>
+        stepsOf(({ step, reason }) => step === "model-load-requested" && reason === "launch"),
+      )
+      .toEqual(["model-load-requested", "model-load-finished"]);
     await expect
       .poll(restartedSteps)
       .toEqual(
@@ -888,6 +904,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await expect(disabled.getByRole("switch", { name: "Dictation mode" })).not.toBeChecked();
     await disabled.getByLabel("Try dictation").focus();
     await expect(disabled.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+    expect(await engineStarts()).toBe(startsBeforeRelaunch + 1);
   } finally {
     await application.close();
     await rm(root, { recursive: true, force: true });

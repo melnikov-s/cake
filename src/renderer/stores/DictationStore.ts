@@ -152,6 +152,10 @@ export class DictationStore extends Store<{
   private stoppedTargetId: string | undefined;
   private utterance: Utterance | undefined;
   private installation: AbortController | undefined;
+  /** The model load in flight for this mode; a capture starting meanwhile awaits it. */
+  private modelLoad: Promise<void> | undefined;
+  /** A background preload failed with no capture waiting; the next field focus shows it. */
+  private preloadFailure: unknown;
   private modeRevision = 0;
   private recoveryAttempt = 0;
   private recoveryRevision = 0;
@@ -360,36 +364,54 @@ export class DictationStore extends Store<{
     this.muted = false;
     this.error = undefined;
     this.endUtterance(false, "mode-changed");
-    this.phase = enabled ? "preparing" : "off";
-    const attempt = attemptId();
+    this.modelLoad = undefined;
+    this.preloadFailure = undefined;
+    this.phase = enabled ? "paused" : "off";
+    if (enabled) {
+      const loading = this.preload("enable");
+      if (this.target && this.targetFocused) await this.start(this.target, "enable");
+      await loading;
+      return;
+    }
     try {
-      if (!enabled) {
-        if (this.props.canReleaseRecognition?.() ?? true)
-          await this.props.client.release({ signal: this.signal });
-        return;
-      }
-      if (revision !== this.modeRevision || this.signal.aborted) return;
-      this.trace("model-load-requested", { attempt, reason: "enable" });
-      const loading = performance.now();
-      await this.props.client.prepare({ signal: this.signal });
+      if (this.props.canReleaseRecognition?.() ?? true)
+        await this.props.client.release({ signal: this.signal });
+    } catch (error) {
+      if (revision === this.modeRevision && !this.signal.aborted) this.reportError(error);
+    }
+  }
+  /** Launch warms the model in the background, but only for a window whose user enabled dictation. */
+  preloadOnLaunch() {
+    if (this.enabled && !this.busy) void this.preload("launch");
+  }
+  /** Loads the model before any field asks for it, so the first focus need not wait for it.
+   * A failure stays silent until the next field focus, which shows it with Retry. */
+  private async preload(reason: "launch" | "enable") {
+    const revision = this.modeRevision;
+    const attempt = attemptId();
+    this.trace("model-load-requested", { attempt, reason });
+    const loading = performance.now();
+    try {
+      await this.loadModel();
       this.trace("model-load-finished", {
         attempt,
         elapsedMs: Math.round(performance.now() - loading),
       });
-      if (revision !== this.modeRevision || this.signal.aborted) return;
-      this.phase = "paused";
-      if (this.target && (this.targetFocused || this.engaged) && !this.muted)
-        await this.start(this.target, "enable");
     } catch (error) {
-      if (revision === this.modeRevision && !this.signal.aborted) {
-        if (enabled && this.target) this.captureFailed(error, "startup", undefined, attempt);
-        else {
-          if (enabled)
-            this.trace("failed", { attempt, stage: "enable", code: recoveryCode(error) });
-          this.reportError(error);
-        }
-      }
+      if (revision !== this.modeRevision || this.signal.aborted) return;
+      this.trace("failed", { attempt, stage: "preload", code: recoveryCode(error) });
+      // A capture that joined this load reports the failure itself.
+      if (!this.utterance && this.phase !== "error") this.preloadFailure = error;
     }
+  }
+  /** At most one load in flight: a capture started during a preload joins it, never restarts it. */
+  private loadModel(): Promise<void> {
+    if (this.modelLoad) return this.modelLoad;
+    const load = this.props.client.prepare({ signal: this.signal }).finally(() => {
+      if (this.modelLoad === load) this.modelLoad = undefined;
+    });
+    this.modelLoad = load;
+    return load;
   }
   focus(target: DictationTarget, intentional = true) {
     if (!intentional && this.stoppedTargetId === target.id) return;
@@ -409,9 +431,6 @@ export class DictationStore extends Store<{
       this.targetFocused = true;
       return;
     }
-    // A field replacement cancels capture preparation, not mode enablement. Remember the
-    // capture before ending it so its successor can prepare instead of waiting forever.
-    const replacingCapture = this.utterance !== undefined || this.recoveryTimer !== undefined;
     this.endUtterance(true, "focus-changed");
     this.submission = undefined;
     this.target = target;
@@ -422,13 +441,16 @@ export class DictationStore extends Store<{
       this.trace("focus-ignored", { field: target.id, reason: this.muted ? "muted" : "busy" });
       return;
     }
-    // prepare() can rebuild a failed worker; an observed backend error is not a focus veto.
-    if (this.phase !== "preparing" || replacingCapture) void this.start(target, "focus");
-    else {
-      // Enablement starts this field when the model is ready, even if focus has moved on.
-      this.engaged = true;
-      this.trace("focus-ignored", { field: target.id, reason: "awaiting-enable" });
+    const failure = this.preloadFailure;
+    this.preloadFailure = undefined;
+    // Another window may have loaded the model since; otherwise offer Retry, not a silent reload.
+    if (failure !== undefined && this.state?.status !== "ready") {
+      this.trace("focus-ignored", { field: target.id, reason: "preload-failed" });
+      this.reportError(failure);
+      return;
     }
+    // prepare() can rebuild a failed worker; an observed backend error is not a focus veto.
+    void this.start(target, "focus");
   }
   /** DOM blur never ends an engaged capture; it only stops an idle (muted or busy) field. */
   blur(id: string, toIndicator = false) {
@@ -544,6 +566,7 @@ export class DictationStore extends Store<{
     if (this.target !== target || !this.enabled || this.muted || this.busy || this.signal.aborted)
       return;
     this.endUtterance(true, "restarted");
+    this.preloadFailure = undefined;
     if (!recovering) this.recoveryAttempt = 0;
     this.error = undefined;
     recordVoiceDiagnostic("dictation-start", { attempt: this.recoveryAttempt });
@@ -586,9 +609,9 @@ export class DictationStore extends Store<{
       await this.props.beforeCapture?.();
       if (this.utterance !== run) return;
       // Voice mode can have released the shared recognizer. Preparation is warm/idempotent.
-      this.trace("model-load-requested");
+      this.trace("model-load-requested", this.modelLoad ? { reason: "joined" } : {});
       const loading = performance.now();
-      await this.props.client.prepare({ signal: this.signal });
+      await this.loadModel();
       // Logged even when superseded: a finished load with no later step pinpoints the stall.
       this.trace("model-load-finished", { attempt: run.attempt, elapsedMs: since(loading) });
       if (this.utterance !== run) return;
@@ -912,6 +935,8 @@ export class DictationStore extends Store<{
   private async pauseForModelChange() {
     ++this.modeRevision;
     this.pauseCapture("model-change");
+    this.modelLoad = undefined;
+    this.preloadFailure = undefined;
     try {
       if (this.props.canReleaseRecognition?.() ?? true)
         await this.props.client.release({ signal: this.signal });

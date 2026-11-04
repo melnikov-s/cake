@@ -13,6 +13,10 @@ pages, widgets or OS-wide typing. It requires Apple Silicon and macOS 14+.
 2. Enable **Dictation mode**, focus a Cake prose field and wait for the speech
    control to finish preparing. The first Core ML load can take longer while macOS
    prepares the model. Installed users need no Python, Swift, Xcode or developer tools.
+   Cake starts loading the model in the background when dictation is turned on and
+   when the main window opens with dictation enabled. Focusing a field during that
+   load waits for it rather than starting another. A background load failure is
+   shown, with Retry, the next time a field is focused.
 3. Speech appears progressively. Enter drains recognition before submission where
    the field already supports Enter-to-submit; pauses alone do not submit dictation.
    Existing multiline and slash-menu behavior remains available.
