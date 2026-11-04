@@ -139,7 +139,7 @@ export class SessionChangesStore extends Store<SessionChangesStoreProps> {
 
   async openWorkspaceChanges() {
     try {
-      await SessionPresentationContext.consume(this)!.openWorkspaceChanges();
+      if (await SessionPresentationContext.consume(this)!.openWorkspaceChanges()) this.close();
     } catch (error) {
       if (!this.signal.aborted) this.error = describeError(error).message;
     }

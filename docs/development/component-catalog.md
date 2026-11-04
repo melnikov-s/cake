@@ -130,7 +130,7 @@ preserve the live iframe browsing context rather than remounting an editor. Its
 `fill` mode fills a shared accessory pane without adding an inline height or resize
 grip; the owning pane supplies resizing and chrome.
 
-[`AccessoryPanelLayout`](../../src/renderer/components/ui/accessory-panel-layout.tsx) owns the animated, resizable right-hand accessory slot. Its `keepConversationVisible` option keeps review panes beside the conversation and composer at narrower widths; other accessories retain their existing replacement behavior.
+[`AccessoryPanelLayout`](../../src/renderer/components/ui/accessory-panel-layout.tsx) owns the responsive, resizable right-hand accessory slot. All accessories, including Changes, sit beside the conversation when the surface is at least 860px wide and replace it on narrower surfaces. Closing the accessory restores the conversation.
 
 ### Workspace and chat shell
 

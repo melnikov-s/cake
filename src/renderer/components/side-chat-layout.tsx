@@ -61,7 +61,6 @@ export const SideChatLayout = observer(function SideChatLayout({
         dataSlot="side-chat-layout"
         open={Boolean(target)}
         width={target?.changes?.width ?? store.width}
-        keepConversationVisible={Boolean(target?.changes)}
         resizeLabel={target?.changes ? "Resize changes" : "Resize side chat"}
         onWidthChange={(width) =>
           target?.changes ? target.changes.setWidth(width) : store.setWidth(width)

@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorktreeChanges } from "../../../src/contracts/worktrees/worktree-changes";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -117,12 +117,13 @@ function renderChanges(
     outcome: { view: "file" },
     locations: [],
   }));
+  const open = vi.fn<Client["vscode"]["open"]>(async () => editorLease("a"));
   const openSourceControl = vi.fn<Client["vscode"]["openSourceControl"]>(async () => undefined);
   const fixture = renderEmbeddedEditor(
     {
       managedWorktrees: { inspectChanges, landing: async () => ({}) },
       filesystem: { prepareFileLocation },
-      vscode: { open: async () => editorLease("a"), reveal, openSourceControl },
+      vscode: { open, reveal, openSourceControl },
     },
     {
       additionalSessions: [
@@ -135,7 +136,7 @@ function renderChanges(
       ],
     },
   );
-  return { ...fixture, inspectChanges, prepareFileLocation, reveal, openSourceControl };
+  return { ...fixture, inspectChanges, prepareFileLocation, reveal, open, openSourceControl };
 }
 
 async function openChanges(fixture: ReturnType<typeof renderChanges>, commits = 2) {
@@ -245,8 +246,13 @@ describe("Session Changes review", () => {
     },
   );
 
-  it("opens embedded VS Code Source Control through the existing workspace changes action", async () => {
+  it("closes Changes only after embedded VS Code Source Control opens successfully", async () => {
     using fixture = renderChanges();
+    let complete!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    fixture.openSourceControl.mockReturnValueOnce(pending);
     const pane = await openChanges(fixture);
     await fixture.user.click(within(pane).getByRole("button", { name: "Open in VS Code" }));
     await waitFor(() =>
@@ -255,7 +261,27 @@ describe("Session Changes review", () => {
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
+    expect(screen.getByRole("complementary", { name: "Changes" })).toBeDefined();
+    await act(async () => complete());
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Changes" })).toBeNull(),
+    );
   });
+
+  it.each(["open", "openSourceControl"] as const)(
+    "keeps Changes available and preserves the editor error when %s fails",
+    async (operation) => {
+      using fixture = renderChanges();
+      fixture[operation].mockRejectedValueOnce(new Error("VS Code unavailable"));
+      const pane = await openChanges(fixture);
+      await fixture.user.click(within(pane).getByRole("button", { name: "Open in VS Code" }));
+      expect(await screen.findByText("VS Code unavailable")).toBeDefined();
+      const retainedPane = screen.getByRole("complementary", { name: "Changes" });
+      if (operation === "open") expect(fixture.openSourceControl).not.toHaveBeenCalled();
+      await fixture.user.click(within(retainedPane).getByRole("button", { name: "Close Changes" }));
+      expect(screen.queryByRole("complementary", { name: "Changes" })).toBeNull();
+    },
+  );
 
   it("keeps review state scoped to its session", async () => {
     using fixture = renderChanges();

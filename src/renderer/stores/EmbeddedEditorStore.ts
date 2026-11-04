@@ -195,7 +195,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     if (location) await this.reveal(location);
   }
 
-  async showSourceControl() {
+  async showSourceControl(): Promise<boolean> {
     const projectPath = this.props.projectPath();
     if (!projectPath) throw new Error("No project is open");
     this.activate();
@@ -205,14 +205,16 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       this.props.projectPath() !== projectPath ||
       this.openedWorkspace !== projectPath
     )
-      return;
+      return false;
     try {
       await this.vscode.openSourceControl(projectPath, { signal: this.signal });
+      return true;
     } catch (error) {
-      if (this.signal.aborted) return;
+      if (this.signal.aborted) return false;
       const described = describeError(error);
       this.error = described.message;
       this.errorDetails = described.details;
+      return false;
     }
   }
 

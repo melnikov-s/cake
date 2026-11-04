@@ -154,10 +154,10 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
   }
 
   async openWorkspaceChanges() {
-    if (!this.canOpen()) return;
+    if (!this.canOpen()) return false;
     this.props.dismissCommandPane();
     this.reviews.clearActiveThread();
-    await this.embeddedEditorStore.showSourceControl();
+    return this.embeddedEditorStore.showSourceControl();
   }
 
   async openReviewThread(threadId: string) {
