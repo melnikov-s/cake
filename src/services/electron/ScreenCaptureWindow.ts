@@ -27,6 +27,7 @@ interface CaptureWindowOptions {
   readonly preloadPath: string;
   readonly rendererPath: string;
   readonly rendererUrl?: string;
+  /** Background test instances: never show native UI, including the overlay and alerts. */
   readonly hidden: boolean;
   readonly targetWindow: () => BrowserWindow | undefined;
   readonly requestCapture: (window: BrowserWindow) => void;
@@ -68,7 +69,9 @@ export class ScreenCaptureWindow {
       !globalShortcut.register(next, () => {
         const target = this.options.targetWindow();
         if (target) this.options.requestCapture(target);
-        else
+        // macOS delivers a global shortcut to every process that registered it. A windowless
+        // test instance left running beside the user's Cake must not answer its capture.
+        else if (!this.options.hidden)
           dialog.showErrorBox(
             "Screen capture",
             "Open a Cake window and chat before capturing an attachment.",

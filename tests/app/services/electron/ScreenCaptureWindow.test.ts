@@ -92,7 +92,7 @@ vi.mock("electron", () => ({
   },
 }));
 
-import { BrowserWindow as NativeWindow } from "electron";
+import { BrowserWindow as NativeWindow, dialog } from "electron";
 
 beforeEach(() => {
   native.windows.splice(0);
@@ -103,6 +103,7 @@ beforeEach(() => {
   native.permission = "granted";
   native.output = { width: 2400, height: 1200 };
   native.copy.mockReset().mockResolvedValue(undefined);
+  vi.mocked(dialog.showErrorBox).mockClear();
   native.sources.mockReset();
   native.sources.mockResolvedValue([
     {
@@ -287,6 +288,28 @@ describe("Native screen capture lifetime", () => {
     native.registered.set("OtherShortcut", () => {});
     capture.stop();
     expect([...native.registered.keys()]).toEqual(["OtherShortcut"]);
+  });
+  it("requests a capture from the target window without showing the no-window alert", () => {
+    const { owner, requestCapture } = fixture();
+    native.registered.get("CommandOrControl+Shift+6")?.();
+    expect(requestCapture).toHaveBeenCalledWith(owner);
+    expect(dialog.showErrorBox).not.toHaveBeenCalled();
+  });
+  it("alerts only a visible instance that has no window to capture into", () => {
+    for (const hidden of [false, true]) {
+      const owner = new NativeWindow({ show: false });
+      const capture = new ScreenCaptureWindow({
+        preloadPath: "/preload",
+        rendererPath: "/renderer",
+        hidden,
+        targetWindow: () => undefined,
+        requestCapture: vi.fn(),
+      });
+      capture.activate(owner);
+      native.registered.get("CommandOrControl+Shift+6")?.();
+      capture.stop();
+    }
+    expect(dialog.showErrorBox).toHaveBeenCalledTimes(1);
   });
   it("does not open a late overlay after shutdown during screen acquisition", async () => {
     let resolve!: (sources: unknown[]) => void;
