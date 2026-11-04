@@ -105,12 +105,22 @@ export class CakeChatOverlayWindow {
     return this.visible;
   }
 
+  /** Local key delivery must not also toggle when the system-wide handler owns the keys.
+   * The overlay is a non-activating panel, so it keeps the global registration even with focus. */
+  invokeLocalShortcut() {
+    if (!this.registered) this.invoke();
+  }
+
   /**
    * The shortcut is pressed while another app is frontmost, so it reads that app's selection
    * first: once the overlay has keyboard focus, a copy fallback would copy from Cake instead.
    * The menu item is chosen inside Cake and has no foreign selection to bring along.
    */
   invoke(source: "shortcut" | "menu" = "menu") {
+    if (this.visible) {
+      this.hide();
+      return;
+    }
     const focus = this.options.focus();
     if (
       (focus === "main" || (source === "menu" && focus !== "overlay")) &&
@@ -202,6 +212,9 @@ export class CakeChatOverlayWindow {
       visibleOnFullScreen: true,
       skipTransformProcessType: true,
     });
+    // Composer and portaled picker interactions stay inside this native window. Only leaving
+    // the window (for example, clicking the main window or another app) dismisses the surface.
+    window.on("blur", () => this.hide());
     window.on("closed", () => {
       if (this.window !== window) return;
       this.window = undefined;

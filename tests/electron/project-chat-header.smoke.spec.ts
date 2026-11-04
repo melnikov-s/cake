@@ -118,6 +118,27 @@ for (const { mode, chatSidebarVisible, width } of [
       const projectQuickInput = quickChat.getByRole("combobox", { name: "Message Project Chat" });
       await expect(projectQuickInput).toBeFocused();
       await projectQuickInput.pressSequentially("Quick project idea");
+      // Observe the native hide boundary while keeping every test window off the desktop.
+      await app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows().find((candidate) =>
+          new URL(candidate.webContents.getURL()).searchParams.has("cakeChatOverlay"),
+        )!;
+        Reflect.set(window, "testHideCalls", 0);
+        const hide = window.hide.bind(window);
+        window.hide = () => {
+          Reflect.set(window, "testHideCalls", Reflect.get(window, "testHideCalls") + 1);
+          hide();
+        };
+      });
+      const hideCalls = () =>
+        app!.evaluate(({ BrowserWindow }) => {
+          const window = BrowserWindow.getAllWindows().find((candidate) =>
+            new URL(candidate.webContents.getURL()).searchParams.has("cakeChatOverlay"),
+          )!;
+          return Reflect.get(window, "testHideCalls") as number;
+        });
+      await summonQuickChat();
+      await expect.poll(hideCalls).toBe(1);
       await summonQuickChat();
       await expect(projectQuickInput).toBeFocused();
       await expect(projectQuickInput).toHaveValue("Quick project idea");
@@ -133,6 +154,46 @@ for (const { mode, chatSidebarVisible, width } of [
         .click();
       await expect(projectQuickInput).toBeFocused();
       await expect(projectQuickInput).toHaveValue("Quick project idea");
+      // Composer and portaled picker clicks must not dismiss the window.
+      await projectQuickInput.click();
+      expect(await hideCalls()).toBe(1);
+      await expect(quickChat.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      if (process.platform === "darwin") {
+        // Direct Chromium input uses the same action and suppresses menu/renderer duplicates.
+        await app.evaluate(({ BrowserWindow }) => {
+          const contents = BrowserWindow.getAllWindows().find((candidate) =>
+            new URL(candidate.webContents.getURL()).searchParams.has("cakeChatOverlay"),
+          )!.webContents;
+          contents.sendInputEvent({ type: "keyDown", keyCode: "`", modifiers: ["meta"] });
+          contents.sendInputEvent({ type: "keyUp", keyCode: "`", modifiers: ["meta"] });
+        });
+        await expect.poll(hideCalls).toBe(2);
+        await app.evaluate(({ BrowserWindow }) => {
+          const contents = BrowserWindow.getAllWindows().find(
+            (candidate) =>
+              !new URL(candidate.webContents.getURL()).searchParams.has("cakeChatOverlay"),
+          )!.webContents;
+          contents.sendInputEvent({ type: "keyDown", keyCode: "`", modifiers: ["meta"] });
+          contents.sendInputEvent({ type: "keyUp", keyCode: "`", modifiers: ["meta"] });
+        });
+        await expect(projectQuickInput).toBeFocused();
+        await expect(projectQuickInput).toHaveValue("Quick project idea");
+        expect(await hideCalls()).toBe(2);
+      }
+      // Deliver the native outside-click/blur boundary without taking OS focus.
+      await app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()
+          .find((candidate) =>
+            new URL(candidate.webContents.getURL()).searchParams.has("cakeChatOverlay"),
+          )!
+          .emit("blur");
+      });
+      const dismissed = process.platform === "darwin" ? 3 : 2;
+      await expect.poll(hideCalls).toBe(dismissed);
+      await summonQuickChat();
+      await expect(projectQuickInput).toBeFocused();
+      await expect(projectQuickInput).toHaveValue("Quick project idea");
+      expect(await hideCalls()).toBe(dismissed);
       await quickChat.getByRole("button", { name: "Close drop-down Cake Chat" }).click();
       if (mode !== "normal")
         await expect(

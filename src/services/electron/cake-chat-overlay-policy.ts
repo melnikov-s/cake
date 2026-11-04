@@ -10,9 +10,9 @@ interface Rectangle {
 
 /**
  * The system-wide drop-down shortcut is registered only while no main Cake window is focused.
- * Inside a main window the application-menu accelerator summons the same overlay, including
+ * Inside a main window the application-menu accelerator toggles the same overlay, including
  * when an embedded editor or browser owns keyboard input. Elsewhere the global registration
- * owns the keys. Repeated invocations focus the composer rather than hiding the overlay.
+ * owns the keys, including the non-activating overlay panel.
  */
 export function overlayShortcutActive(accelerator: string, focus: CakeWindowFocus): boolean {
   return accelerator !== "" && focus !== "main";

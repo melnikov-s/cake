@@ -121,6 +121,7 @@ const makeElectronService = (
       const nativeId = window.webContents.id;
       const ownerId = connections.desktop(nativeId);
       installContentGuards(window);
+      installOverlayHotkeyInput(window);
       window.on("closed", () => {
         clientWorkspaces.releaseConnection(ownerId);
         connections.release(ownerId);
@@ -171,13 +172,37 @@ const makeElectronService = (
   });
   let accessibilityNoticeShown = false;
   // Focus moves between windows as a blur followed by a focus; settle before deciding whether
-  // the drop-down shortcut belongs to the system or to the focused main window.
+  // the drop-down shortcut belongs to the system or to the focused Cake window.
   let overlayFocusSync: ReturnType<typeof setImmediate> | undefined;
   const syncOverlayShortcut = () => {
     if (overlayFocusSync) return;
     overlayFocusSync = setImmediate(() => {
       overlayFocusSync = undefined;
       overlay.sync();
+    });
+  };
+  const installOverlayHotkeyInput = (window: BrowserWindow) => {
+    window.webContents.on("before-input-event", (event, input) => {
+      // Native Command+Backquote is claimed by the application-menu accelerator below. Keep this
+      // fallback for Backquote input delivered directly to Chromium and for modifier variants.
+      if (process.platform !== "darwin" || !input.meta || input.code !== "Backquote") return;
+      event.preventDefault();
+      if (input.type !== "keyDown" || input.isAutoRepeat) return;
+      if (!input.control && !input.alt && !input.shift && overlay.usesDefaultShortcut) {
+        overlay.invokeLocalShortcut();
+        return;
+      }
+      clientEvents.sendTo(connectionForWindow(window), {
+        type: "application-hotkey-input",
+        key: input.key,
+        code: input.code,
+        metaKey: input.meta,
+        ctrlKey: input.control,
+        altKey: input.alt,
+        shiftKey: input.shift,
+        repeat: input.isAutoRepeat,
+        isComposing: false,
+      });
     });
   };
   const fullscreenSurfaces = new Map<number, Set<string>>();
@@ -348,28 +373,7 @@ const makeElectronService = (
       clientEvents.sendTo(connectionForWindow(window), { type: "window-blurred" });
     });
     installContentGuards(window);
-    window.webContents.on("before-input-event", (event, input) => {
-      // Native Command+Backquote is claimed by the application-menu accelerator below. Keep this
-      // fallback for Backquote input delivered directly to Chromium and for modifier variants.
-      if (process.platform !== "darwin" || !input.meta || input.code !== "Backquote") return;
-      event.preventDefault();
-      if (input.type !== "keyDown" || input.isAutoRepeat) return;
-      if (!input.control && !input.alt && !input.shift && overlay.usesDefaultShortcut) {
-        overlay.invoke();
-        return;
-      }
-      clientEvents.sendTo(connectionForWindow(window), {
-        type: "application-hotkey-input",
-        key: input.key,
-        code: input.code,
-        metaKey: input.meta,
-        ctrlKey: input.control,
-        altKey: input.alt,
-        shiftKey: input.shift,
-        repeat: input.isAutoRepeat,
-        isComposing: false,
-      });
-    });
+    installOverlayHotkeyInput(window);
     window.webContents.on("render-process-gone", () => {
       fullscreenSurfaces.delete(ownerId);
     });
@@ -491,7 +495,10 @@ const makeElectronService = (
               id: "cake-chat-overlay",
               label: "Drop-down Cake Chat",
               accelerator: "CommandOrControl+`",
-              click: () => overlay.invoke(),
+              click: (_item, _window, event) => {
+                if (event.triggeredByAccelerator) overlay.invokeLocalShortcut();
+                else overlay.invoke();
+              },
             },
             {
               label: "Toggle Terminal",

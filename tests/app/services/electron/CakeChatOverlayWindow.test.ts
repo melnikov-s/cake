@@ -117,6 +117,7 @@ type FakeWindow = {
   setVisibleOnAllWorkspaces: ReturnType<typeof vi.fn>;
   loadFile: ReturnType<typeof vi.fn>;
   destroy(): void;
+  emit(event: string): boolean;
 };
 const overlayWindow = () => native.windows.at(-1) as FakeWindow;
 
@@ -156,6 +157,35 @@ describe("Drop-down Cake Chat shortcut routing", () => {
     overlay.stop();
   });
 
+  it("toggles only once when global and local shortcut handlers receive the same press", () => {
+    const { overlay, press, focusOn, onShown } = fixture("main");
+    overlay.configure({ shortcut: "Mod+`", captureSelectedText: false });
+    overlay.invokeLocalShortcut();
+    expect(overlay.isVisible).toBe(true);
+    focusOn("overlay");
+    // The panel is non-activating: keep the system-wide registration while typing into it.
+    // Local menu/input delivery is ignored regardless of which handler receives the key first.
+    overlay.invokeLocalShortcut();
+    press();
+    overlay.invokeLocalShortcut();
+    expect(overlay.isVisible).toBe(false);
+    expect(overlayWindow().hide).toHaveBeenCalledOnce();
+    expect(onShown).toHaveBeenCalledOnce();
+    overlay.stop();
+  });
+
+  it("keeps a custom shortcut global so it can also close a focused overlay", () => {
+    const { overlay, press, focusOn } = fixture();
+    overlay.configure({ shortcut: "Mod+Shift+J", captureSelectedText: false });
+    press("CommandOrControl+Shift+J");
+    expect(overlay.isVisible).toBe(true);
+    focusOn("overlay");
+    press("CommandOrControl+Shift+J");
+    expect(overlay.isVisible).toBe(false);
+    expect(overlayWindow().hide).toHaveBeenCalledOnce();
+    overlay.stop();
+  });
+
   it("reports a conflict without disabling the working shortcut, and can be turned off", () => {
     const { overlay } = fixture();
     overlay.configure({ shortcut: "Mod+`", captureSelectedText: true });
@@ -187,7 +217,7 @@ describe("Drop-down Cake Chat shortcut routing", () => {
 });
 
 describe("Drop-down Cake Chat window", () => {
-  it("summons one reused window and refocuses it without hiding or changing the destination", async () => {
+  it("toggles one reused window without re-routing when closing", async () => {
     const { overlay, press, focusOn, prepareWindow, onShown } = fixture();
     overlay.configure({ shortcut: "Mod+`", captureSelectedText: true });
     press();
@@ -218,21 +248,49 @@ describe("Drop-down Cake Chat window", () => {
 
     focusOn("overlay");
     press();
-    expect(window.show).toHaveBeenCalledTimes(2);
-    expect(window.focus).toHaveBeenCalledTimes(2);
-    expect(onShown).toHaveBeenLastCalledWith(window, {});
-    expect(overlay.isVisible).toBe(true);
-    overlay.hide();
+    expect(window.show).toHaveBeenCalledTimes(1);
+    expect(window.focus).toHaveBeenCalledTimes(1);
+    expect(onShown).toHaveBeenCalledTimes(1);
+    expect(overlay.isVisible).toBe(false);
     expect(window.hide).toHaveBeenCalledTimes(1);
     focusOn("none");
 
     native.workArea = { x: -1280, y: 0, width: 1280, height: 800 };
     press();
-    await vi.waitFor(() => expect(window.show).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(window.show).toHaveBeenCalledTimes(2));
     expect(window.setBounds).toHaveBeenLastCalledWith({ x: -1280, y: 0, width: 1280, height: 360 });
     expect(native.windows).toHaveLength(1);
     overlay.stop();
     expect(native.registered.size).toBe(0);
+  });
+
+  it.each(["main", "other", "none"] as const)(
+    "closes a visible overlay before requesting routing or selected text with %s focused",
+    (focus) => {
+      const { overlay, requestFromMain, readContext, onShown } = fixture(focus);
+      requestFromMain.mockReturnValue(true);
+      overlay.show({ sessionId: "project-chat:fixture" });
+      overlay.invoke("shortcut");
+      expect(overlay.isVisible).toBe(false);
+      expect(overlayWindow().hide).toHaveBeenCalledOnce();
+      expect(requestFromMain).not.toHaveBeenCalled();
+      expect(readContext).not.toHaveBeenCalled();
+      expect(onShown).toHaveBeenCalledOnce();
+      overlay.stop();
+    },
+  );
+
+  it("dismisses on native window blur and reuses the renderer on reopen", () => {
+    const { overlay } = fixture();
+    overlay.show({ sessionId: "project-chat:fixture" });
+    const window = overlayWindow();
+    window.emit("blur");
+    expect(overlay.isVisible).toBe(false);
+    expect(window.hide).toHaveBeenCalledOnce();
+    overlay.show({ sessionId: "project-chat:fixture" });
+    expect(overlay.isVisible).toBe(true);
+    expect(native.windows).toHaveLength(1);
+    overlay.stop();
   });
 
   it("reads the other app's selection before taking focus, and only from the shortcut", async () => {
