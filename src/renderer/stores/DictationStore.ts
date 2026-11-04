@@ -144,8 +144,10 @@ export class DictationStore extends Store<{
   private targetFocused = false;
   /** Keyboard focus moved from the field into its own indicator; keeps that control mounted. */
   private indicatorFocused = false;
-  /** Focus-period latch, independent of decoding generations and manual draft edits. */
-  private capturedSpeech = false;
+  /** Set once capture is requested for the target. From then on capture follows the target, not
+   * DOM or window focus, until an explicit end: Escape, mute, disable, Send, another dictation
+   * field, unmount, voice mode or a model change. */
+  private engaged = false;
   private submission: DictationSubmission | undefined;
   private stoppedTargetId: string | undefined;
   private utterance: Utterance | undefined;
@@ -188,7 +190,7 @@ export class DictationStore extends Store<{
     if (this.indicatorFocused) return true;
     if (this.muted || this.phase === "error") return this.targetFocused;
     return (
-      (this.targetFocused || this.capturedSpeech) &&
+      (this.targetFocused || this.engaged) &&
       (this.phase === "preparing" || this.phase === "listening" || this.phase === "finishing")
     );
   }
@@ -202,7 +204,7 @@ export class DictationStore extends Store<{
     if (!this.enabled || this.target?.id !== id || this.muted === muted) return;
     this.muted = muted;
     if (muted) {
-      this.capturedSpeech = false;
+      this.engaged = false;
       this.endUtterance(false, "muted");
       this.phase = "paused";
     } else {
@@ -346,7 +348,7 @@ export class DictationStore extends Store<{
     this.target = undefined;
     this.targetFocused = false;
     this.indicatorFocused = false;
-    this.capturedSpeech = false;
+    this.engaged = false;
     if (this.enabled) this.phase = "paused";
   }
   async setEnabled(enabled: boolean) {
@@ -354,7 +356,7 @@ export class DictationStore extends Store<{
     this.enabled = enabled;
     this.recoveryAttempt = 0;
     this.submission = undefined;
-    this.capturedSpeech = false;
+    this.engaged = false;
     this.muted = false;
     this.error = undefined;
     this.endUtterance(false, "mode-changed");
@@ -376,7 +378,8 @@ export class DictationStore extends Store<{
       });
       if (revision !== this.modeRevision || this.signal.aborted) return;
       this.phase = "paused";
-      if (this.target && this.targetFocused && !this.muted) await this.start(this.target, "enable");
+      if (this.target && (this.targetFocused || this.engaged) && !this.muted)
+        await this.start(this.target, "enable");
     } catch (error) {
       if (revision === this.modeRevision && !this.signal.aborted) {
         if (enabled && this.target) this.captureFailed(error, "startup", undefined, attempt);
@@ -401,6 +404,11 @@ export class DictationStore extends Store<{
         });
       return;
     }
+    // Returning to the field that kept dictating while unfocused continues the same capture.
+    if (this.target === target && this.engaged && this.capturing) {
+      this.targetFocused = true;
+      return;
+    }
     // A field replacement cancels capture preparation, not mode enablement. Remember the
     // capture before ending it so its successor can prepare instead of waiting forever.
     const replacingCapture = this.utterance !== undefined || this.recoveryTimer !== undefined;
@@ -408,7 +416,7 @@ export class DictationStore extends Store<{
     this.submission = undefined;
     this.target = target;
     this.targetFocused = true;
-    this.capturedSpeech = false;
+    this.engaged = false;
     if (!this.enabled) return;
     if (this.muted || this.busy) {
       this.trace("focus-ignored", { field: target.id, reason: this.muted ? "muted" : "busy" });
@@ -416,9 +424,13 @@ export class DictationStore extends Store<{
     }
     // prepare() can rebuild a failed worker; an observed backend error is not a focus veto.
     if (this.phase !== "preparing" || replacingCapture) void this.start(target, "focus");
-    else this.trace("focus-ignored", { field: target.id, reason: "awaiting-enable" });
+    else {
+      // Enablement starts this field when the model is ready, even if focus has moved on.
+      this.engaged = true;
+      this.trace("focus-ignored", { field: target.id, reason: "awaiting-enable" });
+    }
   }
-  /** Only speech confirmed in this focus period permits capture to survive DOM blur. */
+  /** DOM blur never ends an engaged capture; it only stops an idle (muted or busy) field. */
   blur(id: string, toIndicator = false) {
     if (this.target?.id !== id) return;
     this.targetFocused = false;
@@ -427,7 +439,7 @@ export class DictationStore extends Store<{
       this.releaseTarget(id);
       return;
     }
-    if (this.capturedSpeech) return;
+    if (this.engaged) return;
     this.endUtterance(true, "blur");
     this.releaseMicrophoneSoon();
     this.phase = "paused";
@@ -451,7 +463,7 @@ export class DictationStore extends Store<{
     this.target = undefined;
     this.targetFocused = false;
     this.indicatorFocused = false;
-    this.capturedSpeech = false;
+    this.engaged = false;
     if (this.enabled) this.phase = "paused";
   }
   /** Explicit stop keeps the visible draft, but no focus/restart callback can re-arm it. */
@@ -489,7 +501,7 @@ export class DictationStore extends Store<{
       !this.enabled ||
       this.muted ||
       (this.submission !== undefined && this.phase !== "finishing") ||
-      (!this.targetFocused && !this.capturedSpeech)
+      (!this.targetFocused && !this.engaged)
     )
       return;
     // Typing/selection changes must not bypass recovery backoff or retry a permanent error.
@@ -555,6 +567,7 @@ export class DictationStore extends Store<{
       listeningSince: 0,
     };
     this.utterance = run;
+    this.engaged = true;
     this.phase = "preparing";
     target.begin();
     this.trace("start-requested", {
@@ -588,7 +601,6 @@ export class DictationStore extends Store<{
           if (run.sendPhrase) return this.voiceAudio(run, samples, speech);
           if (run.finishing) return;
           if (speech) {
-            this.capturedSpeech = true;
             run.heardSpeech = true;
             run.quietSamples = 0;
             run.cleanupDue = false;
@@ -674,7 +686,6 @@ export class DictationStore extends Store<{
         recordVoiceDiagnostic("dictation-recovered", { attempt: this.recoveryAttempt });
         this.recoveryAttempt = 0;
       }
-      if (text.trim()) this.capturedSpeech = true;
       // Empty/no-change recognition is not an edit: preserve the user's selection until
       // words arrive, even when background noise triggers the speech detector.
       const preferences = this.props.preferences.values;
@@ -708,7 +719,6 @@ export class DictationStore extends Store<{
     run.chunks.push(samples);
     run.samples += samples.length;
     if (speech) {
-      this.capturedSpeech = true;
       run.heardSpeech = true;
       run.quietSamples = 0;
     } else run.quietSamples += samples.length;
@@ -863,7 +873,7 @@ export class DictationStore extends Store<{
     if (
       this.target?.id === id &&
       !this.submission &&
-      (this.targetFocused || this.capturedSpeech) &&
+      (this.targetFocused || this.engaged) &&
       this.enabled &&
       !this.muted &&
       this.phase === "paused"
@@ -882,7 +892,7 @@ export class DictationStore extends Store<{
     if (
       this.target &&
       !this.submission &&
-      (this.targetFocused || this.capturedSpeech) &&
+      (this.targetFocused || this.engaged) &&
       this.enabled &&
       !this.muted &&
       this.state?.status === "ready"

@@ -16,8 +16,8 @@ pages, widgets or OS-wide typing. It requires Apple Silicon and macOS 14+.
 3. Speech appears progressively. Enter drains recognition before submission where
    the field already supports Enter-to-submit; pauses alone do not submit dictation.
    Existing multiline and slash-menu behavior remains available.
-4. Use the circular waveform to mute/unmute. Escape mutes before the field's usual
-   Escape action. Muting preserves visible text; unmuting resumes at the caret.
+4. Use the circular waveform to mute/unmute. Escape stops dictation before the field's
+   usual Escape action. Muting preserves visible text; unmuting resumes at the caret.
 
 Recognition re-decodes a bounded recent-audio window with fresh decoder state.
 Recent words and punctuation can change as more speech arrives, including across
@@ -28,12 +28,18 @@ recent tail. Pauses stop feeding room noise but do not seal the recognition text
 Enter explicitly finalizes it. Audio stays in memory and is released on finalization
 or when a new insertion starts.
 
-Focus determines the destination. Blurring, typing or moving the caret seals the
-current spoken span; late recognition must not replace manually edited text.
+Focusing a field chooses the destination. Dictation then stays with that field until
+an explicit end: Escape, mute, disabling dictation, sending, focusing another dictation
+field, leaving the chat (the field unmounts), starting voice mode or changing the speech
+model. Losing focus never stops or pauses it, before or after speech: clicking elsewhere
+in Cake, another app, the desktop, Browser Mode or the VS Code panel keeps writing into
+the same field. Escape only reaches Cake while Cake has keyboard focus. Typing or moving
+the caret seals the current spoken span; late recognition must not replace manually
+edited text.
 The recognition model stays warm while dictation is enabled. The microphone and
 audio worklet are reused across field/chat switches with a gap of up to 500 ms;
 audio during that gap and queued audio from the old field are discarded. Longer
-idle gaps, muting, disabling dictation, and leaving the app release the microphone.
+idle gaps, muting, disabling dictation and stopping release the microphone.
 [Conversation mode](conversation-mode.md) uses the same recognizer but submits the
 normal composer and can speak replies. It temporarily suppresses dictation in its
 composer without changing the Dictation preference.
@@ -128,7 +134,7 @@ cannot guarantee semantic fidelity; review important instructions before submiss
 In utility mode, gray text marks the spoken insertion awaiting optional cleanup;
 typed text stays ordinary. Utility cleanup runs on a sustained pause or finalization,
 not every audio frame. Recognition itself revises recent text in both modes. Manual
-edits, blur and mute seal that insertion. Voice auto-send finalizes recognition and
+edits and mute seal that insertion. Voice auto-send finalizes recognition and
 any selected utility cleanup before submitting the composer.
 
 Tune shared speech detection in **Speech input** settings; capture changes take effect

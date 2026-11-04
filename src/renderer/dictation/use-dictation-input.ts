@@ -105,7 +105,8 @@ export function useDictationInput(
       )
         store.focus(field, false);
     };
-    const blur = () => store.pauseCapture("window-blur");
+    // Focus loss never ends capture: leaving Cake, Browser Mode or VS Code keeps dictating here.
+    // Escape reaches this listener only while Cake's page has keyboard focus.
     const escape = (event: globalThis.KeyboardEvent) => {
       if (
         event.key !== "Escape" ||
@@ -120,12 +121,10 @@ export function useDictationInput(
       store.stop(id);
     };
     window.addEventListener("keydown", escape);
-    window.addEventListener("blur", blur);
     window.addEventListener("focus", focused);
     focused();
     return () => {
       window.removeEventListener("keydown", escape);
-      window.removeEventListener("blur", blur);
       window.removeEventListener("focus", focused);
       store.releaseTarget(id);
     };

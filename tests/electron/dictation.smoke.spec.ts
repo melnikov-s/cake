@@ -3,16 +3,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
-import { windowState } from "../fixtures/window-state";
+import { store, windowStateChildren, windowStateDocument } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("Cake dictation shows readiness, types into chat and annotations, and seals focus boundaries", async () => {
-  test.skip(
-    process.platform !== "darwin" || process.arch !== "arm64",
-    "Parakeet installation targets Apple Silicon",
-  );
-  test.setTimeout(90_000);
+/** Isolated profile with fake native dictation assets and a scriptable external recognizer. */
+async function dictationFixture(options: { dictationEnabled?: boolean } = {}) {
   const root = await mkdtemp(join(tmpdir(), "cake-dictation-smoke-"));
   const userData = join(root, "user-data"),
     project = join(root, "project"),
@@ -81,7 +77,10 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
   const timestamp = new Date(0).toISOString();
   await writeFile(
     join(userData, "window-state.json"),
-    windowState({ project, sessionId, theme: "dark" }),
+    windowStateDocument({
+      ...windowStateChildren({ project, sessionId, theme: "dark" }),
+      ...(options.dictationEnabled ? { dictationStore: store({ enabled: true }) } : {}),
+    }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),
@@ -146,6 +145,17 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
         PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
+  return { root, userData, cakeHome, sessionId, dictation, model, configure, launch };
+}
+
+test("Cake dictation shows readiness, types into chat and annotations, and keeps dictating across focus loss", async () => {
+  test.skip(
+    process.platform !== "darwin" || process.arch !== "arm64",
+    "Parakeet installation targets Apple Silicon",
+  );
+  test.setTimeout(90_000);
+  const { root, userData, cakeHome, sessionId, dictation, model, configure, launch } =
+    await dictationFixture();
   let application = await launch();
   const savedEnabled = async () => {
     const document = JSON.parse(await readFile(join(userData, "window-state.json"), "utf8"));
@@ -337,13 +347,13 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await expect(composer).toHaveValue("Explicitly chosen input");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 
-    // A new owner cannot inherit speech from the settings input or from mere typing.
+    // Blur before any speech keeps dictating into this field, not wherever focus went.
     await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
-    await expect(indicator).toHaveCount(0);
+    await expect(indicator).toHaveText("Listening");
+    await configure({ ready: true, speech: true, text: "Spoken after blur" });
+    await expect(composer).toHaveValue("Explicitly chosen input Spoken after blur");
     await composer.focus();
-    await configure({ ready: true, speech: true, text: "Spoken before blur" });
-    await expect(composer).toHaveValue("Explicitly chosen input Spoken before blur");
-    // Once this focus period captures speech, transcript UI does not revoke its insertion.
+    // Transcript UI does not revoke the insertion either.
     await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
     await page
       .getByText("Inspect this implementation before changing it.", { exact: true })
@@ -357,9 +367,9 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await configure({ ready: true, speech: false, text: "" });
     await composer.focus();
     await composer.fill("Explicitly chosen input");
-    // Refocusing the same input resets the latch; its old speech no longer counts.
+    // Refocusing the same input continues its capture.
     await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
-    await expect(indicator).toHaveCount(0);
+    await expect(indicator).toHaveText("Listening");
     await composer.focus();
     await expect(indicator).toHaveText("Listening");
     // Focused Escape is a stop, not a mute or an invitation to re-arm on typing.
@@ -704,7 +714,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await edit.press("End");
     await details.getByRole("button", { name: "Save annotation", exact: true }).focus();
     await expect(edit).not.toBeFocused();
-    await expect(indicator).toHaveCount(0);
+    await expect(indicator).toHaveText("Listening");
     await edit.focus();
     await configure({ ready: true, speech: true, text: "First focused words" });
     await expect(edit).toHaveValue(annotationText + " First focused words");
@@ -878,6 +888,69 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await expect(disabled.getByRole("switch", { name: "Dictation mode" })).not.toBeChecked();
     await disabled.getByLabel("Try dictation").focus();
     await expect(disabled.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+  } finally {
+    await application.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Cake composer dictation keeps capturing while Cake's page lacks OS focus", async () => {
+  test.skip(
+    process.platform !== "darwin" || process.arch !== "arm64",
+    "Parakeet installation targets Apple Silicon",
+  );
+  test.setTimeout(60_000);
+  const { root, configure, launch } = await dictationFixture({ dictationEnabled: true });
+  await configure({ ready: true, speech: false, text: "" });
+  const application = await launch();
+  try {
+    const page = await application.firstWindow();
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    const indicator = page.locator('[data-slot="dictation-indicator"]');
+    await expect(composer).toBeVisible({ timeout: 20_000 });
+    await page.evaluate(() => {
+      const events: string[] = [];
+      Reflect.set(window, "focusEvents", events);
+      window.addEventListener("blur", () => events.push("window-blur"));
+      document.addEventListener("focusout", () => events.push("field-blur"), true);
+      const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      Reflect.set(window, "dictationCaptures", 0);
+      navigator.mediaDevices.getUserMedia = (...args) => {
+        Reflect.set(window, "dictationCaptures", Reflect.get(window, "dictationCaptures") + 1);
+        return original(...args);
+      };
+    });
+    // DOM focus only. CDP keyboard or mouse input would grant this hidden window Chromium
+    // page focus, which it then could not lose without showing the window.
+    await composer.focus();
+    await expect(indicator).toHaveText("Listening", { timeout: 15_000 });
+    // The hidden, natively unfocused window is the state Cake's page is in while another app,
+    // the desktop, Browser Mode's page or the VS Code panel has focus. Disabling focus
+    // emulation exposes it: Chromium blurs the field, then the window, before any speech.
+    await page.evaluate(() => (Reflect.get(window, "focusEvents") as string[]).splice(0));
+    const focusEmulation = await page.context().newCDPSession(page);
+    await focusEmulation.send("Emulation.setFocusEmulationEnabled", { enabled: false });
+    await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(false);
+    expect(await page.evaluate(() => Reflect.get(window, "focusEvents"))).toEqual([
+      "field-blur",
+      "window-blur",
+    ]);
+    expect(
+      await application.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().every((window) => !window.isVisible()),
+      ),
+    ).toBe(true);
+    await expect(indicator).toHaveText("Listening");
+    await configure({ ready: true, speech: true, text: "Spoken while away" });
+    await expect(composer).toHaveValue("Spoken while away");
+    // Returning continues the same insertion on the same device.
+    await focusEmulation.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(true);
+    await expect(composer).toBeFocused();
+    await configure({ ready: true, speech: true, text: "Spoken while away and back" });
+    await expect(composer).toHaveValue("Spoken while away and back");
+    await expect(indicator).toHaveText("Listening");
+    expect(await page.evaluate(() => Reflect.get(window, "dictationCaptures"))).toBe(1);
   } finally {
     await application.close();
     await rm(root, { recursive: true, force: true });
