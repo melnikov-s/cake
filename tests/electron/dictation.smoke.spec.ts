@@ -826,6 +826,8 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await expect(unmute).toHaveAttribute("aria-pressed", "true");
     await expect.poll(savedEnabled).toBe(true);
     await application.close();
+    // The relaunched engine stays loading until the restored field has asked for it.
+    await configure({ ready: false, speech: false, text: "" });
     application = await launch();
     const restarted = await application.firstWindow();
     // Settings and enablement are restored; temporary mute is not.
@@ -833,11 +835,18 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     const restartedMode = restarted.getByRole("switch", { name: "Dictation mode" });
     await expect(restartedMode).toBeChecked();
     await expect(restarted.getByLabel("Text processing", { exact: true })).toHaveValue("raw");
-    await restarted.getByLabel("Try dictation").focus();
-    await expect(restarted.getByRole("button", { name: "Mute dictation" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    const restartedSample = restarted.getByLabel("Try dictation");
+    await restartedSample.focus();
+    const restartedControl = restarted.getByRole("button", { name: "Mute dictation" });
+    await expect(restartedControl).toHaveAttribute("aria-pressed", "false");
+    await expect(restartedControl).toHaveAttribute("aria-busy", "true");
+    // First-load completion reaches the field that is still focused, with no refocus.
+    await configure({ ready: true, speech: false, text: "" });
+    await expect(restarted.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening", {
+      timeout: 15_000,
+    });
+    await expect(restartedControl).toHaveAttribute("aria-busy", "false");
+    await expect(restartedSample).toBeFocused();
     await restartedMode.click();
     await expect(restartedMode).not.toBeChecked();
     await expect.poll(savedEnabled).toBe(false);

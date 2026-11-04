@@ -1420,6 +1420,62 @@ describe("Dictation writing-field workflow", () => {
     expect(mode().getAttribute("aria-checked")).toBe("true");
   });
 
+  describe("restored enablement on a fresh launch", () => {
+    const restored = {
+      state: {},
+      children: { dictationStore: { state: { enabled: true }, children: {} } },
+    };
+    const launch = (modelReady: Promise<void>) =>
+      renderDictation({
+        modelReady,
+        snapshot: restored,
+        state: { ...installedDictationState, status: "installed" },
+      });
+    const control = () => screen.getByRole("button", { name: /dictation$/ });
+
+    it("first focus loads the model and the same focused field starts listening without refocus", async () => {
+      const model = deferred<void>();
+      using f = launch(model.promise);
+      expect(f.prepare).not.toHaveBeenCalled();
+      await f.user.click(message());
+      expect(control().getAttribute("aria-busy")).toBe("true");
+      expect(f.audio.getUserMedia).not.toHaveBeenCalled();
+      await act(async () => model.resolve());
+      await waitFor(listening);
+      expect(document.activeElement).toBe(message());
+      expect(control().getAttribute("aria-busy")).toBe("false");
+      expect(f.audio.getUserMedia).toHaveBeenCalledOnce();
+      await f.audio.push(new Float32Array(12_800));
+      await f.recognize(0, "Ready after first load");
+      expect(message().value).toBe("Ready after first load");
+    });
+
+    it("a failed first load offers Retry instead of an endless spinner", async () => {
+      const model = deferred<void>();
+      using f = launch(model.promise);
+      await f.user.click(message());
+      await act(async () => model.reject(new Error("Model failed to load")));
+      const retry = await screen.findByRole("button", { name: "Retry dictation" });
+      expect(retry.getAttribute("aria-busy")).toBe("false");
+      expect(f.root.dictationStore.phase).toBe("error");
+      expect(f.audio.getUserMedia).not.toHaveBeenCalled();
+    });
+
+    it("blurring during the first load pauses; refocus listens on the loaded model", async () => {
+      const model = deferred<void>();
+      using f = launch(model.promise);
+      await f.user.click(message());
+      await f.user.click(document.body);
+      expect(screen.queryByRole("button", { name: /dictation$/ })).toBeNull();
+      await act(async () => model.resolve());
+      expect(f.root.dictationStore.phase).toBe("paused");
+      expect(f.audio.getUserMedia).not.toHaveBeenCalled();
+      await f.user.click(message());
+      await waitFor(listening);
+      expect(f.audio.getUserMedia).toHaveBeenCalledOnce();
+    });
+  });
+
   it("inserts progressive speech with bounded PCM and discards unfinished speech on field changes", async () => {
     using fixture = renderDictation();
     await fixture.user.click(mode());
