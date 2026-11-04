@@ -1,4 +1,5 @@
-import { observer, useStore } from "r-state-tree/react";
+import { observer, StoreProvider, useStore } from "r-state-tree/react";
+import { CaptureDestinationPicker } from "./capture-destination-picker";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   BrowserIcon,
@@ -75,6 +76,9 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
       />
       {overlay ? (
         <>
+          <StoreProvider store={root.cakeChatOverlayStore.destinationPicker}>
+            <CaptureDestinationPicker disabled={false} ariaLabel="Chat destination" />
+          </StoreProvider>
           <IconButton
             tooltip="Capture screenshot"
             disabled={overlay.capturing}

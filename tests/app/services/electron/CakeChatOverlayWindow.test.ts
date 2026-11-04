@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import type { BrowserWindowConstructorOptions } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CakeChatOverlayShownContext } from "../../../../src/contracts/desktop/cake-chat-overlay-data";
@@ -69,6 +70,7 @@ beforeEach(() => {
 
 function fixture(focus: CakeWindowFocus = "none", { hidden = false } = {}) {
   const state = { focus };
+  const requestFromMain = vi.fn(() => false);
   const prepareWindow = vi.fn();
   const onShown = vi.fn();
   const readContext = vi.fn(async (): Promise<CakeChatOverlayShownContext> => ({}));
@@ -79,6 +81,7 @@ function fixture(focus: CakeWindowFocus = "none", { hidden = false } = {}) {
     hidden,
     registerShortcuts: true,
     focus: () => state.focus,
+    requestFromMain,
     prepareWindow,
     onShown,
     readContext,
@@ -93,7 +96,16 @@ function fixture(focus: CakeWindowFocus = "none", { hidden = false } = {}) {
     state.focus = next;
     overlay.sync();
   };
-  return { overlay, press, focusOn, prepareWindow, onShown, readContext, reportShortcutError };
+  return {
+    overlay,
+    press,
+    focusOn,
+    prepareWindow,
+    onShown,
+    readContext,
+    reportShortcutError,
+    requestFromMain,
+  };
 }
 
 type FakeWindow = {
@@ -117,7 +129,7 @@ describe("Drop-down Cake Chat shortcut routing", () => {
     expect(overlayShortcutActive("", "none")).toBe(false);
   });
 
-  it("releases the keys to the in-app terminal toggle while a main window is focused", () => {
+  it("releases the keys to the native quick-chat menu accelerator while a main window is focused", () => {
     const { overlay, focusOn } = fixture("main");
     overlay.configure({ shortcut: "Mod+`", captureSelectedText: true });
     // Validated against the system, then released because the main window owns the keys.
@@ -128,6 +140,19 @@ describe("Drop-down Cake Chat shortcut routing", () => {
     expect([...native.registered.keys()]).toEqual(["CommandOrControl+`"]);
     focusOn("main");
     expect(native.registered.size).toBe(0);
+    overlay.stop();
+  });
+
+  it("asks the focused main renderer for its destination without reading selected text", () => {
+    const { overlay, requestFromMain, readContext } = fixture("main");
+    requestFromMain.mockReturnValue(true);
+    overlay.configure({ shortcut: "Mod+`", captureSelectedText: true });
+    overlay.invoke();
+    expect(requestFromMain).toHaveBeenCalledOnce();
+    expect(readContext).not.toHaveBeenCalled();
+    expect(native.windows).toHaveLength(0);
+    overlay.show({ sessionId: "project-chat:fixture" });
+    expect(overlay.isVisible).toBe(true);
     overlay.stop();
   });
 
@@ -162,8 +187,8 @@ describe("Drop-down Cake Chat shortcut routing", () => {
 });
 
 describe("Drop-down Cake Chat window", () => {
-  it("drops one reused window down on the pointer's display and toggles it away", async () => {
-    const { overlay, press, prepareWindow, onShown } = fixture();
+  it("summons one reused window and refocuses it without hiding or changing the destination", async () => {
+    const { overlay, press, focusOn, prepareWindow, onShown } = fixture();
     overlay.configure({ shortcut: "Mod+`", captureSelectedText: true });
     press();
     await vi.waitFor(() => expect(native.windows).toHaveLength(1));
@@ -188,16 +213,22 @@ describe("Drop-down Cake Chat window", () => {
     expect(window.setBounds).toHaveBeenCalledWith({ x: 1440, y: 25, width: 2000, height: 495 });
     expect(window.show).toHaveBeenCalledTimes(1);
     expect(window.focus).toHaveBeenCalledTimes(1);
-    expect(onShown).toHaveBeenCalledWith(window, {});
+    expect(onShown).toHaveBeenCalledWith(window, { sessionId: CAKE_CHAT_SESSION_ID });
     expect(overlay.isVisible).toBe(true);
 
+    focusOn("overlay");
     press();
+    expect(window.show).toHaveBeenCalledTimes(2);
+    expect(window.focus).toHaveBeenCalledTimes(2);
+    expect(onShown).toHaveBeenLastCalledWith(window, {});
+    expect(overlay.isVisible).toBe(true);
+    overlay.hide();
     expect(window.hide).toHaveBeenCalledTimes(1);
-    expect(overlay.isVisible).toBe(false);
+    focusOn("none");
 
     native.workArea = { x: -1280, y: 0, width: 1280, height: 800 };
     press();
-    await vi.waitFor(() => expect(window.show).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(window.show).toHaveBeenCalledTimes(3));
     expect(window.setBounds).toHaveBeenLastCalledWith({ x: -1280, y: 0, width: 1280, height: 360 });
     expect(native.windows).toHaveLength(1);
     overlay.stop();
@@ -217,20 +248,21 @@ describe("Drop-down Cake Chat window", () => {
     selection.resolve({ selectedText: { text: "quoted", application: "Safari" } });
     await vi.waitFor(() => expect(overlayWindow()?.focus).toHaveBeenCalledTimes(1));
     expect(onShown).toHaveBeenLastCalledWith(overlayWindow(), {
+      sessionId: CAKE_CHAT_SESSION_ID,
       selectedText: { text: "quoted", application: "Safari" },
     });
 
     overlay.hide();
-    overlay.toggle("menu");
+    overlay.invoke("menu");
     expect(readContext).toHaveBeenCalledTimes(1);
-    expect(onShown).toHaveBeenLastCalledWith(overlayWindow(), {});
+    expect(onShown).toHaveBeenLastCalledWith(overlayWindow(), { sessionId: CAKE_CHAT_SESSION_ID });
     overlay.hide();
 
     // A failed read still drops the overlay down, without context.
     readContext.mockRejectedValueOnce(new Error("osascript timed out"));
     press();
     await vi.waitFor(() => expect(overlay.isVisible).toBe(true));
-    expect(onShown).toHaveBeenLastCalledWith(overlayWindow(), {});
+    expect(onShown).toHaveBeenLastCalledWith(overlayWindow(), { sessionId: CAKE_CHAT_SESSION_ID });
     overlay.hide();
 
     overlay.configure({ shortcut: "Mod+`", captureSelectedText: false });
@@ -247,7 +279,7 @@ describe("Drop-down Cake Chat window", () => {
     expect(first.show).not.toHaveBeenCalled();
     first.destroy();
     expect(overlay.isVisible).toBe(false);
-    overlay.toggle();
+    overlay.invoke();
     expect(native.windows).toHaveLength(2);
     expect(overlay.isVisible).toBe(true);
     overlay.stop();

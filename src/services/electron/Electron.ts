@@ -43,6 +43,10 @@ export interface ElectronService {
     connectionId: number,
     request: Payload<"configure-cake-chat-overlay">,
   ) => Effect.Effect<Success<"configure-cake-chat-overlay">, ElectronError>;
+  readonly showCakeChatOverlay: (
+    connectionId: number,
+    request: Payload<"show-cake-chat-overlay">,
+  ) => Effect.Effect<Success<"show-cake-chat-overlay">, ElectronError>;
   readonly hideCakeChatOverlay: (
     connectionId: number,
     request: Payload<"hide-cake-chat-overlay">,

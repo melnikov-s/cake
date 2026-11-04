@@ -25,15 +25,20 @@ export const observeApplicationEvents = (
         if (host === "desktop") void root.screenCaptureStore.capture();
         return;
       }
+      if (event.type === "cake-chat-overlay-requested") {
+        if (host === "desktop") void root.cakeChatOverlayStore.request();
+        return;
+      }
       if (event.type === "cake-chat-overlay-shown") {
-        window.dispatchEvent(new Event(cakeChatOverlayShownEventName));
-        void receiveCakeChatOverlayContext(root, event).catch((error: unknown) =>
-          root.toastStore.show({
-            tone: "error",
-            title: "Could not attach the selected text",
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        );
+        void receiveCakeChatOverlayContext(root, event)
+          .then(() => window.dispatchEvent(new Event(cakeChatOverlayShownEventName)))
+          .catch((error: unknown) =>
+            root.toastStore.show({
+              tone: "error",
+              title: "Could not open quick Cake Chat",
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          );
         return;
       }
       if (event.type === "session-open-requested") {

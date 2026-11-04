@@ -22,10 +22,13 @@ export const CakeChatSurface = observer(function CakeChatSurface({
     shell.selection.kind === "cake-chat" && shell.selection.sessionId
       ? cakeChatCollection.registry.find(shell.selection.sessionId)
       : undefined;
+  const layout = cakeChatSession
+    ? cakeChatCollection.layoutFor(cakeChatSession.sessionId)
+    : cakeChatCollection.sessionLayoutStore;
   const sidebarCollapsed = !root.sidebarStore.visible;
   return cakeChatSession ? (
     <ConversationSplitLayout
-      store={cakeChatCollection.sessionLayoutStore}
+      store={layout}
       findSession={(sessionId) => cakeChatCollection.registry.find(sessionId)}
       chatProps={(session) => cakeChatPropsFor(root, session, Boolean(overlay))}
       wrapPane={(session, conversation) => (
@@ -48,12 +51,12 @@ export const CakeChatSurface = observer(function CakeChatSurface({
       loadingLabel="Opening Cake Chat"
       headerClassName={(pane) =>
         // The frameless overlay has no traffic lights or sidebar toggle to make room for.
-        !overlay && cakeChatCollection.sessionLayoutStore.panes[0]?.paneId === pane.paneId
+        !overlay && layout.panes[0]?.paneId === pane.paneId
           ? cn("max-[620px]:pl-[88px] phone:pl-[88px]", sidebarCollapsed && "pl-[156px]")
           : undefined
       }
       renderNavigation={(pane) =>
-        !overlay && cakeChatCollection.sessionLayoutStore.panes[0]?.paneId === pane.paneId ? (
+        !overlay && layout.panes[0]?.paneId === pane.paneId ? (
           <SidebarNavigationControls header />
         ) : null
       }
@@ -64,7 +67,11 @@ export const CakeChatSurface = observer(function CakeChatSurface({
         root.appShellStore.recordConversationInteraction({ kind: "cake-chat", sessionId })
       }
       onFocus={(paneId) => root.navigationStore.focusCakeChatPane(paneId)}
-      onClose={(paneId) => root.navigationStore.closeCakeChatPane(paneId)}
+      onClose={(paneId) =>
+        layout === root.sessionLayoutStore
+          ? root.navigationStore.closeSessionPane(paneId)
+          : root.navigationStore.closeCakeChatPane(paneId)
+      }
     />
   ) : (
     <div

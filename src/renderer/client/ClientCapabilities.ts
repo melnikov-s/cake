@@ -51,6 +51,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.electron["configure-cake-chat-overlay"](input),
           options,
         ).then(() => undefined),
+      showCakeChatOverlay: (sessionId, options) =>
+        execute(
+          "electron.show-cake-chat-overlay",
+          (client) => client.electron["show-cake-chat-overlay"]({ sessionId }),
+          options,
+        ).then(() => undefined),
       hideCakeChatOverlay: (options) =>
         execute(
           "electron.hide-cake-chat-overlay",

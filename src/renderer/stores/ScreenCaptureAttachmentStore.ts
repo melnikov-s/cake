@@ -73,7 +73,8 @@ export class ScreenCaptureAttachmentStore extends Store<{
     return target && this.isAvailable(target) ? target : undefined;
   }
 
-  private get destinations(): Omit<CapturePreferences, "defaultDestination"> {
+  /** Shared destination presentation used by capture and quick Cake Chat. */
+  get destinations(): Omit<CapturePreferences, "defaultDestination"> {
     const sidebar = this.props.sidebar();
     const settings = this.props.settings();
     const customTheme = settings.activeCustomTheme;

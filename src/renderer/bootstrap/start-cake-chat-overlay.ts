@@ -16,7 +16,7 @@ export function cakeChatOverlayHandoff(
   return selection.kind === "project-session" ? { sessionId: selection.sessionId } : {};
 }
 
-/** Starts an overlay renderer on the permanent Cake Chat and keeps it there. */
+/** Starts on Global Cake Chat; chat destinations stay here, other surfaces hand off to main. */
 export function startCakeChatOverlay(root: RootStore) {
   // Cake Chat controls bind to the window that last sent a prompt, so the overlay must be able
   // to answer them just like a main window.
@@ -58,12 +58,17 @@ export async function receiveCakeChatOverlayContext(
       message: context.notice,
       coalesceKey: "cake-chat-overlay-selected-text",
     });
-  const selected = context.selectedText;
-  if (!selected) return;
-  await root.navigationStore.openCakeChat(CAKE_CHAT_SESSION_ID);
+  const current = root.appShellStore.selection;
+  const sessionId =
+    context.sessionId ??
+    (current.kind === "cake-chat" ? current.sessionId : undefined) ??
+    CAKE_CHAT_SESSION_ID;
+  await root.navigationStore.openCakeChat(sessionId);
   const draft =
-    root.cakeChatCollectionStore.registry.find(CAKE_CHAT_SESSION_ID)?.conversationSessionStore
-      .composerStore.draftStore;
-  if (!draft) throw new Error("Cake Chat is not available to attach the selected text.");
-  draft.addSelectedText(selected.text, selected.application);
+    root.cakeChatCollectionStore.registry.find(sessionId)?.conversationSessionStore.composerStore
+      .draftStore;
+  if (!draft) throw new Error("Cake Chat is not available.");
+  const selected = context.selectedText;
+  if (selected) draft.addSelectedText(selected.text, selected.application);
+  draft.requestFocus();
 }

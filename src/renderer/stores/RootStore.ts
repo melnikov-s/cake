@@ -15,6 +15,7 @@ import { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
 import { SpeechSettingsStore } from "./SpeechSettingsStore";
 import type { DesktopConnectionStore } from "./DesktopConnectionStore";
 import { Store, child, createStore, untracked } from "r-state-tree";
+import { CakeChatOverlayStore } from "./CakeChatOverlayStore";
 import { createApplicationCommandRegistry } from "../commands/application-commands";
 import { NavigationStore } from "./NavigationStore";
 import type { Client } from "../client/Client";
@@ -145,6 +146,19 @@ export class RootStore extends Store<{
       cakeChat: () => this.cakeChatCollectionStore,
       cakeChatCatalog: this.cakeChatCatalogModel,
       navigation: () => this.navigationStore,
+    });
+  }
+
+  @child
+  get cakeChatOverlayStore(): CakeChatOverlayStore {
+    return createStore(CakeChatOverlayStore, {
+      client: this.client.electron,
+      shell: this.appShellStore,
+      catalog: this.sessionCatalogStore,
+      registry: this.sessionRegistry,
+      cakeChat: () => this.cakeChatCollectionStore,
+      navigation: () => this.navigationStore,
+      routing: () => this.screenCaptureStore.destinations,
     });
   }
 

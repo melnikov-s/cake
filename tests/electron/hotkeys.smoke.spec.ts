@@ -51,24 +51,7 @@ test("remaps application hotkeys from Settings", async () => {
     await expect(messageInput).toBeVisible({ timeout: 20_000 });
     await page.waitForTimeout(1_000);
     const modifier = process.platform === "darwin" ? "Meta" : "Control";
-    const pressCommandBackquote =
-      process.platform === "darwin"
-        ? () =>
-            application.evaluate(({ BrowserWindow, Menu }) => {
-              const item = Menu.getApplicationMenu()
-                ?.items.flatMap((entry) => entry.submenu?.items ?? [])
-                .find((entry) => entry.label === "Toggle Terminal");
-              if (!item) throw new Error("Toggle Terminal menu item missing");
-              if (item.accelerator !== "CommandOrControl+`")
-                throw new Error(`Unexpected Toggle Terminal accelerator: ${item.accelerator}`);
-              const window = BrowserWindow.getFocusedWindow();
-              item.click(
-                { triggeredByAccelerator: true, metaKey: true },
-                window,
-                window?.webContents,
-              );
-            })
-        : () => page.keyboard.press("Control+Backquote");
+    const pressRemappedKey = () => page.keyboard.press(`${modifier}+Alt+Y`);
 
     await page.keyboard.press(`${modifier}+G`);
     await expect(page.locator('[data-slot="ui-hint-overlay"]')).toBeVisible();
@@ -90,27 +73,41 @@ test("remaps application hotkeys from Settings", async () => {
     await expect(page.getByRole("heading", { name: "Hotkeys" })).toBeVisible();
 
     const terminalShortcut = page.getByRole("button", { name: "Toggle terminal shortcut" });
-    await expect(terminalShortcut).toContainText(process.platform === "darwin" ? "⌘`" : "Ctrl+`");
-
+    await expect(terminalShortcut).toContainText(process.platform === "darwin" ? "⌘J" : "Ctrl+J");
     await page.getByRole("button", { name: "Back to chat" }).click();
     const terminal = page.locator('section[aria-label="Terminal"]');
-    await expect(terminal).toHaveAttribute("aria-hidden", "true");
-    await pressCommandBackquote();
+    await page.keyboard.press(`${modifier}+J`);
     await expect(terminal).toHaveAttribute("aria-hidden", "false");
-    await pressCommandBackquote();
+    await page.keyboard.press(`${modifier}+J`);
+    await expect(terminal).toHaveAttribute("aria-hidden", "true");
+    await settingsButton.click();
+    await page.getByRole("button", { name: "Hotkeys" }).click();
+    await terminalShortcut.click();
+    await pressRemappedKey();
+    await expect(terminalShortcut).toContainText(
+      process.platform === "darwin" ? "⌘⌥Y" : "Ctrl+Alt+Y",
+    );
+
+    await page.getByRole("button", { name: "Back to chat" }).click();
+    await expect(terminal).toHaveAttribute("aria-hidden", "true");
+    await pressRemappedKey();
+    await expect(terminal).toHaveAttribute("aria-hidden", "false");
+    await pressRemappedKey();
     await expect(terminal).toHaveAttribute("aria-hidden", "true");
 
     await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
     await page.getByRole("button", { name: "Hotkeys" }).click();
     const sidebarShortcut = page.getByRole("button", { name: "Toggle sidebar shortcut" });
     await sidebarShortcut.click();
-    await pressCommandBackquote();
-    await expect(sidebarShortcut).toContainText(process.platform === "darwin" ? "⌘`" : "Ctrl+`");
+    await pressRemappedKey();
+    await expect(sidebarShortcut).toContainText(
+      process.platform === "darwin" ? "⌘⌥Y" : "Ctrl+Alt+Y",
+    );
     await expect(terminalShortcut).toContainText("Not assigned");
     await page.getByRole("button", { name: "Back to chat" }).click();
-    await pressCommandBackquote();
+    await pressRemappedKey();
     await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
-    await pressCommandBackquote();
+    await pressRemappedKey();
     await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
 
     await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();

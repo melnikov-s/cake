@@ -1,4 +1,5 @@
 import { BrowserWindow, globalShortcut, screen } from "electron";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { captureAccelerator } from "../../contracts/desktop/screen-capture-data";
 import {
   CAKE_CHAT_OVERLAY_QUERY,
@@ -20,6 +21,8 @@ interface CakeChatOverlayWindowOptions {
   /** Background tests must never claim system-wide keys on the developer's machine. */
   readonly registerShortcuts: boolean;
   readonly focus: () => CakeWindowFocus;
+  /** Asks the focused main renderer to resolve its invocation destination. */
+  readonly requestFromMain: () => boolean;
   /** Installs shared navigation guards and the renderer connection lifecycle. */
   readonly prepareWindow: (window: BrowserWindow) => void;
   /** Lets the overlay renderer replay its drop-down motion, focus the composer, and attach
@@ -36,9 +39,9 @@ const unavailable = (accelerator: string) =>
 
 /**
  * Native boundary for the Quake-style drop-down Cake Chat: one lazily created, reused window
- * that renders the shared Cake Chat surface, plus the system-wide shortcut that toggles it.
- * The shortcut is registered only while no main Cake window has focus, so the same keys keep
- * their in-app meaning inside Cake (see `overlayShortcutActive`).
+ * that renders the shared Cake Chat surface, plus the system-wide shortcut that summons it.
+ * While a main Cake window has focus its application-menu accelerator owns the same action
+ * (see `overlayShortcutActive`), including input focused in embedded native views.
  */
 export class CakeChatOverlayWindow {
   private accelerator = "";
@@ -48,7 +51,7 @@ export class CakeChatOverlayWindow {
   private stopped = false;
   private captureSelectedText = true;
   private gathering = false;
-  private readonly onShortcut = () => this.toggle("shortcut");
+  private readonly onShortcut = () => this.invoke("shortcut");
 
   constructor(private readonly options: CakeChatOverlayWindowOptions) {}
 
@@ -85,6 +88,10 @@ export class CakeChatOverlayWindow {
     }
   }
 
+  get usesDefaultShortcut() {
+    return this.accelerator === captureAccelerator("Mod+`");
+  }
+
   /** The visible overlay window, for routing native features such as screen capture. */
   get visibleWindow() {
     return this.visible && this.window && !this.window.isDestroyed() ? this.window : undefined;
@@ -103,13 +110,19 @@ export class CakeChatOverlayWindow {
    * first: once the overlay has keyboard focus, a copy fallback would copy from Cake instead.
    * The menu item is chosen inside Cake and has no foreign selection to bring along.
    */
-  toggle(source: "shortcut" | "menu" = "menu") {
-    if (this.visible) {
-      this.hide();
+  invoke(source: "shortcut" | "menu" = "menu") {
+    const focus = this.options.focus();
+    if (
+      (focus === "main" || (source === "menu" && focus !== "overlay")) &&
+      this.options.requestFromMain()
+    )
+      return;
+    if (focus === "overlay") {
+      this.show();
       return;
     }
-    if (source !== "shortcut" || !this.captureSelectedText || this.options.focus() === "main") {
-      this.show();
+    if (source !== "shortcut" || !this.captureSelectedText || focus === "main") {
+      this.show({ sessionId: CAKE_CHAT_SESSION_ID });
       return;
     }
     if (this.gathering) return;
@@ -119,7 +132,7 @@ export class CakeChatOverlayWindow {
       .catch((): CakeChatOverlayShownContext => ({}))
       .then((context) => {
         this.gathering = false;
-        this.show(context);
+        this.show({ ...context, sessionId: CAKE_CHAT_SESSION_ID });
       });
   }
 
@@ -140,7 +153,7 @@ export class CakeChatOverlayWindow {
     if (this.window && !this.window.isDestroyed()) this.window.hide();
   }
 
-  /** Releases the renderer; the next toggle recreates it. */
+  /** Releases the renderer; the next invocation recreates it. */
   destroyWindow() {
     const window = this.window;
     this.window = undefined;

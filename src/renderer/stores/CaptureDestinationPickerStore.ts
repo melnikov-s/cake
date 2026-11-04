@@ -6,8 +6,19 @@ import type {
 } from "../../contracts/desktop/screen-capture-data";
 
 /** One native capture's destination and disclosures. No catalog observations or sidebar UI state. */
-export class CaptureDestinationPickerStore extends Store<{ routing: CapturePreferences }> {
-  destination: CaptureDestination | undefined = this.props.routing.defaultDestination;
+export class CaptureDestinationPickerStore extends Store<{
+  routing: CapturePreferences;
+  currentDestination?(): CaptureDestination | undefined;
+  onSelect?(destination: CaptureDestination): void;
+}> {
+  private selectedDestination: CaptureDestination | undefined =
+    this.props.routing.defaultDestination;
+
+  get destination() {
+    return this.props.currentDestination
+      ? this.props.currentDestination()
+      : this.selectedDestination;
+  }
   private readonly collapsedProjects = observable(new Set<string>());
   private readonly collapsedFamilies = observable(new Set<string>());
 
@@ -25,7 +36,8 @@ export class CaptureDestinationPickerStore extends Store<{ routing: CapturePrefe
   }
 
   select(destination: CaptureDestination) {
-    this.destination = destination;
+    this.selectedDestination = destination;
+    this.props.onSelect?.(destination);
   }
 
   isProjectCollapsed(path: string) {

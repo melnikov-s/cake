@@ -16,6 +16,7 @@ for (const { mode, chatSidebarVisible, width } of [
   { mode: "vscode", chatSidebarVisible: false, width: 800 },
 ]) {
   test(`${mode} header opens the owning Project Chat (chat sidebar: ${chatSidebarVisible}) and reuses its pane`, async () => {
+    test.setTimeout(90_000);
     const directory = await mkdtemp(join(tmpdir(), "cake-project-header-"));
     const project = join(directory, "alpha");
     const other = join(directory, "beta");
@@ -77,6 +78,9 @@ for (const { mode, chatSidebarVisible, width } of [
       });
       const page = await app.firstWindow();
       await page.setViewportSize({ width, height: 900 });
+      await expect(
+        page.locator(`[data-slot="session-pane"][data-session-id="${sessionId}"]`),
+      ).toBeVisible();
       if (mode !== "normal") {
         await page
           .getByRole("button", {
@@ -97,6 +101,46 @@ for (const { mode, chatSidebarVisible, width } of [
           await expect(address).toHaveValue("about:blank");
         }
       }
+      await expect(
+        page.getByRole("button", { name: "Go to Project Chat for Alpha", exact: true }),
+      ).toBeEnabled();
+      const summonQuickChat = () =>
+        app!.evaluate(({ Menu }) => {
+          const item = Menu.getApplicationMenu()?.getMenuItemById("cake-chat-overlay");
+          if (!item || item.accelerator !== "CommandOrControl+`")
+            throw new Error("Quick-chat accelerator is missing");
+          Reflect.apply(item.click, item, [item, undefined, { triggeredByAccelerator: true }]);
+        });
+      // Drive the native accelerator handler without claiming system keys or OS focus.
+      const openingQuickChat = app.waitForEvent("window");
+      await summonQuickChat();
+      const quickChat = await openingQuickChat;
+      const projectQuickInput = quickChat.getByRole("combobox", { name: "Message Project Chat" });
+      await expect(projectQuickInput).toBeFocused();
+      await projectQuickInput.pressSequentially("Quick project idea");
+      await summonQuickChat();
+      await expect(projectQuickInput).toBeFocused();
+      await expect(projectQuickInput).toHaveValue("Quick project idea");
+      await quickChat.getByRole("button", { name: "Chat destination", exact: true }).click();
+      await quickChat.getByRole("button", { name: /^Cake Chat(?: |$)/ }).click();
+      const globalQuickInput = quickChat.getByRole("combobox", { name: "Message Cake Chat" });
+      await expect(globalQuickInput).toBeFocused();
+      await globalQuickInput.pressSequentially("Quick global idea");
+      await expect(globalQuickInput).toHaveValue("Quick global idea");
+      await quickChat.getByRole("button", { name: "Chat destination", exact: true }).click();
+      await quickChat
+        .getByRole("button", { name: "Open Project Chat for Alpha", exact: true })
+        .click();
+      await expect(projectQuickInput).toBeFocused();
+      await expect(projectQuickInput).toHaveValue("Quick project idea");
+      await quickChat.getByRole("button", { name: "Close drop-down Cake Chat" }).click();
+      if (mode !== "normal")
+        await expect(
+          page.getByRole("region", {
+            name: mode === "browser" ? "Browser workspace" : "VS Code workspace",
+            exact: true,
+          }),
+        ).toBeVisible();
       const headers = page.locator('[data-slot="workspace-header"]');
       const projectLink = () =>
         page.getByRole("button", { name: "Go to Project Chat for Alpha", exact: true });
@@ -142,6 +186,12 @@ for (const { mode, chatSidebarVisible, width } of [
       await projectLink().click();
       await expect(pane).toHaveAttribute("data-pane-id", paneId!);
       await expect(input).toHaveValue("Keep this project draft");
+      // Invoking from Project Chat defaults to Global, preserving both windows' drafts.
+      await summonQuickChat();
+      await expect(globalQuickInput).toBeFocused();
+      await expect(globalQuickInput).toHaveValue("Quick global idea");
+      await expect(input).toHaveValue("Keep this project draft");
+      await quickChat.getByRole("button", { name: "Close drop-down Cake Chat" }).click();
     } finally {
       await app?.close();
       await rm(directory, { recursive: true, force: true });

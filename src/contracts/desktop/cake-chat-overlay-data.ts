@@ -31,6 +31,8 @@ export interface OverlaySelectedText extends Schema.Schema.Type<typeof OverlaySe
 
 /** Context that accompanies one drop-down: a selection, or why none could be read. */
 export const CakeChatOverlayShownContext = Schema.Struct({
+  /** Absent when re-focusing the already-open overlay without changing its destination. */
+  sessionId: Schema.optionalKey(Schema.String),
   selectedText: Schema.optionalKey(OverlaySelectedText),
   notice: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_000))),
 });

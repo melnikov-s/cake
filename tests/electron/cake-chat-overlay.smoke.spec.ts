@@ -156,7 +156,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
           }
         };
       });
-      // Smoke runs never claim system-wide keys, so drive the same toggle from the Window menu.
+      // Smoke runs never claim system-wide keys, so drive the native action from the Window menu.
       const opened = app.waitForEvent("window");
       await clickMenuItem(app, "Drop-down Cake Chat");
       const overlay = await opened;
@@ -277,7 +277,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
       await expect(main.getByRole("button", { name: /^View Screenshot-/ })).toHaveCount(0);
 
       await overlay.getByRole("button", { name: "Close drop-down Cake Chat" }).click();
-      // Toggling again reuses the hidden overlay renderer instead of creating another window.
+      // Summoning again reuses the hidden overlay renderer instead of creating another window.
       await clickMenuItem(app, "Drop-down Cake Chat");
       await expect(input).toBeFocused();
       // Exercise the native focus event without claiming desktop focus.

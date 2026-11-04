@@ -18,6 +18,7 @@ import {
 import { ScreenCaptureWindow } from "./ScreenCaptureWindow";
 import { AppUpdateChecks } from "./AppUpdateChecks";
 import { CakeChatOverlayWindow } from "./CakeChatOverlayWindow";
+import { captureAccelerator } from "../../contracts/desktop/screen-capture-data";
 import type { CakeWindowFocus } from "./cake-chat-overlay-policy";
 import { ACCESSIBILITY_PERMISSION_MESSAGE, readSelectedText, runOsaScript } from "./selected-text";
 import { shouldAllowNavigation } from "./navigation-policy";
@@ -104,6 +105,17 @@ const makeElectronService = (
       if (!focused) return "none";
       if (windows.has(focused.id)) return "main";
       return overlay.owns(focused) ? "overlay" : "other";
+    },
+    requestFromMain: () => {
+      const focused = BrowserWindow.getFocusedWindow();
+      const target = focused && windows.has(focused.id) ? focused : lastFocusedWindow;
+      return Boolean(
+        target &&
+        !target.isDestroyed() &&
+        clientEvents.sendTo(connectionForWindow(target), {
+          type: "cake-chat-overlay-requested",
+        }),
+      );
     },
     prepareWindow: (window) => {
       const nativeId = window.webContents.id;
@@ -342,6 +354,10 @@ const makeElectronService = (
       if (process.platform !== "darwin" || !input.meta || input.code !== "Backquote") return;
       event.preventDefault();
       if (input.type !== "keyDown" || input.isAutoRepeat) return;
+      if (!input.control && !input.alt && !input.shift && overlay.usesDefaultShortcut) {
+        overlay.invoke();
+        return;
+      }
       clientEvents.sendTo(connectionForWindow(window), {
         type: "application-hotkey-input",
         key: input.key,
@@ -472,38 +488,18 @@ const makeElectronService = (
               },
             },
             {
+              id: "cake-chat-overlay",
               label: "Drop-down Cake Chat",
-              click: () => overlay.toggle(),
+              accelerator: "CommandOrControl+`",
+              click: () => overlay.invoke(),
             },
             {
               label: "Toggle Terminal",
-              // macOS handles Command+Backquote in the application menu before Chromium's
-              // `before-input-event`. Keep a native accelerator here so Cake receives it.
-              ...(process.platform === "darwin" ? { accelerator: "CommandOrControl+`" } : null),
-              click: (_menuItem, _window, event) => {
+              click: () => {
                 const focused = BrowserWindow.getFocusedWindow();
-                // Inside the drop-down overlay, Command+Backquote puts the overlay away.
-                if (focused && overlay.owns(focused)) {
-                  overlay.hide();
-                  return;
-                }
                 const target =
                   focused && windows.has(focused.id) ? focused : [...windows.values()].at(-1);
                 if (!target) return;
-                if (process.platform === "darwin" && event.triggeredByAccelerator) {
-                  clientEvents.sendTo(connectionForWindow(target), {
-                    type: "application-hotkey-input",
-                    key: "`",
-                    code: "Backquote",
-                    metaKey: true,
-                    ctrlKey: false,
-                    altKey: false,
-                    shiftKey: false,
-                    repeat: false,
-                    isComposing: false,
-                  });
-                  return;
-                }
                 clientEvents.sendTo(connectionForWindow(target), {
                   type: "terminal-toggle-requested",
                 });
@@ -575,10 +571,22 @@ const makeElectronService = (
           try: () => {
             requireRendererConnection(connectionId);
             overlay.configure(settings);
+            const item = Menu.getApplicationMenu()?.getMenuItemById("cake-chat-overlay");
+            if (item) item.accelerator = captureAccelerator(settings.shortcut);
             return {};
           },
           catch: electronError,
         }),
+    ),
+    showCakeChatOverlay: Effect.fn("Electron.showCakeChatOverlay")((connectionId, request) =>
+      Effect.try({
+        try: () => {
+          requireRendererConnection(connectionId);
+          overlay.show(request);
+          return {};
+        },
+        catch: electronError,
+      }),
     ),
     hideCakeChatOverlay: Effect.fn("Electron.hideCakeChatOverlay")((connectionId) =>
       Effect.try({

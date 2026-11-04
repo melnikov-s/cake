@@ -16,6 +16,10 @@ export const electronHandlers = ElectronRpc.of({
     withConnection((id) =>
       Effect.flatMap(Electron, (service) => service.configureCakeChatOverlay(id, request)),
     ),
+  "electron.show-cake-chat-overlay": (request) =>
+    withConnection((id) =>
+      Effect.flatMap(Electron, (service) => service.showCakeChatOverlay(id, request)),
+    ),
   "electron.hide-cake-chat-overlay": (request) =>
     withConnection((id) =>
       Effect.flatMap(Electron, (service) => service.hideCakeChatOverlay(id, request)),

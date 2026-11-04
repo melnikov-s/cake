@@ -13,8 +13,10 @@ import { SessionListItem } from "./ui/session-list-item";
 /** The original capture menu, composed from shared sidebar rows with capture-scoped disclosures. */
 export const CaptureDestinationPicker = observer(function CaptureDestinationPicker({
   disabled,
+  ariaLabel = "Screenshot destination",
 }: {
   disabled: boolean;
+  ariaLabel?: string;
 }) {
   const store = useStore(CaptureDestinationPickerStore);
   const [open, setOpen] = useState(false);
@@ -50,7 +52,7 @@ export const CaptureDestinationPicker = observer(function CaptureDestinationPick
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        aria-label="Screenshot destination"
+        aria-label={ariaLabel}
         title={store.label}
         disabled={disabled}
         variant="ghost"
@@ -61,7 +63,7 @@ export const CaptureDestinationPicker = observer(function CaptureDestinationPick
         <ChevronDownIcon />
       </PopoverTrigger>
       <PopoverContent
-        aria-label="Screenshot destination"
+        aria-label={ariaLabel}
         align="start"
         className="w-80 max-h-[min(22rem,calc(100vh-9rem))] overflow-y-auto bg-sidebar p-1.5"
       >

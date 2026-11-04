@@ -42,7 +42,7 @@ describe("Hotkey settings workflow", () => {
     const terminal = shortcut("Toggle terminal");
     const sidebar = shortcut("Toggle sidebar");
 
-    expect(terminal.recorder.textContent).toMatch(/^(Ctrl\+|⌘)`$/);
+    expect(terminal.recorder.textContent).toMatch(/^(Ctrl\+|⌘)J$/);
     expect(terminal.reset).toHaveProperty("disabled", true);
     await fixture.user.click(terminal.clear);
     expect(terminal.recorder.textContent).toBe("Not assigned");
@@ -52,13 +52,13 @@ describe("Hotkey settings workflow", () => {
     await fixture.user.click(sidebar.clear);
     expect(sidebar.recorder.textContent).toBe("Not assigned");
     await fixture.user.click(terminal.reset);
-    expect(terminal.recorder.textContent).toMatch(/^(Ctrl\+|⌘)`$/);
+    expect(terminal.recorder.textContent).toMatch(/^(Ctrl\+|⌘)J$/);
     expect(terminal.reset).toHaveProperty("disabled", true);
     expect(sidebar.recorder.textContent).toBe("Not assigned");
 
     await fixture.user.click(terminal.clear);
     await fixture.user.click(screen.getByRole("button", { name: "Reset all" }));
-    expect(terminal.recorder.textContent).toMatch(/^(Ctrl\+|⌘)`$/);
+    expect(terminal.recorder.textContent).toMatch(/^(Ctrl\+|⌘)J$/);
     expect(sidebar.recorder.textContent).toMatch(/^(Ctrl\+|⌘)B$/);
     expect(terminal.clear).toHaveProperty("disabled", false);
     expect(sidebar.clear).toHaveProperty("disabled", false);

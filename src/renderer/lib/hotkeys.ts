@@ -50,7 +50,7 @@ export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
     group: "Editor & tools",
     label: "Toggle terminal",
     description: "Show or hide the terminal for the focused Working Directory.",
-    defaultBinding: "Mod+`",
+    defaultBinding: "Mod+J",
   },
   {
     id: "new-terminal-tab",

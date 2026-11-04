@@ -84,6 +84,9 @@ const embeddedEditorExplicitSelectionFields = {
 const cakeEventSchemas = {
   "screen-capture-requested": Schema.Struct({ type: Schema.Literal("screen-capture-requested") }),
   "window-blurred": Schema.Struct({ type: Schema.Literal("window-blurred") }),
+  "cake-chat-overlay-requested": Schema.Struct({
+    type: Schema.Literal("cake-chat-overlay-requested"),
+  }),
   "cake-chat-overlay-shown": Schema.Struct({
     type: Schema.Literal("cake-chat-overlay-shown"),
     ...CakeChatOverlayShownContext.fields,
@@ -331,6 +334,7 @@ export const applicationEventSchema = Schema.Union([
   cakeEventSchemas["screen-capture-requested"],
   cakeEventSchemas["window-blurred"],
   cakeEventSchemas["session-open-requested"],
+  cakeEventSchemas["cake-chat-overlay-requested"],
   cakeEventSchemas["cake-chat-overlay-shown"],
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["changelog-snapshot"],
@@ -392,6 +396,7 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["screen-capture-requested"],
   cakeEventSchemas["window-blurred"],
   cakeEventSchemas["session-open-requested"],
+  cakeEventSchemas["cake-chat-overlay-requested"],
   cakeEventSchemas["cake-chat-overlay-shown"],
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["fullscreen-surface-close-requested"],
@@ -435,6 +440,7 @@ const terminalTarget = Schema.Struct({
 export const cakeRpcPayloadSchemas = {
   "configure-screen-capture": ScreenCaptureSettings,
   "configure-cake-chat-overlay": CakeChatOverlaySettings,
+  "show-cake-chat-overlay": Schema.Struct({ sessionId: Schema.String }),
   "hide-cake-chat-overlay": Schema.Struct({}),
   "show-main-window": Schema.Struct({ sessionId: Schema.optionalKey(bounded(1, 256)) }),
   "start-screen-capture": CapturePreferences,
@@ -897,6 +903,7 @@ const cakeRpcResultSchemas = {
 export const cakeRpcSuccessSchemas = {
   "configure-screen-capture": Schema.Struct({}),
   "configure-cake-chat-overlay": Schema.Struct({}),
+  "show-cake-chat-overlay": Schema.Struct({}),
   "hide-cake-chat-overlay": Schema.Struct({}),
   "show-main-window": Schema.Struct({}),
   "start-screen-capture": CaptureCompletion,
