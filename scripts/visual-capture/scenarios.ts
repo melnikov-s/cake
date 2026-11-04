@@ -6505,6 +6505,143 @@ export default function Plugin() { const cake = useCake(); const [state, setStat
   },
 };
 
+const widgetSpeechArticle =
+  "Cake can read widgets aloud. Press Play to hear this article in your configured voice. Pause keeps your place, and Resume continues from the same word. Stop ends reading.";
+
+/** Article-reader artifact and Session Plugin sharing one conversation, for read-aloud checks. */
+export const widgetSpeechScenario: VisualCaptureScenario = {
+  name: "widget-speech",
+  description: "Article reader artifact and Session Plugin using Cake read-aloud",
+  states: ["default"],
+  async seed(paths, theme) {
+    const source = `<!doctype html><html><head><style>
+main{display:grid;gap:12px;color:var(--foreground);font-family:var(--font-sans)}
+mark{background:color-mix(in srgb,var(--primary) 24%,transparent);color:inherit}
+nav{display:flex;flex-wrap:wrap;gap:8px}
+</style></head><body><main>
+<h2>Article reader</h2>
+<p id="article">${widgetSpeechArticle}</p>
+<nav><button id="play">Play</button><button id="pause">Pause</button><button id="stop">Stop</button></nav>
+<output id="status" aria-live="polite">idle</output>
+</main><script>
+const speech = globalThis.cakeSpeech;
+const text = ${JSON.stringify(widgetSpeechArticle)};
+const article = document.getElementById("article");
+const status = document.getElementById("status");
+const pause = document.getElementById("pause");
+const render = () => {
+  const state = speech.getSnapshot();
+  status.textContent = state.status === "error" ? "error: " + state.error : state.status + (state.chunks ? " " + (state.chunk + 1) + "/" + state.chunks : "");
+  pause.textContent = state.status === "paused" ? "Resume" : "Pause";
+  const reading = state.status === "playing" || state.status === "paused";
+  article.innerHTML = "";
+  if (reading) article.append(text.slice(0, state.start), Object.assign(document.createElement("mark"), { textContent: text.slice(state.start, state.end) }), text.slice(state.end));
+  else article.append(text);
+};
+speech.subscribe(render);
+document.getElementById("play").onclick = () => speech.speak(text).catch(() => undefined);
+pause.onclick = () => (speech.getSnapshot().status === "paused" ? speech.resume() : speech.pause());
+document.getElementById("stop").onclick = () => speech.stop();
+</script></body></html>`;
+    await seedArtifactScenario(
+      paths,
+      theme,
+      {
+        protocol: "cake.artifact/v1",
+        id: "article-reader",
+        sessionId: "visual-widget-speech",
+        revision: 1,
+        kind: "widget",
+        title: "Article reader",
+        payload: {
+          language: "html",
+          brief: "An article reader with Play, Pause/Resume and Stop",
+          generationSessionId: "visual-widget-speech-generation",
+          source,
+          browser: await retainArtifactBrowser(paths, "html", source),
+        },
+        fallback: { markdown: widgetSpeechArticle },
+        interaction: { mode: "present" },
+      },
+      true,
+    );
+    // Present the reader once (from the tool result), not again as a reply embed.
+    const transcript = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      "1970-01-01T00-00-00-000Z_visual-widget-speech.jsonl",
+    );
+    const entries = (await readFile(transcript, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const reply = entries.find((entry) => entry.id === "assistant-architecture");
+    reply.message.content = reply.message.content.filter(
+      (part: { type: string }) => part.type === "toolCall",
+    );
+    await writeFile(transcript, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    const timestamp = new Date(0).toISOString();
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        version: 4,
+        data: {
+          globalSessionLabels: [],
+          unreadSessionIds: [],
+          fastModeSessionIds: [],
+          modelPresets: [],
+          sessionPluginSharedState: [],
+          trustedProjectPaths: [],
+          projects: [
+            {
+              path: paths.project,
+              name: "Read aloud",
+              addedAt: timestamp,
+              lastOpenedAt: timestamp,
+            },
+          ],
+          sessionPlugins: [
+            {
+              sessionId: "visual-widget-speech",
+              id: "step-reader",
+              title: "Step reader",
+              slot: "composer.above",
+              source: `import { useSpeech } from "@cake/plugin-sdk";
+export default function StepReader() {
+  const speech = useSpeech();
+  const busy = speech.status === "loading" || speech.status === "playing" || speech.status === "paused";
+  return <section>
+    <button data-variant="primary" onClick={() => speech.speak("Step one. Open the settings.").catch(() => undefined)}>Read step</button>{" "}
+    <button disabled={!busy} onClick={() => speech.status === "paused" ? speech.resume() : speech.pause()}>{speech.status === "paused" ? "Resume step" : "Pause step"}</button>{" "}
+    <button disabled={!busy} onClick={speech.stop}>Stop step</button>{" "}
+    <output>{speech.status === "error" ? "error: " + speech.error : "plugin " + speech.status}</output>
+  </section>;
+}`,
+              state: null,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          ],
+        },
+      }),
+    );
+  },
+  region(page) {
+    return page.locator(".transcript").first();
+  },
+  async prepare(page) {
+    await expect(
+      page
+        .locator('[data-slot="artifact-disclosure"] iframe')
+        .first()
+        .contentFrame()
+        .getByRole("button", { name: "Play" }),
+    ).toBeVisible();
+    await expect(
+      page.frameLocator('iframe[title="Step reader"]').getByRole("button", { name: "Read step" }),
+    ).toBeVisible();
+  },
+};
+
 let sourceSelectionProject = "";
 
 const sourceSelectionScenario: VisualCaptureScenario = {
@@ -7119,6 +7256,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   vscodeTerminalScenario,
   sourceSelectionScenario,
   sessionPluginsScenario,
+  widgetSpeechScenario,
   assistantMarkdownCode,
   assistantDiagrams,
   assistantMarkdownTable,

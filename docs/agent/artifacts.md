@@ -51,6 +51,8 @@ the creation call reuses retained output without compilation or model review.
 
 HTML saved state uses `globalThis.cakeArtifact.read()`, `getSnapshot()`, `subscribe(listener)` and `replace(jsonValue, expectedVersion)`; await hydration and handle conflicts. React uses `@cake/artifact-sdk`. The maintained artifact protocol has an HTML state example.
 
+Artifact widgets and Session Plugins can read text aloud in the user's configured voice: `globalThis.cakeSpeech` (HTML) or `useSpeech()` (React SDKs) with `speak(text)`, `pause()`, `resume()`, `stop()` and sentence-chunk progress (`chunk`, `chunks`, `start`, `end`) for highlighting. Request it in the widget brief, for example an article reader with Play, Pause/Resume and Stop. Speech errors (for example not configured) reach the widget as a readable message.
+
 ## Live widget theme
 
 HTML and React widgets receive Cake's current effective theme before first paint and live updates without iframe navigation, including OS changes when Cake selects System. Use semantic CSS variables directly: `color:var(--foreground); background:var(--background); border:1px solid var(--border)`. Paired surfaces include `--card`/`--card-foreground` and `--primary`/`--primary-foreground`; supporting roles include `--muted`, `--muted-foreground`, `--accent`, `--success`, `--attention`, `--warning`, `--destructive`, `--font-sans` and `--font-mono`.

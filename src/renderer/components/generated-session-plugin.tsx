@@ -8,6 +8,7 @@ import { useEditorColorTheme } from "../lib/resolved-color-theme";
 import { inlineWidgetMessageSchema } from "../../utils/inline-widget-message";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { InlineWidgetFrame } from "./inline-widget-frame";
+import { useWidgetSpeech } from "../hooks/use-widget-speech";
 import { Callout } from "./ui/callout";
 import { LoadingState } from "./ui/loading-state";
 
@@ -28,6 +29,7 @@ export const GeneratedSessionPlugin = observer(function GeneratedSessionPlugin({
   const compiledState = inlineWidgets.state(compileId);
   const iframe = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(72);
+  useWidgetSpeech(iframe, compiledState?.compiled?.token, inlineWidgets.speech);
 
   useEffect(() => {
     inlineWidgets.prepare(compileId, "react", plugin.source, "session-plugin");

@@ -718,6 +718,22 @@ owns serialization, debounce, explicit-save controls, and error handling. Curren
 state updates notify other open instances without reloading their browser output.
 No save is promised for abrupt application termination before a pending debounce.
 
+### Read-aloud
+
+Artifact widgets and Session Plugins can read text aloud with the user's configured
+speech output (Pocket TTS or ElevenLabs). HTML uses `globalThis.cakeSpeech`; React
+uses `useSpeech()` from `@cake/artifact-sdk` or `@cake/plugin-sdk`. `speak(text, { from })`
+accepts text of any length and settles when reading ends, is stopped (resolve) or fails
+(reject with the provider's message, such as missing configuration). `pause()`,
+`resume()` and `stop()` control it; `getSnapshot()`/`subscribe()` report
+`{ status, chunk, chunks, start, end, error }`. The renderer host splits text into
+sentence chunks of at most one provider request, synthesizes up to two chunks ahead,
+and reports the audible chunk with its character offsets for highlighting. `from` restarts
+at a chunk; there is no time seek. Pause suspends the reader's own audio clock, separate
+from voice mode. One frame speaks at a time: another frame's `speak` or unmounting stops it.
+Display and request widgets have no speech capability. No main-process or IPC surface
+beyond the existing `speechOutput.synthesize` stream is involved.
+
 Generic `artifacts.state.read`, `artifacts.state.replace`, and
 `artifacts.state.update` operations inspect and modify the current JSON document.
 Writes require the observed `expectedVersion`; update applies bounded JSON-pointer

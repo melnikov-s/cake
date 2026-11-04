@@ -33,6 +33,10 @@ function webAudio(resume?: () => Promise<void>) {
     close = vi.fn(async () => {
       this.state = "closed";
     });
+    suspend = vi.fn(async () => {
+      this.state = "suspended";
+      this.onstatechange?.();
+    });
     resume = vi.fn(
       resume ??
         (async () => {
@@ -188,5 +192,66 @@ describe("streaming speech playback", () => {
       ).rejects.toThrow("Invalid speech audio");
     expect(contexts[0]!.nodes).toHaveLength(0);
     playback.stop();
+  });
+  it("pause suspends the audio clock so queued audio waits instead of failing, and resume continues it", async () => {
+    const contexts = webAudio(),
+      playback = createSpeechPlayback(),
+      signal = new AbortController().signal;
+    await playback.start(signal);
+    const chunk = audio(Array(24000).fill(0));
+    for (let i = 0; i < 5; i++) await playback.enqueue(chunk, signal);
+    await playback.pause();
+    expect(contexts[0]!.suspend).toHaveBeenCalledOnce();
+    let queued = false;
+    const pending = playback.enqueue(chunk, signal).then(() => {
+      queued = true;
+    });
+    const drain = playback.drain(signal);
+    contexts[0]!.onstatechange?.();
+    await Promise.resolve();
+    expect(queued).toBe(false);
+    await playback.resume();
+    expect(contexts[0]!.state).toBe("running");
+    contexts[0]!.currentTime = 1;
+    contexts[0]!.nodes[0]!.end();
+    await pending;
+    expect(queued).toBe(true);
+    for (const node of contexts[0]!.nodes.slice(1)) node.end();
+    await drain;
+    playback.stop();
+  });
+  it("starts paused when paused before the audio context resumed", async () => {
+    const contexts = webAudio(),
+      playback = createSpeechPlayback(),
+      signal = new AbortController().signal;
+    await playback.pause();
+    await playback.start(signal);
+    expect(contexts[0]!.state).toBe("suspended");
+    await playback.enqueue(audio([1]), signal);
+    expect(contexts[0]!.nodes).toHaveLength(1);
+    playback.stop();
+  });
+  it("marks fire when audio scheduled before them has played, and stop discards them", async () => {
+    const contexts = webAudio(),
+      playback = createSpeechPlayback(),
+      signal = new AbortController().signal;
+    await playback.start(signal);
+    const now = vi.fn();
+    playback.mark(now);
+    expect(now).toHaveBeenCalledOnce();
+    await playback.enqueue(audio([1]), signal);
+    await playback.enqueue(audio([2]), signal);
+    const later = vi.fn();
+    playback.mark(later);
+    contexts[0]!.nodes[0]!.end();
+    expect(later).not.toHaveBeenCalled();
+    contexts[0]!.nodes[1]!.end();
+    expect(later).toHaveBeenCalledOnce();
+    await playback.enqueue(audio([3]), signal);
+    const discarded = vi.fn();
+    playback.mark(discarded);
+    playback.stop();
+    contexts[0]!.nodes[2]!.end();
+    expect(discarded).not.toHaveBeenCalled();
   });
 });

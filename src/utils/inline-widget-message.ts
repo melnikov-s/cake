@@ -55,3 +55,18 @@ export const inlineWidgetMessageSchema = Schema.Union([
   }),
   Schema.Struct({ ...inlineWidgetMessageBase, type: Schema.Literal("cancel") }),
 ]);
+
+/** Read-aloud requests from artifact widgets and Session Plugins. Long text is chunked by the host. */
+export const inlineWidgetSpeechMessageSchema = Schema.Struct({
+  ...inlineWidgetMessageBase,
+  type: Schema.Literal("speech"),
+  value: Schema.Union([
+    Schema.Struct({
+      action: Schema.Literal("speak"),
+      id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+      text: Schema.String.check(Schema.isMaxLength(500_000)),
+      from: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+    }),
+    Schema.Struct({ action: Schema.Literals(["pause", "resume", "stop"]) }),
+  ]),
+});

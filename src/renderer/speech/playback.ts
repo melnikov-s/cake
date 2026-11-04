@@ -10,13 +10,25 @@ export interface SpeechPlayback {
   stop(): void;
 }
 
+/** Reader controls used by widget speech; voice mode needs only the streaming base. */
+export interface PausableSpeechPlayback extends SpeechPlayback {
+  /** Calls back once every sample scheduled so far has played; stop discards pending marks. */
+  mark(callback: () => void): void;
+  /** Suspends the audio clock; scheduled and queued audio wait instead of failing. */
+  pause(): Promise<void>;
+  resume(): Promise<void>;
+}
+
 /** PCM is scheduled as it arrives. Node completion supplies demand, not a polling/retry loop. */
-export function createSpeechPlayback(): SpeechPlayback {
+export function createSpeechPlayback(): PausableSpeechPlayback {
   let context: AudioContext | undefined;
   let generation = 0;
   let tail = 0;
   let loggedChunk = false;
+  let paused = false;
+  let last: AudioBufferSourceNode | undefined;
   const nodes = new Set<AudioBufferSourceNode>();
+  const marks = new Map<AudioBufferSourceNode, Array<() => void>>();
   const waiters = new Set<() => void>();
   let detach: (() => void) | undefined;
   const wake = () => {
@@ -31,6 +43,9 @@ export function createSpeechPlayback(): SpeechPlayback {
       node.stop();
     }
     nodes.clear();
+    marks.clear();
+    last = undefined;
+    paused = false;
     const old = context;
     context = undefined;
     tail = 0;
@@ -55,7 +70,7 @@ export function createSpeechPlayback(): SpeechPlayback {
   const current = (revision: number, signal: AbortSignal) => {
     signal.throwIfAborted();
     if (revision !== generation || !context) throw new Error("Speech playback stopped");
-    if (context.state !== "running")
+    if (context.state !== "running" && !(paused && context.state === "suspended"))
       throw new Error(
         `Speech audio is ${context.state}. Check your audio output device and re-enter voice mode.`,
       );
@@ -99,6 +114,7 @@ export function createSpeechPlayback(): SpeechPlayback {
             if (signal.aborted) cancelled();
           }),
         ]);
+        if (paused) await audio.suspend();
         current(revision, signal);
         recordVoiceDiagnostic("playback-ready", { state: audio.state });
       } catch (error) {
@@ -144,8 +160,12 @@ export function createSpeechPlayback(): SpeechPlayback {
       node.onended = () => {
         nodes.delete(node);
         node.disconnect();
+        const callbacks = marks.get(node);
+        marks.delete(node);
+        for (const callback of callbacks ?? []) callback();
         wake();
       };
+      last = node;
       const start = Math.max(tail, ctx.currentTime);
       tail = start + duration;
       node.start(start);
@@ -160,6 +180,19 @@ export function createSpeechPlayback(): SpeechPlayback {
           queuedSeconds: tail - ctx.currentTime,
         });
       }
+    },
+    mark(callback) {
+      if (!last || !nodes.has(last)) callback();
+      else marks.set(last, [...(marks.get(last) ?? []), callback]);
+    },
+    async pause() {
+      paused = true;
+      if (context?.state === "running") await context.suspend();
+    },
+    async resume() {
+      paused = false;
+      if (context?.state === "suspended") await context.resume();
+      wake();
     },
     async drain(signal) {
       const revision = generation;

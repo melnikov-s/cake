@@ -14,6 +14,7 @@ import { InlineWidgetFrame } from "./inline-widget-frame";
 import { decodeArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 import { ArtifactState } from "../../contracts/artifacts/artifact-state";
 import { artifactStateWireError } from "../../contracts/widgets/artifact-state-wire";
+import { useWidgetSpeech } from "../hooks/use-widget-speech";
 
 const detachedState = Schema.decodeUnknownSync(Schema.fromJsonString(ArtifactState));
 
@@ -38,6 +39,7 @@ export const WidgetArtifact = observer(function WidgetArtifact({
   const iframe = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(220);
   const [readyToken, setReadyToken] = useState<string>();
+  useWidgetSpeech(iframe, state?.compiled?.token, inlineWidgets?.speech);
   useEffect(() => {
     if (inlineWidgets) inlineWidgets.prepareBrowser(id, { digest: browserDigest });
     if (inlineWidgets && stateSessionId)

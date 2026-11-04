@@ -34,6 +34,54 @@ function diagnostics(messages: Message[]) {
   });
 }
 
+/** Read-aloud through Cake's configured speech output. The host chunks long text and
+ * reports which chunk is audible; ids are per-frame and increase, so states for a
+ * superseded utterance settle its promise without disturbing the newer one. */
+const speechBridge = `
+  const speechListeners = new Set();
+  const speechPending = new Map();
+  let speechRequest = 0;
+  let speechSnapshot = Object.freeze({ id: null, status: "idle", chunk: 0, chunks: 0, start: 0, end: 0, error: null });
+  addEventListener("message", (event) => {
+    const message = event.data;
+    if (event.source !== parent || message?.source !== "cake-widget-host" || message.token !== token || message.type !== "speech-state") return;
+    const state = message.value;
+    const current = Number(state.id);
+    for (const [id, operation] of speechPending) {
+      if (Number(id) < current) operation.resolve();
+      else if (Number(id) > current) continue;
+      else if (state.status === "error") operation.reject(new Error(state.error || "Speech failed"));
+      else if (state.status === "ended" || state.status === "idle") operation.resolve();
+      else continue;
+      speechPending.delete(id);
+    }
+    if (current < speechRequest) return;
+    speechSnapshot = Object.freeze({ ...state });
+    for (const listener of speechListeners) listener();
+  });
+  const speechControl = (action) => send("speech", { action });
+  globalThis.cakeSpeech = Object.freeze({
+    speak(text, options = {}) {
+      text = String(text ?? "");
+      const from = options.from ?? 0;
+      if (text.length > 500000) return Promise.reject(new Error("cakeSpeech.speak text exceeds 500000 characters"));
+      if (!Number.isInteger(from) || from < 0) return Promise.reject(new Error("cakeSpeech.speak from must be a nonnegative integer"));
+      const id = String(++speechRequest);
+      return new Promise((resolve, reject) => {
+        speechPending.set(id, { resolve, reject });
+        send("speech", { action: "speak", id, text, from });
+      });
+    },
+    pause: () => speechControl("pause"),
+    resume: () => speechControl("resume"),
+    stop: () => speechControl("stop"),
+    getSnapshot: () => speechSnapshot,
+    subscribe(listener) { speechListeners.add(listener); return () => speechListeners.delete(listener); },
+  });`;
+
+const useSpeechHook =
+  "export function useSpeech() { const speech = globalThis.cakeSpeech; const snapshot = useSyncExternalStore(speech.subscribe, speech.getSnapshot, speech.getSnapshot); return { ...snapshot, speak: speech.speak, pause: speech.pause, resume: speech.resume, stop: speech.stop }; }";
+
 function runtimeBridge(token: string, capability: InlineWidgetCapability) {
   return `<script>
 (() => {
@@ -168,6 +216,7 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
   `
       : ""
   }
+  ${capability === "artifact" || capability === "session-plugin" ? speechBridge : ""}
   addEventListener("DOMContentLoaded", () => {
     const startedAt = performance.now();
     let changedAt = startedAt;
@@ -281,6 +330,7 @@ function widgetModulePlugin(source: string): Plugin {
           "  const save = useCallback((value) => bridge.replace(value, snapshot.version), [snapshot.version]);",
           "  return { value: snapshot.version === 0 ? initialValue : snapshot.value, hydrated: snapshot.hydrated, version: snapshot.version, error: snapshot.error, save, reload: bridge.read };",
           "}",
+          useSpeechHook,
         ].join("\n"),
         resolveDir: cakeModuleResolveDirectory,
       }));
@@ -310,6 +360,7 @@ function widgetModulePlugin(source: string): Plugin {
           '  const setValue = useCallback((next) => { const current = bridge.getSnapshot(); const previous = Object.prototype.hasOwnProperty.call(current.sharedState, key) ? current.sharedState[key] : initialState; return bridge.cake.call("plugins.set-shared-state", { key, value: typeof next === "function" ? next(previous) : next }); }, [initialState, key]);',
           "  return [value, setValue];",
           "}",
+          useSpeechHook,
         ].join("\n"),
         resolveDir: cakeModuleResolveDirectory,
       }));

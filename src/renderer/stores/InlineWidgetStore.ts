@@ -9,6 +9,8 @@ import { ClientContext } from "./context/ClientContext";
 import type { ArtifactState } from "../../contracts/artifacts/artifact-state";
 import type { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
+import { createSpeechPlayback } from "../speech/playback";
+import { createWidgetSpeech, type WidgetSpeech } from "../speech/widget-speech";
 
 export interface InlineWidgetState {
   language: InlineWidgetLanguage;
@@ -52,6 +54,13 @@ export class InlineWidgetStore extends Store {
   get inlineWidgets() {
     return ClientContext.consume(this)!.inlineWidgets;
   }
+
+  /** Read-aloud for artifact widgets and Session Plugins: one speaking frame at a time. */
+  readonly speech: WidgetSpeech = createWidgetSpeech({
+    synthesize: (request, consume, options) =>
+      ClientContext.consume(this)!.speechOutput.synthesize(request, consume, options),
+    createPlayback: createSpeechPlayback,
+  });
 
   readonly artifactStates = observable<
     Record<
