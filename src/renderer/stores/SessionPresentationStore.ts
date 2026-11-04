@@ -129,13 +129,6 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
     this.browserStore.suspend();
   }
 
-  /** Escape dismisses only a visible native editor, not another session's retained mode. */
-  tryBackToAgent() {
-    if (!this.embeddedEditorStore.visible) return false;
-    void this.backToAgent();
-    return true;
-  }
-
   async backToAgent() {
     const session = this.session;
     session?.conversationSessionStore.composerStore.draftStore.setEditorContextAttachment(

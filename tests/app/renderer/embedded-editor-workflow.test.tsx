@@ -100,6 +100,23 @@ async function hydrateBootstrap(
 }
 
 describe("Embedded editor workflow", () => {
+  it("keeps VS Code open on unclaimed Escape and returns only through the explicit action", async () => {
+    const lease = editorLease("a");
+    const release = vi.fn<Client["vscode"]["release"]>(async () => undefined);
+    using fixture = renderEmbeddedEditor({
+      vscode: { open: async () => lease, release },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await waitFor(() => expect(workspaceFrame()?.getAttribute("src")).toBe(lease.endpoint));
+    await fixture.user.click(screen.getByRole("combobox", { name: "Message" }));
+    await fixture.user.keyboard("{Escape}");
+    expect(workspaceFrame()?.getAttribute("src")).toBe(lease.endpoint);
+    expect(release).not.toHaveBeenCalled();
+    await fixture.user.click(backToAgentButton());
+    expect(workspaceFrame()).toBeNull();
+    expect(release).toHaveBeenCalledWith(lease.id);
+  });
+
   it.each(["vscode", "text"] as const)(
     "routes chat range/diff links to %s before any editor launch",
     async (viewer) => {

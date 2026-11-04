@@ -517,7 +517,6 @@ export class NavigationStore extends Store<{
       this.returnToWorkbench();
       return;
     }
-    if (this.presentation.tryBackToAgent()) return;
     if (this.commands.tryClose()) return;
     const sessionId = this.props.layout.focusedSessionId;
     if (sessionId) {

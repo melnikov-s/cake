@@ -263,6 +263,13 @@ test("workspace changes use Source Control, committed files fall back to the fil
     await page.getByRole("link", { name: "working-tree changes", exact: true }).click();
     await expect.poll(activeVsCodeTab, { timeout: 20_000 }).toMatch(/app\.ts.+/);
 
+    // Unclaimed Escape in Cake must not exit VS Code mode.
+    const workspace = page.getByRole("region", { name: "VS Code workspace" });
+    await page.getByRole("button", { name: "Back to agent", exact: true }).first().focus();
+    await page.keyboard.press("Escape");
+    await expect(workspace).toBeVisible();
+    await expect.poll(activeVsCodeTab).toMatch(/app\.ts.+/);
+
     // CDP targets the hidden workbench without focusing a native OS window.
     const workbench = (source: string) =>
       application.evaluate(async ({ webContents }, source) => {
@@ -317,6 +324,17 @@ test("workspace changes use Source Control, committed files fall back to the fil
       await expect(page.getByText(`export const value = ${value};`, { exact: true })).toBeVisible();
       await page.keyboard.press("Escape");
     };
+    // Escape still belongs to the editor: it dismisses its command palette,
+    // without an outer handler hiding the embedded workspace.
+    await focusEditor(diffInput("modified"));
+    await key("p", "KeyP", 80, 12);
+    const paletteVisible = () =>
+      workbench(`!!document.querySelector('.quick-input-widget')?.getClientRects().length`);
+    await expect.poll(paletteVisible).toBe(true);
+    await key("Escape", "Escape", 27);
+    await expect.poll(paletteVisible).toBe(false);
+    await expect(workspace).toBeVisible();
+
     await select(diffInput("original"));
     await checkContext(0);
     await select(diffInput("modified"));

@@ -7,7 +7,6 @@ export const SessionPresentationContext =
     Pick<
       SessionPresentationStore,
       | "restore"
-      | "tryBackToAgent"
       | "openSelectionLocation"
       | "refreshEditorHighlights"
       | "openFile"
