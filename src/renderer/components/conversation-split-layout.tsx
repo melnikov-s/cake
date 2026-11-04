@@ -18,6 +18,7 @@ interface ConversationSplitLayoutProps<T extends PrimarySessionStore> {
   chatProps(session: T, pane: SessionPaneNode): ConversationChatProps;
   title(sessionId: string): string;
   titleLeading?(sessionId: string): ReactNode;
+  renderTitle?(sessionId: string): ReactNode;
   loadingLabel: string;
   headerClassName?(pane: SessionPaneNode): string | undefined;
   renderHeader(pane: SessionPaneNode, session: T): ReactNode;
@@ -35,6 +36,7 @@ export function ConversationSplitLayout<T extends PrimarySessionStore>({
   chatProps,
   title,
   titleLeading,
+  renderTitle,
   loadingLabel,
   headerClassName,
   renderHeader,
@@ -55,6 +57,7 @@ export function ConversationSplitLayout<T extends PrimarySessionStore>({
       store={store}
       title={title}
       titleLeading={titleLeading}
+      renderTitle={renderTitle}
       headerClassName={headerClassName}
       renderNavigation={renderNavigation}
       renderHeader={(pane) => {

@@ -1,12 +1,11 @@
-import { observer, StoreProvider, useStore } from "r-state-tree/react";
-import { CaptureDestinationPicker } from "./capture-destination-picker";
+import { observer, useStore } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   BrowserIcon,
   CheckIcon,
   VsCodeIcon,
   CloseIcon,
-  CropIcon,
+  CameraIcon,
   TerminalIcon,
 } from "@/components/ui/icons";
 import { ToolbarGroup } from "@/components/ui/toolbar-group";
@@ -76,15 +75,12 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
       />
       {overlay ? (
         <>
-          <StoreProvider store={root.cakeChatOverlayStore.destinationPicker}>
-            <CaptureDestinationPicker disabled={false} ariaLabel="Chat destination" />
-          </StoreProvider>
           <IconButton
-            tooltip="Capture screenshot"
+            tooltip="Take screenshot"
             disabled={overlay.capturing}
             onClick={overlay.onCaptureScreenshot}
           >
-            <CropIcon />
+            <CameraIcon />
           </IconButton>
           <IconButton tooltip="Close drop-down Cake Chat" onClick={overlay.onClose}>
             <CloseIcon />

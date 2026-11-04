@@ -23,6 +23,8 @@ interface SessionSplitLayoutProps {
   node?: SessionLayoutNode;
   title(sessionId: string): string;
   titleLeading?(sessionId: string): ReactNode;
+  /** Replaces the static title, e.g. with a session switcher. */
+  renderTitle?(sessionId: string): ReactNode;
   headerClassName?(pane: SessionPaneNode): string | undefined;
   renderHeader(pane: SessionPaneNode): ReactNode;
   /** Essential controls stay outside the scrolling optional header actions. */
@@ -41,6 +43,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
   node = store.layout,
   title,
   titleLeading,
+  renderTitle,
   headerClassName,
   renderHeader,
   renderNavigation,
@@ -137,9 +140,13 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
             </span>
           )}
           {titleLeading?.(sessionId)}
-          <strong className="min-w-0 flex-1 truncate text-sm font-semibold">
-            {title(sessionId)}
-          </strong>
+          {renderTitle ? (
+            <div className="flex min-w-0 flex-1">{renderTitle(sessionId)}</div>
+          ) : (
+            <strong className="min-w-0 flex-1 truncate text-sm font-semibold">
+              {title(sessionId)}
+            </strong>
+          )}
           <div
             data-slot="workspace-actions"
             className="-my-1 flex min-w-0 max-w-[70%] shrink-0 items-center gap-1 overflow-x-auto py-1 [app-region:no-drag] phone:-ml-11 phone:w-[calc(100%+2.75rem)] phone:max-w-none phone:flex-none"
@@ -208,6 +215,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
           store,
           title,
           titleLeading,
+          renderTitle,
           headerClassName,
           renderHeader,
           renderPane,
@@ -236,6 +244,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
           store,
           title,
           titleLeading,
+          renderTitle,
           headerClassName,
           renderHeader,
           renderPane,

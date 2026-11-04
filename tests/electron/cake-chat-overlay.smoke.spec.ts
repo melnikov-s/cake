@@ -268,7 +268,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
         systemPreferences.getMediaAccessStatus = () => "granted";
       });
       const capturing = app.waitForEvent("window");
-      await overlay.getByRole("button", { name: "Capture screenshot" }).click();
+      await overlay.getByRole("button", { name: "Take screenshot" }).click();
       const capture = await capturing;
       await expect(capture.getByRole("toolbar", { name: "Screen capture tools" })).toBeVisible();
       // Enter closes the capture on keydown; there is no surviving target for keyup.
@@ -281,7 +281,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
       await clickMenuItem(app, "Drop-down Cake Chat");
       await expect(input).toBeFocused();
       // Exercise the native focus event without claiming desktop focus.
-      await overlay.getByRole("button", { name: "Capture screenshot", exact: true }).focus();
+      await overlay.getByRole("button", { name: "Take screenshot", exact: true }).focus();
       await overlay.evaluate(() => window.dispatchEvent(new Event("focus")));
       await expect(input).toBeFocused();
       await input.pressSequentially("Retained on reopen");

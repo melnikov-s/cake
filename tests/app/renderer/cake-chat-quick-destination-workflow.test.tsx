@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Effect, Queue, Stream } from "effect";
 import { applySnapshot } from "r-state-tree";
@@ -157,5 +157,37 @@ it("uses the capture picker to switch quick-chat drafts without sending or disca
     ),
   );
   expect(projectDraft.text).toBe("Project idea");
+  rendered.unmount();
+});
+
+it("makes the quick-chat title the only session switcher and lists Cake Chat once", async () => {
+  using view = fixture();
+  await act(() => startCakeChatOverlay(view.root));
+  const rendered = render(
+    <StoreProvider store={view.root}>
+      <CakeChatSurface overlay={{ onClose() {}, onCaptureScreenshot() {}, capturing: false }} />
+    </StoreProvider>,
+  );
+  const header = document.querySelector<HTMLElement>('[data-slot="workspace-header"]')!;
+  const actions = header.querySelector<HTMLElement>('[data-slot="workspace-actions"]')!;
+  const trigger = within(header).getByRole("button", { name: "Chat destination" });
+  expect(within(header).getAllByRole("button", { name: "Chat destination" })).toHaveLength(1);
+  expect(actions.contains(trigger)).toBe(false);
+  expect(trigger.textContent).toBe("Cake Chat");
+  expect(within(actions).getByRole("button", { name: "Take screenshot" })).toBeTruthy();
+
+  const user = userEvent.setup();
+  await user.click(trigger);
+  const menu = within(screen.getByRole("dialog", { name: "Chat destination" }));
+  const cakeChat = menu.getByRole("button", { name: "Cake Chat" });
+  expect(menu.getAllByText("Cake Chat")).toHaveLength(1);
+  expect(cakeChat.getAttribute("aria-current")).toBe("page");
+
+  await user.click(menu.getByRole("button", { name: "Open Project Chat for Project" }));
+  await waitFor(() =>
+    expect(within(header).getByRole("button", { name: "Chat destination" }).textContent).toBe(
+      "Project Chat",
+    ),
+  );
   rendered.unmount();
 });

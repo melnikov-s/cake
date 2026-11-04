@@ -117,6 +117,12 @@ export const CropIcon = () => (
     <path d="M6 3v15h15M3 6h15v15" />
   </Icon>
 );
+export const CameraIcon = () => (
+  <Icon>
+    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z" />
+    <circle cx="12" cy="13" r="3" />
+  </Icon>
+);
 export const CaptureArrowIcon = () => (
   <Icon>
     <path d="M5 19 19 5M9 5h10v10" />

@@ -1,4 +1,4 @@
-import { observer, useStore } from "r-state-tree/react";
+import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
 import { cn } from "@/lib/utils";
@@ -6,6 +6,7 @@ import { SidebarNavigationControls } from "./sidebar-navigation-controls";
 import { cakeChatPropsFor } from "../lib/cake-chat-props";
 import { RootStore } from "../stores/RootStore";
 import { CakeChatPaneHeader, type CakeChatOverlayChrome } from "./cake-chat-pane-header";
+import { CaptureDestinationPicker } from "./capture-destination-picker";
 import { ProjectChatHeaderLink } from "./project-chat-header-link";
 import { ProjectTodoSelectionBar } from "./project-todo-selection-bar";
 
@@ -48,6 +49,19 @@ export const CakeChatSurface = observer(function CakeChatSurface({
           }
         />
       )}
+      renderTitle={
+        overlay
+          ? () => (
+              <StoreProvider store={root.cakeChatOverlayStore.destinationPicker}>
+                <CaptureDestinationPicker
+                  disabled={false}
+                  ariaLabel="Chat destination"
+                  variant="title"
+                />
+              </StoreProvider>
+            )
+          : undefined
+      }
       loadingLabel="Opening Cake Chat"
       headerClassName={(pane) =>
         // The frameless overlay has no traffic lights or sidebar toggle to make room for.

@@ -3813,8 +3813,9 @@ const cakeChatConversationScenario: VisualCaptureScenario = {
 
 const cakeChatOverlayScenario: VisualCaptureScenario = {
   name: "cake-chat-overlay",
-  description: "Full-width native drop-down with centered conversation and focused composer",
-  states: ["default", "reopen"],
+  description:
+    "Full-width native drop-down with centered conversation, focused composer and title session switcher",
+  states: ["default", "reopen", "destination"],
   seed: cakeChatScenario.seed,
   async prepare(page, state, application) {
     if (!application) throw new Error("Cake Chat overlay requires Electron");
@@ -3853,6 +3854,12 @@ const cakeChatOverlayScenario: VisualCaptureScenario = {
     }
     await overlay.waitForFunction(() => document.fonts.status === "loaded");
     await overlay.mouse.move(1, 1);
+    if (state === "destination") {
+      await overlay.getByRole("button", { name: "Chat destination", exact: true }).click();
+      await expect(overlay.getByRole("dialog", { name: "Chat destination" })).toBeVisible();
+      // The first region capture after opening the popover can precede the native overlay's paint.
+      await overlay.screenshot();
+    }
   },
   region(page) {
     const overlay = page
