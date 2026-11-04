@@ -7,6 +7,7 @@ import { ProjectComposerAccessory } from "./project-composer-accessory";
 import { ProjectComposerHeader } from "./project-composer-header";
 import { ProjectWorkspaceControls } from "./project-workspace-controls";
 import { WorkspaceFrame } from "./workspace-frame";
+import { ProjectChatHeaderLink } from "./project-chat-header-link";
 
 export const ProjectWorkspaceSurface = observer(function ProjectWorkspaceSurface({
   session,
@@ -23,6 +24,11 @@ export const ProjectWorkspaceSurface = observer(function ProjectWorkspaceSurface
       <WorkspaceFrame
         session={session}
         mode={mode}
+        headerLeading={
+          <ProjectChatHeaderLink
+            projectPath={root.sessionCatalogStore.find(session.sessionId)?.projectPath}
+          />
+        }
         headerActions={
           <ProjectWorkspaceControls session={session} mode={mode} browserMode={browserMode} />
         }

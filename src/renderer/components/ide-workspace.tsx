@@ -28,6 +28,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   reviews,
   projectChat,
   sideChat,
+  headerLeading,
   headerActions,
   conversationHeader,
   projectComposerHeader,
@@ -46,6 +47,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   reviews: ReviewsStore;
   projectChat: ChatStore;
   sideChat: SideChatStore;
+  headerLeading?: ReactNode;
   /** Session-scoped controls shown in the chat sidebar header, such as the side chats menu. */
   headerActions?: ReactNode;
   conversationHeader?: ReactNode;
@@ -113,9 +115,55 @@ export const IdeWorkspace = observer(function IdeWorkspace({
     </SideChatLayout>
   );
 
+  const header = (
+    <header
+      className={cn(
+        "flex shrink-0 select-none items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 [-webkit-app-region:drag]",
+        contextualAnchor ? "min-h-[52px] flex-wrap py-2" : "h-10",
+        !editor.chatSidebarVisible && !projectSidebarVisible && "pl-[84px]",
+      )}
+    >
+      {headerLeading && (
+        <div className="flex shrink-0 items-center [-webkit-app-region:no-drag]">
+          {headerLeading}
+        </div>
+      )}
+      <div className={cn("min-w-0 flex-1", contextualAnchor && "basis-48")}>
+        <strong className="block truncate text-xs font-semibold text-foreground">
+          {contextualAnchor ? "Chat about selection" : sessionTitle}
+        </strong>
+        {contextualAnchor ? (
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {anchorTitle(contextualAnchor)}
+          </p>
+        ) : null}
+      </div>
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]",
+          contextualAnchor && "max-w-full flex-wrap",
+        )}
+      >
+        {headerActions}
+        {contextualAnchor ? (
+          <Button variant="ghost" size="sm" onClick={closeContext}>
+            Project chat
+          </Button>
+        ) : null}
+      </div>
+    </header>
+  );
+
   return (
     <WorkspaceChatLayout
-      workspace={<EmbeddedEditorPane store={editor} />}
+      workspace={
+        <div className="flex h-full min-h-0 flex-col">
+          {!editor.chatSidebarVisible && headerLeading && header}
+          <div className="min-h-0 flex-1">
+            <EmbeddedEditorPane store={editor} />
+          </div>
+        </div>
+      }
       workspaceLabel="VS Code workspace"
       chatSidebarVisible={editor.chatSidebarVisible}
       chatSidebarWidth={editor.chatSidebarWidth}
@@ -127,36 +175,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
       terminalDock={terminalDock}
       chatSidebar={
         <>
-          <header
-            className={cn(
-              "flex select-none items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 [-webkit-app-region:drag]",
-              contextualAnchor ? "min-h-[52px] flex-wrap py-2" : "h-10",
-            )}
-          >
-            <div className={cn("min-w-0 flex-1", contextualAnchor && "basis-48")}>
-              <strong className="block truncate text-xs font-semibold text-foreground">
-                {contextualAnchor ? "Chat about selection" : sessionTitle}
-              </strong>
-              {contextualAnchor ? (
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                  {anchorTitle(contextualAnchor)}
-                </p>
-              ) : null}
-            </div>
-            <div
-              className={cn(
-                "flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]",
-                contextualAnchor && "max-w-full flex-wrap",
-              )}
-            >
-              {headerActions}
-              {contextualAnchor ? (
-                <Button variant="ghost" size="sm" onClick={closeContext}>
-                  Project chat
-                </Button>
-              ) : null}
-            </div>
-          </header>
+          {header}
           {!contextualAnchor && conversationHeader}
           <div className="min-h-0 flex-1">{conversation}</div>
         </>

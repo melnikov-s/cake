@@ -20,6 +20,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   browser,
   projectChat,
   sideChat,
+  headerLeading,
   headerActions,
   conversationHeader,
   projectComposerHeader,
@@ -38,6 +39,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   browser: BrowserStore;
   projectChat: ChatStore;
   sideChat: SideChatStore;
+  headerLeading?: ReactNode;
   headerActions?: ReactNode;
   conversationHeader?: ReactNode;
   projectComposerHeader?: ReactNode;
@@ -109,7 +111,8 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
           !projectSidebarVisible && "pl-[84px]",
         )}
       >
-        <div className="flex items-center gap-0.5 [-webkit-app-region:no-drag]">
+        <div className="flex shrink-0 items-center gap-0.5 [-webkit-app-region:no-drag]">
+          {!browser.chatSidebarVisible && headerLeading}
           {!projectSidebarVisible && (
             <>
               <WorkspacePanelToggle panel="sidebar" visible={false} onToggle={onToggleSidebar} />
@@ -193,7 +196,12 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
       terminalDock={terminalDock}
       chatSidebar={
         <>
-          <header className="flex h-10 select-none items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 [-webkit-app-region:drag]">
+          <header className="flex h-10 shrink-0 select-none items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 [-webkit-app-region:drag]">
+            {headerLeading && (
+              <div className="flex shrink-0 items-center [-webkit-app-region:no-drag]">
+                {headerLeading}
+              </div>
+            )}
             <strong className="block min-w-0 flex-1 truncate text-xs font-semibold text-foreground">
               {sessionTitle}
             </strong>

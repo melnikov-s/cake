@@ -18,6 +18,7 @@ export const WorkspaceFrame = observer(function WorkspaceFrame({
   mode: "browser" | "vscode";
 } & Pick<
   ComponentProps<typeof BrowserWorkspace>,
+  | "headerLeading"
   | "headerActions"
   | "conversationHeader"
   | "projectComposerHeader"

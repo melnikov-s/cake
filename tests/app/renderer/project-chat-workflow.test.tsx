@@ -275,9 +275,19 @@ it("selects the latest requested Project Chat when snapshots arrive out of order
   await waitFor(() => expect(f.root.appShellStore.activeConversation?.sessionId).toBe(otherId));
 });
 
-it.each(["/zombies", "/managed/task-worktree"])(
-  "opens the session header's owning Project Chat from %s, not the globally selected project",
-  async (workingDirectory) => {
+it.each(
+  ["/zombies", "/managed/task-worktree"].flatMap((workingDirectory) =>
+    ["normal", "browser", "vscode"].flatMap((mode) =>
+      (mode === "normal" ? [true] : [true, false]).map((chatSidebarVisible) => ({
+        workingDirectory,
+        mode,
+        chatSidebarVisible,
+      })),
+    ),
+  ),
+)(
+  "opens the owning Project Chat from $workingDirectory in $mode (chat sidebar: $chatSidebarVisible), not the globally selected project",
+  async ({ workingDirectory, mode, chatSidebarVisible }) => {
     using f = await fixture(undefined, undefined, workingDirectory);
     await act(async () => f.root.navigationStore.openCakeChat(otherId));
     await f.user.click(screen.getByRole("button", { name: /^task(?: |$)/ }));
@@ -286,11 +296,26 @@ it.each(["/zombies", "/managed/task-worktree"])(
         document.querySelector('[data-slot="session-pane"][data-session-id="task"]'),
       ).toBeTruthy(),
     );
+    if (mode !== "normal") {
+      await f.user.click(
+        screen.getByRole("button", {
+          name: mode === "browser" ? "Open Browser Mode" : "Open VS Code",
+        }),
+      );
+      expect(
+        screen.getByRole("region", {
+          name: mode === "browser" ? "Browser workspace" : "VS Code workspace",
+        }),
+      ).toBeTruthy();
+      if (!chatSidebarVisible) {
+        act(() => {
+          f.root.sessionRegistry.findSession("task")!.toggleWorkspaceChatSidebar();
+          f.root.sidebarStore.toggle();
+        });
+      }
+    }
     act(() => f.root.projectWorkbenchStore.projectOpenStore.activate("/finance"));
-    const header = document.querySelector<HTMLElement>(
-      '[data-slot="session-pane"][data-session-id="task"] [data-slot="workspace-header"]',
-    )!;
-    const link = within(header).getByRole("button", { name: "Go to Project Chat for zombies" });
+    const link = screen.getByRole("button", { name: "Go to Project Chat for zombies" });
     expect(link.querySelector('[data-slot="avatar"]')).toBeTruthy();
     await f.user.click(link);
     await waitFor(() =>
