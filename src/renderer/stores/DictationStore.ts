@@ -506,6 +506,12 @@ export class DictationStore extends Store<{
       return;
     // Typing/selection changes must not bypass recovery backoff or retry a permanent error.
     if (this.phase === "error" || this.recoveryTimer) return;
+    // The start is still opening the microphone and has inserted nothing: move its anchor to
+    // the new caret instead of discarding the in-flight open (a click fires focus, then select).
+    if (this.phase === "preparing" && this.utterance && !this.utterance.capture) {
+      this.utterance.target.begin();
+      return;
+    }
     if (this.phase === "finishing") {
       this.submission = undefined;
       this.endUtterance();

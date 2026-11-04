@@ -1402,6 +1402,31 @@ describe("Dictation writing-field workflow", () => {
     expect(trial().value).toBe("");
   });
 
+  it("a click's select event during microphone opening keeps the open and listens at the new caret", async () => {
+    const permission = deferred<void>();
+    using fixture = renderDictation({ permission: permission.promise });
+    await fixture.user.type(message(), "Hello world");
+    await fixture.user.click(mode());
+    act(() => message().blur());
+    await fixture.user.click(message());
+    expect(fixture.root.dictationStore.phase).toBe("preparing");
+    expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
+    act(() => {
+      message().setSelectionRange(5, 5);
+      fireEvent.select(message());
+    });
+    expect(fixture.root.dictationStore.phase).toBe("preparing");
+    await act(async () => permission.resolve());
+    await waitFor(listening);
+    expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
+    expect(fixture.audio.tracks[0]!.stop).not.toHaveBeenCalled();
+    await act(async () => {});
+    expect(fixture.trace.mock.calls.map(([entry]) => entry.step)).not.toContain("cancelled");
+    await fixture.audio.push(new Float32Array(12_800));
+    await fixture.recognize(0, "there");
+    expect(message().value).toBe("Hello there world");
+  });
+
   it("continues dictation preparation when loading replaces an autofocused drop-down composer", async () => {
     const model = deferred<void>();
     using fixture = renderDictation({
