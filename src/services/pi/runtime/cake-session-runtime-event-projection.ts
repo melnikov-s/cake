@@ -71,6 +71,8 @@ export interface RuntimeEventProjection {
   ) => Promise<void>;
   readonly consumeUserPresentation: (content: string) => PendingUserPresentation | undefined;
   readonly publishUsageUpdate: () => void;
+  readonly stop: () => void;
+  readonly resume: () => void;
   readonly dispose: () => void;
 }
 
@@ -124,6 +126,8 @@ export function createCakeSessionRuntimeEventProjection(input: {
       );
     },
   });
+  let stopped = false;
+  let stoppedStreamingParts: UiPart[] = [];
   let usageUpdateTimer: ReturnType<typeof setTimeout> | undefined;
   let lastUsageUpdateAt = 0;
   let pendingAssistantUpdate: Extract<AgentSessionEvent, { type: "message_update" }> | undefined;
@@ -137,7 +141,7 @@ export function createCakeSessionRuntimeEventProjection(input: {
     assistantUpdateTimer = undefined;
     const event = pendingAssistantUpdate;
     pendingAssistantUpdate = undefined;
-    if (!event || input.isDisposed()) return;
+    if (!event || stopped || input.isDisposed()) return;
     for (const part of projectLiveMessage(event)) emit({ type: "part-updated", sessionId, part });
   };
 
@@ -169,7 +173,7 @@ export function createCakeSessionRuntimeEventProjection(input: {
       clearTimeout(usageUpdateTimer);
       usageUpdateTimer = undefined;
     }
-    if (input.isDisposed()) return;
+    if (stopped || input.isDisposed()) return;
     lastUsageUpdateAt = Date.now();
     emit({ type: "usage-updated", sessionId, usage: currentUsage() });
   };
@@ -232,6 +236,9 @@ export function createCakeSessionRuntimeEventProjection(input: {
   };
 
   const projectEvent = (event: AgentSessionEvent) => {
+    // Cleanup events from the stopped run must not overwrite the frozen view.
+    // Publication reopens only at the controller's next admitted input boundary.
+    if (stopped) return;
     if (event.type === "agent_start") {
       emit({ type: "streaming", sessionId, streaming: true });
       // before_agent_start extensions may have changed the effective prompt for this run.
@@ -393,18 +400,39 @@ export function createCakeSessionRuntimeEventProjection(input: {
     nestedActivity.clear();
   };
 
+  const streamingParts = (): UiPart[] =>
+    stopped
+      ? stoppedStreamingParts
+      : [
+          ...(pendingAssistantUpdate
+            ? projectLiveMessage(pendingAssistantUpdate)
+            : projectLiveMessage.streamingParts(session.state.streamingMessage)),
+          ...nestedActivity.snapshot(),
+        ];
+
   return {
     currentUsage,
-    streamingParts: () =>
-      pendingAssistantUpdate
-        ? projectLiveMessage(pendingAssistantUpdate)
-        : projectLiveMessage.streamingParts(session.state.streamingMessage),
+    streamingParts,
     queuedParts,
     projectEvent,
     syncQueuedParts,
     deliverTrackedUserMessage,
     consumeUserPresentation,
     publishUsageUpdate,
+    resume() {
+      stopped = false;
+      stoppedStreamingParts = [];
+    },
+    stop() {
+      stoppedStreamingParts = streamingParts();
+      flushAssistantUpdate();
+      stopped = true;
+      if (usageUpdateTimer !== undefined) clearTimeout(usageUpdateTimer);
+      usageUpdateTimer = undefined;
+      nestedActivity.clear();
+      activeToolCalls.clear();
+      emit({ type: "streaming", sessionId, streaming: false });
+    },
     dispose,
   };
 }

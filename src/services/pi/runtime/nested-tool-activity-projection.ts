@@ -96,5 +96,11 @@ export function createNestedToolActivityProjection(emit: (part: ToolPart) => voi
     clear();
   };
 
-  return { project, record, settle, clear };
+  return {
+    project,
+    record,
+    settle,
+    clear,
+    snapshot: () => [...parts.values()].filter((part) => roots.get(part.id) === part.id),
+  };
 }

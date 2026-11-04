@@ -12,13 +12,17 @@ import {
 } from "../../src/services/pi/runtime/cake-session-runtime";
 import { subagentCompletionInput } from "../../src/contracts/subagents/subagent-report";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { Type } from "@earendil-works/pi-ai";
+import type { CakeSessionRuntimeOptions } from "../../src/services/pi/runtime/cake-session-runtime";
 import type { UiPart } from "../../src/contracts/conversations/session-contract";
 
 const temporaryDirectories: string[] = [];
 const servers: Server[] = [];
 const runtimes: CakeSessionRuntime[] = [];
+const cleanupReleases: Array<() => void> = [];
 
 afterEach(async () => {
+  for (const release of cleanupReleases.splice(0)) release();
   for (const runtime of runtimes.splice(0)) await runtime.dispose();
   vi.unstubAllEnvs();
   for (const server of servers.splice(0)) await new Promise((resolve) => server.close(resolve));
@@ -96,7 +100,11 @@ async function registerFixtureProvider(
   return { requestCount: () => requests, requestBodies: () => bodies };
 }
 
-async function createFixtureRuntime(directory: string, onEvent = vi.fn()) {
+async function createFixtureRuntime(
+  directory: string,
+  onEvent = vi.fn(),
+  customTools?: CakeSessionRuntimeOptions["customTools"],
+) {
   vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"));
   const runtime = await createCakeSessionRuntime({
     cwd: directory,
@@ -105,6 +113,7 @@ async function createFixtureRuntime(directory: string, onEvent = vi.fn()) {
     newSession: true,
     requestUi: async () => undefined,
     onEvent,
+    customTools,
   });
   runtimes.push(runtime);
   await runtime.setModel("fixture-provider", "fixture-model");
@@ -112,6 +121,92 @@ async function createFixtureRuntime(directory: string, onEvent = vi.fn()) {
 }
 
 describe("response retry and recovery", () => {
+  it("acknowledges Stop before a real Pi tool exits, preserves output, and holds the next input", async () => {
+    const directory = await createTemporaryDirectory();
+    const started = Promise.withResolvers<void>();
+    const progressObserved = Promise.withResolvers<void>();
+    const signaled = Promise.withResolvers<void>();
+    const cleanup = Promise.withResolvers<void>();
+    cleanupReleases.push(cleanup.resolve);
+    const provider = await registerFixtureProvider(directory, (index, response) => {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      if (index === 1) {
+        response.write(
+          sseChunk({
+            role: "assistant",
+            tool_calls: [
+              {
+                index: 0,
+                id: "hung-call",
+                type: "function",
+                function: { name: "held_tool", arguments: "{}" },
+              },
+            ],
+          }),
+        );
+        response.write(sseChunk({}, "tool_calls"));
+      } else {
+        response.write(sseChunk({ role: "assistant", content: "Next answer" }));
+        response.write(sseChunk({}, "stop"));
+      }
+      response.end("data: [DONE]\n\n");
+    });
+    const observe = vi.fn((event: CakeSessionRuntimeEvent) => {
+      if (
+        event.type === "part-updated" &&
+        event.part.kind === "tool" &&
+        event.part.output === "Accepted progress"
+      )
+        progressObserved.resolve();
+    });
+    const { runtime, onEvent } = await createFixtureRuntime(directory, observe, [
+      {
+        name: "held_tool",
+        label: "Held tool",
+        description: "A controlled cancellation join",
+        parameters: Type.Object({}),
+        async execute(_id, _args, signal, onUpdate) {
+          onUpdate?.({ content: [{ type: "text", text: "Accepted progress" }], details: {} });
+          signal?.addEventListener("abort", () => signaled.resolve(), { once: true });
+          started.resolve();
+          await cleanup.promise;
+          onUpdate?.({ content: [{ type: "text", text: "Late progress" }], details: {} });
+          return { content: [{ type: "text", text: "Late result" }], details: {} };
+        },
+      },
+    ]);
+    const active = runtime.prompt("Original request", "prompt", []).catch(() => undefined);
+    await started.promise;
+    await progressObserved.promise;
+    await runtime.abort({ by: "user" });
+    await signaled.promise;
+    expect(runtime.streaming).toBe(false);
+    const frozen = await runtime.snapshot();
+    expect(frozen.parts.filter((part) => part.kind === "tool")).toContainEqual(
+      expect.objectContaining({ output: "Accepted progress", state: "interrupted" }),
+    );
+    expect(frozen.parts).toContainEqual(expect.objectContaining({ id: "abort-cleanup" }));
+    const next = runtime.prompt("Next request", "prompt", []);
+    expect(provider.requestCount()).toBe(1);
+    onEvent.mockClear();
+    cleanup.resolve();
+    await active;
+    await next;
+    expect(provider.requestCount()).toBe(2);
+    expect(
+      onEvent.mock.calls.some(
+        ([event]) =>
+          event.type === "part-updated" &&
+          event.part.kind === "tool" &&
+          event.part.output?.includes("Late"),
+      ),
+    ).toBe(false);
+    expect((await runtime.snapshot()).parts).toContainEqual(
+      expect.objectContaining({ kind: "text", text: "Next answer" }),
+    );
+    expect(await readFile(runtime.sessionFile, "utf8")).toContain("Original request");
+  }, 15_000);
+
   it.each(["prompt", "pending recovery"] as const)(
     "preserves typed Workboard provenance through %s, live projection and Pi reload without hiding genuine user text",
     async (admission) => {
@@ -940,11 +1035,16 @@ describe("send-now handoff presentation", () => {
     expect(failures((await reopened.snapshot()).parts)).toEqual([]);
   }, 15_000);
 
-  it("keeps showing the aborted request after an explicit Stop", async () => {
+  it("freezes the accepted output instead of rendering cleanup errors after an explicit Stop", async () => {
     const { runtime, active } = await runningTool("answers");
     await runtime.abort({ by: "user" });
     await active;
-    expect(failures((await runtime.snapshot()).parts)).toEqual(["This operation was aborted"]);
+    const stopped = await runtime.snapshot();
+    expect(stopped.streaming).toBe(false);
+    expect(stopped.parts).toContainEqual(
+      expect.objectContaining({ kind: "text", text: "Start work" }),
+    );
+    expect(failures(stopped.parts)).toEqual([]);
   }, 15_000);
 
   it("still shows a genuine provider error from the replacement request", async () => {

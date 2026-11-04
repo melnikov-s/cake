@@ -61,6 +61,7 @@ import {
   UserMessagePresentationDoc,
 } from "./durable-message-presentation";
 import { abortDurableActiveTurn, createDurableConversationQueue } from "./durable-chat-queue";
+import { createDurableTurnStop } from "./durable-turn-stop";
 import {
   DURABLE_SIDE_CHAT_NOTE,
   durableInputText,
@@ -199,6 +200,12 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         conversation.id,
         createDurableSideChatInterview(sessionId, options.interviewOperations),
       );
+    const turnStop = createDurableTurnStop({
+      stop: () => abortDurableActiveTurn(harness, conversation),
+      onEvent: options.onEvent,
+      publish: () => publish(),
+      isDisposed: () => disposed,
+    });
     const {
       inbox,
       requestId,
@@ -209,6 +216,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       storage,
       kind: "side-chat",
       executingTurnIds: () => activeTurnIds,
+      beforeSendNow: turnStop.beforeInput,
     });
     const history = (cursor?: string) =>
       conversation.commit(
@@ -265,7 +273,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       sessionId,
       sessionFile: host.sessionFile,
       get streaming() {
-        return streaming;
+        return !turnStop.stopped() && streaming;
       },
       executingTurnIds: () => activeTurnIds,
       recordReviewRun() {
@@ -291,7 +299,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         // estimates describes active context, not UsageDoc's lifetime billing.
         const active = await conversation.context(BACKGROUND_CONTEXT).catch(() => undefined);
         const contextTokens = active ? estimateContextTokens(active.messages).tokens : undefined;
-        return conversation.commit(async (tx) => {
+        const snapshot = await conversation.commit(async (tx) => {
           const page = await readDurableOriginalPage(
             ownEntries(
               (query, limit, cursor) =>
@@ -396,6 +404,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
             tree: [],
           } satisfies ConversationSnapshot;
         }, BACKGROUND_CONTEXT);
+        return turnStop.project(snapshot);
       },
       async prompt(
         text,
@@ -409,6 +418,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         internal,
       ) {
         if (disposed) throw new Error("Cake Chat side chat has closed");
+        const assertCurrent = await turnStop.beforeInput();
         if (
           attachments.some(
             (attachment) => attachment.kind !== "input" && attachment.kind !== "annotation",
@@ -422,6 +432,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           live?.run === undefined &&
           (await inbox()).length === 0 &&
           (await history()).parts.length === 0;
+        assertCurrent();
         const submission = await conversation.submit(
           {
             type: "input",
@@ -474,9 +485,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         const job = await conversation.compact(instructions, BACKGROUND_CONTEXT);
         await harness.waitForTask(job, BACKGROUND_CONTEXT);
       },
-      async abort() {
-        await abortDurableActiveTurn(harness, conversation);
-      },
+      abort: turnStop.abort,
       setModel: (provider, modelId) => configure({ model: { provider, modelId } }),
       setThinkingLevel: (thinkingLevel) => configure({ thinkingLevel }),
       applyConfiguration: (configuration) =>

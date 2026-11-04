@@ -38,6 +38,7 @@ export function createDurableConversationQueue(options: {
   readonly storage: Storage;
   readonly kind: "root" | "side-chat";
   readonly executingTurnIds: () => readonly string[];
+  readonly beforeSendNow?: () => Promise<() => void>;
 }) {
   const { harness, conversation, storage } = options;
   const inbox = async () =>
@@ -144,12 +145,13 @@ export function createDurableConversationQueue(options: {
       return queued();
     },
     async sendQueuedMessageNow(partId) {
+      const assertCurrent = await options.beforeSendNow?.();
       const item = partId
         ? await itemFor(partId)
         : (await inbox()).find((entry) => entry.mode !== "write");
       if (!item || item.mode === "write") throw new Error("No queued message to send");
       const abortedTurnIds = [...options.executingTurnIds()];
-      await startDurableQueuedInput(harness, conversation, item.id);
+      await startDurableQueuedInput(harness, conversation, item.id, assertCurrent);
       return { queued: await queued(), abortedTurnIds };
     },
   };
@@ -174,9 +176,15 @@ export async function abortDurableActiveTurn(harness: Harness, root: Conversatio
 /** Place exactly the selected existing submission in one SDK transaction. Its
  * request/turn identity and every other queued input survive; no cancel-and-copy gap.
  * If another run or boundary wins, reject without withdrawing the selected input. */
-async function startDurableQueuedInput(harness: Harness, root: Conversation, id: SubmissionId) {
+async function startDurableQueuedInput(
+  harness: Harness,
+  root: Conversation,
+  id: SubmissionId,
+  assertCurrent?: () => void,
+) {
   await abortDurableActiveTurn(harness, root);
   await root.commit(async (tx) => {
+    assertCurrent?.();
     const live = await tx.doc(LiveDoc, root.id);
     const inbox = await tx.doc(InboxDoc, root.id);
     const index = inbox.items.findIndex((item) => item.id === id);

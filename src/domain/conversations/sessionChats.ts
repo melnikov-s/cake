@@ -266,6 +266,9 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
 export const abort = Effect.fn("SessionChats.abort")(function* (
   target: SessionChatTarget & { readonly stop: TurnStop },
 ) {
+  // Stop has a priority path: do not put the cancellation signal behind normal
+  // message preparation or board-delivery storage work.
+  yield* abortConversation(acquire(target.sessionId), target.stop).pipe(asError("abort"));
   const storage = yield* SessionFamilyStorage;
   yield* storage
     .withNoticeDelivery(
@@ -274,7 +277,6 @@ export const abort = Effect.fn("SessionChats.abort")(function* (
       }),
     )
     .pipe(asError("abort"));
-  yield* abortConversation(acquire(target.sessionId), target.stop).pipe(asError("abort"));
 });
 
 export const history = Effect.fn("SessionChats.history")(function* (

@@ -77,6 +77,7 @@ import { PresetContextDoc, presetContextSection, PresetState } from "./durable-p
 import { cakeAgentDocumentationDirectory } from "../pi/runtime/cake-agent-documentation";
 import { createDurableChatCommands } from "./durable-chat-commands";
 import { abortDurableActiveTurn, createDurableConversationQueue } from "./durable-chat-queue";
+import { createDurableTurnStop } from "./durable-turn-stop";
 import {
   loadAgentDirectoryExtensions,
   requireRegisteredModel,
@@ -505,6 +506,12 @@ export async function createDurableCakeChatRuntime(
       );
     },
   });
+  const turnStop = createDurableTurnStop({
+    stop: () => abortDurableActiveTurn(engine.harness, engine.root),
+    onEvent: options.onEvent,
+    publish,
+    isDisposed: () => disposed,
+  });
   const {
     inbox,
     requestId,
@@ -515,6 +522,7 @@ export async function createDurableCakeChatRuntime(
     storage,
     kind: "root",
     executingTurnIds: () => activeTurnIds,
+    beforeSendNow: turnStop.beforeInput,
   });
   const history = (cursor?: string) =>
     engine.root.commit(
@@ -567,6 +575,7 @@ export async function createDurableCakeChatRuntime(
     internal?: InternalInput,
     presentationMode?: ProjectSessionPresentationMode,
   ) => {
+    const assertCurrent = await turnStop.beforeInput();
     // Defense in depth: no caller may submit payload-bearing attachments to the coordinator.
     // Annotations quote Cake Chat's own transcript and stay inline.
     if (
@@ -618,6 +627,7 @@ export async function createDurableCakeChatRuntime(
       },
       // Reference attachments have no image parts.
     ];
+    assertCurrent();
     return engine.root.submit(
       {
         type: "input",
@@ -658,7 +668,7 @@ export async function createDurableCakeChatRuntime(
         ?.context?.sessionId,
     importSideChatHistory: (input) => importDurableSideChatHistory(engine.root, input),
     get streaming() {
-      return streaming;
+      return !turnStop.stopped() && streaming;
     },
     executingTurnIds: () => activeTurnIds,
     recordReviewRun() {
@@ -792,10 +802,10 @@ export async function createDurableCakeChatRuntime(
       }, BACKGROUND_CONTEXT);
       // Context reads acquire the Session line themselves: never nest one in
       // the transcript transaction. This accounting is an advisory projection.
-      return {
+      return turnStop.project({
         ...snapshot,
         usage: { ...snapshot.usage, cakeChatContext: await engine.contextStatus(selected) },
-      };
+      });
     },
     async prompt(
       text,
@@ -882,9 +892,7 @@ export async function createDurableCakeChatRuntime(
       await engine.compact(selected);
       publish();
     },
-    async abort() {
-      await abortDurableActiveTurn(engine.harness, engine.root);
-    },
+    abort: turnStop.abort,
     async setModel(provider, modelId) {
       if (companion)
         throw new Error("The companion follows the utility model configured in Settings");

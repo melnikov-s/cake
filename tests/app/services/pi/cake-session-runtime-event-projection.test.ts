@@ -7,6 +7,78 @@ import {
 import { projectQueuedMessages } from "../../../../src/services/pi/runtime/session-projection";
 
 describe("Cake runtime streaming projection", () => {
+  it("preserves accepted text at Stop, fences late provider/tool events, and resumes only explicitly", () => {
+    vi.useFakeTimers();
+    const events: RuntimeProjectionEvent[] = [];
+    const session = {
+      sessionManager: { getHeader: () => undefined },
+      agent: { state: { tools: [] } },
+      systemPrompt: "",
+      getSteeringMessages: () => [],
+      getFollowUpMessages: () => [],
+      getSessionStats: () => ({ tokens: {}, cost: 0 }),
+    } as unknown as AgentSession;
+    const projection = createCakeSessionRuntimeEventProjection({
+      session,
+      sessionId: "session-1",
+      emit: (event) => events.push(event),
+      compactionQueuedMessages: () => [],
+      isDisposed: () => false,
+    });
+    const update = (text: string) => ({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text }] },
+      assistantMessageEvent: { type: "text_delta", delta: text },
+    });
+    try {
+      projection.projectEvent(update("Keep this") as never);
+      projection.stop();
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "part-updated",
+          part: expect.objectContaining({ text: "Keep this" }),
+        }),
+      );
+      expect(events.at(-1)).toEqual({
+        type: "streaming",
+        sessionId: "session-1",
+        streaming: false,
+      });
+      events.length = 0;
+      projection.projectEvent(update("Late text") as never);
+      projection.projectEvent({
+        type: "tool_execution_end",
+        toolCallId: "late",
+        toolName: "bash",
+        result: { content: [] },
+      } as never);
+      projection.projectEvent({
+        type: "message_end",
+        message: { role: "assistant", content: [{ type: "text", text: "Late final" }] },
+      } as never);
+      projection.projectEvent({ type: "agent_settled" } as never);
+      projection.projectEvent({ type: "agent_start" } as never);
+      vi.runAllTimers();
+      expect(events).toEqual([]);
+      projection.resume();
+      projection.projectEvent({
+        type: "message_start",
+        message: { role: "assistant", content: [] },
+      } as never);
+      projection.projectEvent(update("New turn") as never);
+      vi.advanceTimersByTime(50);
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "part-updated",
+          part: expect.objectContaining({ text: "New turn" }),
+        }),
+      );
+    } finally {
+      projection.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps interview requests out of artifact projection throughout live tool execution", () => {
     const events: RuntimeProjectionEvent[] = [];
     const session = {

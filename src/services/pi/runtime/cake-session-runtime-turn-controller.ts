@@ -53,6 +53,8 @@ export interface CakeSessionRuntimeTurnController {
   readonly handoffActive: () => boolean;
   readonly idleCompactionActive: () => boolean;
   readonly toolCompactionActive: () => boolean;
+  readonly cancellationPending: () => boolean;
+  readonly bashParts: () => UiPart[];
   readonly withToolCompaction: <T>(compact: () => Promise<T>) => Promise<T>;
   readonly pendingRecoveryInputs: () => ReadonlyArray<{
     turnId: string;
@@ -136,6 +138,10 @@ export function createCakeSessionRuntimeTurnController(input: {
   readonly emitSnapshotInBackground: () => void;
   readonly executeQueuedCommand?: (command: string) => Promise<void>;
   readonly reportQueuedCommandError?: (command: string, error: unknown) => void;
+  readonly onTurnStarted?: () => void;
+  readonly onAbortRequested?: () => void;
+  readonly onAbortSignaled?: () => void;
+  readonly onAbortSettled?: (error?: unknown) => void;
 }): CakeSessionRuntimeTurnController {
   const { session } = input;
   const assertImageSupport = (attachments: readonly Attachment[]) => {
@@ -192,6 +198,11 @@ export function createCakeSessionRuntimeTurnController(input: {
   let handingOff = false;
   let abortGeneration = 0;
   let preparation = new AbortController();
+  // Pi's abort signals synchronously but joins provider/tool cleanup asynchronously.
+  // Keep that join out of Stop's acknowledgment, without reusing Pi before it ends.
+  let abortCleanup: Promise<void> | undefined;
+  let bashCompletion: Promise<unknown> | undefined;
+  let bashPart: Extract<UiPart, { kind: "command" }> | undefined;
   let queueGeneration = 0;
   let steeringWaiters: Array<() => void> = [];
 
@@ -319,6 +330,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     if (
       input.isDisposed() ||
       pausedAfterRestart ||
+      abortCleanup !== undefined ||
       (session.isStreaming && compactionQueue.some((item) => item.command)) ||
       isCompacting() ||
       flushingHeldQueue ||
@@ -415,6 +427,11 @@ export function createCakeSessionRuntimeTurnController(input: {
     assertActive();
     assertImageSupport(attachments);
     const generation = abortGeneration;
+    if (abortCleanup) {
+      await abortCleanup;
+      assertNotAborted(generation);
+    }
+    input.onTurnStarted?.();
     input.recovery.onUserInput();
     // Only a person's input resumes work held after a restart; sender and Cake inputs wait.
     if (!parseCrossSessionMessage(text) && !isAutomaticInput(internal)) pausedAfterRestart = false;
@@ -430,27 +447,38 @@ export function createCakeSessionRuntimeTurnController(input: {
       const partId = `bash-${randomUUID()}`;
       const excludeFromContext = shellPrefix === "!!";
       let output = "";
-      const project = (state: "running" | "success" | "error") =>
-        input.emitPart(
-          shellCommandPart({
-            id: partId,
-            command: shellCommand,
-            output: output.slice(-500_000),
-            excludeFromContext,
-            state,
-          }),
-        );
+      const project = (state: "running" | "success" | "error") => {
+        bashPart = shellCommandPart({
+          id: partId,
+          command: shellCommand,
+          output: output.slice(-500_000),
+          excludeFromContext,
+          state,
+        });
+        input.emitPart(bashPart);
+      };
       project("running");
-      const result = await session.executeBash(
+      const execution = session.executeBash(
         shellCommand,
         (chunk) => {
+          if (generation !== abortGeneration) return;
           output += chunk;
           project("running");
         },
         { excludeFromContext, id: partId },
       );
-      project(result.exitCode === 0 && !result.cancelled ? "success" : "error");
-      await input.emitSnapshot();
+      bashCompletion = execution;
+      try {
+        const result = await execution;
+        assertNotAborted(generation);
+        project(result.exitCode === 0 && !result.cancelled ? "success" : "error");
+        await input.emitSnapshot();
+      } finally {
+        if (bashCompletion === execution) {
+          bashCompletion = undefined;
+          bashPart = undefined;
+        }
+      }
       return;
     }
     if (!session.isStreaming) {
@@ -540,7 +568,7 @@ export function createCakeSessionRuntimeTurnController(input: {
   ) => {
     assertActive();
     assertImageSupport(attachments);
-    if (session.isStreaming || isCompacting())
+    if (abortCleanup || session.isStreaming || isCompacting())
       throw new Error("Wait for the current response to finish before editing a message");
     const lastUserEntry = session.sessionManager
       .getBranch()
@@ -704,13 +732,14 @@ export function createCakeSessionRuntimeTurnController(input: {
 
   const replacePendingQueues = async (queues: TrackedQueue) => {
     if (
+      abortCleanup !== undefined ||
       isCompacting() ||
       commandRunning ||
       queues["follow-up"].some((item) => item.command) ||
       flushingHeldQueue
     ) {
       const held = new Map(compactionQueue.map((entry) => [entry.itemId, entry]));
-      const holdSteering = isCompacting() || commandRunning;
+      const holdSteering = abortCleanup !== undefined || isCompacting() || commandRunning;
       const heldLanes = holdSteering
         ? (["steering", "follow-up"] as const)
         : (["follow-up"] as const);
@@ -752,7 +781,8 @@ export function createCakeSessionRuntimeTurnController(input: {
     input.recovery.onAbort();
     input.cancelResponseRetries();
     if (session.isBashRunning) session.abortBash();
-    else await session.abort();
+    await session.abort();
+    await bashCompletion;
     return abortedTurnIds;
   };
 
@@ -790,6 +820,7 @@ export function createCakeSessionRuntimeTurnController(input: {
   ): Promise<IdleCompactionResult> => {
     assertActive();
     if (
+      abortCleanup !== undefined ||
       promptOperations > 0 ||
       session.isStreaming ||
       isCompacting() ||
@@ -822,9 +853,17 @@ export function createCakeSessionRuntimeTurnController(input: {
     handoffActive: () => handingOff,
     idleCompactionActive: () => idleCompactionActive,
     toolCompactionActive: () => toolCompactionActive,
+    cancellationPending: () => abortCleanup !== undefined,
+    bashParts: () => (bashPart?.state === "running" ? [bashPart] : []),
     async withToolCompaction(compact) {
       assertActive();
-      if (promptOperations > 0 || commandRunning || session.isStreaming || isCompacting())
+      if (
+        abortCleanup ||
+        promptOperations > 0 ||
+        commandRunning ||
+        session.isStreaming ||
+        isCompacting()
+      )
         throw new Error("Wait for the current operation before tool compaction");
       // Tree navigation sets Pi's compaction flag only during navigateTree and
       // emits no compaction_end. Reserve through snapshot publication and always
@@ -1010,6 +1049,12 @@ export function createCakeSessionRuntimeTurnController(input: {
     },
     async sendQueuedMessageNow(partId) {
       assertActive();
+      const generation = abortGeneration;
+      if (abortCleanup) {
+        await abortCleanup;
+        assertNotAborted(generation);
+      }
+      input.onTurnStarted?.();
       if (commandRunning)
         throw new Error("Wait for the executing command to finish before sending queued input now");
       if (
@@ -1050,9 +1095,13 @@ export function createCakeSessionRuntimeTurnController(input: {
       compactionQueue = [];
       trackedQueue = { steering: [], "follow-up": [] };
       let abortedTurnIds: string[];
+      let handoffGeneration: number;
       handingOff = true;
       try {
-        abortedTurnIds = await stopActiveTurn();
+        const stopping = stopActiveTurn();
+        handoffGeneration = abortGeneration;
+        abortedTurnIds = await stopping;
+        assertNotAborted(handoffGeneration);
       } finally {
         handingOff = false;
       }
@@ -1076,6 +1125,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       input.syncQueuedParts();
       await input.emitSnapshot();
       await input.beforeIdleTurn(preparation.signal);
+      assertNotAborted(handoffGeneration);
       await input.deliverTrackedUserMessage(
         selected.content,
         selected.renderUserMessageAsMarkdown,
@@ -1239,15 +1289,60 @@ export function createCakeSessionRuntimeTurnController(input: {
       if (!willRetry) void flushCompactionQueue();
     },
     async abort() {
+      // A repeated Stop must also fence input waiting for the previous cleanup.
+      if (abortCleanup) {
+        abortGeneration += 1;
+        return;
+      }
       const queues = queuedForStop();
+      pausedAfterRestart = true;
+      let release: () => void = () => undefined;
+      let reject: (error: unknown) => void = () => undefined;
+      abortCleanup = new Promise<void>((resolve, fail) => {
+        release = resolve;
+        reject = fail;
+      });
+      // The detached join owns its failure; waiting inputs still receive it.
+      void abortCleanup.catch(() => undefined);
+      input.onAbortRequested?.();
       session.clearQueue();
-      compactionQueue = [];
+      compactionQueue = (["steering", "follow-up"] as const).flatMap((lane) =>
+        queues[lane].map((item) => ({
+          ...item,
+          delivery: lane === "steering" ? ("steer" as const) : ("follow-up" as const),
+        })),
+      );
       trackedQueue = { steering: [], "follow-up": [] };
-      await stopActiveTurn();
-      if (queues["follow-up"].some((item) => item.command)) await replacePendingQueues(queues);
-      else await requeue(queues);
+      const stopping = stopActiveTurn();
+      input.onAbortSignaled?.();
+      void stopping
+        .then(async () => {
+          if (!input.isDisposed()) {
+            // Read the held queue again: the user may have removed items during cleanup.
+            const remaining = queuedForStop();
+            compactionQueue = [];
+            if (remaining["follow-up"].some((item) => item.command))
+              await replacePendingQueues(remaining);
+            else await requeue(remaining);
+          }
+        })
+        .then(
+          () => {
+            abortCleanup = undefined;
+            input.onAbortSettled?.();
+            release();
+            input.syncQueuedParts();
+            input.emitSnapshotInBackground();
+          },
+          (error: unknown) => {
+            // Do not reuse a runtime whose cleanup failed.
+            input.onAbortSettled?.(error);
+            reject(error);
+            input.emitSnapshotInBackground();
+          },
+        );
       input.syncQueuedParts();
-      await input.emitSnapshot();
+      input.emitSnapshotInBackground();
     },
     dispose() {
       abortGeneration += 1;

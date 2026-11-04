@@ -1497,6 +1497,9 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               runtime.setUserMessageMarkdown(entryId, renderAsMarkdown),
             ),
           abort: Effect.fn("CakeSessionRuntimes.abort")(function* (stop?: TurnStop) {
+            const claimed = yield* claimAbortedTurns(shared.runtime.executingTurnIds?.() ?? []);
+            // Cancellation must not queue behind recovery-file writes or turn admission.
+            yield* call("abort", (runtime) => runtime.abort(stop));
             yield* recoveryGate
               .withPermit(
                 Effect.gen(function* () {
@@ -1505,9 +1508,8 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 }),
               )
               .pipe(sessionError("abort"));
-            const claimed = yield* claimAbortedTurns(shared.runtime.executingTurnIds?.() ?? []);
-            yield* call("abort", (runtime) => runtime.abort(stop));
-            // Claim before stopping to prevent duplicate settlement; notify owners only once Pi is idle.
+            // This settles accepted work, not provider/tool cleanup. The adapter fences
+            // the stopped run and keeps the runtime reserved until cleanup actually ends.
             yield* settleAbortedTurns(claimed, stop);
           }),
           executeCommand: (command, arguments_) =>

@@ -502,29 +502,36 @@ export async function createCakeSessionRuntime(
     reportAgentAction: capabilities.reportAgentAction,
   });
 
-  async function makeSnapshot(
-    onCaptured?: (snapshot: ConversationSnapshot) => void,
-  ): Promise<ConversationSnapshot> {
-    const [sessionFile, models] = await Promise.all([
-      options.auxiliary
-        ? Promise.resolve(undefined)
-        : findSessionFile(options.cwd, cakeSessionId, options.sessionDir, options.directSessionDir),
-      options.auxiliary ? Promise.resolve([]) : configuration.modelOptions(),
-    ]);
+  let stoppedParts: UiPart[] | undefined;
+  let abortFailure: unknown;
+  const cancellationNotice = (): UiPart => ({
+    id: "abort-cleanup",
+    kind: "notice",
+    tone: abortFailure ? "error" : "info",
+    title: abortFailure ? "Cancellation cleanup failed" : "Cancellation requested",
+    detail: abortFailure
+      ? "Cleanup did not finish. New input cannot run in this session."
+      : "Provider or tool cleanup is still pending. New input will wait.",
+  });
 
+  function captureSnapshot(
+    models: ConversationSnapshot["models"],
+    sessionListed: boolean,
+  ): ConversationSnapshot {
     const snapshot = projectCakeSessionRuntimeSnapshot({
       workspacePath: options.cwd,
       sessionId: cakeSessionId,
-      sessionListed: sessionFile !== undefined,
+      sessionListed,
       auxiliary: Boolean(options.auxiliary),
       session,
       settingsManager,
-      models,
+      models: [...models],
       // SessionManager contains finalized entries; Pi owns the in-flight response.
       // Use its current message with the same part IDs as the streamed deltas.
       streamingParts: projection.streamingParts(),
       queuedParts: projection.queuedParts(),
       transientParts: [
+        ...turnController.bashParts(),
         ...(session.isCompacting ? [activeCompactionNotice()] : []),
         ...recovery.transientParts(),
       ],
@@ -542,6 +549,30 @@ export async function createCakeSessionRuntime(
       ],
       reloadPending: resources.reloadPending(),
     });
+    if (stoppedParts) {
+      return {
+        ...snapshot,
+        streaming: false,
+        parts: [
+          ...stoppedParts,
+          ...projection.queuedParts(),
+          ...(turnController.cancellationPending() ? [cancellationNotice()] : []),
+        ],
+      };
+    }
+    return snapshot;
+  }
+
+  async function makeSnapshot(
+    onCaptured?: (snapshot: ConversationSnapshot) => void,
+  ): Promise<ConversationSnapshot> {
+    const [sessionFile, models] = await Promise.all([
+      options.auxiliary
+        ? Promise.resolve(undefined)
+        : findSessionFile(options.cwd, cakeSessionId, options.sessionDir, options.directSessionDir),
+      options.auxiliary ? Promise.resolve([]) : configuration.modelOptions(),
+    ]);
+    const snapshot = captureSnapshot(models, sessionFile !== undefined);
     onCaptured?.(snapshot);
     return snapshot;
   }
@@ -561,6 +592,41 @@ export async function createCakeSessionRuntime(
     session,
     isDisposed: () => disposed,
     allowUserBash: true,
+    onTurnStarted: () => {
+      stoppedParts = undefined;
+      projection.resume();
+    },
+    onAbortRequested: projection.stop,
+    onAbortSignaled: () => {
+      abortFailure = undefined;
+      // Freeze the display after signaling Pi, without awaiting its cleanup.
+      const queuedIds = new Set(projection.queuedParts().map((part) => part.id));
+      stoppedParts = captureSnapshot([], false)
+        .parts.filter(
+          (part) =>
+            !queuedIds.has(part.id) &&
+            part.id !== "active-retry" &&
+            part.id !== "active-compaction",
+        )
+        .map((part) =>
+          part.kind === "text" && part.status === "streaming"
+            ? { ...part, status: "complete" }
+            : part.kind === "tool" && part.state === "running"
+              ? { ...part, state: "interrupted" }
+              : part,
+        );
+      emitPart(cancellationNotice());
+    },
+    onAbortSettled: (error) => {
+      if (!error)
+        stoppedParts = stoppedParts?.map((part) =>
+          part.kind === "command" && part.state === "running" ? { ...part, state: "error" } : part,
+        );
+      abortFailure = error;
+      pendingStop = undefined;
+      if (error) emitPart(cancellationNotice());
+      else removePart("abort-cleanup");
+    },
     beforeIdleTurn: async () => {
       await resources.drainReloads();
     },
@@ -715,7 +781,7 @@ export async function createCakeSessionRuntime(
           automaticTitle,
         );
     }
-    if (event.type === "agent_settled") {
+    if (event.type === "agent_settled" && !turnController.cancellationPending()) {
       turnController.settleTurn();
       void continuations.finishSettledTurn();
     }
@@ -919,10 +985,11 @@ export async function createCakeSessionRuntime(
     },
     get streaming() {
       return (
-        session.isStreaming ||
-        session.isCompacting ||
-        turnController.idleCompactionActive() ||
-        turnController.toolCompactionActive()
+        !stoppedParts &&
+        (session.isStreaming ||
+          session.isCompacting ||
+          turnController.idleCompactionActive() ||
+          turnController.toolCompactionActive())
       );
     },
     getReviewParentContext() {
@@ -1139,13 +1206,9 @@ export async function createCakeSessionRuntime(
     editMessage: turnController.editMessage,
     async abort(stop) {
       pendingStop = stop;
-      try {
-        await shutdownDiagnostics.promise("pi.turn.abort", shutdownResource(cakeSessionId), () =>
-          turnController.abort(),
-        );
-      } finally {
-        pendingStop = undefined;
-      }
+      await shutdownDiagnostics.promise("pi.turn.abort", shutdownResource(cakeSessionId), () =>
+        turnController.abort(),
+      );
     },
     setModel: configuration.setModel,
     setThinkingLevel: configuration.setThinkingLevel,

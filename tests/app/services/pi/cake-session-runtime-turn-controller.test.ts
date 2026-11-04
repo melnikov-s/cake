@@ -55,6 +55,9 @@ function createFixture(overrides: Partial<AgentSession> = {}) {
     ...overrides,
   } as unknown as AgentSession;
   const syncQueuedParts = vi.fn();
+  const abortSettled = deferred();
+  const onAbortSettled = vi.fn(() => abortSettled.resolve());
+  const emitPart = vi.fn();
   const controller = createCakeSessionRuntimeTurnController({
     session,
     isDisposed: () => false,
@@ -65,14 +68,118 @@ function createFixture(overrides: Partial<AgentSession> = {}) {
     recovery: { onUserInput: vi.fn(), onAbort: vi.fn() },
     deliverTrackedUserMessage: (_content, _markdown, deliver) => deliver(),
     syncQueuedParts,
-    emitPart: vi.fn(),
+    emitPart,
     emitSnapshot: async () => undefined,
     emitSnapshotInBackground: vi.fn(),
+    onAbortSettled,
   });
-  return { controller, session, syncQueuedParts };
+  return { controller, session, syncQueuedParts, abortSettled, onAbortSettled, emitPart };
 }
 
 describe("CakeSessionRuntime turn controller", () => {
+  it("acknowledges Stop while Pi cleanup is hung, and fences the next input until it ends", async () => {
+    const cleanup = deferred();
+    const delivered = deferred();
+    const { controller, session, abortSettled } = createFixture({
+      isStreaming: true,
+      abort: vi.fn(() => cleanup.promise),
+      prompt: vi.fn(async () => delivered.resolve()),
+    });
+
+    // This await must finish without releasing cleanup: no timer/deadline race.
+    await controller.abort();
+    expect(session.abort).toHaveBeenCalledOnce();
+    expect(controller.cancellationPending()).toBe(true);
+    const next = controller.prompt("Next input", "prompt", []);
+    await Promise.resolve();
+    expect(session.prompt).not.toHaveBeenCalled();
+
+    Object.assign(session, { isStreaming: false });
+    cleanup.resolve();
+    await abortSettled.promise;
+    await delivered.promise;
+    await next;
+    expect(controller.cancellationPending()).toBe(false);
+    expect(session.prompt).toHaveBeenCalledOnce();
+  });
+
+  it("a second Stop prevents input waiting on cleanup from resuming", async () => {
+    const cleanup = deferred();
+    const { controller, session, abortSettled } = createFixture({ abort: () => cleanup.promise });
+    await controller.abort();
+    const next = controller.prompt("Never execute this", "prompt", []);
+    const canceled = next.catch((error: Error) => error.message);
+    await controller.abort();
+    cleanup.resolve();
+    await abortSettled.promise;
+    expect(await canceled).toBe("Session was aborted");
+    expect(session.prompt).not.toHaveBeenCalled();
+  });
+
+  it("keeps queued work out of Pi during cleanup and honors removal before restoring it", async () => {
+    const cleanup = deferred();
+    let followUp = ["Do not resume"];
+    const { controller, session, abortSettled } = createFixture({
+      isStreaming: true,
+      abort: () => cleanup.promise,
+      getFollowUpMessages: () => followUp,
+      clearQueue: () => {
+        const removed = followUp;
+        followUp = [];
+        return { steering: [], followUp: removed };
+      },
+    });
+    await controller.abort();
+    expect(followUp).toEqual([]);
+    const [queued] = controller.queuedParts();
+    await controller.removeQueuedMessage(queued!.id);
+    cleanup.resolve();
+    await abortSettled.promise;
+    expect(session.followUp).not.toHaveBeenCalled();
+    expect(session.prompt).not.toHaveBeenCalled();
+    expect(controller.queuedParts()).toEqual([]);
+  });
+
+  it("does not reuse Pi after cleanup rejects", async () => {
+    const failure = new Error("Tool cleanup failed");
+    const { controller, session, abortSettled, onAbortSettled } = createFixture({
+      abort: async () => {
+        throw failure;
+      },
+    });
+    await controller.abort();
+    await abortSettled.promise;
+    expect(onAbortSettled).toHaveBeenCalledWith(failure);
+    await expect(controller.prompt("Unsafe next turn", "prompt", [])).rejects.toBe(failure);
+    expect(session.prompt).not.toHaveBeenCalled();
+    expect(controller.cancellationPending()).toBe(true);
+  });
+
+  it("signals bash cancellation immediately but waits for its actual exit and ignores late output", async () => {
+    const exit = deferred();
+    let output: ((chunk: string) => void) | undefined;
+    const { controller, session, emitPart, abortSettled } = createFixture({
+      executeBash: vi.fn(async (_command, onOutput) => {
+        output = onOutput;
+        await exit.promise;
+        return { output: "late", exitCode: 0, cancelled: true, truncated: false };
+      }) as AgentSession["executeBash"],
+    });
+    const command = controller.prompt("!slow", "prompt", []).catch((error: Error) => error.message);
+    Object.assign(session, { isBashRunning: true });
+    await controller.abort();
+    expect(session.abortBash).toHaveBeenCalledOnce();
+    const count = emitPart.mock.calls.length;
+    output?.("late output");
+    expect(emitPart).toHaveBeenCalledTimes(count);
+    expect(controller.cancellationPending()).toBe(true);
+    Object.assign(session, { isBashRunning: false });
+    exit.resolve();
+    expect(await command).toBe("Session was aborted");
+    await abortSettled.promise;
+    expect(emitPart).toHaveBeenCalledTimes(count);
+  });
+
   const attachedInputs: Attachment[] = [
     { kind: "image", name: "screenshot.png", data: "AAA=", mimeType: "image/png" },
     {
@@ -158,7 +265,7 @@ describe("CakeSessionRuntime turn controller", () => {
 
   it("keeps a complete held input through abort and removes it without later delivery", async () => {
     const navigation = deferred();
-    const { controller, session } = createFixture({
+    const { controller, session, abortSettled } = createFixture({
       model: { ...durableModel, input: ["text", "image"] },
     });
     const compact = controller.withToolCompaction(() => navigation.promise);
@@ -166,6 +273,7 @@ describe("CakeSessionRuntime turn controller", () => {
     const canceled = accepted.catch((error: Error) => error.message);
     await Promise.resolve();
     await controller.abort();
+    await abortSettled.promise;
     expect(session.followUp).toHaveBeenCalledExactlyOnceWith(
       expect.stringContaining("/inputs/log.txt"),
       [{ type: "image", data: "AAA=", mimeType: "image/png" }],
@@ -817,7 +925,7 @@ describe("CakeSessionRuntime turn controller", () => {
 
   it("keeps compaction-held input queued without dispatching it when the session is aborted", async () => {
     const live = { followUp: [] as string[] };
-    const { controller, session, syncQueuedParts } = createFixture({
+    const { controller, session, syncQueuedParts, abortSettled } = createFixture({
       isStreaming: true,
       isCompacting: true,
       followUp: vi.fn(async (text: string) => {
@@ -834,6 +942,7 @@ describe("CakeSessionRuntime turn controller", () => {
 
     const prompt = controller.prompt("Do work later", "prompt", [], false, "turn-1");
     await controller.abort();
+    await abortSettled.promise;
 
     expect(session.prompt).not.toHaveBeenCalled();
     expect(session.followUp).toHaveBeenCalledWith("Do work later", []);
@@ -842,7 +951,7 @@ describe("CakeSessionRuntime turn controller", () => {
       followUp: ["Do work later"],
     });
     expect(controller.compactionQueuedMessages()).toEqual([]);
-    expect(syncQueuedParts).toHaveBeenCalledTimes(2);
+    expect(syncQueuedParts).toHaveBeenCalledTimes(3);
 
     const [part] = controller.queuedParts();
     await controller.removeQueuedMessage(part!.id);
