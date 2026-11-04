@@ -252,6 +252,8 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
                   message: "Install Parakeet in Settings → Voice & Dictation first.",
                 });
               yield* patch({ status: "loading", message: "Preparing dictation…" });
+              const loadStarted = Date.now();
+              yield* Effect.logInfo("Dictation model load started");
               const next = new ParakeetWorker(helperPath, current.modelPath, join(root, "ctc"));
               worker = next;
               yield* native(async (signal) => {
@@ -266,7 +268,9 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
                 }
               });
               yield* patch({ status: "ready", message: undefined });
-              yield* Effect.logInfo("Dictation engine ready");
+              yield* Effect.logInfo("Dictation engine ready", {
+                loadMs: Date.now() - loadStarted,
+              });
             }),
           );
         }),

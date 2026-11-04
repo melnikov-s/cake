@@ -168,6 +168,7 @@ function renderDictation(
     });
   });
   const release = vi.fn<Client["dictation"]["release"]>(async () => undefined);
+  const trace = vi.fn<Client["dictation"]["trace"]>(async () => undefined);
   const transcribe = vi.fn<Client["dictation"]["transcribe"]>((input) => {
     const reply = deferred<string>();
     requests.push({ audio: input, reply });
@@ -196,6 +197,7 @@ function renderDictation(
         listVocabulary: async () => ({ revision: 0, entries: [], total: 0, nextOffset: null }),
         prepare,
         release,
+        trace,
         transcribe,
         detectSpeech: detectFixtureSpeech,
         ...options.client?.dictation,
@@ -286,6 +288,7 @@ function renderDictation(
     audio,
     prepare,
     release,
+    trace,
     requests,
     prompt: options.client?.sessionChats?.prompt ?? prompt,
     submitContract: () => session.conversationSessionStore.chatStore.submit(),
@@ -1432,6 +1435,11 @@ describe("Dictation writing-field workflow", () => {
         state: { ...installedDictationState, status: "installed" },
       });
     const control = () => screen.getByRole("button", { name: /dictation$/ });
+    /** Desktop-log entries sent so far, after fire-and-forget delivery. */
+    const logged = async (f: ReturnType<typeof renderDictation>) => {
+      await act(async () => {});
+      return f.trace.mock.calls.map(([entry]) => entry);
+    };
 
     it("first focus loads the model and the same focused field starts listening without refocus", async () => {
       const model = deferred<void>();
@@ -1448,6 +1456,37 @@ describe("Dictation writing-field workflow", () => {
       await f.audio.push(new Float32Array(12_800));
       await f.recognize(0, "Ready after first load");
       expect(message().value).toBe("Ready after first load");
+      const lines = await logged(f);
+      expect(lines.map(({ step }) => step)).toEqual([
+        "start-requested",
+        "model-load-requested",
+        "engine-ready",
+        "model-load-finished",
+        "mic-open-requested",
+        "mic-opened",
+        "listening",
+      ]);
+      // One attempt ID ties the steps together; durations, never speech or draft text.
+      expect(new Set(lines.map(({ attempt }) => attempt)).size).toBe(1);
+      expect(lines[0]).toMatchObject({ reason: "focus", field: expect.any(String) });
+      expect(lines.find(({ step }) => step === "model-load-finished")).toMatchObject({
+        elapsedMs: expect.any(Number),
+      });
+      expect(JSON.stringify(lines)).not.toContain("Ready after first load");
+    });
+
+    it("logs an ignored re-click while loading, with whether an attempt is still alive", async () => {
+      const model = deferred<void>();
+      using f = launch(model.promise);
+      await f.user.click(message());
+      act(() => fireEvent(window, new Event("focus")));
+      const ignored = (await logged(f)).filter(({ step }) => step === "focus-ignored");
+      expect(ignored).toEqual([
+        expect.objectContaining({ reason: "already-preparing", field: expect.any(String) }),
+      ]);
+      expect(ignored[0]!.attempt).toBe(f.trace.mock.calls[0]![0].attempt);
+      await act(async () => model.resolve());
+      await waitFor(listening);
     });
 
     it("a failed first load offers Retry instead of an endless spinner", async () => {
@@ -1459,6 +1498,14 @@ describe("Dictation writing-field workflow", () => {
       expect(retry.getAttribute("aria-busy")).toBe("false");
       expect(f.root.dictationStore.phase).toBe("error");
       expect(f.audio.getUserMedia).not.toHaveBeenCalled();
+      const lines = await logged(f);
+      expect(lines.at(-1)).toMatchObject({
+        step: "failed",
+        stage: "startup",
+        code: "unknown",
+        attempt: lines[0]!.attempt,
+      });
+      expect(JSON.stringify(lines)).not.toContain("Model failed to load");
     });
 
     it("blurring during the first load pauses; refocus listens on the loaded model", async () => {
@@ -1473,6 +1520,18 @@ describe("Dictation writing-field workflow", () => {
       await f.user.click(message());
       await waitFor(listening);
       expect(f.audio.getUserMedia).toHaveBeenCalledOnce();
+      const lines = await logged(f);
+      const first = lines[0]!.attempt;
+      // The abandoned attempt records its cancellation and its late load completion.
+      expect(lines.filter(({ attempt }) => attempt === first).map(({ step }) => step)).toEqual([
+        "start-requested",
+        "model-load-requested",
+        "cancelled",
+        "model-load-finished",
+      ]);
+      expect(lines.find(({ step }) => step === "cancelled")).toMatchObject({ reason: "blur" });
+      expect(lines.at(-1)).toMatchObject({ step: "listening" });
+      expect(lines.at(-1)!.attempt).not.toBe(first);
     });
   });
 

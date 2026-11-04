@@ -847,6 +847,27 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     });
     await expect(restartedControl).toHaveAttribute("aria-busy", "false");
     await expect(restartedSample).toBeFocused();
+    // The relaunched attempt's steps reach Cake's on-disk desktop log under one attempt ID.
+    const restartedSteps = async () => {
+      const lines = (await readFile(join(cakeHome, "logs", "desktop.log"), "utf8").catch(() => ""))
+        .split("\n")
+        .filter((line) => line.includes('"Dictation step"'))
+        .map((line) => JSON.parse(line).message[1] as { attempt: string; step: string });
+      const attempt = lines.findLast(({ step }) => step === "listening")?.attempt;
+      return lines.filter((line) => line.attempt === attempt).map(({ step }) => step);
+    };
+    await expect
+      .poll(restartedSteps)
+      .toEqual(
+        expect.arrayContaining([
+          "start-requested",
+          "model-load-requested",
+          "model-load-finished",
+          "mic-open-requested",
+          "mic-opened",
+          "listening",
+        ]),
+      );
     await restartedMode.click();
     await expect(restartedMode).not.toBeChecked();
     await expect.poll(savedEnabled).toBe(false);

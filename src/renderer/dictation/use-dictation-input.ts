@@ -105,7 +105,7 @@ export function useDictationInput(
       )
         store.focus(field, false);
     };
-    const blur = () => store.pauseCapture();
+    const blur = () => store.pauseCapture("window-blur");
     const escape = (event: globalThis.KeyboardEvent) => {
       if (
         event.key !== "Escape" ||

@@ -80,3 +80,35 @@ export class DictationError extends Schema.TaggedError<DictationError>()("Dictat
   code: DictationErrorCode,
   message: Schema.String,
 }) {}
+
+/** Desktop-log breadcrumbs for one capture startup attempt. Metadata only: never audio,
+ * transcripts, draft text, paths or native/user-facing error prose. */
+export const DictationTraceStep = Schema.Literals([
+  "start-requested",
+  "focus-ignored",
+  "model-load-requested",
+  "model-load-finished",
+  "engine-ready",
+  "mic-open-requested",
+  "mic-opened",
+  "listening",
+  "cancelled",
+  "failed",
+  "retry-scheduled",
+]);
+export type DictationTraceStep = typeof DictationTraceStep.Type;
+const DictationTraceToken = Schema.String.check(Schema.isMaxLength(64));
+export const DictationTrace = Schema.Struct({
+  attempt: DictationTraceToken,
+  step: DictationTraceStep,
+  field: Schema.optional(DictationTraceToken),
+  /** Why an attempt began, was cancelled, or why a focus did not start one. */
+  reason: Schema.optional(DictationTraceToken),
+  stage: Schema.optional(DictationTraceToken),
+  code: Schema.optional(DictationTraceToken),
+  elapsedMs: Schema.optional(
+    Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
+  ),
+  retry: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+});
+export interface DictationTrace extends Schema.Schema.Type<typeof DictationTrace> {}

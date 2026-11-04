@@ -17,6 +17,11 @@ export const dictationHandlers = DictationRpc.of({
   "dictation.remove": () => Effect.flatMap(Dictation, (service) => service.remove()),
   "dictation.prepare": () => Effect.flatMap(Dictation, (service) => service.prepare()),
   "dictation.release": () => Effect.flatMap(Dictation, (service) => service.release()),
+  // Renderer startup breadcrumbs belong in the desktop log beside the engine's own lines.
+  "dictation.trace": (trace) =>
+    trace.step === "failed"
+      ? Effect.logWarning("Dictation step", trace)
+      : Effect.logInfo("Dictation step", trace),
   "dictation.detectSpeech": (audio) =>
     Effect.flatMap(Dictation, (service) => service.detectSpeech(audio)),
   "dictation.transcribe": (audio) =>

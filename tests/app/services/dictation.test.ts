@@ -2,7 +2,12 @@ import { beforeEach, vi } from "vitest";
 import { expect, it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Logger, Schema, Stream } from "effect";
 import type { DictationVocabulary } from "../../../src/contracts/dictation/vocabulary";
-import { DictationError, DictationState } from "../../../src/contracts/dictation/dictation-data";
+import {
+  DictationError,
+  DictationState,
+  DictationTrace,
+} from "../../../src/contracts/dictation/dictation-data";
+import { dictationHandlers } from "../../../src/ipc/server/DictationHandlers";
 import { Dictation } from "../../../src/services/dictation/Dictation";
 import { makeDictationLive } from "../../../src/services/dictation/DictationLive";
 
@@ -392,6 +397,61 @@ it.effect(
     );
   },
 );
+
+it.effect("logs one model load with its duration; warm preparation adds no lines", () => {
+  const logs: Array<{ message: unknown; level: string }> = [];
+  return Effect.gen(function* () {
+    const service = yield* Dictation;
+    yield* service.prepare();
+    yield* service.prepare();
+    const messages = logs.map(({ message }) => JSON.stringify(message));
+    expect(messages.filter((line) => line.includes("Dictation model load started"))).toHaveLength(
+      1,
+    );
+    const ready = logs.filter(({ message }) => JSON.stringify(message).includes("engine ready"));
+    expect(ready).toHaveLength(1);
+    expect(ready[0]!.message).toEqual(["Dictation engine ready", { loadMs: expect.any(Number) }]);
+  }).pipe(
+    Effect.provide(live()),
+    Effect.provide(
+      Logger.layer([
+        Logger.make((entry) => {
+          logs.push({ message: entry.message, level: entry.logLevel });
+        }),
+      ]),
+    ),
+  );
+});
+
+it.effect("writes renderer startup steps to the desktop log, warning only on failure", () => {
+  const logs: Array<{ message: unknown; level: string }> = [];
+  const step = { attempt: "a1b2c3d4", step: "model-load-finished", elapsedMs: 12 } as const;
+  const failed = {
+    attempt: "a1b2c3d4",
+    step: "failed",
+    stage: "startup",
+    code: "unknown",
+  } as const;
+  return Effect.gen(function* () {
+    yield* dictationHandlers["dictation.trace"](step);
+    yield* dictationHandlers["dictation.trace"](failed);
+    expect(logs).toEqual([
+      { message: ["Dictation step", step], level: "Info" },
+      { message: ["Dictation step", failed], level: "Warn" },
+    ]);
+    const decode = Schema.decodeUnknownResult(DictationTrace);
+    expect(decode({ attempt: "a", step: "transcript" })._tag).toBe("Failure");
+    expect(decode({ attempt: "a", step: "failed", code: "x".repeat(65) })._tag).toBe("Failure");
+  }).pipe(
+    Effect.provide(
+      Logger.layer([
+        Logger.make((entry) => {
+          logs.push({ message: entry.message, level: entry.logLevel });
+        }),
+      ]),
+    ),
+  );
+});
 
 it.effect("interrupting inference discards the worker and permits a fresh warmup", () =>
   Effect.gen(function* () {

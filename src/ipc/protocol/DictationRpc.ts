@@ -9,6 +9,7 @@ import {
   DictationAudio,
   DictationError,
   DictationState,
+  DictationTrace,
   SpeechDetectionAudio,
 } from "../../contracts/dictation/dictation-data";
 
@@ -34,6 +35,7 @@ export const DictationRpc = RpcGroup.make(
   Rpc.make("dictation.remove", { success: Schema.Void, error: DictationError }),
   Rpc.make("dictation.prepare", { success: Schema.Void, error: DictationError }),
   Rpc.make("dictation.release", { success: Schema.Void, error: DictationError }),
+  Rpc.make("dictation.trace", { payload: DictationTrace, success: Schema.Void }),
   Rpc.make("dictation.detectSpeech", {
     payload: SpeechDetectionAudio,
     success: Schema.Boolean,
