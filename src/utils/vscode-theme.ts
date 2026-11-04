@@ -212,6 +212,14 @@ export function cakeThemeTokens(theme: ImportedColorTheme) {
     tokens["--accent"] = tokens["--sidebar-foreground"]!;
     tokens["--accent-foreground"] = bg;
   }
+  // Soft error colors still need readable labels on filled destructive actions.
+  if (tokens["--destructive"]) {
+    const destructive = opaqueColorOver(tokens["--destructive"], bg);
+    tokens["--destructive-foreground"] =
+      contrastRatio("#111111", destructive) >= contrastRatio("#ffffff", destructive)
+        ? "#111111"
+        : "#ffffff";
+  }
   tokens["--sidebar-hover"] ??= `color-mix(in srgb, ${fg} 7%, var(--sidebar))`;
   tokens["--sidebar-active"] ??= `color-mix(in srgb, ${fg} 13%, var(--sidebar))`;
   return tokens;

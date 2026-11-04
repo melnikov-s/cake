@@ -1,5 +1,6 @@
 import { createServer } from "node:net";
 import { toolCallRowsScenario } from "./tool-call-rows";
+import { cakeColorPalettes } from "../../src/utils/cake-color-palettes.ts";
 import { sessionChangesScenario } from "./session-changes";
 import { seedAutomationVisualFixture } from "../../tests/fixtures/automations";
 import { provokeRendererCrash } from "../../tests/electron/renderer-crash-fixture.ts";
@@ -2643,7 +2644,7 @@ const themeGalleryScenario: VisualCaptureScenario = {
 
 const bundledColorThemeScenario: VisualCaptureScenario = {
   name: "bundled-color-theme",
-  description: "Bundled popular and macOS-inspired palettes on the real Cake conversation",
+  description: "Bundled palettes on the real Cake conversation",
   states: [
     "solarized-light",
     "solarized-dark",
@@ -2652,6 +2653,13 @@ const bundledColorThemeScenario: VisualCaptureScenario = {
     "soft-slate",
     "twilight-steel",
     "warm-titanium",
+    "hearth",
+    "moss",
+    "tidal",
+    "mulberry",
+    "fogbank",
+    "dune",
+    "letterpress",
   ],
   seed: assistantMarkdownCode.seed,
   async prepare(page, state) {
@@ -2666,15 +2674,34 @@ const bundledColorThemeScenario: VisualCaptureScenario = {
       "soft-slate": "Soft Slate",
       "twilight-steel": "Twilight Steel",
       "warm-titanium": "Warm Titanium",
+      hearth: "Hearth",
+      moss: "Moss",
+      tidal: "Tidal",
+      mulberry: "Mulberry",
+      fogbank: "Fogbank",
+      dune: "Dune",
+      letterpress: "Letterpress",
     };
     await page
-      .getByRole("button", { name: state === "solarized-light" ? "Light" : "Dark", exact: true })
+      .getByRole("button", {
+        name: state === "solarized-light" || state === "letterpress" ? "Light" : "Dark",
+        exact: true,
+      })
       .click();
     await page.getByRole("button", { name: `${names[state]} theme`, exact: true }).click();
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
-    await expect(
-      page.locator('[data-streamdown="code-block-body"] span[style]').first(),
-    ).toBeVisible();
+    const code = page.locator('[data-streamdown="code-block-body"] span[style]');
+    await expect(code.first()).toBeVisible();
+    const palette = cakeColorPalettes.find(({ id }) => id === state);
+    if (palette) {
+      // Theme highlighting is asynchronous; don't capture the unhighlighted fallback.
+      const keyword = palette.semanticTokenColors.keyword as string;
+      const rgb = [1, 3, 5].map((offset) => parseInt(keyword.slice(offset, offset + 2), 16));
+      await expect(code.filter({ hasText: "interface" }).first()).toHaveCSS(
+        "color",
+        `rgb(${rgb.join(", ")})`,
+      );
+    }
     await page.mouse.move(1, 1);
   },
   region: assistantMarkdownCode.region,

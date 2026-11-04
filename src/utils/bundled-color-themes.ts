@@ -17,6 +17,7 @@ import type {
   ImportedColorTheme,
 } from "../contracts/themes/color-theme";
 import { opaqueColorOver, parseVsCodeTheme } from "./vscode-theme";
+import { cakeColorPalettes } from "./cake-color-palettes";
 
 export interface ColorThemeOption {
   readonly choice: ColorThemeChoice;
@@ -134,7 +135,7 @@ const macPalettes = [
 export const bundledColorThemes: readonly ColorThemeOption[] = [
   { choice: "bundled:cake-light", name: "Cake Light", type: "light", theme: "light" },
   { choice: "bundled:cake-dark", name: "Cake Dark", type: "dark", theme: "dark" },
-  ...[...macPalettes, ...popularColorData].map((theme): ColorThemeOption => ({
+  ...[...macPalettes, ...cakeColorPalettes, ...popularColorData].map((theme): ColorThemeOption => ({
     choice: `bundled:${theme.id}`,
     name: theme.name,
     type: theme.type,

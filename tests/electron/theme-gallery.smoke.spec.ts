@@ -64,7 +64,25 @@ for (const hostTheme of ["light", "dark"] as const) {
       await paper.focus();
       await paper.press("Space");
       await expect(page.locator("html")).toHaveCSS("--background", "#fff8e8");
+      // The new built-ins use the same picker, live DOM projection and keyboard path.
+      await page.getByRole("button", { name: "Letterpress theme", exact: true }).click();
+      await expect(page.locator("html")).toHaveCSS("--background", "#eee5d3");
+      await paper.click();
       await page.getByRole("button", { name: "Dark", exact: true }).click();
+      for (const [name, background] of [
+        ["Hearth", "#302a27"],
+        ["Moss", "#28322c"],
+        ["Tidal", "#24343e"],
+        ["Mulberry", "#362c3a"],
+        ["Fogbank", "#383d46"],
+        ["Dune", "#37362b"],
+      ] as const) {
+        const card = page.getByRole("button", { name: `${name} theme`, exact: true });
+        await card.focus();
+        await card.press("Enter");
+        await expect(card).toHaveAttribute("aria-pressed", "true");
+        await expect(page.locator("html")).toHaveCSS("--background", background);
+      }
       await page.getByRole("button", { name: "Warm Titanium theme", exact: true }).click();
       await expect(page.locator("html")).toHaveCSS("--background", "#242321");
       await page.getByRole("button", { name: "System", exact: true }).click();
@@ -106,20 +124,19 @@ for (const hostTheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme: "dark" });
       await expect(page.locator("html")).toHaveCSS("--background", "#fff8e8");
       await page.getByRole("button", { name: "Dark theme", exact: true }).click();
-      await page.getByRole("button", { name: "Nord theme", exact: true }).click();
+      await page.getByRole("button", { name: "Fogbank theme", exact: true }).click();
       await expect(page.locator("html")).toHaveCSS("--background", "#fff8e8");
       await expect(page.getByRole("status")).toHaveText(
         "This theme will apply when Dark mode is active.",
       );
-      await expect(page.getByRole("button", { name: "Nord theme", exact: true })).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
+      await expect(
+        page.getByRole("button", { name: "Fogbank theme", exact: true }),
+      ).toHaveAttribute("aria-pressed", "true");
       await application.close();
       const saved = JSON.parse(await readFile(join(paths.userData, "window-state.json"), "utf8"))
         .data.children.settingsStore.children.appearance.state;
       expect(saved.theme).toBe("light");
-      expect(saved.darkTheme).toBe("bundled:nord");
+      expect(saved.darkTheme).toBe("bundled:fogbank");
       expect(
         saved.importedThemes.find(
           (theme: { id: string }) => `imported:${theme.id}` === saved.lightTheme,
@@ -136,11 +153,10 @@ for (const hostTheme of ["light", "dark"] as const) {
       ).toHaveAttribute("aria-pressed", "true");
       await expect(page.locator("html")).toHaveCSS("--background", "#fff8e8");
       await page.getByRole("button", { name: "Dark", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Nord theme", exact: true })).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-      await expect(page.locator("html")).toHaveCSS("--background", "#2e3440");
+      await expect(
+        page.getByRole("button", { name: "Fogbank theme", exact: true }),
+      ).toHaveAttribute("aria-pressed", "true");
+      await expect(page.locator("html")).toHaveCSS("--background", "#383d46");
     } finally {
       await application.close().catch(() => undefined);
       await rm(directory, { recursive: true, force: true });

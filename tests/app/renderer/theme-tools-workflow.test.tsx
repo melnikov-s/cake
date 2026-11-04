@@ -120,6 +120,50 @@ function fixture(
 afterEach(cleanup);
 
 describe("theme gateway workflows", () => {
+  it("selects the new built-ins live from the gallery and restores both saved slots", async () => {
+    let saved: StoreSnapshot | undefined;
+    {
+      using h = fixture();
+      const user = userEvent.setup();
+      const additions = [
+        ["Hearth", "#302a27"],
+        ["Moss", "#28322c"],
+        ["Tidal", "#24343e"],
+        ["Mulberry", "#362c3a"],
+        ["Fogbank", "#383d46"],
+        ["Dune", "#37362b"],
+        ["Letterpress", "#eee5d3"],
+      ] as const;
+      for (const [name, background] of additions) {
+        await user.click(
+          screen.getByRole("button", {
+            name: name === "Letterpress" ? "Light" : "Dark",
+          }),
+        );
+        const card = screen.getByRole("button", { name: `${name} theme` });
+        await user.click(card);
+        expect(card.getAttribute("aria-pressed")).toBe("true");
+        expect(document.documentElement.style.getPropertyValue("--background")).toBe(background);
+        const active = currentEditorTheme();
+        expect(typeof active).toBe("object");
+        if (typeof active === "string") throw new Error("Expected a palette");
+        expect(active.name).toBe(name);
+        expect(
+          editorThemeSettings(active)["workbench.colorCustomizations"]["terminal.background"],
+        ).toBe(background);
+      }
+      // Persist through the existing window authority, not a separate theme store.
+      await h.apply("bundled:letterpress", "now");
+      saved = h.saved();
+    }
+    using restored = fixture({ snapshot: saved });
+    expect(restored.root.settingsStore.appearance.lightTheme).toBe("bundled:letterpress");
+    expect(restored.root.settingsStore.appearance.darkTheme).toBe("bundled:dune");
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#eee5d3");
+    await restored.appearance("dark");
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#37362b");
+  });
+
   it.each([false, true])(
     "creates, reads, applies and restores through the real window authority (global gateway: %s)",
     async (global) => {
