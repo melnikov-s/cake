@@ -989,9 +989,12 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               record?.canceledInputIds?.includes(turnId)
             )
               return turnId;
+            // A stable admission id also belongs to human input carrying reminders.
+            // Only automatic work must wait for a person to resume a stopped session.
             if (
-              record?.state === "blocked" ||
-              (record?.state === "stopped" && record.inputs.length > 0)
+              internal?._tag !== "UserWithReminders" &&
+              (record?.state === "blocked" ||
+                (record?.state === "stopped" && record.inputs.length > 0))
             )
               return yield* new PiSessionError({
                 operation: delivery,

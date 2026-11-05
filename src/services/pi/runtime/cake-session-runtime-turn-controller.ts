@@ -415,6 +415,7 @@ export function createCakeSessionRuntimeTurnController(input: {
   };
 
   const prompt = async (
+    admitted: () => void,
     text: string,
     delivery: "prompt" | "steer" | "follow-up",
     attachments: Attachment[],
@@ -513,6 +514,7 @@ export function createCakeSessionRuntimeTurnController(input: {
         if (delivery === "steer") notifySteeringQueued();
         input.syncQueuedParts();
         void flushCompactionQueue();
+        admitted();
         await completion;
         return;
       }
@@ -552,6 +554,7 @@ export function createCakeSessionRuntimeTurnController(input: {
         session.getFollowUpMessages().length === 0
       )
         turnCompletions.finishHandledInput(turnId);
+      admitted();
       await completion;
     } finally {
       if (turnId) turnCompletions.forget(turnId);
@@ -862,7 +865,12 @@ export function createCakeSessionRuntimeTurnController(input: {
         promptOperations > 0 ||
         commandRunning ||
         session.isStreaming ||
-        isCompacting()
+        isCompacting() ||
+        session.isBashRunning ||
+        restoringRun ||
+        rebuildingQueue ||
+        handingOff ||
+        flushingHeldQueue
       )
         throw new Error("Wait for the current operation before tool compaction");
       // Tree navigation sets Pi's compaction flag only during navigateTree and
@@ -935,12 +943,19 @@ export function createCakeSessionRuntimeTurnController(input: {
     },
     executingTurnIds: () => turnCompletions.executingIds(),
     async prompt(...args) {
-      // Include asynchronous preparation before Pi exposes isStreaming.
+      // Reserve preparation and Pi delivery, not the lifetime of a queued turn.
+      // Its completion promise intentionally stays pending across Stop/compaction.
       promptOperations += 1;
-      try {
-        await prompt(...args);
-      } finally {
+      let pending = true;
+      const admitted = () => {
+        if (!pending) return;
+        pending = false;
         promptOperations -= 1;
+      };
+      try {
+        await prompt(admitted, ...args);
+      } finally {
+        admitted();
       }
     },
     editMessage,

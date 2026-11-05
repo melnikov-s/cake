@@ -42,6 +42,7 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
   const activity = yield* Queue.unbounded<void>();
   const settlements = yield* Queue.unbounded<Settlement>();
   const deliveries = yield* Queue.unbounded<string>();
+  const cleanupSettled = yield* Deferred.make<void>();
   const consumed = new Set<string>();
   const outcomes: Settlement[] = [];
   let release = Deferred.makeUnsafe<void>();
@@ -111,6 +112,7 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
     emitPart: () => undefined,
     emitSnapshot: async () => undefined,
     emitSnapshotInBackground: () => undefined,
+    onAbortSettled: () => Deferred.doneUnsafe(cleanupSettled, Effect.void),
   });
   yield* Effect.addFinalizer(() => Effect.sync(() => controller.dispose()));
   const context = yield* Layer.build(
@@ -123,7 +125,17 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
       createRuntime: (runtimeOptions) =>
         Effect.succeed({
           ...fakeRuntime(runtimeOptions, () => controller.dispose()),
-          prompt: (text, delivery, attachments, markdown, turnId, presentation, _title, response) =>
+          prompt: (
+            text,
+            delivery,
+            attachments,
+            markdown,
+            turnId,
+            presentation,
+            _title,
+            response,
+            internal,
+          ) =>
             controller.prompt(
               text,
               delivery,
@@ -132,7 +144,13 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
               turnId,
               presentation,
               response,
+              internal,
             ),
+          toolCompact: () =>
+            controller.withToolCompaction(async () => ({
+              sessionId: "session-1",
+              sessionFile: "/project/session.jsonl",
+            })),
           pendingMessages: controller.pendingMessages,
           pendingRecoveryInputs: controller.pendingRecoveryInputs,
           executingTurnIds: controller.executingTurnIds,
@@ -185,6 +203,7 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
     settings,
     aborts: () => aborts,
     nextDelivery: () => Queue.take(deliveries),
+    cleanupSettled: Deferred.await(cleanupSettled),
     finish: () => Deferred.succeed(release, undefined),
     failNextRun: () => {
       failNextRun = true;
@@ -255,6 +274,42 @@ describe("CakeSessionRuntimes queue settlement", () => {
         }).pipe(Effect.provide(platform)),
     );
   }
+
+  it.effect.each([false, true])(
+    "stop with queued inputs permits human input carrying reminders (compact first: %s)",
+    (compactFirst) =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.submit(input("active"));
+        yield* f.submit(input("queued-1"));
+        yield* f.submit(input("queued-2"));
+        const before = (yield* f.handle.pendingMessages()).items;
+        yield* f.handle.abort({ by: "user" });
+        yield* f.settled("active", "aborted");
+        yield* f.cleanupSettled;
+        if (compactFirst) yield* f.handle.toolCompact("assistant-entry");
+        assert.deepEqual((yield* f.handle.pendingMessages()).items, before);
+        assert.deepEqual(
+          f.outcomes.map((event) => event.turnId),
+          ["active"],
+        );
+        assert.match(
+          (yield* Effect.flip(f.handle.submit(input("automatic")))).message,
+          /needs user input/,
+        );
+        yield* f.submit({
+          ...input("human"),
+          delivery: "prompt",
+          internal: { _tag: "UserWithReminders", text: "human", userText: "human", notices: [] },
+        });
+        assert.deepEqual((yield* f.handle.pendingMessages()).items, before);
+        yield* f.finish();
+        yield* f.settled("human", "complete");
+        yield* f.handle.clearQueue();
+        yield* f.settled("queued-1", "aborted");
+        yield* f.settled("queued-2", "aborted");
+      }).pipe(Effect.provide(platform)),
+  );
 
   for (const rejection of ["stale", "unsupported image"] as const) {
     it.effect(`rejected send-now (${rejection}) preserves callbacks and journal cleanup`, () =>

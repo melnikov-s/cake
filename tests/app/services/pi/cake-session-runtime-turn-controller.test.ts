@@ -1005,6 +1005,67 @@ describe("CakeSessionRuntime turn controller", () => {
       });
     });
 
+    it.each(["success", "failure"] as const)(
+      "recovers from immediate abort/compact rejection, preserves queued correlations and sends after navigation %s",
+      async (outcome) => {
+        const cleanup = deferred();
+        const navigation = deferred();
+        const { controller, session, abortSettled } = createQueuedFixture({
+          steering: [],
+          followUp: [],
+        });
+        const first = controller.prompt("Keep first", "steer", [], false, "queued-1");
+        const second = controller.prompt("Keep second", "follow-up", [], true, "queued-2");
+        const firstCanceled = first.catch((error: Error) => error.message);
+        const secondCanceled = second.catch((error: Error) => error.message);
+        // Queue admission finishes while both completion promises stay pending.
+        await controller.pendingMessages();
+        const before = controller.queuedParts();
+        Object.assign(session, {
+          abort: vi.fn(async () => {
+            await cleanup.promise;
+            Object.assign(session, { isStreaming: false });
+          }),
+        });
+        await controller.abort();
+        const navigate = vi.fn(async () => {
+          await navigation.promise;
+          if (outcome === "failure") throw new Error("Navigation failed");
+        });
+        await expect(controller.withToolCompaction(navigate)).rejects.toThrow(
+          "Wait for the current operation before tool compaction",
+        );
+        expect(navigate).not.toHaveBeenCalled();
+        expect(controller.cancellationPending()).toBe(true);
+        expect(session.prompt).toHaveBeenCalledTimes(2);
+        cleanup.resolve();
+        await abortSettled.promise;
+        expect(controller.queuedParts()).toEqual(before);
+        const compacted = controller
+          .withToolCompaction(navigate)
+          .catch((error: Error) => error.message);
+        await expect(controller.withToolCompaction(navigate)).rejects.toThrow(
+          "Wait for the current operation before tool compaction",
+        );
+        expect(controller.toolCompactionActive()).toBe(true);
+        navigation.resolve();
+        expect(await compacted).toBe(outcome === "failure" ? "Navigation failed" : undefined);
+        expect(controller.toolCompactionActive()).toBe(false);
+        expect(controller.queuedParts()).toEqual(before);
+        expect(session.prompt).toHaveBeenCalledTimes(2);
+        expect(controller.executingTurnIds()).toEqual([]);
+        // Compaction is not a new human turn and must not execute either queue lane.
+        Object.assign(session, { prompt: vi.fn(async () => undefined) });
+        await controller.prompt("New human input", "prompt", []);
+        expect(session.prompt).toHaveBeenCalledOnce();
+        expect(controller.queuedParts()).toEqual(before);
+        await controller.clearQueue();
+        expect(await firstCanceled).toBe("Queued input was canceled");
+        expect(await secondCanceled).toBe("Queued input was canceled");
+        controller.dispose();
+      },
+    );
+
     it("stops and sends only the selected queued item while preserving the rest", async () => {
       const { controller, session } = createQueuedFixture({
         steering: ["Send immediately"],

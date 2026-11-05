@@ -342,6 +342,36 @@ describe("Chat composer workflow", () => {
     });
   });
 
+  it.each(["Wait for the current operation before tool compaction", "Navigation failed"])(
+    "allows an ordinary human send after tool compaction rejects: %s",
+    async (message) => {
+      const toolCompact = vi.fn<Client["projectSessions"]["toolCompact"]>(async () => {
+        throw new Error(message);
+      });
+      const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => continuationTurnId);
+      using fixture = await renderComposer({
+        projectSessions: { toolCompact },
+        sessionChats: { prompt },
+      });
+      await pasteAttachment(fixture.user, "kept attachment");
+      await typeAndSend(fixture.user, "/toolcompact Keep this draft");
+      await waitFor(() => expect(input().value).toBe("/toolcompact Keep this draft"));
+      expect(screen.getAllByRole("button", { name: /^Remove Pasted text/ })).toHaveLength(1);
+      expect(prompt).not.toHaveBeenCalled();
+      await fixture.user.clear(input());
+      await fixture.user.type(input(), "Ordinary human input");
+      expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(false);
+      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+      expect(prompt.mock.calls[0]?.[0]).toMatchObject({
+        text: "Ordinary human input",
+        attachments: [textAttachment("kept attachment")],
+      });
+      expect(input().value).toBe("");
+      expect(toolCompact).toHaveBeenCalledOnce();
+    },
+  );
+
   it("retries failed continuation admission with the attachment without compacting again", async () => {
     const toolCompact = vi.fn<Client["projectSessions"]["toolCompact"]>(async () => ({
       sessionId,

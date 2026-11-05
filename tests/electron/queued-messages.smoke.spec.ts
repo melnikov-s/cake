@@ -179,6 +179,46 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   };
 }
 
+test("Stop preserves queued input through tool compaction and returns a working composer", async () => {
+  const fixture = await queuedMessagesFixture();
+  try {
+    const page = await fixture.app.firstWindow();
+    await expect(page.getByText("Ready for queue testing.")).toBeVisible({ timeout: 20_000 });
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    const send = async (text: string) => {
+      await composer.click();
+      await expect(composer).toBeFocused();
+      await composer.pressSequentially(text);
+      await expect(composer).toHaveValue(text);
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await composer.press("Enter");
+      await expect(composer).toHaveValue("");
+    };
+    await send("Hold active request");
+    await expect.poll(() => fixture.requests.length).toBe(1);
+    await send("Keep first queued input");
+    await send("Keep second queued input");
+    const queue = page.getByRole("list", { name: "Queued prompts" });
+    const labels = () =>
+      queue.getByRole("button", { name: /^View queued message:/ }).allTextContents();
+    const expected = ["Keep first queued input", "Keep second queued input"];
+    await expect.poll(labels).toEqual(expected);
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    await expect(page.getByText("Cancellation requested", { exact: true })).toHaveCount(0);
+    await expect.poll(labels).toEqual(expected);
+    await send("/toolcompact");
+    await expect.poll(labels).toEqual(expected);
+    expect(fixture.requests).toHaveLength(1);
+    await send("Human input after compaction");
+    await expect.poll(() => fixture.requests.length).toBe(2);
+    await expect.poll(labels).toEqual(expected);
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    await expect.poll(labels).toEqual(expected);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("reorders both lanes, cancels one item, hands off without an error, and links the sender", async () => {
   test.setTimeout(90_000);
   const fixture = await queuedMessagesFixture();
