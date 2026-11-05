@@ -69,16 +69,23 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
     );
   }
 
-  /** Visible or running Cake Chats whose transcript projections should remain synchronized. */
+  /** Visible or running Cake Chats, including owned workers, stay synchronized until settlement. */
   get observationTargets(): ReadonlyArray<CakeChatTarget> {
     return this.sessions
-      .filter(
-        (session) =>
+      .filter((session) => {
+        const subagents = this.props.subagentCatalog(session.sessionId);
+        return (
           !this.props.pendingSessions().isPending(session.sessionId) &&
           (session.sessionId === SESSION_ASSISTANT_ID ||
             this.props.isVisible(session.sessionId) ||
-            isRunning(session.model)),
-      )
+            isRunning(session.model) ||
+            subagents.activities.some(
+              (activity) =>
+                !subagents.releasedHandleIds.includes(activity.handleId) &&
+                (activity.status === "queued" || activity.status === "running"),
+            ))
+        );
+      })
       .map((session) => this.target(session.sessionId));
   }
 
