@@ -107,7 +107,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div
         className={cn(
-          "flex h-10 shrink-0 items-center gap-1.5 border-b border-border/65 bg-background/95 px-2.5 [-webkit-app-region:drag]",
+          "box-content flex h-title-bar shrink-0 items-center gap-1.5 border-b border-border/65 bg-background/95 px-2.5 [-webkit-app-region:drag]",
           !projectSidebarVisible && "pl-[84px]",
         )}
       >
@@ -196,7 +196,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
       terminalDock={terminalDock}
       chatSidebar={
         <>
-          <header className="flex h-10 shrink-0 select-none items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 [-webkit-app-region:drag]">
+          <header className="box-content flex h-title-bar shrink-0 select-none items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 [-webkit-app-region:drag]">
             {headerLeading && (
               <div className="flex shrink-0 items-center [-webkit-app-region:no-drag]">
                 {headerLeading}

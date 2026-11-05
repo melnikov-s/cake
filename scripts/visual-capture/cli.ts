@@ -17,7 +17,10 @@ Options:
   --theme <light|dark>         Seeded application theme (default: dark)
   --width <pixels>             Renderer viewport width, 320-3840 (default: 1280)
   --height <pixels>            Renderer viewport height, 320-3840 (default: 900)
-  --capture <region|window>    Electron scenario region or full app content; browser always captures full page
+  --capture <region|window|native>
+                               Electron scenario region, full app content, or the macOS window as
+                               drawn on screen (traffic lights included; shown without focus);
+                               browser always captures full page
   --output <file.png>          Exact output file
   --output-dir <directory>     Output directory (default: .visual-captures)
   --no-build                   Use existing compiled out/ assets (browser needs out/server and out/browser)

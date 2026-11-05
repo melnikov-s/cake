@@ -168,7 +168,20 @@
   }
 }
 
+/* One window title bar: the native traffic lights and every title-bar control center on
+   half of this height (Electron positions the lights from the same values). A bar's bottom
+   rule sits outside it (box-content), so the rule never shifts that center line. Embedded
+   VS Code fixes its own title bar, so Cake matches it while that view is shown. */
+:root {
+  --title-bar-height: 52px;
+}
+
+:root[data-title-bar="vscode"] {
+  --title-bar-height: 34px;
+}
+
 @theme inline {
+  --spacing-title-bar: var(--title-bar-height);
   /* Small UI text shares a readable, root-relative floor, including third-party
      components using Tailwind's text-xs. Keep the root size user-controlled. */
   --text-xs: 0.875rem;

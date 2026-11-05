@@ -100,7 +100,7 @@ export const QuakeTerminal = observer(function QuakeTerminal({
             // At the top this header is the window's title bar. Its content box is the title
             // bar height (border outside) so every control centers on the traffic lights, and
             // pl-24 leaves the same 18px after the zoom button as the lights' left inset.
-            store.docked ? "h-10 pl-2" : "box-content h-[52px] pl-24",
+            store.docked ? "h-10 pl-2" : "box-content h-title-bar pl-24",
           )}
         >
           <span className="grid shrink-0 place-items-center text-muted-foreground">

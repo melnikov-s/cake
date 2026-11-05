@@ -103,7 +103,7 @@ it.effect("closes the native view after its logical connection has already been 
   }),
 );
 
-it.effect("centers the traffic lights on whichever title bar fills the top-left corner", () =>
+it.effect("centers the traffic lights on VS Code's title bar while its view is shown", () =>
   Effect.gen(function* () {
     native.windows.clear();
     native.windows.set(49, {
@@ -136,18 +136,17 @@ it.effect("centers the traffic lights on whichever title bar fills the top-left 
       const views = yield* VsCodeViews;
       const connection = (yield* ClientConnections).desktop(49);
       const editor = { x: 0, y: 0, width: 900, height: 700, projectSidebarWidth: 0 };
-      // VS Code's own title bar is at the window's top-left corner.
+      // Cake's title bars match VS Code's whenever its view is shown, wherever it sits:
+      // at the window's corner, below the top terminal, or beside the project sidebar.
       yield* views.updateBounds(connection, { ...editor, visible: true });
-      // The top terminal pushes the editor down; its Cake-height header now holds the corner.
       yield* views.updateBounds(connection, { ...editor, visible: true, y: 365, height: 335 });
-      // The project sidebar's Cake-height header holds the corner.
       yield* views.updateBounds(connection, { ...editor, visible: true, x: 280 });
       yield* views.updateBounds(connection, { ...editor, visible: false });
     }).pipe(Effect.scoped, Effect.provide(layer));
     expect(heights).toEqual([
       VSCODE_TITLE_BAR_HEIGHT,
-      CAKE_TITLE_BAR_HEIGHT,
-      CAKE_TITLE_BAR_HEIGHT,
+      VSCODE_TITLE_BAR_HEIGHT,
+      VSCODE_TITLE_BAR_HEIGHT,
       CAKE_TITLE_BAR_HEIGHT,
     ]);
   }),

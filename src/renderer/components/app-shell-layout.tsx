@@ -114,7 +114,7 @@ export const AppShellLayout = observer(function AppShellLayout({
           "relative col-start-2 grid h-full min-h-0 min-w-0 overflow-hidden [contain:inline-size]",
           conversationPaneVisible
             ? "grid-rows-[minmax(0,1fr)_auto]"
-            : "grid-rows-[52px_minmax(0,1fr)_auto]",
+            : "grid-rows-[auto_minmax(0,1fr)_auto]",
         )}
         data-session-id={
           shell.selection.kind === "cake-chat"

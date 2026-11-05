@@ -22,12 +22,12 @@ export function SidePanel({
     <aside
       data-slot="side-panel"
       className={cn(
-        "grid h-full min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)] bg-background",
+        "grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] bg-background",
         className,
       )}
       aria-label={title}
     >
-      <header className="flex min-w-0 items-center gap-3 border-b border-border/65 bg-sidebar/30 px-4">
+      <header className="box-content flex h-title-bar min-w-0 items-center gap-3 border-b border-border/65 bg-sidebar/30 px-4">
         <div className="min-w-0 flex-1">
           <strong className="block truncate text-xs font-semibold text-foreground">{title}</strong>
           {eyebrow && <p className="mt-0.5 truncate text-xs text-muted-foreground">{eyebrow}</p>}

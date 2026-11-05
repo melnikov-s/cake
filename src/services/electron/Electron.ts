@@ -6,8 +6,10 @@ import type {
 } from "../../contracts/application/cake-rpc-contract";
 import type { ElectronError } from "../../contracts/desktop/electron-errors";
 
+/** Title-bar heights whose halves are the window's center line (renderer `--title-bar-height`).
+ * Bottom rules sit below them; VS Code's 35px bar is 34px above its rule. */
 export const CAKE_TITLE_BAR_HEIGHT = 52;
-export const VSCODE_TITLE_BAR_HEIGHT = 35;
+export const VSCODE_TITLE_BAR_HEIGHT = 34;
 
 type Payload<Type extends keyof typeof cakeRpcPayloadSchemas> =
   (typeof cakeRpcPayloadSchemas)[Type]["Type"];

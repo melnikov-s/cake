@@ -120,10 +120,7 @@ export function FullscreenSurface({
       onMouseDown={mode === "dialog" ? onClose : undefined}
     >
       <header
-        className={cn(
-          "flex h-11 shrink-0 items-center justify-between gap-4 border-b border-border/65 bg-background/95 pr-3.5 pl-[84px] backdrop-blur-md [-webkit-app-region:drag]",
-          !eyebrow && "h-13",
-        )}
+        className="box-content flex h-title-bar shrink-0 items-center justify-between gap-4 border-b border-border/65 bg-background/95 pr-3.5 pl-[84px] backdrop-blur-md [-webkit-app-region:drag]"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="flex min-w-0 flex-1 items-center gap-2">

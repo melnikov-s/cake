@@ -13,12 +13,10 @@ const nativeError = (operation: string, cause: unknown) =>
     message: cause instanceof Error ? cause.message : String(cause),
   });
 
-/** The traffic lights center on whichever title bar fills the window's top-left corner:
- * VS Code's only while its view starts there, otherwise Cake's (sidebar or top terminal). */
+/** While VS Code's view is shown, Cake's title bars shrink to its fixed bar (the renderer's
+ * `data-title-bar="vscode"`), so the traffic lights center on that same line. */
 const trafficLightTitleBarHeight = (bounds: VsCodeViewBounds) =>
-  bounds.visible && Math.round(bounds.x) === 0 && Math.round(bounds.y) === 0
-    ? VSCODE_TITLE_BAR_HEIGHT
-    : CAKE_TITLE_BAR_HEIGHT;
+  bounds.visible ? VSCODE_TITLE_BAR_HEIGHT : CAKE_TITLE_BAR_HEIGHT;
 
 /** Scope owns native views and native callbacks, never an editor process or workspace read. */
 export const VsCodeViewsLive = Layer.effect(

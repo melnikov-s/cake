@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import {
@@ -121,59 +121,63 @@ export async function captureVisual(
     const target = options.capture === "window" ? page : scenario.region(page, options.state);
     await mkdir(dirname(outputPath), { recursive: true });
     const png =
-      options.capture === "window"
-        ? Buffer.from(
-            await application.evaluate(async ({ BrowserWindow, WebContentsView, nativeImage }) => {
-              const window = BrowserWindow.getAllWindows()[0];
-              if (!window) throw new Error("Cake capture window is missing");
-              const image = await window.webContents.capturePage(undefined, {
-                stayHidden: true,
-                stayAwake: true,
-              });
-              const size = image.getSize();
-              const bitmap = image.toBitmap();
-              // Chromium's page capture omits sibling native WebContentsViews.
-              // Composite their real captures at the native window's actual bounds,
-              // in paint order, rather than publishing a blank editor viewport.
-              for (const view of window.contentView.children) {
-                if (
-                  !(view instanceof WebContentsView) ||
-                  !view.getVisible() ||
-                  view.webContents === window.webContents
-                )
-                  continue;
-                const bounds = view.getBounds();
-                if (bounds.width <= 0 || bounds.height <= 0) continue;
-                const child = await view.webContents.capturePage(undefined, {
-                  stayHidden: true,
-                  stayAwake: true,
-                });
-                const childSize = child.getSize();
-                if (childSize.width !== bounds.width || childSize.height !== bounds.height)
-                  throw new Error("Native view capture dimensions do not match its bounds");
-                const childBitmap = child.toBitmap();
-                const left = Math.max(0, bounds.x);
-                const right = Math.min(size.width, bounds.x + bounds.width);
-                if (right <= left) continue;
-                for (
-                  let y = Math.max(0, bounds.y);
-                  y < Math.min(size.height, bounds.y + bounds.height);
-                  y++
-                ) {
-                  const start = ((y - bounds.y) * bounds.width + left - bounds.x) * 4;
-                  childBitmap.copy(
-                    bitmap,
-                    (y * size.width + left) * 4,
-                    start,
-                    start + (right - left) * 4,
-                  );
-                }
-              }
-              return nativeImage.createFromBitmap(bitmap, size).toPNG().toString("base64");
-            }),
-            "base64",
-          )
-        : await target.screenshot({ animations: "disabled", type: "png" });
+      options.capture === "native"
+        ? await captureNativeWindow(application, temporaryRoot)
+        : options.capture === "window"
+          ? Buffer.from(
+              await application.evaluate(
+                async ({ BrowserWindow, WebContentsView, nativeImage }) => {
+                  const window = BrowserWindow.getAllWindows()[0];
+                  if (!window) throw new Error("Cake capture window is missing");
+                  const image = await window.webContents.capturePage(undefined, {
+                    stayHidden: true,
+                    stayAwake: true,
+                  });
+                  const size = image.getSize();
+                  const bitmap = image.toBitmap();
+                  // Chromium's page capture omits sibling native WebContentsViews.
+                  // Composite their real captures at the native window's actual bounds,
+                  // in paint order, rather than publishing a blank editor viewport.
+                  for (const view of window.contentView.children) {
+                    if (
+                      !(view instanceof WebContentsView) ||
+                      !view.getVisible() ||
+                      view.webContents === window.webContents
+                    )
+                      continue;
+                    const bounds = view.getBounds();
+                    if (bounds.width <= 0 || bounds.height <= 0) continue;
+                    const child = await view.webContents.capturePage(undefined, {
+                      stayHidden: true,
+                      stayAwake: true,
+                    });
+                    const childSize = child.getSize();
+                    if (childSize.width !== bounds.width || childSize.height !== bounds.height)
+                      throw new Error("Native view capture dimensions do not match its bounds");
+                    const childBitmap = child.toBitmap();
+                    const left = Math.max(0, bounds.x);
+                    const right = Math.min(size.width, bounds.x + bounds.width);
+                    if (right <= left) continue;
+                    for (
+                      let y = Math.max(0, bounds.y);
+                      y < Math.min(size.height, bounds.y + bounds.height);
+                      y++
+                    ) {
+                      const start = ((y - bounds.y) * bounds.width + left - bounds.x) * 4;
+                      childBitmap.copy(
+                        bitmap,
+                        (y * size.width + left) * 4,
+                        start,
+                        start + (right - left) * 4,
+                      );
+                    }
+                  }
+                  return nativeImage.createFromBitmap(bitmap, size).toPNG().toString("base64");
+                },
+              ),
+              "base64",
+            )
+          : await target.screenshot({ animations: "disabled", type: "png" });
     await writeFile(outputPath, png);
     const dimensions = parsePngDimensions(png);
     return {
@@ -196,6 +200,32 @@ export async function captureVisual(
     if (disposeScenario) await disposeScenario();
     await rm(temporaryRoot, { recursive: true, force: true });
   }
+}
+
+/**
+ * Captures the window as macOS composites it, including native traffic lights that
+ * Chromium's page capture omits. The window is shown without activation so the
+ * user's focused application keeps OS focus; the output is at the display's scale.
+ */
+async function captureNativeWindow(application: ElectronApplication, temporaryRoot: string) {
+  if (process.platform !== "darwin") throw new Error("--capture native requires macOS");
+  const windowId = await application.evaluate(async ({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    if (!window) throw new Error("Cake capture window is missing");
+    window.showInactive();
+    await new Promise((done) => setTimeout(done, 750));
+    return window.getMediaSourceId().split(":")[1];
+  });
+  if (!windowId) throw new Error("Cake capture window has no native window id");
+  const file = join(temporaryRoot, "native-window.png");
+  await new Promise<void>((done, fail) => {
+    const child = spawn("/usr/sbin/screencapture", ["-x", "-o", `-l${windowId}`, file]);
+    child.once("error", fail);
+    child.once("exit", (code) =>
+      code === 0 ? done() : fail(new Error(`screencapture failed with exit code ${code}`)),
+    );
+  });
+  return readFile(file);
 }
 
 async function captureBrowserPage(

@@ -1,4 +1,4 @@
-import { type ComponentProps, type ReactNode } from "react";
+import { type ComponentProps, type ReactNode, useEffect } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "../lib/utils";
 import type { ChatTranscriptBehavior } from "./chat-message";
@@ -62,6 +62,16 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   terminalDock?: ReactNode;
   transcriptBehavior: ChatTranscriptBehavior;
 }) {
+  // While VS Code's view is shown, its fixed title bar sets the window's center line;
+  // main positions the traffic lights from the same visibility (VsCodeViewsLive).
+  const vsCodeTitleBar = editor.nativeViewBounds.visible;
+  useEffect(() => {
+    if (!vsCodeTitleBar) return;
+    document.documentElement.dataset.titleBar = "vscode";
+    return () => {
+      delete document.documentElement.dataset.titleBar;
+    };
+  }, [vsCodeTitleBar]);
   const draftAnchor = reviews.draftAnchor;
   const activeThread = reviews.activeThreadId
     ? reviews.threads.find(
@@ -119,7 +129,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
     <header
       className={cn(
         "flex shrink-0 select-none items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 [-webkit-app-region:drag]",
-        contextualAnchor ? "min-h-[52px] flex-wrap py-2" : "h-10",
+        contextualAnchor ? "min-h-title-bar flex-wrap py-2" : "box-content h-title-bar",
         !editor.chatSidebarVisible && !projectSidebarVisible && "pl-[84px]",
       )}
     >

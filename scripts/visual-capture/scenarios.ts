@@ -3736,6 +3736,67 @@ const cakeChatScenario: VisualCaptureScenario = {
   region: (page) => page.locator("body"),
 };
 
+/** Every top-bar surface whose controls must share the native traffic lights' centerline. */
+const titleBarAlignmentScenario: VisualCaptureScenario = {
+  name: "title-bar-alignment",
+  description:
+    "Project, Browser Mode, VS Code and top terminal title bars, with and without the project sidebar; use --capture native for traffic lights",
+  states: [
+    "project",
+    "project-collapsed",
+    "browser",
+    "browser-collapsed",
+    "vscode",
+    "vscode-collapsed",
+    "terminal",
+  ],
+  seed: (paths, theme) => cakeChatScenario.seed(paths, theme),
+  async prepare(page, state, application) {
+    await cakeChatScenario.prepare(page, "project", application);
+    if (state.startsWith("browser")) {
+      await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+      await expect(page.getByRole("textbox", { name: "Browser address" })).toBeVisible();
+    }
+    if (state.startsWith("vscode")) {
+      if (!application) throw new Error("The VS Code title bar state requires Electron");
+      await page.getByRole("button", { name: "Open VS Code", exact: true }).click();
+      await page.getByRole("region", { name: "VS Code workspace" }).waitFor({ state: "visible" });
+      await expect
+        .poll(
+          () =>
+            application.evaluate(async ({ webContents }) => {
+              for (const contents of webContents.getAllWebContents()) {
+                if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+                if (
+                  await contents.executeJavaScript(
+                    'Boolean(document.querySelector(".part.titlebar"))',
+                  )
+                )
+                  return true;
+              }
+              return false;
+            }),
+          { timeout: 30_000 },
+        )
+        .toBe(true);
+    }
+    if (state === "terminal") {
+      await page.getByRole("button", { name: "Terminal", exact: true }).click();
+      await expect(page.locator('section[aria-label="Terminal"]')).toHaveAttribute(
+        "aria-hidden",
+        "false",
+      );
+    }
+    if (state.endsWith("-collapsed"))
+      await page.getByRole("button", { name: "Toggle sidebar", exact: true }).first().click();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(700, 600);
+    // Let layout-driven native view bounds and traffic-light positions settle.
+    await page.waitForTimeout(500);
+  },
+  region: (page) => page.locator("body"),
+};
+
 const cakeChatConversationScenario: VisualCaptureScenario = {
   name: "cake-chat-conversation",
   description:
@@ -7307,6 +7368,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   newSessionScenario,
   sessionSearchScenario,
   cakeChatScenario,
+  titleBarAlignmentScenario,
   cakeChatConversationScenario,
   cakeChatOverlayScenario,
   subagentReportsScenario,

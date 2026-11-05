@@ -31,7 +31,7 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
     <header
       data-slot="workspace-header"
       className={cn(
-        "relative flex h-[52px] w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-[88px] phone:pl-[88px]",
+        "relative box-content flex h-title-bar w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-[88px] phone:pl-[88px]",
         sidebarCollapsed && surface !== "settings" && "pl-[156px]",
         surface === "settings" && "pl-[84px]",
       )}

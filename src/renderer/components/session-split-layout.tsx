@@ -105,10 +105,11 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
         data-session-id={sessionId}
         data-focused={focused ? "true" : "false"}
         className={cn(
-          "group/pane @container/session-pane relative grid h-full min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)] phone:grid-rows-[96px_minmax(0,1fr)] overflow-hidden border border-transparent bg-background",
+          // The focus frame is an overlay, not a border, so headers keep the title-bar center line.
+          "group/pane @container/session-pane relative grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] phone:grid-rows-[96px_minmax(0,1fr)] overflow-hidden bg-background",
           multiplePanes &&
             focused &&
-            "border-accent/40 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_10%,transparent)]",
+            "after:pointer-events-none after:absolute after:inset-0 after:z-30 after:border after:border-accent/40 after:shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_10%,transparent)] after:content-['']",
         )}
         onWheelCapture={() => onInteract?.(sessionId)}
         onKeyDownCapture={() => onInteract?.(sessionId)}
@@ -127,7 +128,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
         <header
           data-slot="workspace-header"
           className={cn(
-            "relative flex h-[52px] min-w-0 items-center gap-3 overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:gap-1.5 max-[620px]:pr-3 phone:h-24 phone:flex-wrap phone:content-center phone:gap-y-0 phone:py-1 phone:pl-14 phone:pr-3",
+            "relative box-content flex h-title-bar min-w-0 items-center gap-3 overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:gap-1.5 max-[620px]:pr-3 phone:box-border phone:h-24 phone:flex-wrap phone:content-center phone:gap-y-0 phone:py-1 phone:pl-14 phone:pr-3",
             multiplePanes && "bg-muted/20 pr-10",
             multiplePanes && focused && "bg-muted/35",
             headerClassName?.(node),

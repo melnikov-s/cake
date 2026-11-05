@@ -185,6 +185,27 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(addressInput).toHaveValue(`${origin}/`);
 
     const workspace = page.getByRole("region", { name: "Browser workspace", exact: true });
+    if (process.platform === "darwin") {
+      // The browser toolbar and its chat header are the title bar: every control, the
+      // address field and the session title share the traffic lights' centerline.
+      const lights = await (
+        await application.browserWindow(page)
+      ).evaluate((window) => window.getWindowButtonPosition());
+      expect(lights).not.toBeNull();
+      const centerline = lights!.y + 7;
+      const centers = await page
+        .locator(
+          '[aria-label="Browser workspace"] button:visible, [aria-label="Browser address"], aside header > *',
+        )
+        .evaluateAll((nodes) =>
+          nodes
+            .map((node) => node.getBoundingClientRect())
+            .filter((box) => box.top < 60 && box.height > 0)
+            .map((box) => box.top + box.height / 2),
+        );
+      expect(centers.length).toBeGreaterThan(5);
+      for (const center of centers) expect(Math.abs(center - centerline)).toBeLessThan(0.25);
+    }
     const chatToggle = workspace.locator('[data-slot="header-chat-toggle"]');
     const sidebarToggle = workspace.locator('[data-slot="header-sidebar-toggle"]');
     const composer = page.getByRole("combobox", { name: "Message", exact: true });

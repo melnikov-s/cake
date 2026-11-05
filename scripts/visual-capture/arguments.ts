@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 
 const visualCaptureThemes = ["light", "dark"] as const;
-const visualCaptureModes = ["region", "window"] as const;
+const visualCaptureModes = ["region", "window", "native"] as const;
 
 export type VisualCaptureTheme = (typeof visualCaptureThemes)[number];
 type VisualCaptureMode = (typeof visualCaptureModes)[number];
@@ -104,7 +104,7 @@ function isVisualCaptureTheme(value: string): value is VisualCaptureTheme {
 }
 
 function isVisualCaptureMode(value: string): value is VisualCaptureMode {
-  return value === "region" || value === "window";
+  return (visualCaptureModes as readonly string[]).includes(value);
 }
 
 function parseDimension(name: string, value: string) {
