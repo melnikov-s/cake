@@ -23,6 +23,9 @@ export class Dictation extends Context.Service<
       change: VocabularyChange,
     ) => Effect.Effect<{ revision: number }, DictationError>;
     readonly installVocabulary: () => Effect.Effect<void, DictationError>;
+    /** One capture across windows: records `owner` as the latest capturing window. */
+    readonly claim: (owner: string) => Effect.Effect<{ claim: number }>;
+    readonly setMuted: (muted: boolean) => Effect.Effect<void>;
     readonly install: () => Effect.Effect<void, DictationError>;
     readonly setModelPath: (path: string) => Effect.Effect<void, DictationError>;
     readonly remove: () => Effect.Effect<void, DictationError>;

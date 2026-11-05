@@ -52,6 +52,8 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
         vocabularyInstalled: false,
         downloadedBytes: 0,
         totalBytes: 0,
+        muted: false,
+        captureClaim: 0,
       });
       const lock = yield* Semaphore.make(1);
       let worker: ParakeetWorker | undefined;
@@ -188,6 +190,12 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
           );
         }),
         observeState: () => SubscriptionRef.changes(state),
+        claim: (owner) =>
+          SubscriptionRef.modify(state, (previous) => {
+            const claim = previous.captureClaim + 1;
+            return [{ claim }, { ...previous, captureOwner: owner, captureClaim: claim }];
+          }),
+        setMuted: (muted) => patch({ muted }),
         install: Effect.fn("Dictation.install")(function* () {
           yield* guarded(
             Effect.gen(function* () {

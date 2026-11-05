@@ -35,6 +35,11 @@ export const DictationRpc = RpcGroup.make(
   Rpc.make("dictation.remove", { success: Schema.Void, error: DictationError }),
   Rpc.make("dictation.prepare", { success: Schema.Void, error: DictationError }),
   Rpc.make("dictation.release", { success: Schema.Void, error: DictationError }),
+  Rpc.make("dictation.claim", {
+    payload: { owner: Schema.String.check(Schema.isMaxLength(64)) },
+    success: Schema.Struct({ claim: Schema.Int }),
+  }),
+  Rpc.make("dictation.setMuted", { payload: { muted: Schema.Boolean }, success: Schema.Void }),
   Rpc.make("dictation.trace", { payload: DictationTrace, success: Schema.Void }),
   Rpc.make("dictation.detectSpeech", {
     payload: SpeechDetectionAudio,

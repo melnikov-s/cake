@@ -161,12 +161,25 @@ function renderDictation(
   const prepare = vi.fn<Client["dictation"]["prepare"]>(async () => {
     await options.modelReady;
     // The native authority publishes Ready when its warmup completes.
+    const current = fixture.root.dictationStore.state;
     fixture.root.dictationStore.applyState({
       ...installedDictationState,
       ...options.state,
+      muted: current?.muted ?? false,
+      captureOwner: current?.captureOwner,
+      captureClaim: current?.captureClaim ?? 0,
       status: "ready",
     });
   });
+  // The main process echoes shared capture ownership and mute to every window.
+  const shared = (change: Partial<DictationState>) =>
+    fixture.root.dictationStore.applyState({ ...fixture.root.dictationStore.state!, ...change });
+  const claim = vi.fn<Client["dictation"]["claim"]>(async ({ owner }) => {
+    const next = fixture.root.dictationStore.state!.captureClaim + 1;
+    shared({ captureOwner: owner, captureClaim: next });
+    return { claim: next };
+  });
+  const setMuted = vi.fn<Client["dictation"]["setMuted"]>(async ({ muted }) => shared({ muted }));
   const release = vi.fn<Client["dictation"]["release"]>(async () => undefined);
   const trace = vi.fn<Client["dictation"]["trace"]>(async () => undefined);
   const transcribe = vi.fn<Client["dictation"]["transcribe"]>((input) => {
@@ -198,6 +211,8 @@ function renderDictation(
         prepare,
         release,
         trace,
+        claim,
+        setMuted,
         transcribe,
         detectSpeech: detectFixtureSpeech,
         ...options.client?.dictation,
@@ -289,6 +304,22 @@ function renderDictation(
     prepare,
     release,
     trace,
+    claim,
+    setMuted,
+    /** Another window's change arriving through the shared main-process state. */
+    otherWindow(change: { claim?: true; muted?: boolean }) {
+      act(() =>
+        shared({
+          ...(change.muted === undefined ? {} : { muted: change.muted }),
+          ...(change.claim
+            ? {
+                captureOwner: "other-window",
+                captureClaim: fixture.root.dictationStore.state!.captureClaim + 1,
+              }
+            : {}),
+        }),
+      );
+    },
     requests,
     prompt: options.client?.sessionChats?.prompt ?? prompt,
     submitContract: () => session.conversationSessionStore.chatStore.submit(),
@@ -2138,6 +2169,36 @@ describe("Dictation writing-field workflow", () => {
     await fixture.audio.push(new Float32Array(12_800));
     await fixture.recognize(2, "Resumed");
     expect(trial().value).toBe("Keep this kept Resumed");
+  });
+
+  it("pauses when another window claims the one capture and reclaims on refocus", async () => {
+    using fixture = renderDictation();
+    await fixture.user.click(mode());
+    await fixture.user.click(trial());
+    listening();
+    await waitFor(() => expect(fixture.claim).toHaveBeenCalledOnce());
+    fixture.otherWindow({ claim: true });
+    expect(fixture.root.dictationStore.phase).toBe("paused");
+    expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
+    await fixture.user.click(message());
+    listening();
+    expect(fixture.claim).toHaveBeenCalledTimes(2);
+    expect(fixture.root.dictationStore.phase).toBe("listening");
+  });
+
+  it("shares mute across windows; another window's unmute resumes only a focused field", async () => {
+    using fixture = renderDictation();
+    await fixture.user.click(mode());
+    await fixture.user.click(trial());
+    listening();
+    fixture.otherWindow({ muted: true });
+    expect(fixture.root.dictationStore.phase).toBe("paused");
+    expect(screen.getByRole("button", { name: "Unmute dictation" })).toBeDefined();
+    fixture.otherWindow({ muted: false });
+    await waitFor(listening);
+    await fixture.user.click(screen.getByRole("button", { name: "Mute dictation" }));
+    expect(fixture.setMuted).toHaveBeenCalledWith({ muted: true });
+    expect(fixture.root.dictationStore.state?.muted).toBe(true);
   });
 
   it("muting during microphone preparation stops a late capture and permits a fresh unmute", async () => {

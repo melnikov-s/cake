@@ -15,6 +15,12 @@ export const DictationState = Schema.Struct({
   message: Schema.optional(Schema.String),
   downloadedBytes: Schema.Number,
   totalBytes: Schema.Number,
+  /** Dictation mute shared by every window; in memory only. */
+  muted: Schema.Boolean,
+  /** The window whose capture feeds the one native engine; the latest claim wins. */
+  captureOwner: Schema.optional(Schema.String),
+  /** Increments on every claim, so a window can ignore claims older than its own. */
+  captureClaim: Schema.Int,
 });
 export interface DictationState extends Schema.Schema.Type<typeof DictationState> {}
 

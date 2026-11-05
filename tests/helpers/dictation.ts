@@ -11,4 +11,6 @@ export const installedDictationState: DictationState = {
   vocabularyInstalled: false,
   downloadedBytes: 0,
   totalBytes: 0,
+  muted: false,
+  captureClaim: 0,
 };

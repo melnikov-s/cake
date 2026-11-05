@@ -128,7 +128,8 @@ export class DictationStore extends Store<{
   @snapshot enabled = false;
   /** Window preference shared with voice mode; text/results remain insertion-local and ephemeral. */
   @snapshot textProcessingMode: TextProcessingMode = "raw";
-  /** Window-local input mute; survives field changes, never persisted. */
+  /** Mirror of the main-process mute shared by every window; survives field changes, never
+   * persisted. */
   muted = false;
   phase: DictationPhase = "off";
   /** Ephemeral level of the current capture; never persisted or shared across focus generations. */
@@ -161,6 +162,10 @@ export class DictationStore extends Store<{
   private recoveryRevision = 0;
   private recoveryTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly microphone: ReturnType<typeof createReusableMicrophone>;
+  /** This window's identity for the single cross-window capture. */
+  private readonly captureOwner = crypto.randomUUID().slice(0, 8);
+  /** This window's latest claim; Infinity while one is in flight so older claims never pause it. */
+  private captureClaim = -1;
   private microphoneReleaseTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(props: DictationStore["props"]) {
@@ -206,15 +211,50 @@ export class DictationStore extends Store<{
   /** Muting seals visible speech and drops pending results; unmuting starts at the current caret. */
   setMuted(id: string, muted: boolean) {
     if (!this.enabled || this.target?.id !== id || this.muted === muted) return;
+    this.applyMuted(muted, true);
+    void Promise.resolve()
+      .then(() => this.props.client.setMuted({ muted }))
+      .catch(() => undefined);
+  }
+  /** Another window's unmute restarts only a field the user is in; the clicked window always does. */
+  private applyMuted(muted: boolean, local: boolean) {
     this.muted = muted;
+    if (!this.enabled) return;
     if (muted) {
       this.engaged = false;
       this.endUtterance(false, "muted");
       this.phase = "paused";
     } else {
       this.error = undefined;
-      if (!this.submission) void this.start(this.target, "unmute");
+      if (this.target && !this.submission && (local || this.targetFocused))
+        void this.start(this.target, "unmute");
     }
+  }
+  /** Records this window as the capture owner; other windows pause when they observe it. */
+  private claimCapture() {
+    const previous = this.captureClaim;
+    this.captureClaim = Number.POSITIVE_INFINITY;
+    void Promise.resolve()
+      .then(() => this.props.client.claim({ owner: this.captureOwner }))
+      .then(
+        ({ claim }) => {
+          this.captureClaim = claim;
+          // A newer claim may have been observed while this one was in flight.
+          if (this.state) this.yieldCapture(this.state);
+        },
+        () => {
+          this.captureClaim = previous;
+        },
+      );
+  }
+  private yieldCapture(state: DictationState) {
+    if (
+      state.captureOwner !== undefined &&
+      state.captureOwner !== this.captureOwner &&
+      state.captureClaim > this.captureClaim &&
+      this.capturing
+    )
+      this.pauseCapture("other-window");
   }
   get label() {
     if (this.muted) return "Dictation muted";
@@ -236,6 +276,8 @@ export class DictationStore extends Store<{
     if (state.status === "ready" && this.state?.status !== "ready" && run && !run.capture)
       this.trace("engine-ready", { attempt: run.attempt });
     this.state = state;
+    if (state.muted !== this.muted) this.applyMuted(state.muted, false);
+    this.yieldCapture(state);
   }
   /** One concise, metadata-only desktop-log line. Logging never affects dictation. */
   private trace(step: DictationTraceStep, fields: Partial<Omit<DictationTrace, "step">> = {}) {
@@ -361,7 +403,6 @@ export class DictationStore extends Store<{
     this.recoveryAttempt = 0;
     this.submission = undefined;
     this.engaged = false;
-    this.muted = false;
     this.error = undefined;
     this.endUtterance(false, "mode-changed");
     this.modelLoad = undefined;
@@ -598,6 +639,7 @@ export class DictationStore extends Store<{
     this.utterance = run;
     this.engaged = true;
     this.phase = "preparing";
+    this.claimCapture();
     target.begin();
     this.trace("start-requested", {
       field: target.id,
