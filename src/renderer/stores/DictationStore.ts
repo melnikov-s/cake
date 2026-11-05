@@ -113,8 +113,8 @@ function commandText(text: string) {
 }
 
 /** Window-owned voice-input workflow. Focus is take-latest; drafts retain their existing owners.
- * Main owns installation. This window persists enablement, microphone and cleanup choice (last
- * local edit wins); capture, maintenance pauses, audio and focus are ephemeral.
+ * Main owns installation. This window persists enablement, microphone, cleanup and refocus policy
+ * (last local edit wins); capture, maintenance pauses, audio and focus are ephemeral.
  */
 export class DictationStore extends Store<{
   preferences: SpeechInputSettingsStore;
@@ -126,6 +126,7 @@ export class DictationStore extends Store<{
 }> {
   state: DictationState | undefined;
   @snapshot enabled = false;
+  @snapshot preventAutomaticRefocus = true;
   /** Window preference shared with voice mode; text/results remain insertion-local and ephemeral. */
   @snapshot textProcessingMode: TextProcessingMode = "raw";
   /** Mirror of the main-process mute shared by every window; survives field changes, never
@@ -206,6 +207,13 @@ export class DictationStore extends Store<{
     });
   }
 
+  /** Live focus policy; capture phase and lifetime are deliberately irrelevant. */
+  get suppressAutomaticRefocus() {
+    return this.preventAutomaticRefocus && this.enabled && !this.muted;
+  }
+  setPreventAutomaticRefocus(prevent: boolean) {
+    this.preventAutomaticRefocus = prevent;
+  }
   get activeTargetId() {
     return this.target?.id;
   }

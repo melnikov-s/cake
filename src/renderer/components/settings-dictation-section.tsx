@@ -50,6 +50,13 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
           }
           onChange={(enabled) => void store.setEnabled(enabled)}
         />
+        <SettingsToggle
+          id="setting-dictation-refocus"
+          label="Prevent automatic refocusing while dictating"
+          description="Keep input focus manual while dictation is enabled and unmuted."
+          checked={store.preventAutomaticRefocus}
+          onChange={(prevent) => store.setPreventAutomaticRefocus(prevent)}
+        />
         <div
           id="setting-text-processing"
           className="flex items-center justify-between gap-4 px-3.5 py-2.5"

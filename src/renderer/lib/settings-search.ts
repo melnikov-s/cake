@@ -239,6 +239,11 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
             keywords: "dictation send submit phrase command hands-free",
           },
           {
+            label: "Prevent automatic refocusing while dictating",
+            targetId: "setting-dictation-refocus",
+            keywords: "dictation focus refocus autofocus input automatic typing",
+          },
+          {
             label: "Custom vocabulary",
             targetId: "setting-dictation-vocabulary",
             keywords:

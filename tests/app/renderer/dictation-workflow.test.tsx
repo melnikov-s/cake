@@ -1012,31 +1012,71 @@ describe("Dictation writing-field workflow", () => {
     expect(f.audio.getUserMedia).toHaveBeenCalledOnce();
   });
 
-  it("parks focus after a silent asynchronous send and requires focus before more dictation", async () => {
-    const submission = deferred<void>();
-    using f = renderDictation({ composerFocusEnabled: true, submissionReady: submission.promise });
+  it("applies the dictation refocus setting immediately to existing composer focus requests", async () => {
+    using f = renderDictation({ composerFocusEnabled: true });
+    const preventRefocus = screen.getByRole("switch", {
+      name: "Prevent automatic refocusing while dictating",
+    });
+    expect(preventRefocus.getAttribute("aria-checked")).toBe("true");
     await f.user.click(mode());
     f.requestFocus();
     await waitFor(() => expect(document.activeElement).toBe(message().parentElement));
-    await f.user.tab();
-    await waitFor(() => expect(f.audio.getUserMedia).toHaveBeenCalledOnce());
-    await f.user.type(message(), "Send this request");
-    await f.user.keyboard("{Enter}");
-    await waitFor(() => expect(f.requests).toHaveLength(1));
-    await f.recognize(0, "");
-    await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
-    await act(async () => submission.resolve());
-    expect(document.activeElement).toBe(message().parentElement);
-    expect(message().value).toBe("");
-    // A typed-only send did not capture speech in this focus period.
-    expect(f.root.dictationStore.phase).toBe("paused");
-    await f.user.tab();
-    await waitFor(listening);
-    await f.audio.push(new Float32Array(12_800));
-    await f.recognize(1, "Next request");
-    expect(message().value).toBe("Next request");
-    expect(document.activeElement).toBe(message());
+
+    await f.user.click(preventRefocus);
+    expect(preventRefocus.getAttribute("aria-checked")).toBe("false");
+    f.requestFocus();
+    await waitFor(() => expect(document.activeElement).toBe(message()));
+    await f.user.type(message(), "Normal focus");
+    expect(message().value).toBe("Normal focus");
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Send" }).disabled).toBe(false);
+
+    await f.user.click(preventRefocus);
+    f.requestFocus();
+    await waitFor(() => expect(document.activeElement).toBe(message().parentElement));
+    expect(preventRefocus.getAttribute("aria-checked")).toBe("true");
   });
+
+  it.each([true, false])(
+    "applies prevent-refocus=%s after a silent asynchronous send",
+    async (preventRefocus) => {
+      const submission = deferred<void>();
+      using f = renderDictation({
+        composerFocusEnabled: true,
+        submissionReady: submission.promise,
+      });
+      await f.user.click(mode());
+      f.requestFocus();
+      await waitFor(() => expect(document.activeElement).toBe(message().parentElement));
+      await f.user.tab();
+      await waitFor(() => expect(f.audio.getUserMedia).toHaveBeenCalledOnce());
+      if (!preventRefocus)
+        await f.user.click(
+          screen.getByRole("switch", {
+            name: "Prevent automatic refocusing while dictating",
+          }),
+        );
+      await f.user.type(message(), "Send this request");
+      await f.user.keyboard("{Enter}");
+      await waitFor(() => expect(f.requests).toHaveLength(1));
+      await f.recognize(0, "");
+      await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+      await act(async () => submission.resolve());
+      await waitFor(() =>
+        expect(document.activeElement).toBe(preventRefocus ? message().parentElement : message()),
+      );
+      expect(message().value).toBe("");
+      if (preventRefocus) {
+        // A typed-only send did not capture speech in this focus period.
+        expect(f.root.dictationStore.phase).toBe("paused");
+        await f.user.tab();
+      }
+      await waitFor(listening);
+      await f.audio.push(new Float32Array(12_800));
+      await f.recognize(1, "Next request");
+      expect(message().value).toBe("Next request");
+      expect(document.activeElement).toBe(message());
+    },
+  );
 
   it.each([false, true])(
     "serializes rapid Enter escalation across admission and a lane-projection gap; cancellation during steering=%s",
@@ -1367,7 +1407,7 @@ describe("Dictation writing-field workflow", () => {
     );
     expect(postProcessDictation).not.toHaveBeenCalled();
   });
-  it("persists only user enablement and microphone choice, restoring capture on focus", async () => {
+  it("persists dictation preferences, restoring capture only on focus", async () => {
     let saved: StoreSnapshot | undefined;
     {
       const save = vi.fn<Client["windowState"]["save"]>(async () => undefined);
@@ -1386,7 +1426,12 @@ describe("Dictation writing-field workflow", () => {
       saved = toSnapshot(fixture.root);
       expect(save).toHaveBeenLastCalledWith(saved);
       expect(saved.children.dictationStore).toEqual({
-        state: { enabled: true, deviceId: "usb-mic", textProcessingMode: "raw" },
+        state: {
+          enabled: true,
+          deviceId: "usb-mic",
+          textProcessingMode: "raw",
+          preventAutomaticRefocus: true,
+        },
         children: { vocabulary: { state: {}, children: {} } },
       });
     }

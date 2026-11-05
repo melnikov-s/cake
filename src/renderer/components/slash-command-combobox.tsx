@@ -162,7 +162,8 @@ export function SlashCommandCombobox({
     if (!focusEnabledRef.current || !input?.isConnected) return false;
     // Read current intent at execution time, including after async submit/animation frames.
     // Phase is deliberately irrelevant: enabled + unmuted can start listening on focus.
-    if (parkFocusRef.current && dictation?.enabled && !dictation.muted) {
+    // The live preference decides whether that should suppress convenience refocusing.
+    if (parkFocusRef.current && dictation?.suppressAutomaticRefocus) {
       focusAnchorRef.current?.focus({ preventScroll: true });
       return false;
     }
@@ -176,7 +177,7 @@ export function SlashCommandCombobox({
       shouldParkFocus: () =>
         focusEnabledRef.current &&
         parkFocusRef.current &&
-        Boolean(dictation?.enabled && !dictation.muted),
+        Boolean(dictation?.suppressAutomaticRefocus),
       parkingAnchor: () => focusAnchorRef.current,
     }),
     [requestFocus, dictation],
@@ -318,13 +319,13 @@ export function SlashCommandCombobox({
       // A deferred dictation send must not take focus back after the user moves on.
       const movedOn =
         document.activeElement !== focusAtSubmit &&
-        ((dictation?.enabled && !dictation.muted) ||
+        (dictation?.suppressAutomaticRefocus ||
           // Application commands can open another chat's composer.
           document.activeElement?.matches('textarea[role="combobox"]'));
       // Empty Enter is not a send and must not interrupt ongoing dictation.
       if (!movedOn && (submittedValue?.trim() || document.activeElement !== inputRef.current))
         requestAnimationFrame(() => {
-          if (dictation?.enabled && !dictation.muted && document.activeElement !== focusAtSubmit)
+          if (dictation?.suppressAutomaticRefocus && document.activeElement !== focusAtSubmit)
             return;
           requestFocus();
         });

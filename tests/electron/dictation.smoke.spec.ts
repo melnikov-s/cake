@@ -148,6 +148,71 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
   return { root, userData, cakeHome, sessionId, dictation, model, configure, launch };
 }
 
+test("Dictation refocus preference applies live and survives restart", async () => {
+  test.skip(process.platform !== "darwin" || process.arch !== "arm64");
+  test.setTimeout(90_000);
+  const { root, userData, sessionId, configure, launch } = await dictationFixture({
+    dictationEnabled: true,
+  });
+  await configure({ ready: true, speech: false, text: "" });
+  let application = await launch();
+  try {
+    let page = await application.firstWindow();
+    const composer = () => page.getByRole("combobox", { name: "Message", exact: true });
+    const anchor = () => page.getByRole("group", { name: "Press Tab to write", exact: true });
+    const preference = () =>
+      page.getByRole("switch", {
+        name: "Prevent automatic refocusing while dictating",
+      });
+    const openSettings = async () => {
+      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    };
+    const savedPreference = async () => {
+      const document = JSON.parse(await readFile(join(userData, "window-state.json"), "utf8"));
+      return document.data?.children?.dictationStore?.state?.preventAutomaticRefocus;
+    };
+    await expect(anchor()).toBeFocused({ timeout: 20_000 });
+    await expect(composer()).not.toBeFocused();
+    await openSettings();
+    await expect(preference()).toBeChecked();
+    await preference().click();
+    await expect(preference()).not.toBeChecked();
+    await page.getByRole("button", { name: "Back to chat" }).click();
+    await expect(composer()).toBeFocused();
+    await composer().pressSequentially("Normal automatic focus");
+    await expect(composer()).toHaveValue("Normal automatic focus");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await expect(composer()).toBeFocused();
+    await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
+    await expect(composer()).toBeFocused();
+    await expect(composer()).toHaveValue("Normal automatic focus");
+    await expect.poll(savedPreference).toBe(false);
+    await application.close();
+    application = await launch();
+    page = await application.firstWindow();
+    await expect(composer()).toBeFocused({ timeout: 20_000 });
+    await openSettings();
+    await expect(preference()).not.toBeChecked();
+    await preference().click();
+    await expect(preference()).toBeChecked();
+    await page.getByRole("button", { name: "Back to chat" }).click();
+    await expect(anchor()).toBeFocused();
+    await expect(composer()).not.toBeFocused();
+    await expect.poll(savedPreference).toBe(true);
+    await application.close();
+    application = await launch();
+    page = await application.firstWindow();
+    await expect(anchor()).toBeFocused({ timeout: 20_000 });
+    await openSettings();
+    await expect(preference()).toBeChecked();
+  } finally {
+    await application.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("Cake dictation shows readiness, types into chat and annotations, and keeps dictating across focus loss", async () => {
   test.skip(
     process.platform !== "darwin" || process.arch !== "arm64",

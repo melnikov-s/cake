@@ -327,6 +327,8 @@ describe("WindowStatePersistence", () => {
     await settings.cakeChatOverlay.setCaptureSelectedText(false);
     h.root.screenCaptureStore.setShortcut("");
     h.root.screenCaptureStore.setMaxDimension(1024);
+    expect(h.root.dictationStore.preventAutomaticRefocus).toBe(true);
+    h.root.dictationStore.setPreventAutomaticRefocus(false);
     h.root.dictationStore.setDevice("microphone-fixture");
     h.root.dictationStore.setTextProcessingMode("utility");
     await h.root.dictationStore.setEnabled(true);
@@ -355,6 +357,7 @@ describe("WindowStatePersistence", () => {
     expect(toSnapshot(restoredSettings)).toEqual(toSnapshot(settings));
     expect(restored.root.speechInputSettingsStore.values).toEqual(preferences.values);
     expect(restored.root.speechSettingsStore.enabled).toBe(false);
+    expect(restored.root.dictationStore.preventAutomaticRefocus).toBe(false);
     expect(restored.root.dictationStore.enabled).toBe(true);
     expect(restored.root.dictationStore.phase).toBe("paused");
     expect(restored.root.dictationStore.deviceId).toBe("microphone-fixture");
