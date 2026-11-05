@@ -122,6 +122,7 @@ interface ElectronCommands {
   ): Promise<void>;
   showCakeChatOverlay(sessionId: string, options?: ClientCommandOptions): Promise<void>;
   hideCakeChatOverlay(options?: ClientCommandOptions): Promise<void>;
+  resizeCakeChatOverlay(height: number, options?: ClientCommandOptions): Promise<void>;
   showMainWindow(sessionId?: string, options?: ClientCommandOptions): Promise<void>;
   configureScreenCapture(
     settings: ScreenCaptureSettings,

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CAKE_CHAT_OVERLAY_MIN_HEIGHT } from "../../contracts/desktop/cake-chat-overlay-data";
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { useAppDocument } from "../hooks/use-app-document";
@@ -8,6 +9,7 @@ import { AppNotifications } from "./app-notifications";
 import { AttachmentReferencePreview } from "./attachment-reference-preview";
 import { CakeChatSurface } from "./cake-chat-surface";
 import { MessageReferencePreview } from "./message-reference-preview";
+import { ResizeHandle } from "./ui/resize-handle";
 
 /**
  * The drop-down window's whole UI: the shared Cake Chat surface with overlay chrome. It does not
@@ -16,6 +18,21 @@ import { MessageReferencePreview } from "./message-reference-preview";
 export const CakeChatOverlayApp = observer(function CakeChatOverlayApp() {
   const root = useStore(RootStore);
   const panel = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(window.innerHeight);
+  useEffect(() => {
+    const resized = () => setHeight(window.innerHeight);
+    window.addEventListener("resize", resized);
+    return () => window.removeEventListener("resize", resized);
+  }, []);
+  const resize = (next: number) => {
+    void root.client.electron.resizeCakeChatOverlay(Math.round(next)).catch((error: unknown) =>
+      root.toastStore.show({
+        tone: "error",
+        title: "Could not resize drop-down Cake Chat",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  };
   useAppDocument(root);
   useTabInputFocus();
   const hide = useCallback(
@@ -80,6 +97,18 @@ export const CakeChatOverlayApp = observer(function CakeChatOverlayApp() {
             onCaptureScreenshot: () => void root.screenCaptureStore.capture(),
             capturing: root.screenCaptureStore.busy,
           }}
+        />
+      </div>
+      <div className="relative h-3 shrink-0">
+        <ResizeHandle
+          label="Resize drop-down Cake Chat"
+          value={height}
+          min={Math.min(CAKE_CHAT_OVERLAY_MIN_HEIGHT, window.screen.availHeight)}
+          max={window.screen.availHeight}
+          edge="top"
+          className="inset-0 h-full after:inset-x-auto after:left-1/2 after:top-1/2 after:h-1 after:w-9 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-full after:bg-muted-foreground/50"
+          onDrag={resize}
+          onChange={resize}
         />
       </div>
       <AppNotifications />

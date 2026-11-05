@@ -48,6 +48,7 @@ export class CakeChatOverlayWindow {
   private registered = "";
   private window: BrowserWindow | undefined;
   private visible = false;
+  private chosenHeight: number | undefined;
   private stopped = false;
   private captureSelectedText = true;
   private gathering = false;
@@ -150,12 +151,23 @@ export class CakeChatOverlayWindow {
     if (this.stopped) return;
     const window = this.window ?? this.create();
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-    window.setBounds(overlayBounds(display.workArea));
+    window.setBounds(overlayBounds(display.workArea, this.chosenHeight));
     this.visible = true;
     this.options.onShown(window, context);
     if (this.options.hidden) return;
     window.show();
     window.focus();
+  }
+
+  /** Only the bottom edge changes; native resizing stays disabled on all other edges. */
+  resize(height: number) {
+    const window = this.visibleWindow;
+    if (!window) return;
+    const bounds = window.getBounds();
+    const display = screen.getDisplayMatching(bounds);
+    const next = overlayBounds(display.workArea, height).height;
+    this.chosenHeight = next;
+    window.setBounds({ ...bounds, height: next });
   }
 
   hide() {

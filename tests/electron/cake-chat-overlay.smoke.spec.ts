@@ -20,6 +20,14 @@ async function clickMenuItem(app: ElectronApplication, label: string) {
   }, label);
 }
 
+async function overlayBounds(app: ElectronApplication) {
+  return app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .find((window) => new URL(window.webContents.getURL()).searchParams.has("cakeChatOverlay"))!
+      .getBounds(),
+  );
+}
+
 for (const voiceEnabled of [false, true]) {
   test(`drop-down Cake Chat focuses, shares conversation and reopens with voice ${voiceEnabled ? "on" : "off"}`, async () => {
     test.setTimeout(90_000);
@@ -156,6 +164,11 @@ readline.createInterface({input:process.stdin}).on('line', line => {
           }
         };
       });
+      // Keep the invocation display stable even if the user's desktop cursor moves during a run.
+      await app.evaluate(({ screen }) => {
+        const point = screen.getCursorScreenPoint();
+        screen.getCursorScreenPoint = () => point;
+      });
       // Smoke runs never claim system-wide keys, so drive the native action from the Window menu.
       const opened = app.waitForEvent("window");
       await clickMenuItem(app, "Drop-down Cake Chat");
@@ -276,10 +289,66 @@ readline.createInterface({input:process.stdin}).on('line', line => {
       await expect(overlay.getByRole("button", { name: /^View Screenshot-/ })).toBeVisible();
       await expect(main.getByRole("button", { name: /^View Screenshot-/ })).toHaveCount(0);
 
+      // Reopen at the display bounds after the existing reading-column width checks.
+      await clickMenuItem(app, "Drop-down Cake Chat");
+      await clickMenuItem(app, "Drop-down Cake Chat");
+      await expect(input).toBeFocused();
+      const grip = overlay.getByRole("separator", { name: "Resize drop-down Cake Chat" });
+      await expect(grip).toBeVisible();
+      await overlay.evaluate(async () => {
+        await Promise.all(document.getAnimations().map((animation) => animation.finished));
+      });
+      const dragGrip = async (delta: number) => {
+        const box = (await grip.boundingBox())!;
+        const x = box.x + box.width / 2;
+        const y = box.y + box.height / 2;
+        await overlay.mouse.move(x, y);
+        await overlay.mouse.down();
+        await overlay.mouse.move(x, y + delta, { steps: 8 });
+        await overlay.mouse.up();
+      };
+      const taller = Math.min(nativeBounds.actual.height + 100, nativeBounds.workArea.height);
+      await dragGrip(taller - nativeBounds.actual.height);
+      await expect
+        .poll(() => overlayBounds(app))
+        .toEqual({ ...nativeBounds.actual, height: taller });
+      await expect(grip).toHaveAttribute("aria-valuenow", String(taller));
+      await dragGrip(-60);
+      const shorter = Math.max(Math.min(360, nativeBounds.workArea.height), taller - 60);
+      await expect
+        .poll(() => overlayBounds(app))
+        .toEqual({ ...nativeBounds.actual, height: shorter });
+      await expect(grip).toHaveAttribute("aria-valuenow", String(shorter));
+      await grip.press("End");
+      await expect
+        .poll(() => overlayBounds(app))
+        .toEqual({
+          ...nativeBounds.actual,
+          height: nativeBounds.workArea.height,
+        });
+      await expect(grip).toHaveAttribute("aria-valuenow", String(nativeBounds.workArea.height));
+      await grip.press("Home");
+      await expect
+        .poll(() => overlayBounds(app))
+        .toEqual({
+          ...nativeBounds.actual,
+          height: Math.min(360, nativeBounds.workArea.height),
+        });
+      await expect(grip).toHaveAttribute(
+        "aria-valuenow",
+        String(Math.min(360, nativeBounds.workArea.height)),
+      );
+      await grip.press("ArrowDown");
+      await expect
+        .poll(async () => (await overlayBounds(app)).height)
+        .toBe(Math.min(376, nativeBounds.workArea.height));
+      const retainedBounds = await overlayBounds(app);
+
       await overlay.getByRole("button", { name: "Close drop-down Cake Chat" }).click();
       // Summoning again reuses the hidden overlay renderer instead of creating another window.
       await clickMenuItem(app, "Drop-down Cake Chat");
       await expect(input).toBeFocused();
+      expect(await overlayBounds(app)).toEqual(retainedBounds);
       // Exercise the native focus event without claiming desktop focus.
       await overlay.getByRole("button", { name: "Take screenshot", exact: true }).focus();
       await overlay.evaluate(() => window.dispatchEvent(new Event("focus")));
@@ -291,6 +360,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
       await clickMenuItem(app, "Drop-down Cake Chat");
       await expect(input).toBeFocused();
       await expect(input).toHaveValue("Retained on reopen");
+      expect(await overlayBounds(app)).toEqual(retainedBounds);
       if (voiceEnabled)
         await expect(
           overlay.getByRole("button", { name: "Mute dictation", exact: true }),

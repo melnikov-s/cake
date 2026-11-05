@@ -23,7 +23,11 @@ vi.mock("electron", () => ({
     webContents = new EventEmitter();
     setAlwaysOnTop = vi.fn();
     setVisibleOnAllWorkspaces = vi.fn();
-    setBounds = vi.fn();
+    bounds = { x: 0, y: 0, width: 800, height: 600 };
+    setBounds = vi.fn((bounds: typeof this.bounds) => {
+      this.bounds = bounds;
+    });
+    getBounds = () => this.bounds;
     show = vi.fn();
     focus = vi.fn();
     hide = vi.fn();
@@ -44,6 +48,7 @@ vi.mock("electron", () => ({
   },
   screen: {
     getCursorScreenPoint: () => ({ x: 2000, y: 10 }),
+    getDisplayMatching: () => ({ workArea: native.workArea }),
     getDisplayNearestPoint: () => ({
       workArea: native.workArea,
     }),
@@ -290,6 +295,58 @@ describe("Drop-down Cake Chat window", () => {
     overlay.show({ sessionId: "project-chat:fixture" });
     expect(overlay.isVisible).toBe(true);
     expect(native.windows).toHaveLength(1);
+    overlay.stop();
+  });
+
+  it("resizes only the bottom edge and remembers the height across blur and toggle", () => {
+    const { overlay } = fixture();
+    overlay.show();
+    const window = overlayWindow();
+    expect(native.windowOptions[0]!.resizable).toBe(false);
+    overlay.resize(720);
+    expect(window.setBounds).toHaveBeenLastCalledWith({
+      x: 1440,
+      y: 25,
+      width: 2000,
+      height: 720,
+    });
+    window.emit("blur");
+    overlay.show();
+    expect(window.setBounds).toHaveBeenLastCalledWith({
+      x: 1440,
+      y: 25,
+      width: 2000,
+      height: 720,
+    });
+    overlay.invoke();
+    expect(overlay.isVisible).toBe(false);
+    overlay.show();
+    expect(window.setBounds).toHaveBeenLastCalledWith({
+      x: 1440,
+      y: 25,
+      width: 2000,
+      height: 720,
+    });
+    overlay.stop();
+  });
+
+  it("clamps resize requests and a retained height to the current work area", () => {
+    const { overlay } = fixture();
+    overlay.resize(800); // Does not create a hidden window.
+    expect(native.windows).toHaveLength(0);
+    overlay.show();
+    const window = overlayWindow();
+    overlay.resize(10);
+    expect(window.setBounds).toHaveBeenLastCalledWith(expect.objectContaining({ height: 360 }));
+    overlay.resize(10000);
+    expect(window.setBounds).toHaveBeenLastCalledWith(expect.objectContaining({ height: 1100 }));
+    overlay.hide();
+    overlay.resize(500); // Hidden windows ignore late drag delivery.
+    native.workArea = { x: -700, y: 0, width: 700, height: 300 };
+    overlay.show();
+    expect(window.setBounds).toHaveBeenLastCalledWith(native.workArea);
+    overlay.resize(50);
+    expect(window.setBounds).toHaveBeenLastCalledWith(native.workArea);
     overlay.stop();
   });
 

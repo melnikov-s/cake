@@ -1,3 +1,5 @@
+import { CAKE_CHAT_OVERLAY_MIN_HEIGHT } from "../../contracts/desktop/cake-chat-overlay-data";
+
 /** Which kind of Cake window, if any, currently has keyboard focus. */
 export type CakeWindowFocus = "none" | "main" | "overlay" | "other";
 
@@ -18,11 +20,14 @@ export function overlayShortcutActive(accelerator: string, focus: CakeWindowFocu
   return accelerator !== "" && focus !== "main";
 }
 
-/** A wide strip across the top of the display's work area, about 45% of its height. */
-export function overlayBounds(workArea: Rectangle): Rectangle {
+/** A full-width, top-anchored strip; use the chosen height or default to 45%. */
+export function overlayBounds(workArea: Rectangle, chosenHeight?: number): Rectangle {
   const height = Math.min(
     workArea.height,
-    Math.max(Math.min(360, workArea.height), Math.round(workArea.height * 0.45)),
+    Math.max(
+      Math.min(CAKE_CHAT_OVERLAY_MIN_HEIGHT, workArea.height),
+      Math.round(chosenHeight ?? workArea.height * 0.45),
+    ),
   );
   return {
     x: workArea.x,

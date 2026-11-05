@@ -605,6 +605,18 @@ const makeElectronService = (
         catch: electronError,
       }),
     ),
+    resizeCakeChatOverlay: Effect.fn("Electron.resizeCakeChatOverlay")((connectionId, request) =>
+      Effect.try({
+        try: () => {
+          const owner = BrowserWindow.fromWebContents(requireRendererConnection(connectionId));
+          if (!owner || !overlay.owns(owner))
+            throw new Error("Resizing drop-down Cake Chat requires its overlay window");
+          overlay.resize(request.height);
+          return {};
+        },
+        catch: electronError,
+      }),
+    ),
     showMainWindow: Effect.fn("Electron.showMainWindow")((connectionId, request) =>
       Effect.try({
         try: () => {

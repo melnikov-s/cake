@@ -16,6 +16,9 @@ export interface CakeChatOverlaySettings extends Schema.Schema.Type<
 /** Query parameter that boots a renderer as the drop-down Cake Chat overlay. */
 export const CAKE_CHAT_OVERLAY_QUERY = "cakeChatOverlay";
 
+/** Minimum usable drop-down height, capped by the current display work area. */
+export const CAKE_CHAT_OVERLAY_MIN_HEIGHT = 360;
+
 /** Upper bound for selected text carried into the overlay; the composer enforces its own limit. */
 export const MAX_OVERLAY_SELECTED_TEXT_LENGTH = 1_000_000;
 

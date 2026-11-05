@@ -53,6 +53,10 @@ export interface ElectronService {
     connectionId: number,
     request: Payload<"hide-cake-chat-overlay">,
   ) => Effect.Effect<Success<"hide-cake-chat-overlay">, ElectronError>;
+  readonly resizeCakeChatOverlay: (
+    connectionId: number,
+    request: Payload<"resize-cake-chat-overlay">,
+  ) => Effect.Effect<Success<"resize-cake-chat-overlay">, ElectronError>;
   /** Hides the drop-down overlay and brings a main window forward, optionally opening a session. */
   readonly showMainWindow: (
     connectionId: number,
