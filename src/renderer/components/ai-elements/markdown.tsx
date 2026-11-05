@@ -35,6 +35,11 @@ import { resolveSessionLinkReference } from "../../../contracts/project-sessions
 import { sessionDisplayId } from "../../lib/session-display-id";
 import { Link, type LinkProps } from "../ui/link";
 import { MarkdownTable } from "../ui/markdown-table";
+import { ModelReferenceChip } from "../ui/model-reference-chip";
+import {
+  splitModelReferences,
+  type ModelReferenceSelection,
+} from "../../../contracts/model-presets/model-reference";
 import { FullscreenSurface } from "../fullscreen-surface";
 import { PeleDiagram } from "../pele-diagram";
 import { MarkdownImage } from "../markdown-image";
@@ -46,6 +51,7 @@ const workspacePathPrefix = "/__cake_workspace__/";
 const sessionPathPrefix = "/__cake_session__/";
 const artifactPathPrefix = "/__cake_artifact__/";
 const subagentPathPrefix = "/__cake_subagent__/";
+const modelReferencePathPrefix = "/__cake_model_reference__/";
 const protectedMarkdown = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|!?\[[^\]]*\]\([^)]+\))/g;
 const bareSourceReference =
   /(^|[\s(])((?:[^\s/:#()[\],]+\/)*[^\s/:#()[\],]+\.[a-z](?:[a-z0-9._+-]*[a-z0-9_+-])?(?::\d+(?::\d+)?|#L\d+(?:-L?\d+)?(?:,L\d+(?:-L?\d+)?)*)?)(?=$|[\s),.;!?])/gi;
@@ -175,6 +181,7 @@ function prepareMarkdownLinks(markdown: string, sourceLinks: boolean, workspaceI
         return segment.replace(
           /\]\(([^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'))?\)$/,
           (match, target: string) => {
+            if (target.startsWith(modelReferencePathPrefix)) return match;
             const subagent = subagentTargetFromHref(target);
             if (subagent)
               return `](${subagentPathPrefix}${subagentLink(subagent.parentSessionId, subagent.handleId, subagent.messageId).slice("cake://subagent/".length)})`;
@@ -539,6 +546,8 @@ export type MarkdownProps = Omit<
   mutableCode?: boolean;
   /** Normalizes conventional LaTeX delimiters after streamed content settles. */
   normalizeLatexDelimiters?: boolean;
+  /** User-message model mentions remain noninteractive chips without disabling Markdown. */
+  renderModelReferences?: boolean;
   /** Exact references already rendered at their publication position in this conversation. */
   omitArtifactEmbeds?: readonly string[];
   /** Invoked when the reader selects a workspace source reference. */
@@ -584,6 +593,7 @@ function MarkdownRenderer({
   streaming = false,
   mutableCode = false,
   normalizeLatexDelimiters = true,
+  renderModelReferences = false,
   omitArtifactEmbeds,
   onOpenSourceLocation,
   richPlugins,
@@ -597,8 +607,29 @@ function MarkdownRenderer({
     () => (richPlugins ? { ...configuredPlugins, ...richPlugins } : configuredPlugins),
     [richPlugins],
   );
+  const references = useMemo(() => {
+    const models = new Map<string, ModelReferenceSelection>();
+    const source = renderModelReferences
+      ? children
+          .split(protectedMarkdown)
+          .map((chunk, index) =>
+            index % 2
+              ? chunk
+              : splitModelReferences(chunk)
+                  .map((part) => {
+                    if (!part.model) return part.text;
+                    const href = `${modelReferencePathPrefix}${models.size}`;
+                    models.set(href, part.model);
+                    return `[Model reference](${href})`;
+                  })
+                  .join(""),
+          )
+          .join("")
+      : children;
+    return { source, models };
+  }, [children, renderModelReferences]);
   const source = prepareMarkdownLinks(
-    normalizeLatexDelimiters ? normalizeLatexMathDelimiters(children) : children,
+    normalizeLatexDelimiters ? normalizeLatexMathDelimiters(references.source) : references.source,
     Boolean(onOpenSourceLocation),
     Boolean(linkActions?.loadWorkspaceImage),
   );
@@ -691,6 +722,8 @@ function MarkdownRenderer({
         return <p {...paragraphProps}>{children}</p>;
       },
       a({ node, ...allProps }) {
+        const reference = references.models.get(allProps.href ?? "");
+        if (reference) return <ModelReferenceChip model={reference} />;
         // Linked images keep their image presentation, not a text-link adornment.
         const containsImage = (children: NonNullable<typeof node>["children"]): boolean =>
           children.some(
@@ -734,7 +767,7 @@ function MarkdownRenderer({
         );
       },
     };
-  }, [linkActions, omitArtifactEmbeds, onOpenSourceLocation]);
+  }, [linkActions, omitArtifactEmbeds, onOpenSourceLocation, references.models]);
   return (
     <>
       <DiagramContext value={diagramActions}>

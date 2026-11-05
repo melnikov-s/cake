@@ -259,6 +259,7 @@ const acquireOptions = Effect.fn("Automations.acquireOptions")(function* (
         "context.compact",
         "models.list",
         "models.info",
+        "models.reference",
       ],
       modelPresets: () => cakeModelCatalog(application.snapshot()),
       resolveModelSelection: (selection, caller) =>

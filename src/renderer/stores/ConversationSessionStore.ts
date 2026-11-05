@@ -315,11 +315,6 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       conversationMode: capabilities.conversationMode,
       modelPickerVisible: capabilities.modelPickerVisible,
       composerReword: {
-        showContextMenu: (selection, x, y) =>
-          this.client.electron.showComposerContextMenu(
-            { selection, x, y },
-            { signal: this.signal },
-          ),
         rewordSelection: (selection, prompt) =>
           this.client.workspaces.rewordComposerSelection(
             {

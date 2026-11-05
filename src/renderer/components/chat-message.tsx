@@ -12,6 +12,8 @@ import {
   type RefObject,
 } from "react";
 import { observer } from "r-state-tree/react";
+import { ModelReferenceText } from "./model-reference-text";
+import { splitModelReferences } from "../../contracts/model-presets/model-reference";
 import { isStandaloneDiagram, Markdown } from "@/components/ai-elements/markdown";
 import { cakeHotkeyEventName } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
@@ -184,8 +186,20 @@ export const ChatTextMessage = forwardRef<
           "whitespace-pre-wrap",
       )}
     >
-      {assistant || report || part.crossSession || agentSource || part.renderAs === "markdown" ? (
+      {!assistant &&
+      !report &&
+      !part.crossSession &&
+      !agentSource &&
+      part.renderAs !== "markdown" &&
+      splitModelReferences(text).some((part) => part.model) ? (
+        <ModelReferenceText text={text} />
+      ) : assistant ||
+        report ||
+        part.crossSession ||
+        agentSource ||
+        part.renderAs === "markdown" ? (
         <Markdown
+          renderModelReferences={!assistant}
           streaming={part.status === "streaming"}
           normalizeLatexDelimiters={part.status !== "streaming"}
           onOpenSourceLocation={onOpenSourceLocation}

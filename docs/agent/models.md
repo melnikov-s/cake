@@ -12,6 +12,16 @@ Omit model overrides unless the user explicitly requests one:
 - Project Session subagents also use that preset.
 - Cake Chat subagents use the user's Subagent default model setting: inherit Cake Chat's current model unless changed.
 
+## Inline model references
+
+Right-click a message input and choose **Insert model** to use the existing model picker. Click a composing chip to edit that reference; sent chips are read-only. References do not change the conversation model or start an agent.
+
+Tools can create the identical representation with `models.reference { model: "Sol" }` or an explicit `{ provider, modelId, thinkingLevel, fastMode }` model. Insert the returned `text` into an ordinary message body using existing send operations; this needs no desktop/caret control. `models.list` and `models.info` discover selections.
+
+The durable text is `<cake-model>{"provider":"openai-codex","modelId":"example","thinkingLevel":"high","fastMode":true}</cake-model>`. Presets additionally include `preset: { id, prompt? }` and a display-only `presetName`; explicit settings are a snapshot, not a mutable preset lookup. When the surrounding user request asks you to use a reference, pass its provider/modelId/thinkingLevel/fastMode and optional preset to the existing `model` argument. Omit display-only `presetName`. Preserve overrides when a preset's effort/Fast settings were edited; a preset name alone would lose those overrides. A reference by itself never authorizes launching an agent.
+
+The same text is stored in drafts, queues, recovery inputs and Pi history—there is no separate chip metadata or transcript. Copying a composing chip copies its canonical text. Invalid tokens remain literal text.
+
 ## Select an image or classifier model
 
 Use Pi's native `models` API inside `codemode` when enabled. Resolve Cake's image preference with `tools.cake({ command: "models.select-non-chat", input: { type: "image" } })`.

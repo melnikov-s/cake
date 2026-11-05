@@ -1,4 +1,5 @@
 import type { Client } from "./Client";
+import type { ComposerInputElement } from "../lib/composer-input-element";
 import type { BrowserMenuStore, BrowserMenuItem } from "../stores/BrowserMenuStore";
 
 async function copyText(text: string) {
@@ -58,14 +59,20 @@ export function browserMenus(
     },
     showComposerContextMenu: async (input) => {
       const target = document.activeElement;
-      const composer = target instanceof HTMLTextAreaElement ? target : undefined;
+      // SAFETY: only the native textarea and Cake's value-bearing contenteditable expose this editing API.
+      const composer =
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable && "value" in target)
+          ? (target as ComposerInputElement)
+          : undefined;
       const replace = (text: string) => {
         if (!composer) return;
         const start = composer.selectionStart;
         const end = composer.selectionEnd;
         const value = composer.value.slice(0, start) + text + composer.value.slice(end);
         const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
-        setter?.call(composer, value);
+        if (composer instanceof HTMLTextAreaElement) setter?.call(composer, value);
+        else composer.value = value;
         composer.dispatchEvent(new Event("input", { bubbles: true }));
         composer.focus();
         composer.setSelectionRange(start + text.length, start + text.length);
@@ -85,17 +92,20 @@ export function browserMenus(
           disabled: !composer || !navigator.clipboard?.readText,
           run: async () => replace(await navigator.clipboard.readText()),
         },
-        { label: "Reword", action: "reword" },
-        { label: "Reword with Prompt…", action: "reword-with-prompt" },
+        { label: "Insert model", action: "insert-model", disabled: !input.canInsertModel },
+        { label: "Reword", action: "reword", disabled: !input.canReword },
+        { label: "Reword with Prompt…", action: "reword-with-prompt", disabled: !input.canReword },
         {
           label: "Select all",
           run: () => {
             composer?.focus();
-            composer?.select();
+            composer?.setSelectionRange(0, composer.value.length);
           },
         },
       ]);
-      return action === "reword" || action === "reword-with-prompt" ? action : undefined;
+      return action === "reword" || action === "reword-with-prompt" || action === "insert-model"
+        ? action
+        : undefined;
     },
     showSessionContextMenu: async (input) => {
       const copyId = copy("Copy Session ID", input.sessionId);

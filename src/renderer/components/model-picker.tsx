@@ -1,5 +1,5 @@
 import type { PresetContext } from "../../contracts/model-presets/preset-context";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import type {
@@ -34,6 +34,10 @@ interface ModelConfigurationValue {
 }
 
 export interface ModelPickerProps {
+  /** External anchor for inline references; uses the same picker without a toolbar trigger. */
+  anchorRef?: RefObject<HTMLElement | null>;
+  open?: boolean;
+  onOpenChange?(open: boolean): void;
   /** Reactive catalog source, read only while the picker is open. */
   groups(): readonly ModelGroup[];
   /** Current identity's display name, independent of the full availability catalog. */
@@ -94,6 +98,9 @@ const emptyGroups: readonly ModelGroup[] = [];
 
 export const ModelPicker = observer(function ModelPicker({
   groups,
+  anchorRef,
+  open: controlledOpen,
+  onOpenChange,
   currentModelName,
   onOpen,
   value,
@@ -112,8 +119,13 @@ export const ModelPicker = observer(function ModelPicker({
   error,
   triggerTrailing,
 }: ModelPickerProps) {
-  const [open, setOpen] = useState(false);
-  const [view, setView] = useState<ConfigurationView>("current");
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (next: boolean) => {
+    setInternalOpen(next);
+    onOpenChange?.(next);
+  };
+  const [view, setView] = useState<ConfigurationView>(value ? "current" : "models");
   const [query, setQuery] = useState("");
   const [draftModel, setDraftModel] = useState<ModelOption>();
   const [draftThinkingLevel, setDraftThinkingLevel] = useState<ThinkingLevel>();
@@ -281,34 +293,37 @@ export const ModelPicker = observer(function ModelPicker({
         }
       }}
     >
-      <PopoverTrigger
-        variant="ghost"
-        size="sm"
-        className={cn(
-          modelChipClassName,
-          "hover:bg-muted/70 hover:text-foreground transition-colors",
-          className,
-        )}
-        data-cake-hint-key="m"
-        aria-label={ariaLabel}
-      >
-        <span className="flex min-w-0 items-center gap-1">
-          <span className="truncate font-semibold text-foreground">{activeName}</span>
-          {thinkingText && (
-            <span className="shrink-0 text-muted-foreground max-[520px]:hidden">
-              · {thinkingText}
-            </span>
+      {!anchorRef && (
+        <PopoverTrigger
+          variant="ghost"
+          size="sm"
+          className={cn(
+            modelChipClassName,
+            "hover:bg-muted/70 hover:text-foreground transition-colors",
+            className,
           )}
-          {showFastMode && displayFast && (
-            <span className="shrink-0 text-muted-foreground max-[580px]:hidden">· Fast</span>
-          )}
-        </span>
-        <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
-          {triggerTrailing}
-          <ChevronDownIcon size={12} />
-        </div>
-      </PopoverTrigger>
+          data-cake-hint-key="m"
+          aria-label={ariaLabel}
+        >
+          <span className="flex min-w-0 items-center gap-1">
+            <span className="truncate font-semibold text-foreground">{activeName}</span>
+            {thinkingText && (
+              <span className="shrink-0 text-muted-foreground max-[520px]:hidden">
+                · {thinkingText}
+              </span>
+            )}
+            {showFastMode && displayFast && (
+              <span className="shrink-0 text-muted-foreground max-[580px]:hidden">· Fast</span>
+            )}
+          </span>
+          <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
+            {triggerTrailing}
+            <ChevronDownIcon size={12} />
+          </div>
+        </PopoverTrigger>
+      )}
       <PopoverContent
+        anchorRef={anchorRef}
         side="top"
         align="start"
         className="w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-2xl border border-border bg-card p-0 shadow-2xl"

@@ -1,4 +1,5 @@
 import { createServer } from "node:net";
+import { serializeModelReference } from "../../src/contracts/model-presets/model-reference.ts";
 import { toolCallRowsScenario } from "./tool-call-rows";
 import { cakeColorPalettes } from "../../src/utils/cake-color-palettes.ts";
 import { sessionChangesScenario } from "./session-changes";
@@ -865,7 +866,7 @@ const conversationEntryScenario: VisualCaptureScenario = {
 const modelPickerScenario: VisualCaptureScenario = {
   name: "model-picker",
   description: "Project Session model picker with saved presets followed by the utility model",
-  states: ["default", "utility-selected"],
+  states: ["default", "utility-selected", "references"],
   async seed(paths, theme) {
     const sessionId = "visual-model-picker";
     const timestamp = new Date(0).toISOString();
@@ -980,6 +981,24 @@ const modelPickerScenario: VisualCaptureScenario = {
       if (await change.isVisible()) await change.click();
       await expect(dialog.getByRole("region", { name: "Model presets" })).toBeVisible();
     };
+    if (state === "references") {
+      const model = {
+        provider: "visual-models",
+        modelId: "claude-opus",
+        thinkingLevel: "high" as const,
+        fastMode: true,
+        preset: { id: "00000000-0000-4000-8000-000000000001" },
+        presetName: "Deep review",
+      };
+      await page
+        .getByRole("combobox", { name: "Message", exact: true })
+        .fill(
+          `Use ${serializeModelReference(model)} for the review, and ${serializeModelReference({ provider: "visual-models", modelId: "deepseek-v4p1-flash", thinkingLevel: "medium", fastMode: false })} for tests.`,
+        );
+      await expect(page.getByRole("button", { name: /Edit model reference/ })).toHaveCount(2);
+      await page.mouse.move(1, 1);
+      return;
+    }
     await openModels();
     if (state === "utility-selected") {
       await dialog.getByRole("button", { name: /^Utility/ }).click();
@@ -995,7 +1014,10 @@ const modelPickerScenario: VisualCaptureScenario = {
     await page.waitForFunction(() => document.fonts.status === "loaded");
   },
   region(page) {
-    return page.getByRole("dialog", { name: "Model configuration" });
+    return page
+      .locator(".workbench-composer")
+      .filter({ has: page.getByRole("button", { name: /Edit model reference/ }) })
+      .or(page.getByRole("dialog", { name: "Model configuration" }));
   },
 };
 

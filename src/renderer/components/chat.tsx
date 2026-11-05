@@ -1,3 +1,4 @@
+import type { ComposerInputElement } from "../lib/composer-input-element";
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { flushSync } from "react-dom";
@@ -187,7 +188,7 @@ export const Chat = observer(function Chat({
 }) {
   const layoutRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
-  const composerInputRef = useRef<HTMLTextAreaElement>(null);
+  const composerInputRef = useRef<ComposerInputElement>(null);
   const composerFocusRef = useRef<ComposerFocusHandle>(null);
   const [promptedSelection, setPromptedSelection] = useState<{
     draft: string;

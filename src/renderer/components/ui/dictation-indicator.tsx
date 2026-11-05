@@ -16,7 +16,7 @@ export const DictationIndicator = observer(function DictationIndicator({
 }: {
   store: DictationStore;
   targetId: string;
-  anchor: RefObject<HTMLTextAreaElement | null>;
+  anchor: RefObject<HTMLElement | null>;
   inline?: boolean;
 }) {
   if (!store.indicatorVisible(targetId)) return null;

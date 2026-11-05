@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { splitModelReferences } from "../../../src/contracts/model-presets/model-reference";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { createCakeModelOperations } from "../../../src/domain/model-presets/cake-model-operations";
 
@@ -88,6 +89,32 @@ describe("Cake model discovery", () => {
     });
     await expect(
       registry().invoke({ command: "models.info", input: { name: "Sol" } }, context),
+    ).rejects.toThrow("Unknown model preset");
+  });
+
+  it("creates a preset reference with usable identity and exact effort/Fast settings", async () => {
+    const { text } = await result("models.reference", { model: "Sol-0" });
+    expect(splitModelReferences(text)[0]?.model).toEqual({
+      provider: "openai-codex",
+      modelId: "gpt-5.6-sol",
+      thinkingLevel: "high",
+      fastMode: true,
+      preset: { id: preset(0).id },
+      presetName: "Sol-0",
+    });
+  });
+
+  it("creates an explicit reference without inferring a preset or enabling Fast", async () => {
+    const model = {
+      provider: "openai-codex",
+      modelId: "gpt-5.6-sol",
+      thinkingLevel: "off",
+      fastMode: false,
+    };
+    const { text } = await result("models.reference", { model });
+    expect(splitModelReferences(text)[0]?.model).toEqual(model);
+    await expect(
+      registry().invoke({ command: "models.reference", input: { model: "missing" } }, context),
     ).rejects.toThrow("Unknown model preset");
   });
 

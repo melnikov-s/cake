@@ -1,3 +1,4 @@
+import type { ComposerInputElement } from "../lib/composer-input-element";
 import { useLayoutEffect, type RefObject } from "react";
 import type { ComposerFocusHandle } from "../components/slash-command-combobox";
 import type { ChatStore } from "../stores/ChatStore";
@@ -6,7 +7,7 @@ import type { ChatStore } from "../stores/ChatStore";
 export function useComposerEnterContinuation(
   store: ChatStore,
   enabled: boolean,
-  input: RefObject<HTMLTextAreaElement | null>,
+  input: RefObject<ComposerInputElement | null>,
   focus: RefObject<ComposerFocusHandle | null>,
 ) {
   useLayoutEffect(() => {

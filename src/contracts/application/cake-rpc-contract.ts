@@ -479,7 +479,9 @@ export const cakeRpcPayloadSchemas = {
     open: Schema.Boolean,
   }),
   "show-composer-context-menu": Schema.Struct({
-    selection: bounded(1, 32_000),
+    selection: bounded(0, 32_000),
+    canInsertModel: Schema.Boolean,
+    canReword: Schema.Boolean,
     x: coordinate,
     y: coordinate,
   }),
@@ -796,7 +798,7 @@ const cakeRpcResultSchemas = {
     action: Schema.optional(Schema.Literals(["chat-about-selection", "add-annotation"])),
   }),
   "composer-context-menu-closed": Schema.Struct({
-    action: Schema.optional(Schema.Literals(["reword", "reword-with-prompt"])),
+    action: Schema.optional(Schema.Literals(["reword", "reword-with-prompt", "insert-model"])),
   }),
   "composer-selection-reworded": Schema.Struct({
     text: bounded(1, 32_000),

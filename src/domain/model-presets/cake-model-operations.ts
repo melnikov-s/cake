@@ -1,6 +1,11 @@
 import { Schema } from "effect";
 import { compactDiscoveryGuidance } from "../../contracts/agent/discovery-result-text";
-import type { CakeModelPresetCatalog } from "../../contracts/model-presets/cake-model-selection";
+import {
+  CakeModelSelection,
+  type CakeModelPresetCatalog,
+} from "../../contracts/model-presets/cake-model-selection";
+import { serializeModelReference } from "../../contracts/model-presets/model-reference";
+import { resolveCakeModelSelection } from "./cake-model-selection";
 import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 import { AgentListInput, agentListPage } from "../../contracts/agent/agent-list-data";
 
@@ -11,7 +16,33 @@ export function createCakeModelOperations(
   const infoInput = Schema.Struct({
     name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
   });
+  const referenceInput = Schema.Struct({ model: CakeModelSelection });
   return [
+    {
+      command: "models.reference",
+      topic: "models",
+      summary:
+        "Create an inline model reference for message text, without changing a session or launching an agent.",
+      inputSchema: referenceInput,
+      examples: [{ input: { model: "Sol" } }],
+      result:
+        "text: the canonical reference token to insert into an existing message body. Presets retain identity and a settings snapshot.",
+      guidance: [
+        "Use the returned text with ordinary message-send operations. Native caret placement and opening the picker are local editing actions; this operation creates the same reference without controlling the desktop.",
+      ],
+      execute: async (raw) => {
+        const { model } = Schema.decodeUnknownSync(referenceInput)(raw);
+        const catalog = readPresets();
+        const selection = resolveCakeModelSelection(model, catalog);
+        const preset = catalog.presets.find((preset) => preset.id === selection.preset?.id);
+        return {
+          text: serializeModelReference({
+            ...selection,
+            ...(preset ? { presetName: preset.name } : null),
+          }),
+        };
+      },
+    },
     {
       command: "models.list",
       topic: "models",

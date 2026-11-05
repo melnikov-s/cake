@@ -1,4 +1,9 @@
 import { useState } from "react";
+import { ModelReferenceText } from "./model-reference-text";
+import {
+  modelReferenceLabel,
+  splitModelReferences,
+} from "../../contracts/model-presets/model-reference";
 import { observer } from "r-state-tree/react";
 import { FullscreenMessage } from "@/components/fullscreen-message";
 import { Button } from "@/components/ui/button";
@@ -60,7 +65,9 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
               )}
               {entries.map((entry, index) => {
                 const label =
-                  entry.text ||
+                  splitModelReferences(entry.text)
+                    .map((part) => (part.model ? modelReferenceLabel(part.model) : part.text))
+                    .join("") ||
                   `${entry.attachments.length} attachment${entry.attachments.length === 1 ? "" : "s"}`;
                 const scheduled = entry.scheduled
                   ? describeScheduledOrigin(entry.scheduled)
@@ -102,7 +109,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                         </span>
                       )}
                       <span className="min-w-0 flex-1 truncate" title={label}>
-                        {label}
+                        <ModelReferenceText text={entry.text || label} />
                       </span>
                     </Button>
                     <div

@@ -1,12 +1,13 @@
 import { useLayoutEffect, useId, useRef, type KeyboardEvent, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import { useOptionalStore } from "r-state-tree/react";
+import type { ComposerInputElement } from "../lib/composer-input-element";
 import { DictationStore, type DictationTarget } from "../stores/DictationStore";
 
 /** DOM-only adapter: the Store owns capture, focus generations, and inference policy. */
 export function useDictationInput(
   enabled: boolean,
-  input: RefObject<HTMLTextAreaElement | null>,
+  input: RefObject<ComposerInputElement | null>,
   submit?: () => void | Promise<void>,
 ) {
   const store = useOptionalStore(DictationStore);
@@ -73,10 +74,12 @@ export function useDictationInput(
       inserting.current = true;
       try {
         // Invoke the native setter so React's value tracker sees the input event.
-        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(
-          element,
-          value,
-        );
+        if (element instanceof HTMLTextAreaElement)
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(
+            element,
+            value,
+          );
+        else element.value = value;
         element.setSelectionRange(caret, caret);
         insertion.current = { ...range, value, start: caret, caret };
         flushSync(() => element.dispatchEvent(new Event("input", { bubbles: true })));
@@ -166,7 +169,7 @@ export function useDictationInput(
       )
         store?.restart(id);
     },
-    onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>, submitHandled: boolean): boolean {
+    onKeyDown(event: KeyboardEvent<HTMLElement>, submitHandled: boolean): boolean {
       if (
         enabled &&
         store?.enabled &&
@@ -196,7 +199,7 @@ export function useDictationInput(
         event.currentTarget.getAttribute("aria-expanded") === "true" ||
         // Empty Enter must not stop capture. Let the field handle attachment-only submits too.
         (store.phase === "listening" &&
-          !event.currentTarget.value.trim() &&
+          !input.current?.value.trim() &&
           !store.hasSpeechToFinish(id))
       )
         return false;

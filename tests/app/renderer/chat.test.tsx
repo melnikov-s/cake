@@ -222,8 +222,8 @@ describe("Chat composition", () => {
   it("asks for reword guidance and sends only the chosen text and prompt to the workspace service", async () => {
     // jsdom has no native undo API; exercise Chat's ordinary non-undo fallback.
     Object.defineProperty(document, "execCommand", { configurable: true, value: () => false });
-    const showMenu = vi.fn<Client["electron"]["showComposerContextMenu"]>(
-      async () => "reword-with-prompt",
+    const showMenu = vi.fn<Client["electron"]["showComposerContextMenu"]>(async (input) =>
+      input.canReword ? "reword-with-prompt" : undefined,
     );
     const reword = vi.fn<Client["workspaces"]["rewordComposerSelection"]>(
       async () => "concise request",
@@ -237,7 +237,10 @@ describe("Chat composition", () => {
     const input = screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
     await fixture.user.type(input, "Before rough ramble after");
     fireEvent.contextMenu(input);
-    expect(showMenu).not.toHaveBeenCalled();
+    expect(showMenu).toHaveBeenCalledWith(
+      expect.objectContaining({ canInsertModel: true, canReword: false }),
+      expect.any(Object),
+    );
     await fixture.user.pointer([
       { target: input, offset: 7, keys: "[MouseLeft>]" },
       { target: input, offset: 19 },

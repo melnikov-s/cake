@@ -184,6 +184,90 @@ test("deferred model picker opens by keyboard and mouse with catalog, search, pr
     await composer.pressSequentially(" retained");
     await expect(composer).toHaveValue("Pending first prompt retained");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+
+    // Exercise the native menu contract without showing an OS popup in a hidden test.
+    // The renderer still opens it through a real right-click and RPC round trip.
+    await application.evaluate(({ Menu }) => {
+      const build = Menu.buildFromTemplate.bind(Menu);
+      Menu.buildFromTemplate = (template) => {
+        const menu = build(template);
+        const insert = menu.items.find((item) => item.label === "Insert model");
+        if (insert)
+          menu.popup = (options) => {
+            insert.click();
+            options?.callback?.();
+          };
+        return menu;
+      };
+    });
+    await composer.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(8, 13));
+    await composer.click({ button: "right", position: { x: 80, y: 20 } });
+    const reference = page.getByRole("dialog", { name: "Model reference" });
+    await expect(reference).toBeVisible();
+    const insertionPoint = await composer.evaluate(
+      (element: HTMLTextAreaElement) => element.selectionStart,
+    );
+    await reference.getByRole("button", { name: /Fixture preset/ }).click();
+    const richInput = page.getByRole("combobox", { name: "Message", exact: true });
+    const chip = richInput.getByRole("button", { name: /Edit model reference/ });
+    await expect(chip).toContainText("Fixture preset");
+    await expect(richInput).toBeFocused();
+    await expect
+      .poll(() => richInput.evaluate((element) => Reflect.get(element, "selectionStart")))
+      .toBeGreaterThan(30);
+    await richInput.pressSequentially(" inserted");
+    await expect(richInput).toContainText(" inserted");
+    await expect(configuration).toContainText("Fixture preset");
+    await chip.focus();
+    await chip.press("Enter");
+    await expect(reference).toBeVisible();
+    await reference.getByRole("button", { name: "High", exact: true }).click();
+    await expect(chip).toContainText("high");
+    // This edits only the reference, not the active configuration.
+    await expect(configuration).not.toContainText("High");
+    const canonical = await richInput.evaluate(
+      (element) => Reflect.get(element, "value") as string,
+    );
+    expect(canonical).toContain('"thinkingLevel":"high"');
+    expect(canonical).toContain('"fastMode":false');
+    expect(canonical).toContain('"preset":{"id":"00000000-0000-4000-8000-000000000001"}');
+    const token = canonical.match(/<cake-model>.*?<\/cake-model>/)![0];
+    const original = "Pending first prompt retained";
+    expect(canonical).toBe(
+      `${original.slice(0, insertionPoint)}${token} inserted${original.slice(insertionPoint)}`,
+    );
+
+    await richInput.click();
+    await richInput.press("End");
+    await richInput.click({ button: "right" });
+    await expect(reference).toBeVisible();
+    await reference
+      .getByRole("button", { name: "Fixture model fixture-model", exact: true })
+      .click();
+    await reference.getByRole("button", { name: "High", exact: true }).click();
+    await reference.getByRole("button", { name: "Apply", exact: true }).click();
+    await expect(richInput.getByRole("button", { name: /Edit model reference/ })).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    const sentChips = page.locator('[data-slot="message-content"] [data-slot="model-reference"]');
+    await expect(sentChips).toHaveCount(2);
+    await expect(sentChips.first()).not.toHaveRole("button");
+    await page.reload();
+    await expect(sentChips).toHaveCount(2);
+    const sentMessage = page
+      .locator("article")
+      .filter({ has: page.locator('[data-slot="model-reference"]') })
+      .last();
+    await sentMessage.hover();
+    const markdownToggle = sentMessage.getByRole("button", {
+      name: "Render as Markdown",
+      exact: true,
+    });
+    await expect(markdownToggle).toBeVisible();
+    await markdownToggle.click();
+    await expect(sentChips).toHaveCount(2);
+    await page.reload();
+    await expect(sentChips).toHaveCount(2);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

@@ -830,13 +830,18 @@ const makeElectronService = (
                 { role: "paste" },
                 { type: "separator" },
                 {
+                  label: "Insert model",
+                  enabled: request.canInsertModel,
+                  click: () => finish("insert-model"),
+                },
+                {
                   label: "Reword",
-                  enabled: lifecycle().canRewordSelection(),
+                  enabled: request.canReword && lifecycle().canRewordSelection(),
                   click: () => finish("reword"),
                 },
                 {
                   label: "Reword with Prompt…",
-                  enabled: lifecycle().canRewordSelection(),
+                  enabled: request.canReword && lifecycle().canRewordSelection(),
                   click: () => finish("reword-with-prompt"),
                 },
                 { type: "separator" },
@@ -1112,7 +1117,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) =>
 type SuccessTranscriptMenu = {
   readonly action?: "chat-about-selection" | "add-annotation";
 };
-type SuccessComposerMenu = { readonly action?: "reword" | "reword-with-prompt" };
+type SuccessComposerMenu = { readonly action?: "reword" | "reword-with-prompt" | "insert-model" };
 type SuccessSessionMenu = {
   readonly action?: "rename" | "mark-read" | "mark-unread" | "resolve" | "unresolve" | "delete";
 };

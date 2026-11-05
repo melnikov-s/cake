@@ -1,3 +1,4 @@
+import { ClientContext } from "./context/ClientContext";
 import { child, computed, createStore, snapshot, Store } from "r-state-tree";
 import { ChatPresentationContext } from "./context/ChatPresentationContext";
 import { DictationContext } from "./context/DictationContext";
@@ -57,11 +58,6 @@ export interface QueuedPrompt {
 }
 
 interface ComposerRewordCapabilities {
-  showContextMenu(
-    selection: string,
-    x: number,
-    y: number,
-  ): Promise<"reword" | "reword-with-prompt" | undefined>;
   rewordSelection(selection: string, prompt?: string): Promise<string>;
 }
 
@@ -532,9 +528,15 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
 
   showComposerContextMenu(selection: string, x: number, y: number) {
-    if (!selection) return Promise.resolve(undefined);
-    return (
-      this.props.composerReword?.showContextMenu(selection, x, y) ?? Promise.resolve(undefined)
+    return ClientContext.consume(this)!.electron.showComposerContextMenu(
+      {
+        selection,
+        x,
+        y,
+        canInsertModel: Boolean(this.configuration),
+        canReword: Boolean(selection && this.canRewordComposerSelection && !this.rewording),
+      },
+      { signal: this.signal },
     );
   }
 

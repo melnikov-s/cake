@@ -160,9 +160,9 @@ interface ElectronCommands {
     options?: ClientCommandOptions,
   ): Promise<"chat-about-selection" | "add-annotation" | undefined>;
   showComposerContextMenu(
-    input: { selection: string; x: number; y: number },
+    input: { selection: string; x: number; y: number; canInsertModel: boolean; canReword: boolean },
     options?: ClientCommandOptions,
-  ): Promise<"reword" | "reword-with-prompt" | undefined>;
+  ): Promise<"reword" | "reword-with-prompt" | "insert-model" | undefined>;
   showSessionContextMenu(
     input: {
       sessionId: string;

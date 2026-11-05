@@ -21,7 +21,7 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
       reject = fail;
     });
     const showComposerContextMenu = vi.fn<Client["electron"]["showComposerContextMenu"]>(
-      async () => "reword",
+      async (input) => (input.canReword ? "reword" : undefined),
     );
     const rewordComposerSelection = vi
       .fn<Client["workspaces"]["rewordComposerSelection"]>()
@@ -46,7 +46,7 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
     fireEvent.contextMenu(input);
     await waitFor(() => expect(rewordComposerSelection).toHaveBeenCalledOnce());
     expect(showComposerContextMenu).toHaveBeenCalledWith(
-      { selection: "Rough wording", x: 0, y: 0 },
+      { selection: "Rough wording", x: 0, y: 0, canInsertModel: true, canReword: true },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(rewordComposerSelection).toHaveBeenCalledWith(
@@ -58,7 +58,11 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
     expect(input.getAttribute("aria-busy")).toBe("true");
     expect(screen.getByText("Rewording selection…")).toBeDefined();
     fireEvent.contextMenu(input);
-    expect(showComposerContextMenu).toHaveBeenCalledOnce();
+    expect(showComposerContextMenu).toHaveBeenCalledTimes(2);
+    expect(showComposerContextMenu).toHaveBeenLastCalledWith(
+      expect.objectContaining({ canReword: false, canInsertModel: true }),
+      expect.any(Object),
+    );
     expect(rewordComposerSelection).toHaveBeenCalledOnce();
     await act(async () => {
       reject(new Error("Reword service unavailable"));

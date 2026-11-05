@@ -10,6 +10,8 @@ import {
   type ComponentProps,
   type KeyboardEvent,
   type Ref,
+  type MouseEvent,
+  type ClipboardEvent,
 } from "react";
 import { useOptionalStore } from "r-state-tree/react";
 import { DictationStore } from "../stores/DictationStore";
@@ -20,6 +22,13 @@ import type {
 } from "../../contracts/conversations/session-contract";
 import { ComposerInput } from "./ai-elements/composer";
 import { NavItem } from "./ui/nav-item";
+
+import { ModelReferenceInput } from "./ui/model-reference-input";
+import {
+  splitModelReferences,
+  type ModelReferenceSegment,
+} from "../../contracts/model-presets/model-reference";
+import type { ComposerInputElement } from "../lib/composer-input-element";
 
 type SlashCommand = ConversationSnapshot["commands"][number];
 
@@ -32,8 +41,10 @@ export interface ComposerFocusHandle {
 
 interface SlashCommandComboboxProps extends Omit<
   ComponentProps<typeof ComposerInput>,
-  "onChange" | "onInput" | "onKeyDown" | "onSubmit" | "value"
+  "onChange" | "onInput" | "onKeyDown" | "onSubmit" | "value" | "onContextMenu" | "onPaste"
 > {
+  "data-dictation-submission-owner"?: string;
+  "data-cake-hint-key"?: string;
   commands: ReadonlyArray<SlashCommand>;
   focusEnabled?: boolean;
   parkFocusWhileDictating?: boolean;
@@ -45,7 +56,10 @@ interface SlashCommandComboboxProps extends Omit<
   onValueChange(value: string): void;
   onSubmit(value?: string): void | Promise<void>;
   onEscape?(): void;
-  inputRef?(input: HTMLTextAreaElement | null): void;
+  inputRef?(input: ComposerInputElement | null): void;
+  onContextMenu?(event: MouseEvent<HTMLElement>): void;
+  onPaste?(event: ClipboardEvent<HTMLElement>): void;
+  onEditModelReference?(segment: ModelReferenceSegment, anchor: HTMLElement): void;
 }
 
 interface CommandQuery {
@@ -149,9 +163,15 @@ export function SlashCommandCombobox({
   onSubmit,
   onEscape,
   inputRef: forwardedInputRef,
+  onContextMenu,
+  onPaste,
+  onEditModelReference,
   ...inputProps
 }: SlashCommandComboboxProps) {
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<ComposerInputElement>(null);
+  const referenceInputActive = useRef(false);
+  if (onEditModelReference && splitModelReferences(value).some((part) => part.model))
+    referenceInputActive.current = true;
   const focusAnchorRef = useRef<HTMLDivElement>(null);
   const dictation = useOptionalStore(DictationStore);
   const focusEnabledRef = useRef(focusEnabled);
@@ -326,7 +346,7 @@ export function SlashCommandCombobox({
         document.activeElement !== focusAtSubmit &&
         (dictation?.suppressAutomaticRefocus ||
           // Application commands can open another chat's composer.
-          document.activeElement?.matches('textarea[role="combobox"]'));
+          document.activeElement?.matches('[role="combobox"]'));
       // Empty Enter is not a send and must not interrupt ongoing dictation.
       if (!movedOn && (submittedValue?.trim() || document.activeElement !== inputRef.current))
         requestAnimationFrame(() => {
@@ -364,7 +384,7 @@ export function SlashCommandCombobox({
     requestAnimationFrame(requestFocus);
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (open && event.key === "ArrowDown") {
       event.preventDefault();
       flushSync(() => setActiveIndex((index) => (index + 1) % menuItems.length));
@@ -460,36 +480,81 @@ export function SlashCommandCombobox({
               ))}
         </div>
       )}
-      <ComposerInput
-        {...inputProps}
-        // Use actual visibility, not a slash prefix: Escape and completion restore dictation.
-        dictation={dictationEnabled && menuKind !== "commands"}
-        focusAnchorRef={focusAnchorRef}
-        ref={(node) => {
-          inputRef.current = node;
-          forwardedInputRef?.(node);
-        }}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-expanded={open}
-        data-composer-tab-completion={menuKind === "commands" ? "true" : undefined}
-        aria-controls={open ? listboxId : undefined}
-        aria-activedescendant={open ? `${listboxId}-option-${selectedIndex}` : undefined}
-        spellCheck={!draft.startsWith("/")}
-        value={inputValue}
-        onChange={(event) => {
-          const nextValue = event.currentTarget.value;
-          commitValue(nextValue);
-          setActiveIndex(0);
-          setDismissedValue(undefined);
-          setDismissedMention(undefined);
-          setCursor(event.currentTarget.selectionStart ?? nextValue.length);
-        }}
-        onSelect={(event) => {
-          setCursor(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
-        }}
-        onKeyDown={onKeyDown}
-      />
+      {onEditModelReference && referenceInputActive.current ? (
+        <div
+          ref={focusAnchorRef}
+          tabIndex={-1}
+          role="group"
+          aria-label="Press Tab to write"
+          className="relative grid w-full min-w-0 outline-none"
+        >
+          <ModelReferenceInput
+            aria-label={inputProps["aria-label"]}
+            aria-busy={inputProps["aria-busy"]}
+            aria-autocomplete="list"
+            data-cake-hint-key={inputProps["data-cake-hint-key"]}
+            data-composer-tab-completion={menuKind === "commands" ? "true" : undefined}
+            spellCheck={!draft.startsWith("/")}
+            onCursorChange={setCursor}
+            aria-expanded={open}
+            aria-controls={open ? listboxId : undefined}
+            aria-activedescendant={open ? `${listboxId}-option-${selectedIndex}` : undefined}
+            data-dictation-submission-owner={inputProps["data-dictation-submission-owner"]}
+            placeholder={inputProps.placeholder}
+            dictation={dictationEnabled && menuKind !== "commands"}
+            dictationSubmit={inputProps.dictationSubmit}
+            value={inputValue}
+            inputRef={(node) => {
+              inputRef.current = node;
+              forwardedInputRef?.(node);
+            }}
+            onValueChange={(next, position) => {
+              commitValue(next);
+              setCursor(position);
+              setActiveIndex(0);
+              setDismissedValue(undefined);
+              setDismissedMention(undefined);
+            }}
+            onKeyDown={onKeyDown}
+            onContextMenu={onContextMenu}
+            onPaste={onPaste}
+            onEditReference={onEditModelReference}
+          />
+        </div>
+      ) : (
+        <ComposerInput
+          {...inputProps}
+          // Use actual visibility, not a slash prefix: Escape and completion restore dictation.
+          dictation={dictationEnabled && menuKind !== "commands"}
+          focusAnchorRef={focusAnchorRef}
+          ref={(node) => {
+            inputRef.current = node;
+            forwardedInputRef?.(node);
+          }}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={open}
+          data-composer-tab-completion={menuKind === "commands" ? "true" : undefined}
+          aria-controls={open ? listboxId : undefined}
+          aria-activedescendant={open ? `${listboxId}-option-${selectedIndex}` : undefined}
+          spellCheck={!draft.startsWith("/")}
+          value={inputValue}
+          onChange={(event) => {
+            const nextValue = event.currentTarget.value;
+            commitValue(nextValue);
+            setActiveIndex(0);
+            setDismissedValue(undefined);
+            setDismissedMention(undefined);
+            setCursor(event.currentTarget.selectionStart ?? nextValue.length);
+          }}
+          onSelect={(event) => {
+            setCursor(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
+          }}
+          onContextMenu={onContextMenu}
+          onPaste={onPaste}
+          onKeyDown={onKeyDown}
+        />
+      )}
     </>
   );
 }

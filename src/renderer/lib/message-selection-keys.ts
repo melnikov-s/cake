@@ -18,6 +18,8 @@
  * - Elsewhere in the pane (transcript content, the focused transcript scroller,
  *   buttons, the parked dictation focus anchor) the keys select messages.
  */
+import type { ComposerInputElement } from "./composer-input-element";
+
 export type MessageSelectionKeyAction = "select-previous" | "select-next" | "clear";
 
 const editableSelector = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
@@ -28,7 +30,7 @@ export interface MessageSelectionKeyContext {
   /** The Chat pane root. Keys whose target is outside it, including portals, are ignored. */
   pane: Element;
   /** The pane's composer text input, if mounted. */
-  composerInput: HTMLTextAreaElement | null;
+  composerInput: ComposerInputElement | null;
   hasSelection: boolean;
 }
 

@@ -1,3 +1,4 @@
+import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
@@ -62,8 +63,10 @@ export function renderChatConfiguration(options: {
   secondaryModels?: readonly ModelOption[];
   presets?: readonly ModelPreset[];
   utilityModel?: UtilityModel;
+  snapshot?: StoreSnapshot;
 }) {
   const fixture = createRendererStoreFixture({
+    snapshot: options.snapshot,
     projects: [projectRecord({ path: "/project", name: "Project" })],
     sessions: options.deferred
       ? []
@@ -124,6 +127,8 @@ export function renderChatConfiguration(options: {
   );
   return {
     user: userEvent.setup(),
+    chatStore: session.conversationSessionStore.chatStore,
+    snapshot: () => toSnapshot(fixture.root),
     publish(snapshot: ConversationSnapshot) {
       act(() => publish(snapshot));
     },

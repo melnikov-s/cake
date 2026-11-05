@@ -152,6 +152,7 @@ const CAKE_CHAT_OPERATIONS = [
   "todos.unsnooze",
   "models.list",
   "models.info",
+  "models.reference",
   "session.info",
   "session.usage",
   "session.set-model",
