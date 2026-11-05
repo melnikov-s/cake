@@ -150,6 +150,7 @@ const Overview = Schema.Struct({
   notAgentWritable: Schema.String,
 });
 const Rows = Schema.Struct({
+  elsewhere: Schema.Array(Schema.Tuple([Schema.String, Schema.String])),
   settings: Schema.Array(
     Schema.Struct({
       key: Schema.String,
@@ -190,6 +191,21 @@ describe("settings catalog through the cake tool", () => {
     ).text;
     expect(text).toContain("Cake Chat\t7\t0");
     expect(text.length).toBeLessThan(1_500);
+
+    const dictation = Schema.decodeUnknownSync(Rows)(
+      await h.call("settings.list", { query: "dictation" }),
+    );
+    expect(dictation.elsewhere).toContainEqual([
+      "Dictation voice submission, phrase, speech-input tuning",
+      "settings.dictation.get/update",
+    ]);
+    const dictationText = (
+      await h.registry.invoke(
+        { command: "settings.list", input: { query: "dictation" } },
+        { signal: new AbortController().signal, toolCallId: "dictation-discovery", runtime: {} },
+      )
+    ).text;
+    expect(dictationText).toContain("settings.dictation.get/update");
 
     const chat = Schema.decodeUnknownSync(Rows)(
       await h.call("settings.list", { category: "Cake Chat" }),

@@ -368,12 +368,14 @@ export const settingsElsewhere = [
     "Speech, dictation, host, sharing (this desktop)",
     "settings.speech.*, settings.dictation.*, settings.desktop.*",
   ],
+  ["Dictation voice submission, phrase, speech-input tuning", "settings.dictation.get/update"],
+  ["Open/highlight Settings (navigation permission)", "settings.open"],
   ["Reload Pi resources", "settings.pi.reload"],
 ] as const;
 
 /** Settings UI controls agents cannot change. */
 export const settingsNotAgentWritable =
-  "Provider API keys/OAuth tokens, the ElevenLabs key and MCP secrets (credentials); Allow agent session navigation (user-owned permission); Pi extension toggles; OS shortcuts, screen-capture size and speech-input tuning (per-window, OS-registered).";
+  "Provider API keys/OAuth tokens, the ElevenLabs key and MCP secrets (credentials); Allow agent session navigation (user-owned permission); OS shortcuts (OS-registered); Pi extension toggles and screen-capture size (tool gaps, not authorization restrictions).";
 
 const settingKey = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128));
 
@@ -400,6 +402,7 @@ const SettingsOverview = Schema.Struct({
 });
 
 const SettingsRows = Schema.Struct({
+  elsewhere: Schema.Array(Schema.Tuple([Schema.String, Schema.String])),
   settings: Schema.Array(
     Schema.Struct({
       key: Schema.String,

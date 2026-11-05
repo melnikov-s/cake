@@ -94,7 +94,7 @@ export const SettingsPage = observer(function SettingsPage({
     ? "Loading Pi’s settings…"
     : "Pi’s settings are unavailable.";
   const [searchQuery, setSearchQuery] = useState("");
-  const [scrollRequest, setScrollRequest] = useState<{ targetId: string }>();
+  const scrollRequest = settings.scrollRequest;
   const hotkeySearchItems = settings.hotkeys.definitions.map((definition) => ({
     page: "hotkeys" as const,
     label: definition.label,
@@ -109,15 +109,15 @@ export const SettingsPage = observer(function SettingsPage({
     if (!scrollRequest) return;
     const target = document.getElementById(scrollRequest.targetId);
     if (target) {
-      target.scrollIntoView?.({ behavior: "smooth", block: "start" });
-      return;
+      target.setAttribute("data-settings-highlighted", "true");
+      target.scrollIntoView?.({ behavior: "smooth", block: "center" });
+      return () => target.removeAttribute("data-settings-highlighted");
     }
     document.getElementById("settings-content-scroll")?.scrollTo?.({ top: 0, behavior: "smooth" });
   }, [activePage, scrollRequest]);
 
   const selectSearchResult = (page: (typeof searchResults)[number]["page"], targetId: string) => {
-    settings.selectPage(page);
-    setScrollRequest({ targetId });
+    settings.requestTarget(page, targetId);
   };
   return (
     <div className="grid h-full min-h-0 min-w-0 grid-cols-[252px_minmax(0,1fr)] max-[620px]:grid-cols-1 max-[620px]:grid-rows-[auto_minmax(0,1fr)] phone:grid-cols-1 phone:grid-rows-[auto_minmax(0,1fr)]">
@@ -259,7 +259,7 @@ export const SettingsPage = observer(function SettingsPage({
       </aside>
       <div
         id="settings-content-scroll"
-        className="min-h-0 overflow-y-auto [scrollbar-gutter:stable]"
+        className="min-h-0 overflow-y-auto [scrollbar-gutter:stable] [&_[data-settings-highlighted]]:rounded-md [&_[data-settings-highlighted]]:outline-2 [&_[data-settings-highlighted]]:outline-offset-4 [&_[data-settings-highlighted]]:outline-ring"
       >
         <div className="mx-auto max-w-4xl px-8 py-8 pb-16 max-[620px]:px-4 max-[620px]:py-4">
           <div className="mb-6">

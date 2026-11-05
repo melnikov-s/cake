@@ -1,4 +1,4 @@
-import type { SettingsPageId } from "../stores/SettingsStore";
+import type { SettingsPageId } from "../../contracts/application/settings-navigation";
 
 export type SettingsSearchItem = {
   page: SettingsPageId;
@@ -232,6 +232,11 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
             label: "Dictation mode and microphone",
             targetId: "dictation-title",
             keywords: "voice microphone speech Parakeet download model recognition local",
+          },
+          {
+            label: "Submit message by voice",
+            targetId: "setting-dictation-voice-submit",
+            keywords: "dictation send submit phrase command hands-free",
           },
           {
             label: "Custom vocabulary",

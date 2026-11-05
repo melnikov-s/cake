@@ -282,6 +282,9 @@ export function discoveryResultText(command: string, value: JsonValue): string |
         ...result.settings.map((item) =>
           [item.key, valueCell(item.value), valueCell(item.default), item.type].join("\t"),
         ),
+        ...(result.elsewhere.length
+          ? ["Elsewhere:", ...result.elsewhere.map(([area, operations]) => row([area, operations]))]
+          : []),
       ].join("\n");
     }
     default:

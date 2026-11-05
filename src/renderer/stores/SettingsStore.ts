@@ -35,25 +35,7 @@ import { ExperimentalSettingsStore } from "./ExperimentalSettingsStore";
 import type { ExperimentalFeatures } from "../models/ExperimentalFeatures";
 import { settingsSectionError, type SettingsError } from "../lib/settings-error";
 
-export type SettingsPageId =
-  | "cake-chat"
-  | "mcp"
-  | "widget-packages"
-  | "models"
-  | "providers"
-  | "images"
-  | "classifiers"
-  | "agent"
-  | "runtime"
-  | "network"
-  | "labels"
-  | "prompts"
-  | "appearance"
-  | "hotkeys"
-  | "editor"
-  | "voice"
-  | "screen-capture"
-  | "experimental";
+import type { SettingsPageId } from "../../contracts/application/settings-navigation";
 
 export interface SettingsStoreProps {
   dictation: DictationStore;
@@ -69,6 +51,8 @@ export interface SettingsStoreProps {
 /** Coordinates the focused workflows presented by the settings surface. */
 export class SettingsStore extends Store<SettingsStoreProps> {
   activePage: SettingsPageId = "models";
+  /** Ephemeral navigation intent shared by Settings search and authorized agent controls. */
+  scrollRequest: { targetId: string } | undefined;
   get desktopConnection() {
     return this.props.desktopConnection;
   }
@@ -198,6 +182,12 @@ export class SettingsStore extends Store<SettingsStoreProps> {
 
   selectPage(page: SettingsPageId) {
     this.activePage = page;
+    this.scrollRequest = undefined;
+  }
+
+  requestTarget(page: SettingsPageId, targetId: string) {
+    this.activePage = page;
+    this.scrollRequest = { targetId };
   }
 
   settingsSection(section: CakeSettingsSectionId): CakeSettingsSectionView {

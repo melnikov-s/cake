@@ -1,5 +1,5 @@
 import type { PiSettingUpdate } from "../../contracts/conversations/session-contract";
-import type { SettingsPageId } from "../stores/SettingsStore";
+import type { SettingsPageId } from "../../contracts/application/settings-navigation";
 
 export interface SettingsError {
   readonly section: SettingsPageId | "global";

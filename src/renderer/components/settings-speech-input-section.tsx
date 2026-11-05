@@ -39,10 +39,10 @@ export const SettingsSpeechInputSection = observer(function SettingsSpeechInputS
           maxLabel="Reject more noise"
           onValueChange={(value) => store.setNumber(sensitivity.key, value)}
         />
-        <div className="grid gap-3 px-3.5 py-3">
+        <div id="setting-dictation-voice-submit" className="grid gap-3 px-3.5 py-3">
           <div className="flex items-center justify-between gap-6">
             <label htmlFor="dictation-voice-send" className="text-xs font-medium text-foreground">
-              Send dictation by voice
+              Submit message by voice
             </label>
             <Switch
               id="dictation-voice-send"
@@ -56,7 +56,7 @@ export const SettingsSpeechInputSection = observer(function SettingsSpeechInputS
                 htmlFor="dictation-send-phrase"
                 className="text-xs font-medium text-foreground"
               >
-                Send phrase
+                Submit phrase
               </label>
               <Input
                 id="dictation-send-phrase"

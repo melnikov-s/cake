@@ -7,11 +7,13 @@ import type { Client } from "../client/Client";
 import type { SettingsStore } from "../stores/SettingsStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { submitNativeMcpAction } from "../lib/native-mcp-action";
+import { settingsDestinations } from "../../contracts/application/settings-navigation";
 
 export interface AgentSettingsControlHost {
   client: Client;
   settings: SettingsStore;
   signal: AbortSignal;
+  showSettings(): void;
   workingDirectory(sessionId: string): string | undefined;
   projectSession(sessionId: string): ProjectSessionStore | undefined;
 }
@@ -61,10 +63,29 @@ async function executeAgentSettings(
       busy: store.busy,
       installing: store.installing,
       textProcessingMode: store.textProcessingMode,
+      speechInput: settings.speechInput.values,
       error: store.error ?? null,
     };
   };
   switch (invocation.name) {
+    case "settings.open": {
+      if (!settings.agentNavigation.enabled)
+        throw new Error(
+          "Agent navigation is disabled in Settings → Agent for this window. The user must enable it manually.",
+        );
+      const input = invocation.arguments;
+      if ("setting" in input) {
+        const destination = settingsDestinations[input.setting];
+        if (destination.page === "voice") desktop();
+        settings.requestTarget(destination.page, destination.targetId);
+      } else settings.selectPage(input.page);
+      host.showSettings();
+      return {
+        page: settings.activePage,
+        setting: "setting" in input ? input.setting : null,
+        navigation: "requested",
+      };
+    }
     case "settings.providers.login": {
       await client.models.login(invocation.arguments, options);
       return { provider: invocation.arguments.provider, authorized: true };
@@ -168,6 +189,25 @@ async function executeAgentSettings(
     case "settings.dictation.update": {
       const store = dictation();
       const input = invocation.arguments;
+      // These window preferences remain editable in UI during native installation/error.
+      switch (input.action) {
+        case "voice-submit":
+          if (input.phrase !== undefined) settings.speechInput.setDictationSendPhrase(input.phrase);
+          settings.speechInput.setDictationVoiceSend(input.enabled);
+          return dictationView();
+        case "speech-input-number":
+          settings.speechInput.setNumber(input.key, input.value);
+          return dictationView();
+        case "short-commands":
+          settings.speechInput.setShortCommands(input.enabled);
+          return dictationView();
+        case "reset-speech-input":
+          settings.speechInput.reset();
+          return dictationView();
+        case "processing":
+          store.setTextProcessingMode(input.mode);
+          return dictationView();
+      }
       if (store.busy && input.action !== "cancel-install" && input.action !== "refresh-microphones")
         throw new Error("Dictation installation is busy; wait or cancel the install.");
       if (
@@ -183,9 +223,6 @@ async function executeAgentSettings(
         );
       store.error = undefined;
       switch (input.action) {
-        case "processing":
-          store.setTextProcessingMode(input.mode);
-          break;
         case "enable":
           await store.setEnabled(input.enabled);
           break;

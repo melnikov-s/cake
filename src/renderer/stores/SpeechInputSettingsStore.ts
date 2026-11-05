@@ -6,8 +6,8 @@ import {
 } from "../../utils/speech-input-settings";
 
 /** Window-owned shared speech-input and voice-only policy preferences.
- * Persisted through the Store snapshot; last local edit wins. Each workflow
- * freezes the applicable values on capture entry, never mutating a live run. */
+ * Persisted through the Store snapshot; last local edit wins. Recognition tuning freezes
+ * on capture entry; DictationStore seals and restarts capture for voice-submission edits. */
 export class SpeechInputSettingsStore extends Store {
   @snapshot preferences = { ...defaultSpeechInputPreferences };
   get values() {

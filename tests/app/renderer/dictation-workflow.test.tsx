@@ -374,9 +374,9 @@ afterEach(() => {
 describe("Dictation writing-field workflow", () => {
   async function voiceSend(f: ReturnType<typeof renderDictation>, phrase?: string) {
     render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
-    await f.user.click(screen.getByRole("switch", { name: "Send dictation by voice" }));
+    await f.user.click(screen.getByRole("switch", { name: "Submit message by voice" }));
     if (phrase !== undefined)
-      fireEvent.change(screen.getByRole("textbox", { name: "Send phrase" }), {
+      fireEvent.change(screen.getByRole("textbox", { name: "Submit phrase" }), {
         target: { value: phrase },
       });
     await f.user.click(mode());
@@ -386,6 +386,45 @@ describe("Dictation writing-field workflow", () => {
     await f.audio.push(new Float32Array(49_152));
   }
 
+  it.each(["raw", "utility"] as const)(
+    "applies voice submission enabled during active %s capture",
+    async (processing) => {
+      let text = "";
+      using f = renderDictation({
+        client: {
+          dictation: {
+            transcribe: async (input) => {
+              const result = text;
+              if (input.final) text = ""; // Native final releases the rolling transcript.
+              return result;
+            },
+          },
+        },
+      });
+      await f.user.selectOptions(
+        screen.getByRole("combobox", { name: "Text processing" }),
+        processing,
+      );
+      await f.user.click(mode());
+      await f.user.click(message());
+      text = "Kept draft";
+      await f.audio.push(new Float32Array(16_384).fill(0.1));
+      await waitFor(() => expect(message().value).toBe("Kept draft"));
+      render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+      await f.user.click(screen.getByRole("switch", { name: "Submit message by voice" }));
+      await waitFor(listening);
+      await f.audio.push(new Float32Array(49_152));
+      text = "Send it.";
+      await f.audio.push(new Float32Array(16_384).fill(0.1));
+      await f.audio.push(new Float32Array(49_152));
+      await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+      expect(f.prompt).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Kept draft" }),
+        expect.anything(),
+      );
+    },
+  );
+
   it("defaults voice sending off and persists its custom phrase through window snapshots", async () => {
     let saved: StoreSnapshot;
     {
@@ -393,11 +432,11 @@ describe("Dictation writing-field workflow", () => {
       render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
       expect(
         screen
-          .getByRole("switch", { name: "Send dictation by voice" })
+          .getByRole("switch", { name: "Submit message by voice" })
           .getAttribute("aria-checked"),
       ).toBe("false");
-      await f.user.click(screen.getByRole("switch", { name: "Send dictation by voice" }));
-      const phrase = screen.getByRole("textbox", { name: "Send phrase" });
+      await f.user.click(screen.getByRole("switch", { name: "Submit message by voice" }));
+      const phrase = screen.getByRole("textbox", { name: "Submit phrase" });
       expect((phrase as HTMLInputElement).value).toBe("send it");
       fireEvent.change(phrase, { target: { value: "over and out" } });
       saved = toSnapshot(f.root);
@@ -406,19 +445,36 @@ describe("Dictation writing-field workflow", () => {
     using restored = renderDictation({ snapshot: saved });
     render(<SettingsSpeechInputSection store={restored.root.speechInputSettingsStore} />);
     expect(
-      screen.getByRole("switch", { name: "Send dictation by voice" }).getAttribute("aria-checked"),
+      screen.getByRole("switch", { name: "Submit message by voice" }).getAttribute("aria-checked"),
     ).toBe("true");
-    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Send phrase" }).value).toBe(
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Submit phrase" }).value).toBe(
       "over and out",
     );
   });
 
-  it.each(["send it", "SEND IT!", "Send it.", "send it?", "send it…"])(
-    "sends only the isolated finalized command %s, excluding it and retaining prior speech after blur",
-    async (command) => {
+  it.each(
+    [
+      "send it",
+      "SEND IT!",
+      "Send it.",
+      "send it?",
+      "send it…",
+      "  Send it.  ",
+      "send it,",
+      "“Send it.”",
+    ].flatMap((command) =>
+      (["raw", "utility"] as const).map((processing) => ({ command, processing })),
+    ),
+  )(
+    "sends only the isolated finalized command $command in $processing, retaining prior speech after blur",
+    async ({ command, processing }) => {
       let text = "";
       const transcribe = vi.fn<Client["dictation"]["transcribe"]>(async () => text);
       using f = renderDictation({ client: { dictation: { transcribe } } });
+      await f.user.selectOptions(
+        screen.getByRole("combobox", { name: "Text processing" }),
+        processing,
+      );
       await voiceSend(f);
       text = "Previously dictated content.";
       await f.audio.push(new Float32Array(16_384).fill(0.1));
@@ -461,7 +517,7 @@ describe("Dictation writing-field workflow", () => {
     );
   });
 
-  it.each(["I want to send it tomorrow", "please send it", "sent it", "send it,", "send it now"])(
+  it.each(["I want to send it tomorrow", "please send it", "sent it", "send it now"])(
     "keeps nonmatching finalized speech %s as ordinary dictation",
     async (words) => {
       let text = "";
@@ -510,6 +566,43 @@ describe("Dictation writing-field workflow", () => {
     );
   });
 
+  it("supports send it now only when that exact phrase is configured", async () => {
+    let text = "";
+    using f = renderDictation({ client: { dictation: { transcribe: async () => text } } });
+    await voiceSend(f, "send it now");
+    text = "Kept speech";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    text = "Send it now.";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+    expect(f.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Kept speech" }),
+      expect.anything(),
+    );
+  });
+
+  it("never interprets utility cleanup output as a voice command", async () => {
+    let text = "";
+    using f = renderDictation({
+      client: {
+        dictation: { transcribe: async () => text },
+        workspaces: { postProcessDictation: async () => "send it" },
+      },
+    });
+    await f.user.selectOptions(
+      screen.getByRole("combobox", { name: "Text processing" }),
+      "utility",
+    );
+    await voiceSend(f);
+    text = "Some ordinary words";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    expect(message().value).toBe("send it");
+    expect(f.prompt).not.toHaveBeenCalled();
+  });
+
   it("requires a leading pause, and leaves disabled dictation behavior unchanged", async () => {
     let text = "send it";
     using f = renderDictation({ client: { dictation: { transcribe: async () => text } } });
@@ -520,8 +613,8 @@ describe("Dictation writing-field workflow", () => {
     expect(message().value).toBe("send it");
     expect(f.prompt).not.toHaveBeenCalled();
     render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
-    await f.user.click(screen.getByRole("switch", { name: "Send dictation by voice" }));
-    // Settings freeze on capture entry; switch targets to start an opted-in capture.
+    await f.user.click(screen.getByRole("switch", { name: "Submit message by voice" }));
+    // A fresh capture still requires a real leading acoustic boundary.
     await f.user.click(trial());
     await f.user.click(message());
     text = "send it";
@@ -551,7 +644,7 @@ describe("Dictation writing-field workflow", () => {
       if (action === "unmount") f.remountComposer();
       if (action === "session") act(() => f.switchProjectSession());
       if (action === "setting")
-        await f.user.click(screen.getByRole("switch", { name: "Send dictation by voice" }));
+        await f.user.click(screen.getByRole("switch", { name: "Submit message by voice" }));
       if (action === "edit") await f.user.type(message(), "manual change");
       await act(async () => final.resolve("send it"));
       expect(f.prompt).not.toHaveBeenCalled();
@@ -581,6 +674,59 @@ describe("Dictation writing-field workflow", () => {
     await f.audio.push(new Float32Array(49_152));
     expect(message().value).toBe("");
     expect(f.prompt).not.toHaveBeenCalled();
+  });
+
+  it.each(["raw", "utility"] as const)(
+    "preserves the draft when final recognition fails in %s",
+    async (processing) => {
+      let text = "";
+      let failFinal = false;
+      using f = renderDictation({
+        client: {
+          dictation: {
+            transcribe: async (input) => {
+              if (input.final && failFinal) throw engineFailure();
+              return text;
+            },
+          },
+        },
+      });
+      await f.user.selectOptions(
+        screen.getByRole("combobox", { name: "Text processing" }),
+        processing,
+      );
+      await voiceSend(f);
+      text = "Kept speech";
+      await f.audio.push(new Float32Array(16_384).fill(0.1));
+      await f.audio.push(new Float32Array(49_152));
+      text = "Send it.";
+      await f.audio.push(new Float32Array(16_384).fill(0.1));
+      failFinal = true;
+      await f.audio.push(new Float32Array(49_152));
+      expect(message().value).toBe("Kept speech Send it.");
+      expect(f.prompt).not.toHaveBeenCalled();
+    },
+  );
+
+  it("retains dictated content after submission rejection and never retries the command automatically", async () => {
+    let text = "";
+    const prompt = vi
+      .fn<Client["sessionChats"]["prompt"]>()
+      .mockRejectedValueOnce(new Error("Submission rejected"));
+    using f = renderDictation({
+      client: { dictation: { transcribe: async () => text }, sessionChats: { prompt } },
+    });
+    await voiceSend(f);
+    text = "Kept speech";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    text = "send it";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+    expect(message().value).toBe("Kept speech");
+    await f.audio.push(new Float32Array(65_536));
+    expect(f.prompt).toHaveBeenCalledOnce();
   });
 
   it("does not send from recognizer repeats while the ordinary send is busy", async () => {

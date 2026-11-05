@@ -209,6 +209,12 @@ export const list = Effect.fn("SettingsCatalog.list")(function* (input: Settings
       notAgentWritable: settingsNotAgentWritable,
     };
   return {
+    elsewhere:
+      query === undefined
+        ? []
+        : settingsElsewhere.filter((entry) =>
+            entry.some((part) => part.toLowerCase().includes(query.toLowerCase())),
+          ),
     settings: selected.map((definition) => {
       const value = values.value(definition.key);
       return {

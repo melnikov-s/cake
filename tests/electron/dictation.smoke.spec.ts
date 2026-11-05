@@ -761,17 +761,25 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await page.keyboard.press("Escape");
     await expect(details).toHaveCount(0);
 
-    // Optional voice send uses an actual pause boundary and its retained DOM owner.
+    // Optional voice submission uses Settings' shared stable-target navigation/highlight
+    // path and an actual pause boundary, never recognizer packet boundaries.
     await page.getByRole("button", { name: "View 2 annotations", exact: true }).click();
     await page.getByRole("button", { name: "Remove annotation 2", exact: true }).click();
     await page.getByRole("button", { name: "Remove annotation 1", exact: true }).click();
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await page.getByRole("button", { name: /Voice & Dictation/ }).click();
-    const voiceSend = page.getByRole("switch", { name: "Send dictation by voice" });
+    await page.getByRole("searchbox", { name: "Search settings" }).fill("Submit message by voice");
+    await page.getByRole("button", { name: "Submit message by voice", exact: true }).click();
+    await expect(page.locator("#setting-dictation-voice-submit")).toHaveAttribute(
+      "data-settings-highlighted",
+      "true",
+    );
+    await page.getByRole("searchbox", { name: "Search settings" }).fill("");
+    const voiceSend = page.getByRole("switch", { name: "Submit message by voice" });
     await expect(voiceSend).not.toBeChecked();
     await voiceSend.click();
-    await expect(page.getByLabel("Send phrase", { exact: true })).toHaveValue("send it");
-    await page.getByLabel("Send phrase", { exact: true }).fill("over and out");
+    await expect(page.getByLabel("Submit phrase", { exact: true })).toHaveValue("send it");
+    await page.getByLabel("Submit phrase", { exact: true }).fill("over and out");
     await configure({ ready: true, speech: true, text: "" });
     await page.getByRole("button", { name: "Back to chat" }).click();
     await composer.focus();
@@ -792,7 +800,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
       .getByText("Inspect this implementation before changing it.", { exact: true })
       .click();
     await expect(composer).not.toBeFocused();
-    await configure({ ready: true, speech: false, text: "OVER AND OUT." });
+    await configure({ ready: true, speech: false, text: "  “OVER AND OUT.”  " });
     // Ordinary empty Send is rejected; the matched command is still removed, not submitted.
     await expect(composer).toHaveValue("", { timeout: 10_000 });
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();

@@ -352,6 +352,21 @@ in `app.state`. Accepted mutations never wait for presentation: attributed actio
 notices are best-effort events to the caller's bound window, and shared Pi settings
 changes refresh observing windows. Device/window actions still use reverse requests.
 
+#### UI and Cake tool parity
+
+Every user-facing setting must have discoverable Cake tool read/write parity,
+through the same validation, authority, persistence and live-update path as its UI.
+Add or update the tool contract and workflow coverage with the UI setting, not as
+follow-up work. A concrete exception must name its boundary and supported user path:
+credentials remain masked/interactive, agent-navigation authorization remains
+user-owned, and OS-only actions may require native interaction. A missing tool is
+a product gap, not a permission restriction. Likewise, meaningful mouse/keyboard
+capabilities should have semantic tool equivalents where sensible; avoid arbitrary
+DOM selectors, simulated clicks and permission bypasses. Settings navigation uses
+`settings.open` with stable page/setting identities and the existing user-owned
+agent-navigation permission. Its result acknowledges navigation intent, not pixels
+painted or a setting changed.
+
 One process-scoped renderer-request coordinator owns transient reverse-request
 correlation, targeting, cancellation, and cleanup through the existing RPC and
 native-event Streams. A renderer-owned mutation must complete persistence and

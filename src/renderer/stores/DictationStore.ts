@@ -103,11 +103,11 @@ const recoverable = new Set([
   "observation",
 ]);
 
-/** Exact words only: ignore case, outer whitespace and benign terminal sentence punctuation. */
+/** Exact words only: ignore case, outer whitespace and recognizer punctuation at the edges. */
 function commandText(text: string) {
   return text
     .trim()
-    .replace(/[.!?…]+$/u, "")
+    .replace(/^[\p{P}\s]+|[\p{P}\s]+$/gu, "")
     .trim()
     .toLowerCase();
 }
@@ -171,6 +171,22 @@ export class DictationStore extends Store<{
   constructor(props: DictationStore["props"]) {
     super(props);
     this.microphone = createReusableMicrophone(props.microphone);
+    this.effect(() => {
+      const preferences = this.props.preferences.values;
+      const phrase = preferences.dictationVoiceSend
+        ? commandText(preferences.dictationSendPhrase) || undefined
+        : undefined;
+      const listening = this.phase === "listening";
+      untracked(() => {
+        const run = this.utterance;
+        if (!listening || !run?.target.submit || run.sendPhrase === phrase || run.finishing) return;
+        // Seal pending speech through ordinary finalization, never as a command. Restart
+        // with the latest policy; changing Settings must not leave a stale capture active.
+        void this.finish(run.target.id).then((finished) => {
+          if (finished) this.resume(run.target.id);
+        });
+      });
+    });
     this.effect(() => {
       // Hydration restores intent, not a recording or an in-flight preparation.
       untracked(() => {

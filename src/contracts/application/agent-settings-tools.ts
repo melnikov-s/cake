@@ -3,7 +3,7 @@ import { CakeControlTool } from "../cake-chats/cake-chat-data";
 import { agentSettingsOperations, settingsOperationGuidance } from "./agent-settings-schema";
 
 const deviceSetting = (name: string) =>
-  ["settings.mcp.native", "settings.providers.login"].includes(name) ||
+  ["settings.mcp.native", "settings.providers.login", "settings.open"].includes(name) ||
   ["settings.desktop.", "settings.dictation.", "settings.speech."].some((prefix) =>
     name.startsWith(prefix),
   );

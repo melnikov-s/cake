@@ -27,6 +27,23 @@ import {
   SettingsUpdateOutput,
 } from "./settings-catalog";
 
+import { SettingsOpenInput } from "./settings-navigation";
+import { speechInputControls } from "../../utils/speech-input-settings";
+
+export const SpeechInputPreferencesView = Schema.Struct({
+  speechStartThreshold: Schema.Finite,
+  speechContinueThreshold: Schema.Finite,
+  minimumSpeechMs: Schema.Finite,
+  prerollMs: Schema.Finite,
+  sendPauseSeconds: Schema.Finite,
+  countdownDelaySeconds: Schema.Finite,
+  maximumUtteranceSeconds: Schema.Finite,
+  interruptionWords: Schema.Finite,
+  interruptionWindowMs: Schema.Finite,
+  shortCommands: Schema.Boolean,
+  dictationVoiceSend: Schema.Boolean,
+  dictationSendPhrase: Schema.String,
+});
 const empty = Schema.Struct({});
 const scope = Schema.Literals(["backend", "project"]);
 const id = Schema.String.check(Schema.isUUID(4));
@@ -78,6 +95,7 @@ const dictationView = Schema.Struct({
   busy: Schema.Boolean,
   installing: Schema.Boolean,
   textProcessingMode: TextProcessingMode,
+  speechInput: SpeechInputPreferencesView,
   error: Schema.NullOr(Schema.String),
 });
 
@@ -418,7 +436,7 @@ export const agentSettingsOperations = [
   setting(
     "settings.dictation.get",
     empty,
-    "Inspect originating desktop dictation installation, enablement, microphones and vocabulary count/revision/encoder availability; never audio. Read entries with settings.dictation.vocabulary.list.",
+    "Inspect originating desktop dictation, including speechInput.dictationVoiceSend (Submit message by voice), dictationSendPhrase, shared recognition/voice options, processing mode, installation and microphones; never audio. Read vocabulary with settings.dictation.vocabulary.list.",
     {},
     dictationView,
   ),
@@ -427,6 +445,18 @@ export const agentSettingsOperations = [
     Schema.Union([
       Schema.Struct({ action: Schema.Literal("enable"), enabled: Schema.Boolean }),
       Schema.Struct({ action: Schema.Literal("processing"), mode: TextProcessingMode }),
+      Schema.Struct({
+        action: Schema.Literal("voice-submit"),
+        enabled: Schema.Boolean,
+        phrase: Schema.optionalKey(Schema.String),
+      }),
+      Schema.Struct({
+        action: Schema.Literal("speech-input-number"),
+        key: Schema.Literals(speechInputControls.map((control) => control.key)),
+        value: Schema.Finite,
+      }),
+      Schema.Struct({ action: Schema.Literal("short-commands"), enabled: Schema.Boolean }),
+      Schema.Struct({ action: Schema.Literal("reset-speech-input") }),
       Schema.Struct({
         action: Schema.Literal("microphone"),
         deviceId: Schema.String.check(Schema.isMaxLength(4096)),
@@ -449,8 +479,15 @@ export const agentSettingsOperations = [
     { action: "enable", enabled: false },
     dictationView,
     [
+      "voice-submit changes Submit message by voice and optionally its exact configured phrase. Case, surrounding whitespace and edge punctuation are ignored; extra words are not: send it now does not match send it. Requires three seconds of quiet before and after; partial ASR results never submit. Applies to active capture by sealing speech and restarting with the latest policy. Raw and utility modes use recognized words, never cleanup output. speech-input-number uses the same bounds, step rounding and coupled limits as UI sliders; get returns effective values. short-commands affects voice-mode interruptions only. reset-speech-input restores all speech input defaults.",
       "Desktop only. Enabling dictation can request microphone permission and record into the focused writing surface. Installing downloads the existing native model; install-vocabulary explicitly downloads a separate 103 MB local CTC encoder. cancel-install cancels either download. remove deletes Cake model data (including CTC) but preserves vocabulary. Empty vocabulary adds no inference. Active vocabulary adds a local CTC pass to each live revision; changes apply to the next utterance. model-path uses existing native manifest/path validation.",
     ],
+  ),
+  setting(
+    "settings.open",
+    SettingsOpenInput,
+    "Open a Settings page or highlight a stable setting in the originating window. Requires the user's Agent navigation permission; never grants it or changes a setting.",
+    { setting: "dictation.voiceSubmit" },
   ),
 ] as const;
 

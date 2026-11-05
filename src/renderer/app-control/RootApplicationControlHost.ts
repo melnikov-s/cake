@@ -159,11 +159,12 @@ export function createRootApplicationControlHost(
       globalSessionLabels: () => capabilities.settingsStore.globalLabels.labels,
     },
     agentSettings: {
-      invoke: (invocation, source) =>
-        invokeAgentSettings(
+      invoke: async (invocation, source) => {
+        const result = await invokeAgentSettings(
           {
             client: capabilities.client,
             settings: capabilities.settingsStore,
+            showSettings: () => capabilities.navigationStore.showSettings(),
             signal: capabilities.signal,
             workingDirectory: (sessionId) =>
               capabilities.sessionMetadataStore.workingDirectory(sessionId),
@@ -171,7 +172,10 @@ export function createRootApplicationControlHost(
           },
           invocation,
           source,
-        ),
+        );
+        await capabilities.flushWindowState();
+        return result;
+      },
     },
     themes: {
       list: () => capabilities.settingsStore.appearance.listSavedThemes(),

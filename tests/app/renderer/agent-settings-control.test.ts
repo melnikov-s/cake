@@ -52,6 +52,7 @@ import {
 } from "../../../src/renderer/app-control/AppControlBridge";
 import {
   AgentSettingsInvocation,
+  SpeechInputPreferencesView,
   agentSettingsOperations,
 } from "../../../src/contracts/application/agent-settings-schema";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -63,6 +64,10 @@ import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import { slashCommandSchema } from "../../../src/contracts/conversations/session-contract";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
+import {
+  defaultSpeechInputPreferences,
+  speechInputControls,
+} from "../../../src/utils/speech-input-settings";
 
 async function fixture(
   catalogs: {
@@ -1127,6 +1132,55 @@ describe("Agent Settings through the real application-control/Client/domain boun
         action: "microphone",
         deviceId: "origin-microphone",
       });
+      expect(Object.keys(SpeechInputPreferencesView.fields).sort()).toEqual(
+        Object.keys(defaultSpeechInputPreferences).sort(),
+      );
+      expect(await call("settings.dictation.get")).toMatchObject({
+        value: { speechInput: defaultSpeechInputPreferences },
+      });
+      origin.root.dictationStore.busy = true;
+      origin.root.dictationStore.error = "Native model unavailable";
+      await call("settings.dictation.update", {
+        action: "voice-submit",
+        enabled: true,
+        phrase: "  Over and out.  ",
+      });
+      expect(origin.root.speechInputSettingsStore.values).toMatchObject({
+        dictationVoiceSend: true,
+        dictationSendPhrase: "  Over and out.  ",
+      });
+      for (const control of speechInputControls) {
+        await call("settings.dictation.update", {
+          action: "speech-input-number",
+          key: control.key,
+          value: 999,
+        });
+        otherWindow.root.speechInputSettingsStore.setNumber(control.key, 999);
+        expect(origin.root.speechInputSettingsStore.values[control.key]).toBe(
+          otherWindow.root.speechInputSettingsStore.values[control.key],
+        );
+      }
+      await call("settings.dictation.update", { action: "short-commands", enabled: false });
+      using restored = createRendererStoreFixture({ snapshot: toSnapshot(origin.root) });
+      expect(restored.root.speechInputSettingsStore.values).toEqual(
+        origin.root.speechInputSettingsStore.values,
+      );
+      expect(await call("settings.dictation.get")).toMatchObject({
+        value: { speechInput: origin.root.speechInputSettingsStore.values },
+      });
+      await expect(
+        call("settings.dictation.update", {
+          action: "speech-input-number",
+          key: "speechStartThreshold",
+          value: "loud",
+        }),
+      ).rejects.toThrow();
+      await call("settings.dictation.update", { action: "reset-speech-input" });
+      expect(origin.root.speechInputSettingsStore.values).toEqual(defaultSpeechInputPreferences);
+      await call("settings.dictation.update", { action: "processing", mode: "utility" });
+      expect(origin.root.dictationStore.textProcessingMode).toBe("utility");
+      expect(origin.root.dictationStore.error).toBe("Native model unavailable");
+      origin.root.dictationStore.busy = false;
       expect(origin.root.dictationStore.deviceId).toBe("origin-microphone");
       expect(otherWindow.root.dictationStore.deviceId).toBe("");
       await expect(

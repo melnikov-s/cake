@@ -23,6 +23,17 @@ Read the matching documents before implementing; consult proportionally rather t
 
 These documents contain the detailed rules; read them with the file tools when their task applies.
 
+## UI and tool parity
+
+Every user-facing setting must ship with discoverable Cake tool read/write parity,
+using the same validation, authority, persistence and live updates as Settings UI.
+Meaningful mouse/keyboard capabilities should have semantic tool equivalents where
+sensible. Include workflow tests; shared setting registries/projections should have
+coverage checks against omissions. Document concrete exceptions (credentials,
+user-owned permissions, OS-only interactions) and supported user paths; a missing
+tool is a product gap, not an authorization restriction. See the
+[UI and Cake tool parity contract](docs/architecture/cake-architecture.md#ui-and-cake-tool-parity).
+
 ## Greenfield compatibility policy
 
 - Cake is a greenfield project. Unless the user explicitly requests it, do not preserve backward compatibility.
