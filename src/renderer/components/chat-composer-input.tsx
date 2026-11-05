@@ -61,6 +61,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
       }}
       commands={store.commands.slice()}
       focusRequestRevision={store.focusRequestRevision}
+      focusRequestIsExplicit={store.focusRequestIsExplicit}
       suggestFiles={store.canSuggestFiles ? (prefix) => store.suggestFiles(prefix) : undefined}
       placeholder={store.placeholder}
       value={store.draft}

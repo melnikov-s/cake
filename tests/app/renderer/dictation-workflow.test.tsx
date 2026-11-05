@@ -1012,6 +1012,63 @@ describe("Dictation writing-field workflow", () => {
     expect(f.audio.getUserMedia).toHaveBeenCalledOnce();
   });
 
+  it.each([false, true])(
+    "focuses a queued message for explicit editing with dictation enabled=%s, without changing passive focus policy",
+    async (dictationEnabled) => {
+      const removeQueuedMessage = vi.fn<Client["sessionChats"]["removeQueuedMessage"]>(async () => {
+        f.publish({ _tag: "PartRemoved", sessionId: "dictation-session", partId: "queued-edit" });
+        return { steering: [], followUp: [] };
+      });
+      using f = renderDictation({
+        composerFocusEnabled: true,
+        client: { sessionChats: { removeQueuedMessage } },
+      });
+      if (dictationEnabled) await f.user.click(mode());
+      f.publish({
+        _tag: "PartUpdated",
+        sessionId: "dictation-session",
+        part: {
+          id: "queued-edit",
+          kind: "text",
+          role: "user",
+          text: "Edit this queued request",
+          status: "complete",
+          deliveryState: "queued",
+          queuedInput: {
+            itemId: "20000000-0000-4000-8000-000000000001",
+            text: "Edit this queued request",
+            attachments: [],
+            renderUserMessageAsMarkdown: false,
+          },
+        },
+      });
+      await f.user.click(
+        screen.getByRole("button", {
+          name: "Edit queued prompt: Edit this queued request",
+        }),
+      );
+      await waitFor(() => expect(document.activeElement).toBe(message()));
+      expect(message().value).toBe("Edit this queued request");
+      expect(screen.queryByRole("list", { name: "Queued prompts" })).toBeNull();
+      await f.user.keyboard(" revised");
+      expect(message().value).toBe("Edit this queued request revised");
+      expect(screen.getByRole<HTMLButtonElement>("button", { name: "Send" }).disabled).toBe(false);
+      expect(mode().getAttribute("aria-checked")).toBe(String(dictationEnabled));
+      expect(
+        screen
+          .getByRole("switch", {
+            name: "Prevent automatic refocusing while dictating",
+          })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+      await f.user.click(screen.getByLabelText("Use an existing Core ML Parakeet model folder"));
+      f.requestFocus();
+      await waitFor(() =>
+        expect(document.activeElement).toBe(dictationEnabled ? message().parentElement : message()),
+      );
+    },
+  );
+
   it("applies the dictation refocus setting immediately to existing composer focus requests", async () => {
     using f = renderDictation({ composerFocusEnabled: true });
     const preventRefocus = screen.getByRole("switch", {

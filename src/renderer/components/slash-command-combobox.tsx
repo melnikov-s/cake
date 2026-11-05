@@ -38,6 +38,7 @@ interface SlashCommandComboboxProps extends Omit<
   focusEnabled?: boolean;
   parkFocusWhileDictating?: boolean;
   focusRequestRevision?: number;
+  focusRequestIsExplicit?: boolean;
   focusRef?: Ref<ComposerFocusHandle>;
   value: string;
   suggestFiles?(prefix: string): Promise<ReadonlyArray<FileSuggestion>>;
@@ -138,6 +139,7 @@ export function SlashCommandCombobox({
   focusEnabled = true,
   parkFocusWhileDictating = true,
   focusRequestRevision,
+  focusRequestIsExplicit = false,
   focusRef,
   autoFocus = false,
   dictation: dictationEnabled = true,
@@ -242,11 +244,14 @@ export function SlashCommandCombobox({
     const frame = requestAnimationFrame(() => {
       // Closing a pane restores input focus, unless the user has already moved
       // to another control before this frame. A removed close button leaves body.
-      if (document.activeElement === focusedAtRequest || document.activeElement === document.body)
-        requestFocus();
+      if (document.activeElement === focusedAtRequest || document.activeElement === document.body) {
+        // Editing a queued message explicitly chooses writing, even with dictation suppression.
+        if (focusRequestIsExplicit) inputRef.current?.focus();
+        else requestFocus();
+      }
     });
     return () => cancelAnimationFrame(frame);
-  }, [focusEnabled, focusRequestRevision, requestFocus]);
+  }, [focusEnabled, focusRequestRevision, focusRequestIsExplicit, requestFocus]);
 
   useLayoutEffect(() => {
     if (pendingCursor.current === undefined) return;

@@ -21,6 +21,7 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
   @snapshot private readonly annotations: Annotation[] = observable([]);
   @snapshot editorContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
   focusRequestRevision = 0;
+  focusRequestIsExplicit = false;
   error: string | undefined;
   errorDetails: string | undefined;
 
@@ -69,7 +70,8 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
     this.text = value;
   }
 
-  requestFocus() {
+  requestFocus({ explicit = false }: { explicit?: boolean } = {}) {
+    this.focusRequestIsExplicit = explicit;
     this.focusRequestRevision += 1;
   }
 

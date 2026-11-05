@@ -286,6 +286,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       removeAnnotation: (id) => this.composerStore.draftStore.annotationDraft.remove(id),
       suggestFiles: capabilities.suggestFiles,
       focusRequestRevision: () => this.composerStore.draftStore.focusRequestRevision,
+      focusRequestIsExplicit: () => this.composerStore.draftStore.focusRequestIsExplicit,
       history: capabilities.history,
       usage: () => this.model.usage,
       contextInspector: capabilities.contextUsage ? this.contextInspectorStore : undefined,
@@ -489,7 +490,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
     const input = part.queuedInput;
     if (!(await this.editRuntimeQueuedPrompt(id, "remove")) || this.signal.aborted) return;
     this.composerStore.draftStore.restore(input.text, input.attachments);
-    this.composerStore.draftStore.requestFocus();
+    this.composerStore.draftStore.requestFocus({ explicit: true });
   }
 
   private async editRuntimeQueuedPrompt(partId: string, operation: "remove" | "steer") {

@@ -110,6 +110,7 @@ export interface ChatStoreProps {
   removeAnnotation?(id: string): void;
   suggestFiles?(prefix: string): Promise<ReadonlyArray<FileSuggestion>>;
   focusRequestRevision?(): number;
+  focusRequestIsExplicit?(): boolean;
   usage?(): ConversationSnapshot["usage"];
   contextInspector?: ContextInspectorStore;
   estimatedContextUsage?: boolean;
@@ -485,6 +486,9 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
   get focusRequestRevision() {
     return this.props.focusRequestRevision?.();
+  }
+  get focusRequestIsExplicit() {
+    return this.props.focusRequestIsExplicit?.() ?? false;
   }
   get contextInspector() {
     return this.props.contextInspector;

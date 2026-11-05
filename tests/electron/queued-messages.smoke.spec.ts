@@ -457,6 +457,61 @@ test("queues text and attachments as one project submission and delivers them to
   }
 });
 
+for (const dictation of [false, true]) {
+  test(`queued Edit explicitly focuses the restored composer (dictation=${dictation})`, async () => {
+    test.skip(dictation && (process.platform !== "darwin" || process.arch !== "arm64"));
+    test.setTimeout(60_000);
+    const fixture = await queuedMessagesFixture(dictation);
+    try {
+      const page = await fixture.app.firstWindow();
+      await expect(page.getByText("Ready for queue testing.")).toBeVisible({ timeout: 20_000 });
+      const composer = page.getByRole("combobox", { name: "Message", exact: true });
+      await composer.fill("Hold the response");
+      await composer.press("Enter");
+      await expect.poll(() => fixture.responses.length).toBe(1);
+      const queuedText = "Edit this queued message";
+      await composer.fill(queuedText);
+      await composer.press("Enter");
+      const edit = page.getByRole("button", { name: `Edit queued prompt: ${queuedText}` });
+      await expect(edit).toBeVisible();
+      const openSettings = async () => {
+        await page.getByRole("button", { name: "Open settings", exact: true }).click();
+        await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+      };
+      const suppression = page.getByRole("switch", {
+        name: "Prevent automatic refocusing while dictating",
+      });
+      await openSettings();
+      await expect(suppression).toBeChecked();
+      if (dictation) await page.getByRole("switch", { name: "Dictation mode" }).click();
+      await page.getByRole("button", { name: "Back to chat" }).click();
+      const anchor = page.getByRole("group", { name: "Press Tab to write", exact: true });
+      if (dictation) await expect(anchor).toBeFocused();
+      await edit.click();
+      await expect(composer).toHaveValue(queuedText);
+      await expect(composer).toBeFocused();
+      await expect(edit).toHaveCount(0);
+      await page.keyboard.type(" revised");
+      await expect(composer).toHaveValue(`${queuedText} revised`);
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await openSettings();
+      await expect(page.getByRole("switch", { name: "Dictation mode" })).toBeChecked({
+        checked: dictation,
+      });
+      await expect(suppression).toBeChecked();
+      await page.getByRole("button", { name: "Back to chat" }).click();
+      // The explicit Edit request must not make subsequent passive requests explicit too.
+      if (dictation) {
+        await expect(anchor).toBeFocused();
+        await expect(composer).not.toBeFocused();
+      } else await expect(composer).toBeFocused();
+      await expect(composer).toHaveValue(`${queuedText} revised`);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+}
+
 test("consecutive Enter escalates only the just-sent message without restarting dictation", async () => {
   test.skip(process.platform !== "darwin" || process.arch !== "arm64", "Local dictation platform");
   test.setTimeout(90_000);
