@@ -309,8 +309,26 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
   ]);
   await fixture.user.click(screen.getByRole("button", { name: item.title }));
   const selection = fixture.todos().selectedId;
+  expect(
+    screen.getAllByRole("button", { name: /^(Unfocus to-do|Dismiss attention):/ }),
+  ).toHaveLength(1);
+  await fixture.user.click(screen.getByRole("button", { name: `Unfocus to-do: ${item.title}` }));
+  expect(fixture.todos().selectedId).toBe(selection);
+  expect(fixture.todos().items[0]).toMatchObject({
+    state: "open",
+    needsAttention: true,
+    attentionReason: item.attentionReason,
+  });
+  expect(fixture.mutations).toEqual([]);
+  expect(within(attention()).getByRole("button", { name: item.title })).toBeDefined();
+  expect(
+    screen.getAllByRole("button", { name: /^(Unfocus to-do|Dismiss attention):/ }),
+  ).toHaveLength(1);
   await fixture.user.click(
     screen.getByRole("button", { name: `Dismiss attention: ${item.title}` }),
+  );
+  expect(screen.getByRole("button", { name: item.title }).getAttribute("aria-pressed")).toBe(
+    "false",
   );
   expect(fixture.todos().selectedId).toBe(selection);
   expect(fixture.todos().items[0]).toMatchObject({
@@ -320,6 +338,7 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
   });
   expect(fixture.mutations.map((mutation) => mutation._tag)).toEqual(["SetAttention"]);
   expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
+  await fixture.user.click(screen.getByRole("button", { name: item.title }));
   const row = within(screen.getByRole("list", { name: "Focus to-dos" })).getByRole("button", {
     name: item.title,
   });
@@ -779,7 +798,7 @@ it("shares a weak association cue across all linked rows, updates and clears it 
   using fixture = renderTodos(true);
   const row = (id: string) => fixture.container.querySelector(`[data-session-id="${id}"]`)!;
   const todo = (title: string) => screen.getByRole("button", { name: title });
-  const cue = (title: string) => todo(title).parentElement!;
+  const cue = (title: string) => todo(title).parentElement!.parentElement!;
   const expectNavigationUnchanged = () => {
     expect(fixture.root.appShellStore.selection).toEqual({
       kind: "cake-chat",

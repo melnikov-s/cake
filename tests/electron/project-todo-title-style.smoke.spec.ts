@@ -73,10 +73,10 @@ for (const theme of ["light", "dark"] as const) {
       const panel = page.getByRole("complementary", { name: "To-do", exact: true });
       const associated = panel.getByRole("button", { name: "Startup investigation", exact: true });
       await expect(associated).toHaveAttribute("aria-pressed", "true");
-      await expect(associated.locator("..")).toHaveAttribute("data-associated", "true");
+      await expect(associated.locator("../..")).toHaveAttribute("data-associated", "true");
       // Association is an advisory cue, not actual navigation selection.
       await expect(associated).not.toHaveAttribute("aria-current");
-      await expect(associated.locator("..")).toHaveClass(/outline-dashed/);
+      await expect(associated.locator("../..")).toHaveClass(/outline-dashed/);
 
       for (const [name, done] of [
         ["Startup investigation", false],
@@ -85,7 +85,7 @@ for (const theme of ["light", "dark"] as const) {
       ] as const) {
         const action = panel.getByRole("button", { name, exact: true });
         const title = action.getByText(name, { exact: true });
-        const row = action.locator("..");
+        const row = action.locator("../..");
         await page.mouse.move(1, 1);
         const resting = await titleAppearance(title);
         expect(resting.fontWeight).toBe("500");
@@ -130,7 +130,7 @@ for (const theme of ["light", "dark"] as const) {
         .getByRole("button", { name: "Unfocus to-do: Startup investigation", exact: true })
         .click();
       await expect(associated).toHaveAttribute("aria-pressed", "false");
-      await expect(associated.locator("..")).not.toHaveAttribute("data-associated");
+      await expect(associated.locator("../..")).not.toHaveAttribute("data-associated");
       await page.mouse.move(1, 1);
       // Unfocus returns the row from the Focus overlay to its underlying section.
       // Position changes, but typography and rendered text dimensions stay identical.
@@ -142,7 +142,7 @@ for (const theme of ["light", "dark"] as const) {
         selectedRects.map(({ width, height }) => ({ width, height })),
       );
 
-      // Completion and attachment stay separate, before the wrapping title at both pane widths.
+      // Completion precedes the title; attachment follows it inline at both pane widths.
       for (const width of [1500, 600]) {
         await page.setViewportSize({ width, height: 900 });
         for (const [name, done] of [
@@ -151,7 +151,7 @@ for (const theme of ["light", "dark"] as const) {
           ["Discuss the next milestone", true],
         ] as const) {
           const action = panel.getByRole("button", { name, exact: true });
-          const row = action.locator("..");
+          const row = action.locator("../..");
           const completion = row.getByRole("button", {
             name: `${done ? "Reopen" : "Mark done"}: ${name}`,
             exact: true,
@@ -162,24 +162,32 @@ for (const theme of ["light", "dark"] as const) {
           });
           await expect(attach).toBeVisible();
           await expect(attach.locator("svg")).toHaveAttribute("aria-hidden", "true");
-          await expect(attach.locator("svg")).toHaveAttribute("width", "14");
-          await expect(attach.locator("svg")).toHaveAttribute("height", "14");
+          await expect(attach.locator("svg")).toHaveCSS("width", "9px");
+          await expect(attach.locator("svg")).toHaveCSS("height", "9px");
           await expect(row.locator("button button")).toHaveCount(0);
           // Responsive pane transitions must settle before comparing independently read bounds.
           await expect(async () => {
             const completionBox = (await completion.boundingBox())!;
             const attachBox = (await attach.boundingBox())!;
             const titleBox = (await action.boundingBox())!;
-            expect(completionBox.x + completionBox.width).toBeLessThan(attachBox.x);
-            expect(attachBox.x + attachBox.width).toBeLessThan(titleBox.x);
+            expect(completionBox.x + completionBox.width).toBeLessThan(titleBox.x);
+            const gap = attachBox.x - (titleBox.x + titleBox.width);
+            expect(gap).toBeGreaterThanOrEqual(0);
+            expect(gap).toBeLessThanOrEqual(4.1);
+            expect(attachBox.width).toBeGreaterThanOrEqual(28);
+            expect(attachBox.height).toBeGreaterThanOrEqual(28);
             const alignment = await action.evaluate((element) => {
-              const row = element.parentElement!;
+              const row = element.parentElement!.parentElement!;
               const style = getComputedStyle(element);
               const titleCenter =
                 element.getBoundingClientRect().top +
                 parseFloat(style.paddingTop) +
                 parseFloat(style.lineHeight) / 2;
-              const icons = Array.from(row.querySelectorAll('[data-slot="nav-trailing"] svg'));
+              const icons = Array.from(
+                row.querySelectorAll(
+                  '[data-slot="nav-trailing"] svg, [data-slot="nav-action"] > button > svg',
+                ),
+              );
               const rowStyle = getComputedStyle(row);
               const contentLeft =
                 row.getBoundingClientRect().left + parseFloat(rowStyle.paddingLeft);

@@ -3211,7 +3211,7 @@ const projectChatTodos: VisualCaptureScenario = {
 const projectChatAttention: VisualCaptureScenario = {
   name: "project-chat-attention",
   description: "Action-first Needs attention with exclusive Active, Snoozed and Done sections",
-  states: ["open", "reason-editor"],
+  states: ["open", "reason-editor", "focused-hover", "attention-hover"],
   async seed(paths, theme) {
     await projectChatTodos.seed(paths, theme);
     const file = join(paths.cakeHome, "state", "application.json");
@@ -3249,7 +3249,7 @@ const projectChatAttention: VisualCaptureScenario = {
   async prepare(page, state) {
     await projectChatTodos.prepare(page, "open");
     const panel = page.getByRole("complementary", { name: "To-do", exact: true });
-    await expect(panel.getByRole("heading", { name: "Needs attention 2" })).toBeVisible();
+    await expect(panel.getByRole("heading", { name: "Needs attention 1" })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Active (1)" })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Snoozed (1)" })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Done (1)" })).toBeVisible();
@@ -3261,6 +3261,22 @@ const projectChatAttention: VisualCaptureScenario = {
       await expect(page.getByRole("textbox", { name: "What needs your attention?" })).toBeFocused();
     }
     await page.mouse.move(1, 1);
+    if (state === "focused-hover" || state === "attention-hover") {
+      const focused = state === "focused-hover";
+      const title = focused ? "Startup investigation" : "Improve project navigation";
+      const row = panel.locator(
+        `[data-todo-id="00000000-0000-4000-8000-0000000000${focused ? "11" : "12"}"]`,
+      );
+      await row.hover();
+      await expect(
+        row.getByRole("button", { name: `Attach to-do as context: ${title}` }),
+      ).toHaveCSS("opacity", "1");
+      await expect(
+        row.getByRole("button", {
+          name: `${focused ? "Unfocus to-do" : "Dismiss attention"}: ${title}`,
+        }),
+      ).toHaveCSS("opacity", "1");
+    }
   },
   region: (page, state) =>
     state === "reason-editor"

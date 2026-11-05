@@ -100,6 +100,7 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     const category = (name: string) =>
       panel.getByRole("list", { name: `${name} to-dos`, exact: true });
     const editor = async (label: string, target = action) => {
+      await expect(panel.locator('[aria-busy="true"]')).toHaveCount(0);
       await target.focus();
       await target.press("Shift+F10");
       await expect(page.getByRole("menuitem", { name: /^(Snooze|Change snooze)$/ })).toBeFocused();
@@ -113,18 +114,69 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await expect(category("Needs attention").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
     await expect(action).toHaveText(reason);
     await expect(row.getByRole("link", { name: "Startup findings", exact: true })).toBeVisible();
+    const attach = row.getByRole("button", { name: `Attach to-do as context: ${title}` });
+    const dismiss = row.getByRole("button", { name: `Dismiss attention: ${title}` });
+    await page.mouse.move(1, 1);
+    await expect(attach).toHaveCSS("opacity", "0");
+    await expect(dismiss).toHaveCSS("opacity", "0");
+    await row.hover();
+    await expect(attach).toHaveCSS("opacity", "1");
+    await expect(dismiss).toHaveCSS("opacity", "1");
     await action.click();
     await expect(action).toHaveAttribute("aria-pressed", "true");
-    await row.getByRole("button", { name: `Dismiss attention: ${title}` }).click();
-    await expect(category("Focus").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
+    await expect(
+      row.getByRole("button", { name: /^(Unfocus to-do|Dismiss attention):/ }),
+    ).toHaveCount(1);
+    const unfocus = row.getByRole("button", { name: `Unfocus to-do: ${title}` });
+    await page.mouse.move(1, 1);
+    await expect(unfocus).toHaveCSS("opacity", "0");
+    await expect(attach).toHaveCSS("opacity", "0");
+    await row.hover();
+    await expect(unfocus).toHaveCSS("opacity", "1");
+    await unfocus.click();
+    await expect(category("Needs attention").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
+    await expect(action).toHaveText(reason);
+    await expect(action).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      row.getByRole("button", { name: /^(Unfocus to-do|Dismiss attention):/ }),
+    ).toHaveCount(1);
+    await row.hover();
+    await dismiss.click();
+    await expect(category("Active").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
     await expect(action).toHaveText(title);
-    await expect(action).toHaveAttribute("aria-pressed", "true");
+    await expect(action).toHaveAttribute("aria-pressed", "false");
     await expect(panel.getByRole("region", { name: "Needs attention", exact: true })).toHaveCount(
       0,
     );
     await row.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Restore needs attention", exact: true }).click();
     await expect(action).toHaveText(reason);
+    // Plain Tab returns to the composer; Shift+Tab retains native row navigation.
+    // With the pointer away, keyboard focus reveals the inline action and X.
+    await page.mouse.move(1, 1);
+    const findings = row.getByRole("link", { name: "Startup findings", exact: true });
+    await findings.focus();
+    await findings.press("Shift+Tab");
+    await expect(dismiss).toBeFocused();
+    await expect(attach).toHaveCSS("opacity", "1");
+    await expect(dismiss).toHaveCSS("opacity", "1");
+    await dismiss.press("Shift+Tab");
+    const done = row.getByRole("button", { name: `Mark done: ${title}` });
+    await expect(done).toBeFocused();
+    await done.press("Shift+Tab");
+    await expect(attach).toBeFocused();
+    await expect(attach).toHaveCSS("opacity", "1");
+    await attach.press("Enter");
+    const removeAttachment = page.getByRole("button", { name: `Remove To-do · ${title}` });
+    await expect(removeAttachment).toBeVisible();
+    await expect(action).toHaveAttribute("aria-pressed", "false");
+    await removeAttachment.click();
+    await dismiss.focus();
+    await dismiss.press("Enter");
+    await expect(action).toHaveAttribute("aria-pressed", "false");
+    await expect(action).toHaveText(title);
+    await row.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Restore needs attention", exact: true }).click();
     const dialog = await editor("Edit attention reason…");
     const input = dialog.getByRole("textbox", { name: "What needs your attention?" });
     await expect(input).toBeFocused();
@@ -143,12 +195,13 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await composer.fill("Discuss these findings");
     await row.getByRole("button", { name: `Dismiss attention: ${title}` }).click();
     await expect(composer).toHaveValue("Discuss these findings");
-    await expect(category("Focus").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
+    await expect(category("Active").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
     await expect(action).toHaveText(title);
     // Restore reuses the retained reason without a model. Reload persistence is checked below.
     await action.press("Shift+F10");
     await page.getByRole("menuitem", { name: "Restore needs attention", exact: true }).click();
     await expect(action).toHaveText("Review the change before merging");
+    await action.click();
     await row.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Snooze", exact: true }).click();
     await page.getByRole("menuitem", { name: "1 day", exact: true }).click();

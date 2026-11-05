@@ -200,10 +200,10 @@ test("to-do text selection and copying do not activate rows or their controls", 
     // Plain Tab intentionally returns to writing; Shift+Tab retains control traversal.
     await link.focus();
     await link.press("Shift+Tab");
-    await expect(reply).toBeFocused();
-    await reply.press("Shift+Tab");
     await expect(done).toBeFocused();
     await done.press("Shift+Tab");
+    await expect(reply).toBeFocused();
+    await reply.press("Shift+Tab");
     await expect(action).toBeFocused();
     await action.click();
     await expect(action).toHaveAttribute("aria-pressed", "true");

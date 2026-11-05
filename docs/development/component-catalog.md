@@ -248,7 +248,9 @@ Subagent call rows use the same advisory cue; worker completion/release is not t
 ignores the following pointer click, while retaining native keyboard/assistive
 activation and control-click semantics. `SessionListItem` forwards this opt-in;
 search and destination pickers keep their default click activation. Nested row
-controls remain independent siblings of the navigation button.
+controls remain independent siblings of the navigation button. `NavItem.labelAction`
+places a control immediately after the label rather than at the row's trailing edge,
+without nesting it inside the primary button.
 
 `NavItem.wholeRowAction` extends the primary action to non-interactive row content
 and whitespace without nesting controls. It retains the native action button for

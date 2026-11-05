@@ -38,7 +38,7 @@ for (const theme of ["light", "dark"] as const) {
         name: "Improve project navigation",
         exact: true,
       });
-      const startupCue = startup.locator("..");
+      const startupCue = startup.locator("../..");
       const startupSession = page.locator(
         '.session-item[data-session-id="visual-assistant-markdown-code"]',
       );
@@ -132,14 +132,14 @@ for (const theme of ["light", "dark"] as const) {
       ).toBeFocused();
       await page.keyboard.press("Shift+Tab");
       await expect(
+        panel.getByRole("button", { name: "Mark done: Startup investigation", exact: true }),
+      ).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(
         panel.getByRole("button", {
           name: "Attach to-do as context: Startup investigation",
           exact: true,
         }),
-      ).toBeFocused();
-      await page.keyboard.press("Shift+Tab");
-      await expect(
-        panel.getByRole("button", { name: "Mark done: Startup investigation", exact: true }),
       ).toBeFocused();
       await page.keyboard.press("Shift+Tab");
       await expect(startup).toBeFocused();

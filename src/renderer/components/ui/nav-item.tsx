@@ -18,6 +18,8 @@ export interface NavItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "onCl
   description?: ReactNode;
   badge?: ReactNode;
   trailing?: ReactNode;
+  /** Independent control immediately after the label, outside the primary button. */
+  labelAction?: ReactNode;
   active?: boolean;
   /** Related context, not navigation selection. Active always takes precedence. */
   associated?: boolean;
@@ -53,6 +55,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
     description,
     badge,
     trailing,
+    labelAction,
     active = false,
     associated = false,
     disabled = false,
@@ -73,6 +76,72 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
 ) {
   const actionRef = useRef<HTMLButtonElement>(null);
   const selectionStart = useRef<{ x: number; y: number } | null>(null);
+  const action = (
+    <button
+      ref={actionRef}
+      {...actionProps}
+      type="button"
+      disabled={disabled}
+      aria-current={
+        active && actionProps?.role !== "option" && actionProps?.["aria-pressed"] === undefined
+          ? "page"
+          : undefined
+      }
+      className={cn(
+        "group/nav-action flex min-w-0 flex-1 items-center gap-2 text-left bg-transparent border-0 p-0 text-inherit cursor-pointer disabled:cursor-default outline-none",
+        labelAction && "flex-none shrink",
+        selectableText && "select-text cursor-text",
+        wholeRowAction &&
+          "after:pointer-events-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-offset-2",
+      )}
+      onMouseDown={(event) => {
+        actionProps?.onMouseDown?.(event);
+        if (
+          activateOnMouseDown &&
+          event.button === 0 &&
+          !event.ctrlKey &&
+          !event.defaultPrevented &&
+          actionProps?.["aria-disabled"] !== true
+        ) {
+          onClick?.(event);
+        }
+      }}
+      onClick={(event) => {
+        // Pointer clicks already opened on press. detail=0 retains native keyboard,
+        // assistive technology and programmatic activation. Control-click stays native.
+        if (activateOnMouseDown && event.detail > 0 && !event.ctrlKey) return;
+        if (actionProps?.["aria-disabled"] !== true) onClick?.(event);
+      }}
+    >
+      {icon && <span className="shrink-0 text-inherit">{icon}</span>}
+      <div className="flex min-w-0 flex-1 flex-col justify-center">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span
+            className={cn(
+              wholeRowAction ? "min-w-0 whitespace-normal break-words" : "min-w-0 flex-1 truncate",
+              motionFeedback &&
+                !disabled &&
+                "origin-left motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.22,1.12,0.36,1)] motion-safe:group-hover/nav-item:translate-x-0.5 motion-safe:group-active/nav-action:translate-y-px motion-safe:group-active/nav-action:scale-[0.985] motion-safe:group-active/nav-action:duration-75",
+              motionFeedback && active && !disabled && "motion-safe:translate-x-0.5",
+            )}
+          >
+            {label}
+          </span>
+          {badge && <span className="shrink-0">{badge}</span>}
+        </div>
+        {description && (
+          <div
+            className={cn(
+              "mt-0.5 text-xs font-normal leading-snug",
+              active ? "text-sidebar-selection-foreground/75" : "text-muted-foreground/75",
+            )}
+          >
+            {description}
+          </div>
+        )}
+      </div>
+    </button>
+  );
   return (
     <div
       ref={ref}
@@ -130,71 +199,14 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
       onContextMenu={onContextMenu}
       {...props}
     >
-      <button
-        ref={actionRef}
-        {...actionProps}
-        type="button"
-        disabled={disabled}
-        aria-current={
-          active && actionProps?.role !== "option" && actionProps?.["aria-pressed"] === undefined
-            ? "page"
-            : undefined
-        }
-        className={cn(
-          "group/nav-action flex min-w-0 flex-1 items-center gap-2 text-left bg-transparent border-0 p-0 text-inherit cursor-pointer disabled:cursor-default outline-none",
-          selectableText && "select-text cursor-text",
-          wholeRowAction &&
-            "after:pointer-events-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-offset-2",
-        )}
-        onMouseDown={(event) => {
-          actionProps?.onMouseDown?.(event);
-          if (
-            activateOnMouseDown &&
-            event.button === 0 &&
-            !event.ctrlKey &&
-            !event.defaultPrevented &&
-            actionProps?.["aria-disabled"] !== true
-          ) {
-            onClick?.(event);
-          }
-        }}
-        onClick={(event) => {
-          // Pointer clicks already opened on press. detail=0 retains native keyboard,
-          // assistive technology and programmatic activation. Control-click stays native.
-          if (activateOnMouseDown && event.detail > 0 && !event.ctrlKey) return;
-          if (actionProps?.["aria-disabled"] !== true) onClick?.(event);
-        }}
-      >
-        {icon && <span className="shrink-0 text-inherit">{icon}</span>}
-        <div className="flex min-w-0 flex-1 flex-col justify-center">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <span
-              className={cn(
-                wholeRowAction
-                  ? "min-w-0 whitespace-normal break-words"
-                  : "min-w-0 flex-1 truncate",
-                motionFeedback &&
-                  !disabled &&
-                  "origin-left motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.22,1.12,0.36,1)] motion-safe:group-hover/nav-item:translate-x-0.5 motion-safe:group-active/nav-action:translate-y-px motion-safe:group-active/nav-action:scale-[0.985] motion-safe:group-active/nav-action:duration-75",
-                motionFeedback && active && !disabled && "motion-safe:translate-x-0.5",
-              )}
-            >
-              {label}
-            </span>
-            {badge && <span className="shrink-0">{badge}</span>}
-          </div>
-          {description && (
-            <div
-              className={cn(
-                "mt-0.5 text-xs font-normal leading-snug",
-                active ? "text-sidebar-selection-foreground/75" : "text-muted-foreground/75",
-              )}
-            >
-              {description}
-            </div>
-          )}
+      {labelAction ? (
+        <div data-slot="nav-action" className="flex min-w-0 items-start gap-1">
+          {action}
+          {labelAction}
         </div>
-      </button>
+      ) : (
+        action
+      )}
       {trailing && (
         <div data-slot="nav-trailing" className="shrink-0 text-inherit">
           {trailing}

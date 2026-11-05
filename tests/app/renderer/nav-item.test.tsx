@@ -94,6 +94,33 @@ it("does not change ordinary non-selectable navigation rows", () => {
   expect(f.select).toHaveBeenCalledOnce();
 });
 
+it("keeps an inline label action independent from pointer and keyboard row activation", async () => {
+  const select = vi.fn();
+  const attach = vi.fn();
+  const user = userEvent.setup();
+  const view = render(
+    <NavItem
+      wholeRowAction
+      label="Task"
+      onClick={select}
+      labelAction={<Button onClick={attach}>Attach</Button>}
+    />,
+  );
+  const action = screen.getByRole("button", { name: "Task" });
+  const attachment = screen.getByRole("button", { name: "Attach" });
+  expect(action.nextElementSibling).toBe(attachment);
+  expect(view.container.querySelector("button button")).toBeNull();
+  await user.click(attachment);
+  expect(attach).toHaveBeenCalledOnce();
+  expect(select).not.toHaveBeenCalled();
+  action.focus();
+  await user.keyboard("{Enter}{Tab}");
+  expect(document.activeElement).toBe(attachment);
+  await user.keyboard(" ");
+  expect(select).toHaveBeenCalledOnce();
+  expect(attach).toHaveBeenCalledTimes(2);
+});
+
 describe("NavItem press activation", () => {
   it("activates once on primary down, then accepts keyboard and assistive clicks", async () => {
     const onClick = vi.fn();
