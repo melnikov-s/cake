@@ -1,22 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { parseScheduledMessage } from "../../../contracts/conversations/scheduled-message-envelope";
-import {
-  applyArtifactExitTransition,
-  artifactTargetFromReminder,
-} from "../../../contracts/artifacts/artifact-presentation-context";
 import type { InternalInput } from "../../../contracts/conversations/internal-input";
-import {
-  isAutomaticInput,
-  internalInputOrigins,
-  passiveNoticeParts,
-  queuedAutomaticInputPart,
-} from "./internal-input-projection";
-import {
-  addResponseModeReminder,
-  responseModeFromReminder,
-  stripResponseModeReminder,
-  type ConversationResponseMode,
-} from "../../../contracts/conversations/response-mode-reminders";
+import { isAutomaticInput } from "./internal-input-projection";
+import type { ConversationResponseMode } from "../../../contracts/conversations/response-mode-reminders";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Attachment, UiPart } from "../../../contracts/conversations/session-contract";
 import type { ProjectSessionPresentationMode } from "../../../contracts/project-sessions/project-session-presentation";
@@ -27,18 +13,16 @@ import type {
   PiPendingMessages,
 } from "../../../contracts/conversations/pending-message-data";
 import { RuntimeTurnCompletion, TurnCanceledError } from "./RuntimeTurnCompletion";
-import {
-  addPresentationModeReminder,
-  presentationModeFromReminder,
-  stripPresentationModeReminder,
-} from "../../../contracts/conversations/presentation-mode-reminders";
-import { imageContent, promptText } from "./user-message-transport";
-import {
-  locateQueuedMessage,
-  queuedMessageIds,
-  projectQueuedMessages,
-} from "./queued-message-projection";
+import { stripPresentationModeReminder } from "../../../contracts/conversations/presentation-mode-reminders";
+import { stripResponseModeReminder } from "../../../contracts/conversations/response-mode-reminders";
+import { imageContent } from "./user-message-transport";
+import { locateQueuedMessage, queuedMessageIds } from "./queued-message-projection";
 import { shellCommandPart } from "./tool-projection";
+import {
+  turnInputContent,
+  projectPendingInputParts,
+  type QueuedInputPayload,
+} from "./turn-input-presentation";
 
 import type { IdleCompactionResult } from "../../../contracts/project-sessions/session-compaction";
 
@@ -164,15 +148,7 @@ export function createCakeSessionRuntimeTurnController(input: {
   const turnCompletions = new RuntimeTurnCompletion();
   const commandCompletions = new RuntimeTurnCompletion();
   type QueueLane = "steering" | "follow-up";
-  type TrackedQueueItem = {
-    itemId: string;
-    turnId?: string;
-    text: string;
-    content: string;
-    attachments: Attachment[];
-    renderUserMessageAsMarkdown: boolean;
-    command?: string;
-  };
+  type TrackedQueueItem = QueuedInputPayload;
   interface TrackedQueue {
     steering: TrackedQueueItem[];
     "follow-up": TrackedQueueItem[];
@@ -242,83 +218,26 @@ export function createCakeSessionRuntimeTurnController(input: {
     await input.emitSnapshot();
   };
 
-  // Pi's active branch is the authority, so reload, editing, branching and Tool
-  // Compact naturally recover (or reset) the modes without a second persisted flag.
-  const previousModes = (delivery: "prompt" | "steer" | "follow-up") => {
-    let presentation: ProjectSessionPresentationMode = "normal";
-    let response: ConversationResponseMode = "text";
-    let artifactTarget = false;
-    const consume = (
-      messages: readonly string[],
-      origin?: (message: string) => InternalInput | undefined,
-    ) => {
-      for (const message of messages) {
-        presentation = presentationModeFromReminder(message) ?? presentation;
-        response = responseModeFromReminder(message) ?? response;
-        artifactTarget =
-          artifactTargetFromReminder(
-            stripPresentationModeReminder(stripResponseModeReminder(message)),
-            origin?.(message),
-          ) ?? artifactTarget;
-      }
-    };
-    const branch = session.sessionManager.getBranch();
-    const origins = internalInputOrigins(branch);
-    for (const entry of branch) {
-      if (entry.type !== "message" || entry.message.role !== "user") continue;
-      const content =
-        typeof entry.message.content === "string"
-          ? entry.message.content
-          : entry.message.content
-              .filter((item) => item.type === "text")
-              .map((item) => item.text)
-              .join("\n");
-      consume([content], () => origins.get(entry.id));
-    }
-    if (delivery !== "prompt") {
-      consume(session.getSteeringMessages(), (content) => turnCompletions.internalInput(content));
-      consume(
-        compactionQueue.filter((item) => item.delivery === "steer").map((item) => item.content),
-        (content) => turnCompletions.internalInput(content),
-      );
-    }
-    if (delivery === "follow-up") {
-      consume(session.getFollowUpMessages(), (content) => turnCompletions.internalInput(content));
-      consume(
-        compactionQueue.filter((item) => item.delivery === "follow-up").map((item) => item.content),
-        (content) => turnCompletions.internalInput(content),
-      );
-    }
-    return { presentation, response, artifactTarget };
-  };
-
   const contentForPresentation = (
     text: string,
     attachments: Attachment[],
     delivery: "prompt" | "steer" | "follow-up",
     presentationMode?: ProjectSessionPresentationMode,
-    responseMode: ConversationResponseMode = "text",
+    responseMode?: ConversationResponseMode,
     internal?: InternalInput,
-  ) => {
-    if (text.startsWith("/")) return promptText(text, attachments);
-    const previous = previousModes(
-      delivery === "prompt" &&
-        (session.isStreaming || isCompacting() || commandRunning || compactionQueue.length > 0)
-        ? "follow-up"
-        : delivery,
-    );
-    const content = promptText(
-      applyArtifactExitTransition(text, previous.artifactTarget, internal),
+  ) =>
+    turnInputContent({
+      session,
+      heldInputs: compactionQueue,
+      busy: isCompacting() || commandRunning,
+      internalInput: (content) => turnCompletions.internalInput(content),
+      text,
       attachments,
-    );
-    const presented =
-      presentationMode === undefined
-        ? content
-        : addPresentationModeReminder(content, previous.presentation, presentationMode);
-    return responseMode === previous.response
-      ? presented
-      : addResponseModeReminder(presented, responseMode);
-  };
+      delivery,
+      presentationMode,
+      responseMode,
+      internal,
+    });
 
   const deliverPrompt = (
     content: string,
@@ -890,63 +809,10 @@ export function createCakeSessionRuntimeTurnController(input: {
         void flushCompactionQueue();
       }
     },
-    queuedParts: () => {
-      const queues = queuedForStop();
-      const parts = projectQueuedMessages(
-        queues.steering.map((item) => item.content),
-        queues["follow-up"].map((item) => item.content),
-      );
-      const payloads = new Map<string, TrackedQueueItem>();
-      for (const [lane, items] of [
-        ["steering", queues.steering],
-        ["queued", queues["follow-up"]],
-      ] as const) {
-        const ids = queuedMessageIds(
-          lane === "steering" ? "queued-steering" : "queued-follow-up",
-          lane,
-          items.map((item) => item.content),
-        );
-        items.forEach((item, index) => {
-          const id = ids[index];
-          if (id) payloads.set(id, item);
-        });
-      }
-      return parts.flatMap((part) => {
-        const item = payloads.get(part.id);
-        const internal = item?.turnId ? turnCompletions.internalInputById(item.turnId) : undefined;
-        const notices = isAutomaticInput(internal) ? [] : passiveNoticeParts(internal);
-        const row: UiPart =
-          part.kind === "text" && item
-            ? {
-                ...part,
-                text:
-                  part.crossSession || part.scheduled
-                    ? part.text
-                    : internal?._tag === "UserWithReminders"
-                      ? (internal.userText ?? internal.text)
-                      : item.text,
-                renderAs: item.renderUserMessageAsMarkdown ? ("markdown" as const) : part.renderAs,
-                queuedInput: {
-                  itemId: item.itemId,
-                  ...(item.turnId ? { turnId: item.turnId } : null),
-                  ...(item.command ? { command: item.command } : null),
-                  text:
-                    internal?._tag === "UserWithReminders"
-                      ? (internal.userText ?? internal.text)
-                      : item.text,
-                  attachments: item.attachments,
-                  renderUserMessageAsMarkdown: item.renderUserMessageAsMarkdown,
-                },
-              }
-            : part;
-        return [
-          ...notices,
-          isAutomaticInput(internal) && row.kind === "text"
-            ? queuedAutomaticInputPart(internal, row)
-            : row,
-        ];
-      });
-    },
+    queuedParts: () =>
+      projectPendingInputParts(queuedForStop(), (turnId) =>
+        turnCompletions.internalInputById(turnId),
+      ),
     executingTurnIds: () => turnCompletions.executingIds(),
     async prompt(...args) {
       // Reserve preparation and Pi delivery, not the lifetime of a queued turn.
