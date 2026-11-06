@@ -176,9 +176,10 @@ export const invoke: (
   command: string,
   input: JsonValue,
   caller?: AgentControlCaller,
+  windowConnectionId?: number,
 ) => Effect.Effect<JsonValue | undefined, AgentControlError, AgentControlServices | Scope.Scope> =
   Effect.fn("AgentControl.invoke")(
-    function* (command, input, caller) {
+    function* (command, input, caller, windowConnectionId) {
       if (command === "artifacts.commands") {
         const parsed = yield* Schema.decodeUnknownEffect(ArtifactCommandDiscoveryInput)(input, {
           onExcessProperty: "error",
@@ -192,10 +193,16 @@ export const invoke: (
         return yield* artifactCommands.invoke(parsed.command, parsed.input, {
           artifactId: parsed.lineageId,
           ...(caller ? { callingSessionId: caller.sessionId } : null),
+          ...(windowConnectionId === undefined ? null : { windowConnectionId }),
         });
       }
       if (handlesGlobalArtifactCommand(command))
-        return yield* invokeGlobalArtifactCommand(command, input, caller?.sessionId);
+        return yield* invokeGlobalArtifactCommand(
+          command,
+          input,
+          caller?.sessionId,
+          windowConnectionId,
+        );
       if (isBackendAgentSetting(command))
         return yield* agentSettings.invoke(
           yield* Schema.decodeUnknownEffect(AgentSettingsInvocation)(

@@ -1,4 +1,6 @@
 import { Effect, Stream } from "effect";
+import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
+import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import {
   deleteSessionPlugin,
   getState,
@@ -23,6 +25,17 @@ const pluginMutationError = Effect.mapError(
 );
 
 export const applicationStateHandlers = ApplicationRpc.of({
+  "application.respondWindowControl": ({ controlRequestId, result }) =>
+    Effect.gen(function* () {
+      const { connectionId } = yield* RendererConnection;
+      yield* (yield* RendererRequestCoordinator).respondWindowControl(
+        connectionId,
+        controlRequestId,
+        result,
+      );
+    }).pipe(
+      Effect.mapError((cause) => new ApplicationSettingsMutationError({ message: cause.message })),
+    ),
   "application.setExperimentalFeatures": ({ features }) =>
     setExperimentalFeatures(features).pipe(
       Effect.mapError((cause) => new ApplicationSettingsMutationError({ message: cause.message })),

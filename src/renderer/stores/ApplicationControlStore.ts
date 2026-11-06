@@ -1,3 +1,7 @@
+import type {
+  WindowControlRequest,
+  WindowControlResponse,
+} from "../../contracts/application/window-control";
 import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { AgentActionNotice } from "../../contracts/application/agent-action-notice";
 import { Store, child, createStore, untracked } from "r-state-tree";
@@ -33,7 +37,7 @@ interface ProjectControlContext {
 
 /** Owns agent-requested Cake application controls for this renderer window. */
 export class ApplicationControlStore extends Store<{
-  client: Pick<Client, "cakeChats" | "projectSessions">;
+  client: Pick<Client, "cakeChats" | "projectSessions" | "application">;
   host: AppControlHost;
   operations: Pick<SessionOperationCoordinatorStore, "finish" | "start">;
   cakeChatRequests(): readonly CakeChatControlRequest[];
@@ -84,6 +88,30 @@ export class ApplicationControlStore extends Store<{
     if (this.signal.aborted)
       return Promise.reject(new Error("Application controls are unavailable"));
     return this.bridge.invoke(invocation, source);
+  }
+
+  async handleWindowRequest(request: WindowControlRequest): Promise<void> {
+    if (this.signal.aborted || this.acceptedProjectRequestIds.has(request.controlRequestId)) return;
+    this.acceptedProjectRequestIds.add(request.controlRequestId);
+    const result: WindowControlResponse = this.bridge.supports(request.invocation.name)
+      ? {
+          handled: true,
+          result: await this.bridge.invoke(request.invocation, request.source).catch((error) => ({
+            ok: false,
+            command: request.invocation.name,
+            error: errorMessage(error),
+          })),
+        }
+      : { handled: false };
+    if (this.signal.aborted) return;
+    try {
+      await this.props.client.application.respondWindowControl(
+        { controlRequestId: request.controlRequestId, result },
+        { signal: this.signal },
+      );
+    } catch (error) {
+      if (!this.signal.aborted) this.props.reportProjectError(error, "Window control response");
+    }
   }
 
   async handleProjectSessionRequest(request: ProjectSessionControlRequest): Promise<void> {

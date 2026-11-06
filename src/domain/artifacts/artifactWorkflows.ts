@@ -1,5 +1,6 @@
 import { DateTime, Effect } from "effect";
 import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
+import { rejectArtifactRuntimeReentry } from "../../services/artifact-runtime/ArtifactRuntimeExecution";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { ArtifactRuntime } from "../../services/artifact-runtime/ArtifactRuntime";
 import { ArtifactStorageError } from "../../contracts/storage/artifact-storage-errors";
@@ -187,6 +188,11 @@ const reloadRunningRuntime = Effect.fn("Artifacts.reloadRunningRuntime")(
 );
 
 export const publish = Effect.fn("Artifacts.publish")(function* (input: PublishArtifactInput) {
+  yield* rejectArtifactRuntimeReentry(input.lineageId, "publish").pipe(
+    Effect.mapError(
+      (error) => new ArtifactStorageError({ operation: "publish", message: error.message }),
+    ),
+  );
   yield* requireEffectiveLink(input.sessionId, input.lineageId);
   const current = yield* (yield* ArtifactStorage).read(input.lineageId);
   if (current?.snapshot.kind === "message-board" || input.snapshot.kind === "message-board")
@@ -224,6 +230,11 @@ export const restore = Effect.fn("Artifacts.restore")(function* (input: {
   readonly expectedLatestRevision: number;
   readonly workingDirectory: string;
 }) {
+  yield* rejectArtifactRuntimeReentry(input.lineageId, "restore").pipe(
+    Effect.mapError(
+      (error) => new ArtifactStorageError({ operation: "restore", message: error.message }),
+    ),
+  );
   yield* requireEffectiveLink(input.sessionId, input.lineageId);
   const storage = yield* ArtifactStorage;
   const source = yield* storage.read(input.lineageId, input.sourceRevision);

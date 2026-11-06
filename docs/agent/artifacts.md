@@ -56,7 +56,10 @@ canonical Cake-command bridge, including supported filesystem/network operations
 and explicit-destination, artifact-attributed chat. Agent calls carry the actual
 calling session; background calls invent no session. Discover bridge schemas with
 `artifacts.commands`; `artifacts.command` has the same supported bridge semantics.
-This is not a promise that every Pi tool is a Cake command.
+This is not a promise that every Pi tool is a Cake command. A handler must not
+synchronously invoke/control/publish its own runtime through Cake; these operations
+reject before changes rather than waiting on the handler itself. Use an external
+caller for lifecycle control. Read-only discovery and other artifacts remain usable.
 
 `artifacts.schedules.configure/list/remove` use the existing durable automation
 worker to invoke handlers without an LLM or conversation message. Overdue work

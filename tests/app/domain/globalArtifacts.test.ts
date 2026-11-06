@@ -4,6 +4,16 @@ import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
+import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { TestClock } from "effect/testing";
+import { runSchedulePass } from "../../../src/domain/automations/automationWorker";
+import { ArtifactRuntimeHostLive } from "../../../src/layers/ArtifactRuntimeHostLive";
+import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { unusedEndpointServices } from "../ipc/rpc-endpoint-test-backend";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
+import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import { afterEach, describe, expect } from "vitest";
 import {
   decodeArtifactLineageId,
@@ -44,8 +54,10 @@ const source = `
 return { tools: {
   refresh: async ({ repo }) => {
     const response = await cake("network.request", { url: "https://example.test/prs/" + repo });
-    await data.write(response);
-    return { count: response.prs.length };
+    if (response.status !== 200) throw new Error("PR refresh failed: HTTP " + response.status);
+    const dashboard = JSON.parse(response.body);
+    await data.write(dashboard);
+    return { count: dashboard.prs.length };
   },
   readiness: async () => {
     const stored = await data.read();
@@ -145,65 +157,81 @@ const fixture = async () => {
     families,
     coordinator,
   );
-  const initialize = Effect.gen(function* () {
-    yield* (yield* AutomationRecords).initialize();
-    const connectionId = (yield* ClientConnections).desktop(17);
-    callingWindow = connectionId;
-    yield* (yield* ArtifactRuntime).setHost({
-      invokeCommand: (request) =>
-        Effect.sync((): JsonValue => {
-          commands.push(request);
-          if (request.command === "network.request")
-            return {
-              prs: [
-                { id: 12, checks: "passing", reviews: 2 },
-                { id: 13, checks: "failing", reviews: 1 },
-                { id: 14, checks: "passing", reviews: 0 },
-              ],
-            };
-          return { ok: true };
-        }),
-    });
-    yield* workflows.create({
-      sessionId: "creator",
-      lineageId,
-      global: true,
-      workingDirectory: "/project",
-      snapshot: {
-        protocol: "cake.artifact/v1",
-        id: lineageId,
+  const initialize = (bindFakeHost = true) =>
+    Effect.gen(function* () {
+      yield* (yield* AutomationRecords).initialize();
+      const connectionId = (yield* ClientConnections).desktop(17);
+      callingWindow = connectionId;
+      if (bindFakeHost)
+        yield* (yield* ArtifactRuntime).setHost({
+          invokeCommand: (request) =>
+            Effect.sync((): JsonValue => {
+              commands.push(request);
+              if (request.command === "network.request")
+                return {
+                  ok: true,
+                  command: "network.request",
+                  status: 200,
+                  headers: {},
+                  encoding: "utf8",
+                  body: JSON.stringify({
+                    prs: [
+                      { id: 12, checks: "passing", reviews: 2 },
+                      { id: 13, checks: "failing", reviews: 1 },
+                      { id: 14, checks: "passing", reviews: 0 },
+                    ],
+                  }),
+                };
+              return { ok: true };
+            }),
+        });
+      yield* workflows.create({
         sessionId: "creator",
-        revision: 1,
-        kind: "widget",
-        title: "Pull requests",
-        description: "Pull request readiness dashboard",
-        fallback: { markdown: "PR dashboard" },
-        payload: {
-          language: "html",
-          source: "<div>PR dashboard</div>",
-          brief: "PR dashboard",
-          browser: { digest: "b".repeat(64) },
-          runtime,
+        lineageId,
+        global: true,
+        workingDirectory: "/project",
+        snapshot: {
+          protocol: "cake.artifact/v1",
+          id: lineageId,
+          sessionId: "creator",
+          revision: 1,
+          kind: "widget",
+          title: "Pull requests",
+          description: "Pull request readiness dashboard",
+          fallback: { markdown: "PR dashboard" },
+          payload: {
+            language: "html",
+            source: "<div>PR dashboard</div>",
+            brief: "PR dashboard",
+            browser: { digest: "b".repeat(64) },
+            runtime,
+          },
         },
-      },
-    });
-    yield* workflows.create({
-      sessionId: "creator",
-      lineageId: documentId,
-      workingDirectory: "/project",
-      snapshot: {
-        protocol: "cake.artifact/v1",
-        id: documentId,
+      });
+      yield* workflows.create({
         sessionId: "creator",
-        revision: 1,
-        kind: "markdown",
-        payload: { markdown: "Ordinary documentation" },
-        fallback: { markdown: "Ordinary documentation" },
-      },
+        lineageId: documentId,
+        workingDirectory: "/project",
+        snapshot: {
+          protocol: "cake.artifact/v1",
+          id: documentId,
+          sessionId: "creator",
+          revision: 1,
+          kind: "markdown",
+          payload: { markdown: "Ordinary documentation" },
+          fallback: { markdown: "Ordinary documentation" },
+        },
+      });
+      return connectionId;
     });
-    return connectionId;
-  });
-  return { layer, initialize, commands, events, persisted: () => ledger };
+  return {
+    layer,
+    initialize: initialize(),
+    initializeWithoutHost: initialize(false),
+    commands,
+    events,
+    persisted: () => ledger,
+  };
 };
 const view = (number: number) => ({
   lineageId,
@@ -226,6 +254,224 @@ const configure = () =>
   );
 
 describe("global artifact domain workflow", () => {
+  it.effect(
+    "uses the canonical runtime host and real network command envelope with only HTTP faked",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* Effect.promise(fixture);
+        const requests: string[] = [];
+        let responseStatus = 200;
+        const context = yield* Layer.build(
+          Layer.mergeAll(
+            unusedEndpointServices,
+            WorkflowTestLive,
+            makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
+            Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
+            f.layer,
+            Layer.succeed(
+              HttpClient.HttpClient,
+              HttpClient.make((request) => {
+                requests.push(request.url);
+                return Effect.succeed(
+                  HttpClientResponse.fromWeb(
+                    request,
+                    new Response(
+                      JSON.stringify({
+                        prs: [
+                          { id: 12, checks: "passing", reviews: 2 },
+                          { id: 13, checks: "failing", reviews: 1 },
+                        ],
+                      }),
+                      { status: responseStatus, headers: { "content-type": "application/json" } },
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        );
+        yield* Effect.gen(function* () {
+          yield* f.initializeWithoutHost;
+          yield* Layer.build(ArtifactRuntimeHostLive);
+          expect(
+            yield* artifacts.callTool({ lineageId, name: "refresh", input: { repo: "cake" } }),
+          ).toEqual({ count: 2 });
+          expect(yield* artifacts.callTool({ lineageId, name: "readiness", input: {} })).toEqual({
+            version: "first",
+            ready: [12],
+            blocked: [13],
+          });
+          expect(requests).toEqual(["https://example.test/prs/cake"]);
+          responseStatus = 418;
+          const rejected = yield* artifacts
+            .callTool({ lineageId, name: "refresh", input: { repo: "cake" } })
+            .pipe(Effect.result);
+          expect(rejected._tag).toBe("Failure");
+          if (rejected._tag === "Failure") expect(rejected.failure.message).toContain("HTTP 418");
+          expect((yield* (yield* ArtifactStorage).readState(lineageId)).version).toBe(1);
+          expect(f.commands).toEqual([]);
+        }).pipe(Effect.provide(context));
+      }),
+  );
+
+  it.effect(
+    "rejects canonical same-runtime execution/control before mutations while external and cross-artifact calls still work",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* Effect.promise(fixture);
+        const context = yield* Layer.build(
+          Layer.mergeAll(
+            unusedEndpointServices,
+            WorkflowTestLive,
+            makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
+            Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
+            f.layer,
+          ),
+        );
+        yield* Effect.gen(function* () {
+          yield* f.initializeWithoutHost;
+          yield* Layer.build(ArtifactRuntimeHostLive);
+          const selfRuntime: ArtifactRuntimeDescriptor = {
+            source: `return {tools:{ forward: ({command,input}) => cake(command,input), ping: () => ({ready:true}) }};`,
+            tools: [
+              {
+                name: "forward",
+                description: "Exercise the canonical Cake bridge",
+                inputSchema: { type: "object", required: ["command", "input"] },
+                outputSchema: true,
+              },
+              {
+                name: "ping",
+                description: "Read readiness",
+                inputSchema: { type: "object" },
+                outputSchema: { type: "object", required: ["ready"] },
+              },
+            ],
+          };
+          yield* artifacts.publishRuntime(
+            { lineageId, expectedRevision: revision(1), runtime: selfRuntime },
+            "creator",
+          );
+          yield* artifacts.invokeGlobalArtifactCommand("artifacts.schedules.configure", {
+            lineageId,
+            name: "keep",
+            handler: "ping",
+            input: {},
+            schedule: { _tag: "Interval", startsAt: "2030-01-01T00:01:00.000Z", everySeconds: 60 },
+          });
+          const before = f.persisted().artifactSchedules;
+          const operations: Array<{ command: string; input: JsonValue }> = [
+            ...["pause", "resume", "start", "restart"].map((action) => ({
+              command: `artifacts.runtime.${action}`,
+              input: { lineageId },
+            })),
+            { command: "artifacts.delete", input: { lineageId } },
+            { command: "artifacts.call", input: { lineageId, name: "ping", input: {} } },
+            {
+              command: "artifacts.command",
+              input: {
+                lineageId: documentId,
+                command: "artifacts.runtime.pause",
+                input: { lineageId },
+              },
+            },
+            {
+              command: "artifacts.runtime.publish",
+              input: {
+                lineageId,
+                expectedRevision: 2,
+                runtime: { source: "return {tools:{}};", tools: [] },
+              },
+            },
+            {
+              command: "artifacts.restore",
+              input: { lineageId, sourceRevision: 1, expectedRevision: 2 },
+            },
+            {
+              command: "artifacts.replace",
+              input: { lineageId, expectedRevision: 2, instructions: "Change the view" },
+            },
+          ];
+          for (const operation of operations) {
+            const result = yield* artifacts
+              .callTool({ lineageId, name: "forward", input: operation }, CAKE_CHAT_SESSION_ID)
+              .pipe(Effect.result);
+            expect(result._tag).toBe("Failure");
+            if (result._tag === "Failure")
+              expect(result.failure.message).toContain(
+                "cannot synchronously execute or control its own runtime",
+              );
+          }
+          expect((yield* artifacts.executionStatus(lineageId)).backgroundPaused).toBe(false);
+          expect(f.persisted().artifactSchedules).toEqual(before);
+          expect((yield* (yield* ArtifactStorage).read(lineageId))?.metadata.revision).toBe(2);
+          expect(yield* artifacts.callTool({ lineageId, name: "ping", input: {} })).toEqual({
+            ready: true,
+          });
+          expect(
+            yield* artifacts.callTool({
+              lineageId,
+              name: "forward",
+              input: { command: "artifacts.tools", input: { lineageId } },
+            }),
+          ).toMatchObject({ lineageId, tools: selfRuntime.tools });
+          expect(
+            yield* artifacts.callTool({
+              lineageId,
+              name: "forward",
+              input: { command: "artifacts.inspect", input: { lineageId: documentId } },
+            }),
+          ).toMatchObject({ artifact: { id: documentId }, execution: { executable: false } });
+          const other = decodeArtifactLineageId("other-runtime");
+          const published = yield* (yield* ArtifactStorage).read(lineageId);
+          if (!published) return yield* Effect.fail(new Error("Missing runtime test fixture"));
+          yield* workflows.create({
+            sessionId: "creator",
+            lineageId: other,
+            global: true,
+            workingDirectory: "/project",
+            snapshot: { ...published.snapshot, id: other, revision: 1 },
+          });
+          expect(
+            yield* artifacts.callTool({
+              lineageId,
+              name: "forward",
+              input: {
+                command: "artifacts.call",
+                input: { lineageId: other, name: "ping", input: {} },
+              },
+            }),
+          ).toEqual({ ready: true });
+          yield* artifacts.invokeGlobalArtifactCommand("artifacts.schedules.configure", {
+            lineageId,
+            name: "self-pause",
+            handler: "forward",
+            input: { command: "artifacts.runtime.pause", input: { lineageId } },
+            schedule: { _tag: "Once", at: "2030-01-01T00:01:00.000Z" },
+          });
+          yield* TestClock.setTime(new Date("2030-01-01T00:01:00.000Z").getTime());
+          yield* runSchedulePass((schedule) =>
+            artifacts.callTool({
+              lineageId: schedule.lineageId,
+              name: schedule.handler,
+              input: schedule.input,
+            }),
+          );
+          expect(
+            f.persisted().artifactSchedules.find((schedule) => schedule.name === "self-pause"),
+          ).toMatchObject({
+            lastOutcome: "failed",
+            lastError: expect.stringContaining(
+              "cannot synchronously execute or control its own runtime",
+            ),
+          });
+          expect((yield* artifacts.executionStatus(lineageId)).backgroundPaused).toBe(false);
+          yield* artifacts.controlRuntime(lineageId, "pause");
+          expect((yield* artifacts.executionStatus(lineageId)).backgroundPaused).toBe(true);
+        }).pipe(Effect.provide(context));
+      }),
+  );
+
   it.effect(
     "discovers a global PR tool surface and refreshes, evaluates and sends data after closing its view",
     () =>

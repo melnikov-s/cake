@@ -32,9 +32,11 @@ return {
   tools: {
     refresh: async ({ repo }) => {
       const response = await cake("network.request", { url: "https://example.test/prs/" + repo });
-      await data.write(response);
+      if (response.status !== 200) throw new Error("PR refresh failed: HTTP " + response.status);
+      const dashboard = JSON.parse(response.body);
+      await data.write(dashboard);
       refreshCount += 1;
-      return { refreshCount, count: response.prs.length };
+      return { refreshCount, count: dashboard.prs.length };
     },
     readiness: async () => {
       const stored = await data.read();
@@ -102,10 +104,17 @@ function fixture(hostOverride?: ArtifactRuntimeHost) {
         commands.push(request);
         if (request.command === "network.request")
           return {
-            prs: [
-              { id: 12, checks: "passing", reviews: 2 },
-              { id: 13, checks: "failing", reviews: 1 },
-            ],
+            ok: true,
+            command: "network.request",
+            status: 200,
+            headers: {},
+            encoding: "utf8",
+            body: JSON.stringify({
+              prs: [
+                { id: 12, checks: "passing", reviews: 2 },
+                { id: 13, checks: "failing", reviews: 1 },
+              ],
+            }),
           };
         return { ok: true };
       }),

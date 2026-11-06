@@ -118,6 +118,10 @@ export const observeApplicationEvents = (
           owner?.conversationSessionStore.receive(storeEvent);
           return;
         }
+        if (storeEvent.type === "window-control-requested") {
+          void root.applicationControlStore.handleWindowRequest(storeEvent);
+          return;
+        }
         if (storeEvent.type === "project-session-control-requested") {
           void root.applicationControlStore.handleProjectSessionRequest(storeEvent);
           return;

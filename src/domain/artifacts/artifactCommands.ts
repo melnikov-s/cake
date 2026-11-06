@@ -14,6 +14,8 @@ import { globalArtifactOperationContracts } from "../../contracts/artifacts/glob
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { jsonObjectSchema, type JsonValue } from "../../contracts/serialization/json-contract";
 import { ApplicationState } from "../../services/storage/ApplicationState";
+import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
+import { rejectArtifactRuntimeReentry } from "../../services/artifact-runtime/ArtifactRuntimeExecution";
 import * as agentControl from "../application/agentControl";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import * as chatTargets from "../cake-chats/cakeChatTargets";
@@ -25,8 +27,10 @@ import { toJsonValue } from "../../utils/to-json-value";
 
 export interface ArtifactCommandContext {
   readonly artifactId: string;
-  /** Only the real invoking agent's session. Background and browser calls omit it. */
+  /** Only the genuine invoking session, never inferred from the artifact creator. */
   readonly callingSessionId?: string;
+  /** Actual UI connection, independent of conversation linkage. Background calls omit it. */
+  readonly windowConnectionId?: number;
 }
 
 /** Discovery comes from canonical command schemas, not a second permissions registry. */
@@ -64,7 +68,7 @@ export function describe(command?: string): JsonValue {
     context:
       "Trusted backend host. No current session is inferred. Session-relative commands require an actual callingSessionId; destination chat is always explicit.",
     limits: [
-      "With an actual callingSessionId, commands outside this backend catalog use that session's canonical Cake gateway, including its validation and window/device routing. Without a caller, window/device context is unavailable.",
+      "UI calls retain their actual connected window independently of session linkage. Commands outside this backend catalog use its canonical window registry, or the genuine calling session's Cake gateway. Background calls have no implicit window.",
       "This bridge exposes Cake commands, not arbitrary Pi tools or the Pi agent engine.",
       "Run-relative memory, reports, completion inboxes, threads, scheduled messages and compaction require a real calling session. Use explicit automation/session IDs where supported.",
       "Project MCP settings require a real Project Session Working Directory; global settings work without a session.",
@@ -205,6 +209,14 @@ export const invoke: (
 > = Effect.fn("ArtifactCommands.invoke")(
   function* (command: string, input: JsonValue, context: ArtifactCommandContext) {
     yield* Schema.decodeUnknownEffect(ArtifactLineageId)(context.artifactId);
+    if (command === "artifacts.replace" || command === "artifacts.restore") {
+      const target = yield* Schema.decodeUnknownEffect(
+        Schema.Struct({ lineageId: ArtifactLineageId }),
+      )(input);
+      // These source operations cross a real session's callback boundary before
+      // publication; reject self-reentry before generation or storage changes.
+      yield* rejectArtifactRuntimeReentry(target.lineageId, command);
+    }
     if (artifactHostCommands.has(command)) {
       const invocation = yield* Schema.decodeUnknownEffect(ArtifactHostInvocation)(
         { name: command, arguments: input },
@@ -212,12 +224,17 @@ export const invoke: (
       );
       return yield* host(invocation, context);
     }
-    const result = yield* agentControl.invoke(
-      command,
-      input,
-      yield* caller(context.callingSessionId),
-    );
+    const source = yield* caller(context.callingSessionId);
+    const result = yield* agentControl.invoke(command, input, source, context.windowConnectionId);
     if (result !== undefined) return result;
+    if (context.windowConnectionId !== undefined) {
+      const window = yield* (yield* RendererRequestCoordinator).requestWindowControl(
+        context.windowConnectionId,
+        { name: command, arguments: input },
+        source,
+      );
+      if (window.handled) return window.result;
+    }
     if (!context.callingSessionId)
       return yield* new ArtifactCommandError({
         command,

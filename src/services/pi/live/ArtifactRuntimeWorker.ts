@@ -23,6 +23,7 @@ interface Event {
   readonly name: string;
   readonly input: Schema.Json;
   readonly callingSessionId?: string;
+  readonly windowConnectionId?: number;
   readonly viewId?: string;
 }
 // One execution stays alive at __artifactNext, retaining its own JS closures. No DOM or hidden
@@ -60,6 +61,7 @@ export const makeArtifactRuntimeWorker = Effect.fn("ArtifactRuntime.makeWorker")
   target: ArtifactRuntimeTarget,
   host: ArtifactRuntimeHost,
   callingSessionId?: string,
+  windowConnectionId?: number,
 ) {
   const storage = yield* ArtifactStorage;
   const clientEvents = yield* ClientEvents;
@@ -73,6 +75,7 @@ export const makeArtifactRuntimeWorker = Effect.fn("ArtifactRuntime.makeWorker")
   const ready = yield* Deferred.make<void, ArtifactRuntimeError>();
   const events = yield* Queue.unbounded<Event>();
   let currentSessionId = callingSessionId;
+  let currentWindowConnectionId = windowConnectionId;
   let active: Deferred.Deferred<Schema.Json, ArtifactRuntimeError> | undefined;
   let ended: ArtifactRuntimeError | undefined;
   let running = true;
@@ -87,7 +90,15 @@ export const makeArtifactRuntimeWorker = Effect.fn("ArtifactRuntime.makeWorker")
             {
               name: "__artifactReady",
               execute: (_input, { signal }) =>
-                bridge(Deferred.succeed(ready, undefined).pipe(Effect.as(null)), signal),
+                bridge(
+                  Effect.gen(function* () {
+                    currentSessionId = undefined;
+                    currentWindowConnectionId = undefined;
+                    yield* Deferred.succeed(ready, undefined);
+                    return null;
+                  }),
+                  signal,
+                ),
             },
             {
               name: "__artifactNext",
@@ -97,6 +108,7 @@ export const makeArtifactRuntimeWorker = Effect.fn("ArtifactRuntime.makeWorker")
                     Effect.tap((event) =>
                       Effect.sync(() => {
                         currentSessionId = event.callingSessionId;
+                        currentWindowConnectionId = event.windowConnectionId;
                       }),
                     ),
                   ),
@@ -113,6 +125,8 @@ export const makeArtifactRuntimeWorker = Effect.fn("ArtifactRuntime.makeWorker")
                     );
                     const pending = active;
                     active = undefined;
+                    currentSessionId = undefined;
+                    currentWindowConnectionId = undefined;
                     if (pending) {
                       if (completion.ok) yield* Deferred.succeed(pending, completion.value);
                       else yield* Deferred.fail(pending, failure("handler", completion.message));
@@ -135,6 +149,9 @@ export const makeArtifactRuntimeWorker = Effect.fn("ArtifactRuntime.makeWorker")
                         ...(currentSessionId === undefined
                           ? null
                           : { callingSessionId: currentSessionId }),
+                        ...(currentWindowConnectionId === undefined
+                          ? null
+                          : { windowConnectionId: currentWindowConnectionId }),
                       }),
                     ),
                     Effect.flatMap((value) => Schema.decodeUnknownEffect(Schema.Json)(value)),

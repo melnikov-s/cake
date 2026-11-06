@@ -210,6 +210,11 @@ export class ArtifactDetailStore extends Store<{
     }
   }
 
+  receiveExecutionChange(lineageId: ArtifactLineageId) {
+    if (this.selectedLineageId === lineageId && this.selectedLineage?.latest?.kind === "widget")
+      void this.refreshExecution();
+  }
+
   async refreshExecution() {
     const lineageId = this.selectedLineageId;
     if (!lineageId) return;

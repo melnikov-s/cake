@@ -10,6 +10,10 @@ import {
 } from "effect";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import type { AgentActionNotice } from "../../contracts/application/agent-action-notice";
+import {
+  WindowControlResponse,
+  type WindowControlRequest,
+} from "../../contracts/application/window-control";
 import type { CakeChatControlRequest } from "../../contracts/cake-chats/cake-chat-data";
 import type { ProjectSessionControlInvocation } from "../../contracts/project-sessions/project-session-data";
 import {
@@ -56,6 +60,12 @@ type SessionTarget =
   | { readonly _tag: "CakeChatSession"; readonly sessionId: string };
 
 type PendingRequest =
+  | {
+      readonly _tag: "WindowControl";
+      readonly sessionId?: never;
+      readonly connectionId: number;
+      readonly completion: Deferred.Deferred<JsonValue | undefined>;
+    }
   | {
       readonly _tag: "WindowStateFlush";
       readonly sessionId: "";
@@ -118,6 +128,16 @@ class RendererRequestCoordinatorError extends Schema.TaggedError<RendererRequest
 export interface RendererRequestCoordinatorService {
   /** Current presentation binding only; never creates or acquires a session. */
   readonly connectionForSession: (sessionId: string) => Effect.Effect<number | undefined>;
+  readonly requestWindowControl: (
+    connectionId: number,
+    invocation: WindowControlRequest["invocation"],
+    source?: WindowControlRequest["source"],
+  ) => Effect.Effect<WindowControlResponse, RendererRequestCoordinatorError>;
+  readonly respondWindowControl: (
+    connectionId: number,
+    controlRequestId: string,
+    result: WindowControlResponse,
+  ) => Effect.Effect<void, RendererRequestCoordinatorError>;
   readonly requestWindowStateFlush: (
     connectionId: number,
   ) => Effect.Effect<void, RendererRequestCoordinatorError>;
@@ -280,6 +300,11 @@ const coordinatorError = (operation: string, message: string) =>
   new RendererRequestCoordinatorError({ operation, message });
 
 const cancellationValue = (pending: PendingRequest, stopped: boolean): JsonValue | undefined => {
+  if (pending._tag === "WindowControl")
+    return {
+      handled: true,
+      result: { ok: false, error: "The window control request was cancelled." },
+    };
   if (pending._tag === "WindowStateFlush")
     return "The window disconnected before saving its settings";
   if (pending._tag === "Ui" || pending._tag === "Interview") return undefined;
@@ -812,6 +837,52 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       return yield* awaitPending(interviewRequestId, entry, signal);
     });
 
+    const requestWindowControl = Effect.fn("RendererRequestCoordinator.requestWindowControl")(
+      function* (
+        connectionId: number,
+        invocation: WindowControlRequest["invocation"],
+        source?: WindowControlRequest["source"],
+      ) {
+        if (connections.kind(connectionId) !== "desktop")
+          return yield* coordinatorError(
+            "requestWindowControl",
+            "This operation requires a connected desktop renderer.",
+          );
+        const controlRequestId = crypto.randomUUID();
+        const completion = yield* Deferred.make<JsonValue | undefined>();
+        const entry: PendingRequest = { _tag: "WindowControl", connectionId, completion };
+        pending.set(controlRequestId, entry);
+        yield* publishProjectEvent(connectionId, {
+          type: "window-control-requested",
+          controlRequestId,
+          invocation,
+          ...(source === undefined ? null : { source }),
+        }).pipe(Effect.tapError(() => Effect.sync(() => pending.delete(controlRequestId))));
+        return yield* Schema.decodeUnknownEffect(WindowControlResponse)(
+          yield* awaitPending(controlRequestId, entry),
+        ).pipe(Effect.mapError((cause) => coordinatorError("requestWindowControl", cause.message)));
+      },
+    );
+
+    const respondWindowControl = Effect.fn("RendererRequestCoordinator.respondWindowControl")(
+      function* (connectionId: number, controlRequestId: string, result: WindowControlResponse) {
+        const request = yield* Effect.try({
+          try: () =>
+            validateResponse(
+              "respondWindowControl",
+              controlRequestId,
+              "WindowControl",
+              connectionId,
+            ),
+          catch: (cause) =>
+            cause instanceof RendererRequestCoordinatorError
+              ? cause
+              : coordinatorError("respondWindowControl", String(cause)),
+        });
+        if (request) yield* complete(controlRequestId, result);
+      },
+    );
+
     const requestProjectControl = Effect.fn("RendererRequestCoordinator.requestProjectControl")(
       function* (
         sessionId: string,
@@ -1091,6 +1162,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
           (request) =>
             request._tag !== "CakeChatControl" &&
             !(request._tag === "ProjectControl" && request.origin === "discussion-session") &&
+            request.sessionId !== undefined &&
             sessionIds.has(request.sessionId),
           true,
         );
@@ -1217,6 +1289,8 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
           }),
         ),
       ),
+      requestWindowControl,
+      respondWindowControl,
       requestProjectControl,
       requestCakeChatControl,
       requestWidgetCapture,

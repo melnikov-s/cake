@@ -35,6 +35,10 @@ export class AppControlBridge {
     return getAppState(this.host, source);
   }
 
+  supports(command: string): boolean {
+    return appControlRegistry.has(command);
+  }
+
   async invoke(untrustedInput: unknown, source?: AgentControlSource): Promise<JsonValue> {
     const context: ControlContext = { host: this.host };
     if (source) context.source = source;

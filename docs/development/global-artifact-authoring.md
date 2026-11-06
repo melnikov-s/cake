@@ -70,11 +70,18 @@ One long-lived QuickJS execution retains factory closures. There is no DOM,
 Node global, direct `fetch`, or hidden full browser. Use `network.request` through
 Cake, and durable schedules rather than view-local polling timers. Save meaningful
 changes as they happen; stop/delete hooks are not crash-proof save points.
-The persistence format and any format changes belong to the artifact.
+The persistence format and any format changes belong to the artifact. `data` uses
+the existing lineage JSON state slot also used by the saved-state view bridge; it
+is not a separate backend-versus-view store. Coordinate both sides around one
+artifact-owned format.
 
 Arguments/results must be JSON. Tool names must match returned handlers. Tool
 schemas are JSON Schema documents (draft-07); invalid definitions, arguments and
-results fail explicitly. `artifacts.resolve-reference` projects inert
+results fail explicitly. A handler cannot synchronously call, pause, restart, delete
+or publish its own running runtime through Cake: it would wait for itself. These
+operations reject before mutations with a typed execution error, not a permissions
+decision. Return from the handler and use an external caller for lifecycle control.
+Read-only self-discovery and calls to other artifacts remain supported. `artifacts.resolve-reference` projects inert
 `runtime.js.txt` and `runtime-tools.json` for selective exact-revision authoring.
 
 Current source publication refreshes already-running logic and live views while
@@ -120,12 +127,16 @@ settings and automation commands, plus:
   **explicit existing destination**, returning admission rather than an answer.
 
 Paths are absolute on the backend host, not relative to a deleted creator or the
-viewing machine. Network requests execute on that backend too. This is not a
+viewing machine. Network requests execute on that backend too. Parse the response's
+`body` (for example `JSON.parse(response.body)` for JSON) and check `status`; the
+bridge does not replace the response envelope with the server's JSON payload. This is not a
 promise that every Pi tool is a Cake command. Agent-originated calls carry their
 real calling session; background calls do not invent a current/creating session.
-Session-relative operations need a real caller. Native/window/device functionality
-needs an actual connected host/calling session and may fail when unavailable on a
-standalone backend. Such failures do not create a Pi session or shadow backend.
+Session-relative operations need a real caller. UI-originated calls carry their
+actual renderer connection independently of a conversation link, including calls
+from an unlinked global view and its semantic handler. Native/window/device
+functionality uses that real connected host; later background invocations do not
+inherit an earlier UI window and fail when no required host context exists. Such failures do not create a Pi session or shadow backend.
 
 ## Durable background work
 
@@ -145,6 +156,9 @@ Schedule shapes reuse automation's interval/once/cron schemas; read operation he
 for the exact contract. The existing backend automation worker invokes handlers
 deterministically, without an LLM or conversation message. Reconfiguration replaces
 one stable artifact/name identity; opening multiple views creates no schedules.
+Each due occurrence is consumed only when its individual handler is admitted. If
+an earlier handler pauses a later due one-time schedule, that unadmitted occurrence
+remains due for explicit resume.
 After backend restart, overdue work catches up once instead of replaying missed
 ticks. No execution occurs while the backend is off.
 

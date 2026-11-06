@@ -23,6 +23,7 @@ import {
 import type { ArtifactViewingReport } from "../../contracts/artifacts/artifact-viewing";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
 import { ArtifactRuntime } from "../../services/artifact-runtime/ArtifactRuntime";
+import { rejectArtifactRuntimeReentry } from "../../services/artifact-runtime/ArtifactRuntimeExecution";
 import { ArtifactViews } from "../../services/artifacts/ArtifactViews";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { ClientEvents } from "../../services/clients/ClientEvents";
@@ -80,13 +81,16 @@ export const executionStatus = Effect.fn("GlobalArtifacts.executionStatus")(func
 export const callTool = Effect.fn("GlobalArtifacts.callTool")(function* (
   input: typeof ArtifactToolCallInput.Type,
   callingSessionId?: string,
+  windowConnectionId?: number,
 ) {
+  yield* rejectArtifactRuntimeReentry(input.lineageId, "call");
   const target = yield* requireRuntime(input.lineageId);
   return yield* (yield* ArtifactRuntime).call({
     target,
     name: input.name,
     input: input.input,
     ...(callingSessionId === undefined ? null : { callingSessionId }),
+    ...(windowConnectionId === undefined ? null : { windowConnectionId }),
   });
 });
 
@@ -94,27 +98,40 @@ export const controlRuntime = Effect.fn("GlobalArtifacts.controlRuntime")(functi
   lineageId: ArtifactLineageId,
   action: "status" | "start" | "pause" | "resume" | "restart",
   callingSessionId?: string,
+  windowConnectionId?: number,
 ) {
+  if (action !== "status") yield* rejectArtifactRuntimeReentry(lineageId, action);
+  if (action === "status") return yield* executionStatus(lineageId);
   const runtime = yield* ArtifactRuntime;
-  if (action === "pause") {
-    yield* schedules.setArtifactSchedulesPaused(lineageId, true);
-    yield* runtime.stop(lineageId, "stop", callingSessionId);
-  } else if (action !== "status") {
-    const target = yield* requireRuntime(lineageId);
-    if (action === "restart") yield* runtime.stop(lineageId, "stop", callingSessionId);
-    if (action === "resume") yield* schedules.setArtifactSchedulesPaused(lineageId, false);
-    yield* runtime.lifecycle({
-      target,
-      event: "start",
-      ...(callingSessionId === undefined ? null : { callingSessionId }),
-    });
-  }
+  const events = yield* ClientEvents;
+  yield* Effect.gen(function* () {
+    if (action === "pause") {
+      yield* schedules.setArtifactSchedulesPaused(lineageId, true);
+      yield* runtime.stop(lineageId, "stop", callingSessionId, windowConnectionId);
+    } else {
+      const target = yield* requireRuntime(lineageId);
+      if (action === "restart")
+        yield* runtime.stop(lineageId, "stop", callingSessionId, windowConnectionId);
+      if (action === "resume") yield* schedules.setArtifactSchedulesPaused(lineageId, false);
+      yield* runtime.lifecycle({
+        target,
+        event: "start",
+        ...(callingSessionId === undefined ? null : { callingSessionId }),
+        ...(windowConnectionId === undefined ? null : { windowConnectionId }),
+      });
+    }
+  }).pipe(
+    Effect.ensuring(
+      Effect.sync(() => events.broadcast({ type: "artifact-execution-invalidated", lineageId })),
+    ),
+  );
   return yield* executionStatus(lineageId);
 });
 
 export const deleteArtifact = Effect.fn("GlobalArtifacts.deleteArtifact")(function* (
   lineageId: ArtifactLineageId,
 ) {
+  yield* rejectArtifactRuntimeReentry(lineageId, "delete");
   yield* schedules.removeArtifactSchedules(lineageId);
   yield* (yield* ArtifactRuntime).stop(lineageId, "delete").pipe(
     Effect.tapError((error) => Effect.logWarning("Artifact cleanup hook failed", error)),
@@ -128,6 +145,7 @@ export const publishRuntime = Effect.fn("GlobalArtifacts.publishRuntime")(functi
   input: typeof ArtifactRuntimePublishInput.Type,
   callingSessionId?: string,
 ) {
+  yield* rejectArtifactRuntimeReentry(input.lineageId, "publish");
   if (!callingSessionId)
     return yield* new ArtifactRuntimeError({
       operation: "publish",
@@ -172,6 +190,7 @@ export const reportViewing = Effect.fn("GlobalArtifacts.reportViewing")(function
   );
   yield* views.report(connectionId, report);
   const runtime = yield* ArtifactRuntime;
+  const events = yield* ClientEvents;
   const key = (view: ArtifactViewingReport["visible"][number]) =>
     `${view.lineageId}@r${view.revision}:${view.surface}`;
   for (const prior of previous?.visible ?? []) {
@@ -180,10 +199,20 @@ export const reportViewing = Effect.fn("GlobalArtifacts.reportViewing")(function
     if (target?.revision === prior.revision) {
       if (previous?.active && key(previous.active) === key(prior))
         yield* runtime
-          .lifecycle({ target, event: "blur", viewId: `${connectionId}:${key(prior)}` })
+          .lifecycle({
+            target,
+            event: "blur",
+            viewId: `${connectionId}:${key(prior)}`,
+            windowConnectionId: connectionId,
+          })
           .pipe(Effect.ignore);
       yield* runtime
-        .lifecycle({ target, event: "unmount", viewId: `${connectionId}:${key(prior)}` })
+        .lifecycle({
+          target,
+          event: "unmount",
+          viewId: `${connectionId}:${key(prior)}`,
+          windowConnectionId: connectionId,
+        })
         .pipe(Effect.ignore);
     }
   }
@@ -192,8 +221,23 @@ export const reportViewing = Effect.fn("GlobalArtifacts.reportViewing")(function
     if (!target || target.revision !== view.revision) continue;
     if (!(previous?.visible.some((prior) => key(prior) === key(view)) ?? false))
       yield* runtime
-        .lifecycle({ target, event: "start", viewId: `${connectionId}:${key(view)}` })
-        .pipe(Effect.ignore);
+        .lifecycle({
+          target,
+          event: "start",
+          viewId: `${connectionId}:${key(view)}`,
+          windowConnectionId: connectionId,
+        })
+        .pipe(
+          Effect.ensuring(
+            Effect.sync(() =>
+              events.broadcast({
+                type: "artifact-execution-invalidated",
+                lineageId: view.lineageId,
+              }),
+            ),
+          ),
+          Effect.ignore,
+        );
     const active = report.active !== undefined && key(report.active) === key(view);
     const wasActive = previous?.active !== undefined && key(previous.active) === key(view);
     if (active !== wasActive)
@@ -202,6 +246,7 @@ export const reportViewing = Effect.fn("GlobalArtifacts.reportViewing")(function
           target,
           event: active ? "focus" : "blur",
           viewId: `${connectionId}:${key(view)}`,
+          windowConnectionId: connectionId,
         })
         .pipe(Effect.ignore);
   }
@@ -211,6 +256,7 @@ export const invokeGlobalArtifactCommand = Effect.fn("GlobalArtifacts.invoke")(f
   command: string,
   input: JsonValue,
   callingSessionId?: string,
+  windowConnectionId?: number,
 ) {
   if (!handlesGlobalArtifactCommand(command))
     return yield* new ArtifactRuntimeError({
@@ -234,9 +280,10 @@ export const invokeGlobalArtifactCommand = Effect.fn("GlobalArtifacts.invoke")(f
   }
   if (command === "artifacts.viewing") {
     const window =
-      callingSessionId === undefined
+      windowConnectionId ??
+      (callingSessionId === undefined
         ? undefined
-        : yield* (yield* RendererRequestCoordinator).connectionForSession(callingSessionId);
+        : yield* (yield* RendererRequestCoordinator).connectionForSession(callingSessionId));
     return toJsonValue(yield* (yield* ArtifactViews).read(window));
   }
   if (command === "artifacts.set-global") {
@@ -253,6 +300,7 @@ export const invokeGlobalArtifactCommand = Effect.fn("GlobalArtifacts.invoke")(f
       yield* callTool(
         yield* Schema.decodeUnknownEffect(ArtifactToolCallInput)(input),
         callingSessionId,
+        windowConnectionId,
       ),
     );
   if (command === "artifacts.runtime.publish")
@@ -308,7 +356,9 @@ export const invokeGlobalArtifactCommand = Effect.fn("GlobalArtifacts.invoke")(f
     action === "resume" ||
     action === "restart"
   )
-    return toJsonValue(yield* controlRuntime(lineageId, action, callingSessionId));
+    return toJsonValue(
+      yield* controlRuntime(lineageId, action, callingSessionId, windowConnectionId),
+    );
   return yield* new ArtifactRuntimeError({
     operation: "invoke",
     message: `Unsupported artifact operation: ${command}`,

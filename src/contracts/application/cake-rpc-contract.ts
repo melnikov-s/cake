@@ -1,4 +1,5 @@
 import { EditorDiffSelection } from "../editor/editor-selection";
+import { WindowControlRequest } from "./window-control";
 import { Schema } from "effect";
 import { PrepareFileLocation, PreparedFileLocation } from "../filesystem/file-location";
 import { piSettingsSchema } from "../conversations/session-contract";
@@ -126,6 +127,10 @@ const cakeEventSchemas = {
     type: Schema.Literal("artifact-state-invalidated"),
     lineageId: ArtifactLineageId,
   }),
+  "artifact-execution-invalidated": Schema.Struct({
+    type: Schema.Literal("artifact-execution-invalidated"),
+    lineageId: ArtifactLineageId,
+  }),
   "artifact-catalog-invalidated": Schema.Struct({
     type: Schema.Literal("artifact-catalog-invalidated"),
     lineageId: stringMax(256),
@@ -219,6 +224,9 @@ const cakeEventSchemas = {
   }),
   "agent-action-notice": AgentActionNotice.pipe(
     Schema.fieldsAssign({ type: Schema.Literal("agent-action-notice") }),
+  ),
+  "window-control-requested": WindowControlRequest.pipe(
+    Schema.fieldsAssign({ type: Schema.Literal("window-control-requested") }),
   ),
   "project-session-control-requested": ProjectSessionControlRequest.pipe(
     Schema.fieldsAssign({ type: Schema.Literal("project-session-control-requested") }),
@@ -329,6 +337,7 @@ const cakeEventSchemas = {
 } as const;
 
 export const applicationEventSchema = Schema.Union([
+  cakeEventSchemas["window-control-requested"],
   cakeEventSchemas["agent-action-notice"],
   cakeEventSchemas["pi-settings-changed"],
   cakeEventSchemas["interview-requested"],
@@ -355,6 +364,7 @@ export const applicationEventSchema = Schema.Union([
 
 export const artifactEventSchema = Schema.Union([
   cakeEventSchemas["artifact-state-invalidated"],
+  cakeEventSchemas["artifact-execution-invalidated"],
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["message-board-invalidated"],
   cakeEventSchemas["artifact-updated"],
@@ -390,10 +400,12 @@ export const surfaceEventSchema = Schema.Union([
 ]);
 
 export const cakeEventSchema = Schema.Union([
+  cakeEventSchemas["window-control-requested"],
   cakeEventSchemas["window-state-flush-requested"],
   cakeEventSchemas["agent-action-notice"],
   cakeEventSchemas["pi-settings-changed"],
   cakeEventSchemas["artifact-state-invalidated"],
+  cakeEventSchemas["artifact-execution-invalidated"],
   cakeEventSchemas["screen-capture-requested"],
   cakeEventSchemas["window-blurred"],
   cakeEventSchemas["session-open-requested"],

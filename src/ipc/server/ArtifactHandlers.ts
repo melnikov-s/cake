@@ -34,21 +34,44 @@ export const artifactHandlers = ArtifactRpc.of({
   "artifacts.runtimeStatus": ({ lineageId }) =>
     runtimeError(globalArtifacts.controlRuntime(lineageId, "status")),
   "artifacts.runtimeStart": ({ lineageId }) =>
-    runtimeError(globalArtifacts.controlRuntime(lineageId, "start")),
+    runtimeError(
+      Effect.flatMap(RendererConnection, ({ connectionId }) =>
+        globalArtifacts.controlRuntime(lineageId, "start", undefined, connectionId),
+      ),
+    ),
   "artifacts.runtimePause": ({ lineageId }) =>
-    runtimeError(globalArtifacts.controlRuntime(lineageId, "pause")),
+    runtimeError(
+      Effect.flatMap(RendererConnection, ({ connectionId }) =>
+        globalArtifacts.controlRuntime(lineageId, "pause", undefined, connectionId),
+      ),
+    ),
   "artifacts.runtimeResume": ({ lineageId }) =>
-    runtimeError(globalArtifacts.controlRuntime(lineageId, "resume")),
+    runtimeError(
+      Effect.flatMap(RendererConnection, ({ connectionId }) =>
+        globalArtifacts.controlRuntime(lineageId, "resume", undefined, connectionId),
+      ),
+    ),
   "artifacts.runtimeRestart": ({ lineageId }) =>
-    runtimeError(globalArtifacts.controlRuntime(lineageId, "restart")),
+    runtimeError(
+      Effect.flatMap(RendererConnection, ({ connectionId }) =>
+        globalArtifacts.controlRuntime(lineageId, "restart", undefined, connectionId),
+      ),
+    ),
   "artifacts.callTool": ({ sessionId, ...input }) =>
-    runtimeError(globalArtifacts.callTool(input, sessionId)),
+    runtimeError(
+      Effect.flatMap(RendererConnection, ({ connectionId }) =>
+        globalArtifacts.callTool(input, sessionId, connectionId),
+      ),
+    ),
   "artifacts.cakeCall": ({ lineageId, command, input, sessionId }) =>
     runtimeError(
-      artifactCommands.invoke(command, input, {
-        artifactId: lineageId,
-        ...(sessionId === undefined ? null : { callingSessionId: sessionId }),
-      }),
+      Effect.flatMap(RendererConnection, ({ connectionId }) =>
+        artifactCommands.invoke(command, input, {
+          artifactId: lineageId,
+          windowConnectionId: connectionId,
+          ...(sessionId === undefined ? null : { callingSessionId: sessionId }),
+        }),
+      ),
     ),
   "artifacts.reportViewing": (report) =>
     runtimeError(

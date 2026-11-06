@@ -11,6 +11,7 @@ type NativePassthroughEvent = Extract<
       | "ui-request-settled"
       | "extension-ui-intent"
       | "project-session-control-requested"
+      | "window-control-requested"
       | "embedded-editor-annotation-requested"
       | "embedded-editor-side-chat-requested";
   }
@@ -151,7 +152,8 @@ export function toStoreEvent(event: CakeEvent): StoreEvent | undefined {
   if (
     event.type === "ui-request-settled" ||
     event.type === "extension-ui-intent" ||
-    event.type === "project-session-control-requested"
+    event.type === "project-session-control-requested" ||
+    event.type === "window-control-requested"
   )
     return event;
   if (

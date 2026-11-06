@@ -12,6 +12,11 @@ export const observeArtifactEvents = (runtime: Runtime, root: RootStore) =>
           root.inlineWidgetStore.refreshArtifactState(event.lineageId);
           return;
         }
+        if (event.type === "artifact-execution-invalidated") {
+          root.artifactLibraryStore.detailStore.receiveExecutionChange(event.lineageId);
+          root.artifactMenuStore.detailStore.receiveExecutionChange(event.lineageId);
+          return;
+        }
         if (event.type === "message-board-invalidated") {
           root.artifactLibraryStore.receiveBoardChange(event.lineageId);
           root.artifactMenuStore.receiveBoardChange(event.lineageId);

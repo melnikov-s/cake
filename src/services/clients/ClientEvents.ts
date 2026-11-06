@@ -25,6 +25,7 @@ export interface ClientEventsService {
       | "pi-settings-changed"
       | "extension-ui-intent"
       | "project-session-control-requested"
+      | "window-control-requested"
       | "browser-native-requested"
       | "widget-capture-requested"
       | "screen-capture-requested"
@@ -44,6 +45,7 @@ export interface ClientEventsService {
   ) => Stream.Stream<
     FocusedCakeEvent<
       | "artifact-state-invalidated"
+      | "artifact-execution-invalidated"
       | "artifact-updated"
       | "artifact-catalog-invalidated"
       | "message-board-invalidated"

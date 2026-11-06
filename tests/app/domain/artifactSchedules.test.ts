@@ -23,6 +23,7 @@ import {
 import { runSchedulePass } from "../../../src/domain/automations/automationWorker";
 import { automationFixture } from "../helpers/automationFixture";
 import { AutomationRecords } from "../../../src/services/automations/AutomationRecords";
+import { ClientEventsLive } from "../../../src/services/clients/ClientEventsLive";
 import {
   AutomationStorage,
   makeAutomationStorageLive,
@@ -52,7 +53,7 @@ const input = (
 const fixture = Effect.fn("ArtifactScheduleTest.fixture")(function* (
   persisted: Ref.Ref<AutomationLedger>,
 ) {
-  const context = yield* Layer.build(
+  const recordsContext = yield* Layer.build(
     AutomationRecords.layer.pipe(
       Layer.provide(
         Layer.succeed(AutomationStorage, {
@@ -62,6 +63,7 @@ const fixture = Effect.fn("ArtifactScheduleTest.fixture")(function* (
       ),
     ),
   );
+  const context = Context.merge(recordsContext, yield* Layer.build(ClientEventsLive));
   const records = Context.get(context, AutomationRecords);
   yield* records.initialize();
   return { context, records };
@@ -241,6 +243,40 @@ describe("deterministic artifact schedules", () => {
     }),
   );
 
+  it.effect(
+    "keeps an unadmitted due Once occurrence when an earlier handler pauses it, then runs it once on resume",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* setup();
+        yield* Effect.gen(function* () {
+          const once = { _tag: "Once" as const, at: "2030-01-01T00:01:00.000Z" };
+          yield* configureArtifactSchedule(input({ schedule: once }));
+          yield* configureArtifactSchedule(input({ lineageId: otherId, schedule: once }));
+          yield* TestClock.adjust("1 minute");
+          const calls: string[] = [];
+          const invoke = Effect.fn("ArtifactScheduleTest.pauseLater")(function* (
+            schedule: ArtifactSchedule,
+          ) {
+            calls.push(schedule.lineageId);
+            if (schedule.lineageId === lineageId) yield* setArtifactSchedulesPaused(otherId, true);
+          });
+          yield* runArtifactSchedulePass(invoke);
+          expect(calls).toEqual([lineageId]);
+          expect((yield* listArtifactSchedules(otherId))[0]).toMatchObject({
+            paused: true,
+            nextScheduledAt: once.at,
+          });
+          expect((yield* listArtifactSchedules(otherId))[0]?.lastRunAt).toBeUndefined();
+          yield* setArtifactSchedulesPaused(otherId, false);
+          yield* runArtifactSchedulePass(invoke);
+          yield* runArtifactSchedulePass(invoke);
+          expect(calls).toEqual([lineageId, otherId]);
+          expect((yield* listArtifactSchedules(otherId))[0]?.nextScheduledAt).toBeUndefined();
+          expect((yield* listArtifactSchedules(otherId))[0]?.lastOutcome).toBe("completed");
+        }).pipe(Effect.provide(f.context));
+      }),
+  );
+
   it.effect("rejects invalid configuration before saving", () =>
     Effect.gen(function* () {
       const f = yield* setup();
@@ -290,7 +326,11 @@ describe("deterministic artifact schedules", () => {
         yield* TestClock.setTime(new Date("2030-01-01T00:00:00.000Z").getTime());
         yield* configureArtifactSchedule(input());
         yield* setArtifactSchedulesPaused(lineageId, true);
-      }).pipe(Effect.provide(AutomationRecords.layer.pipe(Layer.provide(storage))));
+      }).pipe(
+        Effect.provide(
+          Layer.merge(AutomationRecords.layer.pipe(Layer.provide(storage)), ClientEventsLive),
+        ),
+      );
       const stored = yield* Effect.promise(() => readFile(document, "utf8"));
       expect(JSON.parse(stored).version).toBe(2);
       const restored = yield* Effect.gen(function* () {

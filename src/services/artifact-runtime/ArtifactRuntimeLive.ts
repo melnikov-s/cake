@@ -13,6 +13,7 @@ import { ArtifactStorage } from "../storage/ArtifactStorage";
 import { ClientEvents } from "../clients/ClientEvents";
 import { makeArtifactRuntimeWorker } from "../pi/live/ArtifactRuntimeWorker";
 import { ArtifactRuntime, type ArtifactRuntimeHost } from "./ArtifactRuntime";
+import { rejectArtifactRuntimeReentry } from "./ArtifactRuntimeExecution";
 
 const failure = (operation: string, cause: unknown) =>
   new ArtifactRuntimeError({
@@ -60,6 +61,10 @@ export const ArtifactRuntimeLive = Layer.effect(
   Effect.gen(function* () {
     const storage = yield* ArtifactStorage;
     const clientEvents = yield* ClientEvents;
+    const invalidateExecution = (lineageId: ArtifactLineageId) =>
+      Effect.sync(() =>
+        clientEvents.broadcast({ type: "artifact-execution-invalidated", lineageId }),
+      );
     let boundHost: ArtifactRuntimeHost | undefined;
     const host: ArtifactRuntimeHost = {
       invokeCommand: Effect.fn("ArtifactRuntime.invokeCommand")(function* (input) {
@@ -99,6 +104,7 @@ export const ArtifactRuntimeLive = Layer.effect(
         const stop = Effect.fn("ArtifactRuntime.controller.stop")(function* (
           event: "stop" | "delete" = "stop",
           callingSessionId?: string,
+          windowConnectionId?: number,
         ) {
           const previous = current;
           current = undefined;
@@ -113,6 +119,7 @@ export const ArtifactRuntimeLive = Layer.effect(
                 name: event,
                 input: null,
                 ...(callingSessionId === undefined ? null : { callingSessionId }),
+                ...(windowConnectionId === undefined ? null : { windowConnectionId }),
               })
               .pipe(Effect.ensuring(Scope.close(previous.scope, Exit.void)));
           }
@@ -120,13 +127,19 @@ export const ArtifactRuntimeLive = Layer.effect(
         const ensure = Effect.fn("ArtifactRuntime.controller.ensure")(function* (
           target: ArtifactRuntimeTarget,
           callingSessionId?: string,
+          windowConnectionId?: number,
         ) {
           if (current?.target.revision === target.revision && current.worker.isRunning())
             return current;
-          if (current) yield* stop("stop", callingSessionId);
+          if (current) yield* stop("stop", callingSessionId, windowConnectionId);
           yield* compile(target.runtime);
           const scope = yield* Scope.fork(owner);
-          const worker = yield* makeArtifactRuntimeWorker(target, host, callingSessionId).pipe(
+          const worker = yield* makeArtifactRuntimeWorker(
+            target,
+            host,
+            callingSessionId,
+            windowConnectionId,
+          ).pipe(
             Effect.provideService(Scope.Scope, scope),
             Effect.provideService(ArtifactStorage, storage),
             Effect.provideService(ClientEvents, clientEvents),
@@ -160,12 +173,19 @@ export const ArtifactRuntimeLive = Layer.effect(
       lineageId: ArtifactLineageId,
       event: "stop" | "delete" = "stop",
       callingSessionId?: string,
+      windowConnectionId?: number,
     ) {
+      yield* rejectArtifactRuntimeReentry(lineageId, event);
       const cached = yield* ScopedCache.getOption(controllers, lineageId);
       if (Option.isSome(cached)) {
         yield* cached.value
-          .stop(event, callingSessionId)
-          .pipe(cached.value.record, Effect.uninterruptible, cached.value.semaphore.withPermit);
+          .stop(event, callingSessionId, windowConnectionId)
+          .pipe(
+            cached.value.record,
+            Effect.uninterruptible,
+            cached.value.semaphore.withPermit,
+            Effect.ensuring(invalidateExecution(lineageId)),
+          );
       }
       return yield* status(lineageId);
     });
@@ -180,13 +200,18 @@ export const ArtifactRuntimeLive = Layer.effect(
       status,
       stop,
       call: Effect.fn("ArtifactRuntime.call")(function* (input) {
+        yield* rejectArtifactRuntimeReentry(input.target.lineageId, "call");
         const controller = yield* ScopedCache.get(controllers, input.target.lineageId);
         return yield* Effect.gen(function* () {
           const tools = yield* compile(input.target.runtime);
           const tool = tools.find((entry) => entry.definition.name === input.name);
           if (!tool) return yield* failure("call", `Unknown artifact tool: ${input.name}`);
           yield* validate(tool.input, input.input, "input");
-          const current = yield* controller.ensure(input.target, input.callingSessionId);
+          const current = yield* controller.ensure(
+            input.target,
+            input.callingSessionId,
+            input.windowConnectionId,
+          );
           const result = yield* current.worker.send({
             kind: "tool",
             name: input.name,
@@ -194,14 +219,28 @@ export const ArtifactRuntimeLive = Layer.effect(
             ...(input.callingSessionId === undefined
               ? null
               : { callingSessionId: input.callingSessionId }),
+            ...(input.windowConnectionId === undefined
+              ? null
+              : { windowConnectionId: input.windowConnectionId }),
           });
           yield* validate(tool.output, result, "output");
           return result;
-        }).pipe(controller.record, Effect.uninterruptible, controller.semaphore.withPermit);
+        }).pipe(
+          controller.record,
+          Effect.uninterruptible,
+          controller.semaphore.withPermit,
+          Effect.ensuring(invalidateExecution(input.target.lineageId)),
+        );
       }),
       lifecycle: Effect.fn("ArtifactRuntime.lifecycle")(function* (input) {
+        yield* rejectArtifactRuntimeReentry(input.target.lineageId, input.event);
         if (input.event === "stop" || input.event === "delete")
-          return yield* stop(input.target.lineageId, input.event, input.callingSessionId);
+          return yield* stop(
+            input.target.lineageId,
+            input.event,
+            input.callingSessionId,
+            input.windowConnectionId,
+          );
         // A late blur/unmount never starts code after the view has gone away.
         const cached = yield* ScopedCache.getOption(controllers, input.target.lineageId);
         const closingView = input.event === "blur" || input.event === "unmount";
@@ -210,7 +249,11 @@ export const ArtifactRuntimeLive = Layer.effect(
         yield* Effect.gen(function* () {
           const current = closingView
             ? controller.peek()
-            : yield* controller.ensure(input.target, input.callingSessionId);
+            : yield* controller.ensure(
+                input.target,
+                input.callingSessionId,
+                input.windowConnectionId,
+              );
           if (
             !current ||
             !current.worker.isRunning() ||
@@ -226,8 +269,16 @@ export const ArtifactRuntimeLive = Layer.effect(
                 ? null
                 : { callingSessionId: input.callingSessionId }),
               ...(input.viewId === undefined ? null : { viewId: input.viewId }),
+              ...(input.windowConnectionId === undefined
+                ? null
+                : { windowConnectionId: input.windowConnectionId }),
             });
-        }).pipe(controller.record, Effect.uninterruptible, controller.semaphore.withPermit);
+        }).pipe(
+          controller.record,
+          Effect.uninterruptible,
+          controller.semaphore.withPermit,
+          Effect.ensuring(invalidateExecution(input.target.lineageId)),
+        );
         return yield* status(input.target.lineageId);
       }),
     });

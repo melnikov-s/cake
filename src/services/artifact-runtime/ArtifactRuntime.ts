@@ -11,6 +11,7 @@ import type { ArtifactRuntimeTool } from "../../contracts/artifacts/artifact-run
 export interface ArtifactRuntimeInvocation {
   readonly target: ArtifactRuntimeTarget;
   readonly callingSessionId?: string;
+  readonly windowConnectionId?: number;
 }
 export interface ArtifactRuntimeHost {
   /** Composition supplies canonical Cake dispatch, not a renderer or a synthetic session. */
@@ -19,6 +20,7 @@ export interface ArtifactRuntimeHost {
     readonly command: string;
     readonly input: Schema.Json;
     readonly callingSessionId?: string;
+    readonly windowConnectionId?: number;
   }) => Effect.Effect<Schema.Json, ArtifactRuntimeError>;
 }
 export class ArtifactRuntime extends Context.Service<
@@ -44,6 +46,7 @@ export class ArtifactRuntime extends Context.Service<
       lineageId: ArtifactLineageId,
       event?: "stop" | "delete",
       callingSessionId?: string,
+      windowConnectionId?: number,
     ) => Effect.Effect<ArtifactRuntimeStatus, ArtifactRuntimeError>;
   }
 >()("cake/services/artifact-runtime/ArtifactRuntime") {}

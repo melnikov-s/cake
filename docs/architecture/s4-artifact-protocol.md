@@ -153,8 +153,11 @@ for host functionality, with process isolation and boundary validation rather
 than capability grants or a permissions UI. Supported host commands include
 filesystem read/write/list, HTTP(S) requests and explicit-destination,
 artifact-attributed chat input. Background calls have no inferred/creator session;
-agent calls carry their actual calling session. Session-relative operations need
-a real caller, and native/window operations still require their actual host.
+agent calls carry their actual calling session. UI-originated calls retain their
+real renderer connection separately from a conversation link, including semantic
+handlers called by an unlinked global view. Later background calls inherit neither
+a prior window nor a creator session. Session-relative operations need a real
+caller, and native/window operations still require their actual host.
 This is Cake command coverage, not arbitrary access to Pi tools. See
 [authoring](../development/global-artifact-authoring.md) for discovery and schemas.
 
@@ -163,7 +166,11 @@ new backend source/tools while retaining its accepted view. All source publicati
 paths refresh already-running logic, preserve saved data and refresh live views;
 unopened runtimes stay lazy. A call retains its resolved revision until settlement.
 The artifact owns any data-format change; Cake supplies no generic migration
-framework. A reload failure is visible in runtime status, not a claim that an
+framework. Synchronous self-directed runtime execution/control/publication through
+the Cake bridge is rejected before side effects because the worker would wait for
+its own serialized operation. This is an execution limitation, not a permissions
+allowlist; read-only self-discovery, external calls and other artifacts remain
+supported. A reload failure is visible in runtime status, not a claim that an
 already-committed revision failed to publish.
 
 Named deterministic artifact schedules live in the existing automation ledger and
@@ -171,7 +178,11 @@ worker. `artifacts.schedules.configure/list/remove` manage them without an LLM,
 Pi session or scheduled conversation message. Due work resolves current source and
 advances directly past now, producing one catch-up after backend restart rather
 than replaying missed ticks. The backend must be running to execute. Latest
-success/failure receipts are persisted. Pause stops logic and durably pauses
+success/failure receipts are persisted. A due occurrence is consumed only on its
+individual admission; a later due one-time handler paused by an earlier handler
+remains due until resume. Focused execution invalidations refresh selected runtime
+controls and errors after lifecycle/handler/schedule changes, without polling or
+remounting the view. Pause stops logic and durably pauses
 background work until explicit resume; opening, starting or restarting the view
 never resumes paused schedules. Tools remain discoverable/callable while paused.
 Deletion removes schedules, stops logic, attempts its cleanup hook, then deletes

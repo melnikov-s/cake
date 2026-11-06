@@ -36,6 +36,10 @@ export class AppControlRegistry {
     });
   }
 
+  has(command: string): boolean {
+    return this.controls.has(command);
+  }
+
   async invoke(untrustedInput: unknown, context: ControlContext) {
     const envelope = await decodeEnvelope(untrustedInput);
     const control = this.controls.get(envelope.name);
