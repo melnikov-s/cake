@@ -222,6 +222,11 @@ export interface AppControlHost {
     ): Promise<QueuedConversationMessages>;
     listPendingMessages(sessionId: string): Promise<QueuedConversationMessages>;
     dequeuePendingMessages(sessionId: string): Promise<QueuedConversationMessages>;
+    updateQueuedMessage(
+      sessionId: string,
+      partId: string,
+      text: string,
+    ): Promise<QueuedConversationMessages>;
     removeQueuedMessage(sessionId: string, partId: string): Promise<QueuedConversationMessages>;
     steerQueuedMessage(sessionId: string, partId: string): Promise<QueuedConversationMessages>;
     sendQueuedMessageNow(sessionId: string, partId: string): Promise<QueuedConversationMessages>;
@@ -444,7 +449,11 @@ type AppControlSuccess =
   | { ok: true; command: "sessions.pending" | "sessions.pending-info"; result: JsonValue }
   | {
       ok: true;
-      command: "sessions.cancel-queued" | "sessions.steer-queued" | "sessions.send-now";
+      command:
+        | "sessions.update-queued"
+        | "sessions.cancel-queued"
+        | "sessions.steer-queued"
+        | "sessions.send-now";
       queue: { steeringCount: number; followUpCount: number };
     }
   | {

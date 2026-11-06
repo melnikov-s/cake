@@ -153,6 +153,37 @@ export function durableInputPresentation(value: string) {
   };
 }
 
+export function updateDurableInputText(value: string, text: string): string {
+  const match = prefix.exec(value);
+  if (!match) throw new Error("That queued message cannot be edited");
+  const metadata = Schema.decodeUnknownOption(Schema.fromJsonString(Presentation))(match[1]);
+  if (Option.isNone(metadata)) throw new Error("That queued message cannot be edited");
+  const input = durableInputPresentation(value);
+  if (isAutomaticInput(input.internal) || input.subagentReport)
+    throw new Error("That queued message cannot be edited");
+  if (
+    !text.trim() &&
+    !input.files.length &&
+    !input.imageNames.length &&
+    !parseContextAttachmentBlocks(input.body).attachments.length
+  )
+    throw new Error("Enter a message or keep an attachment");
+  const internal = input.internal;
+  const oldText =
+    internal?._tag === "UserWithReminders" ? (internal.userText ?? internal.text) : input.text;
+  const updatedText = text + input.text.slice(oldText.length);
+  const body =
+    input.body.slice(0, input.textOffset) +
+    updatedText +
+    (!input.text && text && input.body.slice(input.textOffset) ? "\n\n" : "") +
+    input.body.slice(input.textOffset + input.text.length);
+  const updatedInternal =
+    internal?._tag === "UserWithReminders"
+      ? { ...internal, text: text + internal.text.slice(oldText.length), userText: text }
+      : internal;
+  return `<cake-input-presentation>${JSON.stringify({ ...metadata.value, textLength: updatedText.length, internal: updatedInternal }).replaceAll("<", "\\u003c")}</cake-input-presentation>\n${body}`;
+}
+
 export function markDurableInputSteering(value: string, steering = true): string {
   const input = durableInputPresentation(value);
   const metadata = {

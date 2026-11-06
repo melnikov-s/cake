@@ -40,6 +40,13 @@ export class RuntimeTurnCompletion {
     return completion;
   }
 
+  updateQueued(id: string, content: string, internal?: InternalInput) {
+    const item = this.pending.get(id);
+    if (!item || item.consumed) return;
+    item.content = content;
+    item.internal = internal;
+  }
+
   internalInput(content: string) {
     return [...this.pending.values()].find((item) => !item.consumed && item.content === content)
       ?.internal;

@@ -227,6 +227,10 @@ export interface CakeSessionHandle {
   ) => Effect.Effect<PiPendingMessages, PiSessionError>;
   readonly clearQueue: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly cancelSteering: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
+  readonly updateQueuedMessage: (
+    partId: string,
+    text: string,
+  ) => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly removeQueuedMessage: (partId: string) => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly steerQueuedMessage: (partId: string) => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly sendQueuedMessageNow: (
@@ -920,7 +924,16 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                     ...retained.filter((item) => !pendingIds.includes(item.turnId)),
                     ...after.flatMap((queued) => {
                       const input = retained.find((item) => item.turnId === queued.turnId);
-                      return input ? [{ ...input, delivery: queued.delivery }] : [];
+                      return input
+                        ? [
+                            {
+                              ...input,
+                              delivery: queued.delivery,
+                              text: queued.text,
+                              internal: queued.internal,
+                            },
+                          ]
+                        : [];
                     }),
                   ];
                   yield* recoveryStorage.update({
@@ -1453,6 +1466,10 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             editQueue("reorderPendingMessage", (runtime) => runtime.reorderPendingMessage(input)),
           clearQueue: () => editQueue("clearQueue", (runtime) => runtime.clearQueue()),
           cancelSteering: () => editQueue("cancelSteering", (runtime) => runtime.cancelSteering()),
+          updateQueuedMessage: (partId, text) =>
+            editQueue("updateQueuedMessage", (runtime) =>
+              runtime.updateQueuedMessage(partId, text),
+            ),
           removeQueuedMessage: (partId) =>
             editQueue("removeQueuedMessage", (runtime) => runtime.removeQueuedMessage(partId)),
           steerQueuedMessage: (partId) =>

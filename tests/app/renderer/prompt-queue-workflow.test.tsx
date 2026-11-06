@@ -497,44 +497,73 @@ describe("Prompt queue workflow", () => {
     expect(queuedTexts()).toEqual(["Keep steering", "Keep queued"]);
   });
 
-  it("restores an admitted payload for editing and resubmits at the authoritative queue tail", async () => {
-    const first = queuePart(1, "# First", {
-      markdown: true,
-      attachments: [
-        { kind: "image", name: "diagram.png", mimeType: "image/png", data: "aW1hZ2U=" },
-      ],
-    });
-    const second = queuePart(2, "Second");
-    const revised = queuePart(3, "# First revised", {
-      markdown: true,
-      attachments: first.queuedInput!.attachments,
-    });
-    const remove = vi.fn<Client["sessionChats"]["removeQueuedMessage"]>(async () =>
-      fixture.publish([second]),
-    );
-    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => {
-      fixture.publish([second, revised]);
-      return turnId;
-    });
-    using fixture = renderQueue([first, second], {
-      sessionChats: { removeQueuedMessage: remove, prompt },
-    });
-    await fixture.user.click(screen.getByRole("button", { name: "Edit queued prompt: # First" }));
-    expect(screen.getByRole<HTMLTextAreaElement>("combobox").value).toBe("# First");
-    expect(screen.getByAltText("diagram.png")).toBeDefined();
-    expect(queuedTexts()).toEqual(["Second"]);
-    await fixture.user.type(screen.getByRole("combobox"), " revised");
-    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
-    expect(prompt).toHaveBeenCalledWith(
-      expect.objectContaining({
+  it.each(["queued", "steering"] as const)(
+    "reads, cancels and saves a %s message in its popup without touching the composer or queue position",
+    async (lane) => {
+      const first = queuePart(1, "# First", {
+        lane,
+        markdown: true,
+        attachments: [
+          { kind: "image", name: "diagram.png", mimeType: "image/png", data: "aW1hZ2U=" },
+        ],
+      });
+      const second = queuePart(2, "Second", { lane });
+      const revised = {
+        ...first,
+        id: "queued-revised",
         text: "# First revised",
-        attachments: first.queuedInput!.attachments,
-        renderUserMessageAsMarkdown: true,
-      }),
-      commandOptions,
-    );
-    expect(queuedTexts()).toEqual(["Second", "# First revised"]);
+        queuedInput: { ...first.queuedInput!, text: "# First revised" },
+      };
+      const update = vi.fn<Client["sessionChats"]["updateQueuedMessage"]>(async () =>
+        fixture.publish([revised, second]),
+      );
+      using fixture = renderQueue([first, second], {
+        sessionChats: { updateQueuedMessage: update },
+      });
+      await fixture.user.type(screen.getByRole("combobox"), "Unsent draft");
+      await fixture.user.click(
+        screen.getByRole("button", { name: "View queued message: # First" }),
+      );
+      const popup = screen.getByRole("dialog", {
+        name: lane === "steering" ? "Steering message" : "Queued message",
+      });
+      expect(within(popup).getByRole("button", { name: "Copy queued message" })).toBeDefined();
+      expect(update).not.toHaveBeenCalled();
+      await fixture.user.click(within(popup).getByRole("button", { name: "Edit" }));
+      await fixture.user.type(within(popup).getByRole("textbox"), " discarded");
+      await fixture.user.click(within(popup).getByRole("button", { name: "Cancel" }));
+      expect(queuedTexts()).toEqual(["# First", "Second"]);
+      expect(update).not.toHaveBeenCalled();
+      await fixture.user.click(within(popup).getByRole("button", { name: "Edit" }));
+      expect(within(popup).getByRole<HTMLTextAreaElement>("textbox").value).toBe("# First");
+      await fixture.user.type(within(popup).getByRole("textbox"), " revised");
+      await fixture.user.click(within(popup).getByRole("button", { name: "Save" }));
+      expect(update).toHaveBeenCalledWith(
+        { sessionId: queueSessionId, partId: first.id, text: "# First revised" },
+        commandOptions,
+      );
+      expect(queuedTexts()).toEqual(["# First revised", "Second"]);
+      expect(within(popup).getByRole("heading", { name: "First revised" })).toBeDefined();
+      expect(screen.getByRole<HTMLTextAreaElement>("combobox").value).toBe("Unsent draft");
+    },
+  );
+
+  it("keeps failed edits available for retry and allows dismissal without mutation", async () => {
+    const first = queuePart(1, "First");
+    const update = vi.fn<Client["sessionChats"]["updateQueuedMessage"]>(async () => {
+      throw new Error("Queue update failed");
+    });
+    using fixture = renderQueue([first], { sessionChats: { updateQueuedMessage: update } });
+    await fixture.user.click(screen.getByRole("button", { name: "Edit queued prompt: First" }));
+    const popup = screen.getByRole("dialog", { name: "Queued message" });
+    await fixture.user.type(within(popup).getByRole("textbox"), " revised");
+    await fixture.user.click(within(popup).getByRole("button", { name: "Save" }));
+    expect(await within(popup).findByRole("alert")).toBeDefined();
+    expect(within(popup).getByRole<HTMLTextAreaElement>("textbox").value).toBe("First revised");
+    expect(queuedTexts()).toEqual(["First"]);
+    await fixture.user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Queued message" })).toBeNull();
+    expect(update).toHaveBeenCalledOnce();
   });
 
   it("withholds mutation positions for optimistic admissions until the canonical item arrives", async () => {

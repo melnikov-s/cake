@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { parseScheduledMessage } from "../../../contracts/conversations/scheduled-message-envelope";
 import {
   applyArtifactExitTransition,
   artifactTargetFromReminder,
@@ -59,6 +60,8 @@ export interface CakeSessionRuntimeTurnController {
   readonly pendingRecoveryInputs: () => ReadonlyArray<{
     turnId: string;
     delivery: "steer" | "follow-up";
+    text: string;
+    internal?: InternalInput;
   }>;
   readonly executingTurnIds: () => ReadonlyArray<string>;
   readonly prompt: (
@@ -91,6 +94,10 @@ export interface CakeSessionRuntimeTurnController {
   readonly reorderPendingMessage: (input: PiPendingMessageReorder) => Promise<PiPendingMessages>;
   readonly clearQueue: () => Promise<{ steering: string[]; followUp: string[] }>;
   readonly cancelSteering: () => Promise<{ steering: string[]; followUp: string[] }>;
+  readonly updateQueuedMessage: (
+    partId: string,
+    text: string,
+  ) => Promise<{ steering: string[]; followUp: string[] }>;
   readonly removeQueuedMessage: (
     partId: string,
   ) => Promise<{ steering: string[]; followUp: string[] }>;
@@ -1022,6 +1029,51 @@ export function createCakeSessionRuntimeTurnController(input: {
       await input.emitSnapshot();
       return pendingMessages();
     },
+    async updateQueuedMessage(partId, text) {
+      assertActive();
+      const queues = queuedForStop();
+      const location = locateQueuedMessage(
+        partId,
+        queues.steering.map((item) => item.content),
+        queues["follow-up"].map((item) => item.content),
+      );
+      if (!location || location.list === "pending")
+        throw new Error("That queued message is no longer available");
+      const lane = location.list === "steering" ? "steering" : "follow-up";
+      const item = queues[lane][location.index]!;
+      const internal = item.turnId ? turnCompletions.internalInputById(item.turnId) : undefined;
+      if (
+        item.command ||
+        isAutomaticInput(internal) ||
+        parseCrossSessionMessage(item.content) ||
+        parseScheduledMessage(stripPresentationModeReminder(item.content))
+      )
+        throw new Error("That queued message cannot be edited");
+      if (!text.trim() && !item.attachments.length)
+        throw new Error("Enter a message or keep an attachment");
+      const oldText =
+        internal?._tag === "UserWithReminders" ? (internal.userText ?? internal.text) : item.text;
+      const body = stripPresentationModeReminder(item.content);
+      const offset = item.content.length - body.length;
+      const start = item.content.indexOf(oldText, offset);
+      if (start < 0) throw new Error("That queued message cannot be edited");
+      const updatedText = text + item.text.slice(oldText.length);
+      const updatedContent =
+        item.content.slice(0, start) +
+        text +
+        (!oldText && !item.text && body && text ? "\n\n" : "") +
+        item.content.slice(start + oldText.length);
+      const updatedInternal =
+        internal?._tag === "UserWithReminders"
+          ? { ...internal, text: text + internal.text.slice(oldText.length), userText: text }
+          : internal;
+      queues[lane][location.index] = { ...item, text: updatedText, content: updatedContent };
+      if (item.turnId) turnCompletions.updateQueued(item.turnId, updatedContent, updatedInternal);
+      await replacePendingQueues(queues);
+      input.syncQueuedParts();
+      await input.emitSnapshot();
+      return listQueuedMessages();
+    },
     removeQueuedMessage: (partId) =>
       editQueuedMessage(
         partId,
@@ -1203,25 +1255,21 @@ export function createCakeSessionRuntimeTurnController(input: {
       };
     },
     pendingRecoveryInputs() {
-      reconcileQueue();
-      return [
-        ...trackedQueue.steering.flatMap((item) =>
-          item.turnId ? [{ turnId: item.turnId, delivery: "steer" as const }] : [],
+      const queues = queuedForStop();
+      return (["steering", "follow-up"] as const).flatMap((lane) =>
+        queues[lane].flatMap((item) =>
+          item.turnId
+            ? [
+                {
+                  turnId: item.turnId,
+                  delivery: lane === "steering" ? ("steer" as const) : ("follow-up" as const),
+                  text: item.text,
+                  internal: turnCompletions.internalInputById(item.turnId),
+                },
+              ]
+            : [],
         ),
-        ...compactionQueue
-          .filter((item) => item.delivery === "steer")
-          .flatMap((item) =>
-            item.turnId ? [{ turnId: item.turnId, delivery: "steer" as const }] : [],
-          ),
-        ...trackedQueue["follow-up"].flatMap((item) =>
-          item.turnId ? [{ turnId: item.turnId, delivery: "follow-up" as const }] : [],
-        ),
-        ...compactionQueue
-          .filter((item) => item.delivery === "follow-up")
-          .flatMap((item) =>
-            item.turnId ? [{ turnId: item.turnId, delivery: "follow-up" as const }] : [],
-          ),
-      ];
+      );
     },
     async restorePending(restored) {
       const content = contentForPresentation(

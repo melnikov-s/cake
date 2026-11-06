@@ -369,6 +369,10 @@ describe("Application controls over the real Root host", () => {
       itemId: "10000000-0000-4000-8000-000000000003",
       status: "queued",
     }));
+    const update = vi.fn<Client["sessionChats"]["updateQueuedMessage"]>(async () => ({
+      steering: [],
+      followUp: ["revised", "second"],
+    }));
     const remove = vi.fn<Client["sessionChats"]["removeQueuedMessage"]>(async () => ({
       steering: [],
       followUp: ["second"],
@@ -389,6 +393,7 @@ describe("Application controls over the real Root host", () => {
       sessionChats: {
         abort,
         queueCommand: queue,
+        updateQueuedMessage: update,
         removeQueuedMessage: remove,
         steerQueuedMessage: steer,
         sendQueuedMessageNow: send,
@@ -430,6 +435,20 @@ describe("Application controls over the real Root host", () => {
       { sessionId: "target", command: "/toolcompact" },
       { signal: expect.any(AbortSignal) },
     );
+    expect(
+      await fixture.invoke("sessions.update-queued", {
+        sessionId: "target",
+        partId: "queued-1",
+        text: "revised",
+      }),
+    ).toMatchObject({ ok: true, queue: { steeringCount: 0, followUpCount: 2 } });
+    expect(update).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: "target", partId: "queued-1", text: "revised" },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(remove).not.toHaveBeenCalled();
+    expect(steer).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
     for (const name of ["sessions.cancel-queued", "sessions.steer-queued", "sessions.send-now"]) {
       expect(await fixture.invoke(name, { sessionId: "target", partId: "queued-1" })).toMatchObject(
         { ok: true },

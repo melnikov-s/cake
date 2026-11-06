@@ -1,7 +1,9 @@
+import { parseScheduledMessage } from "../../contracts/conversations/scheduled-message-envelope";
 import {
   durableQueuedDisplayText,
   durableQueuedText,
   markDurableInputSteering,
+  updateDurableInputText,
 } from "./durable-input-presentation";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import type { CakeSessionRuntime } from "../pi/runtime/cake-session-runtime";
@@ -25,6 +27,7 @@ type QueueOperations = Pick<
   | "reorderPendingMessage"
   | "clearQueue"
   | "cancelSteering"
+  | "updateQueuedMessage"
   | "removeQueuedMessage"
   | "steerQueuedMessage"
   | "sendQueuedMessageNow"
@@ -109,6 +112,29 @@ export function createDurableConversationQueue(options: {
       for (const item of await inbox())
         if (item.mode === "steer")
           await harness.abortSubmission(item.id, BACKGROUND_CONTEXT, conversation.id);
+      return queued();
+    },
+    async updateQueuedMessage(partId, text) {
+      const item = await itemFor(partId);
+      await conversation.commit(async (tx) => {
+        const doc = await tx.doc(InboxDoc, conversation.id);
+        const queuedItem = doc.items.find((entry) => entry.id === item.id);
+        if (!queuedItem || queuedItem.mode === "write")
+          throw new Error("That message was already consumed");
+        if (
+          parseCrossSessionMessage(durableQueuedText(queuedItem.content)) ||
+          parseScheduledMessage(durableQueuedText(queuedItem.content))
+        )
+          throw new Error("That queued message cannot be edited");
+        if (typeof queuedItem.content === "string")
+          queuedItem.content = updateDurableInputText(queuedItem.content, text);
+        else {
+          const block = queuedItem.content.find((block) => block.type === "text");
+          if (!block || block.type !== "text")
+            throw new Error("That queued message cannot be edited");
+          block.text = updateDurableInputText(block.text, text);
+        }
+      }, BACKGROUND_CONTEXT);
       return queued();
     },
     async removeQueuedMessage(partId) {

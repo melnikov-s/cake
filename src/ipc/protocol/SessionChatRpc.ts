@@ -74,6 +74,11 @@ export const SessionChatRpc = RpcGroup.make(
     success: QueuedConversationMessages,
     error: SessionChatError,
   }),
+  Rpc.make("sessionChats.updateQueuedMessage", {
+    payload: { ...SessionChatTarget.fields, partId: Schema.String, text: Schema.String },
+    success: QueuedConversationMessages,
+    error: SessionChatError,
+  }),
   Rpc.make("sessionChats.removeQueuedMessage", {
     payload: { ...SessionChatTarget.fields, partId: Schema.String },
     success: QueuedConversationMessages,

@@ -178,6 +178,7 @@ const fakeRuntime = (
     onOperation?.("cancel-steering");
     return { steering: [], followUp: [] };
   },
+  updateQueuedMessage: async () => ({ steering: [], followUp: [] }),
   removeQueuedMessage: async () => {
     onOperation?.("remove-queued");
     return { steering: [], followUp: [] };

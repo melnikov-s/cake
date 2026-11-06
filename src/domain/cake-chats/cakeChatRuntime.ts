@@ -181,6 +181,7 @@ const CAKE_CHAT_OPERATIONS = [
   "sessions.pending",
   "sessions.pending-info",
   "sessions.reorder",
+  "sessions.update-queued",
   "sessions.cancel-queued",
   "sessions.steer-queued",
   "sessions.send-now",

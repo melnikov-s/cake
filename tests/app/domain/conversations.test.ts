@@ -58,6 +58,7 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): CakeSessi
   reorderPendingMessage: () => Effect.succeed({ items: [] }),
   clearQueue: () => Effect.succeed({ steering: [], followUp: [] }),
   cancelSteering: () => Effect.succeed({ steering: [], followUp: [] }),
+  updateQueuedMessage: () => Effect.succeed({ steering: [], followUp: [] }),
   removeQueuedMessage: () => Effect.succeed({ steering: [], followUp: [] }),
   steerQueuedMessage: () => Effect.succeed({ steering: [], followUp: [] }),
   sendQueuedMessageNow: () => Effect.succeed({ steering: [], followUp: [] }),

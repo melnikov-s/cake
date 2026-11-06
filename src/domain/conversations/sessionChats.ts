@@ -353,6 +353,16 @@ export const cancelSteering = Effect.fn("SessionChats.cancelSteering")(function*
   ).pipe(asError("cancelSteering"));
 });
 
+export const updateQueuedMessage = Effect.fn("SessionChats.updateQueuedMessage")(function* (
+  target: SessionChatTarget,
+  partId: string,
+  text: string,
+) {
+  return yield* useConversation(acquire(target.sessionId), (handle) =>
+    handle.updateQueuedMessage(partId, text),
+  ).pipe(Effect.map(projectQueuedMessages), asError("updateQueuedMessage"));
+});
+
 export const removeQueuedMessage = Effect.fn("SessionChats.removeQueuedMessage")(function* (
   target: SessionChatTarget,
   partId: string,

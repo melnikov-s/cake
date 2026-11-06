@@ -195,6 +195,20 @@ export const windowControlDefinitions = {
     },
   },
 
+  "sessions.update-queued": {
+    command: "sessions.update-queued",
+    args: Schema.Struct({
+      ...sessionIdTargetSchema.fields,
+      partId: bounded(1, 256),
+      text: Schema.String,
+    }),
+    scope: "global",
+    discovery: {
+      topic: "sessions",
+      summary:
+        "Edit the text of one queued user message in place; preserve its position, attachments and delivery lane. Never sends it.",
+    },
+  },
   "sessions.cancel-queued": {
     command: "sessions.cancel-queued",
     args: Schema.Struct({

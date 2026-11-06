@@ -210,6 +210,7 @@ const makeLayer = (
         queueOperations.push(`${sessionId}:cancelSteering`);
         return { steering: [], followUp: [] };
       },
+      updateQueuedMessage: async () => ({ steering: [], followUp: [] }),
       removeQueuedMessage: async (partId) => {
         queueOperations.push(`${sessionId}:remove:${partId}`);
         return { steering: [], followUp: [] };

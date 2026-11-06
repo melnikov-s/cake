@@ -273,6 +273,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
       reorderPendingMessage: async () => ({ items: [] }),
       clearQueue: async () => ({ steering: [], followUp: [] }),
       cancelSteering: async () => ({ steering: [], followUp: [] }),
+      updateQueuedMessage: async () => ({ steering: [], followUp: [] }),
       removeQueuedMessage: async () => ({ steering: [], followUp: [] }),
       steerQueuedMessage: async () => ({ steering: [], followUp: [] }),
       sendQueuedMessageNow: async () => ({

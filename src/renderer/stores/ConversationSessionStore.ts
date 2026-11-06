@@ -307,7 +307,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       },
       stopAndSendQueuedPrompt: (id) => this.stopAndSendQueuedPrompt(id),
       reorderQueuedPrompt: (id, position) => this.reorderQueuedPrompt(id, position),
-      editQueuedPrompt: (id) => this.editQueuedPrompt(id),
+      editQueuedPrompt: (id, text) => this.editQueuedPrompt(id, text),
       removeQueuedPrompt: (id) => {
         void this.editRuntimeQueuedPrompt(id, "remove");
       },
@@ -471,7 +471,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
     }
   }
 
-  private async editQueuedPrompt(id: string) {
+  private async editQueuedPrompt(id: string, text: string) {
     const part = this.model.parts.find((item) => item.partKey === id);
     if (
       !part?.queuedInput ||
@@ -481,11 +481,17 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       part.scheduled ||
       part.subagentReport
     )
-      return;
-    const input = part.queuedInput;
-    if (!(await this.editRuntimeQueuedPrompt(id, "remove")) || this.signal.aborted) return;
-    this.composerStore.draftStore.restore(input.text, input.attachments);
-    this.composerStore.draftStore.requestFocus({ explicit: true });
+      return false;
+    try {
+      await this.client.sessionChats.updateQueuedMessage(
+        { sessionId: this.sessionId, partId: id, text },
+        { signal: this.signal },
+      );
+      return true;
+    } catch (error) {
+      if (!this.signal.aborted) this.composerStore.reportError(error, "Queued prompt");
+      return false;
+    }
   }
 
   private async editRuntimeQueuedPrompt(partId: string, operation: "remove" | "steer") {

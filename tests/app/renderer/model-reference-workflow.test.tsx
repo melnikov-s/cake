@@ -93,14 +93,14 @@ describe("inline model reference workflow", () => {
     });
   });
 
-  it("restores queued message chips for editing and sends the exact reference text again", async () => {
-    const removeQueuedMessage = vi.fn(async () => ({ steering: [], followUp: [] }));
-    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
-      TurnId.make("00000000-0000-4000-8000-000000000003"),
-    );
+  it("edits queued model-reference text in the popup without altering its serialized reference", async () => {
+    const updateQueuedMessage = vi.fn<Client["sessionChats"]["updateQueuedMessage"]>(async () => ({
+      steering: [],
+      followUp: [],
+    }));
     using fixture = renderChatConfiguration({
       models: [configurationModel()],
-      client: { sessionChats: { removeQueuedMessage, prompt } },
+      client: { sessionChats: { updateQueuedMessage } },
     });
     const text = `Use ${serializeModelReference(model)} for this task.`;
     fixture.publish({
@@ -109,14 +109,14 @@ describe("inline model reference workflow", () => {
       parts: [queuedUserPart(text)],
     });
     await fixture.user.click(screen.getByRole("button", { name: /^Edit queued prompt:/ }));
-    await waitFor(() => expect(fixture.chatStore.draft).toBe(text));
-    expect(screen.getByRole("button", { name: /Edit model reference/ })).toBeTruthy();
-    expect(removeQueuedMessage).toHaveBeenCalledOnce();
-    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
-    expect(prompt.mock.calls[0]?.[0]).toMatchObject({ text });
+    const popup = screen.getByRole("dialog", { name: "Queued message" });
+    const editor = within(popup).getByRole<HTMLTextAreaElement>("textbox");
+    expect(editor.value).toBe(text);
+    await fixture.user.type(editor, " Revised.");
+    await fixture.user.click(within(popup).getByRole("button", { name: "Save" }));
+    expect(updateQueuedMessage.mock.calls[0]?.[0]).toMatchObject({ text: text + " Revised." });
+    expect(input().value).toBe("");
   });
-
   it("keeps multiple chips and text through draft reload, failed send and retry", async () => {
     const text = `Use ${serializeModelReference(model)} then\n${serializeModelReference({ ...model, thinkingLevel: "off", fastMode: false })} for tests.`;
     const original = renderChatConfiguration({ models: [configurationModel({ fastMode: true })] });

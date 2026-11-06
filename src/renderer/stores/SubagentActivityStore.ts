@@ -188,8 +188,9 @@ export class SubagentActivityStore extends Store<{
   private async editQueue(
     key: string,
     partId: string,
-    operation: "remove" | "steer" | "send-now" | "reorder",
+    operation: "remove" | "steer" | "send-now" | "reorder" | "update",
     position?: number,
+    text?: string,
   ) {
     const entry = queuedPrompts(this.run(key)?.parts ?? []).find((item) => item.id === partId);
     if (!entry) return false;
@@ -200,6 +201,7 @@ export class SubagentActivityStore extends Store<{
           handleId,
           partId,
           operation,
+          ...(text === undefined ? null : { text }),
           ...(position === undefined ? null : { position }),
           ...(entry.itemId ? { itemId: entry.itemId } : null),
         },
@@ -318,13 +320,7 @@ export class SubagentActivityStore extends Store<{
           removeQueuedPrompt: (id) => {
             void this.editQueue(run.key, id, "remove");
           },
-          editQueuedPrompt: async (id) => {
-            const entry = queuedPrompts(this.run(run.key)?.parts ?? []).find(
-              (item) => item.id === id,
-            );
-            if (!entry?.editable || !(await this.editQueue(run.key, id, "remove"))) return;
-            this.chatStore(run.key)?.setDraft(entry.text);
-          },
+          editQueuedPrompt: (id, text) => this.editQueue(run.key, id, "update", undefined, text),
           abort: async () => {
             const current = this.run(run.key);
             if (!current?.handleId || current.released) return;

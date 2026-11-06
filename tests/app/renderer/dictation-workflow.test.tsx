@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
@@ -1015,14 +1015,7 @@ describe("Dictation writing-field workflow", () => {
   it.each([false, true])(
     "focuses a queued message for explicit editing with dictation enabled=%s, without changing passive focus policy",
     async (dictationEnabled) => {
-      const removeQueuedMessage = vi.fn<Client["sessionChats"]["removeQueuedMessage"]>(async () => {
-        f.publish({ _tag: "PartRemoved", sessionId: "dictation-session", partId: "queued-edit" });
-        return { steering: [], followUp: [] };
-      });
-      using f = renderDictation({
-        composerFocusEnabled: true,
-        client: { sessionChats: { removeQueuedMessage } },
-      });
+      using f = renderDictation({ composerFocusEnabled: true });
       if (dictationEnabled) await f.user.click(mode());
       f.publish({
         _tag: "PartUpdated",
@@ -1047,12 +1040,19 @@ describe("Dictation writing-field workflow", () => {
           name: "Edit queued prompt: Edit this queued request",
         }),
       );
-      await waitFor(() => expect(document.activeElement).toBe(message()));
-      expect(message().value).toBe("Edit this queued request");
-      expect(screen.queryByRole("list", { name: "Queued prompts" })).toBeNull();
-      await f.user.keyboard(" revised");
-      expect(message().value).toBe("Edit this queued request revised");
-      expect(screen.getByRole<HTMLButtonElement>("button", { name: "Send" }).disabled).toBe(false);
+      const popup = screen.getByRole("dialog", { name: "Queued message" });
+      const editor = within(popup).getByRole<HTMLTextAreaElement>("textbox");
+      await waitFor(() => expect(document.activeElement).toBe(editor));
+      expect(editor.value).toBe("Edit this queued request");
+      expect(screen.getByRole("list", { name: "Queued prompts" })).toBeDefined();
+      await f.user.type(editor, " revised");
+      expect(editor.value).toBe("Edit this queued request revised");
+      expect(within(popup).getByRole<HTMLButtonElement>("button", { name: "Save" }).disabled).toBe(
+        false,
+      );
+      expect(message().value).toBe("");
+      await f.user.click(within(popup).getByRole("button", { name: "Cancel" }));
+      await f.user.keyboard("{Escape}");
       expect(mode().getAttribute("aria-checked")).toBe(String(dictationEnabled));
       expect(
         screen

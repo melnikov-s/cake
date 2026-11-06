@@ -319,6 +319,14 @@ export function createRootApplicationControlHost(
             { signal: capabilities.signal },
           );
         }),
+      updateQueuedMessage: (sessionId, partId, text) =>
+        capabilities.applicationControlStore().runOperation(async () => {
+          await capabilities.prepareSessionChat(sessionId);
+          return capabilities.client.sessionChats.updateQueuedMessage(
+            { sessionId, partId, text },
+            { signal: capabilities.signal },
+          );
+        }),
       removeQueuedMessage: (sessionId, partId) =>
         capabilities.applicationControlStore().runOperation(async () => {
           await capabilities.prepareSessionChat(sessionId);

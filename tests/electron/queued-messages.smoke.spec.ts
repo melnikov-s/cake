@@ -280,12 +280,12 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
     await page.getByRole("button", { name: "Move up: Agent follow-up" }).click();
     await expect.poll(labels).toEqual(["Agent follow-up", "First user", "Second user"]);
     await page.getByRole("button", { name: "View queued message: Agent follow-up" }).click();
-    const dialog = page.getByRole("dialog", { name: "Origin session" });
+    const dialog = page.getByRole("dialog", { name: "Queued message", exact: true });
     await expect(dialog.getByRole("link", { name: "Origin session" })).toHaveAttribute(
       "href",
       `cake://session/${sourceId}`,
     );
-    await dialog.getByRole("button", { name: "Exit fullscreen Origin session" }).click();
+    await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Send now as steering: First user" }).click();
     await expect(firstRow.getByRole("status")).toHaveText("Waiting for agent");
     await expect
@@ -294,7 +294,11 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
           .getByRole("button", { name: "View queued message: First user", exact: true })
           .boundingBox();
         const status = await firstRow.getByRole("status").boundingBox();
-        return title !== null && status !== null && status.y >= title.y + title.height;
+        return (
+          title !== null &&
+          status !== null &&
+          Math.abs(status.y + status.height / 2 - (title.y + title.height / 2)) < 2
+        );
       })
       .toBe(true);
     expect(responses.length).toBe(1);
@@ -359,11 +363,11 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
     await send("/fixture-agent");
     await page.getByRole("button", { name: "View queued message: Agent follow-up" }).click();
     await page
-      .getByRole("dialog", { name: "Origin session" })
+      .getByRole("dialog", { name: "Queued message", exact: true })
       .getByRole("link", { name: "Origin session" })
       .click();
     // Navigation may leave the transient reader open; close it before inspecting the destination.
-    const exit = page.getByRole("button", { name: "Exit fullscreen Origin session" });
+    const exit = page.getByRole("button", { name: "Close queued message" });
     await page.keyboard.press("Escape");
     await expect(exit).toHaveCount(0);
     await expect(page.getByText("Origin transcript.")).toBeVisible({ timeout: 15_000 });
@@ -497,8 +501,72 @@ test("queues text and attachments as one project submission and delivers them to
   }
 });
 
+test("multiline queue previews ellipsize responsively and open a bounded keyboard-dismissible popup", async () => {
+  const fixture = await queuedMessagesFixture();
+  try {
+    const page = await fixture.app.firstWindow();
+    await expect(page.getByText("Ready for queue testing.")).toBeVisible({ timeout: 20_000 });
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    await composer.fill("Hold the response");
+    await composer.press("Enter");
+    await expect.poll(() => fixture.responses.length).toBe(1);
+    const text = Array.from(
+      { length: 40 },
+      (_, i) =>
+        `Paragraph ${i}: A very long queued instruction with references and detailed review notes.`,
+    ).join("\n\n");
+    await composer.fill(text);
+    await composer.press("Enter");
+    const queue = page.getByRole("list", { name: "Queued prompts" });
+    const preview = queue.getByRole("button", { name: /^View queued message:/ });
+    await expect(queue.getByRole("button", { name: /^Edit queued prompt:/ })).toBeEnabled();
+    const widths: number[] = [];
+    for (const width of [1200, 640]) {
+      await page.setViewportSize({ width, height: 760 });
+      await expect(preview.locator("span.truncate")).toBeVisible();
+      const bounds = await preview.locator("span.truncate").evaluate((element) => ({
+        width: element.clientWidth,
+        height: element.getBoundingClientRect().height,
+        lineHeight: Number.parseFloat(getComputedStyle(element).fontSize) * 1.6,
+        whitespace: getComputedStyle(element).whiteSpace,
+        overflow: getComputedStyle(element).textOverflow,
+        clipped: element.scrollWidth > element.clientWidth,
+      }));
+      expect(bounds.height).toBeLessThanOrEqual(bounds.lineHeight + 1);
+      expect(bounds.whitespace).toBe("nowrap");
+      expect(bounds.overflow).toBe("ellipsis");
+      expect(bounds.clipped).toBe(true);
+      widths.push(bounds.width);
+      await expect(queue.getByRole("button", { name: /^Cancel queued message:/ })).toBeInViewport();
+      await expect(queue.getByRole("button", { name: /^Send now as steering:/ })).toBeInViewport();
+    }
+    expect(widths[0]).toBeGreaterThan(widths[1]!);
+    await preview.click();
+    const popup = page.getByRole("dialog", { name: "Queued message", exact: true });
+    await expect(popup).toContainText("Paragraph 39:");
+    const box = await popup.boundingBox();
+    expect(box!.height).toBeLessThanOrEqual(760 * 0.7 + 1);
+    expect(box!.width).toBeLessThan(640);
+    await page.keyboard.press("Escape");
+    await expect(preview).toBeFocused();
+    await preview.click();
+    await popup.getByRole("button", { name: "Edit", exact: true }).click();
+    const editor = popup.getByRole("textbox", { name: "Queued message text" });
+    await expect(editor).toBeFocused();
+    await editor.fill("Discard this edit");
+    await popup.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(popup).toContainText("Paragraph 39:");
+    expect(fixture.responses).toHaveLength(1);
+    await composer.click();
+    await expect(popup).toHaveCount(0);
+    await expect(composer).toBeFocused();
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 for (const dictation of [false, true]) {
-  test(`queued Edit explicitly focuses the restored composer (dictation=${dictation})`, async () => {
+  test(`queued popup edits in place and preserves composer focus policy (dictation=${dictation})`, async () => {
     test.skip(dictation && (process.platform !== "darwin" || process.arch !== "arm64"));
     test.setTimeout(60_000);
     const fixture = await queuedMessagesFixture(dictation);
@@ -527,12 +595,35 @@ for (const dictation of [false, true]) {
       await page.getByRole("button", { name: "Back to chat" }).click();
       const anchor = page.getByRole("group", { name: "Press Tab to write", exact: true });
       if (dictation) await expect(anchor).toBeFocused();
+      await composer.fill("Unsent composer draft");
       await edit.click();
-      await expect(composer).toHaveValue(queuedText);
-      await expect(composer).toBeFocused();
-      await expect(edit).toHaveCount(0);
+      const popup = page.getByRole("dialog", { name: "Queued message", exact: true });
+      const editor = popup.getByRole("textbox", { name: "Queued message text" });
+      await expect(editor).toHaveValue(queuedText);
+      await expect(editor).toBeFocused();
+      await expect(edit).toHaveCount(1);
+      await editor.press("End");
       await page.keyboard.type(" revised");
-      await expect(composer).toHaveValue(`${queuedText} revised`);
+      await expect(editor).toHaveValue(`${queuedText} revised`);
+      await expect(composer).toHaveValue("Unsent composer draft");
+      await popup.getByRole("button", { name: "Save", exact: true }).click();
+      const revised = page.getByRole("button", {
+        name: `View queued message: ${queuedText} revised`,
+        exact: true,
+      });
+      await expect(revised).toBeVisible();
+      expect(fixture.responses).toHaveLength(1);
+      await popup.getByRole("button", { name: "Copy queued message" }).click();
+      await expect(popup.getByRole("button", { name: "Copied queued message" })).toBeVisible();
+      await expect
+        .poll(() => fixture.app.evaluate(({ clipboard }) => clipboard.readText()))
+        .toBe(`${queuedText} revised`);
+      await page.keyboard.press("Escape");
+      await expect(popup).toHaveCount(0);
+      await expect(revised).toBeFocused();
+      await composer.click();
+      await page.keyboard.type(" retained");
+      await expect(composer).toHaveValue("Unsent composer draft retained");
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
       await openSettings();
       await expect(page.getByRole("switch", { name: "Dictation mode" })).toBeChecked({
@@ -545,7 +636,7 @@ for (const dictation of [false, true]) {
         await expect(anchor).toBeFocused();
         await expect(composer).not.toBeFocused();
       } else await expect(composer).toBeFocused();
-      await expect(composer).toHaveValue(`${queuedText} revised`);
+      await expect(composer).toHaveValue("Unsent composer draft retained");
     } finally {
       await fixture.dispose();
     }

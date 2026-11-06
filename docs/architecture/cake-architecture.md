@@ -220,7 +220,8 @@ projections needed by a surface. References do not transfer ownership.
   inspection returns full metadata; content reads are explicit and independently
   bounded. Pending and scheduled inputs expose short labels; `pending-info` and
   `scheduled-info` read one exact input in text slices. Queue mutations return counts,
-  not message bodies; edit via read plus cancel/send rather than bulk dequeue.
+  not message bodies; edit user text in place via read plus update-queued, preserving
+  identity, attachments and delivery lane without sending or bulk dequeue.
   `app.state` reports window orientation/counts, not duplicate rosters.
   Model-facing text for project, family, report, model, attachment and message catalogs
   uses compact tab-separated rows, formatted only after authorization/redaction and

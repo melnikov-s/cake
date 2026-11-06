@@ -66,6 +66,16 @@ export const sessionQueueControls = [
   }),
 
   defineSessionControl({
+    ...windowControlDefinitions["sessions.update-queued"],
+    run: async (input, { host }, command): Promise<AppControlResult> => ({
+      ok: true,
+      command,
+      queue: queueCounts(
+        await host.sessions.updateQueuedMessage(input.sessionId, input.partId, input.text),
+      ),
+    }),
+  }),
+  defineSessionControl({
     ...windowControlDefinitions["sessions.cancel-queued"],
     run: async (input, { host }, command): Promise<AppControlResult> => {
       return {

@@ -115,7 +115,7 @@ export interface ChatStoreProps {
   steerQueuedPrompt?(id: string): void | Promise<void>;
   stopAndSendQueuedPrompt?(id: string): void | Promise<void>;
   reorderQueuedPrompt?(id: string, position: number): void | Promise<void>;
-  editQueuedPrompt?(id: string): void | Promise<void>;
+  editQueuedPrompt?(id: string, text: string): Promise<boolean>;
   removeQueuedPrompt?(id: string): void;
   scheduledMessages?: ScheduledMessageCapabilities;
   composerVisible?(): boolean;
@@ -656,8 +656,8 @@ export class ChatStore extends Store<ChatStoreProps> {
   reorderQueuedPrompt(id: string, position: number) {
     return this.props.reorderQueuedPrompt?.(id, position);
   }
-  editQueuedPrompt(id: string) {
-    return this.props.editQueuedPrompt?.(id);
+  editQueuedPrompt(id: string, text: string) {
+    return this.props.editQueuedPrompt?.(id, text) ?? Promise.resolve(false);
   }
   removeQueuedPrompt(id: string) {
     this.props.removeQueuedPrompt?.(id);

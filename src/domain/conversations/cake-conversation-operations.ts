@@ -267,6 +267,23 @@ export function createConversationOperations(
         );
       },
     },
+    {
+      command: "sessions.update-queued",
+      requires: "invokeAppControl",
+      topic: "sessions",
+      summary: "Edit one queued user message in place without sending or reordering it.",
+      guidance: [
+        "Call sessions.pending and sessions.pending-info first. Pass the current partId and replacement user text. Attachments, reference metadata, delivery lane and queue identity stay unchanged. Agent-generated messages and commands are not editable.",
+      ],
+      inputSchema: Schema.Struct({
+        sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+        partId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+        text: Schema.String,
+      }),
+      examples: [],
+      result: "Remaining steering/follow-up counts; read sessions.pending for the updated partId.",
+      execute: invokeAppControl("sessions.update-queued"),
+    },
     ...(["sessions.cancel-queued", "sessions.steer-queued", "sessions.send-now"] as const).map(
       (command): CakeOperationDefinition => ({
         command,

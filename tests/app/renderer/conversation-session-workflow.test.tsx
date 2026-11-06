@@ -248,62 +248,45 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
     expect(input().value).toBe("");
   });
 
-  it("keeps an admitted queued prompt after a failed edit removal and restores it only after a successful retry", async () => {
+  it("keeps an admitted queued prompt and composer draft intact through a failed popup save and retry", async () => {
     const queuedText = "Check the build";
-    const removeQueuedMessage = vi
-      .fn<Client["sessionChats"]["removeQueuedMessage"]>()
+    const updateQueuedMessage = vi
+      .fn<Client["sessionChats"]["updateQueuedMessage"]>()
       .mockRejectedValueOnce(new Error("Queue edit unavailable"))
-      .mockImplementationOnce(async () => {
-        fixture.publish({ parts: [workingAssistantPart] });
-        return { steering: [], followUp: [] };
+      .mockImplementationOnce(async ({ text }) => {
+        fixture.publish({ parts: [workingAssistantPart, queuedUserPart(text)] });
+        return { steering: [], followUp: [text] };
       });
-    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async ({ text }) => {
-      fixture.publish({ parts: [workingAssistantPart, queuedUserPart(text)] });
-      return TurnId.make("10000000-0000-4000-8000-000000000001");
-    });
-    using fixture = renderConversationSession(
-      profile,
-      { sessionChats: { removeQueuedMessage, prompt } },
-      [workingAssistantPart, queuedUserPart(queuedText)],
-    );
-    const input = () =>
-      screen.getByRole<HTMLTextAreaElement>("combobox", { name: fixture.inputLabel });
-    const queued = () => within(screen.getByRole("list", { name: "Queued prompts" }));
-
+    using fixture = renderConversationSession(profile, { sessionChats: { updateQueuedMessage } }, [
+      workingAssistantPart,
+      queuedUserPart(queuedText),
+    ]);
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox", { name: fixture.inputLabel });
+    await fixture.user.type(input, "Unsent draft");
     await fixture.user.click(
       screen.getByRole("button", { name: `Edit queued prompt: ${queuedText}` }),
     );
+    const popup = screen.getByRole("dialog", { name: "Queued message" });
+    const editor = within(popup).getByRole<HTMLTextAreaElement>("textbox");
+    await fixture.user.type(editor, " again");
+    await fixture.user.click(within(popup).getByRole("button", { name: "Save" }));
     expect(await screen.findByText("Queue edit unavailable")).toBeDefined();
     expect(
-      queued().getByRole("button", { name: `View queued message: ${queuedText}` }),
+      screen.getByRole("button", { name: `View queued message: ${queuedText}` }),
     ).toBeDefined();
-    expect(input().value).toBe("");
-    expect(removeQueuedMessage).toHaveBeenCalledWith(
-      { sessionId: fixture.sessionId, partId: "queued-part" },
+    expect(input.value).toBe("Unsent draft");
+    expect(editor.value).toBe("Check the build again");
+    expect(updateQueuedMessage).toHaveBeenCalledWith(
+      { sessionId: fixture.sessionId, partId: "queued-part", text: "Check the build again" },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    await fixture.user.click(
-      screen.getByRole("button", { name: `Edit queued prompt: ${queuedText}` }),
-    );
-    await waitFor(() => expect(input().value).toBe(queuedText));
-    expect(screen.queryByRole("list", { name: "Queued prompts" })).toBeNull();
-    expect(removeQueuedMessage).toHaveBeenCalledTimes(2);
-    await fixture.user.type(input(), " again");
-    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
-    expect(prompt).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId: fixture.sessionId,
-        text: "Check the build again",
-        attachments: [],
-      }),
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
+    await fixture.user.click(within(popup).getByRole("button", { name: "Save" }));
     expect(
-      queued().getByRole("button", { name: "View queued message: Check the build again" }),
+      screen.getByRole("button", { name: "View queued message: Check the build again" }),
     ).toBeDefined();
-    expect(input().value).toBe("");
-    expect(screen.queryByText("Queue edit unavailable")).toBeNull();
+    expect(input.value).toBe("Unsent draft");
+    expect(updateQueuedMessage).toHaveBeenCalledTimes(2);
+    expect(within(popup).queryByRole("textbox")).toBeNull();
   });
 });
 

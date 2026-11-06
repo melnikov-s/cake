@@ -1,3 +1,4 @@
+import type { InternalInput } from "../../../contracts/conversations/internal-input";
 import {
   ModelRuntime,
   SessionManager,
@@ -248,7 +249,12 @@ export interface CakeSessionRuntime {
   recoverInput?(input: RuntimeRecoveryInput): Promise<void>;
   restoreInput?(input: RuntimeRecoveryInput): Promise<void>;
   hasConsumedInput?(turnId: string): boolean;
-  pendingRecoveryInputs?(): ReadonlyArray<{ turnId: string; delivery: "steer" | "follow-up" }>;
+  pendingRecoveryInputs?(): ReadonlyArray<{
+    turnId: string;
+    delivery: "steer" | "follow-up";
+    text: string;
+    internal?: InternalInput;
+  }>;
   getReviewParentContext?(): ReviewParentContext;
   recordReviewRun(run: ReviewRunEntry): void;
   snapshot(): Promise<ConversationSnapshot>;
@@ -271,6 +277,10 @@ export interface CakeSessionRuntime {
   reorderPendingMessage(input: PiPendingMessageReorder): Promise<PiPendingMessages>;
   clearQueue(): Promise<{ steering: string[]; followUp: string[] }>;
   cancelSteering(): Promise<{ steering: string[]; followUp: string[] }>;
+  updateQueuedMessage(
+    partId: string,
+    text: string,
+  ): Promise<{ steering: string[]; followUp: string[] }>;
   removeQueuedMessage(partId: string): Promise<{ steering: string[]; followUp: string[] }>;
   steerQueuedMessage(partId: string): Promise<{ steering: string[]; followUp: string[] }>;
   sendQueuedMessageNow(partId?: string): Promise<{
@@ -1184,6 +1194,7 @@ export async function createCakeSessionRuntime(
     reorderPendingMessage: turnController.reorderPendingMessage,
     clearQueue: turnController.clearQueue,
     cancelSteering: turnController.cancelSteering,
+    updateQueuedMessage: turnController.updateQueuedMessage,
     removeQueuedMessage: turnController.removeQueuedMessage,
     steerQueuedMessage: turnController.steerQueuedMessage,
     sendQueuedMessageNow: turnController.sendQueuedMessageNow,

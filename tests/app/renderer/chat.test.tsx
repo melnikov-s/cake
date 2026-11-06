@@ -129,9 +129,6 @@ describe("Chat composition", () => {
   it("keeps sender and schedule provenance read-only and opens queued Markdown without sending it", async () => {
     const remove = vi.fn<Client["sessionChats"]["removeQueuedMessage"]>();
     const steer = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>();
-    const setFullscreen = vi.fn<Client["electron"]["setFullscreenSurfaceOpen"]>(
-      async () => undefined,
-    );
     const report: UiPart = {
       id: "child-report",
       kind: "text",
@@ -164,7 +161,6 @@ describe("Chat composition", () => {
       snapshot: { streaming: true },
       client: {
         sessionChats: { removeQueuedMessage: remove, steerQueuedMessage: steer },
-        electron: { setFullscreenSurfaceOpen: setFullscreen },
       },
     });
     expect(screen.getByLabelText("Message from Feature child")).toBeDefined();
@@ -185,9 +181,8 @@ describe("Chat composition", () => {
     expect(dialog.textContent).toContain("Feature child");
     expect(remove).not.toHaveBeenCalled();
     expect(steer).not.toHaveBeenCalled();
-    await fixture.user.click(within(dialog).getByRole("button", { name: /Exit fullscreen/ }));
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Close queued message" }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(setFullscreen.mock.calls.map((call) => call[1])).toEqual([true, false]);
   });
 
   it.each([

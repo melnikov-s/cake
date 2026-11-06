@@ -1731,19 +1731,26 @@ export const editQueuedUserInput = Effect.fn("Subagents.editQueuedUserInput")(fu
   parentSessionId: string;
   handleId: string;
   partId: string;
-  operation: "remove" | "steer" | "send-now" | "reorder";
+  operation: "remove" | "steer" | "send-now" | "reorder" | "update";
+  text?: string;
   itemId?: string;
   position?: number;
 }) {
+  if (input.operation === "update" && input.text === undefined)
+    return yield* new SubagentError({
+      operation: input.operation,
+      message: "Message text is required",
+    });
   const handle = yield* requireHandle(input.parentSessionId, input.handleId);
   if (handle.status === "queued") {
     const pending = handle.recovery.pendingInputs
       .slice(1)
       .find((entry) => queuedWorkerInputId(entry.turnId) === input.partId);
-    if (!pending || input.operation !== "remove")
+    if (!pending || (input.operation !== "remove" && input.operation !== "update"))
       return yield* new SubagentError({
         operation: input.operation,
-        message: "Only canceling a queued follow-up is available before the worker starts",
+        message:
+          "Only canceling or editing a queued follow-up is available before the worker starts",
       });
     const coordinator = yield* SubagentCoordinator;
     const removed = yield* SubscriptionRef.modify(coordinator.state, (state) => {
@@ -1755,9 +1762,14 @@ export const editQueuedUserInput = Effect.fn("Subagents.editQueuedUserInput")(fu
           activityRevision: current.activityRevision + 1,
           recovery: {
             ...current.recovery,
-            pendingInputs: current.recovery.pendingInputs.filter(
-              (entry) => entry.turnId !== pending.turnId,
-            ),
+            pendingInputs:
+              input.operation === "update"
+                ? current.recovery.pendingInputs.map((entry) =>
+                    entry.turnId === pending.turnId
+                      ? { ...entry, text: input.text ?? entry.text }
+                      : entry,
+                  )
+                : current.recovery.pendingInputs.filter((entry) => entry.turnId !== pending.turnId),
           },
         })),
       ] as const;
@@ -1797,6 +1809,21 @@ export const editQueuedUserInput = Effect.fn("Subagents.editQueuedUserInput")(fu
         ...current.recovery,
         pendingInputs: current.recovery.pendingInputs.filter(
           (item) => item.turnId !== part.queuedInput?.turnId,
+        ),
+      },
+    }));
+  } else if (input.operation === "update") {
+    yield* runtime
+      .updateQueuedMessage(input.partId, input.text ?? "")
+      .pipe(asError(input.operation));
+    yield* mutateHandle(handle.handleId, (current) => ({
+      ...current,
+      recovery: {
+        ...current.recovery,
+        pendingInputs: current.recovery.pendingInputs.map((item) =>
+          item.turnId === part.queuedInput?.turnId
+            ? { ...item, text: input.text ?? item.text }
+            : item,
         ),
       },
     }));

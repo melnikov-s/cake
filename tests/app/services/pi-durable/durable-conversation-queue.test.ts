@@ -194,6 +194,73 @@ describe.each(["root", "side-chat"] as const)("Durable %s queue", (kind) => {
     expect(f.activeCall.signal?.aborted).toBe(false);
   });
 
+  it("edits the existing inbox item without changing its lane, attachments, metadata or submission", async () => {
+    const f = await fixture(kind);
+    const image = { type: "image" as const, data: "aW1hZ2U=", mimeType: "image/png" };
+    const content = durableInputText(
+      "First",
+      [
+        { kind: "file", name: "source.ts", path: "/project/source.ts" },
+        { kind: "image", name: "diagram.png", data: image.data, mimeType: image.mimeType },
+      ],
+      true,
+      false,
+      undefined,
+      { mode: "voice", remind: true },
+      undefined,
+      { mode: "browser", previousMode: "normal" },
+      false,
+      1,
+    );
+    const submission = await f.conversation.submit(
+      {
+        type: "input",
+        content: [
+          { type: "text", text: content },
+          image,
+          { type: "text", text: DURABLE_SIDE_CHAT_NOTE },
+        ],
+        requestId: "first",
+        whenBusy: "followUp",
+      },
+      context,
+    );
+    await f.submit("Second", "second");
+    const before = (await f.queue.inbox())[0]!;
+    const original = durableInputPresentation(content);
+    const live = await f.live();
+    const calls = f.calls.length;
+    await f.operations.updateQueuedMessage("queued-first", "Revised\nfull text");
+    const after = (await f.queue.inbox())[0]!;
+    expect(after).toMatchObject({ id: before.id, mode: before.mode });
+    if (after.mode === "write" || typeof after.content === "string")
+      throw new Error("Lost content blocks");
+    const block = after.content[0]!;
+    if (block.type !== "text") throw new Error("Lost input text");
+    const updated = durableInputPresentation(block.text);
+    expect(updated).toMatchObject({
+      ...original,
+      text: "Revised\nfull text",
+      body: expect.stringContaining("Revised\nfull text"),
+    });
+    expect(updated.body.slice(updated.textOffset + updated.text.length)).toBe(
+      original.body.slice(original.textOffset + original.text.length),
+    );
+    expect(after.content.slice(1)).toEqual([image, { type: "text", text: DURABLE_SIDE_CHAT_NOTE }]);
+    expect(await f.operations.listQueuedMessages()).toEqual({
+      steering: [],
+      followUp: ["Revised\nfull text", "Second"],
+    });
+    expect(await f.live()).toEqual(live);
+    expect(f.calls).toHaveLength(calls);
+    expect(await f.storage.submission(submission.id, context)).toMatchObject({ status: "queued" });
+    const next = f.nextRequest();
+    f.activeCall.finish();
+    (await next).finish();
+    await expect(submission.wait(context)).resolves.toMatchObject({ status: "done" });
+    expect(JSON.stringify(f.requests.at(-1))).toContain("Revised");
+  });
+
   it("projects the same IDs, lane positions and correlated messages, and reorders within a lane", async () => {
     const f = await fixture(kind);
     await f.submit("First", "first");

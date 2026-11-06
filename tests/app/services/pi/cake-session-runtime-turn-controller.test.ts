@@ -526,7 +526,9 @@ describe("CakeSessionRuntime turn controller", () => {
       }),
     ]);
     expect(JSON.stringify(controller.queuedParts())).not.toContain("system-reminder");
-    expect(controller.pendingRecoveryInputs()).toEqual([{ turnId: "wake", delivery: "follow-up" }]);
+    expect(controller.pendingRecoveryInputs()).toEqual([
+      { turnId: "wake", delivery: "follow-up", text, internal },
+    ]);
     await controller.clearQueue();
     await expect(restored).rejects.toBeInstanceOf(TurnCanceledError);
     expect(controller.internalInput(text)).toBeUndefined();
@@ -1146,6 +1148,88 @@ describe("CakeSessionRuntime turn controller", () => {
       controller.consumeUserMessage(next);
       controller.settleTurn();
       await expect(tracked).resolves.toBeUndefined();
+    });
+
+    it.each(["steer", "follow-up"] as const)(
+      "edits %s in place, retaining identity, references, reminders and completion",
+      async (delivery) => {
+        const { controller, session } = createQueuedFixture({ steering: [], followUp: [] });
+        const attachments: Attachment[] = [
+          { kind: "image", name: "diagram.png", mimeType: "image/png", data: "aW1hZ2U=" },
+          { kind: "file", name: "source.ts", path: "/project/source.ts" },
+        ];
+        const first = controller.prompt(
+          "First",
+          delivery,
+          attachments,
+          true,
+          "turn-first",
+          "browser",
+          "voice",
+        );
+        await controller.prompt("Second", delivery, []);
+        const before = controller.queuedParts().filter((part) => part.kind === "text");
+        const original = before[0]!;
+        await controller.updateQueuedMessage(original.id, "Revised");
+        const after = controller.queuedParts().filter((part) => part.kind === "text");
+        expect(after.map((part) => part.text)).toEqual(["Revised", "Second"]);
+        expect(after[0]).toMatchObject({
+          deliveryState: delivery === "steer" ? "steering" : "queued",
+          queuedInput: { ...original.queuedInput!, text: "Revised" },
+        });
+        expect(controller.pendingRecoveryInputs()[0]).toMatchObject({
+          turnId: "turn-first",
+          delivery,
+          text: "Revised",
+        });
+        const content = (
+          delivery === "steer" ? session.getSteeringMessages() : session.getFollowUpMessages()
+        )[0]!;
+        expect(content).toContain("embedded browser");
+        expect(content).toContain("source.ts");
+        expect(content).toContain(responseModeReminders.voice);
+        expect(controller.consumeUserMessage(content)).toBe("turn-first");
+        controller.settleTurn();
+        await expect(first).resolves.toBeUndefined();
+        expect(session.abort).not.toHaveBeenCalled();
+      },
+    );
+
+    it("preserves user-carried context when editing a compaction-held input", async () => {
+      const { controller, session } = createFixture({ isCompacting: true });
+      const text = "First\n\nKeep workflow context";
+      const internal = { _tag: "UserWithReminders" as const, text, userText: "First", notices: [] };
+      const pending = controller.prompt(
+        text,
+        "follow-up",
+        [],
+        true,
+        "held",
+        undefined,
+        undefined,
+        internal,
+      );
+      await vi.waitFor(() => expect(controller.queuedParts().length).toBeGreaterThan(0));
+      const row = controller.queuedParts().find((part) => part.kind === "text")!;
+      await controller.updateQueuedMessage(row.id, "Revised");
+      expect(controller.queuedParts()).toContainEqual(
+        expect.objectContaining({
+          text: "Revised",
+          queuedInput: expect.objectContaining({ turnId: "held", text: "Revised" }),
+        }),
+      );
+      expect(controller.pendingRecoveryInputs()).toEqual([
+        {
+          turnId: "held",
+          delivery: "follow-up",
+          text: "Revised\n\nKeep workflow context",
+          internal: { ...internal, text: "Revised\n\nKeep workflow context", userText: "Revised" },
+        },
+      ]);
+      expect(session.prompt).not.toHaveBeenCalled();
+      expect(session.abort).not.toHaveBeenCalled();
+      await controller.clearQueue();
+      await expect(pending).rejects.toBeInstanceOf(TurnCanceledError);
     });
 
     it("reorders by stable identity with exact lane positions and preserves payload correlation", async () => {

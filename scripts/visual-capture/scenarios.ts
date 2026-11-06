@@ -5746,7 +5746,7 @@ const contextOutlineScenario: VisualCaptureScenario = {
 const queuedPromptsScenario: VisualCaptureScenario = {
   name: "queued-prompts",
   description: "Quiet pending-message status and bounded queue above the shared chat composer",
-  states: ["default", "bottom", "steering", "queued", "mixed"],
+  states: ["default", "bottom", "steering", "queued", "mixed", "popup", "edit"],
   async seed(paths, theme) {
     await cakeChatScenario.seed(paths, theme);
     return openRequestInspectorFixture(paths, { holdResponse: true });
@@ -5758,9 +5758,11 @@ const queuedPromptsScenario: VisualCaptureScenario = {
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
     const queue = page.getByRole("list", { name: "Queued prompts" });
-    if (state === "steering" || state === "queued" || state === "mixed") {
+    if (["steering", "queued", "mixed", "popup", "edit"].includes(state)) {
       const text =
-        "oh! vscode should be available for project chats open in project folder. terminal also. and browser too but browser should open in the project workspace.";
+        "Please review the queued-message UI refinement and preserve the original queue ordering, attachments, reference metadata and delivery behavior.\n\n" +
+        "The preview should stay on one line, even when the full message contains several paragraphs. Open a compact popup to read or edit the entire message.\n\n" +
+        "Keep the composer draft intact, and verify keyboard dismissal and both themes.";
       await input.fill(text);
       await page.getByRole("button", { name: "Send", exact: true }).click();
       await expect(queue.getByRole("listitem")).toHaveCount(1);
@@ -5771,6 +5773,15 @@ const queuedPromptsScenario: VisualCaptureScenario = {
         await expect(queue.getByRole("status")).toHaveText("Waiting for agent");
       } else {
         await expect(queue.getByRole("status")).toHaveCount(0);
+      }
+      if (state === "popup" || state === "edit") {
+        await queue.getByRole("button", { name: /^View queued message:/ }).click();
+        const popup = page.getByRole("dialog", { name: "Queued message", exact: true });
+        await expect(popup).toBeVisible();
+        if (state === "edit") {
+          await popup.getByRole("button", { name: "Edit", exact: true }).click();
+          await expect(popup.getByRole("textbox", { name: "Queued message text" })).toBeFocused();
+        }
       }
       if (state === "mixed") {
         await input.fill("Then verify queued follow-ups stay in FIFO order.");
