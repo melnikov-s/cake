@@ -4,6 +4,7 @@ import {
   hotkeyFromKeyboardEvent,
   formatHotkey,
 } from "@/lib/hotkeys";
+import { listenForModifierTap } from "@/lib/modifier-tap";
 import { Button } from "./button";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +41,12 @@ export function HotkeyRecorder({
 
   useEffect(() => {
     if (!recording) return;
+    const stopModifierTaps = listenForModifierTap((binding, event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onChange(binding);
+      setRecording(false);
+    });
     const keyDown = (event: globalThis.KeyboardEvent) => {
       event.preventDefault();
       event.stopPropagation();
@@ -73,6 +80,7 @@ export function HotkeyRecorder({
     window.addEventListener(cakeNativeHotkeyInputEventName, nativeHotkey, { capture: true });
     window.addEventListener("pointerdown", pointerDown, { capture: true });
     return () => {
+      stopModifierTaps();
       window.removeEventListener("keydown", keyDown, { capture: true });
       window.removeEventListener(cakeNativeHotkeyInputEventName, nativeHotkey, { capture: true });
       window.removeEventListener("pointerdown", pointerDown, { capture: true });

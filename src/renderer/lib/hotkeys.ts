@@ -188,6 +188,13 @@ export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
     defaultBinding: "Mod+G",
   },
   {
+    id: "toggle-dictation-mute",
+    group: "Conversation",
+    label: "Toggle dictation mute",
+    description: "Mute or unmute dictation without changing its enabled setting.",
+    defaultBinding: "",
+  },
+  {
     id: "open-companion",
     group: "Conversation",
     label: "Open companion",
@@ -230,6 +237,7 @@ export interface HotkeyInput {
   readonly shiftKey: boolean;
   readonly repeat: boolean;
   readonly isComposing: boolean;
+  readonly modifierTap?: "AltLeft" | "AltRight";
 }
 
 declare global {
@@ -246,6 +254,7 @@ export function defaultHotkeyBinding(id: CakeHotkeyActionId) {
 
 export function hotkeyFromKeyboardEvent(event: HotkeyInput): string | undefined {
   if (event.isComposing || event.repeat) return undefined;
+  if (event.modifierTap) return event.modifierTap;
   const modifiers = [
     (isMacPlatform ? event.metaKey : event.ctrlKey) ? "Mod" : undefined,
     (isMacPlatform ? event.ctrlKey : false) ? "Ctrl" : undefined,
@@ -279,6 +288,8 @@ export function hotkeyFromKeyboardEvent(event: HotkeyInput): string | undefined 
 
 export function formatHotkey(binding: string) {
   if (!binding) return "Not assigned";
+  if (binding === "AltRight") return isMacPlatform ? "Right Option" : "Right Alt";
+  if (binding === "AltLeft") return isMacPlatform ? "Left Option" : "Left Alt";
   if (!isMacPlatform) return binding.replace("Mod+", "Ctrl+");
   return binding
     .replace("Mod+", "⌘")

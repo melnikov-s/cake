@@ -15,6 +15,7 @@ import {
   type MenuItemConstructorOptions,
   type WebContents,
 } from "electron";
+import { createModifierTapTracker } from "../../contracts/application/modifier-tap";
 import { ScreenCaptureWindow } from "./ScreenCaptureWindow";
 import { AppUpdateChecks } from "./AppUpdateChecks";
 import { CakeChatOverlayWindow } from "./CakeChatOverlayWindow";
@@ -182,7 +183,29 @@ const makeElectronService = (
     });
   };
   const installOverlayHotkeyInput = (window: BrowserWindow) => {
+    const taps = createModifierTapTracker();
+    window.on("blur", taps.reset);
+    window.webContents.on("blur", taps.reset);
+    window.webContents.on("before-mouse-event", taps.reset);
     window.webContents.on("before-input-event", (event, input) => {
+      const hotkeyInput = {
+        key: input.key,
+        code: input.code,
+        metaKey: input.meta,
+        ctrlKey: input.control,
+        altKey: input.alt,
+        shiftKey: input.shift,
+        repeat: input.isAutoRepeat,
+        isComposing: input.isComposing,
+      };
+      const modifierTap = taps.input(input.type === "keyUp" ? "keyup" : "keydown", hotkeyInput);
+      if (modifierTap) {
+        clientEvents.sendTo(connectionForWindow(window), {
+          type: "application-hotkey-input",
+          ...hotkeyInput,
+          modifierTap,
+        });
+      }
       // Native Command+Backquote is claimed by the application-menu accelerator below. Keep this
       // fallback for Backquote input delivered directly to Chromium and for modifier variants.
       if (process.platform !== "darwin" || !input.meta || input.code !== "Backquote") return;

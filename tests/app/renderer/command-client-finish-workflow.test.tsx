@@ -6,6 +6,7 @@ import { observer, StoreProvider } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppNotifications } from "../../../src/renderer/components/app-notifications";
 import { Chat } from "../../../src/renderer/components/chat";
+import { SettingsHotkeysSection } from "../../../src/renderer/components/settings-hotkeys-section";
 import { SettingsAppearanceSection } from "../../../src/renderer/components/settings-appearance-section";
 import type { Client } from "../../../src/renderer/client/Client";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
@@ -30,6 +31,7 @@ function renderCommandClientFinish(client: TestClientOverrides = {}, flush?: () 
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
         <Conversation />
         <SettingsAppearanceSection appearance={fixture.root.settingsStore.appearance} />
+        <SettingsHotkeysSection hotkeys={fixture.root.settingsStore.hotkeys} />
         <AppNotifications />
       </StoreProvider>
     </StoreProvider>,
@@ -100,6 +102,49 @@ describe("Application command to renderer workflows", () => {
       fixture.invoke("settings.window.update", { section: "appearance", changes: {} }),
     ).rejects.toThrow();
     expect(screen.getByRole("button", { name: "Light" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("roundtrips the unbound mute action and side-specific binding through the settings gateway and UI", async () => {
+    const flush = vi.fn(async () => {});
+    using fixture = renderCommandClientFinish({}, flush);
+    const recorder = screen.getByRole("button", { name: "Toggle dictation mute shortcut" });
+    expect(recorder.textContent).toBe("Not assigned");
+    const before = await fixture.invoke("settings.window.get", { section: "hotkeys" });
+    expect(before).toMatchObject({
+      ok: true,
+      settings: {
+        bindings: expect.arrayContaining([
+          expect.objectContaining({
+            action: "toggle-dictation-mute",
+            binding: "",
+            defaultBinding: "",
+            customized: false,
+          }),
+        ]),
+      },
+    });
+    const updated = await fixture.invoke("settings.window.update", {
+      section: "hotkeys",
+      changes: { bindings: [{ action: "toggle-dictation-mute", binding: "AltRight" }] },
+    });
+    expect(updated).toMatchObject({
+      ok: true,
+      settings: {
+        bindings: expect.arrayContaining([
+          expect.objectContaining({
+            action: "toggle-dictation-mute",
+            binding: "AltRight",
+            customized: true,
+          }),
+        ]),
+      },
+    });
+    expect(flush).toHaveBeenCalledOnce();
+    expect(recorder.textContent).toMatch(/^Right (Option|Alt)$/);
+    await fixture.user.click(
+      within(recorder.parentElement!).getByRole("button", { name: "Reset" }),
+    );
+    expect(await fixture.invoke("settings.window.get", { section: "hotkeys" })).toEqual(before);
   });
 
   it("coalesces committed rename receipts, lets the user view the target, and suppresses Cake Chat coordination receipts without suppressing its own actions", async () => {

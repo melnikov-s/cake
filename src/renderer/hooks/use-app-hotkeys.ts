@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { listenForModifierTap } from "../lib/modifier-tap";
 import {
   cakeHotkeyEventName,
   cakeNativeHotkeyInputEventName,
@@ -73,9 +74,17 @@ export function useAppHotkeys(
       event.preventDefault();
       runAction(action, null);
     };
+    const stopModifierTaps = listenForModifierTap((binding, event) => {
+      if (event.defaultPrevented || recordingHotkey()) return;
+      const action = settings.hotkeys.actionForBinding(binding);
+      if (!action) return;
+      event.preventDefault();
+      runAction(action, event.target);
+    });
     window.addEventListener("keydown", runHotkey, { capture: true });
     window.addEventListener(cakeNativeHotkeyInputEventName, runNativeHotkey);
     return () => {
+      stopModifierTaps();
       window.removeEventListener("keydown", runHotkey, { capture: true });
       window.removeEventListener(cakeNativeHotkeyInputEventName, runNativeHotkey);
     };

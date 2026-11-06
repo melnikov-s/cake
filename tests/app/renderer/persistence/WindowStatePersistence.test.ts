@@ -323,6 +323,7 @@ describe("WindowStatePersistence", () => {
     settings.embeddedEditor.setSidebarAutoHideWidth(1728);
     const action = settings.hotkeys.definitions[0]!.id;
     settings.hotkeys.clear(action);
+    settings.hotkeys.assign("toggle-dictation-mute", "AltRight");
     await settings.cakeChatOverlay.setShortcut("");
     await settings.cakeChatOverlay.setCaptureSelectedText(false);
     h.root.screenCaptureStore.setShortcut("");
@@ -365,6 +366,7 @@ describe("WindowStatePersistence", () => {
     expect(restored.root.screenCaptureStore.shortcut).toBe("");
     expect(restored.root.screenCaptureStore.maxDimension).toBe(1024);
     expect(restoredSettings.hotkeys.bindingFor(action)).toBe("");
+    expect(restoredSettings.hotkeys.bindingFor("toggle-dictation-mute")).toBe("AltRight");
     await vi.advanceTimersByTimeAsync(180);
     expect(toSnapshot(restoredSettings)).toEqual(toSnapshot(settings));
     preferences.reset();

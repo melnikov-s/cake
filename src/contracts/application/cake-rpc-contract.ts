@@ -251,6 +251,7 @@ const cakeEventSchemas = {
     shiftKey: Schema.Boolean,
     repeat: Schema.Boolean,
     isComposing: Schema.Boolean,
+    modifierTap: Schema.optionalKey(Schema.Literals(["AltLeft", "AltRight"])),
   }),
   "embedded-editor-toggle-mode-requested": Schema.Struct({
     type: Schema.Literal("embedded-editor-toggle-mode-requested"),

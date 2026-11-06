@@ -44,7 +44,8 @@ export class HotkeySettingsStore extends Store {
     delete bindings[id];
     const defaultBinding = defaultHotkeyBinding(id);
     for (const actionId of cakeHotkeyActionIds) {
-      if (actionId !== id && this.bindingFor(actionId) === defaultBinding) bindings[actionId] = "";
+      if (defaultBinding && actionId !== id && this.bindingFor(actionId) === defaultBinding)
+        bindings[actionId] = "";
     }
     this.bindings = bindings;
   }

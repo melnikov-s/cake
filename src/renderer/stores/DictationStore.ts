@@ -233,7 +233,7 @@ export class DictationStore extends Store<{
     );
   }
   /** Muting seals visible speech and drops pending results; unmuting starts at the current caret. */
-  setMuted(id: string, muted: boolean) {
+  setMuted(id: string | undefined, muted: boolean) {
     if (!this.enabled || this.target?.id !== id || this.muted === muted) return;
     this.applyMuted(muted, true);
     void Promise.resolve()

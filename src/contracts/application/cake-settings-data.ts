@@ -31,6 +31,7 @@ export const cakeHotkeyActionIds = [
   "cycle-work-log-view",
   "open-hovered-message",
   "open-companion",
+  "toggle-dictation-mute",
   "open-settings",
 ] as const;
 

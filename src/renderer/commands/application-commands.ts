@@ -8,6 +8,7 @@ import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import type { SidebarStore } from "../stores/SidebarStore";
 import type { TerminalStore } from "../stores/TerminalStore";
 import type { SessionAssistantStore } from "../stores/SessionAssistantStore";
+import type { DictationStore } from "../stores/DictationStore";
 import type { UiHintModeStore } from "../stores/UiHintModeStore";
 
 // The App handles hovered-message opening because it requires a DOM target.
@@ -30,6 +31,7 @@ export function createApplicationCommandRegistry(owners: {
   terminal(): TerminalStore;
   hints(): UiHintModeStore;
   assistant(): SessionAssistantStore;
+  dictation(): DictationStore;
 }) {
   const projectSelected = () => owners.shell().selection.kind === "project-session";
   const projectResolved = () => {
@@ -65,6 +67,12 @@ export function createApplicationCommandRegistry(owners: {
   };
   const commands = {
     "new-session": { run: () => owners.newSession().show() },
+    "toggle-dictation-mute": {
+      run: () => {
+        const store = owners.dictation();
+        store.setMuted(store.activeTargetId, !store.muted);
+      },
+    },
     "open-companion": {
       enabled: () => Boolean(owners.assistant().contextSessionId),
       run: () => owners.assistant().openQuickPrompt(),

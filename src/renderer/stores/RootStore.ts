@@ -110,6 +110,7 @@ export class RootStore extends Store<{
     terminal: () => this.terminalStore,
     hints: () => this.uiHintModeStore,
     assistant: () => this.sessionAssistantStore,
+    dictation: () => this.dictationStore,
   });
 
   @child

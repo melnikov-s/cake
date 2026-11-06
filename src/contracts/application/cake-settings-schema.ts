@@ -69,6 +69,7 @@ export const windowSettingsUpdateHelp = {
   guidance: [
     "Call settings.window.get before updating a section. Unspecified fields remain unchanged.",
     "For hotkeys, null restores the default binding and an empty string disables the shortcut.",
+    "Standalone side-specific Option/Alt taps use AltRight or AltLeft (not generic Alt). The toggle-dictation-mute action is unbound by default.",
     "Backend and Pi settings use settings.list/get/update instead.",
   ],
   examples: [

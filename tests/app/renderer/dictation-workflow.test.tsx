@@ -14,6 +14,8 @@ import {
   type DictationErrorCode,
   type DictationState,
 } from "../../../src/contracts/dictation/dictation-data";
+import { useAppHotkeys } from "../../../src/renderer/hooks/use-app-hotkeys";
+import type { RootStore } from "../../../src/renderer/stores/RootStore";
 import { ClientError } from "../../../src/renderer/client/Client";
 import { voiceDiagnosticReport } from "../../../src/renderer/speech/diagnostics";
 import { builtinSlashCommands } from "../../../src/contracts/conversations/session-contract";
@@ -140,8 +142,14 @@ function browserAudio(options: {
   };
 }
 
+function DictationHotkeys({ root }: { root: RootStore }) {
+  useAppHotkeys(root, () => {});
+  return null;
+}
+
 function renderDictation(
   options: {
+    hotkeys?: boolean;
     modelReady?: Promise<void>;
     surface?: "project-session" | "project-chat" | "cake-chat";
     slashCommands?: boolean;
@@ -262,6 +270,7 @@ function renderDictation(
   let revision = 1;
   const surface = (composerKey: number) => (
     <StoreProvider store={fixture.root.dictationStore}>
+      {options.hotkeys && <DictationHotkeys root={fixture.root} />}
       <SettingsDictationSection
         store={fixture.root.settingsStore.dictation}
         prompts={fixture.root.settingsStore.cakePrompts}
@@ -2417,6 +2426,41 @@ describe("Dictation writing-field workflow", () => {
     await fixture.audio.push(new Float32Array(12_800));
     await fixture.recognize(2, "Resumed");
     expect(trial().value).toBe("Keep this kept Resumed");
+  });
+
+  it("uses the same mute action for keyboard commands with active and inactive capture", async () => {
+    using fixture = renderDictation({ hotkeys: true });
+    const tap = (code = "AltRight") => {
+      fireEvent.keyDown(document.activeElement ?? window, { key: "Alt", code, altKey: true });
+      fireEvent.keyUp(document.activeElement ?? window, { key: "Alt", code });
+    };
+    fixture.root.settingsStore.hotkeys.assign("toggle-dictation-mute", "AltRight");
+    tap();
+    expect(fixture.root.dictationStore.muted).toBe(false); // Disabled dictation stays disabled.
+    await fixture.user.click(mode());
+    expect(fixture.root.dictationStore.muted).toBe(false);
+    await fixture.user.click(trial());
+    listening();
+    await fixture.audio.push(new Float32Array(12_800));
+    await fixture.recognize(0, "Keep this");
+    tap("AltLeft");
+    expect(fixture.root.dictationStore.muted).toBe(false);
+    tap();
+    expect(screen.getByRole("button", { name: "Unmute dictation" })).toBeDefined();
+    expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
+    expect(trial().value).toBe("Keep this");
+    tap();
+    await waitFor(listening);
+    expect(fixture.audio.getUserMedia).toHaveBeenCalledTimes(2);
+    await fixture.user.click(mode());
+    expect(fixture.root.dictationStore.enabled).toBe(false);
+    await fixture.user.click(mode());
+    // No active capture/target is required to update the same shared mute preference.
+    const target = fixture.root.dictationStore.activeTargetId;
+    if (target) fixture.root.dictationStore.releaseTarget(target);
+    tap();
+    expect(fixture.root.dictationStore.muted).toBe(true);
+    await waitFor(() => expect(fixture.setMuted).toHaveBeenLastCalledWith({ muted: true }));
   });
 
   it("pauses when another window claims the one capture and reclaims on refocus", async () => {
