@@ -34,7 +34,11 @@ it("shares one reactive indexed worktree across mounted sessions and invalidates
   });
   try {
     expect(observed.at(-1)).toBeUndefined();
-    applyManagedWorktreeCatalogUpdate(catalog, { _tag: "Snapshot", worktrees: [active] });
+    applyManagedWorktreeCatalogUpdate(catalog, {
+      _tag: "Snapshot",
+      worktrees: [{ ...active, defaultBranch: "main" }],
+    });
+    expect(catalog.find(active.worktreePath)?.defaultBranch).toBe("main");
     const first = catalog.find(active.worktreePath);
     expect(first).toBeDefined();
     expect(observed.at(-1)).toBe(first);
@@ -46,12 +50,29 @@ it("shares one reactive indexed worktree across mounted sessions and invalidates
 
     applyManagedWorktreeCatalogUpdate(catalog, {
       _tag: "Event",
-      event: { _tag: "Upserted", worktree: { ...active, state: "landed" } },
+      event: {
+        _tag: "Upserted",
+        worktree: { ...active, state: "landed", defaultBranch: "trunk" },
+      },
     });
     expect(catalog.find(active.worktreePath)).toBe(first);
+    expect(first?.defaultBranch).toBe("trunk");
     expect(joined().every((worktree) => worktree === first && worktree?.state === "landed")).toBe(
       true,
     );
+
+    applyManagedWorktreeCatalogUpdate(catalog, {
+      _tag: "Event",
+      event: { _tag: "Upserted", worktree: active },
+    });
+    expect(first?.defaultBranch).toBeUndefined();
+    applyManagedWorktreeCatalogUpdate(catalog, {
+      _tag: "Snapshot",
+      worktrees: [{ ...active, defaultBranch: "main" }],
+    });
+    expect(first?.defaultBranch).toBe("main");
+    applyManagedWorktreeCatalogUpdate(catalog, { _tag: "Snapshot", worktrees: [active] });
+    expect(first?.defaultBranch).toBeUndefined();
 
     applyManagedWorktreeCatalogUpdate(catalog, {
       _tag: "Snapshot",

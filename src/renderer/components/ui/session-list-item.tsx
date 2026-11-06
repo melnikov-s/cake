@@ -1,7 +1,7 @@
 import { useEffect, useRef, type MouseEventHandler, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import type { ProjectIcon, SessionLabel } from "../../../contracts/application/application-data";
-import type { WorktreeRecord } from "../../../contracts/worktrees/managed-worktree-data";
+import type { WorktreeCatalogEntry } from "../../../contracts/worktrees/managed-worktree-data";
 import { type SessionActivity } from "../../lib/session-activity";
 import { cn } from "../../lib/utils";
 import { SessionActivityIndicator } from "../session-activity-indicator";
@@ -28,7 +28,10 @@ export interface SessionListItemProps {
     familyChildSessionIds?: readonly string[];
     familyDepth?: number;
   };
-  managedWorktree?: Pick<WorktreeRecord, "branch" | "baseBranch" | "parentWorktreePath" | "state">;
+  managedWorktree?: Pick<
+    WorktreeCatalogEntry,
+    "branch" | "baseBranch" | "defaultBranch" | "parentWorktreePath" | "state"
+  >;
   selected: boolean;
   /** Sidebar navigation opens on press; destination pickers retain click activation. */
   activateOnMouseDown?: boolean;
@@ -116,7 +119,12 @@ export const SessionListItem = observer(function SessionListItem({
     ? undefined
     : (session.worktreeName ?? managedWorktree?.branch.replace(/^agent\//, ""));
   const baseBranch = managedWorktree?.baseBranch.replace(/^agent\//, "");
-  const showBaseBranch = baseBranch !== undefined && baseBranch !== "main";
+  const defaultBranch = managedWorktree?.defaultBranch;
+  const showBaseBranch =
+    baseBranch !== undefined &&
+    (defaultBranch
+      ? managedWorktree?.baseBranch !== defaultBranch
+      : managedWorktree?.baseBranch !== "main" && managedWorktree?.baseBranch !== "master");
   return (
     <div
       ref={rowRef}

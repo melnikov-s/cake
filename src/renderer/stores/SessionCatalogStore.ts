@@ -2,7 +2,10 @@ import { Store, computed, observable, type ReadonlySignal } from "r-state-tree";
 import type { SessionCatalog } from "../models/SessionCatalog";
 import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeCatalog } from "../models/WorktreeCatalog";
-import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
+import type {
+  WorktreeRecord,
+  WorktreeCatalogEntry,
+} from "../../contracts/worktrees/managed-worktree-data";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import { ClientContext } from "./context/ClientContext";
 import { applySessionCatalogGroupUpdate } from "../reducers/CatalogReducer";
@@ -134,7 +137,7 @@ export class SessionCatalogStore extends Store<{
     this.pendingManagedWorktrees.set(record.worktreePath, record);
   }
 
-  managedWorktree(workingDirectory: string) {
+  managedWorktree(workingDirectory: string): WorktreeCatalogEntry | undefined {
     return (
       this.props.worktrees.find(workingDirectory) ??
       this.pendingManagedWorktrees.get(workingDirectory)

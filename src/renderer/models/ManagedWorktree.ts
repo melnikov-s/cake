@@ -8,6 +8,7 @@ export class ManagedWorktree extends Model {
   checkoutPath: string | undefined;
   branch = "";
   baseBranch = "";
+  defaultBranch: string | undefined;
   baseCommit: string | undefined;
   parentWorktreePath: string | undefined;
   state: WorktreeRecord["state"];

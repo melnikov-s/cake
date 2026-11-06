@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { SpeechRecognitionSettings, TextProcessingMode } from "../dictation/dictation-data";
 import { ProjectIcon, SessionLabel } from "../application/application-data";
-import { WorktreeRecord } from "../worktrees/managed-worktree-data";
+import { WorktreeRecord, WorktreeCatalogEntry } from "../worktrees/managed-worktree-data";
 import { ImportedColorTheme } from "../themes/color-theme";
 
 import { CAPTURE_ANNOTATION_COLORS } from "../../utils/capture-annotation-colors";
@@ -43,6 +43,7 @@ export const CaptureSessionOption = Schema.Struct({
     Schema.Struct({
       branch: WorktreeRecord.fields.branch,
       baseBranch: WorktreeRecord.fields.baseBranch,
+      defaultBranch: WorktreeCatalogEntry.fields.defaultBranch,
       parentWorktreePath: WorktreeRecord.fields.parentWorktreePath,
       state: WorktreeRecord.fields.state,
     }),

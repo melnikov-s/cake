@@ -139,6 +139,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
                 managedWorktree: {
                   branch: worktree.branch,
                   baseBranch: worktree.baseBranch,
+                  defaultBranch: worktree.defaultBranch,
                   parentWorktreePath: worktree.parentWorktreePath,
                   state: worktree.state,
                 },

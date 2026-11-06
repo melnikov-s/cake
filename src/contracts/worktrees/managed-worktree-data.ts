@@ -43,12 +43,18 @@ export const ManagedWorktreeContext = Schema.Struct({
 });
 export interface ManagedWorktreeContext extends Schema.Schema.Type<typeof ManagedWorktreeContext> {}
 
+/** Display-only enrichment; defaultBranch never changes persisted bases or landing targets. */
+export const WorktreeCatalogEntry = WorktreeRecord.pipe(
+  Schema.fieldsAssign({ defaultBranch: Schema.optional(bounded(1, 512)) }),
+);
+export interface WorktreeCatalogEntry extends Schema.Schema.Type<typeof WorktreeCatalogEntry> {}
+
 const ManagedWorktreeEvent = Schema.TaggedUnion({
-  Upserted: { worktree: WorktreeRecord },
+  Upserted: { worktree: WorktreeCatalogEntry },
 });
 /** Current-first, ordered projection of main-owned Managed Worktree lifecycle records. */
 export const ManagedWorktreeCatalogUpdate = Schema.TaggedUnion({
-  Snapshot: { worktrees: Schema.Array(WorktreeRecord) },
+  Snapshot: { worktrees: Schema.Array(WorktreeCatalogEntry) },
   Event: { event: ManagedWorktreeEvent },
 });
 export type ManagedWorktreeCatalogUpdate = Schema.Schema.Type<typeof ManagedWorktreeCatalogUpdate>;

@@ -6,6 +6,7 @@ import {
 import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
 import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 import { Git } from "../../services/git/Git";
+import { localDefaultBranch } from "../../services/git/default-branch";
 import {
   ManagedWorktrees,
   type WorktreeCheckoutPlan,
@@ -39,22 +40,13 @@ export const createCheckout = Effect.fn("WorktreeCreation.createCheckout")(funct
       const git = yield* Git;
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const optionalGit = Effect.fn("WorktreeCreation.optionalGit")(
-        (cwd: string, args: ReadonlyArray<string>) =>
-          git.run(cwd, args).pipe(
-            Effect.map((value) => value.trim()),
-            Effect.option,
-          ),
-      );
       const defaultBranch = Effect.fn("WorktreeCreation.defaultBranch")(function* (root: string) {
-        const remote = yield* optionalGit(root, [
-          "symbolic-ref",
-          "-q",
-          "--short",
-          "refs/remotes/origin/HEAD",
-        ]);
-        if (remote._tag === "Some") return remote.value.replace(/^origin\//, "") || "main";
-        const current = yield* optionalGit(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
+        const remote = yield* localDefaultBranch(root);
+        if (remote !== undefined) return remote || "main";
+        const current = yield* git.run(root, ["rev-parse", "--abbrev-ref", "HEAD"]).pipe(
+          Effect.map((value) => value.trim()),
+          Effect.option,
+        );
         return current._tag === "Some" && current.value !== "HEAD" ? current.value : "main";
       });
       const normalizedBase = baseWorktreePath && normalize(baseWorktreePath);
