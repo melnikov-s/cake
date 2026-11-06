@@ -7,6 +7,7 @@ import {
 import type { ArtifactRuntimeHost } from "../../artifact-runtime/ArtifactRuntime";
 import { ArtifactStorage } from "../../storage/ArtifactStorage";
 import { ClientEvents } from "../../clients/ClientEvents";
+import type { ArtifactNavigationContext } from "../../../contracts/artifacts/artifact-navigation-context";
 
 const failure = (operation: string, cause: unknown) =>
   new ArtifactRuntimeError({
@@ -25,6 +26,7 @@ interface Event {
   readonly callingSessionId?: string;
   readonly windowConnectionId?: number;
   readonly viewId?: string;
+  readonly navigation?: ArtifactNavigationContext;
 }
 // One execution stays alive at __artifactNext, retaining its own JS closures. No DOM or hidden
 // renderer is involved. Host capabilities are JSON bridges; JS never receives Node globals.

@@ -578,14 +578,18 @@ describe("global artifact domain workflow", () => {
           expect((yield* artifacts.executionStatus(documentId)).executable).toBe(false);
           expect((yield* (yield* ArtifactRuntime).status(documentId)).running).toBe(false);
           expect((yield* (yield* ArtifactRuntime).status(lineageId)).running).toBe(false);
-          yield* artifacts.reportViewing(connectionId, { visible: [view(1)], active: view(1) });
+          yield* artifacts.reportViewing(connectionId, {
+            navigation: null,
+            visible: [view(1)],
+            active: view(1),
+          });
           expect(
             yield* artifacts.invokeGlobalArtifactCommand("artifacts.viewing", {}, "creator"),
           ).toMatchObject({
             callingWindow: connectionId,
             windows: [{ connectionId, visible: [view(1)], active: view(1) }],
           });
-          yield* artifacts.reportViewing(connectionId, { visible: [] });
+          yield* artifacts.reportViewing(connectionId, { navigation: null, visible: [] });
           expect((yield* (yield* ArtifactRuntime).status(lineageId)).running).toBe(true);
           expect(yield* refresh()).toEqual({ count: 3 });
           expect(
@@ -613,15 +617,95 @@ describe("global artifact domain workflow", () => {
   );
 
   it.effect(
+    "delivers initial and changed navigation to mounted runtime views per genuine connection without leaking UI scope to background calls",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* Effect.promise(fixture);
+        yield* Effect.gen(function* () {
+          const connectionId = yield* f.initialize;
+          const otherConnection = (yield* ClientConnections).desktop(18);
+          yield* artifacts.publishRuntime(
+            {
+              lineageId,
+              expectedRevision: revision(1),
+              runtime: {
+                source: `let contexts = []; return { tools: { contexts: async () => { await cake("network.request", {url:"https://example.test/prs/background"}); return contexts; } }, lifecycle: { context: async (event) => { contexts.push(event); } } };`,
+                tools: [
+                  {
+                    name: "contexts",
+                    description: "Read observed contexts",
+                    inputSchema: { type: "object" },
+                    outputSchema: { type: "array" },
+                  },
+                ],
+              },
+            },
+            "creator",
+          );
+          const a = {
+            windowId: "renderer-a",
+            project: { path: "/a", name: "A" },
+            session: { sessionId: "a1", kind: "project-session" as const },
+          };
+          const b = { windowId: "renderer-b", project: { path: "/b", name: "B" }, session: null };
+          yield* artifacts.reportViewing(connectionId, { navigation: a, visible: [view(2)] });
+          // Repeated publication of identical facts is not another navigation event.
+          yield* artifacts.reportViewing(connectionId, { navigation: a, visible: [view(2)] });
+          yield* artifacts.reportViewing(otherConnection, { navigation: b, visible: [view(2)] });
+          const changed = { ...a, session: { sessionId: "a2", kind: "project-session" as const } };
+          yield* artifacts.reportViewing(connectionId, { navigation: changed, visible: [view(2)] });
+          const contexts = yield* artifacts.callTool({ lineageId, name: "contexts", input: {} });
+          expect(contexts).toEqual([
+            expect.objectContaining({
+              name: "context",
+              windowConnectionId: connectionId,
+              viewId: `${connectionId}:${lineageId}@r2:pane`,
+              navigation: a,
+            }),
+            expect.objectContaining({
+              name: "context",
+              windowConnectionId: otherConnection,
+              navigation: b,
+            }),
+            expect.objectContaining({
+              name: "context",
+              windowConnectionId: connectionId,
+              navigation: changed,
+            }),
+          ]);
+          expect(f.commands.at(-1)).not.toHaveProperty("windowConnectionId");
+          expect(f.commands.at(-1)).not.toHaveProperty("callingSessionId");
+          expect(
+            yield* artifacts.invokeGlobalArtifactCommand("artifacts.viewing", {}),
+          ).toMatchObject({
+            windows: [
+              { connectionId, navigation: changed },
+              { connectionId: otherConnection, navigation: b },
+            ],
+          });
+          yield* artifacts.reportViewing(connectionId, { navigation: changed, visible: [] });
+          yield* artifacts.reportViewing(connectionId, { navigation: a, visible: [] });
+          expect(
+            yield* artifacts.callTool({ lineageId, name: "contexts", input: {} }),
+          ).toHaveLength(3);
+          yield* artifacts.reportViewing(connectionId, { navigation: a, visible: [view(2)] });
+          expect(
+            yield* artifacts.callTool({ lineageId, name: "contexts", input: {} }),
+          ).toHaveLength(4);
+        }).pipe(Effect.provide(f.layer));
+      }),
+  );
+
+  it.effect(
     "keeps historical views inert after publication and does not resume paused schedules when reopening",
     () =>
       Effect.gen(function* () {
         const f = yield* Effect.promise(fixture);
         yield* Effect.gen(function* () {
           const connectionId = yield* f.initialize;
-          yield* artifacts.reportViewing(connectionId, { visible: [view(1)] });
+          yield* artifacts.reportViewing(connectionId, { navigation: null, visible: [view(1)] });
           yield* refresh();
-          yield* artifacts.reportViewing(connectionId, { visible: [] });
+          yield* artifacts.reportViewing(connectionId, { navigation: null, visible: [] });
           yield* artifacts.publishRuntime(
             {
               lineageId,
@@ -640,9 +724,17 @@ describe("global artifact domain workflow", () => {
           expect(
             (yield* artifacts.controlRuntime(lineageId, "pause", "creator")).backgroundPaused,
           ).toBe(true);
-          yield* artifacts.reportViewing(connectionId, { visible: [view(1)], active: view(1) });
+          yield* artifacts.reportViewing(connectionId, {
+            navigation: null,
+            visible: [view(1)],
+            active: view(1),
+          });
           expect((yield* (yield* ArtifactRuntime).status(lineageId)).running).toBe(false);
-          yield* artifacts.reportViewing(connectionId, { visible: [view(2)], active: view(2) });
+          yield* artifacts.reportViewing(connectionId, {
+            navigation: null,
+            visible: [view(2)],
+            active: view(2),
+          });
           const reopened = yield* artifacts.executionStatus(lineageId);
           expect(reopened).toMatchObject({
             running: true,
@@ -666,7 +758,7 @@ describe("global artifact domain workflow", () => {
       const f = yield* Effect.promise(fixture);
       yield* Effect.gen(function* () {
         const connectionId = yield* f.initialize;
-        yield* artifacts.reportViewing(connectionId, { visible: [view(1)] });
+        yield* artifacts.reportViewing(connectionId, { navigation: null, visible: [view(1)] });
         yield* refresh();
         const original = yield* workflows.readExactRevision(lineageId, revision(1));
         if (original.snapshot.kind !== "widget") throw new Error("Expected widget fixture");

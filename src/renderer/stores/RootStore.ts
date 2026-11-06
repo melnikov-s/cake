@@ -87,6 +87,8 @@ import { NewSessionStore } from "./NewSessionStore";
 import { ModelCatalogStore } from "./ModelCatalogStore";
 import { ModelCatalogContext } from "./context/ModelCatalogContext";
 import { UtilityModelContext } from "./context/UtilityModelContext";
+import { ArtifactNavigationContext } from "./context/ArtifactNavigationContext";
+import type { ArtifactNavigationContext as NavigationContext } from "../../contracts/artifacts/artifact-navigation-context";
 
 export class RootStore extends Store<{
   client: Client;
@@ -101,6 +103,8 @@ export class RootStore extends Store<{
   // Typed Context.consume(), not dynamic symbol lookup, owns each provider's value contract.
   [key: symbol]: () => void;
   private readonly defaultSpeechPlayback = createSpeechPlayback();
+  /** Window-lifetime identity; backend reports also attach their actual RPC connection. */
+  private readonly navigationWindowId = crypto.randomUUID();
   readonly commands = createApplicationCommandRegistry({
     shell: () => this.appShellStore,
     metadata: () => this.sessionMetadataStore,
@@ -281,6 +285,50 @@ export class RootStore extends Store<{
     return context
       ? { sessionId: context.sessionId, workingDirectory: context.workspacePath }
       : undefined;
+  }
+
+  [ArtifactNavigationContext.provide]() {
+    return (): NavigationContext => {
+      const active = this.appShellStore.activeConversation;
+      let projectPath: string | undefined;
+      let session: NavigationContext["session"] = active ? { ...active } : null;
+      if (active?.kind === "cake-chat") {
+        const projectChat = isProjectChatSessionId(active.sessionId);
+        projectPath = projectChat
+          ? this.cakeChatCollectionStore.summaries.find(
+              (chat) => chat.sessionId === active.sessionId,
+            )?.projectPath
+          : undefined;
+        session = {
+          sessionId: active.sessionId,
+          kind: projectChat ? "project-chat" : "cake-chat",
+        };
+      } else if (active?.kind === "automation-session") {
+        const context = this.automationSessionsStore.selectedSession?.identity.context;
+        projectPath = context?._tag === "Project" ? context.projectPath : undefined;
+      } else {
+        const selectedDirectory = this.projectWorkbenchStore.projectOpenStore.projectPath;
+        projectPath = selectedDirectory
+          ? this.sessionCatalogStore.projectPathFor(selectedDirectory)
+          : undefined;
+        if (active) {
+          const summary = this.sessionCatalogStore.find(active.sessionId);
+          const directory = this.sessionMetadataStore.workingDirectory(active.sessionId);
+          const sessionProject =
+            summary?.projectPath ??
+            (directory ? this.sessionCatalogStore.projectPathFor(directory) : undefined);
+          // Project selection can change independently of the pane's retained session.
+          if (!projectPath || sessionProject !== projectPath) session = null;
+        }
+      }
+      return {
+        windowId: this.navigationWindowId,
+        project: projectPath
+          ? { path: projectPath, name: this.projectCatalogStore.nameForPath(projectPath) }
+          : null,
+        session,
+      };
+    };
   }
 
   [ArtifactPresentationContext.provide]() {

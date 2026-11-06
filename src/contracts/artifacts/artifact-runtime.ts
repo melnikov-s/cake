@@ -7,6 +7,7 @@ export const ArtifactRuntimeLifecycle = Schema.Literals([
   "focus",
   "blur",
   "unmount",
+  "context",
   "stop",
   "delete",
 ]);

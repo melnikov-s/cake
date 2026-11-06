@@ -128,7 +128,15 @@ visible references and the active reference for each live renderer connection,
 including fullscreen, and identifies the calling session's bound window when one
 exists. It does not infer "this artifact" from creator identity. Reports are
 window-owned disposable projections, not persistence, retention or transcript
-context. Disconnected windows disappear from discovery.
+context. Disconnected windows disappear from discovery. Each report also includes
+`navigation`: a disposable renderer-owned `{windowId,project,session}` snapshot.
+Project identity is its canonical path/name; session identity/kind distinguishes
+Project Sessions, Project Chat, global Cake Chat and automation sessions, with
+explicit null for no selection. Mounted authored views receive this same snapshot
+plus their `viewId` through `useArtifact().context` or HTML
+`cakeArtifact.getContext()/subscribeContext(listener)`. Initial handshake and later
+changes do not reload the view; unmount removes its subscriptions. Window facts
+never substitute for an invocation's real caller or RPC connection.
 
 An executable widget may declare `payload.runtime` with trusted JavaScript factory
 source and semantic tool descriptions/input/output JSON Schemas. Agents discover
@@ -142,8 +150,11 @@ browser or a Pi session. Factory closure state survives view disposal. Runtime
 creation is lazy on current-view opening, tool invocation or a due schedule;
 started workers remain until explicit stop/restart, deletion or backend exit.
 Closing a view unmounts its DOM and emits an unmount hook without stopping logic.
-Start/focus/blur/unmount/stop/delete hooks are meaningful backend events; historical
-source previews do not activate another runtime. Private lineage JSON persistence
+Start/focus/blur/unmount/context/stop/delete hooks are meaningful backend events; historical
+source previews do not activate another runtime. The opt-in `context` hook receives
+initial and changed navigation only for mounted current-revision views, carrying
+`navigation`, genuine `windowConnectionId` and scoped `viewId`; context observation
+alone never starts a stopped runtime. Private lineage JSON persistence
 is available through `data.read`/`data.write`; artifacts own its meaning and save
 policy. Cleanup hooks are not a reliable final save boundary.
 

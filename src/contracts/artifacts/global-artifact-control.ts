@@ -91,7 +91,7 @@ export const globalArtifactOperationContracts = [
   {
     command: "artifacts.viewing",
     summary:
-      "Identify visible and active artifacts, including fullscreen, in the caller's window and other connected windows.",
+      "Inspect visible/active artifacts and selected project/session navigation context per connected window; identify the caller's bound window when present.",
     inputSchema: Schema.Struct({}),
     outputSchema: ArtifactViewing,
   },

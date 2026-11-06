@@ -162,6 +162,19 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
   addEventListener("pointerdown", () => send("artifact-interaction", true), true);
   addEventListener("focusin", () => send("artifact-interaction", true), true);
   const stateWireError = ${artifactStateWireError.toString()};
+  const contextListeners = new Set();
+  let contextSnapshot = null;
+  let contextJson;
+  addEventListener("message", (event) => {
+    const message = event.data;
+    if (event.source !== parent || message?.source !== "cake-artifact-host" || message.token !== token || message.type !== "context") return;
+    const json = JSON.stringify(message.value);
+    if (json === contextJson) return;
+    contextJson = json;
+    const value = message.value;
+    contextSnapshot = value === null ? null : Object.freeze({ ...value, project: value.project && Object.freeze(value.project), session: value.session && Object.freeze(value.session) });
+    for (const listener of contextListeners) listener(contextSnapshot);
+  });
   const stateListeners = new Set();
   const statePending = new Map();
   let stateRequestId = 0;
@@ -223,6 +236,8 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
   globalThis.cake = Object.freeze({ call: (command, input = {}) => requestCall("artifact-cake-call", { command, input }) });
   globalThis.cakeArtifact = globalThis.__cakeArtifactBridge = Object.freeze({
     cake: globalThis.cake,
+    getContext: () => contextSnapshot,
+    subscribeContext(listener) { contextListeners.add(listener); return () => contextListeners.delete(listener); },
     callTool: (name, input = {}) => requestCall("artifact-tool-call", { name, input }),
     getSnapshot: () => stateSnapshot,
     subscribe(listener) { stateListeners.add(listener); return () => stateListeners.delete(listener); },
@@ -346,7 +361,7 @@ function widgetModulePlugin(source: string): Plugin {
           'import { useCallback, useSyncExternalStore } from "react";',
           "const bridge = globalThis.__cakeArtifactBridge;",
           'if (!bridge) throw new Error("@cake/artifact-sdk is only available in artifact widgets");',
-          "export function useArtifact() { const snapshot = useSyncExternalStore(bridge.subscribe, bridge.getSnapshot, bridge.getSnapshot); const replace = useCallback((value, expectedVersion = snapshot.version) => bridge.replace(value, expectedVersion), [snapshot.version]); return { ...snapshot, read: bridge.read, replace, callTool: bridge.callTool, cake: bridge.cake }; }",
+          "export function useArtifact() { const snapshot = useSyncExternalStore(bridge.subscribe, bridge.getSnapshot, bridge.getSnapshot); const context = useSyncExternalStore(bridge.subscribeContext, bridge.getContext, bridge.getContext); const replace = useCallback((value, expectedVersion = snapshot.version) => bridge.replace(value, expectedVersion), [snapshot.version]); return { ...snapshot, context, read: bridge.read, replace, callTool: bridge.callTool, cake: bridge.cake }; }",
           "export function useArtifactState(initialValue = null) {",
           "  const snapshot = useSyncExternalStore(bridge.subscribe, bridge.getSnapshot, bridge.getSnapshot);",
           "  const save = useCallback((value) => bridge.replace(value, snapshot.version), [snapshot.version]);",

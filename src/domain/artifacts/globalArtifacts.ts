@@ -238,6 +238,20 @@ export const reportViewing = Effect.fn("GlobalArtifacts.reportViewing")(function
           ),
           Effect.ignore,
         );
+    if (
+      report.navigation &&
+      (!(previous?.visible.some((prior) => key(prior) === key(view)) ?? false) ||
+        JSON.stringify(previous?.navigation) !== JSON.stringify(report.navigation))
+    )
+      yield* runtime
+        .lifecycle({
+          target,
+          event: "context",
+          viewId: `${connectionId}:${key(view)}`,
+          windowConnectionId: connectionId,
+          navigation: report.navigation,
+        })
+        .pipe(Effect.ignore);
     const active = report.active !== undefined && key(report.active) === key(view);
     const wasActive = previous?.active !== undefined && key(previous.active) === key(view);
     if (active !== wasActive)

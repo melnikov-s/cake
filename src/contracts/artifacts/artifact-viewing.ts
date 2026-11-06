@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { ArtifactLineageId, ArtifactRevisionNumber } from "./artifact-lineage";
+import { ArtifactNavigationContext } from "./artifact-navigation-context";
 
 export const ArtifactViewReference = Schema.Struct({
   lineageId: ArtifactLineageId,
@@ -9,6 +10,7 @@ export const ArtifactViewReference = Schema.Struct({
 export interface ArtifactViewReference extends Schema.Schema.Type<typeof ArtifactViewReference> {}
 
 export const ArtifactViewingReport = Schema.Struct({
+  navigation: Schema.NullOr(ArtifactNavigationContext),
   visible: Schema.Array(ArtifactViewReference).check(Schema.isMaxLength(200)),
   active: Schema.optionalKey(ArtifactViewReference),
 });

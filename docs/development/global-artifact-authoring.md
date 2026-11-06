@@ -11,7 +11,9 @@ There is no install flow, capability grant, permission screen or hosting Pi sess
 - `artifacts.list`: artifacts linked to the calling conversation.
 - `artifacts.viewing({})`: visible references and active artifact per connected
   window, including fullscreen; `callingWindow` identifies the caller's bound
-  window when available. Do not guess which artifact "this" means.
+  window when available. Each report's `navigation` contains the same window-scoped
+  project/session snapshot exposed to its artifact views. Do not guess which artifact
+  "this" means or treat the calling agent's session as the user's selection.
 - `artifacts.inspect({lineageId})`: metadata, runtime state and schedule receipts.
 - `artifacts.tools({lineageId})`: semantic names, descriptions and JSON input/output
   schemas, without starting code.
@@ -58,7 +60,7 @@ Publish logic onto an existing widget:
 ```
 
 `source` is an async factory **body**, not an ES module. Return
-`{tools:{name:handler}, lifecycle?:{start,focus,blur,unmount,stop,delete}}`.
+`{tools:{name:handler}, lifecycle?:{start,focus,blur,unmount,context,stop,delete}}`.
 A tool receives `(input,event)`; hooks receive an event containing its lifecycle
 name and optional view identity. The lexical APIs are:
 
@@ -106,6 +108,51 @@ closing/collapsing unmounts DOM but does not stop backend logic or tools. Use
 private persistence or tools to reconstruct the next view, not whole-app
 serialization on close. Existing scoped saved-state APIs remain available for
 view data but are not the required agent-facing interaction API.
+
+### React to the user's navigation
+
+`useArtifact().context` is reactive. HTML uses `cakeArtifact.getContext()` and
+`cakeArtifact.subscribeContext(listener)`, which returns an unsubscribe function.
+Read the current snapshot before subscribing/rendering; the subscription supplies
+subsequent snapshots. The initial value is null until the host handshake, then:
+
+```js
+{
+  windowId: "window-lifetime-id",
+  viewId: "mounted-view-id",
+  project: { path: "/work/my-project", name: "My project" }, // or null
+  session: { sessionId: "...", kind: "project-session" } // or null
+}
+```
+
+Session kinds are `project-session`, `project-chat`, `cake-chat`, and
+`automation-session`. Project Chat uses its canonical `project-chat:...` identity;
+global Cake Chat has no project. Independently selecting another project clears a
+retained session that belongs to the old project. Settings/library/fullscreen
+covers retain the underlying navigation selection. Each window has its own
+identity and selection. Reopening gets a fresh snapshot, not creator context.
+
+For example, filter a PR dashboard with a private project-to-repository mapping:
+
+```jsx
+const { context, value, hydrated } = useArtifact();
+const repo = context?.project && value?.repositoriesByProject?.[context.project.path];
+const prs = repo ? (value?.prs ?? []).filter((pr) => pr.repository === repo) : [];
+return <PRList loading={!hydrated || !context} prs={prs} />;
+```
+
+The mapping and PR cache remain artifact-owned saved data. The navigation snapshot
+is disposable; do not persist a shared "current project" that makes two windows
+fight over the filter. No view reload, polling, or hidden DOM is needed.
+
+Backend code can opt into `lifecycle.context(event)`. It receives an initial
+snapshot on current-view mount and later navigation changes while mounted:
+`event.navigation` contains `{windowId,project,session}`, alongside the actual
+`event.windowConnectionId` and scoped `event.viewId`. Only reported current-revision
+views receive this hook; it does not start every global artifact or subscribe an
+unmounted view. Use window-keyed transient handling if needed, not an inferred
+global session. These facts never become `callingSessionId`: later scheduled or
+background tool calls inherit neither a previous caller nor a window.
 
 ## Trusted host commands
 

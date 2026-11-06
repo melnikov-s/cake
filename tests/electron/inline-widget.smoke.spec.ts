@@ -149,6 +149,12 @@ function render() {
   button.textContent = "Saved count " + value.count;
 }
 api.subscribe(render);
+const navigation = document.createElement("p");
+navigation.id = "navigation";
+document.querySelector("main").append(navigation);
+const renderContext = () => { navigation.textContent = "Project " + (api.getContext()?.project?.path ?? "none"); };
+api.subscribeContext(renderContext);
+renderContext();
 render();
 document.querySelector("#save").onclick = async () => {
   const state = api.getSnapshot();
@@ -182,7 +188,8 @@ export default function Editor() {
   if (!state.hydrated) return <p>Hydrating artifact</p>;
   return <main><button onClick={() => state.save({count: state.value.count + 1})}>Saved count {state.value.count}</button>
     <button onClick={() => replay("save")}>Replay stale save</button>
-    <button onClick={() => replay("replace")}>Replay stale replace</button><output>{notice}</output></main>;
+    <button onClick={() => replay("replace")}>Replay stale replace</button><output>{notice}</output>
+    <p id="navigation">Project {artifact.context?.project?.path ?? "none"}</p></main>;
 }`,
       },
     );
@@ -192,10 +199,30 @@ export default function Editor() {
       frame.style.width = "560px";
       frame.style.height = "400px";
       let state = { version: 1, value: { count: 2 } };
+      let projectPath = "/a";
+      const postContext = () =>
+        frame.contentWindow?.postMessage(
+          {
+            source: "cake-artifact-host",
+            token,
+            type: "context",
+            value: {
+              windowId: "smoke-window",
+              viewId: "smoke-view",
+              project: { path: projectPath, name: projectPath },
+              session: null,
+            },
+          },
+          "*",
+        );
       const staleVersions: number[] = [];
       let interactions = 0;
       Object.assign(window, {
         __cakeArtifactStaleVersions: staleVersions,
+        __cakeArtifactNavigation(path: string) {
+          projectPath = path;
+          postContext();
+        },
         __cakeArtifactRemote() {
           state = { version: 3, value: { count: 8 } };
           frame.contentWindow?.postMessage(
@@ -225,6 +252,7 @@ export default function Editor() {
           Object.assign(window, { __cakeArtifactInteractions: ++interactions });
           return;
         }
+        if (message.type === "artifact-state-read") postContext();
         if (!message.value?.id) return;
         if (message.type === "artifact-tool-call" || message.type === "artifact-cake-call") {
           Object.assign(window, { __cakeArtifactCall: { type: message.type, ...message.value } });
@@ -280,6 +308,11 @@ export default function Editor() {
       await expect(save).toBeFocused();
       await save.press("Enter");
     } else await save.click();
+    await expect(artifactFrame.getByRole("button", { name: "Saved count 3" })).toBeVisible();
+    await expect(artifactFrame.getByText("Project /a", { exact: true })).toBeVisible();
+    await page.evaluate(() => Reflect.get(window, "__cakeArtifactNavigation")("/b"));
+    await expect(artifactFrame.getByText("Project /b", { exact: true })).toBeVisible();
+    // Navigation updates the mounted SDK subscription, not the document or local controls.
     await expect(artifactFrame.getByRole("button", { name: "Saved count 3" })).toBeVisible();
     await expect
       .poll(() => page.evaluate(() => Reflect.get(window, "__cakeArtifactInteractions")))

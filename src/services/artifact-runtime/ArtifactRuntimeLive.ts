@@ -241,13 +241,14 @@ export const ArtifactRuntimeLive = Layer.effect(
             input.callingSessionId,
             input.windowConnectionId,
           );
-        // A late blur/unmount never starts code after the view has gone away.
+        // Passive view observations never start/restart code on their own.
         const cached = yield* ScopedCache.getOption(controllers, input.target.lineageId);
-        const closingView = input.event === "blur" || input.event === "unmount";
-        if (closingView && Option.isNone(cached)) return yield* status(input.target.lineageId);
+        const passiveView =
+          input.event === "blur" || input.event === "unmount" || input.event === "context";
+        if (passiveView && Option.isNone(cached)) return yield* status(input.target.lineageId);
         const controller = yield* ScopedCache.get(controllers, input.target.lineageId);
         yield* Effect.gen(function* () {
-          const current = closingView
+          const current = passiveView
             ? controller.peek()
             : yield* controller.ensure(
                 input.target,
@@ -269,6 +270,7 @@ export const ArtifactRuntimeLive = Layer.effect(
                 ? null
                 : { callingSessionId: input.callingSessionId }),
               ...(input.viewId === undefined ? null : { viewId: input.viewId }),
+              ...(input.navigation === undefined ? null : { navigation: input.navigation }),
               ...(input.windowConnectionId === undefined
                 ? null
                 : { windowConnectionId: input.windowConnectionId }),

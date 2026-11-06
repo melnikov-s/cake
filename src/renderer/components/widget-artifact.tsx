@@ -1,5 +1,5 @@
 import { Option, Schema } from "effect";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -38,10 +38,24 @@ export const WidgetArtifact = observer(function WidgetArtifact({
   const browserDigest = artifact.payload.browser.digest;
   const state = inlineWidgets?.state(id);
   const liveState = inlineWidgets?.artifactStates[id];
+  const navigation = inlineWidgets?.navigationContext;
+  const postContext = useCallback(() => {
+    if (!state?.compiled) return;
+    iframe.current?.contentWindow?.postMessage(
+      {
+        source: "cake-artifact-host",
+        token: state.compiled.token,
+        type: "context",
+        value: navigation ? { ...navigation, viewId: id } : null,
+      },
+      "*",
+    );
+  }, [id, navigation, state?.compiled]);
   const iframe = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(220);
   const [readyToken, setReadyToken] = useState<string>();
   useWidgetSpeech(iframe, state?.compiled?.token, inlineWidgets?.speech);
+  useEffect(postContext, [postContext]);
   useEffect(() => {
     if (inlineWidgets) inlineWidgets.prepareBrowser(id, { digest: browserDigest });
     if (inlineWidgets)
@@ -108,6 +122,9 @@ export const WidgetArtifact = observer(function WidgetArtifact({
       }
       if (Option.isNone(parsed) || parsed.value.token !== state.compiled.token) return;
       if (parsed.value.type === "artifact-interaction") onInteraction?.();
+      // DOMContentLoaded's state handshake also delivers the latest navigation snapshot.
+      if (parsed.value.type === "artifact-state-read" || parsed.value.type === "ready")
+        postContext();
       if (parsed.value.type === "ready") {
         inlineWidgets.browserViewReady(id, state.compiled.token);
         setReadyToken(state.compiled.token);
@@ -199,7 +216,7 @@ export const WidgetArtifact = observer(function WidgetArtifact({
     };
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
-  }, [id, inlineWidgets, state?.compiled, onInteraction]);
+  }, [id, inlineWidgets, state?.compiled, onInteraction, postContext]);
 
   if (!inlineWidgets) return <Markdown>{artifact.fallback.markdown}</Markdown>;
   if (state?.status === "error")

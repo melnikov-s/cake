@@ -88,13 +88,19 @@ it("reports inline visibility only after viewport observation and removes it whe
     act(() => observeVisibility(true));
     await waitFor(() =>
       expect(reportViewing).toHaveBeenLastCalledWith(
-        { visible: [{ lineageId: "historical", revision: 1, surface: "inline" }] },
+        {
+          navigation: expect.any(Object),
+          visible: [{ lineageId: "historical", revision: 1, surface: "inline" }],
+        },
         expect.anything(),
       ),
     );
     act(() => observeVisibility(false));
     await waitFor(() =>
-      expect(reportViewing).toHaveBeenLastCalledWith({ visible: [] }, expect.anything()),
+      expect(reportViewing).toHaveBeenLastCalledWith(
+        { navigation: expect.any(Object), visible: [] },
+        expect.anything(),
+      ),
     );
   } finally {
     view.unmount();
@@ -126,6 +132,7 @@ it("reports visible and interacted artifacts, promotes fullscreen in the same wi
     await waitFor(() =>
       expect(reportViewing).toHaveBeenLastCalledWith(
         {
+          navigation: expect.any(Object),
           visible: [
             { lineageId: "report", revision: 1, surface: "inline" },
             { lineageId: "appendix", revision: 1, surface: "library" },
@@ -158,6 +165,7 @@ it("reports visible and interacted artifacts, promotes fullscreen in the same wi
     await waitFor(() =>
       expect(reportViewing).toHaveBeenLastCalledWith(
         {
+          navigation: expect.any(Object),
           visible: [{ lineageId: "report", revision: 1, surface: "fullscreen" }],
           active: { lineageId: "report", revision: 1, surface: "fullscreen" },
         },
@@ -180,6 +188,9 @@ it("reports visible and interacted artifacts, promotes fullscreen in the same wi
     view.unmount();
   }
   await waitFor(() =>
-    expect(reportViewing).toHaveBeenLastCalledWith({ visible: [] }, expect.anything()),
+    expect(reportViewing).toHaveBeenLastCalledWith(
+      { navigation: expect.any(Object), visible: [] },
+      expect.anything(),
+    ),
   );
 });

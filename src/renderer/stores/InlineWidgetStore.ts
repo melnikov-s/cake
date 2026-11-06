@@ -6,6 +6,7 @@ import type {
 } from "../../contracts/widgets/inline-widget-contract";
 import type { WidgetBrowserOutput } from "../../contracts/widgets/widget-browser-output";
 import { ClientContext } from "./context/ClientContext";
+import { ArtifactNavigationContext } from "./context/ArtifactNavigationContext";
 import type { ArtifactState } from "../../contracts/artifacts/artifact-state";
 import type { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
@@ -24,6 +25,10 @@ export interface InlineWidgetState {
 
 /** Owns compilation state for sandboxed inline transcript widgets. */
 export class InlineWidgetStore extends Store {
+  get navigationContext() {
+    return ArtifactNavigationContext.consume(this)?.() ?? null;
+  }
+
   constructor(props: InlineWidgetStore["props"]) {
     super(props);
     this.effect(() => {

@@ -262,6 +262,7 @@ describe("Live artifact execution projection", () => {
     await act(() =>
       f.backend.runPromise(
         artifacts.reportViewing(f.connectionId, {
+          navigation: null,
           visible: [{ lineageId, revision: revision.metadata.revision, surface: "library" }],
         }),
       ),

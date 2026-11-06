@@ -4,6 +4,7 @@ import type {
   ArtifactViewingReport,
 } from "../../contracts/artifacts/artifact-viewing";
 import { ClientContext } from "./context/ClientContext";
+import { ArtifactNavigationContext } from "./context/ArtifactNavigationContext";
 
 /** Disposable window projection. RPC connection identity, not a generated window ID, owns it. */
 export class ArtifactViewingStore extends Store {
@@ -39,7 +40,9 @@ export class ArtifactViewingStore extends Store {
   }
 
   refresh() {
-    if (this.reporting) this.reportVersion += 1;
+    // The renderer-ready event registers even a window with no artifact surfaces.
+    this.reporting = true;
+    this.reportVersion += 1;
   }
 
   show(id: string, entry: ArtifactViewReference) {
@@ -70,6 +73,7 @@ export class ArtifactViewingStore extends Store {
       fullscreen ??
       shown.find((surface) => surface.id === this.activeId) ??
       shown.findLast((surface) => surface.entry.surface !== "inline");
-    return active ? { visible, active: { ...active.entry } } : { visible };
+    const navigation = ArtifactNavigationContext.consume(this)?.() ?? null;
+    return active ? { navigation, visible, active: { ...active.entry } } : { navigation, visible };
   }
 }

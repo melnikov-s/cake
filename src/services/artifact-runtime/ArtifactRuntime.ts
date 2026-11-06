@@ -6,6 +6,7 @@ import type {
   ArtifactRuntimeStatus,
   ArtifactRuntimeTarget,
 } from "../../contracts/artifacts/artifact-runtime";
+import type { ArtifactNavigationContext } from "../../contracts/artifacts/artifact-navigation-context";
 import type { ArtifactRuntimeTool } from "../../contracts/artifacts/artifact-runtime-descriptor";
 
 export interface ArtifactRuntimeInvocation {
@@ -38,6 +39,7 @@ export class ArtifactRuntime extends Context.Service<
       input: ArtifactRuntimeInvocation & {
         readonly event: ArtifactRuntimeLifecycle;
         readonly viewId?: string;
+        readonly navigation?: ArtifactNavigationContext;
       },
     ) => Effect.Effect<ArtifactRuntimeStatus, ArtifactRuntimeError>;
     /** Does not start a runtime. Stop/delete likewise never start an absent runtime. */
