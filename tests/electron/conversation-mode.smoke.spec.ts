@@ -482,6 +482,8 @@ test("speech input sliders support keyboard input, scope labels, persistence and
         prerollMs: 0,
         sendPauseSeconds: 1,
         countdownDelaySeconds: 0.25,
+        dictationVoiceSend: false,
+        dictationSendPhrase: "send it",
         maximumUtteranceSeconds: 5,
         interruptionWords: 10,
         interruptionWindowMs: 500,

@@ -647,13 +647,20 @@ it("saves and reloads global Pi settings while permanent Cake Chat is busy witho
   const pending = runtime.prompt("Retain this active turn", "prompt", [], false, ids.first);
   await Effect.runPromise(Deferred.await(f.started));
   const queued = runtime.prompt("Retain this queued input", "follow-up", [], false, ids.second);
-  const before = await f.waitSnapshot(runtime, (snapshot) =>
-    snapshot.parts.some(
-      (part) =>
-        part.kind === "text" &&
-        part.text === "Retain this queued input" &&
-        part.deliveryState === "queued",
-    ),
+  // Provider readiness precedes publication of the streaming assistant part.
+  // Compare reload snapshots only after both the held response and queue are visible.
+  const before = await f.waitSnapshot(
+    runtime,
+    (snapshot) =>
+      snapshot.parts.some(
+        (part) => part.kind === "text" && part.role === "assistant" && part.status === "streaming",
+      ) &&
+      snapshot.parts.some(
+        (part) =>
+          part.kind === "text" &&
+          part.text === "Retain this queued input" &&
+          part.deliveryState === "queued",
+      ),
   );
   const updated = await settingsRuntime.runPromise(
     piSettingsHandlers["piSettings.update"]({
