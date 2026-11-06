@@ -395,6 +395,179 @@ describe("Dictation writing-field workflow", () => {
     await f.audio.push(new Float32Array(49_152));
   }
 
+  async function addFilter(f: ReturnType<typeof renderDictation>, text = "Yeah.") {
+    fireEvent.change(screen.getByRole("textbox", { name: "Discard phrase" }), {
+      target: { value: text },
+    });
+    await f.user.click(screen.getByRole("button", { name: "Add filter" }));
+  }
+
+  it.each(["raw", "utility"] as const)(
+    "filters finalized whole utterances in %s, preserving typed text, lowercase and successive sentences",
+    async (processing) => {
+      let text = "";
+      const transcribe = vi.fn<Client["dictation"]["transcribe"]>(async () => text);
+      using f = renderDictation({ client: { dictation: { transcribe } } });
+      await f.user.selectOptions(
+        screen.getByRole("combobox", { name: "Text processing" }),
+        processing,
+      );
+      render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+      await addFilter(f);
+      await f.user.click(mode());
+      await f.user.type(message(), "Typed Yeah. stays.");
+      const say = async (words: string) => {
+        text = words;
+        await f.audio.push(new Float32Array(16_384).fill(0.1));
+        await f.audio.push(new Float32Array(24_576));
+      };
+      text = "Yeah.";
+      await f.audio.push(new Float32Array(16_384).fill(0.1));
+      expect(message().value).toBe("Typed Yeah. stays. Yeah."); // interim stays visible
+      await f.audio.push(new Float32Array(24_576));
+      expect(message().value).toBe("Typed Yeah. stays."); // equal final still removes interim
+      await say("yeah");
+      await say("Yeah. this stays.");
+      await say("I said yeah yesterday.");
+      await say("Yeah.");
+      expect(message().value).toBe(
+        "Typed Yeah. stays. yeah Yeah. this stays. I said yeah yesterday.",
+      );
+      expect(f.prompt).not.toHaveBeenCalled();
+      expect(transcribe.mock.calls.filter(([input]) => input.final)).toHaveLength(5);
+      listening();
+    },
+  );
+
+  it("adds, edits, removes and restores filters through Settings, applying changes to active capture", async () => {
+    let text = "";
+    using f = renderDictation({
+      client: {
+        dictation: {
+          transcribe: async ({ final }) => {
+            const result = text;
+            if (final) text = ""; // Native finalization releases the rolling transcript.
+            return result;
+          },
+        },
+      },
+    });
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    await f.user.click(mode());
+    await f.user.type(message(), "Draft");
+    await addFilter(f);
+    await waitFor(listening);
+    const say = async (words: string) => {
+      text = words;
+      await f.audio.push(new Float32Array(16_384).fill(0.1));
+      await f.audio.push(new Float32Array(24_576));
+    };
+    await say("Yeah.");
+    expect(message().value).toBe("Draft");
+    await f.user.click(screen.getByRole("button", { name: "Edit Yeah." }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Discard phrase" }), {
+      target: { value: "No thanks." },
+    });
+    await f.user.click(screen.getByRole("switch", { name: /^Match case$/ }));
+    await f.user.click(screen.getByRole("button", { name: "Save filter" }));
+    using restored = createRendererStoreFixture({ snapshot: toSnapshot(f.root) });
+    expect(restored.root.speechInputSettingsStore.values.dictationDiscardFilters).toEqual([
+      { text: "No thanks.", matchCase: false },
+    ]);
+    await say("no thanks");
+    await say("Yeah.");
+    expect(message().value).toBe("Draft Yeah.");
+    await f.user.click(screen.getByRole("button", { name: "Remove No thanks." }));
+    await waitFor(listening);
+    await say("no thanks");
+    expect(message().value).toBe("Draft Yeah. no thanks");
+    using removed = createRendererStoreFixture({ snapshot: toSnapshot(f.root) });
+    expect(removed.root.speechInputSettingsStore.values.dictationDiscardFilters).toEqual([]);
+  });
+
+  it("does not filter a matching interim followed by nonmatching final or utility output", async () => {
+    let interim = "Yeah.";
+    let finalText = "Yeah, carry on.";
+    using f = renderDictation({
+      client: {
+        dictation: { transcribe: async ({ final }) => (final ? finalText : interim) },
+        workspaces: { postProcessDictation: async () => "Yeah." },
+      },
+    });
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    await addFilter(f);
+    await f.user.selectOptions(
+      screen.getByRole("combobox", { name: "Text processing" }),
+      "utility",
+    );
+    await f.user.click(mode());
+    await f.user.type(message(), "Typed");
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    expect(message().value).toBe("Typed Yeah.");
+    await f.audio.push(new Float32Array(24_576));
+    expect(message().value).toBe("Typed Yeah."); // cleanup output must stay
+    interim = "yeah";
+    finalText = "yeah";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(24_576));
+    expect(message().value).toBe("Typed Yeah. Yeah.");
+  });
+
+  it("does not let a stale finalized filter callback erase a subsequent manual edit", async () => {
+    const finalReply = deferred<string>();
+    const transcribe = vi.fn<Client["dictation"]["transcribe"]>(async ({ final }) =>
+      final ? finalReply.promise : "Yeah.",
+    );
+    using f = renderDictation({ client: { dictation: { transcribe } } });
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    await addFilter(f);
+    await f.user.click(mode());
+    await f.user.type(message(), "Draft");
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    const flush = f.audio.push(new Float32Array(24_576));
+    await waitFor(() => expect(transcribe.mock.calls.some(([input]) => input.final)).toBe(true));
+    fireEvent.change(message(), { target: { value: "Manually replaced draft" } });
+    finalReply.resolve("Yeah.");
+    await flush;
+    expect(message().value).toBe("Manually replaced draft");
+    listening();
+  });
+
+  it("filters manual finalization before ordinary submit without submitting by voice", async () => {
+    using f = renderDictation({ client: { dictation: { transcribe: async () => "Yeah." } } });
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    await addFilter(f);
+    await f.user.click(mode());
+    await f.user.type(message(), "Typed draft.");
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(f.prompt).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ text: "Typed draft." }),
+        expect.anything(),
+      ),
+    );
+  });
+
+  it("lets voice submit take precedence over matching discard rules and keeps prior filtered utterances out of submission", async () => {
+    let text = "";
+    using f = renderDictation({ client: { dictation: { transcribe: async () => text } } });
+    await voiceSend(f);
+    await addFilter(f);
+    await addFilter(f, "Send it.");
+    await f.user.type(message(), "Typed draft.");
+    text = "Yeah.";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(24_576));
+    text = "Send it.";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(24_576));
+    expect(f.prompt).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ text: "Typed draft." }),
+      expect.anything(),
+    );
+  });
+
   it.each(["raw", "utility"] as const)(
     "applies voice submission enabled during active %s capture",
     async (processing) => {
@@ -506,6 +679,66 @@ describe("Dictation writing-field workflow", () => {
     },
   );
 
+  it.each(["project-session", "project-chat", "cake-chat"] as const)(
+    "submits an existing typed draft on the first standalone utterance in %s without a leading wait",
+    async (surface) => {
+      let text = "";
+      using f = renderDictation({
+        surface,
+        client: { dictation: { transcribe: async () => text } },
+      });
+      render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+      await f.user.click(screen.getByRole("switch", { name: "Submit message by voice" }));
+      await f.user.click(mode());
+      const composer = screen.getByRole<HTMLTextAreaElement>("combobox", { name: /^Message/ });
+      await f.user.type(composer, "Existing typed draft.");
+      listening();
+      text = "Send it.";
+      await f.audio.push(new Float32Array(16_384).fill(0.1));
+      expect(f.prompt).not.toHaveBeenCalled();
+      await f.audio.push(new Float32Array(24_576)); // six 256 ms quiet frames
+      expect(f.prompt).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ text: "Existing typed draft." }),
+        expect.anything(),
+      );
+      expect(composer.value).toBe("");
+    },
+  );
+
+  it("seals prior speech at the native quiet endpoint instead of merging the next standalone command", async () => {
+    // Native ASR returns the whole generation, including text before its own quiet endpoints.
+    // Only final:true / a new utteranceId releases that rolling transcript.
+    let nextSpeech = "";
+    let transcript = "";
+    let id = "";
+    const transcribe = vi.fn<Client["dictation"]["transcribe"]>(async (input) => {
+      if (input.utteranceId !== id) {
+        id = input.utteranceId;
+        transcript = "";
+      }
+      if (nextSpeech) {
+        transcript = [transcript, nextSpeech].filter(Boolean).join(" ");
+        nextSpeech = "";
+      }
+      const result = transcript;
+      if (input.final) transcript = "";
+      return result;
+    });
+    using f = renderDictation({ client: { dictation: { transcribe } } });
+    await voiceSend(f);
+    nextSpeech = "I am testing send it in a sentence.";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(24_576));
+    nextSpeech = "Send it.";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(24_576));
+    expect(f.prompt).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ text: "I am testing send it in a sentence." }),
+      expect.anything(),
+    );
+    expect(transcribe.mock.calls.filter(([input]) => input.final)).toHaveLength(2);
+  });
+
   it("retains the voice-send owner after detected speech blurs before its first decode", async () => {
     let text = "";
     using f = renderDictation({ client: { dictation: { transcribe: async () => text } } });
@@ -526,19 +759,24 @@ describe("Dictation writing-field workflow", () => {
     );
   });
 
-  it.each(["I want to send it tomorrow", "please send it", "sent it", "send it now"])(
-    "keeps nonmatching finalized speech %s as ordinary dictation",
-    async (words) => {
-      let text = "";
-      using f = renderDictation({ client: { dictation: { transcribe: async () => text } } });
-      await voiceSend(f);
-      text = words;
-      await f.audio.push(new Float32Array(16_384).fill(0.1));
-      await f.audio.push(new Float32Array(49_152));
-      expect(message().value).toBe(words);
-      expect(f.prompt).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    "I want to send it tomorrow",
+    "please send it",
+    "sent it",
+    "send it now",
+    "Other speech. Send it.",
+    "Send it. Other speech.",
+    "Your mother. Send it. Your mother. Send it.",
+  ])("keeps nonmatching finalized speech %s as ordinary dictation", async (words) => {
+    let text = "";
+    using f = renderDictation({ client: { dictation: { transcribe: async () => text } } });
+    await voiceSend(f);
+    text = words;
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(49_152));
+    expect(message().value).toBe(words);
+    expect(f.prompt).not.toHaveBeenCalled();
+  });
 
   it("never mistakes interim fragments or transport packets for an isolated final utterance", async () => {
     let text = "";
@@ -556,6 +794,75 @@ describe("Dictation writing-field workflow", () => {
     expect(message().value).toBe(text);
     expect(f.prompt).not.toHaveBeenCalled();
   });
+
+  it.each([false, true])(
+    "uses consecutive classified quiet, with resumed speech=%s, and records content-free decisions",
+    async (resumed) => {
+      let text = "";
+      const transcribe = vi.fn<Client["dictation"]["transcribe"]>(async () => text);
+      using f = renderDictation({ client: { dictation: { transcribe } } });
+      await voiceSend(f);
+      await f.user.type(message(), "Private existing draft.");
+      text = "Send it.";
+      await f.audio.push(new Float32Array(16_384).fill(0.1));
+      await f.audio.push(new Float32Array(20_480)); // 1.28 s is not an endpoint
+      expect(f.prompt).not.toHaveBeenCalled();
+      expect(transcribe.mock.calls.some(([input]) => input.final)).toBe(false);
+      if (resumed) {
+        text = "Send it. More private speech.";
+        await f.audio.push(new Float32Array(4096).fill(0.1));
+        await f.audio.push(new Float32Array(20_480));
+        expect(f.prompt).not.toHaveBeenCalled();
+        expect(transcribe.mock.calls.some(([input]) => input.final)).toBe(false);
+      }
+      await f.audio.push(new Float32Array(4096)); // 1.536 s crosses the endpoint
+      expect(f.prompt).toHaveBeenCalledTimes(resumed ? 0 : 1);
+      expect(f.trace).toHaveBeenCalledWith(
+        expect.objectContaining({
+          step: "voice-final",
+          quietMs: 1536,
+          reason: resumed ? "nonmatching" : "command",
+        }),
+      );
+      if (resumed) {
+        expect(message().value).toBe("Private existing draft. Send it. More private speech.");
+        expect(f.trace).toHaveBeenCalledWith(
+          expect.objectContaining({ step: "voice-pause-reset", quietMs: 1280 }),
+        );
+      } else {
+        expect(f.prompt).toHaveBeenCalledWith(
+          expect.objectContaining({ text: "Private existing draft." }),
+          expect.anything(),
+        );
+        expect(f.trace).toHaveBeenCalledWith(
+          expect.objectContaining({ step: "voice-submit", reason: "requested" }),
+        );
+      }
+      const traces = JSON.stringify(f.trace.mock.calls);
+      expect(traces).not.toMatch(/Private|private|Send it|send it/);
+      const count = f.trace.mock.calls.length;
+      text = "";
+      await f.audio.push(new Float32Array(65_536));
+      expect(f.trace.mock.calls).toHaveLength(count); // idle silence does not spam the log
+    },
+  );
+
+  it.each(["Send it tomorrow.", ""])(
+    "uses final recognition %j rather than a command-looking interim",
+    async (finalText) => {
+      let interim = "";
+      using f = renderDictation({
+        client: { dictation: { transcribe: async ({ final }) => (final ? finalText : interim) } },
+      });
+      await voiceSend(f);
+      await f.user.type(message(), "Existing draft.");
+      interim = "Send it.";
+      await f.audio.push(new Float32Array(16_384).fill(0.1));
+      await f.audio.push(new Float32Array(24_576));
+      expect(f.prompt).not.toHaveBeenCalled();
+      expect(message().value).toBe(["Existing draft.", finalText].filter(Boolean).join(" "));
+    },
+  );
 
   it("uses a custom phrase, never the default phrase or utility-cleaned words", async () => {
     let text = "";
@@ -612,7 +919,7 @@ describe("Dictation writing-field workflow", () => {
     expect(f.prompt).not.toHaveBeenCalled();
   });
 
-  it("requires a leading pause, and leaves disabled dictation behavior unchanged", async () => {
+  it("leaves ordinary dictation unchanged when voice submission is disabled", async () => {
     let text = "send it";
     using f = renderDictation({ client: { dictation: { transcribe: async () => text } } });
     await f.user.click(mode());
@@ -621,45 +928,42 @@ describe("Dictation writing-field workflow", () => {
     await f.audio.push(new Float32Array(49_152));
     expect(message().value).toBe("send it");
     expect(f.prompt).not.toHaveBeenCalled();
-    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
-    await f.user.click(screen.getByRole("switch", { name: "Submit message by voice" }));
-    // A fresh capture still requires a real leading acoustic boundary.
-    await f.user.click(trial());
-    await f.user.click(message());
-    text = "send it";
+    text = "send it again";
     await f.audio.push(new Float32Array(16_384).fill(0.1));
     await f.audio.push(new Float32Array(49_152));
     expect(f.prompt).not.toHaveBeenCalled();
-    expect(message().value).toBe("send it send it");
+    expect(message().value).toBe("send it again");
   });
-  it.each(["mute", "stop", "target", "session", "unmount", "setting", "edit"] as const)(
-    "cancels an isolated command whose final recognition arrives after %s",
-    async (action) => {
-      let text = "";
-      const final = deferred<string>();
-      const transcribe = vi.fn<Client["dictation"]["transcribe"]>(async (input) =>
-        input.final ? final.promise : text,
-      );
-      using f = renderDictation({ client: { dictation: { transcribe } } });
-      await voiceSend(f);
-      text = "send it";
-      await f.audio.push(new Float32Array(16_384).fill(0.1));
-      await f.audio.push(new Float32Array(49_152));
-      await waitFor(() => expect(transcribe.mock.calls.some(([input]) => input.final)).toBe(true));
-      if (action === "mute")
-        await f.user.click(screen.getByRole("button", { name: "Mute dictation" }));
-      if (action === "stop") await f.user.click(mode());
-      if (action === "target") await f.user.click(trial());
-      if (action === "unmount") f.remountComposer();
-      if (action === "session") act(() => f.switchProjectSession());
-      if (action === "setting")
-        await f.user.click(screen.getByRole("switch", { name: "Submit message by voice" }));
-      if (action === "edit") await f.user.type(message(), "manual change");
-      await act(async () => final.resolve("send it"));
-      expect(f.prompt).not.toHaveBeenCalled();
-      expect(trial().value).toBe("");
-    },
-  );
+  it.each(
+    (
+      ["mute", "stop", "escape", "target", "session", "unmount", "setting", "edit"] as const
+    ).flatMap((action) => ["quiet", "final"].map((stage) => ({ action, stage }))),
+  )("cancels an isolated command during $stage after $action", async ({ action, stage }) => {
+    let text = "";
+    const final = deferred<string>();
+    const transcribe = vi.fn<Client["dictation"]["transcribe"]>(async (input) =>
+      input.final ? final.promise : text,
+    );
+    using f = renderDictation({ client: { dictation: { transcribe } } });
+    await voiceSend(f);
+    text = "send it";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await f.audio.push(new Float32Array(stage === "final" ? 24_576 : 20_480));
+    expect(transcribe.mock.calls.some(([input]) => input.final)).toBe(stage === "final");
+    if (action === "mute")
+      await f.user.click(screen.getByRole("button", { name: "Mute dictation" }));
+    if (action === "stop") await f.user.click(mode());
+    if (action === "escape") await f.user.keyboard("{Escape}");
+    if (action === "target") await f.user.click(trial());
+    if (action === "unmount") f.remountComposer();
+    if (action === "session") act(() => f.switchProjectSession());
+    if (action === "setting")
+      await f.user.click(screen.getByRole("switch", { name: "Submit message by voice" }));
+    if (action === "edit") await f.user.type(message(), "manual change");
+    await act(async () => final.resolve("send it"));
+    expect(f.prompt).not.toHaveBeenCalled();
+    expect(trial().value).toBe("");
+  });
 
   it("keeps unsupported targets as dictation even when the send phrase is enabled", async () => {
     let text = "";

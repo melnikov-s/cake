@@ -20,7 +20,16 @@ export function useDictationInput(
   submitRef.current = submit;
   const inserting = useRef(false);
   const replaying = useRef(false);
-  const insertion = useRef({ before: "", after: "", value: "", start: -1, caret: -1 });
+  const insertion = useRef({
+    before: "",
+    after: "",
+    value: "",
+    original: "",
+    selectionStart: -1,
+    selectionEnd: -1,
+    start: -1,
+    caret: -1,
+  });
   const target = useRef<DictationTarget>({
     id,
     submissionOwner: () => input.current?.dataset.dictationSubmissionOwner,
@@ -47,11 +56,14 @@ export function useDictationInput(
         before: element.value.slice(0, element.selectionStart),
         after: element.value.slice(element.selectionEnd),
         value: element.value,
+        original: element.value,
+        selectionStart: element.selectionStart,
+        selectionEnd: element.selectionEnd,
         start: element.selectionStart,
         caret: element.selectionEnd,
       };
     },
-    replace(text) {
+    replace(text, discard = false) {
       const element = input.current;
       if (
         !enabledRef.current ||
@@ -69,8 +81,9 @@ export function useDictationInput(
       const prefix = range.before && !/\s$/.test(range.before) ? " " : "";
       const suffix = range.after && !/^\s/.test(range.after) ? " " : "";
       const speech = text.trim() ? prefix + text.trim() + suffix : "";
-      const value = range.before + speech + range.after;
-      const caret = range.before.length + speech.length;
+      const value = discard ? range.original : range.before + speech + range.after;
+      const start = discard ? range.selectionStart : range.before.length + speech.length;
+      const caret = discard ? range.selectionEnd : start;
       inserting.current = true;
       try {
         // Invoke the native setter so React's value tracker sees the input event.
@@ -80,8 +93,8 @@ export function useDictationInput(
             value,
           );
         else element.value = value;
-        element.setSelectionRange(caret, caret);
-        insertion.current = { ...range, value, start: caret, caret };
+        element.setSelectionRange(start, caret);
+        insertion.current = { ...range, value, start, caret };
         flushSync(() => element.dispatchEvent(new Event("input", { bubbles: true })));
         // Programmatic value/selection updates do not reveal the tail like native typing.
         // Measure after React commits so content-sized inputs have their final height.

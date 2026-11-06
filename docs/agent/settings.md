@@ -22,19 +22,47 @@ Stores and window snapshot persistence; voice-submit changes seal pending speech
 and restart active capture with the new policy, while recognition tuning applies
 to subsequent recognition generations just as in the UI. No audio is exposed.
 
-A submission command must be the entire recognized utterance, with three seconds
-of detected quiet before and after. Matching ignores case, surrounding whitespace
-and edge punctuation, never extra words or arbitrary natural-language intent.
+A submission command must be the entire finalized recognized utterance. Utterances
+are separated by 1.5 seconds of detected quiet (rounded up to 256 ms audio frames),
+not by punctuation. Starting capture or editing the draft starts a fresh utterance;
+there is no additional leading wait. Resumed speech before that quiet endpoint
+keeps the words in the same utterance and restarts the quiet countdown. Background
+speech can therefore prevent a command from being isolated. Matching ignores case,
+surrounding whitespace and edge punctuation, never extra words or arbitrary
+natural-language intent.
 `send it`, `Send it.` and `SEND IT!` match `send it`; `send it now` does not unless
 configured as the phrase. Partial recognition and cleanup output cannot submit.
 An ordinary sentence containing the phrase remains dictation. Raw and utility
-cleanup modes share this contract. Normal composer validation still applies.
+cleanup modes share this contract. Normal composer validation still applies;
+the command is removed from the draft before requesting submission, and cannot
+submit an empty message. Capture/command diagnostics in `desktop.log` contain only
+policy, short correlation IDs, quiet durations and decision reasons, never dictated
+contents. `voice-submit` means submission requested, not backend acceptance.
+
+Discard filters live in `speechInput.dictationDiscardFilters` (empty by default).
+Use `settings.dictation.update` with
+`{action:"discard-filter-add",filter:{text:"Yeah.",matchCase:true}}` to append one
+without changing existing rules; `discard-filter-edit` takes `index` (zero-based)
+and `filter`, and `discard-filter-remove` takes `index`. Read the list first and
+verify it afterward with `settings.dictation.get`. The UI uses the same authority
+and durable window snapshot. Rules apply live, including while capturing.
+
+Filters match the **entire finalized raw utterance**, at the same quiet boundary
+as voice submit (or manual finalization), before utility cleanup. They never match
+interim results, cleanup output, a substring of a sentence, or existing typed text.
+An interim insertion is rolled back to the pre-utterance draft and selection when
+the final utterance is discarded. Stored text is preserved verbatim (1–256
+characters, not only punctuation/whitespace). Matching ignores outer whitespace
+and Unicode edge punctuation, but preserves internal spacing and punctuation.
+With Match case enabled, `Yeah.`, `Yeah` and `“Yeah!”` match `Yeah.`, but `yeah`
+and `yeah.` do not. With it disabled, case is ignored. `Yeah, carry on` and
+`I said Yeah.` remain speech. Voice-submit commands win if both policies match.
 
 `settings.open {page:"voice"}` opens Voice & Dictation;
 `settings.open {setting:"dictation.voiceSubmit"}` opens it and scrolls/highlights
 the setting, without toggling it or focusing an input. Other stable identities:
 `dictation.submitPhrase`, `dictation.enabled`, `dictation.textProcessingMode`,
-`dictation.vocabulary`, `speechInput.detection`, `speechInput.advanced`.
+`dictation.vocabulary`, `dictation.discardFilters`, `speechInput.detection`, `speechInput.advanced`.
 The phrase destination highlights its parent even when voice submission is off.
 Page and setting choices are listed by `settings.open.help`; arbitrary selectors
 are rejected. Navigation targets the calling chat's window and requires its

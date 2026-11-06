@@ -30,6 +30,8 @@ import {
 import { SettingsOpenInput } from "./settings-navigation";
 import { speechInputControls } from "../../utils/speech-input-settings";
 
+import { DictationDiscardFilter, DictationDiscardFilters } from "../dictation/discard-filters";
+
 export const SpeechInputPreferencesView = Schema.Struct({
   speechStartThreshold: Schema.Finite,
   speechContinueThreshold: Schema.Finite,
@@ -43,6 +45,7 @@ export const SpeechInputPreferencesView = Schema.Struct({
   shortCommands: Schema.Boolean,
   dictationVoiceSend: Schema.Boolean,
   dictationSendPhrase: Schema.String,
+  dictationDiscardFilters: DictationDiscardFilters,
 });
 const empty = Schema.Struct({});
 const scope = Schema.Literals(["backend", "project"]);
@@ -436,7 +439,7 @@ export const agentSettingsOperations = [
   setting(
     "settings.dictation.get",
     empty,
-    "Inspect originating desktop dictation, including speechInput.dictationVoiceSend (Submit message by voice), dictationSendPhrase, shared recognition/voice options, processing mode, installation and microphones; never audio. Read vocabulary with settings.dictation.vocabulary.list.",
+    "Inspect originating desktop dictation, including speechInput.dictationDiscardFilters (whole-utterance discard rules), dictationVoiceSend (Submit message by voice), dictationSendPhrase, shared recognition/voice options, processing mode, installation and microphones; never audio. Read vocabulary with settings.dictation.vocabulary.list.",
     {},
     dictationView,
   ),
@@ -456,6 +459,19 @@ export const agentSettingsOperations = [
         value: Schema.Finite,
       }),
       Schema.Struct({ action: Schema.Literal("short-commands"), enabled: Schema.Boolean }),
+      Schema.Struct({
+        action: Schema.Literal("discard-filter-add"),
+        filter: DictationDiscardFilter,
+      }),
+      Schema.Struct({
+        action: Schema.Literal("discard-filter-edit"),
+        index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+        filter: DictationDiscardFilter,
+      }),
+      Schema.Struct({
+        action: Schema.Literal("discard-filter-remove"),
+        index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      }),
       Schema.Struct({ action: Schema.Literal("reset-speech-input") }),
       Schema.Struct({
         action: Schema.Literal("microphone"),
@@ -475,11 +491,12 @@ export const agentSettingsOperations = [
         path: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
       }),
     ]),
-    "Use the originating desktop's shared Voice & Dictation controls, including local recognition or optional utility cleanup, recognition model and microphone selection.",
+    "Use the originating desktop's shared Voice & Dictation controls, including whole-utterance discard filters (discard-filter-add/edit/remove), local recognition or optional utility cleanup, recognition model and microphone selection.",
     { action: "enable", enabled: false },
     dictationView,
     [
-      "voice-submit changes Submit message by voice and optionally its exact configured phrase. Case, surrounding whitespace and edge punctuation are ignored; extra words are not: send it now does not match send it. Requires three seconds of quiet before and after; partial ASR results never submit. Applies to active capture by sealing speech and restarting with the latest policy. Raw and utility modes use recognized words, never cleanup output. speech-input-number uses the same bounds, step rounding and coupled limits as UI sliders; get returns effective values. short-commands affects voice-mode interruptions only. reset-speech-input restores all speech input defaults.",
+      "voice-submit changes Submit message by voice and optionally its exact configured phrase. Case, surrounding whitespace and edge punctuation are ignored; extra words are not: send it now does not match send it. Requires a whole finalized utterance, separated from other speech by 1.5 seconds of detected quiet, never punctuation alone. Capture start or a draft edit starts a fresh utterance without an extra leading wait. Speech resuming before the quiet endpoint cancels that countdown; partial ASR results never submit. Applies to active capture by sealing speech and restarting with the latest policy. Raw and utility modes use recognized words, never cleanup output. speech-input-number uses the same bounds, step rounding and coupled limits as UI sliders; get returns effective values. short-commands affects voice-mode interruptions only. reset-speech-input restores all speech input defaults.",
+      "discard-filter-add takes filter:{text,matchCase}; edit takes its zero-based index and filter; remove takes index. Read speechInput.dictationDiscardFilters via get. Stored spelling is preserved (1–256 characters). Matches ignore outer whitespace and edge punctuation, not internal whitespace/punctuation or extra words. Match case preserves case; otherwise comparison ignores case. Only finalized raw utterances are filtered before cleanup, never interim results, sentence mentions, typed drafts or cleanup output. Voice submit wins when the same utterance matches both. Rules apply live; no defaults are added.",
       "Desktop only. Enabling dictation can request microphone permission and record into the focused writing surface. Installing downloads the existing native model; install-vocabulary explicitly downloads a separate 103 MB local CTC encoder. cancel-install cancels either download. remove deletes Cake model data (including CTC) but preserves vocabulary. Empty vocabulary adds no inference. Active vocabulary adds a local CTC pass to each live revision; changes apply to the next utterance. model-path uses existing native manifest/path validation.",
     ],
   ),

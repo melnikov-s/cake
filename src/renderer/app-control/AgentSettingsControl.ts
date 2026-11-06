@@ -201,6 +201,15 @@ async function executeAgentSettings(
         case "short-commands":
           settings.speechInput.setShortCommands(input.enabled);
           return dictationView();
+        case "discard-filter-add":
+          settings.speechInput.addDiscardFilter(input.filter);
+          return dictationView();
+        case "discard-filter-edit":
+          settings.speechInput.editDiscardFilter(input.index, input.filter);
+          return dictationView();
+        case "discard-filter-remove":
+          settings.speechInput.removeDiscardFilter(input.index);
+          return dictationView();
         case "reset-speech-input":
           settings.speechInput.reset();
           return dictationView();

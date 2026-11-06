@@ -368,7 +368,10 @@ export const settingsElsewhere = [
     "Speech, dictation, host, sharing (this desktop)",
     "settings.speech.*, settings.dictation.*, settings.desktop.*",
   ],
-  ["Dictation voice submission, phrase, speech-input tuning", "settings.dictation.get/update"],
+  [
+    "Dictation discard filters, voice submission, phrase, speech-input tuning",
+    "settings.dictation.get/update",
+  ],
   ["Open/highlight Settings (navigation permission)", "settings.open"],
   ["Reload Pi resources", "settings.pi.reload"],
 ] as const;

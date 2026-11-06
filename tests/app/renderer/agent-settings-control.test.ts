@@ -1161,6 +1161,39 @@ describe("Agent Settings through the real application-control/Client/domain boun
         );
       }
       await call("settings.dictation.update", { action: "short-commands", enabled: false });
+      await call("settings.dictation.update", {
+        action: "discard-filter-add",
+        filter: { text: "Yeah.", matchCase: true },
+      });
+      expect(await call("settings.dictation.get")).toMatchObject({
+        value: { speechInput: { dictationDiscardFilters: [{ text: "Yeah.", matchCase: true }] } },
+      });
+      await call("settings.dictation.update", {
+        action: "discard-filter-edit",
+        index: 0,
+        filter: { text: "No thanks.", matchCase: false },
+      });
+      await call("settings.dictation.update", {
+        action: "discard-filter-add",
+        filter: { text: "Temporary", matchCase: true },
+      });
+      await call("settings.dictation.update", { action: "discard-filter-remove", index: 1 });
+      expect(origin.root.speechInputSettingsStore.values.dictationDiscardFilters).toEqual([
+        { text: "No thanks.", matchCase: false },
+      ]);
+      await expect(
+        call("settings.dictation.update", {
+          action: "discard-filter-add",
+          filter: { text: "...", matchCase: true },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        call("settings.dictation.update", {
+          action: "discard-filter-edit",
+          index: 9,
+          filter: { text: "Valid", matchCase: true },
+        }),
+      ).rejects.toThrow("no longer exists");
       using restored = createRendererStoreFixture({ snapshot: toSnapshot(origin.root) });
       expect(restored.root.speechInputSettingsStore.values).toEqual(
         origin.root.speechInputSettingsStore.values,

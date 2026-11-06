@@ -239,6 +239,11 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
             keywords: "dictation send submit phrase command hands-free",
           },
           {
+            label: "Discard standalone utterances",
+            targetId: "setting-dictation-discard-filters",
+            keywords: "dictation discard filters words phrases match case standalone utterances",
+          },
+          {
             label: "Prevent automatic refocusing while dictating",
             targetId: "setting-dictation-refocus",
             keywords: "dictation focus refocus autofocus input automatic typing",

@@ -1,4 +1,5 @@
 import { child, createStore, snapshot, Store, untracked } from "r-state-tree";
+import { matchesDiscardFilter, utteranceText } from "../../contracts/dictation/discard-filters";
 import type {
   DictationState,
   DictationTrace,
@@ -21,7 +22,8 @@ export interface DictationTarget {
   submissionOwner?(): string | undefined;
   submitted?(): void;
   begin(): void;
-  replace(text: string): ProvisionalTextSpan | void;
+  /** Restore the pre-utterance draft and selection when discarding recognition. */
+  replace(text: string, discard?: boolean): ProvisionalTextSpan | void;
   readonly submit?: () => void | Promise<void>;
 }
 export interface DictationSubmission {
@@ -34,7 +36,7 @@ interface Utterance {
   startedAt: number;
   settings: SpeechRecognitionSettings;
   sendPhrase?: string;
-  isolated: boolean;
+  bounded: boolean;
   voiceCommand: boolean;
   id: string;
   target: DictationTarget;
@@ -70,6 +72,8 @@ type StartReason =
   | "device";
 const attemptId = () => crypto.randomUUID().slice(0, 8);
 const CLEANUP_SILENCE_SAMPLES = 3 * 16_000;
+// Match SpeechGate's quiet endpoint, not utility cleanup's longer thinking pause.
+const VOICE_UTTERANCE_SILENCE_SAMPLES = 1.5 * 16_000;
 const MICROPHONE_HANDOFF_MS = 500;
 const RECOVERY_DELAYS_MS = [500, 1500, 4000] as const;
 const HEALTHY_LISTENING_MS = 30_000;
@@ -105,11 +109,7 @@ const recoverable = new Set([
 
 /** Exact words only: ignore case, outer whitespace and recognizer punctuation at the edges. */
 function commandText(text: string) {
-  return text
-    .trim()
-    .replace(/^[\p{P}\s]+|[\p{P}\s]+$/gu, "")
-    .trim()
-    .toLowerCase();
+  return utteranceText(text).toLowerCase();
 }
 
 /** Window-owned voice-input workflow. Focus is take-latest; drafts retain their existing owners.
@@ -177,10 +177,14 @@ export class DictationStore extends Store<{
       const phrase = preferences.dictationVoiceSend
         ? commandText(preferences.dictationSendPhrase) || undefined
         : undefined;
+      const filtersEnabled = preferences.dictationDiscardFilters.length > 0;
       const listening = this.phase === "listening";
       untracked(() => {
         const run = this.utterance;
-        if (!listening || !run?.target.submit || run.sendPhrase === phrase || run.finishing) return;
+        if (!listening || !run || run.finishing) return;
+        const sendPhrase = run.target.submit ? phrase : undefined;
+        if (run.sendPhrase === sendPhrase && run.bounded === (!!sendPhrase || filtersEnabled))
+          return;
         // Seal pending speech through ordinary finalization, never as a command. Restart
         // with the latest policy; changing Settings must not leave a stale capture active.
         void this.finish(run.target.id).then((finished) => {
@@ -393,7 +397,7 @@ export class DictationStore extends Store<{
     this.microphoneReleaseTimer = undefined;
     const run = this.utterance;
     if (run) recordVoiceDiagnostic("dictation-stop", { phase: this.phase });
-    if (run && !run.capture && reason !== "failed")
+    if (run && (!run.capture || run.sendPhrase) && reason !== "failed")
       this.trace("cancelled", {
         attempt: run.attempt,
         reason,
@@ -612,7 +616,6 @@ export class DictationStore extends Store<{
       // Editing starts a new decoding generation, not a new microphone acquisition.
       run.quietSamples = 0;
       run.heardSpeech = false;
-      run.isolated = false;
       run.voiceCommand = false;
       run.cleanupDue = false;
       run.cleanupController.abort();
@@ -643,7 +646,12 @@ export class DictationStore extends Store<{
         this.props.preferences.values.dictationVoiceSend && target.submit
           ? commandText(this.props.preferences.values.dictationSendPhrase) || undefined
           : undefined,
-      isolated: false,
+      bounded:
+        !!(
+          this.props.preferences.values.dictationVoiceSend &&
+          target.submit &&
+          commandText(this.props.preferences.values.dictationSendPhrase)
+        ) || this.props.preferences.values.dictationDiscardFilters.length > 0,
       voiceCommand: false,
       id: crypto.randomUUID(),
       target,
@@ -668,6 +676,7 @@ export class DictationStore extends Store<{
     this.trace("start-requested", {
       field: target.id,
       reason,
+      voiceSubmit: !!run.sendPhrase,
       retry: this.recoveryAttempt || undefined,
     });
     const since = (from: number) => Math.round(performance.now() - from);
@@ -693,7 +702,7 @@ export class DictationStore extends Store<{
           ),
         (samples, speech) => {
           if (this.utterance !== run) return;
-          if (run.sendPhrase) return this.voiceAudio(run, samples, speech);
+          if (run.bounded) return this.voiceAudio(run, samples, speech);
           if (run.finishing) return;
           if (speech) {
             run.heardSpeech = true;
@@ -737,8 +746,8 @@ export class DictationStore extends Store<{
               run.meterSamples = 0;
             }
           }
-          // Voice-send capture consumes only ordered, classified frames, never raw packets.
-          if (run.sendPhrase) return;
+          // Whole-utterance policies consume only ordered, classified frames, never raw packets.
+          if (run.bounded) return;
           run.chunks.push(samples);
           run.samples += samples.length;
           if (run.samples > 128_000) {
@@ -792,9 +801,31 @@ export class DictationStore extends Store<{
         commandText(text) === run.sendPhrase &&
         run.target.submit
       );
+      if (final && run.sendPhrase)
+        this.trace("voice-final", {
+          utterance: utteranceId.slice(0, 8),
+          quietMs: run.quietSamples / 16,
+          reason: run.voiceCommand
+            ? "command"
+            : !commandBoundary
+              ? "manual-boundary"
+              : text.trim()
+                ? "nonmatching"
+                : "empty",
+        });
       if (run.voiceCommand) {
         run.rawText = "";
-        run.target.replace("");
+        run.target.replace("", true);
+        this.provisionalText = undefined;
+        return;
+      }
+      // Submit commands have precedence. Filtering sees final raw recognition only,
+      // before equality checks (an interim may already have inserted the same words).
+      if (final && matchesDiscardFilter(text, preferences.dictationDiscardFilters)) {
+        run.rawText = "";
+        run.cleanedRaw = undefined;
+        run.cleanedText = undefined;
+        run.target.replace("", true);
         this.provisionalText = undefined;
         return;
       }
@@ -806,26 +837,33 @@ export class DictationStore extends Store<{
         this.textProcessingMode !== "raw" && !cleaned && span ? span : undefined;
     }
   }
-  /** Three seconds of classified quiet bound a whole recognition generation. Native ASR
-   * endpoints/capacity commits and transport fragments are never command boundaries.
+  /** A quiet endpoint seals one complete utterance, separately from the existing draft.
+   * Capture start and manual edits also start fresh utterances: no extra leading wait.
+   * Punctuation, native capacity commits and interim results never create boundaries.
    * Awaited by openSpeechCapture so later audio cannot leak into the final flush. */
   private async voiceAudio(run: Utterance, samples: Float32Array, speech: boolean) {
     const id = run.id;
     run.chunks.push(samples);
     run.samples += samples.length;
     if (speech) {
+      if (run.heardSpeech && run.quietSamples >= 12_800)
+        this.trace("voice-pause-reset", {
+          utterance: id.slice(0, 8),
+          quietMs: run.quietSamples / 16,
+        });
       run.heardSpeech = true;
       run.quietSamples = 0;
     } else run.quietSamples += samples.length;
     if (run.finishing) return;
-    if (run.quietSamples >= CLEANUP_SILENCE_SAMPLES) {
+    if (run.quietSamples >= VOICE_UTTERANCE_SILENCE_SAMPLES) {
       if (run.heardSpeech) {
-        await this.transcribe(run, true, run.isolated);
+        await this.transcribe(run, true, true);
         if (this.utterance !== run || run.id !== id) return;
         if (run.voiceCommand && !run.finishing) {
           const target = run.target;
           // Invalidate before calling the ordinary Send owner, including synchronous draft reset.
-          this.endUtterance();
+          this.trace("voice-submit", { utterance: id.slice(0, 8), reason: "requested" });
+          this.endUtterance(false, "voice-submit");
           this.phase = "paused";
           await target.submit?.();
           this.resume(target.id);
@@ -842,7 +880,6 @@ export class DictationStore extends Store<{
         this.provisionalText = undefined;
       }
       run.heardSpeech = false;
-      run.isolated = true;
       // No audio crosses this acoustic boundary, even during a long quiet period.
       run.chunks = [];
       run.samples = 0;

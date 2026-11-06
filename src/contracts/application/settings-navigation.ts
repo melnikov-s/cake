@@ -29,6 +29,7 @@ export const settingsDestinations = {
   "dictation.textProcessingMode": { page: "voice", targetId: "setting-text-processing" },
   "dictation.voiceSubmit": { page: "voice", targetId: "setting-dictation-voice-submit" },
   "dictation.submitPhrase": { page: "voice", targetId: "setting-dictation-voice-submit" },
+  "dictation.discardFilters": { page: "voice", targetId: "setting-dictation-discard-filters" },
   "dictation.vocabulary": { page: "voice", targetId: "setting-dictation-vocabulary" },
   "speechInput.detection": { page: "voice", targetId: "voice-speechStartThreshold" },
   "speechInput.advanced": { page: "voice", targetId: "advanced-voice-title" },

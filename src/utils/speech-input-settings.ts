@@ -1,4 +1,13 @@
 import { Option, Schema } from "effect";
+import {
+  DictationDiscardFilter,
+  DictationDiscardFilters,
+} from "../contracts/dictation/discard-filters";
+const readDiscardFilters = Schema.decodeUnknownOption(DictationDiscardFilters);
+const readDiscardFilter = Schema.decodeUnknownOption(DictationDiscardFilter);
+export function validDiscardFilter(filter: DictationDiscardFilter): boolean {
+  return Option.isSome(readDiscardFilter(filter));
+}
 import type { SpeechRecognitionSettings } from "../contracts/dictation/dictation-data";
 
 // Preference snapshot decoding stays outside ordinary renderer Stores.
@@ -122,6 +131,7 @@ export type SpeechInputPreferences = Record<SpeechInputNumericSetting, number> &
   shortCommands: boolean;
   dictationVoiceSend: boolean;
   dictationSendPhrase: string;
+  dictationDiscardFilters: ReadonlyArray<DictationDiscardFilter>;
 };
 export const defaultSpeechInputPreferences: SpeechInputPreferences = {
   speechStartThreshold: 0.6,
@@ -136,6 +146,7 @@ export const defaultSpeechInputPreferences: SpeechInputPreferences = {
   shortCommands: true,
   dictationVoiceSend: false,
   dictationSendPhrase: "send it",
+  dictationDiscardFilters: [],
 };
 
 /** Normalize window preferences without importing transport/Effect into Stores.
@@ -157,6 +168,10 @@ export function normalizeSpeechInputPreferences(
   result.dictationSendPhrase = Option.getOrElse(
     readString(input?.dictationSendPhrase),
     () => result.dictationSendPhrase,
+  );
+  result.dictationDiscardFilters = Option.getOrElse(
+    readDiscardFilters(input?.dictationDiscardFilters),
+    () => [],
   );
   result.speechContinueThreshold = Math.min(
     result.speechContinueThreshold,

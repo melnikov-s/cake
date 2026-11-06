@@ -1,4 +1,6 @@
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -13,6 +15,7 @@ async function dictationFixture(
     dictationEnabled?: boolean;
     preventAutomaticRefocus?: boolean;
     modelReferences?: boolean;
+    providerUrl?: string;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "cake-dictation-smoke-"));
@@ -30,6 +33,30 @@ async function dictationFixture(
     mkdir(model, { recursive: true }),
     mkdir(join(dictation, "ctc"), { recursive: true }),
   ]);
+  if (options.providerUrl)
+    await writeFile(
+      join(cakeHome, "pi", "models.json"),
+      JSON.stringify({
+        providers: {
+          fixture: {
+            baseUrl: options.providerUrl,
+            apiKey: "fixture",
+            api: "openai-completions",
+            models: [
+              {
+                id: "fixture",
+                name: "Fixture",
+                reasoning: false,
+                input: ["text"],
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 128_000,
+                maxTokens: 1024,
+              },
+            ],
+          },
+        },
+      }),
+    );
   // Fake native assets only. Never download speech models in an Electron workflow test.
   await writeFile(
     join(dictation, "ctc", "installed.json"),
@@ -120,10 +147,22 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     join(sessions, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
     [
       { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+      ...(options.providerUrl
+        ? [
+            {
+              type: "model_change",
+              id: "model",
+              parentId: null,
+              timestamp,
+              provider: "fixture",
+              modelId: "fixture",
+            },
+          ]
+        : []),
       {
         type: "message",
         id: "user-1",
-        parentId: null,
+        parentId: options.providerUrl ? "model" : null,
         timestamp,
         message: { role: "user", content: [{ type: "text", text: "Explain this" }], timestamp: 0 },
       },
@@ -135,8 +174,8 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
         message: {
           role: "assistant",
           content: [{ type: "text", text: "Inspect this implementation before changing it." }],
-          api: "anthropic-messages",
-          provider: "anthropic",
+          api: options.providerUrl ? "openai-completions" : "anthropic-messages",
+          provider: options.providerUrl ? "fixture" : "anthropic",
           model: "fixture",
           usage: {
             input: 0,
@@ -173,6 +212,132 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
       },
     });
   return { root, userData, cakeHome, sessionId, dictation, model, configure, launch };
+}
+
+test("discard filters restore typed selection and preserve lowercase speech in the real composer", async () => {
+  test.setTimeout(90_000);
+  const { root, model, configure, launch } = await dictationFixture({ dictationEnabled: true });
+  await configure({ ready: true, speech: false, text: "" });
+  const application = await launch();
+  try {
+    const page = await application.firstWindow();
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    await expect(composer).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await page.getByRole("textbox", { name: "Discard phrase" }).fill("Yeah.");
+    await page.getByRole("button", { name: "Add filter", exact: true }).click();
+    await expect(page.getByRole("switch", { name: "Match case for Yeah." })).toBeChecked();
+    await page.getByRole("button", { name: "Back to chat" }).click();
+    await composer.click();
+    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+    await composer.pressSequentially("Typed Yeah. stays.");
+    await composer.press("ControlOrMeta+a");
+    await configure({ ready: true, speech: true, text: "Yeah." });
+    await expect(composer).toHaveValue("Yeah.");
+    await configure({ ready: true, speech: false, text: "Yeah." });
+    await expect(composer).toHaveValue("Typed Yeah. stays.");
+    await expect(composer).toBeFocused();
+    expect(
+      await composer.evaluate((element: HTMLTextAreaElement) => [
+        element.selectionStart,
+        element.selectionEnd,
+      ]),
+    ).toEqual([0, "Typed Yeah. stays.".length]);
+    // Move to the tail explicitly: future ordinary speech must not be discarded.
+    await composer.press("ArrowRight");
+    await configure({ ready: true, speech: true, text: "yeah" });
+    await expect(composer).toHaveValue("Typed Yeah. stays. yeah");
+    await configure({ ready: true, speech: false, text: "yeah" });
+    await expect
+      .poll(async () => JSON.parse(await readFile(join(model, "request.json"), "utf8")).finals)
+      .toBeGreaterThanOrEqual(2);
+    await expect(composer).toHaveValue("Typed Yeah. stays. yeah");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+  } finally {
+    await application.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+for (const draft of ["typed", "dictated"] as const) {
+  test(`standalone voice command submits the ${draft} draft once without leaking command text`, async () => {
+    test.setTimeout(90_000);
+    const userInputs: string[] = [];
+    const server = createServer(async (request, response) => {
+      let body = "";
+      for await (const chunk of request) body += chunk;
+      const payload = JSON.parse(body);
+      const user = payload.messages
+        ?.filter((message: { role: string }) => message.role === "user")
+        .at(-1);
+      userInputs.push(JSON.stringify(user?.content));
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(
+        `data: ${JSON.stringify({
+          id: "voice-submit",
+          object: "chat.completion.chunk",
+          created: 0,
+          model: "fixture",
+          choices: [{ index: 0, delta: { content: "Received the draft." }, finish_reason: "stop" }],
+        })}\n\ndata: [DONE]\n\n`,
+      );
+    });
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const { root, model, configure, launch } = await dictationFixture({
+      dictationEnabled: true,
+      providerUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`,
+    });
+    await configure({ ready: true, speech: true, text: "" });
+    const application = await launch();
+    try {
+      const page = await application.firstWindow();
+      const composer = page.getByRole("combobox", { name: "Message", exact: true });
+      await expect(composer).toBeVisible({ timeout: 20_000 });
+      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+      await page.getByRole("switch", { name: "Submit message by voice" }).click();
+      await page.getByRole("button", { name: "Back to chat" }).click();
+      await composer.click();
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+      await composer.pressSequentially("Existing typed draft.");
+      await expect(composer).toBeFocused();
+      await expect(composer).toHaveValue("Existing typed draft.");
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      let expected = "Existing typed draft.";
+      if (draft === "dictated") {
+        await configure({ ready: true, speech: true, text: "I might send it tomorrow." });
+        expected += " I might send it tomorrow.";
+        await expect(composer).toHaveValue(expected);
+        await configure({ ready: true, speech: false, text: "I might send it tomorrow." });
+        await expect
+          .poll(async () => JSON.parse(await readFile(join(model, "request.json"), "utf8")).finals)
+          .toBe(1);
+        expect(userInputs).toEqual([]);
+      }
+      // The typed case has had no detected leading quiet at all, including during typing.
+      await configure({ ready: true, speech: true, text: "Send it." });
+      await expect(composer).toHaveValue(expected + " Send it.");
+      expect(userInputs).toEqual([]);
+      await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
+      await expect(composer).not.toBeFocused();
+      await configure({ ready: true, speech: false, text: "  SEND IT!  " });
+      await expect(composer).toHaveValue("", { timeout: 10_000 });
+      await expect(page.getByText(expected, { exact: true })).toBeVisible();
+      await expect(page.getByText("Received the draft.", { exact: true })).toBeVisible();
+      expect(userInputs).toHaveLength(1);
+      expect(userInputs[0]).toContain(expected);
+      expect(userInputs[0]).not.toMatch(/Send it\.|SEND IT!/);
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+    } finally {
+      await application.close();
+      server.closeAllConnections();
+      await new Promise<void>((done, fail) =>
+        server.close((error) => (error ? fail(error) : done())),
+      );
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 }
 
 for (const referenceKind of ["Model", "Session"] as const) {

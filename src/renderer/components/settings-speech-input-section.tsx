@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SettingsDictationDiscardFilters } from "./settings-dictation-discard-filters";
 import { observer } from "r-state-tree/react";
 import type { SpeechInputSettingsStore } from "../stores/SpeechInputSettingsStore";
 import { speechInputControls, formatSpeechInputSetting } from "../../utils/speech-input-settings";
@@ -65,11 +66,12 @@ export const SettingsSpeechInputSection = observer(function SettingsSpeechInputS
                 aria-describedby="dictation-send-phrase-description"
               />
               <p id="dictation-send-phrase-description" className="text-xs text-muted-foreground">
-                Say the phrase on its own, with three seconds of quiet before and after.
+                Say the phrase as a separate utterance. A 1.5-second pause separates utterances.
               </p>
             </div>
           )}
         </div>
+        <SettingsDictationDiscardFilters store={store} />
         <DisclosureTrigger
           id="advanced-voice-title"
           title="Advanced speech input"

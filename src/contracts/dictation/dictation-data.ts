@@ -87,7 +87,7 @@ export class DictationError extends Schema.TaggedError<DictationError>()("Dictat
   message: Schema.String,
 }) {}
 
-/** Desktop-log breadcrumbs for one capture startup attempt. Metadata only: never audio,
+/** Desktop-log breadcrumbs for capture and voice-command decisions. Metadata only: never audio,
  * transcripts, draft text, paths or native/user-facing error prose. */
 export const DictationTraceStep = Schema.Literals([
   "start-requested",
@@ -101,6 +101,9 @@ export const DictationTraceStep = Schema.Literals([
   "cancelled",
   "failed",
   "retry-scheduled",
+  "voice-pause-reset",
+  "voice-final",
+  "voice-submit",
 ]);
 export type DictationTraceStep = typeof DictationTraceStep.Type;
 const DictationTraceToken = Schema.String.check(Schema.isMaxLength(64));
@@ -108,7 +111,12 @@ export const DictationTrace = Schema.Struct({
   attempt: DictationTraceToken,
   step: DictationTraceStep,
   field: Schema.optional(DictationTraceToken),
-  /** Why an attempt began, was cancelled, or why a focus did not start one. */
+  utterance: Schema.optional(DictationTraceToken),
+  voiceSubmit: Schema.optional(Schema.Boolean),
+  quietMs: Schema.optional(
+    Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
+  ),
+  /** Why capture began/ended, or how a finalized utterance was handled. */
   reason: Schema.optional(DictationTraceToken),
   stage: Schema.optional(DictationTraceToken),
   code: Schema.optional(DictationTraceToken),
