@@ -654,17 +654,8 @@ describe("ManagedWorktrees Effect service", () => {
           yield* Effect.gen(function* () {
             const worktrees = yield* ManagedWorktrees;
             yield* worktrees.prepareLanding(firstPath, "first");
-            const queued = yield* Deferred.make<void>();
-            const second = yield* worktrees
-              .prepareLanding(
-                secondPath,
-                "second",
-                Deferred.succeed(queued, undefined).pipe(Effect.asVoid),
-              )
-              .pipe(Effect.forkScoped);
-            yield* Deferred.await(queued);
+            yield* worktrees.prepareLanding(secondPath, "second");
             yield* worktrees.discard(firstPath, false, builtIn);
-            yield* Fiber.join(second);
             expect(yield* worktrees.status(secondPath)).toMatchObject({
               landingState: "running",
               landingOperationId: "second",
@@ -945,6 +936,62 @@ describe("ManagedWorktrees Effect service", () => {
       ).pipe(Effect.provide(BootstrapLive)),
   );
 
+  it.effect("replays again if the target advances between final replay and fast-forward", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const temporary = yield* fs.makeTempDirectoryScoped();
+        const repository = `${temporary}/repo`;
+        const source = `${temporary}/source`;
+        for (const directory of [`${repository}/.git`, source])
+          yield* fs.makeDirectory(directory, { recursive: true });
+        let target = "original";
+        const mutations: string[] = [];
+        const layer = ManagedWorktreesLive.pipe(
+          Layer.provide(
+            makeLayer([record(repository, source, "agent/source")], {
+              commonDirectory: () => repository,
+              run: (cwd, args) => {
+                if (args[0] === "rev-parse" && args[1] === "main") return Effect.succeed(target);
+                if (args[0] === "rebase")
+                  return Effect.sync(() => {
+                    mutations.push(args.join(" "));
+                    return "";
+                  });
+                if (cwd === repository && args[0] === "merge")
+                  return Effect.gen(function* () {
+                    mutations.push(args.join(" "));
+                    if (target === "original") {
+                      target = "advanced";
+                      return yield* new GitError({
+                        operation: "merge",
+                        workingDirectory: cwd,
+                        message: "not a fast-forward",
+                      });
+                    }
+                    return "";
+                  });
+                return undefined;
+              },
+            }),
+          ),
+        );
+        yield* Effect.gen(function* () {
+          const worktrees = yield* ManagedWorktrees;
+          expect(yield* worktrees.land(source, "land", { strategy: "preserve" })).toMatchObject({
+            outcome: "landed",
+          });
+          expect(mutations).toEqual([
+            "rebase original",
+            "merge --ff-only agent/source",
+            "rebase advanced",
+            "merge --ff-only agent/source",
+          ]);
+        }).pipe(Effect.provide(layer));
+      }),
+    ).pipe(Effect.provide(BootstrapLive)),
+  );
+
   it.effect("uses the latest persisted checkpoint after waiting in the landing queue", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -1170,6 +1217,236 @@ describe("ManagedWorktrees Effect service", () => {
   );
 
   it.effect(
+    "prepares independently, refreshes at the front and retains FIFO through new conflicts",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const temporary = yield* fs.makeTempDirectoryScoped();
+          const repository = `${temporary}/repo`;
+          const firstPath = `${temporary}/first`;
+          const secondPath = `${temporary}/second`;
+          const thirdPath = `${temporary}/third`;
+          for (const directory of [`${repository}/.git`, firstPath, secondPath, thirdPath])
+            yield* fs.makeDirectory(directory, { recursive: true });
+          const rebasePaths = new Map(
+            [firstPath, secondPath, thirdPath].map((cwd) => [cwd, `${cwd}/rebase-merge`]),
+          );
+          const waiting = yield* Queue.unbounded<string>();
+          const mergeStarted = yield* Deferred.make<void>();
+          const finishMerge = yield* Deferred.make<void>();
+          let target = "original";
+          let firstRepaired = false;
+          let secondRepaired = false;
+          let activeMerges = 0;
+          let maxMerges = 0;
+          const merges: string[] = [];
+          const rebases: Array<{ cwd: string; target: string }> = [];
+          const layer = ManagedWorktreesLive.pipe(
+            Layer.provide(
+              makeLayer(
+                [
+                  record(repository, firstPath, "agent/first"),
+                  record(repository, secondPath, "agent/second"),
+                  record(repository, thirdPath, "agent/third"),
+                ],
+                {
+                  commonDirectory: () => repository,
+                  run: (cwd, args) => {
+                    if (args[0] === "rev-parse" && args[1] === "--git-path")
+                      return Effect.succeed(
+                        args[2] === "rebase-merge" ? (rebasePaths.get(cwd) ?? "") : "",
+                      );
+                    if (args[0] === "rev-parse" && (args[1] === "main" || args[1] === "HEAD"))
+                      return Effect.succeed(target);
+                    if (args[0] === "rebase")
+                      return Effect.gen(function* () {
+                        rebases.push({ cwd, target: args.at(-1) ?? "" });
+                        if (
+                          (cwd === firstPath && !firstRepaired) ||
+                          (cwd === secondPath && target === "agent/first" && !secondRepaired)
+                        ) {
+                          yield* fs
+                            .makeDirectory(`${cwd}/rebase-merge`, { recursive: true })
+                            .pipe(Effect.orDie);
+                          return yield* new GitError({
+                            operation: "rebase",
+                            workingDirectory: cwd,
+                            message: "conflict",
+                          });
+                        }
+                        return "";
+                      });
+                    if (cwd === repository && args[0] === "merge")
+                      return Effect.gen(function* () {
+                        activeMerges += 1;
+                        maxMerges = Math.max(maxMerges, activeMerges);
+                        const branch = args.at(-1) ?? "";
+                        merges.push(branch);
+                        if (branch === "agent/first") {
+                          yield* Deferred.succeed(mergeStarted, undefined);
+                          yield* Deferred.await(finishMerge);
+                        }
+                        target = branch;
+                        activeMerges -= 1;
+                        return "";
+                      });
+                    return undefined;
+                  },
+                },
+              ),
+            ),
+          );
+          yield* Effect.gen(function* () {
+            const worktrees = yield* ManagedWorktrees;
+            // The first owner may still be committing; reserving others never waits.
+            yield* worktrees.prepareLanding(firstPath, "first");
+            yield* worktrees.prepareLanding(secondPath, "second");
+            yield* worktrees.prepareLanding(thirdPath, "third");
+            // Reservation retries must not duplicate pending entries.
+            yield* worktrees.prepareLanding(secondPath, "second");
+            const progress = (id: string) => (phase: "queued" | "landing") =>
+              phase === "queued" ? Queue.offer(waiting, id).pipe(Effect.asVoid) : Effect.void;
+            const second = yield* worktrees
+              .land(secondPath, "second", { strategy: "preserve" }, progress("second"))
+              .pipe(Effect.forkScoped);
+            const third = yield* worktrees
+              .land(thirdPath, "third", { strategy: "preserve" }, progress("third"))
+              .pipe(Effect.forkScoped);
+            expect(new Set([yield* Queue.take(waiting), yield* Queue.take(waiting)])).toEqual(
+              new Set(["second", "third"]),
+            );
+            expect(rebases).toEqual(
+              expect.arrayContaining([
+                { cwd: secondPath, target: "original" },
+                { cwd: thirdPath, target: "original" },
+              ]),
+            );
+            expect(merges).toEqual([]);
+            expect(
+              yield* worktrees.land(firstPath, "first", { strategy: "preserve" }),
+            ).toMatchObject({ outcome: "resolving" });
+            expect(yield* worktrees.status(secondPath)).toMatchObject({
+              landingState: "queued",
+              landingQueuePosition: 1,
+            });
+            expect(yield* worktrees.status(thirdPath)).toMatchObject({
+              landingState: "queued",
+              landingQueuePosition: 2,
+            });
+            firstRepaired = true;
+            yield* fs.remove(`${firstPath}/rebase-merge`, { recursive: true });
+            const first = yield* worktrees
+              .land(firstPath, "first", { strategy: "preserve" })
+              .pipe(Effect.forkScoped);
+            yield* Deferred.await(mergeStarted);
+            // A standalone rebase can prepare even while another target mutation runs.
+            expect(yield* worktrees.rebase(thirdPath)).toEqual({ outcome: "rebased" });
+            expect(merges).toEqual(["agent/first"]);
+            yield* Deferred.succeed(finishMerge, undefined);
+            expect(yield* Fiber.join(first)).toMatchObject({ outcome: "landed" });
+            // The second was ready against original, but final refresh sees first and conflicts.
+            expect(yield* Fiber.join(second)).toMatchObject({ outcome: "resolving" });
+            expect(rebases).toContainEqual({ cwd: secondPath, target: "agent/first" });
+            expect(yield* worktrees.status(secondPath)).toMatchObject({
+              landingState: "running",
+              landingOperationId: "second",
+            });
+            expect(yield* worktrees.status(thirdPath)).toMatchObject({
+              landingState: "queued",
+              landingQueuePosition: 1,
+            });
+            expect(merges).toEqual(["agent/first"]);
+            expect(yield* worktrees.rebase(thirdPath)).toEqual({ outcome: "rebased" });
+            secondRepaired = true;
+            yield* fs.remove(`${secondPath}/rebase-merge`, { recursive: true });
+            expect(
+              yield* worktrees.land(secondPath, "second", { strategy: "preserve" }),
+            ).toMatchObject({ outcome: "landed" });
+            expect(yield* Fiber.join(third)).toMatchObject({ outcome: "landed" });
+            expect(rebases).toContainEqual({ cwd: thirdPath, target: "agent/second" });
+            expect(merges).toEqual(["agent/first", "agent/second", "agent/third"]);
+            expect(maxMerges).toBe(1);
+          }).pipe(Effect.provide(layer));
+        }),
+      ).pipe(Effect.provide(BootstrapLive)),
+  );
+
+  it.effect("prepares squash proposals behind a blocked head and revalidates them at landing", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const temporary = yield* fs.makeTempDirectoryScoped();
+        const repository = `${temporary}/repo`;
+        const firstPath = `${temporary}/first`;
+        const secondPath = `${temporary}/second`;
+        for (const directory of [`${repository}/.git`, firstPath, secondPath])
+          yield* fs.makeDirectory(directory, { recursive: true });
+        let target = "original";
+        const targetMutations: string[] = [];
+        const queued = yield* Deferred.make<void>();
+        const layer = ManagedWorktreesLive.pipe(
+          Layer.provide(
+            makeLayer(
+              [
+                record(repository, firstPath, "agent/first"),
+                record(repository, secondPath, "agent/second"),
+              ],
+              {
+                commonDirectory: () => repository,
+                run: (cwd, args) => {
+                  if (args[0] === "rev-parse" && args[1] === "HEAD")
+                    return Effect.succeed(cwd === repository ? target : "source");
+                  if (cwd === repository && (args[0] === "merge" || args[0] === "commit"))
+                    return Effect.sync(() => {
+                      targetMutations.push(args.join(" "));
+                      return "";
+                    });
+                  return undefined;
+                },
+              },
+            ),
+          ),
+        );
+        yield* Effect.gen(function* () {
+          const worktrees = yield* ManagedWorktrees;
+          yield* worktrees.prepareLanding(firstPath, "first");
+          yield* worktrees.prepareLanding(secondPath, "second");
+          expect(yield* worktrees.land(secondPath, "second", { strategy: "squash" })).toEqual({
+            outcome: "proposal",
+          });
+          yield* worktrees.proposeSquashMessage({ workspacePath: secondPath, subject: "Prepared" });
+          const second = yield* worktrees
+            .land(secondPath, "second", { strategy: "squash" }, (phase) =>
+              phase === "queued"
+                ? Deferred.succeed(queued, undefined).pipe(Effect.asVoid)
+                : Effect.void,
+            )
+            .pipe(Effect.forkScoped);
+          yield* Deferred.await(queued);
+          expect(targetMutations).toEqual([]);
+          target = "advanced";
+          yield* worktrees.cancelLanding(firstPath, "first");
+          expect(yield* Fiber.join(second)).toEqual({ outcome: "proposal" });
+          expect(targetMutations).toEqual([]);
+          expect(yield* worktrees.status(secondPath)).toMatchObject({
+            landingState: "running",
+            squashMessageReady: false,
+          });
+          yield* worktrees.proposeSquashMessage({
+            workspacePath: secondPath,
+            subject: "Refreshed",
+          });
+          expect(yield* worktrees.land(secondPath, "second", { strategy: "squash" })).toMatchObject(
+            { outcome: "landed" },
+          );
+          expect(targetMutations).toEqual(["merge --squash source", "commit -m Refreshed"]);
+        }).pipe(Effect.provide(layer));
+      }),
+    ).pipe(Effect.provide(BootstrapLive)),
+  );
+
+  it.effect(
     "keeps exact FIFO reservations per repository while repositories remain independent",
     () =>
       Effect.scoped(
@@ -1215,11 +1492,12 @@ describe("ManagedWorktrees Effect service", () => {
             const worktrees = yield* ManagedWorktrees;
             yield* worktrees.prepareLanding(firstPath, "first");
             const queued = yield* Deferred.make<void>();
+            yield* worktrees.prepareLanding(secondPath, "second");
             const second = yield* worktrees
-              .prepareLanding(
-                secondPath,
-                "second",
-                Deferred.succeed(queued, undefined).pipe(Effect.asVoid),
+              .land(secondPath, "second", { strategy: "preserve" }, (phase) =>
+                phase === "queued"
+                  ? Deferred.succeed(queued, undefined).pipe(Effect.asVoid)
+                  : Effect.void,
               )
               .pipe(Effect.forkScoped);
 
@@ -1238,9 +1516,7 @@ describe("ManagedWorktrees Effect service", () => {
             });
             yield* Deferred.await(queued);
             yield* awaitQueued(secondPath, 1);
-            const third = yield* worktrees
-              .prepareLanding(thirdPath, "third")
-              .pipe(Effect.forkScoped);
+            yield* worktrees.prepareLanding(thirdPath, "third");
             yield* awaitQueued(thirdPath, 2);
 
             // Interrupting a pending reservation removes it rather than leaving a FIFO ghost.
@@ -1257,7 +1533,6 @@ describe("ManagedWorktrees Effect service", () => {
             });
 
             yield* worktrees.cancelLanding(firstPath, "first");
-            yield* Fiber.join(third);
             expect(yield* worktrees.status(thirdPath)).toMatchObject({
               landingState: "running",
             });
@@ -1297,9 +1572,7 @@ describe("ManagedWorktrees Effect service", () => {
         yield* Effect.gen(function* () {
           const worktrees = yield* ManagedWorktrees;
           yield* worktrees.prepareLanding(firstPath, "first");
-          const second = yield* worktrees
-            .prepareLanding(secondPath, "second")
-            .pipe(Effect.forkScoped);
+          yield* worktrees.prepareLanding(secondPath, "second");
 
           while (true) {
             const status = yield* worktrees.status(secondPath);
@@ -1311,7 +1584,6 @@ describe("ManagedWorktrees Effect service", () => {
           }
 
           yield* worktrees.cancelLanding(firstPath, "first");
-          yield* Fiber.join(second);
           expect(yield* worktrees.status(secondPath)).toMatchObject({ landingState: "running" });
           yield* worktrees.cancelLanding(secondPath, "second");
         }).pipe(Effect.provide(layer));

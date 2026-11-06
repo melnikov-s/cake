@@ -701,8 +701,8 @@ Every asynchronous intent separately declares a concurrency policy:
 Examples include serializing Pi turns per session, bounding Subagent Sessions,
 serializing durable scheduled-message mutations, rejecting concurrent landing
 commands for the same Managed Worktree, and queueing distinct Managed Worktree
-landing workflows in FIFO order per Repository. A loading flag
-is presentation state, not a concurrency policy.
+landings in FIFO order per Repository while their source preparation runs independently.
+A loading flag is presentation state, not a concurrency policy.
 
 ## Filesystem, Git, worktrees, VS Code, and terminals
 
@@ -763,9 +763,16 @@ landing coordinator retains accepted operations independently of renderer lifeti
 renderer Stores start, retry, dismiss, and present that work. Repository queueing,
 persisted pauses and merge-and-resolve intent, automation prompts, and partial
 cleanup results belong to the [worktree domain](../../src/domain/worktrees/).
-Queue progress is process-local; `queued` is published only after the engine inserts
-an operation into its FIFO, before waiting for promotion. Renderer status refreshes
-coalesce without dropping an update received in flight. Persisted pauses can be
+Queue progress is process-local. `prepareLanding` reserves FIFO order without waiting:
+owner commit/conflict turns, source replay and squash proposals can prepare independently
+behind a blocked head. Preparatory source mutations use the per-worktree lock, not the
+repository lock. Only ready entries publish `queued` and wait for promotion, without holding a
+worktree lock. At the front, landing re-reads the persisted checkpoint, validates source
+and target, and replays against the latest target again. Target mutation holds both
+checkout locks and the repository lock; preserve landing retains its fast-forward-only
+retry if the target advances. A new conflict or stale squash proposal retains the entry's
+position while its owner repairs it; later entries can still prepare, never land ahead.
+Renderer status refreshes coalesce without dropping an update received in flight. Persisted pauses can be
 adopted after restart, including squash-message requests; explicit dismissal clears
 the durable landing pause, while terminal-operation acknowledgement cannot discard
 durable resolve intent. Recovery must not resolve an older landed record while a

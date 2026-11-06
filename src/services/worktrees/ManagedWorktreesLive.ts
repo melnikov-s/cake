@@ -580,6 +580,7 @@ export const ManagedWorktreesLive: Layer.Layer<
       record: WorktreeRecord,
       operationId: string,
       onQueued?: Effect.Effect<void>,
+      waitForTurn = true,
     ) {
       const ready = yield* Deferred.make<void, Error>();
       const entry: LandingEntry = {
@@ -588,17 +589,19 @@ export const ManagedWorktreesLive: Layer.Layer<
         ready,
       };
       const repository = yield* repositoryIdentity(record.projectPath);
-      const wait = yield* Ref.modify(landingQueues, (queues) => {
+      const waiting = yield* Ref.modify(landingQueues, (queues) => {
         const current = queues.get(repository);
-        if (current?.active?.operationId === operationId) return [false, queues] as const;
+        if (current?.active?.operationId === operationId) return [undefined, queues] as const;
+        const existing = current?.pending.find((item) => item.operationId === operationId);
+        if (existing) return [existing.ready, queues] as const;
         const next = new Map(queues);
         if (!current) next.set(repository, { active: entry, pending: [] });
         else next.set(repository, { ...current, pending: [...current.pending, entry] });
-        return [current !== undefined, next] as const;
+        return [current ? ready : undefined, next] as const;
       });
-      if (wait)
+      if (waiting && waitForTurn)
         yield* (onQueued ?? Effect.void).pipe(
-          Effect.andThen(Deferred.await(ready)),
+          Effect.andThen(Deferred.await(waiting)),
           Effect.onInterrupt(() => cancelLandingInternal(record, operationId, false)),
         );
     });
@@ -749,7 +752,8 @@ export const ManagedWorktreesLive: Layer.Layer<
     const landSquash = Effect.fn("ManagedWorktrees.landSquash")(function* (
       record: WorktreeRecord,
       message: string | undefined,
-    ): Effect.fn.Return<WorktreeLandOutcome, unknown, never> {
+      prepareOnly: boolean,
+    ): Effect.fn.Return<WorktreeLandOutcome | { readonly outcome: "ready" }, unknown, never> {
       const normalized = resolveNormalized(record.worktreePath);
       const targetPath = record.parentWorktreePath ?? record.projectPath;
       if (message) {
@@ -776,7 +780,8 @@ export const ManagedWorktreesLive: Layer.Layer<
           };
         }
       }
-      const requested = yield* consumeProposal(record, targetPath);
+      if (prepareOnly && (yield* hasFreshProposal(record))) return { outcome: "ready" };
+      const requested = prepareOnly ? undefined : yield* consumeProposal(record, targetPath);
       if (!requested) {
         yield* Ref.update(awaitingSquashProposals, (items) => new Set(items).add(normalized));
         return { outcome: "proposal" };
@@ -793,7 +798,8 @@ export const ManagedWorktreesLive: Layer.Layer<
     const landRecord = Effect.fn("ManagedWorktrees.landRecord")(function* (
       record: WorktreeRecord,
       request: WorktreeLandRequest,
-    ): Effect.fn.Return<WorktreeLandOutcome, unknown, never> {
+      prepareOnly = false,
+    ): Effect.fn.Return<WorktreeLandOutcome | { readonly outcome: "ready" }, unknown, never> {
       // Queue waiters must use the checkpoint committed by the preceding landing.
       record =
         (yield* Ref.get(recordsRef)).find((entry) => entry.worktreePath === record.worktreePath) ??
@@ -818,6 +824,7 @@ export const ManagedWorktreesLive: Layer.Layer<
       if (!(yield* exists(targetPath)))
         return yield* internalError("The worktree landing target no longer exists");
       if (
+        !prepareOnly &&
         (yield* git(targetPath, "rev-parse", "--abbrev-ref", "HEAD")).trim() !== record.baseBranch
       )
         return yield* internalError(
@@ -825,6 +832,7 @@ export const ManagedWorktreesLive: Layer.Layer<
         );
       // Squash commits the target index wholesale; it cannot preserve unrelated staged work.
       if (
+        !prepareOnly &&
         (yield* dirtyFileCount(targetPath)) > 0 &&
         (!request.allowDirtyTarget || request.strategy === "squash")
       )
@@ -834,6 +842,7 @@ export const ManagedWorktreesLive: Layer.Layer<
       record = yield* withLandingCheckpoint(record);
       const sourceCommit = (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim();
       if ((yield* newCommitCount(record, sourceCommit)) === 0) {
+        if (prepareOnly) return { outcome: "ready" };
         yield* closeRecord(record, "landed", sourceCommit);
         return { outcome: "landed" };
       }
@@ -845,8 +854,9 @@ export const ManagedWorktreesLive: Layer.Layer<
             return { outcome: "resolving", files: conflicts };
           }
         }
-        const outcome = yield* landSquash(record, request.message);
-        if (outcome.outcome !== "landed") yield* rememberPendingLanding(record, "squash");
+        const outcome = yield* landSquash(record, request.message, prepareOnly);
+        if (outcome.outcome !== "landed" && outcome.outcome !== "ready")
+          yield* rememberPendingLanding(record, "squash");
         return outcome;
       }
       let lastError = "unknown Git failure";
@@ -856,6 +866,7 @@ export const ManagedWorktreesLive: Layer.Layer<
           yield* rememberPendingLanding(record, "preserve");
           return { outcome: "resolving", files: conflicts };
         }
+        if (prepareOnly) return { outcome: "ready" };
         const merge = yield* Effect.result(
           gitMutation(targetPath, "merge", "--ff-only", record.branch),
         );
@@ -1103,20 +1114,19 @@ export const ManagedWorktreesLive: Layer.Layer<
           "ManagedWorktrees.status",
           statusInternal(worktreePath).pipe(Effect.tap(() => publish(worktreePath))),
         ),
-      prepareLanding: Effect.fn("ManagedWorktrees.prepareLanding")(
-        (worktreePath, operationId, onQueued) =>
-          mapError(
-            "ManagedWorktrees.prepareLanding",
-            Effect.gen(function* () {
-              const record = (yield* Ref.get(recordsRef)).find(
-                (entry) =>
-                  ["active", "landed"].includes(entry.state ?? "active") &&
-                  resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
-              );
-              if (!record) return yield* internalError("Cake could not find that worktree");
-              yield* acquireLanding(record, operationId, onQueued);
-            }),
-          ),
+      prepareLanding: Effect.fn("ManagedWorktrees.prepareLanding")((worktreePath, operationId) =>
+        mapError(
+          "ManagedWorktrees.prepareLanding",
+          Effect.gen(function* () {
+            const record = (yield* Ref.get(recordsRef)).find(
+              (entry) =>
+                ["active", "landed"].includes(entry.state ?? "active") &&
+                resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
+            );
+            if (!record) return yield* internalError("Cake could not find that worktree");
+            yield* acquireLanding(record, operationId, undefined, false);
+          }),
+        ),
       ),
       setResolveAfterLanding: (worktreePath, enabled) =>
         mapError(
@@ -1135,7 +1145,7 @@ export const ManagedWorktreesLive: Layer.Layer<
             yield* publish(worktreePath);
           }),
         ),
-      land: (worktreePath, operationId, request) =>
+      land: (worktreePath, operationId, request, onProgress) =>
         mapError(
           "ManagedWorktrees.land",
           Effect.gen(function* () {
@@ -1145,15 +1155,37 @@ export const ManagedWorktreesLive: Layer.Layer<
                 resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
             );
             if (!record) return yield* internalError("Cake could not find that worktree");
-            yield* acquireLanding(record, operationId);
-            // The worktree lock keeps removal of this checkout from interleaving with landing.
-            const outcome = yield* withWorktreeLock(
-              record.worktreePath,
-              withRepositoryLock(record.projectPath, landRecord(record, request)),
-            ).pipe(Effect.tapCause(() => releaseLanding(record, operationId)));
-            if (outcome.outcome === "landed") yield* releaseLanding(record, operationId);
-            yield* publish(worktreePath);
-            return outcome;
+            yield* acquireLanding(record, operationId, undefined, false);
+            return yield* Effect.gen(function* () {
+              // Waiting entries may replay and request owner repairs without taking the
+              // repository lock or waiting for the head's commit/conflict turn.
+              if ((yield* landingState(record))?.state === "queued") {
+                const prepared = yield* withWorktreeLock(
+                  record.worktreePath,
+                  landRecord(record, request, true),
+                );
+                if (prepared.outcome !== "ready") {
+                  yield* publish(worktreePath);
+                  return prepared;
+                }
+              }
+              // Never hold a worktree lock while waiting for FIFO promotion.
+              yield* acquireLanding(record, operationId, onProgress?.("queued"));
+              yield* onProgress?.("landing") ?? Effect.void;
+              const outcome = yield* withWorktreeLock(
+                record.worktreePath,
+                withWorktreeLock(
+                  record.parentWorktreePath ?? record.projectPath,
+                  withRepositoryLock(record.projectPath, landRecord(record, request)),
+                ),
+              );
+              // landRecord refreshes source, checkpoint and target under the final locks.
+              if (outcome.outcome === "landed") yield* releaseLanding(record, operationId);
+              yield* publish(worktreePath);
+              if (outcome.outcome === "ready")
+                return yield* internalError("Landing unexpectedly stopped after preparation");
+              return outcome;
+            }).pipe(Effect.tapCause(() => cancelLandingInternal(record, operationId, false)));
           }),
         ),
       cancelLanding: Effect.fn("ManagedWorktrees.cancelLanding")(
@@ -1206,40 +1238,37 @@ export const ManagedWorktreesLive: Layer.Layer<
             if (!record) return yield* internalError("Cake could not find that worktree");
             return yield* withWorktreeLock(
               record.worktreePath,
-              withRepositoryLock(
-                record.projectPath,
-                Effect.gen(function* () {
-                  if (!(yield* exists(record.worktreePath))) {
-                    yield* closeRecord(record, "missing");
-                    return yield* internalError("The worktree no longer exists on disk");
-                  }
-                  if (yield* rebaseInProgress(record.worktreePath))
-                    return {
-                      outcome: "resolving" as const,
-                      files: yield* unmergedFiles(record.worktreePath),
-                    };
-                  if ((yield* dirtyFileCount(record.worktreePath)) > 0)
-                    return yield* internalError(
-                      "The worktree has uncommitted changes. Commit or discard them first.",
-                    );
-                  yield* requireSourceBranch(record);
-                  const targetPath = record.parentWorktreePath ?? record.projectPath;
-                  if (!(yield* exists(targetPath)))
-                    return yield* internalError("The worktree rebase target no longer exists");
-                  const targetHead = (yield* git(
-                    record.worktreePath,
-                    "rev-parse",
-                    record.baseBranch,
-                  )).trim();
-                  if ((yield* revListCount(record.worktreePath, `HEAD..${targetHead}`)) === 0)
-                    return { outcome: "rebased" as const };
-                  const checkpointRecord = yield* withLandingCheckpoint(record);
-                  const conflicts = yield* rebaseOntoTarget(checkpointRecord, targetHead);
-                  return conflicts
-                    ? ({ outcome: "resolving", files: conflicts } as const)
-                    : ({ outcome: "rebased" } as const);
-                }),
-              ),
+              Effect.gen(function* () {
+                if (!(yield* exists(record.worktreePath))) {
+                  yield* closeRecord(record, "missing");
+                  return yield* internalError("The worktree no longer exists on disk");
+                }
+                if (yield* rebaseInProgress(record.worktreePath))
+                  return {
+                    outcome: "resolving" as const,
+                    files: yield* unmergedFiles(record.worktreePath),
+                  };
+                if ((yield* dirtyFileCount(record.worktreePath)) > 0)
+                  return yield* internalError(
+                    "The worktree has uncommitted changes. Commit or discard them first.",
+                  );
+                yield* requireSourceBranch(record);
+                const targetPath = record.parentWorktreePath ?? record.projectPath;
+                if (!(yield* exists(targetPath)))
+                  return yield* internalError("The worktree rebase target no longer exists");
+                const targetHead = (yield* git(
+                  record.worktreePath,
+                  "rev-parse",
+                  record.baseBranch,
+                )).trim();
+                if ((yield* revListCount(record.worktreePath, `HEAD..${targetHead}`)) === 0)
+                  return { outcome: "rebased" as const };
+                const checkpointRecord = yield* withLandingCheckpoint(record);
+                const conflicts = yield* rebaseOntoTarget(checkpointRecord, targetHead);
+                return conflicts
+                  ? ({ outcome: "resolving", files: conflicts } as const)
+                  : ({ outcome: "rebased" } as const);
+              }),
             );
           }),
         ),

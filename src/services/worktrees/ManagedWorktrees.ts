@@ -74,11 +74,10 @@ export interface ManagedWorktreesService {
   readonly status: (
     worktreePath: string,
   ) => Effect.Effect<WorktreeStatus | undefined, ManagedWorktreeError>;
+  /** Reserves FIFO landing order without waiting or blocking source preparation. */
   readonly prepareLanding: (
     worktreePath: string,
     operationId: string,
-    /** Runs after FIFO insertion, before waiting for promotion. */
-    onQueued?: Effect.Effect<void>,
   ) => Effect.Effect<void, ManagedWorktreeError>;
   readonly setResolveAfterLanding: (
     worktreePath: string,
@@ -88,6 +87,8 @@ export interface ManagedWorktreesService {
     worktreePath: string,
     operationId: string,
     request: WorktreeLandRequest,
+    /** Source preparation runs first; only ready entries wait for their landing turn. */
+    onProgress?: (phase: "queued" | "landing") => Effect.Effect<void>,
   ) => Effect.Effect<WorktreeLandOutcome, ManagedWorktreeError>;
   readonly cancelLanding: (
     worktreePath: string,

@@ -115,8 +115,14 @@ const performLanding: (
     strategy: operation.strategy ?? "preserve",
     allowDirtyTarget: operation.allowDirtyTarget || undefined,
   };
+  const coordinator = yield* WorktreeLandingCoordinator;
   const outcome = yield* worktrees
-    .land(operation.workspacePath, operation.operationId, request)
+    .land(operation.workspacePath, operation.operationId, request, (phase) =>
+      update(operation.workspacePath, operation.operationId, (current) => ({
+        ...current,
+        phase,
+      })).pipe(Effect.provideService(WorktreeLandingCoordinator, coordinator)),
+    )
     .pipe(asError("land"));
   if (outcome.outcome === "landed") {
     let resolvedSessionIds: ReadonlyArray<string> | undefined;
@@ -187,16 +193,8 @@ const performLanding: (
 const reserveLanding = Effect.fn("WorktreeLandings.reserveLanding")(function* (
   operation: WorktreeLandingOperation,
 ) {
-  const coordinator = yield* WorktreeLandingCoordinator;
   yield* (yield* ManagedWorktrees)
-    .prepareLanding(
-      operation.workspacePath,
-      operation.operationId,
-      update(operation.workspacePath, operation.operationId, (current) => ({
-        ...current,
-        phase: "queued",
-      })).pipe(Effect.provideService(WorktreeLandingCoordinator, coordinator)),
-    )
+    .prepareLanding(operation.workspacePath, operation.operationId)
     .pipe(asError("prepareLanding"));
 });
 

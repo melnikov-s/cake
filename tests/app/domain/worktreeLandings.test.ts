@@ -85,13 +85,17 @@ function services(options: {
       Effect.sync(() => options.events.push(`resolve-intent:${enabled}`)).pipe(
         Effect.andThen(options.setResolveIntent?.(enabled) ?? Effect.void),
       ),
-    prepareLanding: (_path, _operationId, onQueued) =>
+    prepareLanding: () =>
       Effect.sync(() => options.events.push("prepare")).pipe(
-        Effect.andThen(options.queued ? (onQueued ?? Effect.void) : Effect.void),
-        Effect.andThen(options.prepare ?? Effect.void),
+        Effect.andThen(options.queued ? Effect.void : (options.prepare ?? Effect.void)),
       ),
-    land: () =>
-      Effect.sync(() => {
+    land: (_path, _operationId, _request, onProgress) =>
+      Effect.gen(function* () {
+        if (options.queued) {
+          yield* onProgress?.("queued") ?? Effect.void;
+          yield* options.prepare ?? Effect.void;
+          yield* onProgress?.("landing") ?? Effect.void;
+        }
         options.events.push("land");
         return options.land?.() ?? ({ outcome: "landed" } as const);
       }),
@@ -194,7 +198,7 @@ describe("WorktreeLandings", () => {
       );
     },
   );
-  it.effect("projects authoritative queue insertion before waiting for promotion", () =>
+  it.effect("projects the ready queue wait separately from reservation and preparation", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const events: string[] = [];
@@ -223,6 +227,72 @@ describe("WorktreeLandings", () => {
       }),
     ),
   );
+  it.effect(
+    "lets later owners commit while the head awaits its owner, then queues only ready work",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events: string[] = [];
+          const firstPrompt = yield* Deferred.make<void>();
+          const secondPrompt = yield* Deferred.make<void>();
+          const releaseFirst = yield* Deferred.make<void>();
+          const releaseSecond = yield* Deferred.make<void>();
+          const landingTurn = yield* Deferred.make<void>();
+          let clean = false;
+          const layer = services({
+            status: () => ({ ...baseStatus(), dirtyCount: clean ? 0 : 1 }),
+            events,
+            queued: true,
+            prepare: Deferred.await(landingTurn),
+          });
+          yield* Effect.gen(function* () {
+            const agent = WorktreeLandingAgent.of({
+              promptAndWait: ({ sessionId }) =>
+                Deferred.succeed(
+                  sessionId === "first" ? firstPrompt : secondPrompt,
+                  undefined,
+                ).pipe(
+                  Effect.andThen(
+                    Deferred.await(sessionId === "first" ? releaseFirst : releaseSecond),
+                  ),
+                  Effect.andThen(
+                    Effect.sync(() => {
+                      clean = true;
+                    }),
+                  ),
+                ),
+            });
+            yield* Effect.gen(function* () {
+              const start = (id: string, path: string) =>
+                worktreeLandings.start({
+                  operationId: id,
+                  workspacePath: path,
+                  sessionId: id,
+                  strategy: "preserve",
+                  allowDirtyTarget: false,
+                  commitBeforeLanding: true,
+                });
+              yield* start("first", "/first");
+              yield* Deferred.await(firstPrompt);
+              yield* start("second", workspacePath);
+              yield* Deferred.await(secondPrompt);
+              const coordinator = yield* WorktreeLandingCoordinator;
+              const operations = (yield* SubscriptionRef.get(coordinator.state)).operations;
+              expect(operations.get("/first")?.phase).toBe("committing");
+              expect(operations.get(workspacePath)?.phase).toBe("committing");
+              yield* Deferred.succeed(releaseSecond, undefined);
+              yield* awaitPhase("queued");
+              expect(
+                (yield* SubscriptionRef.get(coordinator.state)).operations.get("/first")?.phase,
+              ).toBe("committing");
+              expect(events).toEqual(["prepare", "prepare"]);
+              yield* worktreeLandings.cancel(workspacePath, "second");
+            }).pipe(Effect.provideService(WorktreeLandingAgent, agent));
+          }).pipe(Effect.provide(layer));
+        }),
+      ),
+  );
+
   it.effect.each(["preserve", "squash"] as const)(
     "continues a clean commit step into %s landing, including when there is nothing left to land",
     (strategy) => {
