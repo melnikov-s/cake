@@ -346,11 +346,11 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       await expect(composer).toHaveValue("");
       await expect(composer).not.toBeFocused();
       await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
-      // Deliberate entry starts over: typing/silence still cannot make this new period sticky.
+      // Deliberate entry starts over. Ordinary blur keeps capturing; insertion UI opts out explicitly.
       await composer.focus();
       await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
       await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
-      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
     }
   } finally {
     await application.close();

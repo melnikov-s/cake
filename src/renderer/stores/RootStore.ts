@@ -6,6 +6,7 @@ import {
   isProjectChatSessionId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { DictationStore } from "./DictationStore";
+import { SessionReferenceContext } from "./context/SessionReferenceContext";
 import { ScreenCaptureAttachmentStore } from "./ScreenCaptureAttachmentStore";
 import { microphone, type Microphone } from "../dictation/microphone";
 import { DictationContext } from "./context/DictationContext";
@@ -175,6 +176,10 @@ export class RootStore extends Store<{
   }
   get cakeChatCatalogModel() {
     return this.props.projection.cakeChatCatalog;
+  }
+
+  [SessionReferenceContext.provide]() {
+    return this.screenCaptureStore;
   }
 
   [DictationContext.provide]() {

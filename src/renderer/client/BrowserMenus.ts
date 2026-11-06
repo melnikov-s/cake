@@ -92,7 +92,16 @@ export function browserMenus(
           disabled: !composer || !navigator.clipboard?.readText,
           run: async () => replace(await navigator.clipboard.readText()),
         },
-        { label: "Insert model", action: "insert-model", disabled: !input.canInsertModel },
+        {
+          label: "Insert model reference",
+          action: "insert-model",
+          disabled: !input.canInsertModel,
+        },
+        {
+          label: "Insert session reference",
+          action: "insert-session",
+          disabled: !input.canInsertSession,
+        },
         { label: "Reword", action: "reword", disabled: !input.canReword },
         { label: "Reword with Prompt…", action: "reword-with-prompt", disabled: !input.canReword },
         {
@@ -103,7 +112,10 @@ export function browserMenus(
           },
         },
       ]);
-      return action === "reword" || action === "reword-with-prompt" || action === "insert-model"
+      return action === "reword" ||
+        action === "reword-with-prompt" ||
+        action === "insert-model" ||
+        action === "insert-session"
         ? action
         : undefined;
     },

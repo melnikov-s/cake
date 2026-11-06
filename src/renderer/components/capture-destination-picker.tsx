@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type RefObject } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import type {
   CaptureDestination,
@@ -19,22 +19,40 @@ export const CaptureDestinationPicker = observer(function CaptureDestinationPick
   disabled,
   ariaLabel = "Screenshot destination",
   variant = "field",
+  open: controlledOpen,
+  onOpenChange,
+  anchorRef,
+  onSelect,
 }: {
   disabled: boolean;
   ariaLabel?: string;
   /** `title` makes the pane title itself the trigger. */
   variant?: "field" | "title";
+  /** An external anchor opens the same menu without rendering a second trigger. */
+  anchorRef?: RefObject<HTMLElement | null>;
+  open?: boolean;
+  onOpenChange?(open: boolean): void;
+  /** External insertion flows own selection and closing, rather than changing destinations. */
+  onSelect?(destination: CaptureDestination): void;
 }) {
   const store = useStore(CaptureDestinationPickerStore);
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  const setOpen = (next: boolean) => {
+    setLocalOpen(next);
+    onOpenChange?.(next);
+  };
   const routing = store.routing;
   const globalChats = routing.cakeChats.filter(
     (session) => !routing.projects.some((project) => project.chatSessionId === session.sessionId),
   );
   const choose = (destination: CaptureDestination) => {
     if (disabled) return;
-    store.select(destination);
-    setOpen(false);
+    if (onSelect) onSelect(destination);
+    else {
+      store.select(destination);
+      setOpen(false);
+    }
   };
   const selected = (kind: CaptureDestination["kind"], sessionId: string | undefined) =>
     store.destination?.kind === kind && store.destination.sessionId === sessionId;
@@ -61,22 +79,25 @@ export const CaptureDestinationPicker = observer(function CaptureDestinationPick
       ));
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        aria-label={ariaLabel}
-        title={store.label}
-        disabled={disabled}
-        variant="ghost"
-        size="sm"
-        className={
-          variant === "title"
-            ? "-ml-2 h-8 min-w-0 max-w-full justify-start gap-1.5 px-2 text-sm font-semibold text-foreground [app-region:no-drag] [&>svg]:text-muted-foreground hover:[&>svg]:text-foreground"
-            : "h-7.5 w-52 min-w-0 justify-between gap-2 px-2 text-xs font-normal"
-        }
-      >
-        <span className="truncate">{store.label}</span>
-        <ChevronDownIcon />
-      </PopoverTrigger>
+      {!anchorRef && (
+        <PopoverTrigger
+          aria-label={ariaLabel}
+          title={store.label}
+          disabled={disabled}
+          variant="ghost"
+          size="sm"
+          className={
+            variant === "title"
+              ? "-ml-2 h-8 min-w-0 max-w-full justify-start gap-1.5 px-2 text-sm font-semibold text-foreground [app-region:no-drag] [&>svg]:text-muted-foreground hover:[&>svg]:text-foreground"
+              : "h-7.5 w-52 min-w-0 justify-between gap-2 px-2 text-xs font-normal"
+          }
+        >
+          <span className="truncate">{store.label}</span>
+          <ChevronDownIcon />
+        </PopoverTrigger>
+      )}
       <PopoverContent
+        anchorRef={anchorRef}
         aria-label={ariaLabel}
         align="start"
         className="w-80 max-h-[min(22rem,calc(100vh-9rem))] overflow-y-auto bg-sidebar p-1.5"

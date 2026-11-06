@@ -7,7 +7,7 @@ import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("deferred model picker opens by keyboard and mouse with catalog, search, presets and retained composer input", async () => {
+test("shared model and session reference pickers preserve composer input and focus", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-model-picker-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -191,7 +191,12 @@ test("deferred model picker opens by keyboard and mouse with catalog, search, pr
       const build = Menu.buildFromTemplate.bind(Menu);
       Menu.buildFromTemplate = (template) => {
         const menu = build(template);
-        const insert = menu.items.find((item) => item.label === "Insert model");
+        const labels = menu.items.map((item) => item.label);
+        Reflect.set(Menu, "referenceLabels", labels);
+        const insert = menu.items.find(
+          (item) =>
+            item.label === (Reflect.get(Menu, "referenceAction") ?? "Insert model reference"),
+        );
         if (insert)
           menu.popup = (options) => {
             insert.click();
@@ -200,6 +205,59 @@ test("deferred model picker opens by keyboard and mouse with catalog, search, pr
         return menu;
       };
     });
+    await application.evaluate(({ Menu }) =>
+      Reflect.set(Menu, "referenceAction", "Insert session reference"),
+    );
+    await composer.click({ button: "right" });
+    const sessions = page.getByRole("dialog", { name: "Session reference" });
+    await expect(sessions).toBeVisible();
+    const labels = await application.evaluate(
+      ({ Menu }) => Reflect.get(Menu, "referenceLabels") as string[],
+    );
+    const modelEntry = labels.indexOf("Insert model reference");
+    expect(modelEntry).toBeGreaterThan(-1);
+    expect(labels[modelEntry + 1]).toBe("Insert session reference");
+    const selection = await composer.evaluate((element: HTMLTextAreaElement) => ({
+      start: element.selectionStart,
+      end: element.selectionEnd,
+    }));
+    await sessions.getByRole("button", { name: "Collapse project", exact: true }).click();
+    await expect(sessions.locator(`[data-session-id="${sessionId}"]`)).toHaveCount(0);
+    await sessions.getByRole("button", { name: "Expand project", exact: true }).click();
+    await expect(sessions.locator(`[data-session-id="${sessionId}"]`)).toBeVisible();
+    // Choose a different chat through the shared menu; this must insert, never navigate.
+    await sessions.locator('[data-slot="destination-cake-chat"]').first().click();
+    await expect(sessions).toBeHidden();
+    await expect(composer).toBeFocused();
+    const linked = await composer.inputValue();
+    const prefix = "Pending first prompt retained".slice(0, selection.start);
+    const suffix = "Pending first prompt retained".slice(selection.end);
+    const link = linked.slice(prefix.length, linked.length - suffix.length);
+    expect(link).toMatch(/^\[Session\]\(cake:\/\/session\/[^\s)]+\)$/);
+    expect(linked).toBe(prefix + link + suffix);
+    await composer.pressSequentially(" session retained");
+    await expect(composer).toHaveValue(prefix + link + " session retained" + suffix);
+    await expect(
+      page.locator(".transcript").getByText("Model picker fixture ready", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    const draftWithLink = await composer.inputValue();
+    await composer.click({ button: "right" });
+    await expect(sessions).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(sessions).toBeHidden();
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue(draftWithLink);
+    await composer.click({ button: "right" });
+    await expect(sessions).toBeVisible();
+    await configuration.click();
+    await expect(sessions).toBeHidden();
+    await expect(composer).not.toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(composer).toHaveValue(draftWithLink);
+    await composer.fill("Pending first prompt retained");
+    await application.evaluate(({ Menu }) => Reflect.deleteProperty(Menu, "referenceAction"));
+
     await composer.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(8, 13));
     await composer.click({ button: "right", position: { x: 80, y: 20 } });
     const reference = page.getByRole("dialog", { name: "Model reference" });

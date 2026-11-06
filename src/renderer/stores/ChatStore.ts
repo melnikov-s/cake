@@ -1,3 +1,5 @@
+import { CaptureDestinationPickerStore } from "./CaptureDestinationPickerStore";
+import { SessionReferenceContext } from "./context/SessionReferenceContext";
 import { ClientContext } from "./context/ClientContext";
 import { child, computed, createStore, snapshot, Store } from "r-state-tree";
 import { ChatPresentationContext } from "./context/ChatPresentationContext";
@@ -527,6 +529,17 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.rewordError = undefined;
   }
 
+  @child get sessionReferencePicker(): CaptureDestinationPickerStore | undefined {
+    const catalog = SessionReferenceContext.consume(this);
+    return catalog
+      ? createStore(CaptureDestinationPickerStore, {
+          get routing() {
+            return catalog.destinations;
+          },
+        })
+      : undefined;
+  }
+
   showComposerContextMenu(selection: string, x: number, y: number) {
     return ClientContext.consume(this)!.electron.showComposerContextMenu(
       {
@@ -534,6 +547,7 @@ export class ChatStore extends Store<ChatStoreProps> {
         x,
         y,
         canInsertModel: Boolean(this.configuration),
+        canInsertSession: Boolean(this.sessionReferencePicker),
         canReword: Boolean(selection && this.canRewordComposerSelection && !this.rewording),
       },
       { signal: this.signal },

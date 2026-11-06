@@ -175,145 +175,169 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
   return { root, userData, cakeHome, sessionId, dictation, model, configure, launch };
 }
 
-for (const mode of ["active-park", "active-refocus", "disabled", "muted", "stopped"] as const) {
-  test(`Model reference interaction suspends dictation and resumes only on input focus (${mode})`, async () => {
-    test.skip(
-      process.platform !== "darwin" || process.arch !== "arm64",
-      "Parakeet installation targets Apple Silicon",
-    );
-    const active = mode.startsWith("active");
-    const { root, configure, launch } = await dictationFixture({
-      dictationEnabled: mode !== "disabled",
-      preventAutomaticRefocus: mode !== "active-refocus",
-      modelReferences: true,
-    });
-    await configure({ ready: true, speech: false, text: "" });
-    const application = await launch();
-    try {
-      const page = await application.firstWindow();
-      await expect(page.getByText("Inspect this implementation before changing it.")).toBeVisible();
-      const composer = page.getByRole("combobox", { name: "Message", exact: true });
-      const indicator = page.locator(
-        '[data-slot="composer-dictation"] [data-slot="dictation-indicator"]',
+for (const referenceKind of ["Model", "Session"] as const) {
+  for (const mode of ["active-park", "active-refocus", "disabled", "muted", "stopped"] as const) {
+    test(`${referenceKind} reference interaction suspends dictation and resumes only on input focus (${mode})`, async () => {
+      test.skip(
+        process.platform !== "darwin" || process.arch !== "arm64",
+        "Parakeet installation targets Apple Silicon",
       );
-      const reference = page.getByRole("dialog", { name: "Model reference" });
-      const configuration = page.getByRole("button", { name: "Model configuration" });
-      await composer.click();
-      await composer.pressSequentially("Review with ");
-      await expect(composer).toHaveValue("Review with ");
-      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-      if (mode !== "disabled") await expect(indicator).toHaveText("Listening");
-      if (mode === "muted") {
-        await indicator.getByRole("button", { name: "Mute dictation", exact: true }).click();
-        await expect(indicator).toHaveText("Dictation muted");
-      } else if (mode === "stopped") {
-        await composer.press("Escape");
-        await expect(indicator).toHaveCount(0);
-      }
-
-      // Hold the native menu at its real RPC boundary without showing an OS popup.
-      await application.evaluate(({ Menu }) => {
-        const build = Menu.buildFromTemplate.bind(Menu);
-        Menu.buildFromTemplate = (template) => {
-          const menu = build(template);
-          if (menu.items.some((item) => item.label === "Insert model"))
-            menu.popup = (options) => {
-              Reflect.set(Menu, "referenceMenu", menu);
-              Reflect.set(Menu, "dismissReferenceMenu", options?.callback);
-            };
-          return menu;
-        };
+      const active = mode.startsWith("active");
+      const { root, configure, launch } = await dictationFixture({
+        dictationEnabled: mode !== "disabled",
+        preventAutomaticRefocus: mode !== "active-refocus",
+        modelReferences: true,
       });
-      const openMenu = async () => {
-        await composer.click({ button: "right" });
-        await expect
-          .poll(() =>
-            application.evaluate(({ Menu }) => Boolean(Reflect.get(Menu, "referenceMenu"))),
-          )
-          .toBe(true);
-        await expect(indicator).toHaveCount(0);
-        await expect(composer).not.toBeFocused();
-      };
-      const finishMenu = async (insert: boolean) => {
-        await application.evaluate(({ Menu }, select) => {
-          const menu = Reflect.get(Menu, "referenceMenu");
-          if (select)
-            menu.items.find((item: { label: string }) => item.label === "Insert model").click();
-          Reflect.get(Menu, "dismissReferenceMenu")?.();
-          Reflect.deleteProperty(Menu, "referenceMenu");
-        }, insert);
-      };
+      await configure({ ready: true, speech: false, text: "" });
+      const application = await launch();
+      try {
+        const page = await application.firstWindow();
+        await expect(
+          page.getByText("Inspect this implementation before changing it."),
+        ).toBeVisible();
+        const composer = page.getByRole("combobox", { name: "Message", exact: true });
+        const indicator = page.locator(
+          '[data-slot="composer-dictation"] [data-slot="dictation-indicator"]',
+        );
+        const reference = page.getByRole("dialog", { name: `${referenceKind} reference` });
+        const configuration = page.getByRole("button", { name: "Model configuration" });
+        await composer.click();
+        await composer.pressSequentially("Review with ");
+        await expect(composer).toHaveValue("Review with ");
+        await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+        if (mode !== "disabled") await expect(indicator).toHaveText("Listening");
+        if (mode === "muted") {
+          await indicator.getByRole("button", { name: "Mute dictation", exact: true }).click();
+          await expect(indicator).toHaveText("Dictation muted");
+        } else if (mode === "stopped") {
+          await composer.press("Escape");
+          await expect(indicator).toHaveCount(0);
+        }
 
-      await openMenu();
-      await finishMenu(true);
-      await expect(reference).toBeVisible();
-      await expect(indicator).toHaveCount(0);
-      // Even explicit composer focus cannot restart capture while the picker is open.
-      await composer.focus();
-      await expect(composer).toBeFocused();
-      await expect(indicator).toHaveCount(0);
-      await reference.getByRole("button", { name: /Reference fixture/ }).click();
-      await expect(reference).toBeHidden();
-      await expect(composer.getByRole("button", { name: /Edit model reference/ })).toHaveCount(1);
-      if (active) {
+        // Hold the native menu at its real RPC boundary without showing an OS popup.
+        await application.evaluate(({ Menu }) => {
+          const build = Menu.buildFromTemplate.bind(Menu);
+          Menu.buildFromTemplate = (template) => {
+            const menu = build(template);
+            if (menu.items.some((item) => item.label === "Insert model reference"))
+              menu.popup = (options) => {
+                Reflect.set(Menu, "referenceMenu", menu);
+                Reflect.set(Menu, "dismissReferenceMenu", options?.callback);
+              };
+            return menu;
+          };
+        });
+        const openMenu = async () => {
+          await composer.click({ button: "right" });
+          await expect
+            .poll(() =>
+              application.evaluate(({ Menu }) => Boolean(Reflect.get(Menu, "referenceMenu"))),
+            )
+            .toBe(true);
+          await expect(indicator).toHaveCount(0);
+          await expect(composer).not.toBeFocused();
+        };
+        const finishMenu = async (insert: boolean) => {
+          await application.evaluate(
+            ({ Menu }, { select, kind }) => {
+              const menu = Reflect.get(Menu, "referenceMenu");
+              if (select)
+                menu.items
+                  .find(
+                    (item: { label: string }) =>
+                      item.label === `Insert ${kind.toLowerCase()} reference`,
+                  )
+                  .click();
+              Reflect.get(Menu, "dismissReferenceMenu")?.();
+              Reflect.deleteProperty(Menu, "referenceMenu");
+            },
+            { select: insert, kind: referenceKind },
+          );
+        };
+
+        await openMenu();
+        await finishMenu(true);
+        await expect(reference).toBeVisible();
+        await expect(indicator).toHaveCount(0);
+        // Even explicit composer focus cannot restart capture while the picker is open.
+        await composer.focus();
+        await expect(composer).toBeFocused();
+        await expect(indicator).toHaveCount(0);
+        if (referenceKind === "Model") {
+          await reference.getByRole("button", { name: /Reference fixture/ }).click();
+          await expect(composer.getByRole("button", { name: /Edit model reference/ })).toHaveCount(
+            1,
+          );
+        } else {
+          await reference.locator('[data-slot="destination-cake-chat"]').first().click();
+          await expect(composer).toHaveValue(/cake:\/\/session\//);
+          await expect(
+            page.getByText("Inspect this implementation before changing it."),
+          ).toBeVisible();
+        }
+        await expect(reference).toBeHidden();
+        if (active) {
+          await expect(composer).toBeFocused();
+          await expect(indicator).toHaveText("Listening");
+          await composer.pressSequentially(" retained");
+          if (referenceKind === "Model") await expect(composer).toContainText(" retained");
+          else await expect(composer).toHaveValue(/ retained/);
+        } else if (mode === "muted") {
+          await expect(composer).toBeFocused();
+          await expect(indicator).toHaveText("Dictation muted");
+        } else {
+          await expect(indicator).toHaveCount(0);
+        }
+        await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+
+        if (!active) return;
+        if (referenceKind === "Model") {
+          // Chip dismissal anchors to the chip, not the editable input.
+          await composer.getByRole("button", { name: /Edit model reference/ }).click();
+          await expect(reference).toBeVisible();
+          await expect(indicator).toHaveCount(0);
+          await page.keyboard.press("Escape");
+          await expect(reference).toBeHidden();
+          await expect(indicator).toHaveCount(0);
+          await composer.focus();
+          await expect(indicator).toHaveText("Listening");
+        }
+
+        // Escape from an insertion picker returns to the editable anchor and resumes there.
+        await openMenu();
+        await finishMenu(true);
+        await expect(reference).toBeVisible();
+        await expect(indicator).toHaveCount(0);
+        await page.keyboard.press("Escape");
+        await expect(reference).toBeHidden();
         await expect(composer).toBeFocused();
         await expect(indicator).toHaveText("Listening");
-        await composer.pressSequentially(" retained");
-        await expect(composer).toContainText(" retained");
-      } else if (mode === "muted") {
-        await expect(composer).toBeFocused();
-        await expect(indicator).toHaveText("Dictation muted");
-      } else {
+
+        // Outside dismissal must not resume in a different control.
+        await openMenu();
+        await finishMenu(true);
+        await expect(reference).toBeVisible();
+        await configuration.click();
+        await expect(reference).toBeHidden();
         await expect(indicator).toHaveCount(0);
+        await page.keyboard.press("Escape");
+        await composer.focus();
+        await expect(indicator).toHaveText("Listening");
+
+        // Cancelling the native menu itself leaves the blurred composer paused.
+        await openMenu();
+        await finishMenu(false);
+        await configuration.focus();
+        await expect(indicator).toHaveCount(0);
+        await composer.focus();
+        await expect(composer).toBeFocused();
+        await expect(indicator).toHaveText("Listening");
+      } finally {
+        await application.close();
+        await rm(root, { recursive: true, force: true });
       }
-      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-
-      if (!active) return;
-      // Editing a chip and cancelling with Escape restores actual input focus and capture.
-      await composer.getByRole("button", { name: /Edit model reference/ }).click();
-      await expect(reference).toBeVisible();
-      await expect(indicator).toHaveCount(0);
-      await page.keyboard.press("Escape");
-      await expect(reference).toBeHidden();
-      // Escape anchors to the chip, not the editable input: no capture until input refocus.
-      await expect(indicator).toHaveCount(0);
-      await composer.focus();
-      await expect(indicator).toHaveText("Listening");
-
-      // Escape from an insertion picker returns to the editable anchor and resumes there.
-      await openMenu();
-      await finishMenu(true);
-      await expect(reference).toBeVisible();
-      await expect(indicator).toHaveCount(0);
-      await page.keyboard.press("Escape");
-      await expect(reference).toBeHidden();
-      await expect(composer).toBeFocused();
-      await expect(indicator).toHaveText("Listening");
-
-      // Outside dismissal must not resume in a different control.
-      await openMenu();
-      await finishMenu(true);
-      await expect(reference).toBeVisible();
-      await configuration.click();
-      await expect(reference).toBeHidden();
-      await expect(indicator).toHaveCount(0);
-      await page.keyboard.press("Escape");
-      await composer.focus();
-      await expect(indicator).toHaveText("Listening");
-
-      // Cancelling the native menu itself leaves the blurred composer paused.
-      await openMenu();
-      await finishMenu(false);
-      await configuration.focus();
-      await expect(indicator).toHaveCount(0);
-      await composer.focus();
-      await expect(composer).toBeFocused();
-      await expect(indicator).toHaveText("Listening");
-    } finally {
-      await application.close();
-      await rm(root, { recursive: true, force: true });
-    }
-  });
+    });
+  }
 }
 
 test("Dictation refocus preference applies live and survives restart", async () => {

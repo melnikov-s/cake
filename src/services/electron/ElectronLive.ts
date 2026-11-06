@@ -853,9 +853,14 @@ const makeElectronService = (
                 { role: "paste" },
                 { type: "separator" },
                 {
-                  label: "Insert model",
+                  label: "Insert model reference",
                   enabled: request.canInsertModel,
                   click: () => finish("insert-model"),
+                },
+                {
+                  label: "Insert session reference",
+                  enabled: request.canInsertSession,
+                  click: () => finish("insert-session"),
                 },
                 {
                   label: "Reword",
@@ -1140,7 +1145,9 @@ export const makeElectronLive = (options: ElectronLiveOptions) =>
 type SuccessTranscriptMenu = {
   readonly action?: "chat-about-selection" | "add-annotation";
 };
-type SuccessComposerMenu = { readonly action?: "reword" | "reword-with-prompt" | "insert-model" };
+type SuccessComposerMenu = {
+  readonly action?: "reword" | "reword-with-prompt" | "insert-model" | "insert-session";
+};
 type SuccessSessionMenu = {
   readonly action?: "rename" | "mark-read" | "mark-unread" | "resolve" | "unresolve" | "delete";
 };

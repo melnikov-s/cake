@@ -1,6 +1,8 @@
 import { useState, useRef, type RefObject } from "react";
 import { flushSync } from "react-dom";
-import { useOptionalStore } from "r-state-tree/react";
+import { StoreProvider, useOptionalStore } from "r-state-tree/react";
+import { CaptureDestinationPicker } from "./capture-destination-picker";
+import { sessionLink } from "../../contracts/conversations/message-reference";
 import { DictationStore } from "../stores/DictationStore";
 import { ModelPicker } from "./model-picker";
 import {
@@ -44,7 +46,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
   onSubmit(value: string): Promise<void>;
 }) {
   const [reference, setReference] = useState<
-    ComposerSelection & { model?: ModelReferenceSelection }
+    ComposerSelection & { kind?: "session"; model?: ModelReferenceSelection }
   >();
   const referenceAnchor = useRef<HTMLElement | null>(null);
   const dictation = useOptionalStore(DictationStore);
@@ -66,13 +68,12 @@ export const ChatComposerInput = observer(function ChatComposerInput({
     setReference({ ...selection, model });
     if (configuration) void configuration.catalog.ensureLoaded();
   };
-  const selectReference = (model: ModelReferenceSelection) => {
+  const insertReference = (token: string) => {
     if (!reference || store.draft !== reference.draft) {
       setReference(undefined);
       setReferenceInteraction(false);
       return;
     }
-    const token = serializeModelReference(model);
     store.setDraft(
       reference.draft.slice(0, reference.start) + token + reference.draft.slice(reference.end),
     );
@@ -95,7 +96,26 @@ export const ChatComposerInput = observer(function ChatComposerInput({
     (conversation.workflow.phase === "active" || conversation.workflow.phase === "preparing");
   return (
     <>
-      {reference && configuration && (
+      {reference?.kind === "session" && store.sessionReferencePicker && (
+        <StoreProvider store={store.sessionReferencePicker}>
+          <CaptureDestinationPicker
+            disabled={false}
+            ariaLabel="Session reference"
+            anchorRef={referenceAnchor}
+            open
+            onOpenChange={(open) => {
+              if (!open) {
+                setReference(undefined);
+                setReferenceInteraction(false);
+              }
+            }}
+            onSelect={(destination) =>
+              insertReference(`[Session](${sessionLink(destination.sessionId)})`)
+            }
+          />
+        </StoreProvider>
+      )}
+      {reference && reference.kind !== "session" && configuration && (
         <ModelPicker
           anchorRef={referenceAnchor}
           open
@@ -115,22 +135,26 @@ export const ChatComposerInput = observer(function ChatComposerInput({
           value={reference.model}
           error={configuration.catalog.error?.message}
           onSelect={(model) =>
-            selectReference({
-              ...model,
-              ...(model.preset?.id === reference.model?.preset?.id && reference.model?.presetName
-                ? { presetName: reference.model.presetName }
-                : null),
-            })
+            insertReference(
+              serializeModelReference({
+                ...model,
+                ...(model.preset?.id === reference.model?.preset?.id && reference.model?.presetName
+                  ? { presetName: reference.model.presetName }
+                  : null),
+              }),
+            )
           }
           onSelectPreset={(preset) =>
-            selectReference({
-              provider: preset.provider,
-              modelId: preset.modelId,
-              thinkingLevel: preset.thinkingLevel,
-              fastMode: preset.fastMode,
-              preset: { id: preset.id, ...(preset.prompt ? { prompt: preset.prompt } : null) },
-              presetName: preset.name,
-            })
+            insertReference(
+              serializeModelReference({
+                provider: preset.provider,
+                modelId: preset.modelId,
+                thinkingLevel: preset.thinkingLevel,
+                fastMode: preset.fastMode,
+                preset: { id: preset.id, ...(preset.prompt ? { prompt: preset.prompt } : null) },
+                presetName: preset.name,
+              }),
+            )
           }
         />
       )}
@@ -194,7 +218,10 @@ export const ChatComposerInput = observer(function ChatComposerInput({
             .showComposerContextMenu(selection.text, event.clientX, event.clientY)
             .then((action) => {
               if (action === "insert-model") openReference(selection, input);
-              else {
+              else if (action === "insert-session") {
+                referenceAnchor.current = input;
+                setReference({ ...selection, kind: "session" });
+              } else {
                 setReferenceInteraction(false);
                 if (action === "reword") onReword(selection);
                 else if (action === "reword-with-prompt") onPromptedReword(selection);

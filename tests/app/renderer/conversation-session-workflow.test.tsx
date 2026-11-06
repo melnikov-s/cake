@@ -46,7 +46,14 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
     fireEvent.contextMenu(input);
     await waitFor(() => expect(rewordComposerSelection).toHaveBeenCalledOnce());
     expect(showComposerContextMenu).toHaveBeenCalledWith(
-      { selection: "Rough wording", x: 0, y: 0, canInsertModel: true, canReword: true },
+      {
+        selection: "Rough wording",
+        x: 0,
+        y: 0,
+        canInsertModel: true,
+        canInsertSession: true,
+        canReword: true,
+      },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(rewordComposerSelection).toHaveBeenCalledWith(
