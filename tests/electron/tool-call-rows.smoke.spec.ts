@@ -1,7 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { _electron as electron, expect, test, type Locator, type Page } from "@playwright/test";
+import { _electron as electron } from "../../scripts/queued-electron.mjs";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { toolCallRowsScenario } from "../../scripts/visual-capture/tool-call-rows";
 
 async function dragText(page: Page, target: Locator) {

@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { join, resolve } from "node:path";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { _electron as electron } from "../../scripts/queued-electron.mjs";
+import { expect, test } from "@playwright/test";
 import { startMcpServer } from "../fixtures/mcp-server";
 import { windowState } from "../fixtures/window-state";
 

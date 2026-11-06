@@ -10,7 +10,7 @@ const repositoryRoot = resolve(import.meta.dirname, "../..");
 // Playwright spawns Electron detached (its own process group) and only kills it from the
 // runner's exit handlers. A SIGKILLed runner, such as an agent command timeout, never runs them.
 const launcher = `
-import { _electron as electron } from "@playwright/test";
+import { _electron as electron } from "./scripts/queued-electron.mjs";
 const application = await electron.launch({ args: [process.cwd()], cwd: process.cwd(), env: process.env });
 await application.firstWindow();
 console.log("cake-pid=" + application.process().pid);

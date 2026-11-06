@@ -6,6 +6,9 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import electron from "electron";
+import { queueElectronEntrypoint } from "./electron-run-queue.mjs";
+
+await queueElectronEntrypoint();
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = join(root, "out");

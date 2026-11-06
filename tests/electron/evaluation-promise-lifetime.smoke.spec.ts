@@ -1,7 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
+import { _electron as electron } from "../../scripts/queued-electron.mjs";
+import { expect, test, type ElectronApplication } from "@playwright/test";
 import { callRpcHarness, openRpcHarness } from "./rpc-harness";
 
 const repository = resolve(import.meta.dirname, "../..");

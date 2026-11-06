@@ -2,7 +2,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, test, _electron as electron } from "@playwright/test";
+import { _electron as electron } from "../../scripts/queued-electron.mjs";
+import { expect, test } from "@playwright/test";
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 

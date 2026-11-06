@@ -1,7 +1,8 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { _electron as electron } from "../../scripts/queued-electron.mjs";
+import { expect, test } from "@playwright/test";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";

@@ -4,7 +4,8 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { createHash } from "node:crypto";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { _electron as electron } from "../../scripts/queued-electron.mjs";
+import { expect, test } from "@playwright/test";
 import type { ContextTooltipScope } from "./context-tooltip-fixture";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");

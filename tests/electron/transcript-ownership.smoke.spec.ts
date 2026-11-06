@@ -3,13 +3,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
-import {
-  _electron as electron,
-  expect,
-  test as base,
-  type Locator,
-  type Page,
-} from "@playwright/test";
+import { _electron as electron } from "../../scripts/queued-electron.mjs";
+import { expect, test as base, type Locator, type Page } from "@playwright/test";
 import type { TranscriptOwnershipFixture } from "./transcript-ownership-fixture";
 import type { UiPart } from "../../src/contracts/conversations/session-contract";
 import { callRpcHarness, openRpcHarness } from "./rpc-harness";

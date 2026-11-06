@@ -1,7 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { _electron as electron } from "../../scripts/queued-electron.mjs";
+import { expect, test } from "@playwright/test";
 
 test("Pi Durable's Node SQLite adapter persists and reopens inside hidden Electron main", async () => {
   const directory = await mkdtemp(join(tmpdir(), "cake-durable-electron-"));

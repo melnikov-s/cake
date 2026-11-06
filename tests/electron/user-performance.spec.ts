@@ -4,7 +4,8 @@ import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { _electron as electron, expect, test, type Page, type CDPSession } from "@playwright/test";
+import { _electron as electron } from "../../scripts/queued-electron.mjs";
+import { expect, test, type Page, type CDPSession } from "@playwright/test";
 import { fixture, createPerformanceFixture, marker, sessionId } from "./fixtures/performance";
 import { installLocalModelHttpGuard } from "./main-harness";
 import {

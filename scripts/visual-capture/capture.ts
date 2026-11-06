@@ -3,12 +3,8 @@ import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import {
-  _electron as electron,
-  chromium,
-  devices,
-  type ElectronApplication,
-} from "@playwright/test";
+import { _electron as electron } from "../queued-electron.mjs";
+import { chromium, devices, type ElectronApplication } from "@playwright/test";
 import {
   findBrowserVisualScenario,
   prepareBrowserVisual,

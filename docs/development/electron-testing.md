@@ -46,16 +46,75 @@ This opt-in preserves native window-blur coverage without opening/focusing a win
 microphone, playback, typing, or speech-settings test. Hidden-window results are not proof of
 native OS focus behavior.
 
-## Process lifetime
+## Shared automated-run queue
 
-Playwright launches Electron as its own process-group leader and kills it only from the
-runner's exit handlers. A runner that is SIGKILLed (for example by an agent command timeout)
-never runs them, so smoke-mode Cake (`CAKE_ELECTRON_SMOKE=1`) watches its parent process
-(`src/main/parent-watchdog.ts`) and quits itself within about a second of being orphaned.
-Smoke-mode fatal errors are logged to stderr instead of opening a modal dialog, so
-startup-failure tests exit instead of waiting for a click. `orphaned-runner.smoke.spec.ts`
-guards this. Still give every launch an isolated `CAKE_ELECTRON_USER_DATA`; a shared profile
-collides with the user's single-instance lock.
+Supported project workflows share a **host-wide concurrency limit across processes, Cake
+sessions, and worktrees on the same desktop user account**, defaulting to **three automated
+Electron runs**. Additional runs wait FIFO. This is resource control in the launch tooling,
+not an instruction for agents to coordinate themselves. The installed Cake application is
+neither queued nor stopped. Builds alone do not take admission.
+
+- Default, foreground, and performance Playwright configs acquire admission before tests
+  and their time budgets start, including direct `pnpm exec playwright test ...` commands.
+  Effective worker counts other than one fail before tests start: each admitted runner
+  stays serial, while up to the shared capacity of independent runners can run together.
+- Visual-capture CLI, snapshot `pnpm start`, `start:direct`, `dev`, `dev:agent`, and
+  `dev:manual` use the same gate. Performance/session-switching tools inherit it through
+  their Playwright invocation.
+- Playwright launches import `_electron` from `scripts/queued-electron.mjs`. Its executable
+  shim registers detached process groups before starting the real executable. Even
+  concurrent launch calls inside one runner are serialized; close the current application
+  before awaiting another launch. The single-instance smoke test's bare second-instance
+  probe intentionally runs within the admitted test against the **same locked profile**;
+  it must exit without starting another application backend.
+- For an additional validation script use `pnpm electron:run node path/to/script.mjs` (and
+  the queued Electron import if using Playwright), or
+  `pnpm electron:run electron-vite dev --inspect 9230`. Do not wrap a command that itself
+  unconditionally invokes `electron:run`;
+  nested independent admissions wait for their outer run.
+
+Read or change the shared developer-workflow limit with the same queue authority:
+
+```sh
+pnpm electron:queue status       # JSON capacity, running, queued
+pnpm electron:queue capacity 4   # allow four concurrent runs
+pnpm electron:queue capacity 3   # restore the default limit
+```
+
+Capacity must be a positive integer. It is stored once in the host queue database, not
+chosen per session or environment. Increases admit waiting runs immediately; decreases
+let existing runs finish and admit no more until running count is below the new limit.
+These commands are standalone launch-tool controls, also available to agents through Bash,
+not Cake Settings UI values. The selected limit survives process/session exits; removing
+the temporary queue database (including OS temp cleanup) resets it to the default of three.
+
+FIFO tickets and the shared limit live in `/tmp/cake-electron-runs-<uid>.sqlite`, independent of working directory,
+`CAKE_HOME`, `HOME`, and `TMPDIR`. Terminal feedback shows queued ticket/position, active/limit counts,
+internal launch waiting, timeout, and release. Ctrl-C/SIGTERM withdraws a queued request or
+aborts its running job. The programmatic `runElectronCommand` also accepts an AbortSignal
+and positive `timeoutMs`; the default running deadline is 30 minutes, excluding queue wait.
+
+A detached supervisor outlives the invoking shell/agent process, terminates only its owned
+job/process groups on cancellation, and releases admission after cleanup. Bootstrap and
+executable-shim IPC watchdogs also clean their groups if the supervisor crashes. A subsequent
+request reclaims a dead supervisor's ticket only after all recorded groups are gone; it never
+kills an existing application based on its name, age, debug port, or stale metadata. The
+SQLite file and capacity remain, but successful cleanup leaves no request/group/admission
+rows and no held lock.
+
+### Coverage limits
+
+This is not an OS-wide Electron sandbox. Raw Electron binaries, direct unwrapped
+`electron-vite` commands, custom Playwright configs/imports, and arbitrary agent shell scripts
+can bypass it. Use the supported entrypoints above; new maintained launch paths must join
+them. Already-running processes and worktrees on revisions without this implementation are
+not retroactively controlled. Different OS user accounts have separate queues. macOS/Linux
+are supported; Windows admissions fail explicitly rather than silently running unqueued.
+
+The normal app's smoke-mode parent watchdog (`src/main/parent-watchdog.ts`) remains useful
+outside these project runners. Fatal smoke errors log to stderr instead of opening a modal
+startup dialog. Still give every launch an isolated `CAKE_ELECTRON_USER_DATA`; a shared
+profile collides with the user's single-instance lock.
 
 ## Regression scope
 

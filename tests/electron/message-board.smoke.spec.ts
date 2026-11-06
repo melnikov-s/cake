@@ -2,7 +2,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
+import { _electron as electron } from "../../scripts/queued-electron.mjs";
+import { expect, test, type ElectronApplication } from "@playwright/test";
 import {
   seedMessageBoardFixture,
   MESSAGE_BOARD_FIXTURE_ID,

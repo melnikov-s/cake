@@ -1,4 +1,7 @@
 import { build } from "esbuild";
+import { queueElectronEntrypoint } from "../electron-run-queue.mjs";
+
+await queueElectronEntrypoint();
 import { unlink } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";

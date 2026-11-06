@@ -1,7 +1,8 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { _electron as electron } from "../../scripts/queued-electron.mjs";
+import { expect, test } from "@playwright/test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { resolveCakePaths } from "../../src/config/CakePaths";
 import { workingDirectorySessionPath } from "../../src/services/storage/session-files";

@@ -219,7 +219,7 @@ To profile instead:
 
   ```sh
   CAKE_HOME=$(mktemp -d) CAKE_ELECTRON_USER_DATA=$(mktemp -d) \
-    pnpm exec electron-vite dev --inspect 9230
+    pnpm electron:run electron-vite dev --inspect 9230
   ```
 
   `--remoteDebuggingPort <port>` adds renderer DevTools. If you need realistic

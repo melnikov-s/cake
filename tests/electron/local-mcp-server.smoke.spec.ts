@@ -2,7 +2,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { _electron as electron } from "../../scripts/queued-electron.mjs";
+import { expect, test } from "@playwright/test";
 import { McpClient, StreamableHttpTransport } from "@earendil-works/pi-mcp";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 
