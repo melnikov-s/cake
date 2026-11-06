@@ -202,18 +202,13 @@ for (const media of ["diagram", "image", "combined"] as const) {
       const page = await application.firstWindow();
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
-      const transcript = page.locator(".transcript").first();
-      await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
-        "Message 47",
-        { timeout: 20_000 },
-      );
-      await expect(transcript.locator('[aria-label="Conversation"]')).toBeVisible();
-      // Async row growth must not re-render inside ResizeObserver delivery.
-      await recordRendererErrors(page);
+      await expect(page.locator(".transcript")).toBeVisible({ timeout: 20_000 });
+      // Install before transcript startup: an initial estimated range can
+      // already include the diagram, even while opening the final message.
       // Gate only worker transport on a painted loading sample, not elapsed
       // time. Pele, native layout and measurement remain real, and every
       // traversal must still cover both loading and loaded diagrams.
-      await page.evaluate(() => {
+      await page.addInitScript(() => {
         const NativeWorker = window.Worker;
         window.Worker = class extends NativeWorker {
           constructor(url: string | URL, options?: WorkerOptions) {
@@ -231,6 +226,26 @@ for (const media of ["diagram", "image", "combined"] as const) {
           }
         };
       });
+      await page.reload();
+      const transcript = page.locator(".transcript").first();
+      const latest = transcript.locator('[data-slot="transcript-item"]').last();
+      await expect(latest).toContainText("Message 47", { timeout: 20_000 });
+      await expect(transcript.locator('[aria-label="Conversation"]')).toBeVisible();
+      await expect(latest).toBeInViewport();
+      // The opening range starts with an estimate. Do not start scrolling up
+      // while it is still a short, unpositioned list at scrollTop zero.
+      await expect
+        .poll(() => transcript.evaluate((element) => element.scrollTop))
+        .toBeGreaterThan(0);
+      await expect
+        .poll(() =>
+          transcript.evaluate(
+            (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+          ),
+        )
+        .toBeLessThanOrEqual(1);
+      // Async row growth must not re-render inside ResizeObserver delivery.
+      await recordRendererErrors(page);
       await transcript.hover({ position: { x: 30, y: 250 } });
       for (const direction of [-1, 1, -1, 1]) {
         await startProbe(page);

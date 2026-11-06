@@ -97,14 +97,24 @@ test("dictation and conversation mode lead the toolbar at every width", async ()
       await expect(unmute).toBeVisible();
       expect(await layout()).toEqual(empty);
       await unmute.click();
-      // Tab returns to writing; the portaled control still handles Escape from keyboard focus.
+      // Tab returns to writing; Escape on the live control explicitly ends capture.
       await mute.focus();
       await mute.press("Tab");
       await expect(input).toBeFocused();
+      await expect(indicator).toHaveText("Listening");
       await mute.focus();
       await mute.press("Escape");
-      await expect(input).toBeFocused();
+      await expect(indicator).toHaveCount(0);
+      await expect(input).not.toBeFocused();
       await expect(input).toHaveValue("Typed with toolbar controls");
+      // Explicit field entry restarts capture. Escape on a muted control can
+      // return writing focus without silently rearming an active microphone.
+      await input.click();
+      await expect(mute).toBeVisible();
+      await mute.click();
+      await unmute.focus();
+      await unmute.press("Escape");
+      await expect(input).toBeFocused();
       await expect(unmute).toBeVisible();
       await unmute.click();
       await input.fill("First line\nSecond line\nThird line\nFourth line");

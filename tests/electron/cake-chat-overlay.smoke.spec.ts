@@ -47,7 +47,7 @@ for (const voiceEnabled of [false, true]) {
 process.stdout.write(JSON.stringify({ready:true})+'\\n');
 readline.createInterface({input:process.stdin}).on('line', line => {
   const request = JSON.parse(line);
-  process.stdout.write(JSON.stringify(request.operation === 'detectSpeech' ? {speech:true} : {text:'Let’s refine the voice conversation together.'})+'\\n');
+  process.stdout.write(JSON.stringify(request.operation === 'detectSpeech' ? {speech:true} : {text:request.pcm ? 'Let’s refine the voice conversation together.' : ''})+'\\n');
 });\n`,
     );
     await writeFile(

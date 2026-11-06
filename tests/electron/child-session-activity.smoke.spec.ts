@@ -367,6 +367,14 @@ test("background family children show running activity and only offer Mark as Un
     expect(await sessionMenu()).not.toContain("Mark as Unread");
 
     await childRow.locator(".session-row").click();
+    await expect(parentPane).toHaveAttribute(
+      "data-session-id",
+      (await childRow.getAttribute("data-session-id"))!,
+    );
+    // Reading preserves the unread lane; leaving acknowledges the visit.
+    await expect(childRow.locator('[aria-label="Ready, unread"]')).toBeVisible();
+    await page.locator(`.session-item[data-session-id="${parentId}"] .session-row`).click();
+    await expect(parentPane).toHaveAttribute("data-session-id", parentId!);
     await expect(childRow.locator('[aria-label="Ready, unread"]')).toHaveCount(0);
     expect(await sessionMenu()).toContain("Mark as Unread");
   } finally {

@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 it.each(["normal", ""])(
-  "settles row measurements without republishing scroll/gap inputs (gap: %j)",
+  "syncs compensated scroll coordinates without resampling viewport/gap inputs (gap: %j)",
   (gap) => {
     const observers: { target: Element; callback: () => void }[] = [];
     vi.stubGlobal(
@@ -41,21 +41,22 @@ it.each(["normal", ""])(
     );
     vi.stubGlobal("cancelAnimationFrame", () => {});
     vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockReturnValue(document.body);
+    let itemHeight = 100;
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
       function (this: HTMLElement) {
-        return new DOMRect(0, 0, 800, this.dataset.index === undefined ? 600 : 100);
+        return new DOMRect(0, 0, 800, this.dataset.index === undefined ? 600 : itemHeight);
       },
     );
     const style = document.createElement("style");
     // The empty value is jsdom's default, not a claim about Chromium's CSS.
     // It makes redundant gap publication non-convergent and exposes the nested
     // render loop. The normal value also checks the boundary with stable inputs.
-    style.textContent = gap ? `div { row-gap: ${gap}; column-gap: ${gap}; }` : "";
+    style.textContent = "div { row-gap: normal; column-gap: normal; }";
     document.head.append(style);
     const scroller = document.createElement("div");
     document.body.append(scroller);
-    // Size-result commits must not resample and publish the scroll/resize inputs
-    // that select the rendered range. Native notifications own those inputs.
+    // Size-result commits must not resample viewport dimensions or CSS gap.
+    // An external scroll owner can change only the native scroll coordinate.
     let geometryReads = 0;
     Object.defineProperties(scroller, {
       offsetHeight: {
@@ -68,17 +69,19 @@ it.each(["normal", ""])(
     });
     const data = Array.from({ length: 20 }, (_, index) => `Message ${index}`);
     const itemContent = vi.fn((_: number, message: string) => message);
+    const handle = createRef<VirtuosoHandle>();
+    const content = () => (
+      <VirtualizedConversation
+        ref={handle}
+        data={data}
+        customScrollParent={scroller}
+        computeItemKey={(_, message) => message}
+        itemContent={itemContent}
+        skipUpwardScrollCompensation
+      />
+    );
     try {
-      render(
-        <VirtualizedConversation
-          data={data}
-          customScrollParent={scroller}
-          computeItemKey={(_, message) => message}
-          itemContent={itemContent}
-          skipUpwardScrollCompensation
-        />,
-        { container: scroller },
-      );
+      const view = render(content(), { container: scroller });
       act(() => {
         for (const observer of [...observers])
           if (observer.target.getAttribute("data-viewport-type") === "window") observer.callback();
@@ -88,6 +91,29 @@ it.each(["normal", ""])(
       expect(scroller.querySelector('[data-known-size="100"]')).not.toBeNull();
       // The initial scroll subscription samples once; size-result commits do not.
       expect(geometryReads).toBe(1);
+      // Deliver the initial real size notification before changing the layout.
+      act(() => {
+        for (const observer of [...observers])
+          if (observer.target.getAttribute("data-testid") === "virtuoso-item-list")
+            observer.callback();
+        for (const frame of frames.splice(0)) frame(0);
+      });
+      expect(geometryReads).toBe(2);
+      style.textContent = gap ? `div { row-gap: ${gap}; column-gap: ${gap}; }` : "";
+      // A remount/resize can land before the native scroll event for the external
+      // owner’s compensation. The new range must use that position immediately,
+      // without resampling viewport dimensions or publishing a CSS gap again.
+      scroller.scrollTop = 200;
+      itemHeight = 120;
+      view.rerender(content());
+      let cachedScrollTop: number | undefined;
+      handle.current!.getState((state) => {
+        cachedScrollTop = state.scrollTop;
+      });
+      expect(cachedScrollTop).toBe(200);
+      expect(scroller.querySelector('[data-known-size="120"]')).not.toBeNull();
+      view.rerender(content());
+      expect(geometryReads).toBe(2);
       expect(itemContent.mock.calls.length).toBeLessThan(200);
     } finally {
       cleanup();

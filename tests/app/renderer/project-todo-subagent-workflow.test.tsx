@@ -100,7 +100,7 @@ const todos = (parent: string): ProjectTodos => ({
   ],
 });
 
-it("matches a subagent by public handle AND parent, changes/clears the shared cue, and closing the panel clears focus", async () => {
+it("matches a subagent by public handle AND parent, changes/clears the shared cue, and closing the panel retains focus", async () => {
   using fixture = renderSubagentActivity({
     projectChat: true,
     activity: workerActivity({ parentSessionId: projectChat }),
@@ -131,8 +131,11 @@ it("matches a subagent by public handle AND parent, changes/clears the shared cu
   expect(fixture.todos()?.selectedId).toBeNull();
   await fixture.user.click(screen.getByRole("button", { name: "Close To-do" }));
   expect(screen.queryByRole("button", { name: "Review worker" })).toBeNull();
-  expect(row().hasAttribute("data-associated")).toBe(false);
+  expect(row().getAttribute("data-associated")).toBe("true");
   act(() => fixture.root.cakeChatCollectionStore.registry.find(projectChat)!.todos.open());
+  expect(title().getAttribute("aria-pressed")).toBe("true");
+  await fixture.user.click(screen.getByRole("button", { name: "Unfocus to-do: Review worker" }));
+  expect(row().hasAttribute("data-associated")).toBe(false);
   expect(title().getAttribute("aria-pressed")).toBe("false");
 });
 

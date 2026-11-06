@@ -22,7 +22,7 @@ function chunk(content: string, finishReason: string | null = null) {
 for (const [title, activityOrdering] of [
   ["session shortcuts respect Project focus and restore cross-project navigation on exit", false],
   [
-    "activity and completion keep rows stable while preserving the selected conversation and composer",
+    "activity reorders background rows while preserving the selected conversation and composer",
     true,
   ],
 ] as const) {
@@ -128,8 +128,8 @@ async function verifyNavigation(activityOrdering: boolean) {
         .join("\n") + "\n",
     );
     if (activityOrdering) {
-      // Deliberately disagree with creation order: file activity must not affect
-      // the deterministic identity tie-break for these equally old sessions.
+      // Keep the idle row newer. The selected worker holds its idle position
+      // while working and joins the running lane only after the user leaves it.
       const modifiedAt = new Date(id === "alpha-idle" ? "2100-01-01T00:00:00.000Z" : timestamp);
       await utimes(file, modifiedAt, modifiedAt);
     }
@@ -183,12 +183,13 @@ async function verifyNavigation(activityOrdering: boolean) {
       await expect(pane).toHaveAttribute("data-session-id", "alpha-worker");
       await row("alpha-idle").locator(".session-row").click();
       await expect(pane).toHaveAttribute("data-session-id", "alpha-idle");
+      await expect.poll(alphaOrder).toEqual(["alpha-worker", "alpha-idle"]);
       await composer.fill("Start idle");
       await page.keyboard.press("Enter");
       await expect(row("alpha-idle").locator('[aria-label="Running"]')).toBeVisible();
       await expect(row("alpha-idle").locator("time")).toHaveText(/^Working \d/);
       await expect(row("alpha-worker").locator("time")).toHaveAttribute("datetime", workingStart!);
-      await expect.poll(alphaOrder).toEqual(["alpha-idle", "alpha-worker"]);
+      await expect.poll(alphaOrder).toEqual(["alpha-worker", "alpha-idle"]);
       await expect.poll(() => streams.length).toBe(2);
       await composer.click();
       await expect(composer).toBeFocused();
@@ -198,7 +199,7 @@ async function verifyNavigation(activityOrdering: boolean) {
       streams[0]!.end(chunk("Finished.", "stop") + "data: [DONE]\n\n");
       await expect(row("alpha-worker").locator('[aria-label="Running"]')).toHaveCount(0);
       await expect(row("alpha-worker").locator("time")).not.toContainText("Working");
-      await expect.poll(alphaOrder).toEqual(["alpha-idle", "alpha-worker"]);
+      await expect.poll(alphaOrder).toEqual(["alpha-worker", "alpha-idle"]);
       await expect(row("alpha-idle")).toHaveAttribute("data-navigation-active", "true");
       await expect(pane).toHaveAttribute("data-session-id", "alpha-idle");
       await expect(composer).toBeFocused();
@@ -206,7 +207,7 @@ async function verifyNavigation(activityOrdering: boolean) {
       // Selected completion likewise leaves order, focus and the unsent draft intact.
       streams[1]!.end(chunk("Finished.", "stop") + "data: [DONE]\n\n");
       await expect(row("alpha-idle").locator('[aria-label="Running"]')).toHaveCount(0);
-      await expect.poll(alphaOrder).toEqual(["alpha-idle", "alpha-worker"]);
+      await expect.poll(alphaOrder).toEqual(["alpha-worker", "alpha-idle"]);
       await expect(row("alpha-idle")).toHaveAttribute("data-navigation-active", "true");
       await expect(row("alpha-idle").locator("time")).toHaveCount(1);
       await expect(pane).toHaveAttribute("data-session-id", "alpha-idle");
