@@ -7,10 +7,8 @@ import type {
 } from "../../contracts/conversations/completion-inbox";
 import type { CakeChatLaunchStatus } from "../../contracts/project-sessions/session-reporting";
 import type { BoardEntry } from "../../contracts/artifacts/message-board";
-import {
-  SessionFamilyStorage,
-  type SessionFamily,
-} from "../../services/storage/SessionFamilyStorage";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import { type SessionFamily } from "../../contracts/session-families/session-family-document";
 
 /** One durable notice plus a separately retained decision record. Delivery never authorizes an action. */
 export const queue = Effect.fn("CompletionInbox.queue")(function* (

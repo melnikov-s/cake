@@ -19,11 +19,11 @@ import {
 } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
+import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import {
-  SessionFamilyStorage,
   familyMember,
   type SessionFamily,
-} from "../../../src/services/storage/SessionFamilyStorage";
+} from "../../../src/contracts/session-families/session-family-document";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import {
   ManagedWorktrees,

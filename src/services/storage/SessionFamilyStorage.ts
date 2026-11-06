@@ -1,16 +1,15 @@
-import { MessageReference } from "../../contracts/conversations/message-reference";
-import { StoredPassiveNotice } from "../../contracts/conversations/passive-notice";
-import { PendingReport, ReportHandlingReceipt } from "../../contracts/conversations/pending-report";
-import { BoardDelivery } from "../../contracts/artifacts/board-delivery";
-import {
+import type { StoredPassiveNotice } from "../../contracts/conversations/passive-notice";
+import type {
+  PendingReport,
+  ReportHandlingReceipt,
+} from "../../contracts/conversations/pending-report";
+import type { BoardDelivery } from "../../contracts/artifacts/board-delivery";
+import type {
   CompletionInboxItem,
-  type CompletionDecisionState,
+  CompletionDecisionState,
 } from "../../contracts/conversations/completion-inbox";
-import {
-  ResultDelivery,
-  migrateResultDelivery,
-} from "../../contracts/conversations/result-delivery";
-import { TurnStop } from "../../contracts/conversations/turn-stop";
+import type { ResultDelivery } from "../../contracts/conversations/result-delivery";
+import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import {
   Context,
   Effect,
@@ -27,209 +26,30 @@ import {
 } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 import { timedStorageRead } from "./internal/timedStorageRead";
-import { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
+import type { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
 
-import {
+import type {
   CakeChatLaunchReport,
-  CakeChatLaunchStatus,
   SessionCompletionReport,
-  SessionRequester,
 } from "../../contracts/project-sessions/session-reporting";
 
-const DOCUMENT_VERSION = 10;
-const LegacyDelivery = {
-  continuation: Schema.optionalKey(Schema.Literals(["none", "resume"])),
-  reportPolicy: Schema.optionalKey(Schema.Literals(["digest", "interrupt"])),
-};
-const BoundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
-const BoundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
-
-const LegacySessionFamilyChild = Schema.Struct({
-  sessionId: BoundedId,
-  requestId: BoundedId,
-  createdAt: Schema.String,
-});
-
-const SessionFamilyChild = Schema.Struct({
-  sessionId: BoundedId,
-  parentSessionId: BoundedId,
-  requestId: BoundedId,
-  workingDirectory: BoundedPath,
-  managedWorktreePath: Schema.optionalKey(BoundedPath),
-  /** Assignment-first reservations survive restart before durable admission. */
-  assignmentTopic: Schema.optionalKey(BoundedId),
-  resultDelivery: Schema.optionalKey(ResultDelivery),
-  createdAt: Schema.String,
-});
-interface SessionFamilyChild extends Schema.Schema.Type<typeof SessionFamilyChild> {}
-
-export const SessionFamily = Schema.Struct({
-  familyId: BoundedId,
-  parentSessionId: BoundedId,
-  projectPath: BoundedPath,
-  workingDirectory: BoundedPath,
-  managedWorktreePath: Schema.optionalKey(BoundedPath),
-  createdAt: Schema.String,
-  children: Schema.Array(SessionFamilyChild),
-});
-export interface SessionFamily extends Schema.Schema.Type<typeof SessionFamily> {}
-
-const LegacySessionFamily = Schema.Struct({
-  familyId: BoundedId,
-  parentSessionId: BoundedId,
-  projectPath: BoundedPath,
-  workingDirectory: BoundedPath,
-  managedWorktreePath: Schema.optionalKey(BoundedPath),
-  createdAt: Schema.String,
-  children: Schema.Array(LegacySessionFamilyChild),
-});
-
-export interface SessionFamilyMember {
-  readonly sessionId: string;
-  readonly parentSessionId?: string;
-  readonly workingDirectory: string;
-  readonly managedWorktreePath?: string;
-}
-
-export const familyMember = (
-  family: SessionFamily,
-  sessionId: string,
-): SessionFamilyMember | undefined => {
-  if (family.parentSessionId === sessionId) {
-    const root: SessionFamilyMember = {
-      sessionId,
-      workingDirectory: family.workingDirectory,
-    };
-    if (family.managedWorktreePath !== undefined)
-      Object.assign(root, { managedWorktreePath: family.managedWorktreePath });
-    return root;
-  }
-  return family.children.find((child) => child.sessionId === sessionId);
-};
-
-export const familyChildren = (family: SessionFamily, parentSessionId: string) =>
-  family.children.filter((child) => child.parentSessionId === parentSessionId);
-
-export const familyMemberIds = (family: SessionFamily) => [
-  family.parentSessionId,
-  ...family.children.map((child) => child.sessionId),
-];
-
-export const familyDepth = (family: SessionFamily, sessionId: string) => {
-  let depth = 0;
-  let member = familyMember(family, sessionId);
-  const visited = new Set<string>();
-  while (member?.parentSessionId !== undefined) {
-    if (visited.has(member.sessionId)) return undefined;
-    visited.add(member.sessionId);
-    depth += 1;
-    member = familyMember(family, member.parentSessionId);
-  }
-  return member ? depth : undefined;
-};
-
-const LegacyFamilyTransition = Schema.Struct({
-  parentSessionId: BoundedId,
-  resolved: Schema.Boolean,
-});
-const LegacyFamilyTurn = Schema.Struct({
-  sessionId: BoundedId,
-  parentSessionId: BoundedId,
-  turnId: BoundedId,
-  reported: Schema.Boolean,
-  deliveryTurnId: Schema.optionalKey(BoundedId),
-  replyMessageIds: Schema.optionalKey(Schema.Array(BoundedId)),
-  outcome: Schema.optionalKey(Schema.Literals(["complete", "failed", "aborted"])),
-});
-const SpawnedSession = Schema.Struct({
-  sessionId: BoundedId,
-  /** Launch label retained independently of Pi content for metadata-only discovery. */
-  title: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(500))),
-  projectPath: BoundedPath,
-  workingDirectory: BoundedPath,
-  requester: SessionRequester,
-  reportDelivered: Schema.Boolean,
-  /** A factual stop notice is a settled handoff, but not a successful result report. */
-  handoffSettled: Schema.Boolean,
-  launchedAt: Schema.optionalKey(Schema.String),
-  resultDelivery: Schema.optionalKey(ResultDelivery),
-  /** Latest result Cake Chat received (immediately or by digest), for status surfaces. */
-  lastReport: Schema.optionalKey(CakeChatLaunchReport),
-});
-export interface SpawnedSession extends Schema.Schema.Type<typeof SpawnedSession> {}
-
-/**
- * One pending reply obligation. Cake records it only when an accepted incoming
- * message selected reply or notification; the turn that consumes that
- * message owes exactly one result (or one factual failure notice), after which
- * the record is removed. Turns without a record never notify anyone.
- */
-const FamilyTurn = Schema.Struct({
-  report: Schema.optionalKey(SessionCompletionReport),
-  /** The session executing the request. */
-  sessionId: BoundedId,
-  /** The session that asked for the response. */
-  senderSessionId: BoundedId,
-  turnId: BoundedId,
-  requestMessageId: BoundedId,
-  threadId: BoundedId,
-  reported: Schema.Boolean,
-  deliveryTurnId: Schema.optionalKey(BoundedId),
-  replyMessageIds: Schema.optionalKey(Schema.Array(BoundedId)),
-  outcome: Schema.optionalKey(Schema.Literals(["complete", "failed", "aborted"])),
-  resultDelivery: Schema.optionalKey(ResultDelivery),
-  /** Who deliberately stopped an aborted turn. Absent on an unexpected interruption. */
-  stop: Schema.optionalKey(TurnStop),
-});
-export interface FamilyTurn extends Schema.Schema.Type<typeof FamilyTurn> {}
-/** Version 6 recorded every correlated message, including ones that requested no response. */
-const Version6FamilyTurn = Schema.Struct({
-  ...FamilyTurn.fields,
-  ...LegacyDelivery,
-  completionContract: Schema.optionalKey(Schema.Boolean),
-  expectsResponse: Schema.Boolean,
-});
-/** One quiet status line waiting for the user's next Cake Chat message. */
-const CoordinatorDigestItem = Schema.Struct({
-  /** Absent denotes the global chat, including existing persisted inbox items. */
-  coordinatorSessionId: Schema.optionalKey(BoundedId),
-  /** The settled obligation's turn ID; digesting is idempotent per turn. */
-  id: BoundedId,
-  sessionId: BoundedId,
-  title: Schema.String.check(Schema.isMaxLength(500)),
-  resultMessageRef: Schema.optionalKey(MessageReference),
-  status: CakeChatLaunchStatus,
-  summary: Schema.String.check(Schema.isMaxLength(500)),
-  reportedAt: Schema.String,
-});
-export interface CoordinatorDigestItem extends Schema.Schema.Type<typeof CoordinatorDigestItem> {}
-/**
- * One open batch timer per recipient conversation. Opened when the first deferred update
- * arrives in an empty batch; delivered at dueAt or carried by the next user message.
- * turnId records an admission attempt so a restart reconciles instead of resending.
- */
-const UpdateBatch = Schema.Struct({
-  recipientSessionId: BoundedId,
-  openedAt: Schema.String,
-  dueAt: Schema.String,
-  turnId: Schema.optionalKey(BoundedId),
-});
-export interface UpdateBatch extends Schema.Schema.Type<typeof UpdateBatch> {}
-export const SessionFamilyDocument = Schema.Struct({
-  families: Schema.Array(SessionFamily),
-  turns: Schema.Array(FamilyTurn),
-  spawnedSessions: Schema.Array(SpawnedSession),
-  /** Cake Chat's inbox of digest-policy results, drained into its next user message. */
-  coordinatorDigest: Schema.optionalKey(Schema.Array(CoordinatorDigestItem)),
-  deferredReferences: Schema.optionalKey(Schema.Array(PendingReport)),
-  passiveNotices: Schema.optionalKey(Schema.Array(StoredPassiveNotice)),
-  handledReports: Schema.optionalKey(Schema.Array(ReportHandlingReceipt)),
-  boardDeliveries: Schema.optionalKey(Schema.Array(BoardDelivery)),
-  boardDeliveryPaused: Schema.optionalKey(Schema.Array(BoundedId)),
-  completionInbox: Schema.optionalKey(Schema.Array(CompletionInboxItem)),
-  updateBatches: Schema.optionalKey(Schema.Array(UpdateBatch)),
-});
-export interface SessionFamilyDocument extends Schema.Schema.Type<typeof SessionFamilyDocument> {}
+import {
+  type SessionFamily,
+  type SessionFamilyChild,
+  SessionFamilyDocument,
+  familyMember,
+  familyMemberIds,
+  type FamilyTurn,
+  type SpawnedSession,
+  type CoordinatorDigestItem,
+  type UpdateBatch,
+} from "../../contracts/session-families/session-family-document";
+import {
+  DOCUMENT_VERSION,
+  decodeSessionFamilyDocument,
+  storageError,
+  validateDocument,
+} from "./sessionFamilyDocumentCodec";
 
 export class SessionFamilyStorage extends Context.Service<
   SessionFamilyStorage,
@@ -377,11 +197,6 @@ export class SessionFamilyStorage extends Context.Service<
   }
 >()("cake/services/storage/SessionFamilyStorage") {}
 
-const StoredEnvelope = Schema.Struct({ version: Schema.Int, data: Schema.Unknown });
-const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
-const storageError = (operation: string, cause: unknown) =>
-  new SessionFamilyStorageError({ operation, message: messageOf(cause) });
-
 /** The initial assignment's obligation is the spawned session's one handoff to Cake Chat. */
 const settleHandoffs = (
   spawnedSessions: ReadonlyArray<SpawnedSession>,
@@ -397,34 +212,6 @@ const settleHandoffs = (
       : spawn;
   });
 
-const validateDocument = (document: SessionFamilyDocument): SessionFamilyDocument => {
-  const familyIds = new Set<string>();
-  const memberIds = new Set<string>();
-  const requestIds = new Set<string>();
-  for (const family of document.families) {
-    if (familyIds.has(family.familyId)) throw new Error(`Duplicate family ID ${family.familyId}`);
-    familyIds.add(family.familyId);
-    if (memberIds.has(family.parentSessionId))
-      throw new Error(`Session ${family.parentSessionId} belongs to more than one family`);
-    memberIds.add(family.parentSessionId);
-    const precedingMembers = new Set([family.parentSessionId]);
-    for (const child of family.children) {
-      if (!precedingMembers.has(child.parentSessionId))
-        throw new Error(
-          `Parent ${child.parentSessionId} must precede child ${child.sessionId} in its family`,
-        );
-      if (memberIds.has(child.sessionId))
-        throw new Error(`Session ${child.sessionId} belongs to more than one family`);
-      if (requestIds.has(child.requestId))
-        throw new Error(`Duplicate child creation request ${child.requestId}`);
-      precedingMembers.add(child.sessionId);
-      memberIds.add(child.sessionId);
-      requestIds.add(child.requestId);
-    }
-  }
-  return document;
-};
-
 export const makeSessionFamilyStorageLive = (documentPath: string) =>
   Layer.effect(
     SessionFamilyStorage,
@@ -433,186 +220,6 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
       const path = yield* Path.Path;
       const lock = yield* Semaphore.make(1);
       const noticeDeliveryLock = yield* Semaphore.make(1);
-
-      const decodeDocument = Effect.fn("SessionFamilyStorage.decodeDocument")(function* () {
-        const text = yield* fileSystem
-          .readFileString(documentPath)
-          .pipe(Effect.mapError((e) => storageError("load", e)));
-        const parsed: unknown = yield* Effect.try({
-          try: () => JSON.parse(text),
-          catch: (cause) => storageError("load", cause),
-        });
-        const envelope = yield* Schema.decodeUnknownEffect(StoredEnvelope)(parsed).pipe(
-          Effect.mapError((cause) => storageError("load", cause)),
-        );
-        if (![1, 2, 3, 4, 5, 6, 7, 8, 9, DOCUMENT_VERSION].includes(envelope.version))
-          return yield* storageError(
-            "load",
-            `Unsupported session family document version ${envelope.version}`,
-          );
-        const migrateTurn = (
-          turn: typeof LegacyFamilyTurn.Type,
-        ): typeof Version6FamilyTurn.Type => {
-          const { parentSessionId, ...rest } = turn;
-          return {
-            ...rest,
-            senderSessionId: parentSessionId,
-            requestMessageId: turn.turnId,
-            threadId: turn.turnId,
-            expectsResponse: true,
-          };
-        };
-        let data = envelope.data;
-        if (envelope.version === 1 || envelope.version === 2) {
-          const legacy = yield* Schema.decodeUnknownEffect(
-            Schema.Struct({
-              families: Schema.Array(LegacySessionFamily),
-              transitions:
-                envelope.version === 1
-                  ? Schema.optionalKey(Schema.Array(LegacyFamilyTransition))
-                  : Schema.Array(LegacyFamilyTransition),
-              turns:
-                envelope.version === 1
-                  ? Schema.optionalKey(Schema.Array(LegacyFamilyTurn))
-                  : Schema.Array(LegacyFamilyTurn),
-            }),
-          )(envelope.data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
-          data = {
-            families: legacy.families.map((family) => ({
-              ...family,
-              children: family.children.map((child) => ({
-                ...child,
-                parentSessionId: family.parentSessionId,
-                workingDirectory: family.workingDirectory,
-                ...(family.managedWorktreePath === undefined
-                  ? null
-                  : { managedWorktreePath: family.managedWorktreePath }),
-              })),
-            })),
-            transitions: legacy.transitions ?? [],
-            turns: (legacy.turns ?? []).map(migrateTurn),
-          };
-        } else if (envelope.version === 3) {
-          const legacy = yield* Schema.decodeUnknownEffect(
-            Schema.Struct({
-              families: Schema.Array(SessionFamily),
-              transitions: Schema.Array(LegacyFamilyTransition),
-              turns: Schema.Array(LegacyFamilyTurn),
-            }),
-          )(envelope.data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
-          data = { ...legacy, turns: legacy.turns.map(migrateTurn) };
-        }
-        if (envelope.version < 6) {
-          const previous = yield* Schema.decodeUnknownEffect(
-            Schema.Struct({
-              families: Schema.Array(SessionFamily),
-              turns: Schema.Array(Version6FamilyTurn),
-            }),
-          )(data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
-          data = { ...previous, spawnedSessions: [] };
-        }
-        if (envelope.version < 7) {
-          const previous = yield* Schema.decodeUnknownEffect(
-            Schema.Struct({
-              families: Schema.Array(SessionFamily),
-              turns: Schema.Array(Version6FamilyTurn),
-              spawnedSessions: Schema.Array(SpawnedSession),
-            }),
-          )(data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
-          // v7 journals only explicit reply obligations. Records for messages that asked
-          // for no response must not become notices after upgrade. Decoding the v7
-          // document below drops the retired per-record flags.
-          data = { ...previous, turns: previous.turns.filter((turn) => turn.expectsResponse) };
-        }
-        if (envelope.version < 8) {
-          const previous = yield* Schema.decodeUnknownEffect(
-            Schema.Struct({
-              ...SessionFamilyDocument.fields,
-              families: Schema.Array(
-                Schema.Struct({
-                  ...SessionFamily.fields,
-                  children: Schema.Array(
-                    Schema.Struct({ ...SessionFamilyChild.fields, ...LegacyDelivery }),
-                  ),
-                }),
-              ),
-              turns: Schema.Array(Schema.Struct({ ...FamilyTurn.fields, ...LegacyDelivery })),
-              spawnedSessions: Schema.Array(
-                Schema.Struct({ ...SpawnedSession.fields, ...LegacyDelivery }),
-              ),
-            }),
-          )(data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
-          const migrate = <
-            A extends {
-              readonly resultDelivery?: ResultDelivery;
-              readonly continuation?: "none" | "resume";
-              readonly reportPolicy?: "digest" | "interrupt";
-            },
-          >(
-            item: A,
-          ) => {
-            return {
-              ...Struct.omit(item, ["continuation", "reportPolicy"]),
-              resultDelivery: migrateResultDelivery({
-                resultDelivery: item.resultDelivery,
-                continuation: item.continuation,
-                reportPolicy: item.reportPolicy,
-              }),
-            };
-          };
-          data = {
-            ...previous,
-            families: previous.families.map((family) => ({
-              ...family,
-              children: family.children.map(migrate),
-            })),
-            turns: previous.turns.map(migrate),
-            spawnedSessions: previous.spawnedSessions.map(migrate),
-          };
-        }
-        if (envelope.version < 9) {
-          const legacy = yield* Schema.decodeUnknownEffect(
-            Schema.Struct({
-              boardContinuations: Schema.optionalKey(
-                Schema.Array(
-                  Schema.Struct({
-                    recipientSessionId: BoundedId,
-                    mode: Schema.Literals(["resume", "paused", "off"]),
-                  }),
-                ),
-              ),
-            }),
-          )(envelope.data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
-          const previous = yield* Schema.decodeUnknownEffect(SessionFamilyDocument)(data).pipe(
-            Effect.mapError((cause) => storageError("migrate", cause)),
-          );
-          const paused =
-            legacy.boardContinuations
-              ?.filter((grant) => grant.mode !== "resume")
-              .map((grant) => grant.recipientSessionId) ?? [];
-          data = {
-            ...previous,
-            ...(paused.length
-              ? {
-                  boardDeliveryPaused: [
-                    ...new Set([...(previous.boardDeliveryPaused ?? []), ...paused]),
-                  ],
-                }
-              : null),
-          };
-        }
-        // v9 drops retired Workboard completion grants on decode. Default board
-        // delivery owns one cursor/batch per recipient; old budgets cannot gate or double-wake it.
-        // v5 drops member-synchronization journals. The root's actual namespace
-        // is authoritative even when an older transition stopped halfway through.
-        const document = yield* Schema.decodeUnknownEffect(SessionFamilyDocument)(data).pipe(
-          Effect.mapError((cause) => storageError("load", cause)),
-        );
-        return yield* Effect.try({
-          try: () => validateDocument(document),
-          catch: (cause) => storageError("load", cause),
-        });
-      });
 
       // Delivery passes read this document once per family member every second. Decode it
       // again only after the file changes; every atomic rewrite replaces the file's identity.
@@ -635,7 +242,10 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           Option.getOrUndefined(info.mtime)?.getTime(),
         ].join(":");
         if (decoded?.version === version) return decoded.document;
-        const document = yield* decodeDocument();
+        const text = yield* fileSystem
+          .readFileString(documentPath)
+          .pipe(Effect.mapError((e) => storageError("load", e)));
+        const document = yield* decodeSessionFamilyDocument(text);
         decoded = { version, document };
         return document;
       });

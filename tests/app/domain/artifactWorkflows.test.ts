@@ -22,10 +22,8 @@ import { ArtifactRuntime } from "../../../src/services/artifact-runtime/Artifact
 import type { ArtifactRuntimeTarget } from "../../../src/contracts/artifacts/artifact-runtime";
 import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
-import {
-  SessionFamilyStorage,
-  type SessionFamily,
-} from "../../../src/services/storage/SessionFamilyStorage";
+import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { type SessionFamily } from "../../../src/contracts/session-families/session-family-document";
 import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
 
 const directories: string[] = [];

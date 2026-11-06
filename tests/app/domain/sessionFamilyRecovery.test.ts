@@ -4,10 +4,8 @@ import { Effect, Layer } from "effect";
 import { initialize } from "../../../src/domain/session-families/sessionFamilies";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { RuntimeRecoveryStorage } from "../../../src/services/storage/RuntimeRecoveryStorage";
-import {
-  SessionFamilyStorage,
-  type FamilyTurn,
-} from "../../../src/services/storage/SessionFamilyStorage";
+import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { type FamilyTurn } from "../../../src/contracts/session-families/session-family-document";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 
 const child = {

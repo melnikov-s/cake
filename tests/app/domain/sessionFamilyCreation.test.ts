@@ -6,10 +6,8 @@ import { createChild } from "../../../src/domain/session-families/sessionFamilie
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessionRuntimes";
-import {
-  SessionFamilyStorage,
-  familyMember,
-} from "../../../src/services/storage/SessionFamilyStorage";
+import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { familyMember } from "../../../src/contracts/session-families/session-family-document";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";

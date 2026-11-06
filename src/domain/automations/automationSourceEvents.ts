@@ -5,7 +5,8 @@ import type {
 } from "../../contracts/automations/automation-data";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { AutomationEvents } from "../../services/automations/AutomationEvents";
-import { SessionFamilyStorage, familyMember } from "../../services/storage/SessionFamilyStorage";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import { familyMember } from "../../contracts/session-families/session-family-document";
 
 interface SourceInput {
   readonly event: AutomationEventKind;

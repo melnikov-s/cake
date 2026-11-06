@@ -54,14 +54,14 @@ import {
   SessionArchiveStorage,
   type SessionArchiveLocation,
 } from "../../services/storage/SessionArchiveStorage";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import {
-  SessionFamilyStorage,
   familyChildren,
   familyDepth,
   familyMember,
   type FamilyTurn,
   type SpawnedSession,
-} from "../../services/storage/SessionFamilyStorage";
+} from "../../contracts/session-families/session-family-document";
 import * as chatTargets from "../cake-chats/cakeChatTargets";
 import { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";

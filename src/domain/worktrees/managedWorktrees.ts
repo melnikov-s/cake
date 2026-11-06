@@ -3,11 +3,11 @@ import * as projectSessionLocations from "../project-sessions/projectSessionLoca
 import * as workflowLifecycle from "../workflows/workflow-lifecycle";
 import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import {
-  SessionFamilyStorage,
   familyMemberIds,
   familyMember,
-} from "../../services/storage/SessionFamilyStorage";
+} from "../../contracts/session-families/session-family-document";
 import { defaultProjectSettings } from "../../contracts/application/application-data";
 import { getState } from "../application/application";
 import { generateWorktreeName, utilityModelSelection } from "../utility-work/utilityWork";

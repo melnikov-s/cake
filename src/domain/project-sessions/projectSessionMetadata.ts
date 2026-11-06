@@ -27,15 +27,15 @@ import {
   SessionArchiveStorage,
   type ProjectSessionArchiveMetadata,
 } from "../../services/storage/SessionArchiveStorage";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import {
-  SessionFamilyStorage,
   familyChildren,
   familyDepth,
   familyMember,
   familyMemberIds,
   type SessionFamily,
   type SpawnedSession,
-} from "../../services/storage/SessionFamilyStorage";
+} from "../../contracts/session-families/session-family-document";
 import {
   SessionCatalogChanges,
   type SessionCatalogChange,

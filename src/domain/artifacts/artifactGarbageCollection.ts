@@ -3,7 +3,8 @@ import { ArtifactProjection } from "../../services/artifacts/ArtifactProjection"
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
-import { SessionFamilyStorage, familyMemberIds } from "../../services/storage/SessionFamilyStorage";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import { familyMemberIds } from "../../contracts/session-families/session-family-document";
 import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 import {
   CAKE_CHAT_SESSION_ID,

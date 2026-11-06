@@ -346,7 +346,11 @@ describe("Session catalog lifecycle workflows", () => {
       familyChildSessionIds: ["child"],
       familyDepth: 0,
     });
-    using fixture = await renderCatalog({ sessions: [parent] });
+    const open = vi.fn<Client["projectSessions"]["open"]>();
+    using fixture = await renderCatalog({
+      sessions: [parent],
+      client: { projectSessions: { open } },
+    });
     // The child arrives after the sidebar is mounted, already accepted by the backend.
     await fixture.publishUpdate({
       _tag: "Event",
@@ -361,15 +365,12 @@ describe("Session catalog lifecycle workflows", () => {
         .getByRole("button", { name: /^Background worker(?: |$)/ })
         .closest<HTMLElement>(".session-item")!;
     expect(within(row()).getByRole("img", { name: "Running" })).toBeTruthy();
-    expect(
-      within(
-        sidebar()
-          .getByRole("button", { name: /^Parent / })
-          .closest<HTMLElement>(".session-item")!,
-      ).queryByRole("img", {
-        name: "Running",
-      }),
-    ).toBeNull();
+    const parentRow = () =>
+      sidebar()
+        .getByRole("button", { name: /^Parent / })
+        .closest<HTMLElement>(".session-item")!;
+    expect(within(parentRow()).getByRole("img", { name: "Running" })).toBeTruthy();
+    expect(within(parentRow()).getByText("Children are working")).toBeTruthy();
     await fixture.publishUpdate({
       _tag: "Event",
       revision: 3,
@@ -380,6 +381,8 @@ describe("Session catalog lifecycle workflows", () => {
       },
     });
     expect(within(row()).queryByRole("img", { name: "Running" })).toBeNull();
+    expect(within(parentRow()).queryByRole("img", { name: "Running" })).toBeNull();
+    expect(within(parentRow()).queryByText("Children are working")).toBeNull();
     await fixture.publishUpdate({
       _tag: "Event",
       revision: 4,
@@ -401,6 +404,8 @@ describe("Session catalog lifecycle workflows", () => {
       },
     });
     expect(within(row()).getByRole("img", { name: "Running" })).toBeTruthy();
+    expect(within(parentRow()).getByText("Children are working")).toBeTruthy();
+    expect(open).not.toHaveBeenCalled();
   });
 
   it("keeps one resolved row when independently observed lanes overlap and ignores late active events", async () => {

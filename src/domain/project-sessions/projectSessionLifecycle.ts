@@ -39,12 +39,12 @@ import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import {
-  SessionFamilyStorage,
   familyMember,
   familyMemberIds,
   type SessionFamily,
-} from "../../services/storage/SessionFamilyStorage";
+} from "../../contracts/session-families/session-family-document";
 
 const error = (operation: string, message: string) =>
   new ProjectSessionError({ operation, message });

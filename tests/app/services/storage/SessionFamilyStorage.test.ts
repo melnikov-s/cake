@@ -3,10 +3,8 @@ import { it } from "@effect/vitest";
 import { describe } from "vitest";
 import { Effect, Struct } from "effect";
 import { familyStorageHarness } from "../../helpers/familyStorageHarness";
-import {
-  SessionFamilyStorage,
-  type FamilyTurn,
-} from "../../../../src/services/storage/SessionFamilyStorage";
+import { SessionFamilyStorage } from "../../../../src/services/storage/SessionFamilyStorage";
+import { type FamilyTurn } from "../../../../src/contracts/session-families/session-family-document";
 
 const testLayer = () => familyStorageHarness().layer;
 

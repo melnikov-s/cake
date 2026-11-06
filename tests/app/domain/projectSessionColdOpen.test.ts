@@ -11,10 +11,8 @@ import { lookup, open } from "../../../src/domain/project-sessions/projectSessio
 import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import {
-  SessionFamilyStorage,
-  type SessionFamily,
-} from "../../../src/services/storage/SessionFamilyStorage";
+import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { type SessionFamily } from "../../../src/contracts/session-families/session-family-document";
 import { makeSessionArchiveStorageLive } from "../../../src/services/storage/SessionArchiveStorageLive";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import {

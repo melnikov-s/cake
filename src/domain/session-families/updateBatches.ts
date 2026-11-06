@@ -19,11 +19,11 @@ import { CakeSessionRuntimes, type CakeSessionHandle } from "../../services/pi/C
 import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import { CakeChatComposerPresence } from "../../services/session-catalogs/CakeChatComposerPresence";
 import { RuntimeRecoveryStorage } from "../../services/storage/RuntimeRecoveryStorage";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import {
-  SessionFamilyStorage,
   type SessionFamilyDocument,
   type UpdateBatch,
-} from "../../services/storage/SessionFamilyStorage";
+} from "../../contracts/session-families/session-family-document";
 import * as cakeChatDigest from "../cake-chats/cakeChatDigest";
 import * as chatMetadata from "../cake-chats/cakeChatMetadata";
 import * as chatTargets from "../cake-chats/cakeChatTargets";

@@ -2,11 +2,11 @@ import { Effect } from "effect";
 import type { ProjectSessionAgentPolicy } from "../../contracts/project-sessions/project-session-agent-policy";
 import type { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
 import { ProjectSessionError } from "../../contracts/project-sessions/project-session-data";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import {
-  SessionFamilyStorage,
   familyChildren,
   familyMember,
-} from "../../services/storage/SessionFamilyStorage";
+} from "../../contracts/session-families/session-family-document";
 
 /** Read current membership; this snapshot is not an admission permit. */
 export const read: (

@@ -16,11 +16,11 @@ import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import {
-  SessionFamilyStorage,
   familyMember,
   familyMemberIds,
-} from "../../services/storage/SessionFamilyStorage";
+} from "../../contracts/session-families/session-family-document";
 import type { ProjectSessionArchiveMetadata } from "../../services/storage/SessionArchiveStorage";
 import type { ProjectSessionLocation } from "../../contracts/project-sessions/project-session-data";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";

@@ -5,10 +5,8 @@ import {
   ResolutionCleanupFailed,
   ResolutionRejected,
 } from "../../../../src/contracts/project-sessions/project-session-resolution";
-import {
-  SessionFamilyStorage,
-  type SessionFamily,
-} from "../../../../src/services/storage/SessionFamilyStorage";
+import { SessionFamilyStorage } from "../../../../src/services/storage/SessionFamilyStorage";
+import { type SessionFamily } from "../../../../src/contracts/session-families/session-family-document";
 import { makePiCallbackExecutor } from "../../../../src/services/pi/PiCallbackAdapter";
 import { describe, expect, it, vi } from "vitest";
 import type { CakeSessionRuntimeOptions } from "../../../../src/services/pi/runtime/cake-session-runtime";

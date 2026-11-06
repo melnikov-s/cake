@@ -40,11 +40,11 @@ import type {
 } from "../../contracts/project-sessions/project-session-data";
 import { sessionLink } from "../../contracts/conversations/message-reference";
 import { ApplicationState } from "../../services/storage/ApplicationState";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import {
-  SessionFamilyStorage,
   familyMember,
   familyMemberIds,
-} from "../../services/storage/SessionFamilyStorage";
+} from "../../contracts/session-families/session-family-document";
 import { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import * as application from "./application";

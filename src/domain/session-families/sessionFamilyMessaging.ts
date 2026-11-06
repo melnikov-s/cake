@@ -28,7 +28,8 @@ import {
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
-import { SessionFamilyStorage, familyMember } from "../../services/storage/SessionFamilyStorage";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import { familyMember } from "../../contracts/session-families/session-family-document";
 import { toJsonValue } from "../../utils/to-json-value";
 import { inheritTaskInputProtection } from "../conversations/taskInputs";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";

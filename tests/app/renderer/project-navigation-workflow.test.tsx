@@ -514,13 +514,17 @@ describe("Project navigation workflow", () => {
     ]);
     await fixture.publishActivity([]);
     await fixture.publishCakeChatActivity(false);
-    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
-    await fixture.user.click(screen.getByRole("button", { name: /^Cake Chat$/ }));
-    await fixture.user.click(screen.getByRole("button", { name: /^Second alpha session / }));
-    await fixture.user.click(screen.getByRole("button", { name: "Project actions for alpha" }));
-    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on alpha" }));
     const pane = () =>
       document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id");
+    // Each visit must land before the next click can supersede its asynchronous open.
+    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
+    await waitFor(() => expect(pane()).toBe("beta"));
+    await fixture.user.click(screen.getByRole("button", { name: /^Cake Chat$/ }));
+    expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: /^Second alpha session / }));
+    await waitFor(() => expect(pane()).toBe("second"));
+    await fixture.user.click(screen.getByRole("button", { name: "Project actions for alpha" }));
+    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on alpha" }));
     const back = screen.getByRole("button", { name: "Go back in session history" });
     const forward = screen.getByRole("button", { name: "Go forward in session history" });
     expect(pane()).toBe("second");

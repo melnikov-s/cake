@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { sessionPluginsScenario } from "../../scripts/visual-capture/scenarios";
 import {
   defaultApplicationState,

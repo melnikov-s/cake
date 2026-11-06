@@ -1,11 +1,11 @@
 import { Effect, Option } from "effect";
 import { boardDeliveryRelevant, type BoardEntry } from "../../contracts/artifacts/message-board";
 import { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import {
-  SessionFamilyStorage,
   familyMemberIds,
   type SessionFamily,
-} from "../../services/storage/SessionFamilyStorage";
+} from "../../contracts/session-families/session-family-document";
 import { MessageBoardStorage } from "../../services/storage/MessageBoardStorage";
 import { RuntimeRecoveryStorage } from "../../services/storage/RuntimeRecoveryStorage";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";

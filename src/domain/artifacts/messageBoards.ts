@@ -17,11 +17,11 @@ import {
 } from "../../contracts/artifacts/message-board";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { MessageBoardStorage } from "../../services/storage/MessageBoardStorage";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import {
-  SessionFamilyStorage,
   familyMemberIds,
   type SessionFamily,
-} from "../../services/storage/SessionFamilyStorage";
+} from "../../contracts/session-families/session-family-document";
 
 const failure = (operation: string, message: string) =>
   new MessageBoardError({ operation, message });

@@ -3,7 +3,8 @@ import {
   WorktreeLandingError,
   type WorktreeLandingOperation,
 } from "../../contracts/worktrees/worktree-landing-data";
-import { SessionFamilyStorage, familyMember } from "../../services/storage/SessionFamilyStorage";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import { familyMember } from "../../contracts/session-families/session-family-document";
 import { findLocation } from "../project-sessions/projectSessionMetadata";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
