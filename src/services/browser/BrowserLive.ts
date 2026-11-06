@@ -109,7 +109,7 @@ export const makeBrowserLive = (remote = false) =>
           },
         ),
         nativeCdp: Effect.fn("Browser.nativeCdp")(
-          function* (connectionId, sessionId, method, params) {
+          function* (connectionId, sessionId, method, params, timeoutMs) {
             yield* sync("nativeCdp", () => electron.requireRendererConnection(connectionId));
             try {
               if (runtime.owner(sessionId) !== connectionId)
@@ -119,8 +119,8 @@ export const makeBrowserLive = (remote = false) =>
                 return { status: "mode-required" as const };
               return yield* browserError("nativeCdp", cause);
             }
-            const value = yield* native("nativeCdp", () =>
-              runtime.sendCdp(sessionId, method, params),
+            const value = yield* native("nativeCdp", (signal) =>
+              runtime.sendCdp(sessionId, method, params, signal, timeoutMs),
             );
             return { status: "completed" as const, value };
           },
@@ -172,7 +172,7 @@ export const makeBrowserLive = (remote = false) =>
           },
         ),
         sendProjectCdp: Effect.fn("Browser.sendProjectCdp")(
-          function* (sessionId, workingDirectory, method, params) {
+          function* (sessionId, workingDirectory, method, params, timeoutMs) {
             if (
               Option.isNone(projectAccess) ||
               !(yield* projectAccess.value.isAllowed(workingDirectory))
@@ -183,7 +183,9 @@ export const makeBrowserLive = (remote = false) =>
             } catch {
               return { status: "mode-required" as const };
             }
-            const value = yield* native("cdp", () => runtime.sendCdp(sessionId, method, params));
+            const value = yield* native("cdp", (signal) =>
+              runtime.sendCdp(sessionId, method, params, signal, timeoutMs),
+            );
             const decoded = yield* Schema.decodeUnknownEffect(jsonValueSchema)(value).pipe(
               Effect.mapError((cause) => browserError("cdp", cause)),
             );

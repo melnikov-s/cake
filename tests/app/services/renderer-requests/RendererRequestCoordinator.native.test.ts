@@ -156,6 +156,65 @@ describe("native request correlation and deadlines", () => {
       }),
   );
 
+  it.effect.each(["deadline", "abort", "interrupt", "disconnect"] as const)(
+    "removes remote screenshot correlation on %s and rejects late results",
+    (outcome) =>
+      Effect.gen(function* () {
+        const { coordinator, events } = yield* fixture;
+        const controller = new AbortController();
+        const pending = yield* coordinator
+          .requestBrowserNative(
+            "session",
+            {
+              operation: "cdp",
+              method: "Page.captureScreenshot",
+              params: {},
+              workspacePath: "/project",
+              timeoutMs: 120_000,
+            },
+            controller.signal,
+          )
+          .pipe(Effect.forkChild({ startImmediately: true }));
+        const event = yield* Queue.take(events);
+        if (event.type !== "browser-native-requested")
+          throw new Error("Expected screenshot request");
+        expect(event.timeoutMs).toBe(120_000);
+        expect(yield* coordinator.hasPendingBrowserScreenshot(event.requestId, "session")).toBe(
+          true,
+        );
+        if (outcome === "deadline") {
+          yield* TestClock.adjust(35_000);
+          expect(yield* coordinator.hasPendingBrowserScreenshot(event.requestId, "session")).toBe(
+            true,
+          );
+          yield* TestClock.adjust(90_000);
+          const result = yield* Fiber.await(pending);
+          expect(Exit.isFailure(result)).toBe(true);
+          if (Exit.isFailure(result))
+            expect(String(result.cause)).toContain(
+              "Page.captureScreenshot timed out after 125000ms",
+            );
+        } else if (outcome === "abort") controller.abort();
+        else if (outcome === "interrupt") yield* Fiber.interrupt(pending);
+        else yield* coordinator.releaseConnection(11);
+        yield* Fiber.await(pending);
+        expect(yield* coordinator.hasPendingBrowserScreenshot(event.requestId, "session")).toBe(
+          false,
+        );
+        expect(
+          Exit.isFailure(
+            yield* coordinator
+              .respondBrowserNative(11, "session", event.requestId, {
+                status: "completed",
+                value: { data: "late" },
+              })
+              .pipe(Effect.exit),
+          ),
+        ).toBe(true);
+        expect(Queue.takeUnsafe(events)).toBeUndefined();
+      }),
+  );
+
   it.effect(
     "keeps backend native deadlines and rejects results after timeout without replaying requests",
     () =>
@@ -172,7 +231,7 @@ describe("native request correlation and deadlines", () => {
         const browserEvent = yield* Queue.take(events);
         if (browserEvent.type !== "browser-native-requested")
           throw new Error("Expected browser request");
-        yield* TestClock.adjust(15_000);
+        yield* TestClock.adjust(65_000);
         expect(Exit.isFailure(yield* Fiber.await(browser))).toBe(true);
         expect(
           Exit.isFailure(

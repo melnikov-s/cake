@@ -408,6 +408,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     fields: {
       method?: string;
       params?: JsonObject;
+      timeoutMs?: number;
       methods?: readonly string[];
       limit?: number;
       clear?: boolean;
@@ -437,7 +438,12 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       const result = await browserRequest("enter", {}, signal);
       if (result.status !== "completed") throw new Error("Browser Mode is unavailable");
     },
-    cdp: (method, params, signal) => browserRequest("cdp", { method, params }, signal),
+    cdp: (method, params, signal, timeoutMs) =>
+      browserRequest(
+        "cdp",
+        { method, params, ...(timeoutMs === undefined ? undefined : { timeoutMs }) },
+        signal,
+      ),
     events: (methods, limit, clear, signal) =>
       browserRequest("events", { methods, limit, clear }, signal),
   };

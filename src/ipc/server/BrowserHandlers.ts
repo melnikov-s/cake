@@ -46,7 +46,7 @@ export const browserHandlers = BrowserRpc.middleware(RendererConnectionMiddlewar
         browser.nativeEnter(connectionId, sessionId, workspacePath, startupUrl),
       ).pipe(Effect.as({})),
     ),
-  "browser.native-browser-cdp": ({ sessionId, method, params }) =>
+  "browser.native-browser-cdp": ({ sessionId, method, params, timeoutMs }) =>
     withConnection((connectionId) =>
       Effect.gen(function* () {
         const browser = yield* Browser;
@@ -55,7 +55,7 @@ export const browserHandlers = BrowserRpc.middleware(RendererConnectionMiddlewar
             (error) => new BrowserError({ operation: "nativeCdp", message: error.message }),
           ),
         );
-        return yield* browser.nativeCdp(connectionId, sessionId, method, object);
+        return yield* browser.nativeCdp(connectionId, sessionId, method, object, timeoutMs);
       }),
     ),
   "browser.native-browser-events": ({ sessionId, methods, limit, clear }) =>

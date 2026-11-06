@@ -64,6 +64,7 @@ export interface BrowserService {
     sessionId: string,
     method: string,
     params: JsonObject,
+    timeoutMs?: number,
   ) => Effect.Effect<BrowserActionResult<JsonValue>, BrowserError>;
   readonly nativeEvents: (
     connectionId: number,
@@ -82,6 +83,7 @@ export interface BrowserService {
     workingDirectory: string,
     method: string,
     params: JsonObject,
+    timeoutMs?: number,
   ) => Effect.Effect<BrowserActionResult<JsonValue>, BrowserError>;
   readonly takeProjectCdpEvents: (
     sessionId: string,

@@ -26,6 +26,7 @@ export const respondBrowserNative = Effect.fn("Renderer.respondBrowserNative")(f
         sessionId: event.sessionId,
         method: event.method,
         params: event.params,
+        ...(event.timeoutMs === undefined ? undefined : { timeoutMs: event.timeoutMs }),
       });
     }
     return yield* client.browser["native-browser-events"]({

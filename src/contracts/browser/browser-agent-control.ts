@@ -7,6 +7,7 @@ export interface BrowserControl {
     method: string,
     params: JsonObject,
     signal: AbortSignal,
+    timeoutMs?: number,
   ): Promise<BrowserActionResult<JsonValue>>;
   events(
     methods: ReadonlyArray<string>,

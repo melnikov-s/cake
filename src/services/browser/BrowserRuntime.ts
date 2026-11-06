@@ -1,6 +1,11 @@
 import { WebContentsView, type BrowserWindow } from "electron";
 import { Option, Schema } from "effect";
 import {
+  BROWSER_CDP_TIMEOUT_MS,
+  BROWSER_NAVIGATION_TIMEOUT_MS,
+} from "../../contracts/browser/browser-deadlines";
+import { browserNativeOperation } from "./BrowserNativeOperation";
+import {
   jsonValueSchema,
   type JsonObject,
   type JsonValue,
@@ -85,18 +90,14 @@ export class BrowserRuntime {
       };
       this.entries.set(sessionId, entry);
       this.installListeners(entry);
+      const created = entry;
       view.webContents.setWindowOpenHandler(({ url: target }) => {
-        if (/^https?:/i.test(target)) void view.webContents.loadURL(target);
+        if (/^https?:/i.test(target)) void this.load(created, target).catch(() => undefined);
         return { action: "deny" };
       });
       window.contentView.addChildView(view);
       view.setVisible(false);
-      try {
-        await view.webContents.loadURL(normalizeUrl(url ?? browserStartupUrl(startupUrl)));
-      } catch {
-        // Chromium still renders its navigation error page. Keep Browser Mode usable so
-        // the user can enter another URL even when the startup location is unavailable.
-      }
+      await this.load(entry, url ?? browserStartupUrl(startupUrl), signal, true);
       signal?.throwIfAborted();
     } else if (entry.ownerId !== ownerId) {
       if (this.options.allowOwnerTransfer === false)
@@ -112,7 +113,7 @@ export class BrowserRuntime {
     ) {
       // A default is not a navigation request. In particular, about:blank is an
       // existing location and must survive mode changes just like any other page.
-      await entry.view.webContents.loadURL(normalizeUrl(url ?? browserStartupUrl(startupUrl)));
+      await this.load(entry, url ?? browserStartupUrl(startupUrl), signal);
       signal?.throwIfAborted();
     }
 
@@ -164,7 +165,7 @@ export class BrowserRuntime {
     signal?: AbortSignal,
   ): Promise<BrowserState> {
     const entry = this.requireOwner(ownerId, sessionId);
-    await entry.view.webContents.loadURL(normalizeUrl(url));
+    await this.load(entry, url, signal);
     signal?.throwIfAborted();
     return this.snapshot(entry);
   }
@@ -192,11 +193,50 @@ export class BrowserRuntime {
     return this.require(sessionId).ownerId;
   }
 
-  async sendCdp(sessionId: string, method: string, params: JsonObject): Promise<JsonValue> {
+  async sendCdp(
+    sessionId: string,
+    method: string,
+    params: JsonObject,
+    signal?: AbortSignal,
+    timeoutMs = BROWSER_CDP_TIMEOUT_MS,
+  ): Promise<JsonValue> {
     const entry = this.require(sessionId);
-    this.attachDebugger(entry);
-    const value = await entry.view.webContents.debugger.sendCommand(method, params);
+    const contents = entry.view.webContents;
+    const value = await browserNativeOperation({
+      contents,
+      operation: `CDP ${method}`,
+      timeoutMs,
+      signal,
+      cdp: true,
+      start: () => {
+        this.attachDebugger(entry);
+        return contents.debugger.sendCommand(method, params);
+      },
+      // Electron has no per-command cancel. Detaching releases the transport's pending
+      // commands (including concurrent commands) and resets enabled CDP domains.
+      // Already-executed page effects cannot be rolled back.
+      cancel: () => {
+        if (contents.debugger.isAttached()) contents.debugger.detach();
+      },
+    });
     return Schema.decodeUnknownSync(jsonValueSchema)(value ?? null);
+  }
+
+  private load(entry: BrowserEntry, url: string, signal?: AbortSignal, startup = false) {
+    const contents = entry.view.webContents;
+    return browserNativeOperation({
+      contents,
+      operation: "Browser navigation",
+      timeoutMs: BROWSER_NAVIGATION_TIMEOUT_MS,
+      signal,
+      start: () =>
+        contents.loadURL(normalizeUrl(url)).catch((error: unknown) => {
+          // Keep Chromium's startup error page usable on ordinary navigation failure.
+          // Deadline, abort and disconnect errors belong to the outer native wait.
+          if (!startup) throw error;
+        }),
+      cancel: () => contents.stop(),
+    });
   }
 
   takeCdpEvents(sessionId: string, methods: ReadonlyArray<string>, limit: number, clear: boolean) {

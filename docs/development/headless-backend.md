@@ -258,6 +258,44 @@ backend's IPv4 loopback, enter `backend://localhost:5173/` in the remote desktop
 Browser address bar. This is an address-bar mapping, not a CDP navigation scheme.
 Browser Mode/CDP is unavailable in the browser application.
 
+#### Native browser deadlines
+
+Local and remote desktop Chromium use the same native deadlines:
+
+- CDP commands, including `Page.captureScreenshot`: **30 seconds**. This leaves
+  headroom for rendering/encoding without holding an agent indefinitely.
+  `browser.cdp.timeoutMs` accepts an explicit **1–600000ms** native budget for
+  shorter deadlines or deliberate long evaluations/waits. It is not sent as a
+  CDP parameter; Chromium's own parameter deadlines and earlier caller aborts
+  remain effective. There is no retry.
+- Browser startup and explicit URL navigation: **60 seconds**, allowing for
+  DNS/TLS/redirects. Expiry or abort calls `webContents.stop()` and returns an
+  operation/elapsed/deadline error, not startup's ordinary error-page fallback.
+- Remote browser response correlation: the native budget **plus 5 seconds**
+  for desktop delivery (35s default CDP; 65s enter); buffered event reads retain
+  their 15s response budget. Disconnection, cancellation and deadlines remove
+  pending backend correlation; late replies cannot complete another request.
+
+Electron does not expose per-command CDP cancellation. On native CDP expiry or
+abort Cake detaches the debugger, releasing pending transport commands and
+resetting enabled domains. Concurrent commands on that attachment fail too;
+subsequent explicit commands can reattach. Cake removes each operation's timer,
+abort listener and disconnect listeners on every settlement. Detach/destruction/
+renderer-process loss release the wait without awaiting Chromium's Promise.
+
+Timeout, abort or disconnect means **outcome unknown**, not success or permission
+for a safe retry. Detach cannot undo page JavaScript, navigation, downloads or
+other effects already initiated. Native cancellation is best-effort if Electron
+is already unavailable; Cake never kills a process or closes the user's page.
+Backend cancellation currently does not send a cross-host cancellation event to
+an already-dispatched desktop request; that desktop work remains bounded by its
+native deadline. Timers also cannot fire while the host event loop is blocked.
+
+These are browser-boundary deadlines, not a gateway-wide policy. Bash, scripts,
+merges/session workflows, interviews and other user-driven waits keep their own
+cancellation/deadline semantics. The interactive element picker intentionally
+waits for a user selection or Escape; it is not a stuck CDP command.
+
 The service must listen on backend `127.0.0.1`, on a port from 1024–9999. Cake forwards
 it through `/preview/` on the existing endpoint to an isolated device-loopback origin;
 no additional backend port needs public exposure. Carry both `/preview/` and `/rpc`

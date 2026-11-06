@@ -25,6 +25,7 @@ export const RemoteBrowserLive = Layer.effect(
       fields: {
         startupUrl?: string;
         method?: string;
+        timeoutMs?: number;
         params?: typeof jsonValueSchema.Type;
         methods?: ReadonlyArray<string>;
         limit?: number;
@@ -77,8 +78,12 @@ export const RemoteBrowserLive = Layer.effect(
         },
       ),
       sendProjectCdp: Effect.fn("RemoteBrowser.sendProjectCdp")(
-        (sessionId, workingDirectory, method, params) =>
-          request(sessionId, workingDirectory, "cdp", { method, params }),
+        (sessionId, workingDirectory, method, params, timeoutMs) =>
+          request(sessionId, workingDirectory, "cdp", {
+            method,
+            params,
+            ...(timeoutMs === undefined ? undefined : { timeoutMs }),
+          }),
       ),
       takeProjectCdpEvents: Effect.fn("RemoteBrowser.takeProjectCdpEvents")(
         (sessionId, workingDirectory, methods, limit, clear) =>

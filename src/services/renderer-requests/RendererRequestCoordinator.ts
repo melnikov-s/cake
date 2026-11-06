@@ -1,4 +1,5 @@
-import { Context, Deferred, Effect, Layer, Schema, type Stream } from "effect";
+import { Clock, Context, Deferred, Effect, Layer, Schema, type Stream } from "effect";
+import { browserRequestTimeoutMs } from "../../contracts/browser/browser-deadlines";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import type { AgentActionNotice } from "../../contracts/application/agent-action-notice";
 import {
@@ -403,13 +404,15 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
           sessionId,
           ...request,
         }).pipe(Effect.tapError(() => Effect.sync(() => requests.discard(requestId))));
-        const value = yield* awaitPending(requestId, entry, signal, 15_000);
+        const started = yield* Clock.currentTimeMillis;
+        const timeoutMs = browserRequestTimeoutMs(request);
+        const value = yield* awaitPending(requestId, entry, signal, timeoutMs);
         if (signal.aborted)
           return yield* coordinatorError("requestBrowserNative", "Browser request cancelled");
         if (value === undefined)
           return yield* coordinatorError(
             "requestBrowserNative",
-            "Desktop browser request timed out",
+            `Desktop browser ${request.method ?? request.operation} timed out after ${(yield* Clock.currentTimeMillis) - started}ms (deadline ${timeoutMs}ms); outcome unknown, do not automatically retry`,
           );
         return value;
       },

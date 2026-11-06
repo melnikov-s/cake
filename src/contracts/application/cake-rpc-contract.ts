@@ -1,6 +1,7 @@
 import { EditorDiffSelection } from "../editor/editor-selection";
 import { WindowControlRequest } from "./window-control";
 import { Schema } from "effect";
+import { browserCdpTimeoutSchema } from "../browser/browser-deadlines";
 import { PrepareFileLocation, PreparedFileLocation } from "../filesystem/file-location";
 import { piSettingsSchema } from "../conversations/session-contract";
 import { AgentActionNotice } from "./agent-action-notice";
@@ -304,6 +305,7 @@ const cakeEventSchemas = {
     ...embeddedEditorExplicitSelectionFields,
   }),
   "browser-native-requested": Schema.Struct({
+    timeoutMs: Schema.optionalKey(browserCdpTimeoutSchema),
     type: Schema.Literal("browser-native-requested"),
     requestId: uuid,
     sessionId: bounded(1, 256),
@@ -627,6 +629,7 @@ export const cakeRpcPayloadSchemas = {
     startupUrl: Schema.optionalKey(stringMax(16_384)),
   }),
   "native-browser-cdp": Schema.Struct({
+    timeoutMs: Schema.optionalKey(browserCdpTimeoutSchema),
     sessionId: bounded(1, 256),
     method: bounded(1, 256),
     params: jsonValueSchema,

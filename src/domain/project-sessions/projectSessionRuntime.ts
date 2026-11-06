@@ -915,9 +915,15 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                 ),
                 { signal },
               ),
-            cdp: (method, params, signal) =>
+            cdp: (method, params, signal, timeoutMs) =>
               run(
-                browser.value.sendProjectCdp(sessionId, location.workingDirectory, method, params),
+                browser.value.sendProjectCdp(
+                  sessionId,
+                  location.workingDirectory,
+                  method,
+                  params,
+                  timeoutMs,
+                ),
                 { signal },
               ),
             events: (methods, limit, clear, signal) =>

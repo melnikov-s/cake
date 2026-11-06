@@ -42,11 +42,39 @@ describe("Cake browser operations", () => {
       context,
     );
 
-    expect(cdp).toHaveBeenCalledWith("Runtime.evaluate", params, expect.any(AbortSignal));
+    expect(cdp).toHaveBeenCalledWith(
+      "Runtime.evaluate",
+      params,
+      expect.any(AbortSignal),
+      undefined,
+    );
     expect(result.details).toMatchObject({
       command: "browser.cdp",
       result: { result: { value: "Local app" } },
     });
+  });
+
+  it.each([10, 120_000, 600_000])(
+    "passes an explicit finite CDP budget (%i ms)",
+    async (timeoutMs) => {
+      const { cdp, registry } = harness();
+      await registry.invoke(
+        { command: "browser.cdp", input: { method: "Runtime.evaluate", timeoutMs } },
+        context,
+      );
+      expect(cdp).toHaveBeenCalledWith("Runtime.evaluate", {}, context.signal, timeoutMs);
+    },
+  );
+
+  it.each([0, -1, 600_001, Infinity])("rejects invalid CDP budgets (%s)", async (timeoutMs) => {
+    const { cdp, registry } = harness();
+    await expect(
+      registry.invoke(
+        { command: "browser.cdp", input: { method: "Runtime.evaluate", timeoutMs } },
+        context,
+      ),
+    ).rejects.toThrow();
+    expect(cdp).not.toHaveBeenCalled();
   });
 
   it("exposes Browser Mode and buffered CDP events through progressive help", async () => {

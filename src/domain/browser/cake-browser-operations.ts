@@ -1,5 +1,6 @@
 import type { BrowserControl } from "../../contracts/browser/browser-agent-control";
 import { Option, Schema } from "effect";
+import { browserCdpTimeoutSchema } from "../../contracts/browser/browser-deadlines";
 import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
 
 import {
@@ -11,6 +12,7 @@ const browserEnterInputSchema = Schema.Struct({});
 const browserCdpInputSchema = Schema.Struct({
   method: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
   params: Schema.optionalKey(jsonObjectSchema),
+  timeoutMs: Schema.optionalKey(browserCdpTimeoutSchema),
 });
 const browserEventsInputSchema = Schema.Struct({
   methods: Schema.optionalKey(
@@ -93,6 +95,8 @@ export function createCakeBrowserOperations(control: BrowserControl): CakeOperat
         "Enable a CDP domain before relying on its events or domain-specific state.",
         "Runtime.evaluate may execute arbitrary JavaScript in the loaded page.",
         "Page.captureScreenshot is returned as image content rather than a large JSON string.",
+        "CDP has a 30s deadline. Set timeoutMs (1–600000ms) for a shorter budget or a deliberate long evaluation/wait. Earlier cancellation and Chromium deadlines still apply.",
+        "Expiry/abort detaches the debugger, cancelling other pending commands and resetting enabled domains. Page side effects may already have happened: do not automatically retry.",
       ],
       inputSchema: browserCdpInputSchema,
       examples: [
@@ -113,7 +117,12 @@ export function createCakeBrowserOperations(control: BrowserControl): CakeOperat
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry parsed this value with browserCdpInputSchema.
         const request = input as BrowserCdpInput;
-        const result = await control.cdp(request.method, request.params ?? {}, context.signal);
+        const result = await control.cdp(
+          request.method,
+          request.params ?? {},
+          context.signal,
+          request.timeoutMs,
+        );
         if (result.status === "mode-required") return modeRequired();
         if (request.method === "Page.captureScreenshot") {
           const screenshot = Schema.decodeUnknownOption(screenshotResultSchema)(result.value);
