@@ -1,4 +1,19 @@
-import { Clock, Effect, Option, Result, Schema, type Scope } from "effect";
+import {
+  Clock,
+  Effect,
+  Option,
+  Result,
+  Schema,
+  type Scope,
+  type FileSystem,
+  type Path,
+} from "effect";
+import type { HttpClient } from "effect/unstable/http";
+import * as artifactCommands from "../artifacts/artifactCommands";
+import {
+  ArtifactCakeCallInput,
+  ArtifactCommandDiscoveryInput,
+} from "../../contracts/artifacts/global-artifact-control";
 import {
   CAKE_CHAT_SESSION_ID,
   isCakeChatSessionId,
@@ -60,6 +75,10 @@ import { toJsonValue } from "../../utils/to-json-value";
 import { agentListLabel, agentListPage } from "../../contracts/agent/agent-list-data";
 import type { AgentSessionStatus } from "../../contracts/project-sessions/agent-session-list";
 import { currentSessionOutcome } from "../../contracts/project-sessions/session-reporting";
+import {
+  handlesGlobalArtifactCommand,
+  invokeGlobalArtifactCommand,
+} from "../artifacts/globalArtifacts";
 
 export interface AgentControlCaller {
   readonly kind: "project-session" | "cake-chat";
@@ -71,9 +90,16 @@ export interface AgentControlCaller {
 }
 
 export const handles = (command: string) =>
-  backendAgentCommands.has(command) || isBackendAgentSetting(command);
+  backendAgentCommands.has(command) ||
+  isBackendAgentSetting(command) ||
+  handlesGlobalArtifactCommand(command);
 
-export type AgentControlServices = Effect.Services<ReturnType<typeof acquireOptions>>;
+export type AgentControlServices =
+  | Effect.Services<ReturnType<typeof acquireOptions>>
+  | Effect.Services<ReturnType<typeof invokeGlobalArtifactCommand>>
+  | FileSystem.FileSystem
+  | Path.Path
+  | HttpClient.HttpClient;
 
 const labels = Effect.fn("AgentControl.labels")(function* () {
   const state = (yield* ApplicationState).snapshot();
@@ -149,10 +175,27 @@ const lookupSession = Effect.fn("AgentControl.lookupSession")(function* (session
 export const invoke: (
   command: string,
   input: JsonValue,
-  caller: AgentControlCaller,
+  caller?: AgentControlCaller,
 ) => Effect.Effect<JsonValue | undefined, AgentControlError, AgentControlServices | Scope.Scope> =
   Effect.fn("AgentControl.invoke")(
     function* (command, input, caller) {
+      if (command === "artifacts.commands") {
+        const parsed = yield* Schema.decodeUnknownEffect(ArtifactCommandDiscoveryInput)(input, {
+          onExcessProperty: "error",
+        });
+        return artifactCommands.describe(parsed.command);
+      }
+      if (command === "artifacts.command") {
+        const parsed = yield* Schema.decodeUnknownEffect(ArtifactCakeCallInput)(input, {
+          onExcessProperty: "error",
+        });
+        return yield* artifactCommands.invoke(parsed.command, parsed.input, {
+          artifactId: parsed.lineageId,
+          ...(caller ? { callingSessionId: caller.sessionId } : null),
+        });
+      }
+      if (handlesGlobalArtifactCommand(command))
+        return yield* invokeGlobalArtifactCommand(command, input, caller?.sessionId);
       if (isBackendAgentSetting(command))
         return yield* agentSettings.invoke(
           yield* Schema.decodeUnknownEffect(AgentSettingsInvocation)(
@@ -185,7 +228,7 @@ export const invoke: (
         case "memory.read":
         case "memory.zoom":
         case "memory.write":
-          return yield* automationControl.invoke(invocation.name, input, caller.sessionId);
+          return yield* automationControl.invoke(invocation.name, input, caller?.sessionId);
         case "projects.list":
           return toJsonValue({
             ok: true,
@@ -206,11 +249,11 @@ export const invoke: (
           const projectPath =
             "projectPath" in invocation.arguments
               ? invocation.arguments.projectPath
-              : caller.projectPath;
+              : caller?.projectPath;
           // A Project Chat names its Project explicitly but may only target its own registered root.
           if (
             "projectPath" in invocation.arguments &&
-            caller.projectPath !== undefined &&
+            caller?.projectPath !== undefined &&
             invocation.arguments.projectPath !== caller.projectPath
           )
             return fail(
@@ -336,7 +379,7 @@ export const invoke: (
           return toJsonValue({ ok: true, command, label: { ...label, ...changes } });
         }
         case "sessions.list-family": {
-          if (caller.kind !== "project-session")
+          if (caller?.kind !== "project-session")
             return fail("Listing a Session Family requires a calling Project Session.");
           const family = yield* (yield* SessionFamilyStorage).familyForMember(caller.sessionId);
           if (!family)
@@ -369,7 +412,7 @@ export const invoke: (
         case "sessions.set-labels": {
           const sessionId = yield* sessionReferences.resolve(
             invocation.arguments.sessionId,
-            caller.sessionId,
+            caller?.sessionId,
           );
           const target = yield* lookupSession(sessionId);
           const available = yield* labels();
@@ -412,18 +455,22 @@ export const invoke: (
         }
         case "sessions.list": {
           if (invocation.arguments.projection === "workflow")
-            return yield* launchWorkflowRoster(invocation.arguments, caller);
+            return caller
+              ? yield* launchWorkflowRoster(invocation.arguments, caller)
+              : fail("The workflow roster requires an actual invoking Cake Chat.");
           const startedAt = yield* Clock.currentTimeMillis;
-          const global = caller.kind === "cake-chat" && caller.sessionId === CAKE_CHAT_SESSION_ID;
+          const global =
+            !caller || (caller.kind === "cake-chat" && caller.sessionId === CAKE_CHAT_SESSION_ID);
           const scope = global
             ? undefined
-            : caller.kind === "cake-chat"
+            : caller?.kind === "cake-chat"
               ? (yield* ApplicationState)
                   .snapshot()
                   .projects.find(
                     (project) => projectChatSessionId(project.path) === caller.sessionId,
                   )?.path
-              : (caller.projectPath ?? (yield* lookupSession(caller.sessionId)).projectPath);
+              : (caller?.projectPath ??
+                (caller ? (yield* lookupSession(caller.sessionId)).projectPath : undefined));
           if (!global && !scope) return fail("The caller has no registered project scope.");
           const input = invocation.arguments;
           const inScope = (projectPath: string) =>
@@ -449,7 +496,7 @@ export const invoke: (
                 !input.launchedByCakeChat ||
                 (!session.resolved &&
                   session.cakeChatLaunch !== undefined &&
-                  (caller.kind !== "cake-chat" ||
+                  (caller?.kind !== "cake-chat" ||
                     session.cakeChatLaunch.requesterSessionId === caller.sessionId)),
             )
             .map((session) => ({
@@ -483,7 +530,7 @@ export const invoke: (
               // Text rosters must retain the coordinator's task-input title redaction;
               // the later JSON-only safeCoordinatorProjection cannot inspect these rows.
               const protectedTitle =
-                caller.kind === "cake-chat" &&
+                caller?.kind === "cake-chat" &&
                 (yield* (yield* TaskInputStorage).isRecipient(entry.sessionId));
               return protectedTitle ? { ...entry, title: "Task session" } : entry;
             }),
@@ -544,30 +591,35 @@ export const invoke: (
           return sessionRoster(listed, page, now, global && !input.projectPath);
         }
         case "sessions.reports":
+          if (!caller) return fail("Reports require an actual calling Session.");
           return toJsonValue({
             ok: true,
             command,
             ...(yield* pendingReports.list(caller.sessionId, invocation.arguments)),
           });
         case "sessions.reports.read":
+          if (!caller) return fail("Reports require an actual calling Session.");
           return toJsonValue({
             ok: true,
             command,
             ...(yield* pendingReports.read(caller.sessionId, invocation.arguments)),
           });
         case "sessions.reports.acknowledge":
+          if (!caller) return fail("Reports require an actual calling Session.");
           return toJsonValue({
             ok: true,
             command,
             ...(yield* pendingReports.acknowledge(caller.sessionId, invocation.arguments)),
           });
         case "sessions.completions":
+          if (!caller) return fail("Completions require an actual calling Session.");
           return toJsonValue({
             ok: true,
             command,
             ...(yield* completionInbox.list(caller.sessionId, invocation.arguments)),
           });
         case "sessions.completions.update":
+          if (!caller) return fail("Completions require an actual calling Session.");
           return toJsonValue({
             ok: true,
             command,
@@ -576,6 +628,7 @@ export const invoke: (
         case "sessions.compact":
         case "sessions.compact-batch":
         case "sessions.tool-compact": {
+          if (!caller) return fail("Compaction requires an actual calling Session.");
           const input = invocation.arguments;
           const results = yield* sessionCompaction.compact(
             "sessionIds" in input ? input.sessionIds : [input.sessionId],
@@ -595,6 +648,10 @@ export const invoke: (
         case "sessions.reply":
         case "sessions.thread":
         case "sessions.close-thread":
+          if (!caller)
+            return fail(
+              "Session messaging requires an actual calling Session; artifacts can use chat.prompt with an explicit destination.",
+            );
           return yield* (yield* SessionCoordination).withAdmission(
             agentSessionMessaging.invoke(invocation, caller),
           );
@@ -602,11 +659,12 @@ export const invoke: (
         case "sessions.scheduled":
         case "sessions.scheduled-info":
         case "sessions.cancel-scheduled":
+          if (!caller) return fail("Scheduled messages require an actual calling Session.");
           return yield* scheduledMessageControl.invoke(invocation, caller);
         default: {
           const sessionId = yield* sessionReferences.resolve(
             invocation.arguments.sessionId,
-            caller.sessionId,
+            caller?.sessionId,
           );
           if (isCakeChatSessionId(sessionId)) {
             if (invocation.name === "sessions.info") {
@@ -756,7 +814,9 @@ export const invoke: (
       }
     },
     (effect, _command, _input, caller) =>
-      effect.pipe(Effect.tap((result) => agentActionNotices.present(result, caller))),
+      caller
+        ? effect.pipe(Effect.tap((result) => agentActionNotices.present(result, caller)))
+        : effect,
     Effect.mapError((cause) =>
       cause instanceof AgentControlError
         ? cause

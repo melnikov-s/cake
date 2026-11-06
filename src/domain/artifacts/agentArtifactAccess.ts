@@ -35,6 +35,38 @@ export const resolveForPresentation = Effect.fn("AgentArtifacts.resolveForPresen
   );
 });
 
+export const listMetadata = Effect.fn("AgentArtifacts.listMetadata")(function* (sessionId: string) {
+  const effective = yield* workflows.listEffectiveSessionArtifacts(sessionId);
+  const projection = yield* ArtifactProjection;
+  return yield* Effect.forEach(effective.slice(0, 100), (item) =>
+    projection.materialize({
+      sessionId,
+      revision: item.revision,
+      latestRevision: item.latestRevision,
+      linkMode: item.link.selection.mode,
+    }),
+  );
+});
+
+export const historyMetadata = Effect.fn("AgentArtifacts.historyMetadata")(function* (
+  sessionId: string,
+  reference: string,
+) {
+  const ref = yield* Schema.decodeUnknownEffect(ArtifactStableRef)(reference);
+  const parsed = parseArtifactRef(ref);
+  const effective = yield* workflows.resolveEffectiveReference(sessionId, ref);
+  const revisions = yield* workflows.historyForSession(sessionId, parsed.lineageId);
+  const projection = yield* ArtifactProjection;
+  return yield* Effect.forEach(revisions.slice(-100), (revision) =>
+    projection.materialize({
+      sessionId,
+      revision,
+      latestRevision: effective.latestRevision,
+      linkMode: effective.link.selection.mode,
+    }),
+  );
+});
+
 export const link = Effect.fn("AgentArtifacts.link")(function* (
   sessionId: string,
   reference: string,

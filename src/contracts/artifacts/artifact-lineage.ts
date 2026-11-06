@@ -50,6 +50,7 @@ export const ArtifactRevisionMetadata = Schema.Struct({
   digest: ArtifactDigest,
   kind: Schema.Union([artifactKindSchema, Schema.Literal("architecture")]),
   title: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
+  description: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(4_096))),
   publishedAt: Schema.String,
   publishedBySessionId: BoundedId,
   workingDirectory: BoundedPath,
@@ -61,6 +62,7 @@ export interface ArtifactRevisionMetadata extends Schema.Schema.Type<
 
 export const ArtifactLineage = Schema.Struct({
   id: ArtifactLineageId,
+  global: Schema.Boolean,
   createdAt: Schema.String,
   latestRevision: ArtifactRevisionNumber,
   revisions: Schema.Array(ArtifactRevisionMetadata).check(Schema.isMinLength(1)),
@@ -87,10 +89,12 @@ export type ArtifactStableRef = typeof ArtifactStableRef.Type;
 
 export const ArtifactLineageSummary = Schema.Struct({
   id: ArtifactLineageId,
+  global: Schema.Boolean,
   createdAt: Schema.String,
   latestRevision: ArtifactRevisionNumber,
   latest: ArtifactRevisionMetadata,
   title: Schema.optionalKey(Schema.String),
+  description: ArtifactRevisionMetadata.fields.description,
   stableRef: ArtifactStableRef,
 });
 export interface ArtifactLineageSummary extends Schema.Schema.Type<typeof ArtifactLineageSummary> {}

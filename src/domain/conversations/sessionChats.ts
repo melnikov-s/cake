@@ -263,6 +263,45 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
   );
 });
 
+/** Artifact input uses the existing application-input provenance, not the human-input path.
+ * It deliberately does not consume user reminders, resume stopped work, or bind a window. */
+export const promptArtifact = Effect.fn("SessionChats.promptArtifact")(function* (input: {
+  readonly sessionId: string;
+  readonly artifactId: string;
+  readonly text: string;
+  readonly callingSessionId?: string;
+  readonly delivery?: "prompt" | "steer" | "follow-up";
+}) {
+  const handle = yield* acquire(input.sessionId);
+  const turnId = crypto.randomUUID();
+  const text = `<cake-artifact-input>${JSON.stringify({
+    artifactId: input.artifactId,
+    ...(input.callingSessionId ? { callingSessionId: input.callingSessionId } : null),
+  })}</cake-artifact-input>\nArtifact-authored application input, not a user message.\n\n${input.text}`;
+  const admitted = yield* handle
+    .submit({
+      turnId,
+      delivery: input.delivery ?? "prompt",
+      text,
+      attachments: [],
+      markdown: true,
+      internal: {
+        _tag: "AgentUpdate",
+        update: {
+          id: turnId,
+          text: input.text,
+          source: {
+            title: `Artifact ${input.artifactId}`,
+            href: `cake://artifact/${input.artifactId}`,
+          },
+        },
+      },
+    })
+    .pipe(asError("promptArtifact"));
+  yield* handle.publishSessionChanged().pipe(asError("promptArtifact"));
+  return TurnId.make(admitted);
+});
+
 export const abort = Effect.fn("SessionChats.abort")(function* (
   target: SessionChatTarget & { readonly stop: TurnStop },
 ) {

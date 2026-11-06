@@ -22,6 +22,7 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { coordinatorCakeOperations } from "../../../src/layers/CakeOperations";
+import { globalArtifactOperationContracts } from "../../../src/contracts/artifacts/global-artifact-control";
 import { encodePrototype, prototypeFixture } from "../../fixtures/prototype-source";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -218,7 +219,7 @@ describe("selected prototype handoff through real artifact permissions/state/rev
     await expect(f.read(selection, "tokens", 99999)).rejects.toThrow("offset");
   });
 
-  it("makes only the narrow handoff tools available in Project Chat coordinator composition", async () => {
+  it("preserves the handoff alongside artifact discovery and semantic tools in Project Chat", async () => {
     const f = await fixture();
     await f.choose("option-2");
     const selection = await f.capture();
@@ -229,13 +230,20 @@ describe("selected prototype handoff through real artifact permissions/state/rev
         .filter((operation) => operation.topic === "artifacts")
         .map((operation) => operation.command)
         .sort(),
-    ).toEqual([
-      "artifacts.link",
-      "artifacts.present",
-      "artifacts.selection.capture",
-      "artifacts.source",
-      "artifacts.state.read",
-    ]);
+    ).toEqual(
+      [
+        ...globalArtifactOperationContracts.map((operation) => operation.command),
+        "artifacts.history",
+        "artifacts.link",
+        "artifacts.list",
+        "artifacts.present",
+        "artifacts.resolve-reference",
+        "artifacts.search",
+        "artifacts.selection.capture",
+        "artifacts.source",
+        "artifacts.state.read",
+      ].sort(),
+    );
     await chat.invoke({ command: "artifacts.link", input: { reference: exactRef } }, context);
     const result = await chat.invoke(
       { command: "artifacts.source", input: { selection, moduleId: "option-2" } },

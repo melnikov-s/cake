@@ -30,12 +30,16 @@ describe("inline widget service", () => {
     expect(inlineWidgetLayoutRequirements).toContain("Geometry is not artifact document data");
   });
 
-  it("bundles the narrow artifact SDK only in artifact widgets", async () => {
+  it("bundles the artifact state, runtime tool and canonical Cake SDK only in artifact widgets", async () => {
     const source =
       'import { useArtifactState, useArtifact } from "@cake/artifact-sdk"; export default function Widget(){ const state = useArtifactState({items: []}); const artifact = useArtifact(); return <p>{state.hydrated ? JSON.stringify(state.value) : "Loading"}</p>; }';
     const compiled = await compileInlineWidget("react", source, "artifact");
     expect(compiled.document).toContain("__cakeArtifactBridge");
     expect(compiled.document).toContain("artifact-state-replace");
+    expect(compiled.document).toContain("globalThis.cake = Object.freeze");
+    expect(compiled.document).toContain('requestCall("artifact-tool-call"');
+    expect(compiled.document).toContain('requestCall("artifact-cake-call"');
+    expect(compiled.document).toContain('message.type !== "call-result"');
     expect(compiled.document).toContain("Artifact state is not hydrated");
     await expect(compileInlineWidget("react", source, "display")).rejects.toThrow(
       "available only to artifact widgets",

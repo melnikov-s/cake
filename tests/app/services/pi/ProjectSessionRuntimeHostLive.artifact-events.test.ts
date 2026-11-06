@@ -33,6 +33,7 @@ import { ProjectSessionRuntimeHost } from "../../../../src/services/pi/ProjectSe
 import { makeProjectSessionRuntimeHostLive } from "../../../../src/layers/ProjectSessionRuntimeHostLive";
 import { RendererRequestCoordinator } from "../../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ArtifactStorage } from "../../../../src/services/storage/ArtifactStorage";
+import { ArtifactRuntime } from "../../../../src/services/artifact-runtime/ArtifactRuntime";
 import { makeMessageBoardStorageLive } from "../../../../src/services/storage/MessageBoardStorageLive";
 import { makeArtifactStorageLive } from "../../../../src/services/storage/ArtifactStorageLive";
 import { makeSessionArchiveStorageLive } from "../../../../src/services/storage/SessionArchiveStorageLive";
@@ -83,7 +84,10 @@ const provideArtifactServices = <A, E>(
     Effect.provideService(SessionFamilyStorage, families),
   );
 
-const makeHarness = async (capture?: RenderedWidgetCapture["Service"]["capture"]) => {
+const makeHarness = async (
+  capture?: RenderedWidgetCapture["Service"]["capture"],
+  artifactRuntime: Partial<ArtifactRuntime["Service"]> = {},
+) => {
   const root = await mkdtemp(join(tmpdir(), "cake-session-runtime-artifact-events-"));
   roots.push(root);
   const events: CakeEvent[] = [];
@@ -91,6 +95,11 @@ const makeHarness = async (capture?: RenderedWidgetCapture["Service"]["capture"]
   const releases: string[] = [];
   const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
   const dependencies = Layer.mergeAll(
+    Layer.mock(ArtifactRuntime, {
+      status: (lineageId) =>
+        Effect.succeed({ lineageId, running: false, revision: null, lastError: null }),
+      ...artifactRuntime,
+    }),
     makeArtifactStorageLive(join(root, "artifacts")).pipe(Layer.provide(platform)),
     makeMessageBoardStorageLive(join(root, "artifacts")).pipe(Layer.provide(platform)),
     makeSessionArchiveStorageLive(join(root, "resolved-project-metadata"), {
@@ -173,6 +182,47 @@ const effectiveLineageIds = (
   );
 
 describe("ProjectSessionRuntimeHostLive artifact events", () => {
+  it("retains the live artifact runtime in Pi publication callbacks when a closed widget advances source", async () => {
+    const lifecycle = vi.fn((input: Parameters<ArtifactRuntime["Service"]["lifecycle"]>[0]) =>
+      Effect.succeed({
+        lineageId: input.target.lineageId,
+        revision: input.target.revision,
+        running: true,
+        lastError: null,
+      }),
+    );
+    const { host, runtime, root } = await makeHarness(undefined, {
+      status: (lineageId) =>
+        Effect.succeed({ lineageId, running: true, revision: 1, lastError: null }),
+      lifecycle,
+    });
+    const prepared = await runtime.runPromise(host.prepare(root, "session-1"));
+    const { persistArtifact } = requireArtifactOperations(prepared.integrations);
+    const widget: CakeArtifactV1 = {
+      protocol: "cake.artifact/v1",
+      id: "dashboard",
+      sessionId: "session-1",
+      revision: 1,
+      kind: "widget",
+      fallback: { markdown: "Dashboard" },
+      payload: {
+        language: "html",
+        source: "<!doctype html><html><body>Dashboard</body></html>",
+        brief: "Dashboard",
+        browser: { digest: "b".repeat(64) },
+        runtime: { source: "return {tools:{}};", tools: [] },
+      },
+    };
+    await persistArtifact(widget);
+    expect(lifecycle).not.toHaveBeenCalled();
+    await persistArtifact({ ...widget, revision: 2 });
+    expect(lifecycle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "start",
+        target: expect.objectContaining({ revision: 2, lineageId: "dashboard" }),
+      }),
+    );
+  });
   it("keeps a prepared replacement alive after the previous shared runtime releases its own host", async () => {
     const { host, root, runtime, events, registrations } = await makeHarness();
     await runtime.runPromise(

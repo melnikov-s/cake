@@ -137,7 +137,7 @@ describe("ArtifactStorage", () => {
     expect(await readFile(join(root, "blobs", `${historical.digest}.json`), "utf8")).toBe(
       historical.serialized,
     );
-    expect(JSON.parse(await readFile(join(root, "catalog.json"), "utf8")).version).toBe(4);
+    expect(JSON.parse(await readFile(join(root, "catalog.json"), "utf8")).version).toBe(5);
     const run = <A, E>(effect: Effect.Effect<A, E, ArtifactStorage>) =>
       Effect.runPromise(effect.pipe(Effect.provideService(ArtifactStorage, storage)));
     expect((await run(artifactWorkflows.searchGlobalLineages())).items).toHaveLength(2);
@@ -488,7 +488,7 @@ describe("ArtifactStorage", () => {
         }),
       ]),
     );
-    expect(JSON.parse(await readFile(join(root, "catalog.json"), "utf8")).version).toBe(4);
+    expect(JSON.parse(await readFile(join(root, "catalog.json"), "utf8")).version).toBe(5);
 
     await rm(join(root, "sessions"), { recursive: true });
     const reloaded = await makeStorage(root);

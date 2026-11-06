@@ -13,6 +13,7 @@ import * as messageBoards from "../domain/artifacts/messageBoards";
 import type { MessageBoardStorage } from "../services/storage/MessageBoardStorage";
 import { ClientEvents } from "../services/clients/ClientEvents";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
+import { ArtifactRuntime } from "../services/artifact-runtime/ArtifactRuntime";
 import { ReviewStorage } from "../services/storage/ReviewStorage";
 import { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
 import type { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
@@ -72,6 +73,7 @@ export const makeProjectSessionRuntimeHostLive = (
     ProjectSessionRuntimeHost,
     Effect.gen(function* () {
       const artifacts = yield* ArtifactStorage;
+      const artifactRuntime = yield* Effect.serviceOption(ArtifactRuntime);
       const browserOutputs = yield* WidgetBrowserOutputs;
       const widgetPackages = yield* WidgetPackages;
       const artifactProjection = yield* ArtifactProjection;
@@ -93,11 +95,15 @@ export const makeProjectSessionRuntimeHostLive = (
       const runAdapter = Effect.runPromiseWith(adapterContext);
       const provideArtifactServices = <A, E>(
         effect: Effect.Effect<A, E, ArtifactStorage | SessionFamilyStorage>,
-      ): Effect.Effect<A, E> =>
-        effect.pipe(
+      ): Effect.Effect<A, E> => {
+        const provided = effect.pipe(
           Effect.provideService(ArtifactStorage, artifacts),
           Effect.provideService(SessionFamilyStorage, families),
         );
+        return Option.isSome(artifactRuntime)
+          ? provided.pipe(Effect.provideService(ArtifactRuntime, artifactRuntime.value))
+          : provided;
+      };
       const projectEffective = Effect.fn("ProjectSessionRuntimeHost.projectArtifact")(function* (
         sessionId: string,
         effective: artifactWorkflows.EffectiveArtifact,

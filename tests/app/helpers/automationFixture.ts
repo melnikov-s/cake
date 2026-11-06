@@ -71,6 +71,8 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
       automations: [],
       occurrences: [],
       runs: [],
+      artifactSchedules: [],
+      pausedArtifactIds: [],
     },
   );
   const storage = Layer.succeed(AutomationStorage, {

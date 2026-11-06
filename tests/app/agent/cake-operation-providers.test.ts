@@ -19,6 +19,7 @@ import type {
   CoordinatorCakeOperations,
 } from "../../../src/contracts/agent/cake-operation-api";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
+import { globalArtifactOperationContracts } from "../../../src/contracts/artifacts/global-artifact-control";
 
 const directories: string[] = [];
 const runtimes: CakeSessionRuntime[] = [];
@@ -66,6 +67,54 @@ describe("Backend-owned Cake operation composition", () => {
     expect(registry.operationHelp("interview.open")).toContain("responseSchema");
     expect(registry.operationHelp("artifacts.create")).toContain("durable");
     expect(registry.operationHelp("sessions.create-child")).toBeUndefined();
+  });
+
+  it("discovers the same typed global artifact commands in Project Sessions and the permanent coordinator", async () => {
+    const expected = globalArtifactOperationContracts.map((operation) => operation.command);
+    const project = new CakeOperationRegistry(
+      projectCakeOperations({ cwd: "/workspace" })(bridge()),
+    );
+    const invoke = vi.fn(async () => ({ ready: [12], blocked: [13] }));
+    const coordinator = new CakeOperationRegistry(
+      coordinatorCakeOperations({
+        cwd: "/home/user",
+        globalControl: { tools: [], invoke },
+        allowedCakeOperations: expected,
+      })({
+        sessionId: "cake-chat",
+        resolveModel: () => ({
+          provider: "p",
+          modelId: "m",
+          thinkingLevel: "off",
+          fastMode: false,
+        }),
+        setModel: async () => {},
+        info: async () => ({}),
+        usage: async () => ({}),
+        contextStatus: async () => ({}),
+        compact: async () => ({}),
+      }),
+    );
+    for (const command of expected) {
+      expect(project.operationHelp(command)).toBeDefined();
+      expect(coordinator.operationHelp(command)).toBeDefined();
+    }
+    expect(coordinator.operationHelp("artifacts.tools")).toContain("schema");
+    const result = await coordinator.invoke(
+      {
+        command: "artifacts.call",
+        input: { lineageId: "pr-dashboard", name: "readiness", input: {} },
+      },
+      context,
+    );
+    expect(result.details).toMatchObject({ result: { ready: [12], blocked: [13] } });
+    expect(invoke).toHaveBeenCalledWith(
+      {
+        name: "artifacts.call",
+        arguments: { lineageId: "pr-dashboard", name: "readiness", input: {} },
+      },
+      context.signal,
+    );
   });
 
   it("preserves read-only auxiliary trimming and separately granted parent controls", () => {

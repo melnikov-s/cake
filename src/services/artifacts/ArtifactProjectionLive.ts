@@ -137,6 +137,15 @@ export const artifactProjectionContents = (snapshot: CakeArtifactV1): Projection
           snapshot.payload.language === "react" ? "source.tsx.txt" : "source.html.txt",
           snapshot.payload.source,
         ),
+        ...(snapshot.payload.runtime
+          ? [
+              textContent("runtime.js.txt", snapshot.payload.runtime.source),
+              textContent(
+                "runtime-tools.json",
+                `${JSON.stringify(snapshot.payload.runtime.tools, null, 2)}\n`,
+              ),
+            ]
+          : []),
         fallback,
       ];
   }
@@ -463,6 +472,9 @@ export const makeArtifactProjectionLive = (cacheRoot: string) =>
               ...(input.revision.snapshot.title === undefined
                 ? null
                 : { title: input.revision.snapshot.title }),
+              ...(input.revision.snapshot.description === undefined
+                ? null
+                : { description: input.revision.snapshot.description }),
               kind: input.revision.metadata.kind,
               selectedRevision: input.revision.metadata.revision,
               latestRevision: input.latestRevision,

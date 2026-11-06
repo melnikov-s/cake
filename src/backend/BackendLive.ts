@@ -54,6 +54,10 @@ import { ScheduledMessages } from "../services/scheduled-messages/ScheduledMessa
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import { makeMessageBoardStorageLive } from "../services/storage/MessageBoardStorageLive";
 import { makeArtifactStorageLive } from "../services/storage/ArtifactStorageLive";
+import { ArtifactRuntimeLive } from "../services/artifact-runtime/ArtifactRuntimeLive";
+import { ArtifactViewsLive } from "../services/artifacts/ArtifactViews";
+import { ArtifactRuntimeHostLive } from "../layers/ArtifactRuntimeHostLive";
+import * as globalArtifacts from "../domain/artifacts/globalArtifacts";
 import { ArtifactGarbageCollectorLive } from "../layers/ArtifactGarbageCollectorLive";
 import { makeArtifactProjectionLive } from "../services/artifacts/ArtifactProjectionLive";
 import { makeApplicationStorageLive } from "../services/storage/ApplicationStorage";
@@ -203,6 +207,8 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
       PiLive,
       makeAutomationMemoryLive(paths.state).pipe(Layer.provide(Layer.merge(PiLive, StorageLive))),
       ClientStateLive,
+      ArtifactRuntimeLive.pipe(Layer.provide(Layer.merge(StorageLive, ClientStateLive))),
+      ArtifactViewsLive.pipe(Layer.provide(ClientStateLive)),
       PreviewLeasesLive.pipe(Layer.provide(ClientStateLive)),
       GitLive,
       ManagedWorktreesCapabilityLive,
@@ -306,16 +312,25 @@ export const makeBackendLive = <HostServices, HostError>(
     ),
   );
 
-  const InitializedLive = Layer.effectDiscard(initializeBackend()).pipe(
-    Layer.provide(SessionWorkflowsLive),
-  );
+  const InitializedLive = Layer.merge(
+    Layer.effectDiscard(initializeBackend()),
+    ArtifactRuntimeHostLive,
+  ).pipe(Layer.provide(SessionWorkflowsLive));
   const BackgroundWorkersLive = Layer.mergeAll(
     Layer.effectDiscard(
       Effect.gen(function* () {
         yield* (yield* AutomationRecords).initialize().pipe(Effect.orDie);
         yield* automationWorker.runEventWorker.pipe(Effect.forkScoped);
         yield* automationWorker.recover().pipe(Effect.orDie);
-        yield* automationWorker.runScheduleWorker.pipe(Effect.forkScoped);
+        yield* automationWorker
+          .runScheduleWorker((schedule) =>
+            globalArtifacts.callTool({
+              lineageId: schedule.lineageId,
+              name: schedule.handler,
+              input: schedule.input,
+            }),
+          )
+          .pipe(Effect.forkScoped);
       }),
     ),
     Layer.effectDiscard(localMcp.initialize()),

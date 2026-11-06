@@ -8,6 +8,7 @@ import type {
 } from "../../contracts/artifacts/artifact-lineage";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { ClientContext } from "./context/ClientContext";
+import type { ArtifactExecutionStatus } from "../../contracts/artifacts/global-artifact-control";
 
 export class ArtifactDetailStore extends Store<{
   model: ArtifactCatalog;
@@ -15,6 +16,13 @@ export class ArtifactDetailStore extends Store<{
   clearReferenceOperationError(lineageId?: ArtifactLineageId): void;
 }> {
   detailLoading = false;
+  metadataPending = false;
+  execution: ArtifactExecutionStatus | undefined;
+  runtimePending = false;
+  runtimeError: string | undefined;
+  private runtimeRequest = 0;
+  deletePending = false;
+  confirmingDelete = false;
   historyLoading = false;
   historyOffset = 0;
   historyLimit = 50;
@@ -40,6 +48,14 @@ export class ArtifactDetailStore extends Store<{
     this.effect(() => {
       void this.props.model.invalidationVersion;
       untracked(() => void this.refreshDetail());
+    });
+    this.effect(() => {
+      const lineageId = this.selectedLineageId;
+      const kind = this.selectedLineage?.latest?.kind;
+      void this.props.model.invalidationVersion;
+      untracked(() => {
+        if (lineageId && kind === "widget") void this.refreshExecution();
+      });
     });
     this.reaction(
       () =>
@@ -102,6 +118,9 @@ export class ArtifactDetailStore extends Store<{
     this.compareRequest += 1;
     this.restoreRequest += 1;
     this.selectedLineageId = lineageId;
+    this.confirmingDelete = false;
+    this.execution = undefined;
+    this.runtimeError = undefined;
     this.selectedRevision = undefined;
     this.followLatest = initialRevision === undefined;
     this.pendingRestoreRevision = undefined;
@@ -188,6 +207,117 @@ export class ArtifactDetailStore extends Store<{
       )
         this.operationError = error instanceof Error ? error.message : String(error);
       return undefined;
+    }
+  }
+
+  async refreshExecution() {
+    const lineageId = this.selectedLineageId;
+    if (!lineageId) return;
+    const request = ++this.runtimeRequest;
+    try {
+      const status = await this.client.artifacts.runtimeStatus(
+        { lineageId },
+        { signal: this.signal },
+      );
+      if (
+        !this.signal.aborted &&
+        this.selectedLineageId === lineageId &&
+        request === this.runtimeRequest
+      ) {
+        this.execution = status;
+        this.runtimeError = undefined;
+      }
+    } catch (error) {
+      if (
+        !this.signal.aborted &&
+        this.selectedLineageId === lineageId &&
+        request === this.runtimeRequest
+      )
+        this.runtimeError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  async controlRuntime(action: "start" | "pause" | "resume" | "restart") {
+    const lineageId = this.selectedLineageId;
+    if (!lineageId || this.runtimePending) return;
+    this.runtimePending = true;
+    const request = ++this.runtimeRequest;
+    this.runtimeError = undefined;
+    try {
+      const operations = {
+        start: this.client.artifacts.runtimeStart,
+        pause: this.client.artifacts.runtimePause,
+        resume: this.client.artifacts.runtimeResume,
+        restart: this.client.artifacts.runtimeRestart,
+      };
+      const status = await operations[action]({ lineageId }, { signal: this.signal });
+      if (
+        !this.signal.aborted &&
+        this.selectedLineageId === lineageId &&
+        request === this.runtimeRequest
+      )
+        this.execution = status;
+    } catch (error) {
+      if (
+        !this.signal.aborted &&
+        this.selectedLineageId === lineageId &&
+        request === this.runtimeRequest
+      )
+        this.runtimeError = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.runtimePending = false;
+    }
+  }
+
+  requestDelete() {
+    this.confirmingDelete = true;
+  }
+  cancelDelete() {
+    this.confirmingDelete = false;
+  }
+
+  async setGlobal(global: boolean) {
+    const lineageId = this.selectedLineageId;
+    if (!lineageId || this.metadataPending) return;
+    this.metadataPending = true;
+    this.operationError = undefined;
+    try {
+      const summary = await this.client.artifacts.setGlobal(
+        { lineageId, global },
+        { signal: this.signal },
+      );
+      if (this.signal.aborted) return;
+      this.props.model.upsertSummary(summary);
+      this.props.artifactsChanged(lineageId);
+    } catch (error) {
+      if (this.selectedLineageId === lineageId)
+        this.operationError = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.metadataPending = false;
+    }
+  }
+
+  async deleteArtifact() {
+    const lineageId = this.selectedLineageId;
+    if (!lineageId || this.deletePending) return;
+    this.deletePending = true;
+    this.operationError = undefined;
+    try {
+      await this.client.artifacts.delete({ lineageId }, { signal: this.signal });
+      if (this.signal.aborted) return;
+      this.props.model.remove(lineageId);
+      if (this.selectedLineageId === lineageId) {
+        this.selectionRequest += 1;
+        this.selectedLineageId = undefined;
+        this.selectedRevision = undefined;
+        this.confirmingDelete = false;
+      }
+      this.props.artifactsChanged(lineageId);
+    } catch (error) {
+      if (this.selectedLineageId === lineageId)
+        this.operationError = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.deletePending = false;
     }
   }
 

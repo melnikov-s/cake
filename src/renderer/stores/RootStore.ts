@@ -53,6 +53,7 @@ import { SettingsStore } from "./SettingsStore";
 import { ExtensionUiStore } from "./ExtensionUiStore";
 import { FullscreenSurfaceStore } from "./FullscreenSurfaceStore";
 import { ArtifactPresentationStore } from "./ArtifactPresentationStore";
+import { ArtifactViewingStore } from "./ArtifactViewingStore";
 import { ArtifactPresentationContext } from "./context/ArtifactPresentationContext";
 import type { AgentControlSource } from "../app-control/app-control-data";
 import { createRootApplicationControlHost } from "../app-control/RootApplicationControlHost";
@@ -284,6 +285,11 @@ export class RootStore extends Store<{
 
   [ArtifactPresentationContext.provide]() {
     return this.artifactPresentationStore;
+  }
+
+  @child
+  get artifactViewingStore(): ArtifactViewingStore {
+    return createStore(ArtifactViewingStore);
   }
 
   @child

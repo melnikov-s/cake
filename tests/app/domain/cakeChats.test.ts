@@ -1073,9 +1073,13 @@ describe("permanent Cake Chat", () => {
           "artifacts.state.read",
           "artifacts.selection.capture",
           "artifacts.source",
+          "artifacts.resolve-reference",
+          "artifacts.globals",
+          "artifacts.viewing",
+          "artifacts.tools",
+          "artifacts.call",
         ]),
       );
-      expect(options.runtime.allowedCakeOperations).not.toContain("artifacts.resolve-reference");
       expect(options.runtime.allowedCakeOperations).not.toContain("artifacts.preview");
       expect(options.runtime.resolveArtifact).toBeTypeOf("function");
       expect(options.runtime.linkArtifact).toBeTypeOf("function");

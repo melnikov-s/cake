@@ -8,6 +8,7 @@ export class ArtifactRevision extends Model {
   digest = "";
   kind = "markdown";
   publishedAt = "";
+  description: string | undefined;
   publishedBySessionId = "";
   workingDirectory = "";
   restoredFromRevision: number | undefined;

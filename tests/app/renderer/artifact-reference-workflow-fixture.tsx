@@ -39,6 +39,7 @@ export function referenceMetadata(reference: string): ArtifactReferenceMetadata 
   return Schema.decodeUnknownSync(ArtifactReferenceMetadata)({
     lineage: {
       id: lineageId,
+      global: false,
       title:
         lineageId === reportId
           ? "Quarterly report"

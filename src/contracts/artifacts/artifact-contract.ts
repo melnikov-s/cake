@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { ArtifactRuntimeDescriptor } from "./artifact-runtime-descriptor";
 import { WidgetPreview } from "../widgets/widget-preview";
 import { WidgetBrowserOutput } from "../widgets/widget-browser-output";
 
@@ -37,6 +38,7 @@ const artifactBase = {
     Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
   ),
   title: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
+  description: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(4_096))),
   fallback: Schema.Struct({ markdown: textSchema }),
   interaction: Schema.optional(Schema.Struct({ mode: Schema.Literal("present") })),
 };
@@ -106,6 +108,7 @@ const widgetArtifactSchema = Schema.Struct({
     source: textSchema,
     brief: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
     generationSessionId: Schema.optionalKey(idSchema),
+    runtime: Schema.optionalKey(ArtifactRuntimeDescriptor),
     browser: WidgetBrowserOutput,
     // Historical snapshots predate retained captures; never synthesize their preview.
     preview: Schema.optionalKey(WidgetPreview),

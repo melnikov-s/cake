@@ -25,7 +25,7 @@ const catalog = Effect.fn("AgentSettings.catalog")(function* () {
 
 export const invoke = Effect.fn("AgentSettings.invoke")(function* (
   invocation: AgentSettingsInvocation,
-  caller: { readonly kind: "project-session" | "cake-chat"; readonly workingDirectory?: string },
+  caller?: { readonly kind: "project-session" | "cake-chat"; readonly workingDirectory?: string },
 ) {
   const value = yield* Effect.gen(function* () {
     switch (invocation.name) {
@@ -115,7 +115,7 @@ export const invoke = Effect.fn("AgentSettings.invoke")(function* (
       case "settings.mcp.update": {
         const { scope } = invocation.arguments;
         const projectPath =
-          scope === "project" && caller.kind === "project-session"
+          scope === "project" && caller?.kind === "project-session"
             ? caller.workingDirectory
             : undefined;
         if (scope === "project" && !projectPath)

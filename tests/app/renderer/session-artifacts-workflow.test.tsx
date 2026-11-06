@@ -57,6 +57,7 @@ const effective = (
 
 const reportSummary = () => ({
   id: effective().revision.lineageId,
+  global: false,
   title: "Family report",
   createdAt: effective(1).revision.metadata.publishedAt,
   latestRevision: effective().latestRevision,
@@ -133,6 +134,7 @@ function renderSessionArtifacts(
           return {
             lineage: {
               id: latest.revision.lineageId,
+              global: false,
               createdAt: latest.revision.metadata.publishedAt,
               latestRevision: latest.latestRevision,
               latest: latest.revision.metadata,
@@ -279,6 +281,7 @@ const visualPart: UiPart = {
 const visualMetadata = () => ({
   lineage: {
     id: visual(2).revision.lineageId,
+    global: false,
     createdAt: "2025-01-01T00:00:00.000Z",
     latestRevision: visual(2).revision.metadata.revision,
     latest: visual(2).revision.metadata,

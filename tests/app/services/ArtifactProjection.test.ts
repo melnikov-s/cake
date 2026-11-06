@@ -84,7 +84,7 @@ describe("ArtifactProjection", () => {
         const service = yield* ArtifactProjection;
         const first = yield* service.materialize({
           sessionId: "session-1",
-          revision: revision(markdown(1, "one")),
+          revision: revision({ ...markdown(1, "one"), description: "Reusable plan" }),
           latestRevision: revisionNumber(1),
           linkMode: "follow-latest",
         });
@@ -102,6 +102,11 @@ describe("ArtifactProjection", () => {
         const secondContent = yield* Effect.promise(() =>
           readFile(join(second.exactPath, "content.md"), "utf8"),
         );
+        expect(first.description).toBe("Reusable plan");
+        const metadata = yield* Effect.promise(() =>
+          readFile(join(first.exactPath, "metadata.json"), "utf8"),
+        );
+        expect(JSON.parse(metadata).description).toBe("Reusable plan");
         expect(firstContent).toBe("one");
         expect(secondContent).toBe("two");
       }).pipe(Effect.provide(layer)),
@@ -335,6 +340,63 @@ describe("ArtifactProjection", () => {
     await expect(
       stat(join(cacheRoot, "artifact-projections", "v1", "sessions", "escaped")),
     ).rejects.toThrow();
+  });
+
+  it("materializes inert read-only runtime source and tool schemas for selective exact reads", async () => {
+    const layer = await makeLayer();
+    const source = "throw new Error('projection must never execute this source')";
+    const tools = [
+      {
+        name: "refresh",
+        description: "Refresh data",
+        inputSchema: { type: "object" },
+        outputSchema: { type: "boolean" },
+      },
+    ];
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const projected = yield* (yield* ArtifactProjection).materialize({
+          sessionId: "session-1",
+          latestRevision: revisionNumber(1),
+          linkMode: "follow-latest",
+          revision: revision({
+            protocol: "cake.artifact/v1",
+            id: "plan",
+            sessionId: "session-1",
+            revision: 1,
+            kind: "widget",
+            fallback: { markdown: "Widget" },
+            payload: {
+              language: "html",
+              source: "<div>View</div>",
+              brief: "Public brief",
+              browser: { digest: "b".repeat(64) },
+              runtime: { source, tools },
+            },
+          }),
+        });
+        expect(projected.files.map((file) => file.name)).toEqual([
+          "brief.json",
+          "source.html.txt",
+          "runtime.js.txt",
+          "runtime-tools.json",
+          "fallback.md",
+        ]);
+        const runtimePath = join(projected.exactPath, "runtime.js.txt");
+        const toolsPath = join(projected.exactPath, "runtime-tools.json");
+        expect(yield* Effect.promise(() => readFile(runtimePath, "utf8"))).toBe(source);
+        expect(JSON.parse(yield* Effect.promise(() => readFile(toolsPath, "utf8")))).toEqual(tools);
+        for (const path of [runtimePath, toolsPath]) {
+          const info = yield* Effect.promise(() => stat(path));
+          expect(info.mode & 0o222).toBe(0);
+        }
+        expect(
+          JSON.parse(
+            yield* Effect.promise(() => readFile(join(projected.exactPath, "brief.json"), "utf8")),
+          ),
+        ).toEqual({ language: "html", brief: "Public brief" });
+      }).pipe(Effect.provide(layer)),
+    );
   });
 
   it("emits canonical files for every stored kind with selective widget source access", () => {

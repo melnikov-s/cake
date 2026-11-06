@@ -1,4 +1,6 @@
 import { Effect, Schema } from "effect";
+import type { HttpClient } from "effect/unstable/http";
+import type { invokeGlobalArtifactCommand } from "../artifacts/globalArtifacts";
 import type { AutomationRecords } from "../../services/automations/AutomationRecords";
 import type { AutomationConfiguration } from "../../services/automations/AutomationConfiguration";
 import type { OptMemory } from "../../services/opt-memory/OptMemory";
@@ -46,6 +48,8 @@ import { agentListLabel, agentListPage } from "../../contracts/agent/agent-list-
 /** Validated domain dispatch for the Pi adapter's narrow JSON callback. */
 /** Explicit capability set breaks the type-inference cycle with Project runtime assembly. */
 type WorkflowControlServices =
+  | HttpClient.HttpClient
+  | Effect.Services<ReturnType<typeof invokeGlobalArtifactCommand>>
   | AutomationRecords
   | AutomationConfiguration
   | OptMemory

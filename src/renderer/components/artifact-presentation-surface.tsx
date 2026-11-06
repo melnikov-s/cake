@@ -13,6 +13,10 @@ import { SideChatLayout } from "./side-chat-layout";
 import { NestedChat } from "./nested-chat";
 import { ProjectComposerHeader } from "./project-composer-header";
 import { BlockingInterviews } from "./blocking-interviews";
+import {
+  decodeArtifactLineageId,
+  decodeArtifactRevisionNumber,
+} from "../../contracts/artifacts/artifact-lineage";
 
 /** Fullscreen artifact with the owning conversation's existing ChatStore, not a new discussion. */
 export const ArtifactPresentationSurface = observer(function ArtifactPresentationSurface({
@@ -30,9 +34,7 @@ export const ArtifactPresentationSurface = observer(function ArtifactPresentatio
   const inline = useContext(InlineArtifactContext);
   // ChatStore IDs can be display-only (for example private workers). Only a
   // canonical conversation identity can scope artifact access and input context.
-  const ownerId = inline
-    ? inline.behavior?.messageReferenceSessionId
-    : (sessionId ?? record.artifact.sessionId);
+  const ownerId = inline ? inline.behavior?.messageReferenceSessionId : sessionId;
   const store = root.artifactPresentationStore;
   const surfaceId = useRef(crypto.randomUUID()).current;
   const artifact = record.artifact;
@@ -66,6 +68,15 @@ export const ArtifactPresentationSurface = observer(function ArtifactPresentatio
     else store.close(surfaceId);
   }, [store, surfaceId, ownerId, artifact.id, artifact.revision]);
   useLayoutEffect(() => () => store.close(surfaceId), [store, surfaceId]);
+  useLayoutEffect(() => {
+    const viewing = root.artifactViewingStore;
+    viewing.show(surfaceId, {
+      lineageId: decodeArtifactLineageId(artifact.id),
+      revision: decodeArtifactRevisionNumber(artifact.revision),
+      surface: "fullscreen",
+    });
+    return () => viewing.hide(surfaceId);
+  }, [root, surfaceId, artifact.id, artifact.revision]);
   useLayoutEffect(() => {
     if (activeSessionId !== originSessionId) onClose();
   }, [activeSessionId, originSessionId, onClose]);

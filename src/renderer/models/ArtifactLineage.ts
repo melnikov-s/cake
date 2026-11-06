@@ -6,6 +6,8 @@ export class ArtifactLineage extends Model {
   createdAt = "";
   latestRevision = 1;
   title: string | undefined;
+  description: string | undefined;
+  global = false;
   stableRef = "";
   @child(ArtifactRevision) revisions: ArtifactRevision[] = observable([]);
 

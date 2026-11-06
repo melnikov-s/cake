@@ -231,8 +231,9 @@ describe("artifact widget state renderer workflow", () => {
     expect(stateRead).toHaveBeenCalledTimes(2);
   });
 
-  it("does not grant state access to a global unlinked preview", async () => {
-    const stateRead = vi.fn<Client["artifacts"]["stateRead"]>();
+  it("hydrates independent global state without reusing the creator session", async () => {
+    const current: ArtifactState = { lineageId, version: 4, value: { scene: "retained" } };
+    const stateRead = vi.fn<Client["artifacts"]["stateRead"]>(async () => current);
     const stateReplace = vi.fn<Client["artifacts"]["stateReplace"]>();
     using fixture = createRendererStoreFixture({
       client: {
@@ -253,12 +254,84 @@ describe("artifact widget state renderer workflow", () => {
       expect(post).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "state-result",
-          value: { id: "read", ok: false, error: "This widget has no linked artifact state scope" },
+          value: { id: "read", ok: true, state: current },
         }),
         "*",
       ),
     );
-    expect(stateRead).not.toHaveBeenCalled();
+    expect(stateRead).toHaveBeenCalledWith({ lineageId }, expect.anything());
     expect(stateReplace).not.toHaveBeenCalled();
+  });
+
+  it("routes authenticated widget tools and Cake commands through the canonical backend without starting or resuming logic", async () => {
+    const stateRead = vi.fn<Client["artifacts"]["stateRead"]>(async () => ({
+      lineageId,
+      version: 0,
+      value: null,
+    }));
+    const callTool = vi.fn<Client["artifacts"]["callTool"]>(async () => ({ updated: true }));
+    const cakeCall = vi.fn<Client["artifacts"]["cakeCall"]>(async () => {
+      throw new Error("Command failed");
+    });
+    using fixture = createRendererStoreFixture({
+      client: {
+        inlineWidgets: { open: async () => ({ token, url: `cake-widget://document/${token}` }) },
+        artifacts: { stateRead, callTool, cakeCall },
+      },
+    });
+    using view = renderArtifactStateView(
+      <ArtifactHost record={record} inlineWidgets={fixture.root.inlineWidgetStore} />,
+    );
+    await waitFor(() => expect(view.container.querySelector("iframe")).not.toBeNull());
+    const frame = view.container.querySelector("iframe")!;
+    const post = vi.spyOn(frame.contentWindow!, "postMessage");
+    act(() => {
+      request(
+        frame,
+        "artifact-tool-call",
+        { id: "wrong", name: "update", input: {} },
+        { token: "wrong" },
+      );
+      request(
+        frame,
+        "artifact-cake-call",
+        { id: "other-frame", command: "sessions.list", input: {} },
+        { source: window },
+      );
+    });
+    expect(callTool).not.toHaveBeenCalled();
+    expect(cakeCall).not.toHaveBeenCalled();
+    act(() => {
+      request(frame, "artifact-tool-call", { id: "tool", name: "update", input: { amount: 2 } });
+      request(frame, "artifact-cake-call", { id: "cake", command: "sessions.list", input: {} });
+    });
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        { lineageId, name: "update", input: { amount: 2 } },
+        expect.anything(),
+      ),
+    );
+    expect(cakeCall).toHaveBeenCalledWith(
+      { lineageId, command: "sessions.list", input: {} },
+      expect.anything(),
+    );
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "call-result",
+          value: { id: "tool", ok: true, result: { updated: true } },
+        }),
+        "*",
+      ),
+    );
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "call-result",
+          value: { id: "cake", ok: false, error: "Command failed" },
+        }),
+        "*",
+      ),
+    );
   });
 });

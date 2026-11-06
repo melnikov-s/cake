@@ -1,3 +1,5 @@
+import type { ArtifactExecutionStatus } from "../../contracts/artifacts/global-artifact-control";
+import type { ArtifactViewingReport } from "../../contracts/artifacts/artifact-viewing";
 import type { DictationError } from "../../contracts/dictation/dictation-data";
 import type { EditorColorTheme } from "../../contracts/themes/color-theme";
 import type {
@@ -25,6 +27,7 @@ import type {
   ArtifactLineageDetail,
   ArtifactLineageId,
   ArtifactLineagePage,
+  ArtifactLineageSummary,
   ArtifactLink,
   ArtifactLinkTarget,
   ArtifactRevision,
@@ -475,16 +478,50 @@ import type {
 } from "../../contracts/artifacts/artifact-state";
 
 interface ArtifactCommands {
+  runtimeStatus(
+    input: { lineageId: ArtifactLineageId },
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactExecutionStatus>;
+  runtimeStart(
+    input: { lineageId: ArtifactLineageId },
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactExecutionStatus>;
+  runtimePause(
+    input: { lineageId: ArtifactLineageId },
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactExecutionStatus>;
+  runtimeResume(
+    input: { lineageId: ArtifactLineageId },
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactExecutionStatus>;
+  runtimeRestart(
+    input: { lineageId: ArtifactLineageId },
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactExecutionStatus>;
+  setGlobal(
+    input: { lineageId: ArtifactLineageId; global: boolean },
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactLineageSummary>;
+  delete(input: { lineageId: ArtifactLineageId }, options?: ClientCommandOptions): Promise<void>;
+  callTool(
+    input: { lineageId: ArtifactLineageId; name: string; input: JsonValue; sessionId?: string },
+    options?: ClientCommandOptions,
+  ): Promise<JsonValue>;
+  cakeCall(
+    input: { lineageId: ArtifactLineageId; command: string; input: JsonValue; sessionId?: string },
+    options?: ClientCommandOptions,
+  ): Promise<JsonValue>;
+  reportViewing(input: ArtifactViewingReport, options?: ClientCommandOptions): Promise<void>;
   stateRead(
-    input: { sessionId: string; lineageId: ArtifactLineageId },
+    input: { sessionId?: string; lineageId: ArtifactLineageId },
     options?: ClientCommandOptions,
   ): Promise<ArtifactState>;
   stateReplace(
-    input: ArtifactStateReplacement & { sessionId: string },
+    input: ArtifactStateReplacement & { sessionId?: string },
     options?: ClientCommandOptions,
   ): Promise<ArtifactState>;
   stateUpdate(
-    input: ArtifactStateUpdate & { sessionId: string },
+    input: ArtifactStateUpdate & { sessionId?: string },
     options?: ClientCommandOptions,
   ): Promise<ArtifactState>;
   boardEntries(
@@ -511,7 +548,7 @@ interface ArtifactCommands {
   ): Promise<void>;
   export(sessionId: string, options?: ClientCommandOptions): Promise<string>;
   catalog(
-    input: { search?: string; offset?: number; limit?: number },
+    input: { search?: string; offset?: number; limit?: number; global?: boolean },
     options?: ClientCommandOptions,
   ): Promise<ArtifactLineagePage>;
   effective(

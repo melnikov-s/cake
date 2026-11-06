@@ -64,6 +64,7 @@ export const exportArtifacts = Effect.fn("Artifacts.export")(function* (request:
 });
 
 export const listCatalog = Effect.fn("Artifacts.listCatalog")(function* (input: {
+  readonly global?: boolean;
   readonly search?: string;
   readonly offset?: number;
   readonly limit?: number;

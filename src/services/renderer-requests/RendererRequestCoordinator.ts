@@ -116,6 +116,8 @@ class RendererRequestCoordinatorError extends Schema.TaggedError<RendererRequest
 ) {}
 
 export interface RendererRequestCoordinatorService {
+  /** Current presentation binding only; never creates or acquires a session. */
+  readonly connectionForSession: (sessionId: string) => Effect.Effect<number | undefined>;
   readonly requestWindowStateFlush: (
     connectionId: number,
   ) => Effect.Effect<void, RendererRequestCoordinatorError>;
@@ -1119,6 +1121,17 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
     );
 
     return RendererRequestCoordinator.of({
+      connectionForSession: Effect.fn("RendererRequestCoordinator.connectionForSession")(
+        (sessionId) =>
+          Effect.sync(() =>
+            bindings.get(
+              targetKey({
+                _tag: isCakeChatSessionId(sessionId) ? "CakeChatSession" : "ProjectSession",
+                sessionId,
+              }),
+            ),
+          ),
+      ),
       requestWindowStateFlush: Effect.fn("RendererRequestCoordinator.requestWindowStateFlush")(
         function* (connectionId) {
           const requestId = crypto.randomUUID();

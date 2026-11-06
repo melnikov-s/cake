@@ -699,6 +699,50 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
         ),
     },
     artifacts: {
+      runtimeStatus: (input, options) =>
+        execute(
+          "artifacts.runtimeStatus",
+          (client) => client.artifacts.runtimeStatus(input),
+          options,
+        ),
+      runtimeStart: (input, options) =>
+        execute(
+          "artifacts.runtimeStart",
+          (client) => client.artifacts.runtimeStart(input),
+          options,
+        ),
+      runtimePause: (input, options) =>
+        execute(
+          "artifacts.runtimePause",
+          (client) => client.artifacts.runtimePause(input),
+          options,
+        ),
+      runtimeResume: (input, options) =>
+        execute(
+          "artifacts.runtimeResume",
+          (client) => client.artifacts.runtimeResume(input),
+          options,
+        ),
+      runtimeRestart: (input, options) =>
+        execute(
+          "artifacts.runtimeRestart",
+          (client) => client.artifacts.runtimeRestart(input),
+          options,
+        ),
+      setGlobal: (input, options) =>
+        execute("artifacts.setGlobal", (client) => client.artifacts.setGlobal(input), options),
+      delete: (input, options) =>
+        execute("artifacts.delete", (client) => client.artifacts.delete(input), options),
+      callTool: (input, options) =>
+        execute("artifacts.callTool", (client) => client.artifacts.callTool(input), options),
+      cakeCall: (input, options) =>
+        execute("artifacts.cakeCall", (client) => client.artifacts.cakeCall(input), options),
+      reportViewing: (input, options) =>
+        execute(
+          "artifacts.reportViewing",
+          (client) => client.artifacts.reportViewing(input),
+          options,
+        ),
       stateRead: (input, options) =>
         execute("artifacts.stateRead", (client) => client.artifacts.stateRead(input), options),
       stateReplace: (input, options) =>

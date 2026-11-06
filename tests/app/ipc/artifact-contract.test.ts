@@ -21,6 +21,13 @@ function markdown(markdown = "Hello") {
 }
 
 describe("cake.artifact/v1 contract", () => {
+  it("retains bounded optional description metadata on ordinary artifacts", () => {
+    expect(
+      parseArtifactInput({ ...markdown(), description: "Reusable onboarding guide" }).description,
+    ).toBe("Reusable onboarding guide");
+    expect(() => parseArtifactInput({ ...markdown(), description: "x".repeat(4_097) })).toThrow();
+  });
+
   it("validates a bounded versioned artifact and rejects unsafe or oversized input", () => {
     expect(parseArtifactInput(markdown()).kind).toBe("markdown");
     expect(() => parseArtifactInput({ ...markdown(), protocol: "cake.artifact/v2" })).toThrow();

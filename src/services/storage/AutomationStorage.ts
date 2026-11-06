@@ -5,13 +5,21 @@ import {
   AutomationOccurrence,
   AutomationRun,
 } from "../../contracts/automations/automation-data";
+import { ArtifactSchedule } from "../../contracts/artifacts/artifact-schedules";
+import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 import { atomicWriteFile } from "./internal/atomicFile";
 
 /** Workflow metadata only. Session transcripts and resolution retain their existing authorities. */
-export const AutomationLedger = Schema.Struct({
+const SessionAutomationLedger = Schema.Struct({
   automations: Schema.Array(Automation),
   occurrences: Schema.Array(AutomationOccurrence),
   runs: Schema.Array(AutomationRun),
+});
+
+export const AutomationLedger = Schema.Struct({
+  ...SessionAutomationLedger.fields,
+  artifactSchedules: Schema.Array(ArtifactSchedule),
+  pausedArtifactIds: Schema.Array(ArtifactLineageId),
 });
 export interface AutomationLedger extends Schema.Schema.Type<typeof AutomationLedger> {}
 
@@ -23,7 +31,11 @@ export class AutomationStorage extends Context.Service<
   }
 >()("cake/services/storage/AutomationStorage") {}
 
-const StoredDocument = Schema.Struct({ version: Schema.Literal(1), data: AutomationLedger });
+const StoredDocument = Schema.Struct({ version: Schema.Literal(2), data: AutomationLedger });
+const ReadDocument = Schema.Union([
+  Schema.Struct({ version: Schema.Literal(1), data: SessionAutomationLedger }),
+  StoredDocument,
+]);
 const storageError = (operation: string, cause: unknown) =>
   new AutomationError({
     operation,
@@ -45,17 +57,26 @@ export const makeAutomationStorageLive = (stateDirectory: string) =>
             .exists(document)
             .pipe(Effect.mapError((cause) => storageError("load", cause))))
         )
-          return { automations: [], occurrences: [], runs: [] };
+          return {
+            automations: [],
+            occurrences: [],
+            runs: [],
+            artifactSchedules: [],
+            pausedArtifactIds: [],
+          };
         const text = yield* fs
           .readFileString(document)
           .pipe(Effect.mapError((cause) => storageError("load", cause)));
-        return (yield* Schema.decodeUnknownEffect(Schema.fromJsonString(StoredDocument))(text).pipe(
-          Effect.mapError((cause) => storageError("decode", cause)),
-        )).data;
+        const stored = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ReadDocument))(
+          text,
+        ).pipe(Effect.mapError((cause) => storageError("decode", cause)));
+        return stored.version === 1
+          ? { ...stored.data, artifactSchedules: [], pausedArtifactIds: [] }
+          : stored.data;
       }, lock.withPermits(1));
       const save = Effect.fn("AutomationStorage.save")(function* (ledger: AutomationLedger) {
         const encoded = yield* Schema.encodeEffect(StoredDocument)({
-          version: 1,
+          version: 2,
           data: ledger,
         }).pipe(Effect.mapError((cause) => storageError("encode", cause)));
         yield* atomicWriteFile(

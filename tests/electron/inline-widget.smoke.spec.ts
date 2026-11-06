@@ -193,6 +193,7 @@ export default function Editor() {
       frame.style.height = "400px";
       let state = { version: 1, value: { count: 2 } };
       const staleVersions: number[] = [];
+      let interactions = 0;
       Object.assign(window, {
         __cakeArtifactStaleVersions: staleVersions,
         __cakeArtifactRemote() {
@@ -210,14 +211,34 @@ export default function Editor() {
           source?: string;
           token?: string;
           type?: string;
-          value?: { id?: string; expectedVersion?: number; value?: { count: number } };
+          value?: {
+            id?: string;
+            expectedVersion?: number;
+            value?: { count: number };
+            name?: string;
+            command?: string;
+            input?: unknown;
+          };
         };
-        if (
-          message.source !== "cake-inline-widget" ||
-          message.token !== token ||
-          !message.value?.id
-        )
+        if (message.source !== "cake-inline-widget" || message.token !== token) return;
+        if (message.type === "artifact-interaction") {
+          Object.assign(window, { __cakeArtifactInteractions: ++interactions });
           return;
+        }
+        if (!message.value?.id) return;
+        if (message.type === "artifact-tool-call" || message.type === "artifact-cake-call") {
+          Object.assign(window, { __cakeArtifactCall: { type: message.type, ...message.value } });
+          frame.contentWindow?.postMessage(
+            {
+              source: "cake-artifact-host",
+              token,
+              type: "call-result",
+              value: { id: message.value.id, ok: true, result: { accepted: true } },
+            },
+            "*",
+          );
+          return;
+        }
         if (message.type === "artifact-state-replace") {
           if (message.value.expectedVersion !== state.version || !message.value.value) {
             staleVersions.push(message.value.expectedVersion!);
@@ -260,6 +281,29 @@ export default function Editor() {
       await save.press("Enter");
     } else await save.click();
     await expect(artifactFrame.getByRole("button", { name: "Saved count 3" })).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => Reflect.get(window, "__cakeArtifactInteractions")))
+      .toBeGreaterThan(0);
+    const toolResult = await artifactFrame
+      .locator("body")
+      .evaluate(async () =>
+        Reflect.get(globalThis, "cakeArtifact").callTool("increment", { amount: 1 }),
+      );
+    expect(toolResult).toEqual({ accepted: true });
+    expect(await page.evaluate(() => Reflect.get(window, "__cakeArtifactCall"))).toMatchObject({
+      type: "artifact-tool-call",
+      name: "increment",
+      input: { amount: 1 },
+    });
+    const cakeResult = await artifactFrame
+      .locator("body")
+      .evaluate(async () => Reflect.get(globalThis, "cake").call("sessions.list", {}));
+    expect(cakeResult).toEqual({ accepted: true });
+    expect(await page.evaluate(() => Reflect.get(window, "__cakeArtifactCall"))).toMatchObject({
+      type: "artifact-cake-call",
+      command: "sessions.list",
+      input: {},
+    });
     expect(await page.evaluate(() => Reflect.get(window, "__cakeArtifactSmokeSaved"))).toEqual({
       version: 2,
       value: { count: 3 },

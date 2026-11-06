@@ -25,6 +25,8 @@ import {
 } from "../../contracts/artifacts/artifact-lineage";
 import type { SessionCatalogStore } from "../stores/SessionCatalogStore";
 import { SessionIdLink } from "./ui/session-id-link";
+import { ArtifactManagement } from "./artifact-management";
+import { ArtifactRuntimeControls } from "./artifact-runtime-controls";
 import type { ArtifactDetailStore } from "../stores/ArtifactDetailStore";
 import type { ArtifactReferencePreviewStore } from "../stores/ArtifactReferencePreviewStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
@@ -105,6 +107,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
   const content = record ? (
     <ArtifactHost
       record={record}
+      viewingSurface="library"
       stateSessionId={currentLink ? activeSessionId : undefined}
       messageBoard={store.messageBoardStore}
       inlineWidgets={inlineWidgets}
@@ -127,6 +130,9 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
               </h1>
               <Badge variant="secondary">{isWorkboard ? "Workboard" : kind}</Badge>
             </div>
+            {lineage.description && (
+              <p className="mt-1 text-xs text-muted-foreground">{lineage.description}</p>
+            )}
             <p className="mt-0.5 font-mono text-xs text-muted-foreground tabular-nums">
               {isWorkboard ? (
                 "Append-only coordination log"
@@ -262,6 +268,8 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
                 {lineage.revisions.length}
               </span>
             </div>
+            <ArtifactManagement store={store} />
+            <ArtifactRuntimeControls store={store} />
             <Select
               size="sm"
               className="mt-2"

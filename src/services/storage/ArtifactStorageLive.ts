@@ -30,7 +30,7 @@ import {
   ArtifactStateReplacement,
 } from "../../contracts/artifacts/artifact-state";
 
-const CATALOG_VERSION = 4;
+const CATALOG_VERSION = 5;
 // Catalog migration reads identity/title only, never interprets historical payloads.
 const StoredArtifactHeader = Schema.Struct({
   protocol: Schema.Literal("cake.artifact/v1"),
@@ -43,8 +43,22 @@ const CurrentCatalogData = Schema.Struct({
   ...ArtifactCatalog.fields,
   states: Schema.Array(ArtifactState),
 });
+const LegacyLineage = Schema.Struct({
+  id: ArtifactLineageId,
+  createdAt: Schema.String,
+  latestRevision: ArtifactRevisionNumber,
+  revisions: Schema.Array(ArtifactRevisionMetadata).check(Schema.isMinLength(1)),
+});
+const LegacyCatalog = Schema.Struct({
+  lineages: Schema.Array(LegacyLineage),
+  links: ArtifactCatalog.fields.links,
+});
+const LegacyStateCatalog = Schema.Struct({
+  ...LegacyCatalog.fields,
+  states: Schema.Array(ArtifactState),
+});
 const LegacyCatalogV1 = Schema.Struct({
-  lineages: ArtifactCatalog.fields.lineages,
+  lineages: LegacyCatalog.fields.lineages,
   links: Schema.Array(
     Schema.Struct({
       lineageId: ArtifactLineageId,
@@ -664,6 +678,7 @@ export const makeArtifactStorageLive = (root: string) =>
                 return yield* storageError("migrate", `Artifact ${artifactId} has no revisions`);
               lineages.push({
                 id: lineageId,
+                global: false,
                 createdAt: firstRevision.publishedAt,
                 latestRevision: latestRevision.revision,
                 revisions,
@@ -744,7 +759,7 @@ export const makeArtifactStorageLive = (root: string) =>
             Effect.mapError((cause) => storageError("migrate", cause)),
           );
           current = {
-            lineages: legacy.lineages,
+            lineages: legacy.lineages.map((lineage) => ({ ...lineage, global: false })),
             links: legacy.links.map((link) => ({
               lineageId: link.lineageId,
               target: { type: "session", sessionId: link.sessionId },
@@ -753,14 +768,25 @@ export const makeArtifactStorageLive = (root: string) =>
             })),
           };
         } else if (envelope.version === 2) {
-          current = yield* Schema.decodeUnknownEffect(ArtifactCatalog)(envelope.data).pipe(
+          const legacy = yield* Schema.decodeUnknownEffect(LegacyCatalog)(envelope.data).pipe(
             Effect.mapError((cause) => storageError("load", cause)),
           );
-        } else if (envelope.version === 3 || envelope.version === CATALOG_VERSION) {
-          const decoded = yield* Schema.decodeUnknownEffect(CurrentCatalogData)(envelope.data).pipe(
-            Effect.mapError((cause) => storageError("load", cause)),
-          );
-          current = { lineages: decoded.lineages, links: decoded.links };
+          current = {
+            lineages: legacy.lineages.map((lineage) => ({ ...lineage, global: false })),
+            links: legacy.links,
+          };
+        } else if (
+          envelope.version === 3 ||
+          envelope.version === 4 ||
+          envelope.version === CATALOG_VERSION
+        ) {
+          const decoded = yield* Schema.decodeUnknownEffect(
+            envelope.version === CATALOG_VERSION ? CurrentCatalogData : LegacyStateCatalog,
+          )(envelope.data).pipe(Effect.mapError((cause) => storageError("load", cause)));
+          current = {
+            lineages: decoded.lineages.map((lineage) => ({ global: false, ...lineage })),
+            links: decoded.links,
+          };
           currentStates = decoded.states;
           if (
             new Set(currentStates.map((state) => state.lineageId)).size !== currentStates.length ||
@@ -775,7 +801,7 @@ export const makeArtifactStorageLive = (root: string) =>
             `Unsupported artifact catalog version ${envelope.version}`,
           );
         }
-        if (envelope.version < CATALOG_VERSION) {
+        if (envelope.version < 4) {
           // Backfill catalog titles without rewriting immutable source or requiring
           // unrelated historical widgets to satisfy today's browser-output contract.
           current = {
@@ -810,8 +836,8 @@ export const makeArtifactStorageLive = (root: string) =>
               }),
             ),
           };
-          yield* saveUnlocked(current);
         }
+        if (envelope.version < CATALOG_VERSION) yield* saveUnlocked(current);
         return yield* Effect.try({
           try: () => validateCatalog(current),
           catch: (cause) => storageError("load", cause),
@@ -928,6 +954,9 @@ export const makeArtifactStorageLive = (root: string) =>
           publishedAt: now,
           publishedBySessionId: input.snapshot.sessionId,
           ...(input.snapshot.title === undefined ? null : { title: input.snapshot.title }),
+          ...(input.snapshot.description === undefined
+            ? null
+            : { description: input.snapshot.description }),
           workingDirectory: input.workingDirectory,
           ...(input.restoredFromRevision === undefined
             ? null
@@ -941,6 +970,7 @@ export const makeArtifactStorageLive = (root: string) =>
             }
           : {
               id: input.lineageId,
+              global: input.global ?? false,
               createdAt: now,
               latestRevision: revision,
               revisions: [metadata],
@@ -1124,6 +1154,58 @@ export const makeArtifactStorageLive = (root: string) =>
             .remove(path.join(root, "browser-outputs", browser), { recursive: true, force: true })
             .pipe(Effect.mapError((cause) => storageError("browserOutputGC", cause)));
       });
+      const setArtifactGlobal = Effect.fn("ArtifactStorage.setArtifactGlobal")(
+        (lineageId: ArtifactLineageId, global: boolean) =>
+          lock.withPermits(1)(
+            Effect.gen(function* () {
+              const catalog = yield* loadUnlocked();
+              if (!catalog.lineages.some((lineage) => lineage.id === lineageId))
+                return yield* storageError("setArtifactGlobal", "Artifact lineage does not exist");
+              yield* saveUnlocked({
+                ...catalog,
+                lineages: catalog.lineages.map((lineage) =>
+                  lineage.id === lineageId ? { ...lineage, global } : lineage,
+                ),
+              });
+            }),
+          ),
+      );
+      const deleteArtifact = Effect.fn("ArtifactStorage.deleteArtifact")(
+        (lineageId: ArtifactLineageId) =>
+          lock.withPermits(1)(
+            Effect.gen(function* () {
+              const catalog = yield* loadUnlocked();
+              const removed = catalog.lineages.find((lineage) => lineage.id === lineageId);
+              if (!removed)
+                return yield* storageError("deleteArtifact", "Artifact lineage does not exist");
+              const retained: ArtifactCatalog = {
+                lineages: catalog.lineages.filter((lineage) => lineage.id !== lineageId),
+                links: catalog.links.filter((link) => link.lineageId !== lineageId),
+              };
+              yield* saveUnlocked(retained);
+              const retainedDigests = new Set(
+                retained.lineages.flatMap((lineage) =>
+                  lineage.revisions.map((revision) => revision.digest),
+                ),
+              );
+              const retainedBrowsers = yield* retainedBrowserDigests(retained);
+              for (const revision of removed.revisions) {
+                if (retainedDigests.has(revision.digest)) continue;
+                const target = blobPath(revision.digest);
+                yield* removeBrowserOutput(yield* browserDigestFromBlob(target), retainedBrowsers);
+                yield* fileSystem
+                  .remove(target, { force: true })
+                  .pipe(Effect.mapError((cause) => storageError("deleteArtifact", cause)));
+              }
+              yield* fileSystem
+                .remove(path.join(root, "boards", digest(lineageId)), {
+                  recursive: true,
+                  force: true,
+                })
+                .pipe(Effect.mapError((cause) => storageError("deleteArtifact", cause)));
+            }),
+          ),
+      );
       const collectUnreachable = Effect.fn("ArtifactStorage.collectUnreachable")(function* (
         input: ArtifactCollectionInput,
       ) {
@@ -1149,6 +1231,7 @@ export const makeArtifactStorageLive = (root: string) =>
             );
             const retainedLineageIds = new Set<string>([
               ...transcriptLineages,
+              ...current.lineages.filter((lineage) => lineage.global).map((lineage) => lineage.id),
               ...retainedLinks.map((link) => link.lineageId),
             ]);
             const retainedLineages = current.lineages.filter((lineage) =>
@@ -1311,6 +1394,8 @@ export const makeArtifactStorageLive = (root: string) =>
         resolveLinks,
         removeTargetLinks,
         catalog,
+        setArtifactGlobal,
+        deleteArtifact,
         collectionSnapshot,
         collectUnreachable,
         deleteBlobIfOrphaned,

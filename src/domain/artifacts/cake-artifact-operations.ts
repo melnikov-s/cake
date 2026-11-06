@@ -43,12 +43,14 @@ const artifactIdSchema = Schema.String.check(
   Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
 );
 const titleSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512));
+const descriptionSchema = Schema.optionalKey(Schema.String.check(Schema.isMaxLength(4096)));
 const markdownSchema = Schema.String.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(MAX_ARTIFACT_INPUT_BYTES),
 );
 
 const widgetSchema = Schema.Struct({
+  description: descriptionSchema,
   language: Schema.optionalKey(inlineWidgetLanguageSchema),
   id: artifactIdSchema,
   title: titleSchema,
@@ -64,6 +66,7 @@ const widgetSchema = Schema.Struct({
 });
 
 const htmlPresentSchema = Schema.Struct({
+  description: descriptionSchema,
   id: artifactIdSchema,
   title: titleSchema,
   html: markdownSchema,
@@ -71,12 +74,14 @@ const htmlPresentSchema = Schema.Struct({
 });
 
 const markdownCreateSchema = Schema.Struct({
+  description: descriptionSchema,
   id: artifactIdSchema,
   title: Schema.optionalKey(titleSchema),
   kind: Schema.Literal("markdown"),
   markdown: markdownSchema,
 });
 const fileCreateSchema = Schema.Struct({
+  description: descriptionSchema,
   id: artifactIdSchema,
   title: Schema.optionalKey(titleSchema),
   kind: Schema.Literal("file"),
@@ -92,6 +97,7 @@ const artifactReferenceSchema = Schema.String.check(
 );
 const artifactResolveSchema = Schema.Struct({ reference: artifactReferenceSchema });
 const widgetInstanceFields = {
+  description: descriptionSchema,
   id: artifactIdSchema,
   title: titleSchema,
   initialState: jsonValueSchema,
@@ -109,6 +115,7 @@ const widgetInstantiateSchema = Schema.Union([
 ]);
 const expectedRevisionSchema = Schema.Int.check(Schema.isGreaterThan(0));
 const artifactUpdateSchema = Schema.Struct({
+  description: descriptionSchema,
   lineageId: artifactIdSchema,
   expectedRevision: expectedRevisionSchema,
   title: Schema.optionalKey(titleSchema),
@@ -124,18 +131,21 @@ const artifactReplaceSchema = Schema.Union([
     lineageId: artifactIdSchema,
     expectedRevision: expectedRevisionSchema,
     title: Schema.optionalKey(titleSchema),
+    description: descriptionSchema,
     markdown: markdownSchema,
   }),
   Schema.Struct({
     lineageId: artifactIdSchema,
     expectedRevision: expectedRevisionSchema,
     title: Schema.optionalKey(titleSchema),
+    description: descriptionSchema,
     path: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
   }),
   Schema.Struct({
     lineageId: artifactIdSchema,
     expectedRevision: expectedRevisionSchema,
     title: Schema.optionalKey(titleSchema),
+    description: descriptionSchema,
     instructions: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
   }),
 ]);
@@ -154,6 +164,7 @@ const artifactSummarySchema = Schema.Struct({
   exactRef: ArtifactProjectionMetadata.fields.exactRef,
   kind: ArtifactProjectionMetadata.fields.kind,
   title: Schema.String.check(Schema.isMaxLength(256)),
+  description: descriptionSchema,
 });
 const artifactListOutputSchema = Schema.Struct({
   total: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
@@ -192,6 +203,7 @@ function artifactPage(metadata: readonly ArtifactProjectionMetadata[], input: Ag
       exactRef: artifact.exactRef,
       kind: artifact.kind,
       title: agentListLabel(artifact.title ?? artifact.lineageId),
+      ...(artifact.description === undefined ? null : { description: artifact.description }),
     })),
   };
 }
@@ -317,6 +329,7 @@ export function createCakeArtifactOperations(
             revision: 1,
             kind: "html",
             title: draft.title,
+            ...(draft.description === undefined ? null : { description: draft.description }),
             payload: {
               html: draft.html,
               ...(draft.height === undefined ? null : { height: draft.height }),
@@ -523,6 +536,8 @@ export function createCakeArtifactOperations(
           };
           if (draft.title) artifact = { ...artifact, title: draft.title };
         }
+        if (draft.description !== undefined)
+          artifact = { ...artifact, description: draft.description };
         const record = await persist(artifact, sessionId);
         appendPointer(record, pointerOrigin(context));
         return (await resolveArtifact(`cake://artifact/${record.artifact.id}@r1`)).metadata;
@@ -579,6 +594,8 @@ export function createCakeArtifactOperations(
           fallback: { markdown },
         };
         if (update.title !== undefined) artifact = { ...artifact, title: update.title };
+        if (update.description !== undefined)
+          artifact = { ...artifact, description: update.description };
         const record = await persist(artifact, sessionId);
         appendPointer(record, pointerOrigin(context));
         return (
@@ -714,7 +731,11 @@ export function createCakeArtifactOperations(
           if (update.title) artifact = { ...artifact, title: update.title };
         }
         // The publishing session is revision provenance; the global lineage identity stays stable.
-        artifact = { ...artifact, sessionId };
+        artifact = {
+          ...artifact,
+          sessionId,
+          ...(update.description === undefined ? null : { description: update.description }),
+        };
         const record = await persist(artifact, sessionId, stagedState);
         appendPointer(record, pointerOrigin(context));
         const resolved = await resolveArtifact(
@@ -872,6 +893,7 @@ export function createCakeArtifactOperations(
             revision: 1,
             kind: "widget",
             title: instance.title,
+            ...(instance.description === undefined ? null : { description: instance.description }),
             payload,
             fallback: instance.fallback,
             interaction: { mode: "present" },
@@ -970,6 +992,7 @@ export function createCakeArtifactOperations(
             revision: 1,
             kind: "widget",
             title: widget.title,
+            ...(widget.description === undefined ? null : { description: widget.description }),
             payload: {
               language: generated.language,
               source: generated.source,

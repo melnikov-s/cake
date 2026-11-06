@@ -22,6 +22,8 @@ import type {
 } from "../../contracts/artifacts/artifact-state";
 
 interface PublishArtifactRevision {
+  /** Initial placement; later publication preserves the lineage's placement. */
+  readonly global?: boolean;
   readonly stagedState?: ArtifactStagedState;
   readonly lineageId: ArtifactLineageId;
   readonly expectedLatestRevision: number;
@@ -97,6 +99,14 @@ export interface ArtifactStorageService {
     target: ArtifactLinkTarget,
   ) => Effect.Effect<void, ArtifactStorageError>;
   readonly catalog: () => Effect.Effect<ArtifactCatalog, ArtifactStorageError>;
+  readonly setArtifactGlobal: (
+    lineageId: ArtifactLineageId,
+    global: boolean,
+  ) => Effect.Effect<void, ArtifactStorageError>;
+  /** Explicitly deletes all revisions, links and mutable state, regardless of reachability. */
+  readonly deleteArtifact: (
+    lineageId: ArtifactLineageId,
+  ) => Effect.Effect<void, ArtifactStorageError>;
   readonly collectionSnapshot: () => Effect.Effect<ArtifactCatalogSnapshot, ArtifactStorageError>;
   /** Atomically drops metadata only when the catalog still matches the verified snapshot. */
   readonly collectUnreachable: (

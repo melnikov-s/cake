@@ -1,6 +1,7 @@
 import { DateTime, Effect } from "effect";
 import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
+import { ArtifactRuntime } from "../../services/artifact-runtime/ArtifactRuntime";
 import { ArtifactStorageError } from "../../contracts/storage/artifact-storage-errors";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import {
@@ -23,6 +24,7 @@ import {
 import type { ArtifactStagedState } from "../../contracts/artifacts/artifact-state";
 
 export interface CreateArtifactInput {
+  readonly global?: boolean;
   readonly stagedState?: ArtifactStagedState;
   readonly sessionId: string;
   readonly lineageId: ArtifactLineageId;
@@ -112,6 +114,7 @@ export const create = Effect.fn("Artifacts.create")(function* (input: CreateArti
           snapshot: input.snapshot,
           workingDirectory: input.workingDirectory,
           stagedState: input.stagedState,
+          global: input.global,
         },
         {
           lineageId: input.lineageId,
@@ -153,6 +156,36 @@ const requireEffectiveLink = Effect.fn("Artifacts.requireEffectiveLink")(functio
   return link;
 });
 
+const reloadRunningRuntime = Effect.fn("Artifacts.reloadRunningRuntime")(
+  function* (published: ArtifactRevision) {
+    // Repository-only workflows need no worker host; production supplies the runtime.
+    const runtime = yield* Effect.serviceOption(ArtifactRuntime);
+    if (runtime._tag === "None") return;
+    if (!(yield* runtime.value.status(published.lineageId)).running) return;
+    const snapshot = published.snapshot;
+    if (snapshot.kind === "widget" && snapshot.payload.runtime) {
+      yield* runtime.value.lifecycle({
+        target: {
+          lineageId: published.lineageId,
+          revision: published.metadata.revision,
+          runtime: snapshot.payload.runtime,
+        },
+        event: "start",
+        callingSessionId: published.metadata.publishedBySessionId,
+      });
+    } else {
+      yield* runtime.value.stop(
+        published.lineageId,
+        "stop",
+        published.metadata.publishedBySessionId,
+      );
+    }
+  },
+  // The revision is already committed. Runtime status retains its own reload failure;
+  // do not misreport source publication as failed or invite a stale-CAS retry.
+  Effect.catch((error) => Effect.logWarning("Published artifact runtime reload failed", error)),
+);
+
 export const publish = Effect.fn("Artifacts.publish")(function* (input: PublishArtifactInput) {
   yield* requireEffectiveLink(input.sessionId, input.lineageId);
   const current = yield* (yield* ArtifactStorage).read(input.lineageId);
@@ -170,7 +203,7 @@ export const publish = Effect.fn("Artifacts.publish")(function* (input: PublishA
       operation: "publish",
       message: "Artifact snapshot must identify the publishing session, lineage, and next revision",
     });
-  return yield* (yield* ArtifactStorage).publish({
+  const published = yield* (yield* ArtifactStorage).publish({
     lineageId: input.lineageId,
     expectedLatestRevision: input.expectedLatestRevision,
     snapshot: input.snapshot,
@@ -180,6 +213,8 @@ export const publish = Effect.fn("Artifacts.publish")(function* (input: PublishA
       ? null
       : { restoredFromRevision: input.restoredFromRevision }),
   });
+  yield* reloadRunningRuntime(published);
+  return published;
 });
 
 export const restore = Effect.fn("Artifacts.restore")(function* (input: {
@@ -203,7 +238,7 @@ export const restore = Effect.fn("Artifacts.restore")(function* (input: {
       message: "Message-board entries cannot be restored or replaced",
     });
   const nextRevision = input.expectedLatestRevision + 1;
-  return yield* storage.publish({
+  const published = yield* storage.publish({
     lineageId: input.lineageId,
     expectedLatestRevision: input.expectedLatestRevision,
     snapshot: {
@@ -214,6 +249,8 @@ export const restore = Effect.fn("Artifacts.restore")(function* (input: {
     workingDirectory: input.workingDirectory,
     restoredFromRevision: input.sourceRevision,
   });
+  yield* reloadRunningRuntime(published);
+  return published;
 });
 
 export const readExactRevision = Effect.fn("Artifacts.readExactRevision")(function* (
@@ -341,6 +378,7 @@ export const setSelection = Effect.fn("Artifacts.setSelection")(function* (
 });
 
 export const searchGlobalLineages = Effect.fn("Artifacts.searchGlobalLineages")(function* (input?: {
+  readonly global?: boolean;
   readonly search?: string;
   readonly offset?: number;
   readonly limit?: number;
@@ -350,16 +388,19 @@ export const searchGlobalLineages = Effect.fn("Artifacts.searchGlobalLineages")(
   const offset = Math.max(0, input?.offset ?? 0);
   const limit = Math.min(100, Math.max(1, input?.limit ?? 50));
   const summaries = catalog.lineages
+    .filter((lineage) => input?.global === undefined || lineage.global === input.global)
     .map((lineage) => {
       const latest = lineage.revisions.find(
         (revision) => revision.revision === lineage.latestRevision,
       )!;
       return {
         id: lineage.id,
+        global: lineage.global,
         createdAt: lineage.createdAt,
         latestRevision: lineage.latestRevision,
         latest,
         ...(latest.title === undefined ? null : { title: latest.title }),
+        ...(latest.description === undefined ? null : { description: latest.description }),
         stableRef: formatArtifactRef({ lineageId: lineage.id }),
       };
     })
@@ -368,6 +409,7 @@ export const searchGlobalLineages = Effect.fn("Artifacts.searchGlobalLineages")(
       return (
         summary.id.toLocaleLowerCase().includes(search) ||
         summary.title?.toLocaleLowerCase().includes(search) ||
+        summary.description?.toLocaleLowerCase().includes(search) ||
         summary.latest.kind.toLocaleLowerCase().includes(search)
       );
     })
@@ -396,15 +438,36 @@ export const lineageDetail = Effect.fn("Artifacts.lineageDetail")(function* (
   return {
     lineage: {
       id: lineage.id,
+      global: lineage.global,
       createdAt: lineage.createdAt,
       latestRevision: lineage.latestRevision,
       latest,
       ...(latest.title === undefined ? null : { title: latest.title }),
+      ...(latest.description === undefined ? null : { description: latest.description }),
       stableRef: formatArtifactRef({ lineageId }),
     },
     links: catalog.links.filter((link) => link.lineageId === lineageId),
     stableRef: formatArtifactRef({ lineageId }),
   };
+});
+
+export const setArtifactGlobal = Effect.fn("Artifacts.setArtifactGlobal")(function* (
+  lineageId: ArtifactLineageId,
+  global: boolean,
+) {
+  const storage = yield* ArtifactStorage;
+  yield* requireLineage(yield* storage.catalog(), lineageId);
+  yield* storage.setArtifactGlobal(lineageId, global);
+  return (yield* lineageDetail(lineageId)).lineage;
+});
+
+/** Runtime owners stop any artifact runtime before invoking this repository deletion. */
+export const deleteArtifact = Effect.fn("Artifacts.deleteArtifact")(function* (
+  lineageId: ArtifactLineageId,
+) {
+  const storage = yield* ArtifactStorage;
+  yield* requireLineage(yield* storage.catalog(), lineageId);
+  yield* storage.deleteArtifact(lineageId);
 });
 
 export const paginatedHistory = Effect.fn("Artifacts.paginatedHistory")(function* (
@@ -474,10 +537,12 @@ export const resolveReferenceMetadata = Effect.fn("Artifacts.resolveReferenceMet
   return {
     lineage: {
       id: lineage.id,
+      global: lineage.global,
       createdAt: lineage.createdAt,
       latestRevision: lineage.latestRevision,
       latest,
       ...(latest.title === undefined ? null : { title: latest.title }),
+      ...(latest.description === undefined ? null : { description: latest.description }),
       stableRef,
     },
     revision,

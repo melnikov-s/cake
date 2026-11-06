@@ -18,6 +18,8 @@ import { splitContextReminders } from "../../../src/services/pi/runtime/session-
 import type { CakeArtifactV1 } from "../../../src/contracts/artifacts/artifact-contract";
 import { ArtifactPublicationConflict } from "../../../src/contracts/storage/artifact-storage-errors";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
+import { ArtifactRuntime } from "../../../src/services/artifact-runtime/ArtifactRuntime";
+import type { ArtifactRuntimeTarget } from "../../../src/contracts/artifacts/artifact-runtime";
 import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import {
@@ -117,6 +119,153 @@ const visible = (sessionId: string) =>
     );
 
 describe("artifact lineage workflows", () => {
+  effectIt.effect(
+    "publication and restore reload only already-running logic and retain widget data",
+    () =>
+      Effect.gen(function* () {
+        const layer = yield* Effect.promise(() => makeLayer(() => []));
+        const id = lineageId("live-widget");
+        const descriptor = (source: string) => ({ source, tools: [] });
+        const widget = (number: number, source?: string): CakeArtifactV1 => ({
+          protocol: "cake.artifact/v1",
+          id,
+          sessionId: "creator",
+          revision: number,
+          kind: "widget",
+          fallback: { markdown: "Widget" },
+          payload: {
+            language: "html",
+            source: "<div/>",
+            brief: "Widget",
+            browser: { digest: "b".repeat(64) },
+            ...(source === undefined ? null : { runtime: descriptor(source) }),
+          },
+        });
+        let running = false;
+        const reloaded: ArtifactRuntimeTarget[] = [];
+        const stopped: string[] = [];
+        const runtime = Layer.mock(ArtifactRuntime, {
+          status: () => Effect.succeed({ lineageId: id, revision: null, running, lastError: null }),
+          lifecycle: (input) =>
+            Effect.sync(() => {
+              reloaded.push(input.target);
+              return {
+                lineageId: id,
+                revision: input.target.revision,
+                running: true,
+                lastError: null,
+              };
+            }),
+          stop: (lineage) =>
+            Effect.sync(() => {
+              stopped.push(lineage);
+              return { lineageId: lineage, revision: null, running: false, lastError: null };
+            }),
+        });
+        yield* Effect.gen(function* () {
+          yield* workflows.create({
+            sessionId: "creator",
+            lineageId: id,
+            snapshot: widget(1, "first"),
+            workingDirectory: "/project",
+            stagedState: { expectedVersion: 0, value: { count: 42 } },
+          });
+          yield* workflows.publish({
+            sessionId: "creator",
+            lineageId: id,
+            expectedLatestRevision: 1,
+            snapshot: widget(2, "second"),
+            workingDirectory: "/project",
+          });
+          expect(reloaded).toEqual([]);
+          running = true;
+          yield* workflows.readExactRevision(id, revision(1));
+          expect(reloaded).toEqual([]);
+          yield* workflows.publish({
+            sessionId: "creator",
+            lineageId: id,
+            expectedLatestRevision: 2,
+            snapshot: widget(3, "third"),
+            workingDirectory: "/project",
+          });
+          expect(reloaded.map((target) => [target.revision, target.runtime.source])).toEqual([
+            [3, "third"],
+          ]);
+          yield* workflows.restore({
+            sessionId: "creator",
+            lineageId: id,
+            expectedLatestRevision: 3,
+            sourceRevision: revision(1),
+            workingDirectory: "/project",
+          });
+          expect(reloaded.map((target) => [target.revision, target.runtime.source])).toEqual([
+            [3, "third"],
+            [4, "first"],
+          ]);
+          yield* workflows.publish({
+            sessionId: "creator",
+            lineageId: id,
+            expectedLatestRevision: 4,
+            snapshot: widget(5),
+            workingDirectory: "/project",
+          });
+          expect(stopped).toEqual([id]);
+          expect(yield* (yield* ArtifactStorage).readState(id)).toMatchObject({
+            version: 1,
+            value: { count: 42 },
+          });
+        }).pipe(Effect.provide(Layer.merge(layer, runtime)));
+      }),
+  );
+
+  effectIt.effect(
+    "global placement is independent of links and descriptions participate in catalog search",
+    () =>
+      Effect.gen(function* () {
+        const layer = yield* Effect.promise(() => makeLayer(() => []));
+        yield* Effect.gen(function* () {
+          const id = lineageId("reusable");
+          yield* workflows.create({
+            sessionId: "creator",
+            lineageId: id,
+            global: true,
+            snapshot: { ...snapshot(id, "creator", 1, "Guide"), description: "Team onboarding" },
+            workingDirectory: "/project",
+          });
+          yield* workflows.create({
+            sessionId: "creator",
+            lineageId: lineageId("ordinary"),
+            snapshot: snapshot("ordinary", "creator", 1, "Ordinary"),
+            workingDirectory: "/project",
+          });
+          const catalog = yield* workflows.searchGlobalLineages({
+            global: true,
+            search: "onboarding",
+          });
+          expect(catalog.items.map((item) => item.id)).toEqual([id]);
+          expect(catalog.items[0]).toMatchObject({ global: true, description: "Team onboarding" });
+          expect(
+            (yield* workflows.searchGlobalLineages({ global: false })).items.map((item) => item.id),
+          ).toEqual(["ordinary"]);
+          yield* workflows.removeSessionLinks("creator");
+          expect((yield* workflows.lineageDetail(id)).lineage.global).toBe(true);
+          expect((yield* workflows.lineageDetail(id)).links).toEqual([]);
+          expect(
+            (yield* workflows.resolveReferenceMetadata(formatArtifactRef({ lineageId: id })))
+              .lineage.description,
+          ).toBe("Team onboarding");
+          expect(yield* workflows.setArtifactGlobal(id, false)).toMatchObject({
+            id,
+            global: false,
+          });
+          yield* workflows.deleteArtifact(id);
+          expect((yield* workflows.searchGlobalLineages()).items.map((item) => item.id)).toEqual([
+            "ordinary",
+          ]);
+        }).pipe(Effect.provide(layer));
+      }),
+  );
+
   effectIt.effect(
     "submission context resolves exact linked metadata without granting another conversation access",
     () =>

@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeFileSystem } from "@effect/platform-node-shared";
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { HttpClient, HttpClientResponse, type HttpClientRequest } from "effect/unstable/http";
+import * as artifactCommands from "../../../src/domain/artifacts/artifactCommands";
+import { ArtifactRuntime } from "../../../src/services/artifact-runtime/ArtifactRuntime";
+import { ArtifactViews } from "../../../src/services/artifacts/ArtifactViews";
+import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
+import type { InternalInput } from "../../../src/contracts/conversations/internal-input";
 import { it } from "@effect/vitest";
 import { TestClock } from "effect/testing";
 import {
@@ -183,6 +189,14 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   const received: Array<{ connectionId: number; event: CakeEvent }> = [];
   const deliveries = yield* Queue.unbounded<{ connectionId: number; event: CakeEvent }>();
   const runtimeCreates: string[] = [];
+  const internalInputs: InternalInput[] = [];
+  const httpRequests: HttpClientRequest.HttpClientRequest[] = [];
+  const gatewayCalls: Array<{
+    sessionId: string;
+    command: string;
+    input: JsonObject;
+    fullControl: boolean;
+  }> = [];
   const inspections: string[] = [];
   const listReads = {
     ids: [] as string[],
@@ -294,7 +308,40 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
             return active.has(sessionId);
           },
           snapshot: async () => ({ ...snapshot, sessionId, streaming: active.has(sessionId) }),
-          prompt: async (text, delivery, attachments) => {
+          callCakeOperation: async (command, input) => {
+            gatewayCalls.push({ sessionId, command, input, fullControl: false });
+            if (command !== "settings.open") throw new Error(`Unknown Cake operation: ${command}`);
+            Schema.decodeUnknownSync(Schema.Struct({ page: Schema.Literal("general") }))(input, {
+              onExcessProperty: "error",
+            });
+            return { opened: true, sessionId };
+          },
+          callCakeTool: async (command, input) => {
+            gatewayCalls.push({ sessionId, command, input, fullControl: true });
+            if (command !== "settings.open") throw new Error(`Unknown Cake operation: ${command}`);
+            Schema.decodeUnknownSync(Schema.Struct({ page: Schema.Literal("general") }))(input, {
+              onExcessProperty: "error",
+            });
+            const result = { opened: true, sessionId };
+            return {
+              text: JSON.stringify(result),
+              content: [],
+              details: result,
+              structuredContent: result,
+            };
+          },
+          prompt: async (
+            text,
+            delivery,
+            attachments,
+            _markdown,
+            _turnId,
+            _presentationMode,
+            _title,
+            _responseMode,
+            internal,
+          ) => {
+            if (internal) internalInputs.push(internal);
             await Effect.runPromise(
               Queue.offer(prompts, { sessionId, text, delivery, attachments }),
             );
@@ -359,6 +406,22 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   let storedSchedules: readonly ScheduledMessage[] = [];
   const dependencies = Layer.mergeAll(
     WorkflowTestLive,
+    NodePath.layer,
+    Layer.mock(ArtifactRuntime, {}),
+    Layer.mock(ArtifactViews, {}),
+    Layer.mock(ArtifactStorage, {}),
+    Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        httpRequests.push(request);
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            new Response("teapot", { status: 418, headers: { "x-test": "response" } }),
+          ),
+        );
+      }),
+    ),
     Layer.mock(CakeChatDurable, {
       assistantContextSessionId: () => Effect.sync(() => companionContextSessionId),
     }),
@@ -568,6 +631,21 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
       Effect.promise(() => invoke(command, input, signal())),
     direct: (command: string, input: JsonValue, sender: agentControl.AgentControlCaller = caller) =>
       agentControl.invoke(command, input, sender).pipe(Effect.provide(context)),
+    background: (command: string, input: JsonValue) =>
+      agentControl.invoke(command, input).pipe(Effect.provide(context)),
+    artifact: (command: string, input: JsonValue, callingSessionId?: string) =>
+      artifactCommands
+        .invoke(command, input, {
+          artifactId: "bridge-artifact",
+          ...(callingSessionId ? { callingSessionId } : null),
+        })
+        .pipe(
+          Effect.provide(Context.omit(FileSystem.FileSystem)(context)),
+          Effect.provide(NodeFileSystem.layer),
+        ),
+    internalInputs,
+    httpRequests,
+    gatewayCalls,
     state: () => Context.get(context, ApplicationState).snapshot(),
     pause: () => {
       pauseSave = true;
@@ -586,6 +664,240 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     protectedSessions,
   };
 });
+
+it.effect("trusted artifact bridge discovers canonical commands and validates help", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const discovery = yield* f.artifact("commands.list", {});
+    for (const command of [
+      "projects.list",
+      "settings.list",
+      "artifacts.globals",
+      "filesystem.read",
+      "network.request",
+      "chat.prompt",
+    ]) {
+      expect(JSON.stringify(discovery)).toContain(`"command":"${command}"`);
+    }
+    expect(yield* f.artifact("commands.help", { command: "filesystem.write" })).toMatchObject({
+      ok: true,
+      commands: [{ command: "filesystem.write", parameters: { required: ["path", "content"] } }],
+    });
+    expect(yield* f.artifact("commands.help", { command: "not-a-command" })).toMatchObject({
+      ok: false,
+    });
+  }),
+);
+
+it.effect(
+  "trusted artifact bridge uses canonical backend mutations without a fabricated session",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const before = [...f.runtimeCreates];
+      expect(yield* f.artifact("projects.list", {})).toMatchObject({
+        ok: true,
+        command: "projects.list",
+      });
+      expect(
+        yield* f.artifact("session-labels.add", { name: "Artifact", color: "blue" }),
+      ).toMatchObject({
+        ok: true,
+        command: "session-labels.add",
+        label: { name: "Artifact", scope: "global" },
+      });
+      expect(f.state().globalSessionLabels).toMatchObject([{ name: "Artifact", color: "blue" }]);
+      expect(f.runtimeCreates).toEqual(before);
+      expect(f.requestCalls).toEqual([]);
+      expect(yield* f.artifact("sessions.reports", {})).toMatchObject({
+        ok: false,
+        error: "Reports require an actual calling Session.",
+      });
+      expect((yield* f.artifact("window.not-a-backend-command", {}).pipe(Effect.result))._tag).toBe(
+        "Failure",
+      );
+    }),
+);
+
+it.effect(
+  "trusted artifact filesystem supports text and binary read/write/list on absolute backend paths",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const directory = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(join(tmpdir(), "cake-artifact-bridge-"))),
+        (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+      );
+      const path = join(directory, "value.txt");
+      expect(
+        yield* f.artifact("filesystem.write", { path, content: "hello artifact" }),
+      ).toMatchObject({ ok: true, bytesWritten: 14 });
+      expect(yield* f.artifact("filesystem.read", { path })).toMatchObject({
+        ok: true,
+        encoding: "utf8",
+        content: "hello artifact",
+      });
+      expect(
+        yield* f.artifact("filesystem.write", { path, content: "AP+A", encoding: "base64" }),
+      ).toMatchObject({ bytesWritten: 3 });
+      expect(yield* f.artifact("filesystem.read", { path, encoding: "base64" })).toMatchObject({
+        content: "AP+A",
+      });
+      expect(yield* f.artifact("filesystem.list", { path: directory })).toMatchObject({
+        entries: ["value.txt"],
+      });
+      for (const [command, input] of [
+        ["filesystem.read", { path: "relative.txt" }],
+        ["filesystem.write", { path, content: "%%%", encoding: "base64" }],
+        ["filesystem.read", { path, extra: true }],
+      ] as const)
+        expect((yield* f.artifact(command, input).pipe(Effect.result))._tag).toBe("Failure");
+    }),
+);
+
+it.effect(
+  "trusted artifact network requests preserve headers and HTTP failure responses without a session",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      expect(
+        yield* f.artifact("network.request", {
+          url: "https://example.test/endpoint",
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer test" },
+          body: "{}",
+        }),
+      ).toMatchObject({ ok: true, status: 418, headers: { "x-test": "response" }, body: "teapot" });
+      expect(f.httpRequests).toMatchObject([
+        {
+          method: "POST",
+          url: "https://example.test/endpoint",
+          headers: { "content-type": "application/json", authorization: "Bearer test" },
+        },
+      ]);
+      expect(
+        yield* f.artifact("network.request", {
+          url: "https://example.test",
+          responseEncoding: "base64",
+        }),
+      ).toMatchObject({ body: "dGVhcG90" });
+      expect(
+        (yield* f.artifact("network.request", { url: "file:///private/path" }).pipe(Effect.result))
+          ._tag,
+      ).toBe("Failure");
+      expect(f.requestCalls).toEqual([]);
+    }),
+);
+
+it.effect(
+  "artifact chat prompts require an explicit target and retain application provenance",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const before = [...f.runtimeCreates];
+      expect(
+        (yield* f.artifact("chat.prompt", { text: "No destination" }).pipe(Effect.result))._tag,
+      ).toBe("Failure");
+      expect(f.runtimeCreates).toEqual(before);
+      expect(
+        yield* f.artifact("chat.prompt", { sessionId: target, text: "Artifact update" }),
+      ).toMatchObject({ ok: true, sessionId: target, status: "admitted" });
+      const prompt = yield* Queue.take(f.prompts);
+      expect(prompt.sessionId).toBe(target);
+      expect(prompt.text).toContain("Artifact-authored application input, not a user message.");
+      expect(prompt.text).not.toContain("callingSessionId");
+      expect(f.internalInputs).toMatchObject([
+        {
+          _tag: "AgentUpdate",
+          update: { text: "Artifact update", source: { href: "cake://artifact/bridge-artifact" } },
+        },
+      ]);
+      expect(
+        yield* f.artifact(
+          "chat.prompt",
+          { sessionId: target, text: "Agent-origin artifact update" },
+          source,
+        ),
+      ).toMatchObject({ ok: true, sessionId: target });
+      const agentPrompt = yield* Queue.take(f.prompts);
+      expect(agentPrompt.text).toContain(`"callingSessionId":"${source}"`);
+      expect(agentPrompt.sessionId).toBe(target);
+      expect(f.runtimeCreates.every((id) => id === source || id === target)).toBe(true);
+      expect(f.requestCalls).toEqual([]);
+    }),
+);
+
+it.effect(
+  "agent artifact commands discover and invoke the same validated bridge without a fake caller",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const before = [...f.runtimeCreates];
+      expect(
+        yield* f.background("artifacts.commands", { command: "network.request" }),
+      ).toMatchObject({ ok: true, commands: [{ command: "network.request" }] });
+      expect(
+        yield* f.background("artifacts.command", {
+          lineageId: "bridge-artifact",
+          command: "network.request",
+          input: { url: "https://example.test" },
+        }),
+      ).toMatchObject({ ok: true, status: 418 });
+      expect(
+        (yield* f
+          .background("artifacts.command", {
+            lineageId: "bridge-artifact",
+            command: "network.request",
+            input: { url: "file:///private" },
+          })
+          .pipe(Effect.result))._tag,
+      ).toBe("Failure");
+      expect(f.runtimeCreates).toEqual(before);
+      expect(f.gatewayCalls).toEqual([]);
+    }),
+);
+
+it.effect(
+  "artifact bridge uses only the actual calling session's canonical gateway for native commands",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture(true);
+      expect(
+        (yield* f.artifact("settings.open", { page: "general" }).pipe(Effect.result))._tag,
+      ).toBe("Failure");
+      expect(f.gatewayCalls).toEqual([]);
+      expect(yield* f.artifact("settings.open", { page: "general" }, source)).toEqual({
+        opened: true,
+        sessionId: source,
+      });
+      expect(
+        (yield* f.artifact("settings.open", { page: "invalid" }, source).pipe(Effect.result))._tag,
+      ).toBe("Failure");
+      expect(yield* f.artifact("settings.open", { page: "general" }, CAKE_CHAT_SESSION_ID)).toEqual(
+        { opened: true, sessionId: CAKE_CHAT_SESSION_ID },
+      );
+      expect(f.gatewayCalls).toEqual([
+        {
+          sessionId: source,
+          command: "settings.open",
+          input: { page: "general" },
+          fullControl: false,
+        },
+        {
+          sessionId: source,
+          command: "settings.open",
+          input: { page: "invalid" },
+          fullControl: false,
+        },
+        {
+          sessionId: CAKE_CHAT_SESSION_ID,
+          command: "settings.open",
+          input: { page: "general" },
+          fullControl: true,
+        },
+      ]);
+    }),
+);
 
 it.effect(
   "compacts an authorized target through backend controls and awaits runtime completion",
@@ -1735,7 +2047,13 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const f = yield* fixture(true);
-      let ledger: AutomationLedger = { automations: [], occurrences: [], runs: [] };
+      let ledger: AutomationLedger = {
+        automations: [],
+        occurrences: [],
+        runs: [],
+        artifactSchedules: [],
+        pausedArtifactIds: [],
+      };
       const automationContext = yield* Layer.build(
         AutomationRecords.layer.pipe(
           Layer.provide(

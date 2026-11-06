@@ -30,7 +30,44 @@ Saved lineage state is advisory. Do not infer unavailable widget-local state or 
 
 This requires a validated prototype module manifest; legacy widgets fail explicitly. Revision/state drift requires deliberate recapture, never latest/all-options fallback. Screenshots, other alternatives and generation history are not attached. Source-only retrieval is not visual verification and requires no screenshot; request visual evidence separately when needed.
 
-Permanent Project Chat/global Cake Chat expose linking, inline presentation, saved-state read, capture and selected-source operations, not publication or broad inspection.
+Permanent Project Chat/global Cake Chat expose linking, inline presentation, saved-state read,
+capture and selected-source operations, plus artifact metadata/global discovery and semantic
+tool invocation. Widget generation remains the Project Session workflow.
+
+## Global artifacts and semantic tools
+
+Use `artifacts.globals` to discover globally retained artifacts and `artifacts.viewing`
+to identify visible/active references in the correct window, including fullscreen.
+Do not assume the creator's artifact is what the user means by "this". Inspect one
+identity with `artifacts.inspect`, discover its typed operations with `artifacts.tools`,
+then invoke `artifacts.call({lineageId,name,input})`. These handlers work with the
+view closed; do not inspect or overwrite private saved state as a substitute API.
+
+`artifacts.set-global({lineageId,global:true})` retains any artifact kind independently
+of creator-session deletion. Global does not mean installed app. Use the existing
+Library, pinning and fullscreen presentation. `artifacts.delete` stops execution,
+removes schedules and deletes Cake-owned artifact data; it does not delete arbitrary
+outside files. Titles/descriptions are ordinary artifact metadata.
+
+Executable widgets can publish trusted backend logic/typed tools with
+`artifacts.runtime.publish`. Their view is disposable; independent QuickJS logic
+and artifact-scoped persistence are backend-owned. Both view and runtime have the
+canonical Cake-command bridge, including supported filesystem/network operations
+and explicit-destination, artifact-attributed chat. Agent calls carry the actual
+calling session; background calls invent no session. Discover bridge schemas with
+`artifacts.commands`; `artifacts.command` has the same supported bridge semantics.
+This is not a promise that every Pi tool is a Cake command.
+
+`artifacts.schedules.configure/list/remove` use the existing durable automation
+worker to invoke handlers without an LLM or conversation message. Overdue work
+catches up once after restart; backend-off means no execution. Runtime pause stops
+logic and pauses background until explicit resume. Opening/start/restart does not
+silently resume schedules; tools remain discoverable. Check runtime/schedule
+receipts rather than claiming success from configuration alone. Historical views
+must not activate duplicate side effects. See the maintained
+[authoring API](../development/global-artifact-authoring.md) for source, lifecycle,
+SDK, persistence and schedule examples. Never claim a live PR integration from the
+deterministic example's fake network/chat tests.
 
 ## Skill widget templates
 

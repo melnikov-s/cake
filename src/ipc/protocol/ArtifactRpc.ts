@@ -9,6 +9,16 @@ import {
   MessageBoardError,
 } from "../../contracts/artifacts/message-board";
 import { ArtifactError } from "../../contracts/artifacts/artifact-data";
+import { ArtifactRuntimeError } from "../../contracts/artifacts/artifact-runtime";
+import {
+  ArtifactIdentityInput,
+  ArtifactToolCallInput,
+  ArtifactCakeCallInput,
+  ArtifactSetGlobalInput,
+  ArtifactExecutionStatus,
+} from "../../contracts/artifacts/global-artifact-control";
+import { ArtifactViewingReport } from "../../contracts/artifacts/artifact-viewing";
+import { ArtifactLineageSummary } from "../../contracts/artifacts/artifact-lineage";
 import {
   ArtifactLineageDetail,
   ArtifactLineageId,
@@ -77,18 +87,83 @@ const LinkMutation = Schema.Struct({
 });
 
 export const ArtifactRpc = RpcGroup.make(
+  Rpc.make("artifacts.setGlobal", {
+    payload: ArtifactSetGlobalInput,
+    success: ArtifactLineageSummary,
+    error: ArtifactOperationError,
+  }),
+  Rpc.make("artifacts.delete", {
+    payload: ArtifactIdentityInput,
+    success: Schema.Void,
+    error: ArtifactRuntimeError,
+  }),
+  Rpc.make("artifacts.runtimeStatus", {
+    payload: ArtifactIdentityInput,
+    success: ArtifactExecutionStatus,
+    error: ArtifactRuntimeError,
+  }),
+  Rpc.make("artifacts.runtimeStart", {
+    payload: ArtifactIdentityInput,
+    success: ArtifactExecutionStatus,
+    error: ArtifactRuntimeError,
+  }),
+  Rpc.make("artifacts.runtimePause", {
+    payload: ArtifactIdentityInput,
+    success: ArtifactExecutionStatus,
+    error: ArtifactRuntimeError,
+  }),
+  Rpc.make("artifacts.runtimeResume", {
+    payload: ArtifactIdentityInput,
+    success: ArtifactExecutionStatus,
+    error: ArtifactRuntimeError,
+  }),
+  Rpc.make("artifacts.runtimeRestart", {
+    payload: ArtifactIdentityInput,
+    success: ArtifactExecutionStatus,
+    error: ArtifactRuntimeError,
+  }),
+  Rpc.make("artifacts.callTool", {
+    payload: Schema.Struct({
+      ...ArtifactToolCallInput.fields,
+      sessionId: Schema.optionalKey(SessionId),
+    }),
+    success: Schema.Json,
+    error: ArtifactRuntimeError,
+  }),
+  Rpc.make("artifacts.cakeCall", {
+    payload: Schema.Struct({
+      ...ArtifactCakeCallInput.fields,
+      sessionId: Schema.optionalKey(SessionId),
+    }),
+    success: Schema.Json,
+    error: ArtifactRuntimeError,
+  }),
+  Rpc.make("artifacts.reportViewing", {
+    payload: ArtifactViewingReport,
+    success: Schema.Void,
+    error: ArtifactRuntimeError,
+  }),
   Rpc.make("artifacts.stateRead", {
-    payload: Schema.Struct({ sessionId: SessionId, lineageId: ArtifactLineageId }),
+    payload: Schema.Struct({
+      sessionId: Schema.optionalKey(SessionId),
+      lineageId: ArtifactLineageId,
+    }),
     success: ArtifactState,
     error: ArtifactOperationError,
   }),
   Rpc.make("artifacts.stateReplace", {
-    payload: Schema.Struct({ sessionId: SessionId, ...ArtifactStateReplacement.fields }),
+    payload: Schema.Struct({
+      sessionId: Schema.optionalKey(SessionId),
+      ...ArtifactStateReplacement.fields,
+    }),
     success: ArtifactState,
     error: ArtifactOperationError,
   }),
   Rpc.make("artifacts.stateUpdate", {
-    payload: Schema.Struct({ sessionId: SessionId, ...ArtifactStateUpdate.fields }),
+    payload: Schema.Struct({
+      sessionId: Schema.optionalKey(SessionId),
+      ...ArtifactStateUpdate.fields,
+    }),
     success: ArtifactState,
     error: ArtifactOperationError,
   }),
@@ -120,6 +195,7 @@ export const ArtifactRpc = RpcGroup.make(
   Rpc.make("artifacts.catalog", {
     payload: Schema.Struct({
       search: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
+      global: Schema.optionalKey(Schema.Boolean),
       ...Pagination,
     }),
     success: ArtifactLineagePage,

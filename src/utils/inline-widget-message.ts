@@ -18,6 +18,11 @@ const inlineWidgetMessageBase = {
 export const inlineWidgetMessageSchema = Schema.Union([
   Schema.Struct({
     ...inlineWidgetMessageBase,
+    type: Schema.Literal("artifact-interaction"),
+    value: Schema.Boolean,
+  }),
+  Schema.Struct({
+    ...inlineWidgetMessageBase,
     type: Schema.Literal("ready"),
     value: Schema.Boolean,
   }),
@@ -35,6 +40,24 @@ export const inlineWidgetMessageSchema = Schema.Union([
       id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
       command: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
       input: Schema.Record(Schema.String, Schema.Json),
+    }),
+  }),
+  Schema.Struct({
+    ...inlineWidgetMessageBase,
+    type: Schema.Literal("artifact-tool-call"),
+    value: Schema.Struct({
+      id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+      name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+      input: Schema.Json,
+    }),
+  }),
+  Schema.Struct({
+    ...inlineWidgetMessageBase,
+    type: Schema.Literal("artifact-cake-call"),
+    value: Schema.Struct({
+      id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+      command: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+      input: Schema.Json,
     }),
   }),
   Schema.Struct({

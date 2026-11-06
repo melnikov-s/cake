@@ -73,4 +73,7 @@ code change.
 - A Cake Chat Session is an application-level Cake Session backed by Pi. Keep
   it separate from Project Session lists and use curated Cake control intents
   for application navigation and coordination.
-- Model-presented artifacts are data and remain validated or sandboxed.
+- Artifact content remains validated and views sandboxed. Explicit backend artifact
+  logic is trusted for host functionality through canonical Cake commands; independent
+  runtime lifetime is separate from disposable views and from Pi sessions. See the
+  [artifact protocol](../architecture/s4-artifact-protocol.md).

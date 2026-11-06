@@ -70,6 +70,7 @@ const revision = (id: string, value: number): ArtifactRevision => ({
 });
 const summary = (id: string): ArtifactLineageSummary => ({
   id: decodeArtifactLineageId(id),
+  global: false,
   title: `Report ${id}`,
   createdAt: revision(id, 1).metadata.publishedAt,
   latestRevision: decodeArtifactRevisionNumber(2),

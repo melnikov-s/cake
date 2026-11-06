@@ -1,4 +1,5 @@
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
+import { globalArtifactTestLayer } from "../helpers/globalArtifactTestLayer";
 import { Effect, Layer, Stream } from "effect";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { PiModels } from "../../../src/services/pi/PiModels";
@@ -33,6 +34,7 @@ export const makeHeadlessProjectSessionRuntimeMechanismTestLayer = (
   integrations: ProjectSessionRuntimeIntegrations = defaultIntegrations,
 ) =>
   Layer.mergeAll(
+    globalArtifactTestLayer,
     Layer.mock(TaskInputStorage, {
       resolve: (_sessionId, attachments) => Effect.succeed(attachments),
       authorizeForward: () => Effect.succeed([]),

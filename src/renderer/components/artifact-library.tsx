@@ -51,6 +51,15 @@ export const ArtifactLibrary = observer(function ArtifactLibrary({
               }}
             />
           </div>
+          <Select
+            size="sm"
+            aria-label="Artifact scope"
+            value={store.globalOnly ? "global" : "all"}
+            onChange={(event) => store.setGlobalOnly(event.target.value === "global")}
+          >
+            <option value="all">All artifacts</option>
+            <option value="global">Global artifacts</option>
+          </Select>
           <div className="flex items-center justify-between gap-2">
             <Select
               className="flex-1"
@@ -102,14 +111,18 @@ export const ArtifactLibrary = observer(function ArtifactLibrary({
                   description={
                     lineage.latest?.kind === "message-board"
                       ? (store.boardPreviews[lineage.id] ?? "Shared family coordination")
-                      : `Updated ${displayDate(lineage.latest?.publishedAt ?? lineage.createdAt)} · r${lineage.latestRevision}`
+                      : (lineage.description ??
+                        `Updated ${displayDate(lineage.latest?.publishedAt ?? lineage.createdAt)} · r${lineage.latestRevision}`)
                   }
                   badge={
-                    <Badge variant="secondary">
-                      {lineage.latest?.kind === "message-board"
-                        ? "Workboard"
-                        : lineage.latest?.kind}
-                    </Badge>
+                    <span className="flex items-center gap-1">
+                      {lineage.global && <Badge variant="secondary">Global</Badge>}
+                      <Badge variant="secondary">
+                        {lineage.latest?.kind === "message-board"
+                          ? "Workboard"
+                          : lineage.latest?.kind}
+                      </Badge>
+                    </span>
                   }
                   active={store.detailStore.selectedLineageId === lineage.id}
                   aria-current={

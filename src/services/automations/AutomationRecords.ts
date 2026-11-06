@@ -35,6 +35,8 @@ export class AutomationRecords extends Context.Service<
         automations: [],
         occurrences: [],
         runs: [],
+        artifactSchedules: [],
+        pausedArtifactIds: [],
       });
       const gate = yield* Semaphore.make(1);
       const initialize = Effect.fn("AutomationRecords.initialize")(function* () {

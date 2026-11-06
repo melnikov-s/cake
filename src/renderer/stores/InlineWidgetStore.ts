@@ -66,7 +66,7 @@ export class InlineWidgetStore extends Store {
     Record<
       string,
       {
-        sessionId: string;
+        sessionId?: string;
         lineageId: ArtifactLineageId;
         current?: ArtifactState;
         error?: string;
@@ -74,9 +74,9 @@ export class InlineWidgetStore extends Store {
       }
     >
   >({});
-  bindArtifactState(id: string, sessionId: string, lineageId: ArtifactLineageId) {
+  bindArtifactState(id: string, sessionId: string | undefined, lineageId: ArtifactLineageId) {
     const current = this.artifactStates[id];
-    if (current?.sessionId === sessionId && current.lineageId === lineageId) return;
+    if (current?.sessionId === sessionId && current?.lineageId === lineageId) return;
     this.artifactStates[id] = observable({ sessionId, lineageId, loading: false });
     void this.readArtifactState(id).catch(() => undefined);
   }
@@ -88,15 +88,35 @@ export class InlineWidgetStore extends Store {
       if (!lineageId || state.lineageId === lineageId)
         void this.readArtifactState(id).catch(() => undefined);
   }
+  private artifactScope(id: string) {
+    const binding = this.artifactStates[id];
+    if (!binding) throw new Error("This widget has no artifact scope");
+    const lineageId = binding.lineageId;
+    return binding.sessionId ? { lineageId, sessionId: binding.sessionId } : { lineageId };
+  }
+
+  async callArtifactTool(id: string, name: string, input: JsonValue) {
+    return ClientContext.consume(this)!.artifacts.callTool(
+      { ...this.artifactScope(id), name, input },
+      { signal: this.signal },
+    );
+  }
+
+  async callArtifactCake(id: string, command: string, input: JsonValue) {
+    return ClientContext.consume(this)!.artifacts.cakeCall(
+      { ...this.artifactScope(id), command, input },
+      { signal: this.signal },
+    );
+  }
+
   async readArtifactState(id: string) {
     const binding = this.artifactStates[id];
     if (!binding) throw new Error("This widget has no linked artifact state scope");
     binding.loading = true;
     try {
-      const state = await ClientContext.consume(this)!.artifacts.stateRead(
-        { sessionId: binding.sessionId, lineageId: binding.lineageId },
-        { signal: this.signal },
-      );
+      const state = await ClientContext.consume(this)!.artifacts.stateRead(this.artifactScope(id), {
+        signal: this.signal,
+      });
       if (!this.signal.aborted && this.artifactStates[id] === binding) {
         if (!binding.current || binding.current.version <= state.version) binding.current = state;
         binding.error = undefined;
@@ -116,7 +136,7 @@ export class InlineWidgetStore extends Store {
       throw new Error("Artifact state is not hydrated; read before saving");
     try {
       const state = await ClientContext.consume(this)!.artifacts.stateReplace(
-        { sessionId: binding.sessionId, lineageId: binding.lineageId, expectedVersion, value },
+        { ...this.artifactScope(id), expectedVersion, value },
         { signal: this.signal },
       );
       if (

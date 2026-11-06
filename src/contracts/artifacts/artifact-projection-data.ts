@@ -16,6 +16,7 @@ export interface ArtifactProjectionFile extends Schema.Schema.Type<typeof Artifa
 export const ArtifactProjectionMetadata = Schema.Struct({
   lineageId: Schema.String,
   title: Schema.optionalKey(Schema.String),
+  description: Schema.optionalKey(Schema.String),
   kind: Schema.String,
   selectedRevision: Schema.Int,
   latestRevision: Schema.Int,

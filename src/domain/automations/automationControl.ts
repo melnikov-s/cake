@@ -16,13 +16,18 @@ import * as runs from "./automationRuns";
 import { toJsonValue } from "../../utils/to-json-value";
 
 const forwardInputs = Effect.fn("Automations.forwardInputs")(function* (
-  callerSessionId: string,
+  callerSessionId: string | undefined,
   attachments: readonly Attachment[],
 ) {
   const inputs = yield* TaskInputStorage;
   const parts = yield* Effect.forEach(attachments, (attachment) =>
     Effect.gen(function* () {
       if (attachment.kind !== "input") return [attachment];
+      if (!callerSessionId)
+        return yield* definitions.automationError(
+          "forwardInputs",
+          "Forwarding task inputs requires an actual calling Session.",
+        );
       const grants = yield* inputs.authorizeForward(callerSessionId, [attachment.id]);
       return grants.map((reference) => ({
         kind: "forwarded-input" as const,
@@ -60,7 +65,7 @@ function inspectMetadata(info: AutomationInspection) {
 }
 
 export const invoke = Effect.fn("Automations.agentControl")(
-  function* (command: string, input: JsonValue, callerSessionId: string) {
+  function* (command: string, input: JsonValue, callerSessionId?: string) {
     const invocation = yield* Schema.decodeUnknownEffect(AutomationSessionInvocation)(
       { name: command, arguments: input },
       { onExcessProperty: "error" },
@@ -79,6 +84,11 @@ export const invoke = Effect.fn("Automations.agentControl")(
           ...(yield* projects.infoForAgent(invocation.arguments)),
         });
       case "sessions.create": {
+        if (!callerSessionId)
+          return yield* definitions.automationError(
+            "createSession",
+            "An automation run Session is required.",
+          );
         const run = yield* runs.runForSession(callerSessionId);
         const occurrence = (yield* AutomationRecords)
           .snapshot()
@@ -230,7 +240,7 @@ export const invoke = Effect.fn("Automations.agentControl")(
           command,
           result: yield* runs.trigger(invocation.arguments.automationId, {
             _tag: "Manual",
-            requestedBySessionId: callerSessionId,
+            ...(callerSessionId ? { requestedBySessionId: callerSessionId } : null),
           }),
         });
       case "automations.cancel-run":
@@ -273,6 +283,11 @@ export const invoke = Effect.fn("Automations.agentControl")(
       case "memory.zoom":
       case "memory.write": {
         // Scope and provenance come from the actual runtime caller, never model-supplied IDs.
+        if (!callerSessionId)
+          return yield* definitions.automationError(
+            "memory",
+            "Automation memory requires an actual run Session; use automations.memory with an explicit automationId for inspection.",
+          );
         const run = yield* runs.runForSession(callerSessionId);
         const automation = yield* definitions.lookup(run.automationId);
         const memory = yield* OptMemory;

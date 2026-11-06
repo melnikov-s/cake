@@ -12,24 +12,30 @@ import { ClientEvents } from "../../services/clients/ClientEvents";
 import { resolveEffectiveReference } from "./artifactWorkflows";
 
 const requireWidget = Effect.fn("ArtifactState.requireWidget")(function* (
-  sessionId: string,
+  sessionId: string | undefined,
   lineageId: ArtifactLineageId,
 ) {
-  const effective = yield* resolveEffectiveReference(sessionId, `cake://artifact/${lineageId}`);
-  if (effective.revision.snapshot.kind !== "widget")
+  const storage = yield* ArtifactStorage;
+  const lineage = (yield* storage.catalog()).lineages.find((item) => item.id === lineageId);
+  const revision = lineage?.global
+    ? yield* storage.read(lineageId)
+    : sessionId === undefined
+      ? undefined
+      : (yield* resolveEffectiveReference(sessionId, `cake://artifact/${lineageId}`)).revision;
+  if (revision?.snapshot.kind !== "widget")
     return yield* new ArtifactStateError({
       message: "Only linked widget artifacts own mutable state",
     });
 });
 export const read = Effect.fn("ArtifactState.read")(function* (input: {
-  sessionId: string;
+  sessionId?: string;
   lineageId: ArtifactLineageId;
 }) {
   yield* requireWidget(input.sessionId, input.lineageId);
   return yield* (yield* ArtifactStorage).readState(input.lineageId);
 });
 export const replace = Effect.fn("ArtifactState.replace")(function* (
-  input: ArtifactStateReplacement & { sessionId: string },
+  input: ArtifactStateReplacement & { sessionId?: string },
 ) {
   yield* requireWidget(input.sessionId, input.lineageId);
   const state = yield* (yield* ArtifactStorage).replaceState(input);
@@ -40,7 +46,7 @@ export const replace = Effect.fn("ArtifactState.replace")(function* (
   return state;
 });
 export const update = Effect.fn("ArtifactState.update")(function* (
-  input: ArtifactStateUpdate & { sessionId: string },
+  input: ArtifactStateUpdate & { sessionId?: string },
 ) {
   const current = yield* read(input);
   if (current.version !== input.expectedVersion)

@@ -14,6 +14,7 @@ export class ArtifactLibraryStore extends Store<{
 }> {
   search = "";
   kind = "all";
+  globalOnly = false;
   offset = 0;
   limit = 50;
   total = 0;
@@ -54,7 +55,8 @@ export class ArtifactLibraryStore extends Store<{
     return this.visibleLineageIds
       .map((lineageId) => this.props.model.find(lineageId))
       .filter((lineage) => lineage !== undefined)
-      .filter((lineage) => this.kind === "all" || lineage.latest?.kind === this.kind);
+      .filter((lineage) => this.kind === "all" || lineage.latest?.kind === this.kind)
+      .filter((lineage) => !this.globalOnly || lineage.global);
   }
 
   open(sessionId?: string) {
@@ -68,6 +70,12 @@ export class ArtifactLibraryStore extends Store<{
 
   setKind(kind: string) {
     this.kind = kind;
+  }
+
+  setGlobalOnly(globalOnly: boolean) {
+    this.globalOnly = globalOnly;
+    this.offset = 0;
+    void this.load();
   }
 
   receiveBoardChange(lineageId?: string) {
@@ -122,10 +130,15 @@ export class ArtifactLibraryStore extends Store<{
     this.loading = true;
     this.error = undefined;
     try {
-      const page = await this.client.artifacts.catalog(
-        { search: this.search, offset: this.offset, limit: this.limit },
-        { signal: AbortSignal.any([this.signal, controller.signal]) },
-      );
+      const query = {
+        search: this.search,
+        offset: this.offset,
+        limit: this.limit,
+      };
+      const scopeQuery = this.globalOnly ? { ...query, global: true } : query;
+      const page = await this.client.artifacts.catalog(scopeQuery, {
+        signal: AbortSignal.any([this.signal, controller.signal]),
+      });
       if (request !== this.request || this.signal.aborted) return;
       for (const item of page.items) this.props.model.upsertSummary(item);
       this.visibleLineageIds = page.items.map((item) => item.id);

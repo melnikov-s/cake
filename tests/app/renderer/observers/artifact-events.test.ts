@@ -82,6 +82,7 @@ describe("observeArtifactEvents", () => {
     };
     const lineage: ArtifactLineageSummary = {
       id,
+      global: false,
       createdAt: record.createdAt,
       latestRevision: revision.metadata.revision,
       latest: revision.metadata,

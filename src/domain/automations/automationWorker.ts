@@ -6,6 +6,8 @@ import { RuntimeRecoveryStorage } from "../../services/storage/RuntimeRecoverySt
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { matchesEvent } from "./automationPolicy";
 import { acquireSession, drain, settle, trigger } from "./automationRuns";
+import type { ArtifactSchedule } from "../../contracts/artifacts/artifact-schedules";
+import { runArtifactSchedulePass } from "./artifactSchedules";
 
 export const acceptEvent = Effect.fn("Automations.acceptEvent")(function* (
   event: AutomationSourceEvent,
@@ -43,7 +45,16 @@ export const acceptEvent = Effect.fn("Automations.acceptEvent")(function* (
   }
 });
 
-export const runSchedulePass = Effect.fn("Automations.runSchedulePass")(function* () {
+export const runSchedulePass = Effect.fn("Automations.runSchedulePass")(function* <
+  A = void,
+  E = never,
+  R = never,
+>(invokeArtifactSchedule?: (schedule: ArtifactSchedule) => Effect.Effect<A, E, R>) {
+  if (invokeArtifactSchedule)
+    yield* runArtifactSchedulePass(invokeArtifactSchedule).pipe(
+      Effect.tapError((error) => Effect.logError("Artifact schedule pass failed", error)),
+      Effect.ignore,
+    );
   const now = DateTime.formatIso(yield* DateTime.now);
   const records = yield* AutomationRecords;
   const due = records
@@ -134,7 +145,9 @@ export const recover = Effect.fn("Automations.recover")(function* () {
   }
 });
 
-export const runScheduleWorker = runSchedulePass().pipe(Effect.repeat(Schedule.spaced("1 second")));
+export const runScheduleWorker = <A, E, R>(
+  invokeArtifactSchedule: (schedule: ArtifactSchedule) => Effect.Effect<A, E, R>,
+) => runSchedulePass(invokeArtifactSchedule).pipe(Effect.repeat(Schedule.spaced("1 second")));
 export const runEventWorker = Effect.gen(function* () {
   const events = yield* AutomationEvents;
   yield* events.events().pipe(Stream.runForEach(acceptEvent));

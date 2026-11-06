@@ -45,6 +45,8 @@ import { createProjectChatInstructionOperations } from "../domain/projects/proje
 import { createCakeChatInstructionOperations } from "../domain/cake-chats/cake-chat-instruction-operations";
 import { createCakeChatProjectOperations } from "../domain/projects/cake-chat-project-operations";
 import { createCakeArtifactOperations } from "../domain/artifacts/cake-artifact-operations";
+import { createGlobalArtifactOperations } from "../domain/artifacts/cake-global-artifact-operations";
+import { jsonObjectSchema } from "../contracts/serialization/json-contract";
 import { createCakeBrowserOperations } from "../domain/browser/cake-browser-operations";
 import { createCakeInterviewOperations } from "../domain/interviews/cake-interview-operations";
 import { createMessageBoardOperations } from "../domain/artifacts/cake-message-board-operations";
@@ -128,6 +130,13 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
             ...options.sessionPluginControl,
             generate: options.generateInlineWidget,
           })
+        : []),
+      ...(!options.auxiliary && options.tools === undefined
+        ? createGlobalArtifactOperations((command, input, signal) =>
+            bridge
+              .api()
+              .invokeAppControl(command, Schema.decodeUnknownSync(jsonObjectSchema)(input), signal),
+          )
         : []),
       ...createCakeArtifactOperations(bridge.host, {
         ...options,
@@ -218,6 +227,12 @@ export function coordinatorCakeOperations(
             generate: options.generateInlineWidget,
           })
         : []),
+      ...createGlobalArtifactOperations((command, input, signal) =>
+        control.invoke(
+          { name: command, arguments: Schema.decodeUnknownSync(jsonObjectSchema)(input) },
+          signal,
+        ),
+      ),
       ...createCakeArtifactOperations(undefined, {
         ...options,
         persistArtifact:
@@ -230,6 +245,10 @@ export function coordinatorCakeOperations(
           access?.fullControl === true ||
           [
             "html.present",
+            "artifacts.list",
+            "artifacts.search",
+            "artifacts.resolve-reference",
+            "artifacts.history",
             "artifacts.link",
             "artifacts.present",
             "artifacts.state.read",

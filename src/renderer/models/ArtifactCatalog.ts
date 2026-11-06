@@ -24,10 +24,10 @@ const revisionSnapshot = (lineageId: string, value: ArtifactRevisionValue) => ({
   digest: value.metadata.digest,
   kind: value.metadata.kind,
   publishedAt: value.metadata.publishedAt,
+  description: value.metadata.description,
   publishedBySessionId: value.metadata.publishedBySessionId,
   workingDirectory: value.metadata.workingDirectory,
   restoredFromRevision: value.metadata.restoredFromRevision,
-  snapshot: value.snapshot,
 });
 
 const linkSnapshot = (value: ArtifactLinkValue) => ({
@@ -70,6 +70,8 @@ export class ArtifactCatalog extends Model {
           createdAt: summary.createdAt,
           latestRevision: summary.latestRevision,
           title: summary.title,
+          description: summary.description,
+          global: summary.global,
           stableRef: summary.stableRef,
         });
         this.lineages.push(lineage);
@@ -79,6 +81,8 @@ export class ArtifactCatalog extends Model {
           lineage.latestRevision = summary.latestRevision;
           lineage.title = summary.title;
         }
+        lineage.description = summary.description;
+        lineage.global = summary.global;
         lineage.stableRef = summary.stableRef;
       }
       const existing = lineage.revision(summary.latest.revision);
@@ -89,12 +93,24 @@ export class ArtifactCatalog extends Model {
         digest: summary.latest.digest,
         kind: summary.latest.kind,
         publishedAt: summary.latest.publishedAt,
+        description: summary.latest.description,
         publishedBySessionId: summary.latest.publishedBySessionId,
         workingDirectory: summary.latest.workingDirectory,
         restoredFromRevision: summary.latest.restoredFromRevision,
       };
       if (existing) Object.assign(existing, metadata);
       else lineage.revisions.push(ArtifactRevision.create(metadata));
+    });
+  }
+
+  remove(lineageId: string) {
+    batch(() => {
+      for (let index = this.associations.length - 1; index >= 0; index -= 1)
+        if (this.associations[index]!.lineage?.id === lineageId) this.associations.splice(index, 1);
+      for (let index = this.links.length - 1; index >= 0; index -= 1)
+        if (this.links[index]!.lineageId === lineageId) this.links.splice(index, 1);
+      const index = this.lineages.findIndex((lineage) => lineage.id === lineageId);
+      if (index >= 0) this.lineages.splice(index, 1);
     });
   }
 
@@ -134,6 +150,7 @@ export class ArtifactCatalog extends Model {
           digest: metadata.digest,
           kind: metadata.kind,
           publishedAt: metadata.publishedAt,
+          description: metadata.description,
           publishedBySessionId: metadata.publishedBySessionId,
           workingDirectory: metadata.workingDirectory,
           restoredFromRevision: metadata.restoredFromRevision,
@@ -180,9 +197,15 @@ export class ArtifactCatalog extends Model {
       // Revision bytes are immutable. Reconciliation must not replace an already-loaded
       // payload and remount widget hosts (including fullscreen) for link-only changes.
       if (existing) {
-        if (!existing.snapshot) applySnapshot(existing, revisionSnapshot(value.lineageId, value));
-      } else
-        lineage.revisions.push(ArtifactRevision.create(revisionSnapshot(value.lineageId, value)));
+        if (!existing.snapshot) {
+          applySnapshot(existing, revisionSnapshot(value.lineageId, value));
+          existing.snapshot = value.snapshot;
+        }
+      } else {
+        const revision = ArtifactRevision.create(revisionSnapshot(value.lineageId, value));
+        revision.snapshot = value.snapshot;
+        lineage.revisions.push(revision);
+      }
     });
     return this.find(value.lineageId)!;
   }

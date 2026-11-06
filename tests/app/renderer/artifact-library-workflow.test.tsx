@@ -37,6 +37,7 @@ const metadata = (value: number): ArtifactRevisionMetadata => ({
 });
 const summary = (lineageId = reportId, latest = 2): ArtifactLineageSummary => ({
   id: lineageId,
+  global: false,
   title: lineageId === reportId ? "Quarterly report" : "Appendix",
   createdAt: metadata(1).publishedAt,
   latestRevision: revisionNumber(latest),
@@ -85,12 +86,16 @@ function gate<T>() {
   return { promise, resolve };
 }
 
-function renderLibrary(artifacts: Partial<Client["artifacts"]> = {}) {
+function renderLibrary(
+  artifacts: Partial<Client["artifacts"]> = {},
+  inlineWidgets: Partial<Client["inlineWidgets"]> = {},
+) {
   const fixture = createRendererStoreFixture({
     sessions: [
       sessionSummary({ sessionId: "session-1", projectPath: "/project", familyId: "family-1" }),
     ],
     client: {
+      inlineWidgets,
       artifacts: {
         catalog: async () => page(),
         detail: async (id) => detail(id),
@@ -148,6 +153,153 @@ async function confirmRestore(user: ReturnType<typeof userEvent.setup>) {
 afterEach(cleanup);
 
 describe("Artifact library workflow", () => {
+  it("opens paused runtime views without resuming background work, exposes lifecycle controls and failures", async () => {
+    const widgetMetadata = { ...metadata(2), kind: "widget" as const };
+    const widget = { ...summary(), latest: widgetMetadata, global: true };
+    const status = {
+      lineageId: reportId,
+      revision: 2,
+      running: false,
+      lastError: null,
+      executable: true,
+      backgroundPaused: true,
+      schedules: [],
+    };
+    const runtimeStart = vi.fn<Client["artifacts"]["runtimeStart"]>(async () => ({
+      ...status,
+      running: true,
+    }));
+    const runtimeResume = vi.fn<Client["artifacts"]["runtimeResume"]>(async () => ({
+      ...status,
+      running: true,
+      backgroundPaused: false,
+    }));
+    const runtimePause = vi.fn<Client["artifacts"]["runtimePause"]>(async () => status);
+    const runtimeRestart = vi.fn<Client["artifacts"]["runtimeRestart"]>(async () => {
+      throw new Error("Runtime failed to restart");
+    });
+    await using fixture = renderLibrary(
+      {
+        catalog: async () => page([widget]),
+        detail: async () => ({ ...detail(), lineage: widget, links: [] }),
+        history: async () => ({
+          items: [widgetMetadata],
+          offset: 0,
+          limit: 50,
+          total: 1,
+          hasMore: false,
+        }),
+        readExact: async () => ({
+          lineageId: reportId,
+          metadata: widgetMetadata,
+          snapshot: {
+            protocol: "cake.artifact/v1",
+            id: reportId,
+            sessionId: "deleted-creator",
+            revision: 2,
+            title: widget.title,
+            kind: "widget",
+            payload: {
+              language: "html",
+              source: "<p>Counter</p>",
+              brief: "Counter",
+              generationSessionId: "private",
+              browser: { digest: "b".repeat(64) },
+              runtime: { source: "return { tools: {} };", tools: [] },
+            },
+            fallback: { markdown: "Counter" },
+          },
+        }),
+        stateRead: async () => ({ lineageId: reportId, version: 0, value: null }),
+        runtimeStatus: async () => status,
+        runtimeStart,
+        runtimeResume,
+        runtimePause,
+        runtimeRestart,
+      },
+      { open: async () => ({ token: "runtime-view", url: "cake-widget://document/runtime-view" }) },
+    );
+    await openReport(fixture.user);
+    await screen.findByText("Background paused");
+    expect(runtimeStart).not.toHaveBeenCalled();
+    expect(runtimeResume).not.toHaveBeenCalled();
+    await fixture.user.click(screen.getByRole("button", { name: "Start runtime" }));
+    await waitFor(() =>
+      expect(runtimeStart).toHaveBeenCalledWith({ lineageId: reportId }, expect.anything()),
+    );
+    expect(screen.getByText("Background paused")).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Resume background" }));
+    await screen.findByText("Running");
+    expect(runtimeResume).toHaveBeenCalledWith({ lineageId: reportId }, expect.anything());
+    await fixture.user.click(screen.getByRole("button", { name: "Pause background" }));
+    await screen.findByText("Background paused");
+    await fixture.user.click(screen.getByRole("button", { name: "Restart runtime" }));
+    await screen.findByText("Runtime failed to restart");
+  });
+
+  it("retains a global artifact, filters global scope, and deletes through the same backend operation", async () => {
+    let retained = { ...summary(), description: "Quarterly analysis" };
+    let deleted = false;
+    const setGlobal = vi.fn<Client["artifacts"]["setGlobal"]>(async ({ global }) => {
+      retained = { ...retained, global };
+      return retained;
+    });
+    const remove = vi.fn<Client["artifacts"]["delete"]>(async () => {
+      deleted = true;
+    });
+    const catalog = vi.fn<Client["artifacts"]["catalog"]>(async () =>
+      page(deleted ? [] : [retained]),
+    );
+    await using fixture = renderLibrary({
+      catalog,
+      detail: async () => ({ ...detail(), lineage: retained }),
+      setGlobal,
+      delete: remove,
+    });
+    await openReport(fixture.user);
+    expect(screen.getAllByText("Quarterly analysis").length).toBeGreaterThan(0);
+    const retention = screen.getByRole("switch", { name: "Keep artifact globally" });
+    expect(retention.getAttribute("aria-checked")).toBe("false");
+    await fixture.user.click(retention);
+    await waitFor(() => expect(retention.getAttribute("aria-checked")).toBe("true"));
+    expect(setGlobal).toHaveBeenCalledWith(
+      { lineageId: reportId, global: true },
+      expect.anything(),
+    );
+    await fixture.user.selectOptions(
+      screen.getByRole("combobox", { name: "Artifact scope" }),
+      "global",
+    );
+    await waitFor(() =>
+      expect(catalog).toHaveBeenLastCalledWith(
+        expect.objectContaining({ global: true }),
+        expect.anything(),
+      ),
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Delete artifact" }));
+    await fixture.user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete artifact" }),
+    );
+    await waitFor(() =>
+      expect(remove).toHaveBeenCalledWith({ lineageId: reportId }, expect.anything()),
+    );
+    await screen.findByText("No artifacts match this view.");
+  });
+
+  it("shows backend retention failure without pretending the global setting changed", async () => {
+    await using fixture = renderLibrary({
+      setGlobal: async () => {
+        throw new Error("Retention failed");
+      },
+    });
+    await openReport(fixture.user);
+    await fixture.user.click(screen.getByRole("switch", { name: "Keep artifact globally" }));
+    await screen.findByText("Retention failed");
+    expect(
+      screen.getByRole("switch", { name: "Keep artifact globally" }).getAttribute("aria-checked"),
+    ).toBe("false");
+  });
+
   it("searches and filters the library, surfaces catalog failure, and retries from the search field", async () => {
     const table = { ...summary(appendixId), latest: { ...metadata(2), kind: "table" as const } };
     const catalog = vi

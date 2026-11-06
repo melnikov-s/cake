@@ -19,6 +19,7 @@ export const observeArtifactEvents = (runtime: Runtime, root: RootStore) =>
         }
         if (event.type === "renderer-events-ready") {
           root.inlineWidgetStore.refreshArtifactState();
+          root.artifactViewingStore.refresh();
           root.props.projection.artifacts.invalidate();
           // Reconcile content after stream subscription/reconnection, not only after opening.
           root.artifactLibraryStore.receiveBoardChange();

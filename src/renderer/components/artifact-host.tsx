@@ -16,10 +16,16 @@ import { MediaArtifact } from "./media-artifact";
 import { TableArtifact } from "./table-artifact";
 import { MessageBoardArtifact } from "./message-board-artifact";
 import type { MessageBoardStore } from "../stores/MessageBoardStore";
+import { useArtifactViewing } from "../hooks/use-artifact-viewing";
+import {
+  decodeArtifactLineageId,
+  decodeArtifactRevisionNumber,
+} from "../../contracts/artifacts/artifact-lineage";
 
 interface ArtifactHostProps {
   record: ArtifactRecord;
   presentation?: "workspace" | "inline" | "fullscreen" | "side-panel";
+  viewingSurface?: "library";
   onClose?(): void;
   wrapContent?(content: ReactNode): ReactNode;
   inlineWidgets?: InlineWidgetStore;
@@ -31,6 +37,7 @@ interface ArtifactHostProps {
 export const ArtifactHost = observer(function ArtifactHost({
   record,
   presentation = "workspace",
+  viewingSurface,
   onClose,
   wrapContent,
   inlineWidgets,
@@ -40,6 +47,13 @@ export const ArtifactHost = observer(function ArtifactHost({
 }: ArtifactHostProps) {
   const artifact = record.artifact;
   const [fullscreen, setFullscreen] = useState(false);
+  const viewing = useArtifactViewing({
+    lineageId: decodeArtifactLineageId(artifact.id),
+    revision: decodeArtifactRevisionNumber(artifact.revision),
+    surface:
+      viewingSurface ??
+      (presentation === "workspace" || presentation === "side-panel" ? "pane" : presentation),
+  });
   const closeFullscreen = () => {
     setFullscreen(false);
     if (presentation !== "side-panel") onClose?.();
@@ -83,6 +97,7 @@ export const ArtifactHost = observer(function ArtifactHost({
           artifact={artifact}
           stateSessionId={stateSessionId}
           inlineWidgets={inlineWidgets}
+          onInteraction={viewing.onPointerDownCapture}
           fill
         />
       ) : (
@@ -117,6 +132,7 @@ export const ArtifactHost = observer(function ArtifactHost({
           }
         >
           <article
+            {...viewing}
             className={
               canvas ? "h-full min-h-0 overflow-hidden" : "h-full min-h-0 overflow-auto p-4"
             }
@@ -137,6 +153,7 @@ export const ArtifactHost = observer(function ArtifactHost({
           artifact={artifact}
           stateSessionId={stateSessionId}
           inlineWidgets={inlineWidgets}
+          onInteraction={viewing.onPointerDownCapture}
           fill
           presentation="workspace"
         />
@@ -150,6 +167,7 @@ export const ArtifactHost = observer(function ArtifactHost({
         onClose={closeFullscreen}
       >
         <article
+          {...viewing}
           className="h-full min-h-0 w-full"
           data-artifact-id={artifact.id}
           data-artifact-kind={artifact.kind}
@@ -162,6 +180,7 @@ export const ArtifactHost = observer(function ArtifactHost({
 
   return (
     <article
+      {...viewing}
       className="relative min-w-0"
       data-artifact-id={artifact.id}
       data-artifact-kind={artifact.kind}
@@ -194,6 +213,7 @@ export const ArtifactHost = observer(function ArtifactHost({
             artifact={artifact}
             stateSessionId={stateSessionId}
             inlineWidgets={inlineWidgets}
+            onInteraction={viewing.onPointerDownCapture}
             fill
             presentation={fullscreen ? "workspace" : presentation}
           />

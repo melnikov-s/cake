@@ -22,12 +22,14 @@ export const WidgetArtifact = observer(function WidgetArtifact({
   artifact,
   inlineWidgets,
   stateSessionId,
+  onInteraction,
   fill = false,
   presentation = "workspace",
 }: {
   artifact: Extract<CakeArtifactV1, { kind: "widget" }>;
   inlineWidgets?: InlineWidgetStore;
   stateSessionId?: string;
+  onInteraction?(): void;
   fill?: boolean;
   presentation?: "inline" | "workspace";
 }) {
@@ -42,7 +44,7 @@ export const WidgetArtifact = observer(function WidgetArtifact({
   useWidgetSpeech(iframe, state?.compiled?.token, inlineWidgets?.speech);
   useEffect(() => {
     if (inlineWidgets) inlineWidgets.prepareBrowser(id, { digest: browserDigest });
-    if (inlineWidgets && stateSessionId)
+    if (inlineWidgets)
       inlineWidgets.bindArtifactState(id, stateSessionId, decodeArtifactLineageId(artifact.id));
     return () => {
       inlineWidgets?.release(id);
@@ -105,6 +107,7 @@ export const WidgetArtifact = observer(function WidgetArtifact({
         return;
       }
       if (Option.isNone(parsed) || parsed.value.token !== state.compiled.token) return;
+      if (parsed.value.type === "artifact-interaction") onInteraction?.();
       if (parsed.value.type === "ready") {
         inlineWidgets.browserViewReady(id, state.compiled.token);
         setReadyToken(state.compiled.token);
@@ -113,6 +116,44 @@ export const WidgetArtifact = observer(function WidgetArtifact({
         setHeight(Math.max(120, Math.min(1_200, Math.ceil(parsed.value.value))));
       if (parsed.value.type === "error")
         inlineWidgets.reportRuntimeError(id, String(parsed.value.value));
+      if (
+        parsed.value.type === "artifact-tool-call" ||
+        parsed.value.type === "artifact-cake-call"
+      ) {
+        const message = parsed.value;
+        const token = state.compiled.token;
+        const target = iframe.current?.contentWindow;
+        const operation =
+          message.type === "artifact-tool-call"
+            ? inlineWidgets.callArtifactTool(id, message.value.name, message.value.input)
+            : inlineWidgets.callArtifactCake(id, message.value.command, message.value.input);
+        void operation.then(
+          (result) =>
+            target?.postMessage(
+              {
+                source: "cake-artifact-host",
+                token,
+                type: "call-result",
+                value: { id: message.value.id, ok: true, result },
+              },
+              "*",
+            ),
+          (error) =>
+            target?.postMessage(
+              {
+                source: "cake-artifact-host",
+                token,
+                type: "call-result",
+                value: {
+                  id: message.value.id,
+                  ok: false,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              },
+              "*",
+            ),
+        );
+      }
       if (
         parsed.value.type === "artifact-state-read" ||
         parsed.value.type === "artifact-state-replace"
@@ -158,7 +199,7 @@ export const WidgetArtifact = observer(function WidgetArtifact({
     };
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
-  }, [id, inlineWidgets, state?.compiled]);
+  }, [id, inlineWidgets, state?.compiled, onInteraction]);
 
   if (!inlineWidgets) return <Markdown>{artifact.fallback.markdown}</Markdown>;
   if (state?.status === "error")

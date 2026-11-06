@@ -1,4 +1,5 @@
 import { messageReference } from "../../contracts/conversations/message-reference";
+import type { invokeGlobalArtifactCommand } from "../artifacts/globalArtifacts";
 import { AutomationEvents } from "../../services/automations/AutomationEvents";
 import type { AutomationRecords } from "../../services/automations/AutomationRecords";
 import type { AutomationConfiguration } from "../../services/automations/AutomationConfiguration";
@@ -148,6 +149,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   | WidgetPackages
   | SessionCoordination
   | Effect.Services<ReturnType<typeof workflowControl.invoke>>
+  | Effect.Services<ReturnType<typeof invokeGlobalArtifactCommand>>
 > {
   const access = yield* ProjectAccess;
   const application = yield* ApplicationState;
@@ -195,6 +197,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     | WidgetPackages
     | SessionCoordination
     | Effect.Services<ReturnType<typeof workflowControl.invoke>>
+    | Effect.Services<ReturnType<typeof invokeGlobalArtifactCommand>>
   >();
   const chatConfiguration = yield* Effect.serviceOption(CakeChatConfiguration);
   const todoReports = yield* Effect.serviceOption(ProjectTodoReports);

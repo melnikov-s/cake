@@ -1,4 +1,6 @@
 import { messageReference } from "../../contracts/conversations/message-reference";
+import { globalArtifactOperationContracts } from "../../contracts/artifacts/global-artifact-control";
+import type { invokeGlobalArtifactCommand } from "../artifacts/globalArtifacts";
 import { AutomationEvents } from "../../services/automations/AutomationEvents";
 import { automationToolDescriptions } from "../../contracts/automations/agent-automations";
 import { publishChat as publishChatAutomationEvent } from "../automations/automationSourceEvents";
@@ -119,6 +121,11 @@ const SHARED_VSCODE_OPERATIONS = [
 ] as const;
 
 const CAKE_CHAT_OPERATIONS = [
+  ...globalArtifactOperationContracts.map((operation) => operation.command),
+  "artifacts.list",
+  "artifacts.search",
+  "artifacts.resolve-reference",
+  "artifacts.history",
   ...automationToolDescriptions.map((description) => description.command),
   ...Object.keys(themeOperationDefinitions),
   "html.present",
@@ -232,6 +239,7 @@ const CAKE_CHAT_OPERATIONS = [
 ] as const;
 
 export type CakeChatRuntimeServices =
+  | Effect.Services<ReturnType<typeof invokeGlobalArtifactCommand>>
   | ApplicationState
   | ProjectSessionRuntimeHost
   | PiModels
@@ -645,6 +653,11 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
         ),
       resolveArtifact: (reference) =>
         runArtifact(agentArtifactAccess.resolve(target.sessionId, reference)),
+      hasLinkedArtifacts: () =>
+        runArtifact(artifactWorkflows.hasEffectiveSessionArtifacts(target.sessionId)),
+      listArtifactMetadata: () => runArtifact(agentArtifactAccess.listMetadata(target.sessionId)),
+      historyArtifact: (reference) =>
+        runArtifact(agentArtifactAccess.historyMetadata(target.sessionId, reference)),
       resolveArtifactForPresentation: (reference) =>
         runArtifact(agentArtifactAccess.resolveForPresentation(target.sessionId, reference)),
       linkArtifact: (reference) =>

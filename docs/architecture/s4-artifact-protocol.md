@@ -113,6 +113,70 @@ and widget compilation/sandbox infrastructure with artifacts.
   may pin refs visible at the fork point. Hydration reads catalog links directly
   rather than reconstructing associations from transcript content.
 
+## Global artifacts and independent logic
+
+A **global artifact** is an artifact lineage with `global: true`, not an installed
+app. This placement is an independent retention root for any kind, including
+Markdown, files and images. Its lifetime does not depend on the creating session.
+The existing Artifact Library can filter global placement; independent/fullscreen
+opening reuses the same viewer. `artifacts.set-global` and `artifacts.delete` share
+the UI's backend paths. Titles and optional descriptions are revision metadata;
+ordinary authoring operations accept descriptions too.
+
+`artifacts.globals` lists bounded global metadata. `artifacts.viewing` reports
+visible references and the active reference for each live renderer connection,
+including fullscreen, and identifies the calling session's bound window when one
+exists. It does not infer "this artifact" from creator identity. Reports are
+window-owned disposable projections, not persistence, retention or transcript
+context. Disconnected windows disappear from discovery.
+
+An executable widget may declare `payload.runtime` with trusted JavaScript factory
+source and semantic tool descriptions/input/output JSON Schemas. Agents discover
+`artifacts.tools` and invoke `artifacts.call`; tools are not dynamically added to
+Pi's toolbelt. Arguments and results are validated. UI `useArtifact().callTool`
+and HTML `cakeArtifact.callTool` invoke the same backend handlers. Documents and
+images have no executable runtime.
+
+The independent backend runtime uses a long-lived QuickJS worker, not a hidden
+browser or a Pi session. Factory closure state survives view disposal. Runtime
+creation is lazy on current-view opening, tool invocation or a due schedule;
+started workers remain until explicit stop/restart, deletion or backend exit.
+Closing a view unmounts its DOM and emits an unmount hook without stopping logic.
+Start/focus/blur/unmount/stop/delete hooks are meaningful backend events; historical
+source previews do not activate another runtime. Private lineage JSON persistence
+is available through `data.read`/`data.write`; artifacts own its meaning and save
+policy. Cleanup hooks are not a reliable final save boundary.
+
+Runtime `cake(command,input)` and UI `cake.call(command,input)` use the validated
+canonical backend Cake bridge, broad by default. Artifact-authored code is trusted
+for host functionality, with process isolation and boundary validation rather
+than capability grants or a permissions UI. Supported host commands include
+filesystem read/write/list, HTTP(S) requests and explicit-destination,
+artifact-attributed chat input. Background calls have no inferred/creator session;
+agent calls carry their actual calling session. Session-relative operations need
+a real caller, and native/window operations still require their actual host.
+This is Cake command coverage, not arbitrary access to Pi tools. See
+[authoring](../development/global-artifact-authoring.md) for discovery and schemas.
+
+`artifacts.runtime.publish` advances an existing widget's immutable revision with
+new backend source/tools while retaining its accepted view. All source publication
+paths refresh already-running logic, preserve saved data and refresh live views;
+unopened runtimes stay lazy. A call retains its resolved revision until settlement.
+The artifact owns any data-format change; Cake supplies no generic migration
+framework. A reload failure is visible in runtime status, not a claim that an
+already-committed revision failed to publish.
+
+Named deterministic artifact schedules live in the existing automation ledger and
+worker. `artifacts.schedules.configure/list/remove` manage them without an LLM,
+Pi session or scheduled conversation message. Due work resolves current source and
+advances directly past now, producing one catch-up after backend restart rather
+than replaying missed ticks. The backend must be running to execute. Latest
+success/failure receipts are persisted. Pause stops logic and durably pauses
+background work until explicit resume; opening, starting or restarting the view
+never resumes paused schedules. Tools remain discoverable/callable while paused.
+Deletion removes schedules, stops logic, attempts its cleanup hook, then deletes
+only Cake-owned artifact data. It never deletes arbitrary outside files.
+
 ## Direct static HTML presentation
 
 `html.present({ id, title, html, height? })` creates and presents a revision-one
@@ -163,7 +227,8 @@ A lineage is reachable when it has a direct link to a surviving session, a famil
 link whose family still has a surviving member, or a durable exact artifact pointer
 anywhere in a surviving Pi transcript. The permanent Cake Chat is a surviving
 session independently of regular Pi session files, so its direct links are retained.
-The Artifact Library is not a retention root. A reachable lineage retains every exact historical revision, and a blob is
+Global placement is an independent retention root. The Artifact Library's mere
+visibility is not a retention root. A reachable lineage retains every exact historical revision, and a blob is
 removed only when no retained revision uses its digest.
 
 Collection runs best-effort after permanent deletion commits and once at startup.
@@ -540,10 +605,13 @@ CSP blocks external fetch/XHR/WebSocket (including library network helpers), whi
 allowing local retained widget-resource loads and passive HTTPS/data image and media
 loads. Specialist instructions
 require self-contained output with local data and no remote resources. The
-sandbox exposes no Cake, Node, Electron, filesystem or parent-DOM access.
+sandbox exposes no direct Node, Electron, filesystem or parent-DOM access; trusted
+host functionality goes through the validated Cake-command bridge.
 Runtime errors and frame height cross a token-tagged `postMessage` channel;
-no general bridge is exposed. Artifact-capable widgets receive only the scoped
-`@cake/artifact-sdk` state bridge described below.
+artifact-capable widgets additionally receive the token-bound scoped state,
+semantic-tool and trusted backend Cake-command bridges. The opaque frame still has
+no direct Node/Electron or parent-DOM access. Display/request widgets do not receive
+those artifact host bridges.
 
 For agent inspection, main derives disposable read-only exact-revision filesystem
 projections beneath
