@@ -54,6 +54,11 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
       onSetLabels={management ? row.onSetLabels : undefined}
       associated={store.isSessionAssociatedWithFocusedTodos(session.sessionId)}
       activityTime={store.sessionActivityTime(session.modifiedAt)}
+      childrenWorking={
+        Boolean(session.familyChildSessionIds?.length) &&
+        isActiveSessionActivity(activity) &&
+        !isActiveSessionActivity(sessionMetadata?.sessionActivity(session.sessionId))
+      }
       labelIds={sessionMetadata?.sessionLabelIds(session.sessionId) ?? []}
       availableLabels={sessionMetadata?.availableSessionLabels(session.sessionId) ?? []}
       renameInput={

@@ -1091,7 +1091,7 @@ describe("Sidebar navigation workflow", () => {
     expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
   });
 
-  it("flattens nested families parent-first and moves descendant activity onto collapsed ancestors", async () => {
+  it("flattens nested families parent-first and preserves descendant activity on expanded and collapsed ancestors", async () => {
     using fixture = renderSidebarNavigation({
       projects: [project],
       sessions: [...sidebarFamily, sidebarSummary("standalone", 3)],
@@ -1099,29 +1099,162 @@ describe("Sidebar navigation workflow", () => {
     });
     expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
     await fixture.publishStreaming(["worker"], true);
-    expect(within(row("root")).queryByRole("img", { name: "Running" })).toBeNull();
+    expect(within(row("root")).getByRole("img", { name: "Running" })).toBeDefined();
     expect(within(row("worker")).getByRole("img", { name: "Running" })).toBeDefined();
     expect(row("worker").querySelector("time")?.textContent).toBe("Working");
-    expect(row("root").querySelector("time")).not.toBeNull();
+    expect(row("root").querySelector("time")?.textContent).toBe("Children are working");
     await fixture.user.click(screen.getByRole("button", { name: "Collapse children of planner" }));
     expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
     expect(within(row("planner")).getByRole("img", { name: "Running" })).toBeDefined();
-    expect(row("planner").querySelector("time")?.textContent).toBe("Working");
-    expect(within(row("root")).queryByRole("img", { name: "Running" })).toBeNull();
+    expect(row("planner").querySelector("time")?.textContent).toBe("Children are working");
+    expect(within(row("root")).getByRole("img", { name: "Running" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
     expect(order()).toEqual(["root", "standalone"]);
     expect(within(row("root")).getByRole("img", { name: "Running" })).toBeDefined();
-    expect(row("root").querySelector("time")?.textContent).toBe("Working");
+    expect(row("root").querySelector("time")?.textContent).toBe("Children are working");
     await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
     // Hidden descendants still supply status, but never change family creation order.
     expect(order()).toEqual(["standalone", "root"]);
     await fixture.user.click(screen.getByRole("button", { name: "Show projects" }));
     await fixture.user.click(screen.getByRole("button", { name: "Expand children of root" }));
     expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
-    expect(within(row("root")).queryByRole("img", { name: "Running" })).toBeNull();
+    expect(within(row("root")).getByRole("img", { name: "Running" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Expand children of planner" }));
     expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
   });
+
+  it.each(
+    (["projects", "activity"] as const).flatMap((mode) =>
+      (["running", "pending", "waiting", "blocked", "unread", "idle"] as const).map((state) => ({
+        mode,
+        state,
+      })),
+    ),
+  )(
+    "preserves family status and root order across disclosures with $state children in $mode",
+    async ({ mode, state }) => {
+      const sessions = [
+        ...sidebarFamily.map((session) =>
+          session.sessionId === "worker"
+            ? {
+                ...session,
+                running: state === "running",
+                unread: state === "unread",
+                recoveryIssue: state === "blocked" ? "Needs recovery" : undefined,
+              }
+            : session,
+        ),
+        sidebarSummary("recent", 31),
+        sidebarSummary("busy", 32, { running: true }),
+        sidebarSummary("ready", 33, { unread: true }),
+      ];
+      using fixture = renderSidebarNavigation({
+        projects: [project],
+        sessions,
+        loadedIds: ["worker"],
+      });
+      if (state === "pending")
+        await fixture.publishWorktreeOperations([
+          {
+            operationId: "pending-child-landing",
+            workspacePath: "/cake",
+            sessionId: "worker",
+            kind: "landing",
+            phase: "queued",
+            allowDirtyTarget: false,
+          },
+        ]);
+      if (state === "waiting")
+        await fixture.publishInterview({
+          id: "child-question",
+          sessionId: "worker",
+          request: {
+            protocol: "cake.request/v1",
+            id: "question",
+            title: "Choose",
+            responseSchema: { type: "object" },
+            view: { type: "form", fields: [{ id: "name", label: "Name", type: "text" }] },
+            fallback: { markdown: "What next?" },
+          },
+        });
+      if (mode === "activity")
+        await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
+      const label = {
+        running: "Running",
+        pending: "Running",
+        waiting: "Waiting for your answer",
+        blocked: "Needs your input",
+        unread: "Ready, unread",
+        idle: undefined,
+      }[state];
+      const expectedOrder =
+        mode === "activity"
+          ? ["ready", "busy", "recent", "root"]
+          : state === "unread"
+            ? ["ready", "root", "busy", "recent"]
+            : state === "blocked" || state === "idle"
+              ? ["ready", "busy", "recent", "root"]
+              : ["ready", "busy", "root", "recent"];
+      const active = state === "running" || state === "pending" || state === "waiting";
+      const assertFamily = (parentIds: string[]) => {
+        for (const id of parentIds) {
+          expect(row(id).querySelector(".session-status")?.getAttribute("aria-label")).toBe(label);
+          const time = row(id).querySelector("time");
+          if (active) expect(time?.textContent).toBe("Children are working");
+          else
+            expect(time?.dateTime).toBe(
+              sessions.find((session) => session.sessionId === id)!.modifiedAt,
+            );
+        }
+        expect(order().filter((id) => ["root", "recent", "busy", "ready"].includes(id!))).toEqual(
+          expectedOrder,
+        );
+      };
+      assertFamily(["root", "planner"]);
+      await fixture.user.click(
+        screen.getByRole("button", { name: "Collapse children of planner" }),
+      );
+      assertFamily(["root", "planner"]);
+      await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
+      assertFamily(["root"]);
+      await fixture.user.click(screen.getByRole("button", { name: "Expand children of root" }));
+      assertFamily(["root", "planner"]);
+      await fixture.user.click(screen.getByRole("button", { name: "Expand children of planner" }));
+      assertFamily(["root", "planner"]);
+      expect(row("worker").querySelector(".session-status")?.getAttribute("aria-label")).toBe(
+        label,
+      );
+      if (active) expect(row("worker").querySelector("time")?.textContent).toBe("Working");
+    },
+  );
+
+  it.each(["projects", "activity"] as const)(
+    "distinguishes parent work from child-only work in both disclosure states in %s",
+    async (mode) => {
+      using fixture = renderSidebarNavigation({
+        projects: [project],
+        sessions: sidebarFamily,
+        loadedIds: ["root", "worker"],
+      });
+      if (mode === "activity")
+        await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
+      await fixture.publishStreaming(["worker"], true);
+      for (const disclosure of ["Collapse", "Expand"]) {
+        expect(row("root").querySelector("time")?.textContent).toBe("Children are working");
+        await fixture.publishStreaming(["root"], true);
+        expect(row("root").querySelector("time")?.textContent).toBe("Working");
+        await fixture.publishStreaming(["root"], false);
+        expect(row("root").querySelector("time")?.textContent).toBe("Children are working");
+        await fixture.user.click(
+          screen.getByRole("button", { name: `${disclosure} children of root` }),
+        );
+        expect(row("root").querySelector("time")?.textContent).toBe("Children are working");
+      }
+      await fixture.publishStreaming(["worker"], false);
+      expect(row("root").querySelector("time")?.dateTime).toBe(sidebarFamily[0]!.modifiedAt);
+      expect(row("root").querySelector(".session-status")).toBeNull();
+    },
+  );
 
   describe("revealing a selected family descendant", () => {
     let scrollIntoView: ReturnType<typeof vi.fn>;

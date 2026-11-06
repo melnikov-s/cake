@@ -8,17 +8,20 @@ export function SessionActivityTime({
   modifiedAt,
   workingStartedAt,
   activity,
+  childrenWorking = false,
   activityTime,
   focusMode,
 }: {
   modifiedAt: string;
   workingStartedAt?: number;
   activity?: SessionActivity;
+  childrenWorking?: boolean;
   activityTime: string;
   focusMode: boolean;
 }) {
   const working = isActiveSessionActivity(activity);
-  const startedAt = working && Number.isFinite(workingStartedAt) ? workingStartedAt : undefined;
+  const startedAt =
+    working && !childrenWorking && Number.isFinite(workingStartedAt) ? workingStartedAt : undefined;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (startedAt === undefined) return;
@@ -42,9 +45,11 @@ export function SessionActivityTime({
       title={working ? undefined : new Date(modifiedAt).toLocaleString()}
     >
       {working
-        ? startedAt === undefined
-          ? "Working"
-          : `Working ${formatElapsed(now - startedAt)}`
+        ? childrenWorking
+          ? "Children are working"
+          : startedAt === undefined
+            ? "Working"
+            : `Working ${formatElapsed(now - startedAt)}`
         : activityTime}
     </time>
   );

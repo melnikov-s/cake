@@ -288,6 +288,16 @@ test("background family children show running activity and only offer Mark as Un
     await subagentPanel.getByRole("button", { name: "Close Subagent" }).click();
     await expect(page.getByRole("button", { name: "Activity · 1 running" })).toBeVisible();
 
+    const parentRow = page.locator(`.session-item[data-session-id="${parentId}"]`);
+    await expect(parentRow.locator("time")).toHaveText("Children are working");
+    await expect(childRow.locator("time")).toHaveText(/^Working/);
+    await parentRow.getByRole("button", { name: /^Collapse children of/ }).click();
+    await expect(parentRow.locator("time")).toHaveText("Children are working");
+    await expect(parentRow.locator('[aria-label="Running"]')).toBeVisible();
+    await parentRow.getByRole("button", { name: /^Expand children of/ }).click();
+    await expect(parentRow.locator("time")).toHaveText("Children are working");
+    await expect(childRow.locator("time")).toHaveText(/^Working/);
+
     // A collapsed Project uses the same hidden-child activity as a collapsed parent.
     // Measure the existing status column in both themes and sidebar viewport sizes.
     const projectHeader = page.locator('[data-slot="project-header"]').first();

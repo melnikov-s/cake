@@ -267,8 +267,7 @@ export class SidebarSessionListStore extends Store<{
     sessionId: string;
     familyChildSessionIds?: readonly string[];
   }) {
-    if (!session.familyChildSessionIds || !this.isFamilyCollapsed(session.sessionId))
-      return this.metadata.sessionActivity(session.sessionId);
+    if (!session.familyChildSessionIds) return this.metadata.sessionActivity(session.sessionId);
     return this.collapsedSessionActivity([session]);
   }
 
@@ -282,7 +281,7 @@ export class SidebarSessionListStore extends Store<{
     );
   }
 
-  /** One hierarchy traversal and precedence policy for collapsed families and Projects. */
+  /** One hierarchy traversal and precedence policy for families and collapsed Projects. */
   private collapsedSessionActivity(
     sessions: ReadonlyArray<{ sessionId: string; familyChildSessionIds?: readonly string[] }>,
     own?: SessionActivity,
@@ -384,8 +383,8 @@ export class SidebarSessionListStore extends Store<{
         session.familyParentSessionId === session.sessionId ||
         !byId.has(session.familyParentSessionId),
     );
-    // Rank active roots by the same activity shown on their rows, including
-    // collapsed-family indicators: unread, then running, then the rest.
+    // Rank active roots by the same child-aware activity shown on their rows:
+    // unread, then running, then the rest.
     const held = this.heldRoot;
     const activityPriorities = new Map(
       roots.map((session) => [

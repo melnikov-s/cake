@@ -42,6 +42,8 @@ export interface SessionListItemProps {
   paneNumber?: number;
   resolved: boolean;
   activity?: SessionActivity;
+  /** Effective activity comes from descendants, not the parent's own work. */
+  childrenWorking?: boolean;
   activityTime: string;
   labels: readonly SessionLabel[];
   avatarSeed: string;
@@ -81,6 +83,7 @@ export const SessionListItem = observer(function SessionListItem({
   paneNumber,
   resolved,
   activity,
+  childrenWorking,
   activityTime,
   labels,
   avatarSeed,
@@ -302,6 +305,7 @@ export const SessionListItem = observer(function SessionListItem({
                 modifiedAt={session.modifiedAt}
                 workingStartedAt={session.workingStartedAt}
                 activity={activity}
+                childrenWorking={childrenWorking}
                 activityTime={activityTime}
                 focusMode={focusMode}
               />
