@@ -52,7 +52,7 @@ const allowed = {
   preload: new Set(["shared"]),
 };
 
-function importPath(file, source, cwd) {
+export function importPath(file, source, cwd) {
   // Vite asset/query suffixes do not change the module's owner.
   source = source.split(/[?#]/, 1)[0];
   if (source.startsWith(".")) return path.resolve(path.dirname(file), source);

@@ -3,6 +3,7 @@
   "entry": [
     "playwright.foreground.config.ts",
     "playwright.performance.config.ts",
+    "tools/eslint/cake.d.ts",
     "src/renderer/index.html",
     "src/assets/vscode-companion/extension.js",
     "src/server/main.ts",

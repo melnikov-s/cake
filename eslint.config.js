@@ -1,6 +1,7 @@
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
 import architecture from "./tools/eslint/module-boundaries.js";
+import cake from "./tools/eslint/cake.js";
 
 // These are imperative framework/SDK adapters, not domain execution sites.
 // Keep this list explicit so a new boundary requires an architecture decision.
@@ -27,6 +28,7 @@ export default tseslint.config(
       "src/assets/vscode-companion/**",
     ],
   },
+  { plugins: { cake } },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   ...[
@@ -105,6 +107,90 @@ export default tseslint.config(
         },
       ],
     },
+  },
+  // Advisory debt checks: warnings are visible but never become CI gates.
+  // Keep these separate from the existing architecture and anti-slop errors.
+  {
+    files: ["src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
+    ignores: ["src/assets/**", "**/vendor/**", "**/generated/**", "**/build/**", "**/*.d.ts"],
+    rules: { "max-lines": ["warn", { max: 1000, skipBlankLines: true, skipComments: true }] },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/assets/**", "**/vendor/**", "**/generated/**", "**/build/**", "**/*.d.ts"],
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
+    rules: {
+      "@typescript-eslint/no-floating-promises": ["warn", { ignoreVoid: true }],
+      "@typescript-eslint/no-misused-promises": [
+        "warn",
+        { checksVoidReturn: { attributes: false } },
+      ],
+      "cake/reactive-collection-contract": [
+        "warn",
+        {
+          // Deliberately nonreactive audio buffers, queues and bookkeeping.
+          nonReactiveFields: [
+            "ConversationModeStore.phrases",
+            "ConversationModeStore.cursors",
+            "ConversationModeStore.users",
+            "ConversationModeStore.liveReplies",
+            "ConversationModeStore.finalizing",
+            "ConversationModeStore.preroll",
+          ],
+        },
+      ],
+      "cake/cause-recovery-boundaries": "warn",
+      "cake/named-effect-operations": "warn",
+    },
+  },
+  {
+    files: ["src/domain/**/*.{ts,tsx}"],
+    rules: { "cake/domain-native-orchestration": "warn" },
+  },
+  {
+    files: ["src/renderer/components/**/*.{ts,tsx}", "src/renderer/hooks/**/*.{ts,tsx}"],
+    ignores: ["src/renderer/components/ui/**"],
+    rules: {
+      "cake/view-capability-boundaries": "warn",
+      "cake/react-effect-ownership": "warn",
+      "cake/authoritative-controls": "warn",
+    },
+  },
+  {
+    files: [
+      "src/renderer/components/settings/settings-text-field.tsx",
+      "src/renderer/components/settings/settings-lines-field.tsx",
+      "src/renderer/components/settings/settings-packages-field.tsx",
+      "src/renderer/components/settings/settings-prompt-field.tsx",
+    ],
+    // Local editable-draft reconciliation, not workflow activation.
+    rules: { "cake/react-effect-ownership": ["warn", { stateCopyExceptions: ["setDraft"] }] },
+  },
+  {
+    files: ["src/renderer/components/slash-command-combobox.tsx"],
+    // The input's editable local value reconciles an externally selected draft.
+    rules: { "cake/react-effect-ownership": ["warn", { stateCopyExceptions: ["setInputValue"] }] },
+  },
+  {
+    files: ["src/renderer/components/embedded-editor.tsx"],
+    // Native WebContentsView theme integration; measurement and cleanup remain valid.
+    rules: {
+      "cake/react-effect-ownership": [
+        "warn",
+        { workflowExceptions: ["EmbeddedEditorStore.updateTheme"] },
+      ],
+    },
+  },
+  {
+    files: ["src/main/main.ts", "src/main/MainApplication.ts", "src/renderer/runtime.ts"],
+    // Explicit process/window supervision and final reporting boundaries.
+    rules: { "cake/cause-recovery-boundaries": "off" },
+  },
+  {
+    files: ["tests/**/*.{ts,tsx}"],
+    rules: { "cake/deterministic-test-waits": "warn" },
   },
   {
     files: ["src/renderer/observers/models.ts"],

@@ -2,7 +2,17 @@ import { ESLint } from "eslint";
 import { resolve } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
-const eslint = new ESLint();
+// Synthetic module paths need no project; keep the actual architecture config,
+// disabling only unrelated type-aware advisory checks for these parser fixtures.
+const eslint = new ESLint({
+  overrideConfig: {
+    languageOptions: { parserOptions: { projectService: false } },
+    rules: {
+      "@typescript-eslint/no-floating-promises": "off",
+      "@typescript-eslint/no-misused-promises": "off",
+    },
+  },
+});
 const ruleId = "architecture/module-boundaries";
 const piFile = "src/services/pi/import-boundary-fixture.ts";
 const storageFile = "src/services/storage/import-boundary-fixture.ts";
