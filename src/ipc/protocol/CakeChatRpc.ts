@@ -1,3 +1,4 @@
+import { jsonObjectSchema, jsonValueSchema } from "../../contracts/serialization/json-contract";
 import { AssistantContext } from "../../contracts/cake-chats/assistant-context";
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
@@ -50,6 +51,15 @@ export const CakeChatRpc = RpcGroup.make(
   Rpc.make("cakeChats.inspect", {
     payload: { sessionId: CakeChatTarget.fields.sessionId },
     success: CakeChatPreview,
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.callCakeOperation", {
+    payload: {
+      sessionId: CakeChatTarget.fields.sessionId,
+      command: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+      input: jsonObjectSchema,
+    },
+    success: jsonValueSchema,
     error: CakeChatError,
   }),
   Rpc.make("cakeChats.open", {

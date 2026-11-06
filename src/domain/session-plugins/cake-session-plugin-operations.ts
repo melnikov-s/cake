@@ -1,3 +1,4 @@
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import type { SessionPluginControl } from "../../contracts/application/session-plugin-agent-control";
 import { Schema } from "effect";
 import { widgetConversationFromOperation } from "../widgets/widgetOperationContext";
@@ -149,7 +150,9 @@ export function createCakeSessionPluginOperations(
         }
         const generated = await control.generate({
           sessionId: control.sessionId,
-          parentConversation: widgetConversationFromOperation(context.runtime),
+          parentConversation: isCakeChatSessionId(control.sessionId)
+            ? undefined
+            : widgetConversationFromOperation(context.runtime),
           brief: request.brief,
           data: request.data,
           initialState: request.initialState ?? null,

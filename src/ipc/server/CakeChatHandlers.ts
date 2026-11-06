@@ -45,6 +45,8 @@ export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration
       cakeChatMetadata.lookup(sessionId, configuration.location),
     "cakeChats.inspect": ({ sessionId }) =>
       cakeChatMetadata.inspect(sessionId, configuration.location),
+    "cakeChats.callCakeOperation": ({ sessionId, command, input }) =>
+      cakeChatOperations.callCakeOperation(sessionId, command, input, configuration),
     "cakeChats.open": (target) =>
       withConnection((connectionId) =>
         cakeChatOperations.open(target, configuration).pipe(

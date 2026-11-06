@@ -1,3 +1,4 @@
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
 import type { Client } from "../client/Client";
 import type { SessionPluginStore } from "../stores/SessionPluginStore";
@@ -8,6 +9,7 @@ export interface SessionPluginOperationCapabilities {
   plugins: SessionPluginStore;
   workingDirectory(sessionId: string): string;
   prepareChat(sessionId: string): Promise<void>;
+  promptCakeChat(sessionId: string, text: string): Promise<void>;
 }
 
 /** Interprets plugin commands at the plugin/application boundary. */
@@ -24,16 +26,19 @@ export function createSessionPluginOperationAdapter(
       if (command === "session.prompt") {
         const text = String(input.text ?? "").trim();
         if (!text) throw new Error("session.prompt requires non-empty text");
-        await capabilities.prepareChat(sessionId);
-        await capabilities.client.sessionChats.prompt(
-          {
-            sessionId,
-            text,
-            attachments: [],
-            renderUserMessageAsMarkdown: false,
-          },
-          { signal: capabilities.signal },
-        );
+        if (isCakeChatSessionId(sessionId)) await capabilities.promptCakeChat(sessionId, text);
+        else {
+          await capabilities.prepareChat(sessionId);
+          await capabilities.client.sessionChats.prompt(
+            {
+              sessionId,
+              text,
+              attachments: [],
+              renderUserMessageAsMarkdown: false,
+            },
+            { signal: capabilities.signal },
+          );
+        }
         return { accepted: true };
       }
       if (command === "plugins.set-state") {
@@ -52,6 +57,11 @@ export function createSessionPluginOperationAdapter(
         await capabilities.plugins.delete(sessionId, pluginId);
         return { deleted: true };
       }
+      if (isCakeChatSessionId(sessionId))
+        return capabilities.client.cakeChats.callCakeOperation(
+          { sessionId, command, input },
+          { signal: capabilities.signal },
+        );
       return capabilities.client.projectSessions.callCakeOperation(
         {
           sessionId,

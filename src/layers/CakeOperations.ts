@@ -212,6 +212,12 @@ export function coordinatorCakeOperations(
           )
         : []),
       ...createCoordinatorOperations(bridge),
+      ...(options.sessionPluginControl && options.generateInlineWidget
+        ? createCakeSessionPluginOperations({
+            ...options.sessionPluginControl,
+            generate: options.generateInlineWidget,
+          })
+        : []),
       ...createCakeArtifactOperations(undefined, {
         ...options,
         persistArtifact:

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { createCakeSessionPluginOperations } from "../../../src/domain/session-plugins/cake-session-plugin-operations";
 
 const context = {
@@ -13,57 +14,63 @@ const context = {
 };
 
 describe("Cake Session Plugin operations", () => {
-  it("delegates source generation and durably presents the resulting plugin", async () => {
-    const generate = vi.fn(async () => ({
-      source: "export default function Plugin(){ return <div>Tour</div> }",
-      generationSessionId: "builder-session",
-    }));
-    const present = vi.fn(async () => undefined);
-    const operations = createCakeSessionPluginOperations({
-      sessionId: "session-1",
-      generate,
-      present,
-      setState: vi.fn(async () => undefined),
-      delete: vi.fn(async () => undefined),
-      patchState: vi.fn(async () => undefined),
-    });
-    const operation = operations.find((candidate) => candidate.command === "plugins.present")!;
-
-    await operation.execute(
-      {
-        plugin: {
-          id: "change-tour",
-          title: "Change tour",
-          brief: "Previous and Next buttons send visible session messages.",
-          initialState: { current: 1, total: 4 },
-        },
-      },
-      context,
-    );
-
-    expect(generate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId: "session-1",
-        surface: "session-plugin",
-        parentConversation: {
-          sessionId: "session-1",
-          sessionFile: "/sessions/source.jsonl",
-          entryId: "assistant-1",
-        },
-        initialState: { current: 1, total: 4 },
-        model: { provider: "openai", id: "builder" },
-      }),
-    );
-    expect(present).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId: "session-1",
-        id: "change-tour",
-        slot: "composer.above",
-        state: { current: 1, total: 4 },
+  it.each(["session-1", CAKE_CHAT_SESSION_ID])(
+    "delegates source generation and durably presents the resulting plugin for %s",
+    async (sessionId) => {
+      const generate = vi.fn(async () => ({
+        source: "export default function Plugin(){ return <div>Tour</div> }",
         generationSessionId: "builder-session",
-      }),
-    );
-  });
+      }));
+      const present = vi.fn(async () => undefined);
+      const operations = createCakeSessionPluginOperations({
+        sessionId,
+        generate,
+        present,
+        setState: vi.fn(async () => undefined),
+        delete: vi.fn(async () => undefined),
+        patchState: vi.fn(async () => undefined),
+      });
+      const operation = operations.find((candidate) => candidate.command === "plugins.present")!;
+
+      await operation.execute(
+        {
+          plugin: {
+            id: "change-tour",
+            title: "Change tour",
+            brief: "Previous and Next buttons send visible session messages.",
+            initialState: { current: 1, total: 4 },
+          },
+        },
+        context,
+      );
+
+      expect(generate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId,
+          surface: "session-plugin",
+          parentConversation:
+            sessionId === CAKE_CHAT_SESSION_ID
+              ? undefined
+              : {
+                  sessionId: "session-1",
+                  sessionFile: "/sessions/source.jsonl",
+                  entryId: "assistant-1",
+                },
+          initialState: { current: 1, total: 4 },
+          model: { provider: "openai", id: "builder" },
+        }),
+      );
+      expect(present).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId,
+          id: "change-tour",
+          slot: "composer.above",
+          state: { current: 1, total: 4 },
+          generationSessionId: "builder-session",
+        }),
+      );
+    },
+  );
 
   it("mounts the prebuilt action bar without invoking generation", async () => {
     const generate = vi.fn();

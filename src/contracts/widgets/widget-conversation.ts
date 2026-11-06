@@ -14,6 +14,7 @@ export interface WidgetConversationOrigin extends Schema.Schema.Type<
 
 /** Private generator runtime policy; only scalar references cross composition. */
 export type WidgetConversationTarget =
+  | { readonly type: "new" }
   | { readonly type: "parent"; readonly origin: WidgetConversationOrigin }
   | { readonly type: "revision"; readonly sessionId: string }
   | { readonly type: "continue"; readonly sessionId: string };

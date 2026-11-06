@@ -1,4 +1,6 @@
 import { Effect, Stream, type Schema } from "effect";
+import type { JsonObject } from "../../contracts/serialization/json-contract";
+import { cakeChatControlTools } from "../../contracts/application/window-control-definitions";
 import { prepareForChat } from "../projects/projectTodos";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
@@ -33,6 +35,20 @@ export const acquireTarget = Effect.fn("CakeChats.acquireTarget")(function* (
     .acquireOptions({ configuration: { ...configuration, location }, target, newSession })
     .pipe(asError("acquire"));
   return yield* acquireConversation(sessions, options).pipe(asError("acquire"));
+});
+
+export const callCakeOperation = Effect.fn("CakeChats.callCakeOperation")(function* (
+  sessionId: string,
+  command: string,
+  input: JsonObject,
+  configuration: CakeChatRuntimeConfiguration,
+) {
+  const handle = yield* acquireTarget(
+    { sessionId, tools: cakeChatControlTools() },
+    false,
+    configuration,
+  );
+  return yield* handle.callCakeOperation(command, input).pipe(asError("callCakeOperation"));
 });
 
 export const open = Effect.fn("CakeChats.open")(function* (

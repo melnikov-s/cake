@@ -57,6 +57,7 @@ export async function prepareWidgetConversation(options: {
   readonly conversation: WidgetConversationTarget;
 }): Promise<SessionManager> {
   const target = options.conversation;
+  if (target.type === "new") return SessionManager.create(options.cwd, options.sessionDir);
   const sessionFile =
     target.type === "parent"
       ? target.origin.sessionFile

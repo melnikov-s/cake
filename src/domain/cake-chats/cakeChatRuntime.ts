@@ -53,8 +53,13 @@ import {
   getCakeChatInstructions,
   updateCakeChatInstructions,
   setSessionFastMode,
+  upsertSessionPlugin,
+  setSessionPluginState,
+  patchSessionPluginState,
+  deleteSessionPlugin,
 } from "../application/application";
 import { PiModels } from "../../services/pi/PiModels";
+import { ProjectSessionRuntimeHost } from "../../services/pi/ProjectSessionRuntimeHost";
 import {
   cakeChatModelSettingDefaults,
   defaultCakeChatPreferences,
@@ -117,6 +122,10 @@ const CAKE_CHAT_OPERATIONS = [
   ...automationToolDescriptions.map((description) => description.command),
   ...Object.keys(themeOperationDefinitions),
   "html.present",
+  "plugins.present",
+  "plugins.patch",
+  "plugins.update",
+  "plugins.delete",
   "artifacts.link",
   "artifacts.present",
   "artifacts.state.read",
@@ -224,6 +233,7 @@ const CAKE_CHAT_OPERATIONS = [
 
 export type CakeChatRuntimeServices =
   | ApplicationState
+  | ProjectSessionRuntimeHost
   | PiModels
   | CakeSessionRuntimes
   | RendererRequestCoordinator
@@ -259,6 +269,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   const companion = target.sessionId === SESSION_ASSISTANT_ID;
   const senderSessionId = sideChatSessionId ?? target.sessionId;
   const models = yield* PiModels;
+  const runtimeHost = yield* ProjectSessionRuntimeHost;
   const catalogs = yield* SessionCatalogChanges;
   const rendererRequests = yield* RendererRequests;
   const context = Context.add(
@@ -524,6 +535,35 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     runtime: {
       cwd: configuration.location.workingDirectory,
       utilityModel: () => application.snapshot().utilityModel,
+      sessionPluginControl: {
+        sessionId: target.sessionId,
+        present: (plugin) => run(upsertSessionPlugin(plugin)).then(() => undefined),
+        setState: (pluginId, state) =>
+          run(setSessionPluginState(target.sessionId, pluginId, state)).then(() => undefined),
+        patchState: (pluginId, patch) =>
+          run(patchSessionPluginState(target.sessionId, pluginId, patch)).then(() => undefined),
+        delete: (pluginId) =>
+          run(deleteSessionPlugin(target.sessionId, pluginId)).then(() => undefined),
+      },
+      generateInlineWidget: (input) =>
+        run(
+          // Borrow the existing builder only for generation. Do not register this
+          // permanent chat as a Project Session or replace its renderer binding.
+          Effect.acquireUseRelease(
+            runtimeHost.prepare(configuration.location.workingDirectory, target.sessionId),
+            (prepared) =>
+              Effect.tryPromise({
+                try: () => {
+                  const generate = prepared.integrations.generateInlineWidget;
+                  if (!generate) throw new Error("Session Plugin generation is unavailable");
+                  return generate(input);
+                },
+                catch: (cause) => cause,
+              }),
+            (prepared) => prepared.release.pipe(Effect.orDie),
+          ),
+          { signal: input.signal },
+        ),
       cakeChatTodos: companion
         ? undefined
         : () =>

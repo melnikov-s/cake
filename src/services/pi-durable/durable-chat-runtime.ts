@@ -950,7 +950,11 @@ export async function createDurableCakeChatRuntime(
     ): Promise<JsonValue> {
       const result = await operations.invoke(
         { command, input },
-        { signal, toolCallId: randomUUID(), runtime },
+        {
+          signal,
+          toolCallId: randomUUID(),
+          runtime: { sessionId, model: { provider: selected.provider, id: selected.id } },
+        },
       );
       return result.structuredContent;
     },

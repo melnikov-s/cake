@@ -175,6 +175,10 @@ async function runWidgetTurn(
       images: attach ? images : undefined,
       signal: options.signal,
       model: options.model,
+      systemPrompt:
+        conversation.type === "new"
+          ? "You build Cake UI from a supplied brief in a private generator conversation. Read, write and edit only widget files and supplied skill resources. Do not perform the user's project work or invoke other operations."
+          : undefined,
       modelPurpose: "widget generation",
       cancellationMessage: "Widget generation was cancelled",
     });

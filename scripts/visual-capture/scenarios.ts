@@ -6517,13 +6517,9 @@ export const sessionPluginsScenario: VisualCaptureScenario = {
     await writeFile(
       join(paths.cakeHome, "state", "application.json"),
       JSON.stringify({
-        version: 4,
+        version: 10,
         data: {
-          globalSessionLabels: [],
-          unreadSessionIds: [],
-          fastModeSessionIds: [],
-          modelPresets: [],
-          sessionPluginSharedState: [],
+          ...defaultApplicationState(),
           projects: [
             {
               path: paths.project,

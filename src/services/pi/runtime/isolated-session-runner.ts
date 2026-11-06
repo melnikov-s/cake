@@ -4,6 +4,9 @@ import {
   ModelRuntime,
   SettingsManager,
   createAgentSession,
+  createReadTool,
+  createWriteTool,
+  createEditTool,
   type AgentSession,
   type SessionManager,
   type ToolDefinition,
@@ -47,9 +50,9 @@ export interface IsolatedSessionOptions {
   /** Required unless `widgetBranch` inherits the conversation's own prompt. */
   systemPrompt?: string;
   /**
-   * Continues an inherited conversation as a widget side chat. The session keeps
-   * the conversation's exact system prompt and tool declarations, so its first
-   * request reuses the parent's prompt cache; only what the tools do changes.
+   * A regular Pi widget branch retains its exact parent prompt and declarations
+   * for prompt-cache reuse. A new permanent-chat builder instead supplies an
+   * explicit systemPrompt and declares only read/write/edit; no transcript is copied.
    * `write`/`edit` change this operation-local candidate, `read` reads it and
    * skill resources, and every other inherited tool refuses.
    */
@@ -146,7 +149,7 @@ export async function runIsolatedSession(
   const widgetBranch = options.widgetBranch;
   const inherited = widgetBranch ? options.sessionManager.buildSessionContext().messages : [];
   const inheritedSystem = widgetBranch ? getCurrentSystemMessage(inherited) : undefined;
-  if (widgetBranch && !inheritedSystem)
+  if (widgetBranch && !inheritedSystem && options.systemPrompt === undefined)
     throw new Error("The widget side chat has no inherited system prompt to reuse");
   if (!widgetBranch && options.systemPrompt === undefined)
     throw new Error(`The ${options.modelPurpose} session requires a system prompt`);
@@ -208,7 +211,13 @@ export async function runIsolatedSession(
   const branchTools = widgetBranch
     ? await createWidgetBranchTools({
         cwd: options.cwd,
-        declarations: getCurrentTools(inherited),
+        declarations: inheritedSystem
+          ? getCurrentTools(inherited)
+          : [
+              createReadTool(options.cwd),
+              createWriteTool(options.cwd),
+              createEditTool(options.cwd),
+            ],
         candidate: widgetBranch.candidate,
         allowState: widgetBranch.allowState,
         skills: resourceLoader.getSkills().skills,

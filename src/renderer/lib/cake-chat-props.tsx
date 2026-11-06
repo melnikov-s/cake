@@ -1,5 +1,6 @@
 import { LoadingState } from "../components/ui/loading-state";
 import { ErrorNotice } from "../components/error-notice";
+import { SessionPluginSlot } from "../components/session-plugin-slot";
 import { ConversationActivity } from "../components/conversation-activity";
 import { SessionAssistant } from "../components/session-assistant";
 import type { RootStore } from "../stores/RootStore";
@@ -24,12 +25,23 @@ export function cakeChatPropsFor(root: RootStore, session: CakeChatSessionStore,
         }
       : undefined,
     composerHeader: (
-      <ConversationActivity
-        placement="composer"
-        sessionId={session.sessionId}
-        subagents={session.subagentActivityStore}
-        sideChat={session.conversationSessionStore.sideChatStore}
-      />
+      <>
+        <SessionPluginSlot
+          sessionId={session.sessionId}
+          slot="composer.above"
+          plugins={root.sessionPluginStore}
+          inlineWidgets={root.inlineWidgetStore}
+          call={(pluginId, command, input) =>
+            root.sessionPluginOperations.invoke(session.sessionId, pluginId, command, input)
+          }
+        />
+        <ConversationActivity
+          placement="composer"
+          sessionId={session.sessionId}
+          subagents={session.subagentActivityStore}
+          sideChat={session.conversationSessionStore.sideChatStore}
+        />
+      </>
     ),
     showContextUsage: !overlay,
     parkComposerFocusWhileDictating: !overlay,

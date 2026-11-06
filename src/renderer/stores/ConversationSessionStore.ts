@@ -349,6 +349,17 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
     return queuedPrompts(this.model.parts.map((part) => part.value));
   }
 
+  /** External session controls share ordinary delivery, including deferred first input. */
+  async sendMessage(text: string) {
+    return this.deliver({
+      sessionId: this.sessionId,
+      text,
+      attachments: [],
+      renderUserMessageAsMarkdown: false,
+      delivery: "prompt",
+    });
+  }
+
   private async deliver(input: ComposerDeliveryInput) {
     if (this.props.configuration.deferredNewSession?.() && this.props.startSession)
       return this.props.startSession(input);

@@ -1085,6 +1085,11 @@ export class RootStore extends Store<{
       plugins: this.sessionPluginStore,
       workingDirectory: (sessionId) => this.requireProjectSessionWorkingDirectory(sessionId),
       prepareChat: (sessionId) => this.prepareSessionChat(sessionId),
+      promptCakeChat: async (sessionId, text) => {
+        const session = this.cakeChatCollectionStore.registry.load(sessionId);
+        if (!(await session.conversationSessionStore.sendMessage(text)))
+          throw new Error("Cake could not send that chat message");
+      },
     });
   }
 

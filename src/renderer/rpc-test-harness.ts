@@ -230,6 +230,8 @@ const harness = {
   },
   getHomeDirectory: () => run(withClient((client) => client.application.getHomeDirectory())),
   getApplicationState: () => run(withClient((client) => client.application.getState())),
+  callCakeChatOperation: (input: { sessionId: string; command: string; input: JsonObject }) =>
+    run(withClient((client) => client.cakeChats.callCakeOperation(input))),
   setSessionPluginState: (input: {
     sessionId: string;
     pluginId: string;

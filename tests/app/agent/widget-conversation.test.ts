@@ -81,6 +81,18 @@ afterEach(async () => {
 });
 
 describe("widget conversation branches", () => {
+  it("starts a private builder without copying a permanent chat transcript", async () => {
+    const options = await fixture();
+    const builder = await prepareWidgetConversation({
+      ...options,
+      conversation: { type: "new" },
+    });
+    expect(builder.getSessionId()).not.toBe(options.parent.getSessionId());
+    expect(builder.getHeader()?.parentSession).toBeUndefined();
+    expect(builder.buildSessionContext().messages).toEqual([]);
+    expect(builder.getSessionFile()).toContain(options.sessionDir);
+  });
+
   it("inherits the captured ancestor path, excluding siblings and later parent messages", async () => {
     const options = await fixture();
     const origin = captureWidgetConversation({ sessionManager: options.parent });

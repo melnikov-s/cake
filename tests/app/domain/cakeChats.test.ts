@@ -847,6 +847,74 @@ describe("permanent Cake Chat", () => {
         expect(prompt()).not.toContain("/other chat only.");
         expect(prompt()).not.toContain("Coding only.");
         expect(commands).toContain("html.present");
+        expect(commands).toEqual(
+          expect.arrayContaining([
+            "plugins.present",
+            "plugins.patch",
+            "plugins.update",
+            "plugins.delete",
+          ]),
+        );
+        const pluginControl = options.runtime.sessionPluginControl;
+        if (!pluginControl) throw new Error("Expected Project Chat plugin authority");
+        expect(pluginControl.sessionId).toBe(sessionId);
+        const registry = new CakeOperationRegistry(
+          configured.coordinator!.operations({
+            sessionId,
+            resolveModel: () => ({
+              provider: "p",
+              modelId: "m",
+              thinkingLevel: "off",
+              fastMode: false,
+            }),
+            setModel: async () => undefined,
+            info: async () => ({}),
+            usage: async () => ({}),
+            contextStatus: async () => ({}),
+            compact: async () => ({}),
+          }),
+        );
+        const pluginContext = {
+          signal: new AbortController().signal,
+          toolCallId: "project-plugin",
+          runtime: { sessionId },
+        };
+        yield* Effect.promise(() =>
+          registry.invoke(
+            {
+              command: "plugins.present",
+              input: {
+                plugin: {
+                  id: "guide",
+                  title: "Guide",
+                  preset: "action-bar",
+                  initialState: {
+                    label: "First",
+                    actions: [{ id: "next", label: "Next", message: "Next" }],
+                  },
+                },
+              },
+            },
+            pluginContext,
+          ),
+        );
+        expect(f.state().sessionPlugins).toEqual([
+          expect.objectContaining({ sessionId, id: "guide" }),
+        ]);
+        yield* Effect.promise(() =>
+          registry.invoke(
+            { command: "plugins.patch", input: { id: "guide", patch: { label: "Second" } } },
+            pluginContext,
+          ),
+        );
+        expect(f.state().sessionPlugins[0]?.state).toEqual({
+          label: "Second",
+          actions: [{ id: "next", label: "Next", message: "Next" }],
+        });
+        yield* Effect.promise(() =>
+          registry.invoke({ command: "plugins.delete", input: { id: "guide" } }, pluginContext),
+        );
+        expect(f.state().sessionPlugins).toEqual([]);
         expect(options.runtime.persistArtifact).toBeDefined();
         expect(options.runtime.allowedCakeOperations).toContain("settings.project-chat.update");
         expect(options.runtime.allowedCakeOperations).not.toContain("settings.cake-chat.update");

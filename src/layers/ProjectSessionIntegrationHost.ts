@@ -402,7 +402,9 @@ export class ProjectSessionIntegrationHost {
         agentDir: this.agentDir,
         sessionDir: this.widgetSessionDir,
         sessionRoots: this.widgetSessionRoots,
-        conversation: { type: "parent", origin: input.parentConversation },
+        conversation: input.parentConversation
+          ? { type: "parent", origin: input.parentConversation }
+          : { type: "new" },
         candidate,
         allowState,
         brief: input.brief,

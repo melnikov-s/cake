@@ -15,7 +15,8 @@ export interface WidgetGenerationProgress {
 
 export interface InlineWidgetGenerationRequest {
   sessionId: string;
-  parentConversation: WidgetConversationOrigin;
+  /** Regular Pi sessions branch their context; permanent chats build privately from the brief. */
+  parentConversation?: WidgetConversationOrigin;
   brief: string;
   /** Defaults to React; HTML is a self-contained document without dependency bundling. */
   language?: InlineWidgetLanguage;
