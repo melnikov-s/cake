@@ -3450,6 +3450,56 @@ const projectChatTaskRails: VisualCaptureScenario = {
   region: (page) => page.locator('[data-slot="session-pane"]'),
 };
 
+const adjacentTaskHeadings: VisualCaptureScenario = {
+  name: "project-chat-adjacent-task-headings",
+  description: "Adjacent collapsed transcript to-dos followed by an ungrouped user message",
+  states: ["default"],
+  async seed(paths, theme) {
+    await projectChatTodos.seed(paths, theme);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const application = JSON.parse(await readFile(file, "utf8"));
+    const items = application.data.projects[0].todos.items.slice(0, 2);
+    items[0].title = "Normalize default-branch worktree labels";
+    items[1].title = "Investigate standalone “send it” dictation command failing";
+    application.data.projects[0].todos.items = items;
+    await writeFile(file, JSON.stringify(application));
+    const hash = createHash("sha256").update(paths.project).digest("hex");
+    await seedDurableChat(
+      join(paths.cakeHome, "pi", "project-chats", hash),
+      [
+        "Normalize the default-branch worktree labels.",
+        "I’ll check the worktree label presentation.",
+        "Investigate the standalone send it command.",
+        "I’ll check how standalone dictation commands are handled.",
+        "Thanks. What does ⌘K open?",
+        "The command menu.",
+      ],
+      [items[0].id, items[1].id, null],
+    );
+  },
+  async prepare(page) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
+    const transcript = page.locator(".transcript").last();
+    await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
+    const disclosures = transcript.locator('[data-slot="task-section-disclosure"]');
+    await expect(disclosures).toHaveCount(2);
+    for (const disclosure of await disclosures.all()) {
+      await disclosure.click();
+      await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    }
+    await transcript.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('[data-slot="side-chat-layout"]'),
+};
+
 const pdfTaskSwitch: VisualCaptureScenario = {
   name: "project-chat-pdf-task-switch",
   description: "PDF resize follow-ups stay grouped; broader session management ends the group",
@@ -7432,6 +7482,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   projectChatTodos,
   projectChatAttention,
   projectChatTaskRails,
+  adjacentTaskHeadings,
   pendingTaskTurn,
   pdfTaskSwitch,
   activeSidebarSessions,
