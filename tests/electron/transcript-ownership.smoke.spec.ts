@@ -11,6 +11,7 @@ import {
   type Page,
 } from "@playwright/test";
 import type { TranscriptOwnershipFixture } from "./transcript-ownership-fixture";
+import type { UiPart } from "../../src/contracts/conversations/session-contract";
 import { callRpcHarness, openRpcHarness } from "./rpc-harness";
 import type { CompiledInlineWidget } from "../../src/contracts/widgets/inline-widget-contract";
 
@@ -1264,4 +1265,426 @@ test("a live arrival's entrance animation never shifts the reader's anchor", asy
     return samples;
   }, saved.id);
   expect(new Set(offsets)).toEqual(new Set([saved.offset]));
+});
+
+// Diagnosis-only regressions: assert the reader's visible CONTENT, not just the
+// enclosing virtual row. Native Electron layout, image decode, ResizeObserver,
+// Markdown, real Stores and the patched Virtuoso are all left intact.
+const mediaMessageId = "message-25";
+const readingText = "Reading marker after the media.";
+const mediaRow = (page: Page) => page.locator(`[data-transcript-anchor-id="${mediaMessageId}"]`);
+const readingMarker = (page: Page) => mediaRow(page).getByText(readingText, { exact: true });
+const mediaParagraphs = Array.from(
+  { length: 12 },
+  (_, index) => `Context paragraph ${index}. ${"Reading context. ".repeat(12)}`,
+).join("\n\n");
+const tableMarkdown = [
+  "| First column | Second column |",
+  "| --- | --- |",
+  ...Array.from(
+    { length: 12 },
+    (_, index) =>
+      `| Cell ${index}. ${"Wrapping words. ".repeat(9)} | ${"More wrapping words. ".repeat(9)} |`,
+  ),
+].join("\n");
+
+async function projectParts(page: Page, parts: UiPart[]) {
+  await page.evaluate((updates) => {
+    (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).partsUpdated(updates);
+  }, parts);
+}
+
+async function projectMedia(page: Page, media: string) {
+  await projectParts(page, [
+    {
+      kind: "text",
+      id: mediaMessageId,
+      role: "assistant",
+      status: "complete",
+      text: `${mediaParagraphs}\n\n${media}\n\n${readingText}\n\n${mediaParagraphs}`,
+    },
+  ]);
+  await showMediaRow(page);
+}
+
+async function showMediaRow(page: Page) {
+  // Home is a genuine reader destination; native scroll then moves through the
+  // real virtual range. No measurement or application scroll API is mocked.
+  const transcript = page.locator(".transcript");
+  await transcript.focus();
+  await page.keyboard.press("Home");
+  for (let step = 0; step < 35 && !(await mediaRow(page).count()); step++)
+    await wheel(page, transcript, 300);
+  await expect(mediaRow(page)).toHaveCount(1);
+  await settle(page);
+}
+
+async function readMarkerAt(page: Page, offset = 120) {
+  await readingMarker(page).evaluate((element, offset) => {
+    const scroller = element.closest(".transcript")!;
+    scroller.scrollTop +=
+      element.getBoundingClientRect().top - scroller.getBoundingClientRect().top - offset;
+  }, offset);
+  await settle(page);
+  await expect(readingMarker(page)).toBeInViewport();
+}
+
+async function readingGeometry(page: Page) {
+  return readingMarker(page).evaluate((element) => {
+    const scroller = element.closest(".transcript")!;
+    const row = element.closest<HTMLElement>("[data-transcript-item-key]")!;
+    const viewport = scroller.getBoundingClientRect();
+    return {
+      marker: element.getBoundingClientRect().top - viewport.top,
+      row: row.getBoundingClientRect().top - viewport.top,
+      rowHeight: row.getBoundingClientRect().height,
+      scrollTop: scroller.scrollTop,
+      gap: scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop,
+    };
+  });
+}
+
+async function delayedMedia(page: Page, path = "late-image") {
+  let release: (() => Promise<void>) | undefined;
+  let released = false;
+  await page.route(`https://transcript.invalid/${path}`, async (route) => {
+    const finish = () =>
+      route.fulfill({
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="1200"/>',
+      });
+    if (released) await finish();
+    else release = finish;
+  });
+  return async () => {
+    await expect.poll(() => Boolean(release)).toBe(true);
+    released = true;
+    await release!();
+    await page
+      .locator(".transcript img")
+      .evaluateAll((images) =>
+        Promise.all(images.map((image) => (image as HTMLImageElement).decode())),
+      );
+    await settle(page);
+  };
+}
+
+test.describe("media content anchoring diagnosis", () => {
+  test("large late image in an earlier row holds the following reading row", async ({
+    fixturePage: page,
+  }) => {
+    const release = await delayedMedia(page);
+    await projectMedia(page, "![Delayed diagram](https://transcript.invalid/late-image)");
+    const next = page.locator('[data-transcript-anchor-id="message-26"]');
+    // Read the next message while the tall media row is still in top overscan.
+    await mediaRow(page).evaluate((row) => {
+      const scroller = row.closest(".transcript")!;
+      scroller.scrollTop +=
+        row.getBoundingClientRect().bottom - scroller.getBoundingClientRect().top + 8;
+    });
+    await settle(page);
+    await expect(next).toBeInViewport();
+    const offset = () =>
+      next.evaluate(
+        (element) =>
+          element.getBoundingClientRect().top -
+          element.closest(".transcript")!.getBoundingClientRect().top,
+      );
+    const before = await offset();
+    expect(
+      await mediaRow(page)
+        .locator("img")
+        .evaluate(
+          (image) =>
+            image.getBoundingClientRect().top -
+            image.closest(".transcript")!.getBoundingClientRect().top,
+        ),
+    ).toBeLessThan(0);
+    await release();
+    const after = await page.locator(".transcript").evaluate((element) => ({
+      top: element.scrollTop,
+      rows: [...element.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]")].map(
+        (row) => ({
+          id: row.dataset.transcriptAnchorId,
+          top: row.getBoundingClientRect().top - element.getBoundingClientRect().top,
+        }),
+      ),
+    }));
+    await expect(next, JSON.stringify({ before, after })).toBeInViewport();
+    expect(Math.abs((await offset()) - before)).toBeLessThanOrEqual(1);
+    const saved = await anchor(page.locator(".transcript"));
+    await command(page, "stream");
+    await command(page, "arrive");
+    await settle(page);
+    expect(await anchor(page.locator(".transcript"))).toEqual(saved);
+  });
+  for (const offset of [12, 200]) {
+    test(`late image inside the reading row preserves visible prose at offset ${offset}`, async ({
+      fixturePage: page,
+    }) => {
+      const release = await delayedMedia(page);
+      await projectMedia(page, "![Delayed diagram](https://transcript.invalid/late-image)");
+      await readMarkerAt(page, offset);
+      const before = await readingGeometry(page);
+      const imageTop = await mediaRow(page)
+        .locator("img")
+        .evaluate(
+          (image) =>
+            image.getBoundingClientRect().top -
+            image.closest(".transcript")!.getBoundingClientRect().top,
+        );
+      expect(offset === 12 ? imageTop < 0 : imageTop > 0).toBe(true);
+      await release();
+      const after = await readingGeometry(page);
+      expect(after.rowHeight - before.rowHeight).toBeGreaterThan(500);
+      expect(
+        Math.abs(after.marker - before.marker),
+        JSON.stringify({ before, after, imageTop }),
+      ).toBeLessThanOrEqual(1);
+    });
+  }
+
+  test("table rewrapping keeps the visible prose below it fixed", async ({ fixturePage: page }) => {
+    await projectMedia(page, tableMarkdown);
+    await readMarkerAt(page);
+    const before = await readingGeometry(page);
+    const tableBefore = await mediaRow(page)
+      .locator("table")
+      .evaluate((table) => table.getBoundingClientRect().height);
+    // A split-pane/window width change, not a made-up row height.
+    await page.locator("#root").evaluate((root) => {
+      root.style.width = "440px";
+    });
+    await settle(page);
+    const tableAfter = await mediaRow(page)
+      .locator("table")
+      .evaluate((table) => table.getBoundingClientRect().height);
+    const after = await readingGeometry(page);
+    expect(tableAfter - tableBefore).toBeGreaterThan(100);
+    expect(
+      Math.abs(after.marker - before.marker),
+      JSON.stringify({ before, after, tableBefore, tableAfter }),
+    ).toBeLessThanOrEqual(1);
+  });
+
+  for (const placement of ["above", "inside", "bottom"] as const) {
+    test(`vaulted portrait attachment loading and dimension changes ${placement} the viewport`, async ({
+      fixturePage: page,
+    }) => {
+      const transcript = page.locator(".transcript");
+      const reference = {
+        kind: "input" as const,
+        id: "20000000-0000-4000-8000-000000000001",
+        name: "portrait.png",
+        mimeType: "image/png",
+        byteLength: 1000,
+      };
+      const part: UiPart = {
+        kind: "attachment",
+        id: mediaMessageId,
+        attachmentKind: "image",
+        mediaType: "image/png",
+        name: reference.name,
+        inputReference: reference,
+      };
+      await projectParts(page, [placement === "bottom" ? { ...part, id: "last-image" } : part]);
+      if (placement !== "bottom") {
+        await showMediaRow(page);
+        await mediaRow(page).evaluate((row, placement) => {
+          const scroller = row.closest(".transcript")!;
+          const rect = row.getBoundingClientRect();
+          scroller.scrollTop +=
+            (placement === "above" ? rect.bottom : rect.top) -
+            scroller.getBoundingClientRect().top -
+            (placement === "above" ? -8 : 100);
+        }, placement);
+      }
+      await settle(page);
+      const figure = transcript.locator("figure");
+      await expect(figure).toHaveCount(1);
+      const height = () => figure.evaluate((element) => element.getBoundingClientRect().height);
+      const before = { height: await height(), anchor: await anchor(transcript) };
+      const data = await page.evaluate(() => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 600;
+        canvas.height = 1800;
+        return canvas.toDataURL("image/png").split(",")[1]!;
+      });
+      await page.evaluate(
+        ({ data, reference }) => {
+          (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).loadAttachment({
+            kind: "image",
+            mimeType: "image/png",
+            data,
+            reference,
+          });
+        },
+        { data, reference },
+      );
+      await expect(figure.locator("img")).toHaveCount(1);
+      await figure.locator("img").evaluate((image) => (image as HTMLImageElement).decode());
+      await settle(page);
+      const loaded = {
+        height: await height(),
+        anchor: await anchor(transcript),
+        gap: await gap(transcript),
+      };
+      expect
+        .soft(Math.abs(loaded.height - before.height), JSON.stringify({ before, loaded }))
+        .toBeLessThanOrEqual(1);
+      if (placement === "bottom") expect.soft(loaded.gap).toBeLessThanOrEqual(1);
+      else expect.soft(loaded.anchor).toEqual(before.anchor);
+      // The same visible attachment reconciles to pixels of a different aspect.
+      const wide = await page.evaluate(() => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1800;
+        canvas.height = 300;
+        return canvas.toDataURL("image/png").split(",")[1]!;
+      });
+      await projectParts(page, [
+        { ...part, id: placement === "bottom" ? "last-image" : part.id, data: wide },
+      ]);
+      await figure.locator("img").evaluate((image) => (image as HTMLImageElement).decode());
+      await settle(page);
+      expect(Math.abs((await height()) - before.height)).toBeLessThanOrEqual(1);
+      if (placement === "bottom") {
+        await command(page, "stream");
+        await settle(page);
+        expect(await gap(transcript)).toBeLessThanOrEqual(1);
+      } else {
+        expect(await anchor(transcript)).toEqual(before.anchor);
+        await command(page, "stream");
+        await settle(page);
+        expect(await anchor(transcript)).toEqual(before.anchor);
+      }
+    });
+  }
+
+  test("bottom pin follows late Markdown image and streamed table growth", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    const release = await delayedMedia(page);
+    const part: UiPart = {
+      kind: "text",
+      id: "streaming-media",
+      role: "assistant",
+      status: "streaming",
+      text: "![Delayed diagram](https://transcript.invalid/late-image)",
+    };
+    await projectParts(page, [part]);
+    await settle(page);
+    expect(await gap(transcript)).toBeLessThanOrEqual(1);
+    await release();
+    expect(await gap(transcript)).toBeLessThanOrEqual(1);
+    for (let rows = 3; rows <= 12; rows += 3) {
+      await projectParts(page, [
+        {
+          ...part,
+          text: `${part.text}\n\n${tableMarkdown
+            .split("\n")
+            .slice(0, rows + 2)
+            .join("\n")}`,
+        },
+      ]);
+      await settle(page);
+      expect(await gap(transcript)).toBeLessThanOrEqual(1);
+    }
+    await page.locator("#root").evaluate((root) => {
+      root.style.width = "440px";
+    });
+    await settle(page);
+    expect(await gap(transcript)).toBeLessThanOrEqual(1);
+  });
+
+  for (const media of ["image", "table"] as const) {
+    test(`${media} remount restores the same visible prose`, async ({ fixturePage: page }) => {
+      const release = await delayedMedia(page);
+      await projectMedia(
+        page,
+        media === "image"
+          ? "![Delayed diagram](https://transcript.invalid/late-image)"
+          : tableMarkdown,
+      );
+      if (media === "image") await release();
+      await readMarkerAt(page);
+      const before = await readingGeometry(page);
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            (
+              Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture
+            ).readingPosition(),
+          ),
+        )
+        .toMatchObject({ kind: "message", messageId: mediaMessageId });
+      const saved = await page.evaluate(() =>
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).readingPosition(),
+      );
+      const remountTrace = await page.evaluate(async () => {
+        const probes = new Set<string>();
+        const observer = new MutationObserver((records) => {
+          for (const record of records)
+            for (const node of [...record.addedNodes, ...record.removedNodes]) {
+              if (!(node instanceof HTMLElement)) continue;
+              const rows = [...node.querySelectorAll<HTMLElement>("[data-transcript-item-index]")];
+              if (node.matches("[data-transcript-item-index]")) rows.push(node);
+              for (const row of rows) {
+                const index = row.dataset.transcriptItemIndex;
+                const id = row.dataset.transcriptAnchorId;
+                if (id !== `message-${index}`) probes.add(`index ${index} rendered ${id}`);
+              }
+            }
+        });
+        observer.observe(document.getElementById("root")!, { subtree: true, childList: true });
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).remount();
+        const samples: unknown[] = [];
+        let previous = "";
+        for (let frame = 0; frame < 12; frame++) {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+          const scroller = document.querySelector<HTMLElement>(".transcript")!;
+          const list = scroller.querySelector<HTMLElement>('[aria-label="Conversation"]')!;
+          const sample = {
+            top: scroller.scrollTop,
+            visibility: getComputedStyle(list).visibility,
+            rows: [...scroller.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]")].map(
+              (row) => row.dataset.transcriptAnchorId,
+            ),
+            mediaHeight: scroller
+              .querySelector('[data-transcript-anchor-id="message-25"]')
+              ?.getBoundingClientRect().height,
+            padding: list.style.paddingTop,
+          };
+          if (JSON.stringify(sample) !== previous) samples.push(sample);
+          previous = JSON.stringify(sample);
+        }
+        observer.disconnect();
+        return { samples, probes: [...probes] };
+      });
+      await expect(page.locator('[aria-label="Conversation"]')).toBeVisible();
+      await settle(page);
+      const restored = await page.locator(".transcript").evaluate((element) => ({
+        top: element.scrollTop,
+        gap: element.scrollHeight - element.clientHeight - element.scrollTop,
+        rows: [...element.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]")].map(
+          (row) => row.dataset.transcriptAnchorId,
+        ),
+      }));
+      await expect(
+        readingMarker(page),
+        JSON.stringify({ before, saved, restored, remountTrace }),
+      ).toHaveCount(1);
+      await mediaRow(page)
+        .locator("img")
+        .evaluateAll((images) =>
+          Promise.all(images.map((image) => (image as HTMLImageElement).decode())),
+        );
+      await settle(page);
+      const after = await readingGeometry(page);
+      expect(
+        Math.abs(after.marker - before.marker),
+        JSON.stringify({ before, after }),
+      ).toBeLessThanOrEqual(1);
+    });
+  }
 });

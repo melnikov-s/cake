@@ -6,6 +6,8 @@ import { flushSync } from "react-dom";
 import { StoreProvider } from "r-state-tree/react";
 import { ChatTranscript } from "../../src/renderer/components/chat-transcript";
 import { Chat } from "../../src/renderer/components/chat";
+import type { TranscriptScrollPosition } from "../../src/renderer/stores/ChatStore";
+import type { AttachmentContent } from "../../src/contracts/conversations/attachment-reference-control";
 import { createRendererStoreFixture } from "../app/renderer/renderer-store-fixture";
 import { projectRecord, sessionSummary } from "../app/renderer/fixtures/catalog-fixtures";
 import { applyConversationUpdate } from "../../src/renderer/reducers/ConversationReducer";
@@ -109,11 +111,16 @@ const client: TestClientOverrides | undefined = withUpdates
         },
       }
     : undefined;
+let releaseAttachment: ((content: AttachmentContent) => void) | undefined;
+const attachmentReady = new Promise<AttachmentContent>((resolve) => {
+  releaseAttachment = resolve;
+});
 const fixture = createRendererStoreFixture({
   client: {
     ...client,
     sessionChats: {
       ...client?.sessionChats,
+      readAttachment: async () => attachmentReady,
       prompt: async ({ text }) => {
         parts = [
           ...parts,
@@ -262,6 +269,10 @@ export interface TranscriptOwnershipFixture {
   /** Release the external original-report read after opening its disclosure. */
   loadReport(): void;
   update(): void;
+  /** Leave and reopen the same transcript, retaining its real Store reading position. */
+  remount(): void;
+  readingPosition(): TranscriptScrollPosition | undefined;
+  loadAttachment(content: AttachmentContent): void;
   /** Deliver live external projections after the transcript has already rendered. */
   partsUpdated(updates: UiPart[]): void;
   stream(): void;
@@ -285,6 +296,16 @@ Reflect.set(window, "transcriptFixture", {
   update() {
     publish();
     render();
+  },
+  remount() {
+    flushSync(() => root.render(null));
+    render();
+  },
+  readingPosition() {
+    return store.transcriptInteraction.transcriptScrollPosition;
+  },
+  loadAttachment(content) {
+    releaseAttachment?.(content);
   },
   partsUpdated(updates) {
     for (const part of updates) {
