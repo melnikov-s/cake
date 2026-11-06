@@ -7,8 +7,8 @@
  * - Opening a response pauses following, preserving its header for reading.
  * - Anywhere else, the transcript never scrolls for the reader. Layout changes
  *   (streaming text, new messages, tool output, cards, virtual measurement,
- *   viewport resizes) are compensated so the row at the top of the viewport
- *   keeps its exact on-screen position.
+ *   viewport resizes) are compensated so the visible reading content keeps
+ *   its exact on-screen position, including changes inside a tall row.
  *
  * Only the reader may start following again, by scrolling back to the bottom.
  * The one programmatic jump to the bottom is sending a message. Revealing a
@@ -35,6 +35,7 @@ const bottomThreshold = 2;
 const endTolerance = 1;
 const revealMargin = 16;
 const rowSelector = "[data-transcript-item-key]";
+const readingSelector = "p, pre, h1, h2, h3, h4, h5, h6, li, td, th";
 
 export interface TranscriptScrollOwner {
   /** Layout changed: pin the bottom while following, otherwise hold the reader's anchor still. */
@@ -61,14 +62,16 @@ export interface TranscriptScrollOwnerOptions {
 }
 
 /**
- * An anchor is a row and its top edge in *content* coordinates (viewport offset
- * plus scrollTop). That value does not change when the reader scrolls, only
- * when layout above the row changes, so compensation can never undo a native
- * scroll whose `scroll` event has not been dispatched yet.
+ * All positions use content coordinates (viewport offset plus scrollTop), so
+ * compensation cannot undo a native scroll whose event has not arrived yet.
+ * The row is the fallback when its reading content is replaced or unmounted.
  */
+type ReadingTarget = HTMLElement | { node: Text; offset: number };
+
 interface Anchor {
   key: string;
   top: number;
+  reading?: { target: ReadingTarget; top: number }[];
 }
 
 export function createTranscriptScrollOwner(
@@ -137,8 +140,67 @@ export function createTranscriptScrollOwner(
   const contentTop = (element: HTMLElement) =>
     layoutTop(element) - scroller.getBoundingClientRect().top + scroller.scrollTop;
 
-  /** The row crossing the top edge of the viewport. */
-  const findAnchor = (): Anchor | undefined => {
+  const readingTop = (target: ReadingTarget, element: HTMLElement) => {
+    let geometry: HTMLElement | Range;
+    if (target instanceof HTMLElement) geometry = target;
+    else {
+      // Keep the numeric offset, not a live Range: updating a streaming text
+      // node resets a live Range's endpoints even when that node stays mounted.
+      const range = document.createRange();
+      const offset = Math.min(target.offset, Math.max(0, target.node.length - 1));
+      range.setStart(target.node, offset);
+      range.setEnd(target.node, Math.min(offset + 1, target.node.length));
+      geometry = range;
+    }
+    return (
+      geometry.getBoundingClientRect().top -
+      (element.getBoundingClientRect().top - layoutTop(element)) -
+      scroller.getBoundingClientRect().top +
+      scroller.scrollTop
+    );
+  };
+
+  /**
+   * Record visible prose blocks in the reading row, not the overscan rows.
+   * Reconciliation holds the first displaced block: media can grow between two
+   * visible paragraphs, leaving the earlier paragraph completely unchanged.
+   * For a block crossing the top edge, record its visible text character before
+   * the following blocks, so rewrapping preserves the line being read too.
+   */
+  const findReading = (element: HTMLElement): Anchor["reading"] => {
+    const viewport = scroller.getBoundingClientRect();
+    const reading: NonNullable<Anchor["reading"]> = [];
+    let crossing: HTMLElement | undefined;
+    let crossingCell: HTMLElement | undefined;
+    for (const candidate of element.querySelectorAll<HTMLElement>(readingSelector)) {
+      if (!candidate.textContent?.trim() || candidate.querySelector(readingSelector)) continue;
+      const rect = candidate.getBoundingClientRect();
+      if (rect.height <= 0 || rect.bottom <= viewport.top + 1) continue;
+      if (rect.top >= viewport.bottom) break;
+      if (rect.top >= viewport.top)
+        reading.push({ target: candidate, top: readingTop(candidate, element) });
+      else if (candidate.matches("td, th")) crossingCell ??= candidate;
+      else crossing ??= candidate;
+    }
+    // A clipped table cell must not displace fully visible prose below the
+    // table. When reading inside the table itself, keep its visible character.
+    crossing ??= reading.length ? undefined : crossingCell;
+    if (!crossing) return reading;
+    const rect = crossing.getBoundingClientRect();
+    const caret = document.caretRangeFromPoint?.(rect.left + 1, viewport.top + 1);
+    if (
+      !caret ||
+      !crossing.contains(caret.startContainer) ||
+      !(caret.startContainer instanceof Text)
+    )
+      return [{ target: crossing, top: readingTop(crossing, element) }, ...reading];
+    const node = caret.startContainer;
+    const target = { node, offset: Math.min(caret.startOffset, Math.max(0, node.length - 1)) };
+    return [{ target, top: readingTop(target, element) }, ...reading];
+  };
+
+  /** The row crossing the top edge of the viewport, and the content being read. */
+  const findAnchor = (includeReading = true): Anchor | undefined => {
     const viewportTop = scroller.getBoundingClientRect().top;
     for (const candidate of rows()) {
       const key = candidate.dataset.transcriptItemKey;
@@ -146,7 +208,11 @@ export function createTranscriptScrollOwner(
       if (!key || height <= 0) continue;
       const top = layoutTop(candidate);
       if (top + height > viewportTop + 1)
-        return { key, top: top - viewportTop + scroller.scrollTop };
+        return {
+          key,
+          top: top - viewportTop + scroller.scrollTop,
+          reading: includeReading ? findReading(candidate) : undefined,
+        };
     }
     return undefined;
   };
@@ -162,13 +228,20 @@ export function createTranscriptScrollOwner(
       anchor = findAnchor();
       return;
     }
-    const delta = contentTop(element) - saved.top;
+    const connectedReading = saved.reading?.filter(({ target }) =>
+      element.contains(target instanceof HTMLElement ? target : target.node),
+    );
+    const readingDelta = connectedReading
+      ?.map(({ target, top }) => readingTop(target, element) - top)
+      .find((delta) => Math.abs(delta) >= 0.5);
+    const delta = readingDelta ?? contentTop(element) - saved.top;
     if (Math.abs(delta) < 0.5) return;
     const before = scroller.scrollTop;
     write(before + delta);
-    // Keep any sub-pixel remainder (or a clamped write) in the baseline so it
-    // is corrected by a later change instead of accumulating as drift.
-    saved.top += scroller.scrollTop - before;
+    // The row itself need not move when content inside it grows. Keep its
+    // fallback baseline separate from the reading content's compensation.
+    saved.top = contentTop(element);
+    for (const reading of connectedReading ?? []) reading.top = readingTop(reading.target, element);
   };
 
   /**
@@ -361,7 +434,8 @@ export function createTranscriptScrollOwner(
       return;
     cancelReveal();
     following = false;
-    anchor = findAnchor();
+    // Disclosure deliberately preserves the heading, not prose after its body.
+    anchor = findAnchor(false);
   };
 
   const abort = new AbortController();

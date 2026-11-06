@@ -141,6 +141,47 @@ describe("transcript scroll owner measurement boundaries", () => {
     expect(scroller.scrollTop).toBe(1_480);
   });
 
+  it("holds the first displaced visible prose when media grows inside its row", () => {
+    list.replaceChildren();
+    const row = addRow("tall", 980, 2_200).firstElementChild!;
+    let growth = 0;
+    for (const [top, afterMedia] of [
+      [1_040, false],
+      [1_200, true],
+      [1_400, true],
+    ] as const) {
+      const paragraph = document.createElement("p");
+      paragraph.textContent = "Visible reading content";
+      paragraph.getBoundingClientRect = () =>
+        ({
+          top: top + (afterMedia ? growth : 0) - scroller.scrollTop,
+          bottom: top + (afterMedia ? growth : 0) + 20 - scroller.scrollTop,
+          height: 20,
+        }) as DOMRect;
+      row.append(paragraph);
+    }
+    owner.reconcile();
+    growth = 800;
+    contentHeight += growth;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_800);
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_800);
+  });
+
+  it("falls back to the stable row when React replaces its reading content", () => {
+    const row = list.querySelector<HTMLElement>("[data-transcript-item-key]")!;
+    const paragraph = document.createElement("p");
+    paragraph.textContent = "Reading content";
+    paragraph.getBoundingClientRect = () => ({ top: 100, bottom: 120, height: 20 }) as DOMRect;
+    row.append(paragraph);
+    owner.reconcile();
+    paragraph.remove();
+    shift = 80;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_080);
+  });
+
   it("keeps a sent-message jump following through virtual estimate corrections", () => {
     owner.setSelecting(true);
     owner.scrollToBottomForSentMessage({

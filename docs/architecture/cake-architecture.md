@@ -83,8 +83,14 @@ projections needed by a surface. References do not transfer ownership.
   `ChatTranscript`'s scroll position. It follows new content only while the
   reader is at the bottom; anywhere else it never scrolls for the reader and
   compensates every layout change (streaming, arriving messages, tools, cards,
-  virtual measurement, resizes) so the row at the top of the viewport stays
-  still. Anchors are stored in content coordinates, so compensation cannot undo
+  virtual measurement, resizes) so the visible reading content stays still,
+  including image growth or table rewrapping inside a tall message. The owner
+  records visible prose in the reading row and holds the first displaced block;
+  unchanged prose before growing media must not hide movement below it. A block
+  crossing the viewport top uses a visible text character before later blocks;
+  a clipped table cell yields to fully visible prose below the table. Deliberate message reveals
+  and disclosure keep their row/heading anchor. Anchors are stored in content
+  coordinates, so compensation cannot undo
   a native scroll whose event is still queued. Following stops as soon as the
   reader moves up (wheel, touch, keys, scrollbar, or any other upward movement)
   and resumes only when the reader returns to the bottom. Any upward movement
@@ -102,7 +108,9 @@ projections needed by a surface. References do not transfer ownership.
   key, pauses following, and is otherwise ordinary reading. The
   pinned Virtuoso patch keeps upward size compensation disabled
   (`skipUpwardScrollCompensation`) and exposes `cancelScrollToIndex` so reader
-  input or a completed reveal stops index-navigation retries. Do not add
+  input or a completed reveal stops index-navigation retries. Initial probes
+  measure the requested item's data, not the first item, so restoring an offset
+  inside a tall message uses that message's real height. Do not add
   another scroll writer; route new layout triggers through the owner's
   `reconcile()`.
 - Regular-Pi display history is the complete active branch from

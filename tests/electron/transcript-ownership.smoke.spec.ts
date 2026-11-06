@@ -1112,6 +1112,129 @@ const live = (page: Page, mode: "text" | "text+tool+arrive" | false) =>
     else fixture.stopLive();
   }, mode);
 
+// Compare final post-layout geometry on the next frame, after it painted.
+// Raw scrollTop can increase when virtual measurement moves content coordinates;
+// only movement of the retained reading content tells us whether input was undone.
+async function startUpwardReadingProbe(page: Page) {
+  await page.evaluate(() => {
+    const scroller = document.querySelector<HTMLElement>(".transcript")!;
+    type Row = { id: string; top: number; bottom: number };
+    type Sample = { top: number; height: number; rows: Row[]; range: string };
+    const result = {
+      frames: 0,
+      idleFrames: 0,
+      progress: 0,
+      idleGrowth: 0,
+      errors: [] as unknown[],
+      samples: [] as unknown[],
+      ranges: 0,
+    };
+    const ranges = new Set<string>();
+    let phase: "scrolling" | "idle" = "scrolling";
+    let previous: Row | undefined;
+    let pending: Sample | undefined;
+    let idleHeight: number | undefined;
+    let frame: number;
+    let tall = false;
+    const sentinel = document.createElement("div");
+    sentinel.style.cssText =
+      "position:fixed;left:-10000px;top:0;width:1px;height:1px;contain:strict;pointer-events:none";
+    document.body.append(sentinel);
+    const commit = () => {
+      const sample = pending;
+      pending = undefined;
+      if (!sample) return;
+      result.frames++;
+      ranges.add(sample.range);
+      result.ranges = ranges.size;
+      if (phase === "idle") {
+        result.idleFrames++;
+        idleHeight ??= sample.height;
+        result.idleGrowth = Math.max(result.idleGrowth, sample.height - idleHeight);
+      }
+      if (previous) {
+        const retained = sample.rows.find((row) => row.id === previous!.id);
+        const delta = retained ? retained.top - previous.top : "unmounted";
+        if (delta === "unmounted" || (phase === "idle" ? Math.abs(delta) > 1 : delta < -1)) {
+          if (result.errors.length < 12)
+            result.errors.push({ phase, previous, retained, scrollTop: sample.top, delta });
+        } else if (phase === "scrolling") result.progress += delta;
+      }
+      previous = sample.rows.find((row) => row.bottom > 1);
+      result.samples.push({ phase, scrollTop: sample.top, anchor: previous, range: sample.range });
+      if (result.samples.length > 12) result.samples.shift();
+    };
+    const observer = new ResizeObserver(() => {
+      const viewportTop = scroller.getBoundingClientRect().top;
+      const rows = [...scroller.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]")].map(
+        (row) => {
+          const rect = row.getBoundingClientRect();
+          return {
+            id: row.dataset.transcriptAnchorId!,
+            top: rect.top - viewportTop,
+            bottom: rect.bottom - viewportTop,
+          };
+        },
+      );
+      pending = {
+        top: scroller.scrollTop,
+        height: scroller.scrollHeight,
+        rows,
+        range: `${rows[0]?.id}:${rows.at(-1)?.id}`,
+      };
+    });
+    observer.observe(sentinel);
+    observer.observe(scroller.firstElementChild!);
+    const tick = () => {
+      commit();
+      tall = !tall;
+      sentinel.style.height = tall ? "2px" : "1px";
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    Reflect.set(window, "upwardReadingProbe", {
+      idle() {
+        commit();
+        phase = "idle";
+        idleHeight = scroller.scrollHeight;
+      },
+      stop: () =>
+        new Promise<typeof result>((resolve) =>
+          requestAnimationFrame(() => {
+            commit();
+            cancelAnimationFrame(frame);
+            observer.disconnect();
+            sentinel.remove();
+            resolve(result);
+          }),
+        ),
+    });
+  });
+  // Establish a painted baseline before the next native gesture.
+  await settle(page);
+}
+
+const idleReadingProbe = (page: Page) =>
+  page.evaluate(() => {
+    (Reflect.get(window, "upwardReadingProbe") as { idle(): void }).idle();
+  });
+const stopReadingProbe = (page: Page) =>
+  page.evaluate(() =>
+    (
+      Reflect.get(window, "upwardReadingProbe") as {
+        stop(): Promise<{
+          frames: number;
+          idleFrames: number;
+          progress: number;
+          idleGrowth: number;
+          ranges: number;
+          errors: unknown[];
+          samples: unknown[];
+        }>;
+      }
+    ).stop(),
+  );
+
 // The reader's own upward scroll is the only signal that matters. Nothing the
 // transcript does in response to content may pull it back down.
 test.describe("reader scrolling up while content streams", () => {
@@ -1188,7 +1311,7 @@ test.describe("reader scrolling up while content streams", () => {
   });
 
   for (const mode of ["text", "text+tool+arrive"] as const)
-    test(`wheeling up during live ${mode} updates detaches at once and never moves back down`, async ({
+    test(`wheeling up during live ${mode} updates preserves painted reading progress`, async ({
       fixturePage: page,
     }) => {
       const transcript = page.locator(".transcript");
@@ -1199,26 +1322,33 @@ test.describe("reader scrolling up while content streams", () => {
       await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
       await page.mouse.wheel(0, -40);
       await settle(page);
-      const tops = [await top(transcript)];
       expect(await gap(transcript)).toBeGreaterThanOrEqual(39);
+      await startUpwardReadingProbe(page);
       for (let step = 0; step < 20; step++) {
         await page.mouse.wheel(0, -40);
         await page.waitForTimeout(16);
-        tops.push(await top(transcript));
       }
+      await settle(page);
+      await idleReadingProbe(page);
+      await command(page, "stream");
+      await command(page, "stream");
+      await command(page, "arrive");
+      await settle(page);
       await page.waitForTimeout(300);
-      tops.push(await top(transcript));
       await live(page, false);
-      const downward = tops.slice(1).filter((value, index) => value > tops[index]!);
-      expect(downward, JSON.stringify(tops)).toEqual([]);
-      expect(tops[0]! - tops.at(-1)!).toBeGreaterThanOrEqual(20 * 40 - 1);
+      const reading = await stopReadingProbe(page);
+      expect(reading.errors, JSON.stringify(reading)).toEqual([]);
+      expect(reading.progress, JSON.stringify(reading)).toBeGreaterThanOrEqual(20 * 40 - 1);
+      expect(reading.ranges).toBeGreaterThan(1);
+      expect(reading.idleFrames).toBeGreaterThan(1);
+      expect(reading.idleGrowth).toBeGreaterThan(0);
     });
 });
 
 test.describe("reader scrolling over an inline widget while content streams", () => {
   test.use({ withWidget: true });
 
-  test("the first upward gesture over the iframe detaches and is never undone", async ({
+  test("the first upward iframe gesture detaches and preserves painted reading progress", async ({
     fixturePage: page,
   }) => {
     const transcript = page.locator(".transcript");
@@ -1231,16 +1361,30 @@ test.describe("reader scrolling over an inline widget while content streams", ()
     await page.mouse.move(bounds.x + bounds.width / 2, Math.max(viewport.y, bounds.y) + 30);
     await live(page, "text");
     await page.waitForTimeout(200);
-    const tops: number[] = [];
-    for (let step = 0; step < 10; step++) {
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    await page.mouse.wheel(0, -40);
+    await settle(page);
+    expect(await gap(transcript)).toBeGreaterThanOrEqual(39);
+    await startUpwardReadingProbe(page);
+    for (let step = 0; step < 9; step++) {
       await page.mouse.wheel(0, -40);
       await page.waitForTimeout(30);
-      tops.push(await top(transcript));
     }
+    await settle(page);
+    await idleReadingProbe(page);
+    await command(page, "stream");
+    await command(page, "stream");
+    await command(page, "arrive");
+    await settle(page);
+    await page.waitForTimeout(300);
     const finalGap = await gap(transcript);
     await live(page, false);
-    const downward = tops.slice(1).filter((value, index) => value > tops[index]!);
-    expect(downward, JSON.stringify(tops)).toEqual([]);
+    const reading = await stopReadingProbe(page);
+    expect(reading.errors, JSON.stringify(reading)).toEqual([]);
+    expect(reading.progress, JSON.stringify(reading)).toBeGreaterThanOrEqual(9 * 40 - 1);
+    expect(reading.ranges).toBeGreaterThan(1);
+    expect(reading.idleFrames).toBeGreaterThan(1);
+    expect(reading.idleGrowth).toBeGreaterThan(0);
     expect(finalGap).toBeGreaterThanOrEqual(10 * 40 - 1);
   });
 });
@@ -1441,6 +1585,67 @@ test.describe("media content anchoring diagnosis", () => {
         Math.abs(after.marker - before.marker),
         JSON.stringify({ before, after, imageTop }),
       ).toBeLessThanOrEqual(1);
+    });
+  }
+
+  for (const following of [false, true]) {
+    test(`rewrapping a ${following ? "top-crossing paragraph before another visible block" : "viewport-filling paragraph"} holds its visible text character`, async ({
+      fixturePage: page,
+    }) => {
+      await projectParts(page, [
+        {
+          kind: "text",
+          id: mediaMessageId,
+          role: "assistant",
+          status: "complete",
+          text:
+            "Long paragraph reading content. ".repeat(500) +
+            (following ? "\n\nFollowing paragraph." : ""),
+        },
+      ]);
+      await showMediaRow(page);
+      const paragraph = mediaRow(page).locator("p").first();
+      await paragraph.evaluate((element, following) => {
+        const range = document.createRange();
+        const offset = following ? element.textContent!.length - 250 : 1_500;
+        range.setStart(element.firstChild!, offset);
+        range.setEnd(element.firstChild!, offset + 1);
+        const scroller = element.closest(".transcript")!;
+        scroller.scrollTop +=
+          range.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 12;
+      }, following);
+      await settle(page);
+      if (following)
+        await expect(
+          mediaRow(page).getByText("Following paragraph.", { exact: true }),
+        ).toBeInViewport();
+      const before = await paragraph.evaluate((element) => {
+        const viewport = element.closest(".transcript")!.getBoundingClientRect();
+        const caret = document.caretRangeFromPoint(
+          element.getBoundingClientRect().left + 1,
+          viewport.top + 1,
+        )!;
+        const range = document.createRange();
+        range.setStart(caret.startContainer, caret.startOffset);
+        range.setEnd(caret.startContainer, caret.startOffset + 1);
+        return { offset: caret.startOffset, top: range.getBoundingClientRect().top - viewport.top };
+      });
+      await page.locator("#root").evaluate((root) => {
+        root.style.width = "440px";
+      });
+      await settle(page);
+      const after = await paragraph.evaluate((element, offset) => {
+        const range = document.createRange();
+        range.setStart(element.firstChild!, offset);
+        range.setEnd(element.firstChild!, offset + 1);
+        return (
+          range.getBoundingClientRect().top -
+          element.closest(".transcript")!.getBoundingClientRect().top
+        );
+      }, before.offset);
+      expect(Math.abs(after - before.top), JSON.stringify({ before, after })).toBeLessThanOrEqual(
+        1,
+      );
     });
   }
 
@@ -1661,6 +1866,7 @@ test.describe("media content anchoring diagnosis", () => {
         observer.disconnect();
         return { samples, probes: [...probes] };
       });
+      expect(remountTrace.probes).toEqual([]);
       await expect(page.locator('[aria-label="Conversation"]')).toBeVisible();
       await settle(page);
       const restored = await page.locator(".transcript").evaluate((element) => ({
