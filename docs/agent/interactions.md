@@ -4,7 +4,9 @@ Read before presenting interactive widgets or gathering structured requirements.
 
 ## Static HTML
 
-For simple HTML/CSS mockups, headers, and layouts, call `html.present` with `{ id, title, html, height? }` directly. Write an HTML fragment with inline CSS or a style element. Keep requested alternatives together; set height (120–1600 CSS pixels) to fit. No specialist, React, repository file, browser opening, or screenshot review is needed. Scripts and network access are disabled. The artifact appears inline and survives reopening. Use `artifacts.present` to show an existing result again. Do not claim visual inspection from publication alone.
+For simple HTML/CSS mockups, headers, and layouts, call `html.present` with `{ id, title, html, height? }` directly. Write an HTML fragment with inline CSS or a style element. This isolated iframe receives no host theme tokens, app CSS or fonts: supply a complete self-contained palette and typography for the stated app/theme, with no unresolved required variables. Scripts and network access are disabled; unlike HTML/React widgets, static HTML has no live Cake theme delivery.
+
+Set height (120–1600 CSS pixels; default 240) for readable content. Stack alternatives with scrolling or use separate artifacts rather than shrinking full screens into thumbnails. No specialist, React or repository file is needed. The artifact appears inline and survives reopening; use `artifacts.present` to show it again. Before recommending a prototype or claiming visual readiness, inspect every alternative's rendered appearance using the project's supported capture workflow or a supplied screenshot. Static HTML has no retained `artifacts.preview`; if visual checks are unavailable, say “published, visually unverified” and name the missing check. Publication alone is not visual verification.
 
 ## Widgets
 

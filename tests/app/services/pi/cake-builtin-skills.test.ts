@@ -60,6 +60,30 @@ describe("built-in Cake skills", () => {
     );
   });
 
+  it("packages surface-specific styling, readable viewports and rendered visual checks", async () => {
+    const { loader } = await fixture();
+    const prototype = loader
+      .getSkills()
+      .skills.find((skill) => skill.name === "cake:prototype-ui")!;
+    const skill = await readFile(prototype.filePath, "utf8");
+    for (const fact of [
+      "`html.present` uses an isolated iframe with no inherited Cake CSS variables",
+      "Define every required CSS variable locally",
+      "HTML/React widgets receive live host theme tokens",
+      "do not shrink fonts or scale whole screens to fit five across",
+      "Overview thumbnails may supplement, never replace",
+      "Inspect actual rendered pixels for every alternative",
+      "Fix defects and inspect the revised rendering",
+      "“published, visually unverified”",
+      "`artifacts.preview` is for widgets only",
+    ])
+      expect(skill).toContain(fact);
+    const widget = await readFile(join(prototype.baseDir, "widget.md"), "utf8");
+    expect(widget).toContain("never shrink five screens to unreadable thumbnails");
+    expect(widget).toContain("The host supplies semantic color/font variables before first paint");
+    expect(widget).toContain("updates them live");
+  });
+
   it("keeps ordinary project skill names and reserves the Cake namespace for bundled skills", async () => {
     const { root, override, loader } = await fixture();
     const directory = join(root, "project-skill");

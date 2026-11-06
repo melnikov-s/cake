@@ -65,7 +65,9 @@ describe("Cake-owned prompt catalog", () => {
       "Read `widget.md` before preparing this workflow's brief",
       "Honor explicit HTML requests. Prefer `html.present` for static HTML/CSS mockups",
       "Use `widgets.present` only when the request needs meaningful interactive behavior",
-      "use live host CSS variables throughout, never frozen screenshot colors",
+      "`html.present` uses an isolated iframe with no inherited Cake CSS variables",
+      "HTML/React widgets receive live host theme tokens",
+      "Inspect actual rendered pixels for every alternative",
       "expectedStateVersion",
       "artifacts.selection.capture",
       "{ selection, moduleId, offset: 0, limit: 48000 }",
@@ -76,7 +78,7 @@ describe("Cake-owned prompt catalog", () => {
       skill.indexOf("## Choose the rendering approach"),
       skill.indexOf("## Optional interactive saved-choice/source-handoff workflow"),
     );
-    expect(Buffer.byteLength(approach)).toBeLessThan(3_000);
+    expect(Buffer.byteLength(approach)).toBeLessThan(5_000);
     expect(Buffer.byteLength(skill.replace(approach, ""))).toBeLessThan(6_900);
     expect(Buffer.byteLength(widget)).toBeLessThan(6_100);
   });

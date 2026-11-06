@@ -9,6 +9,8 @@ import delegation from "../../../docs/agent/family-delegation.md?raw";
 import coordination from "../../../docs/agent/family-coordination.md?raw";
 import lifecycle from "../../../docs/agent/family-lifecycle.md?raw";
 import communication from "../../../docs/agent/communication.md?raw";
+import interactions from "../../../docs/agent/interactions.md?raw";
+import presentation from "../../../docs/agent/presentation.md?raw";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -39,4 +41,23 @@ it("publishes the family entry guide and every linked task guide from repository
   ])
     expect(workgroups).toContain(`\`${name}.md\``);
   expect(await cakeAgentDocumentationDirectory(agentDirectory)).toBe(directory);
+});
+
+it("publishes static HTML styling and visual-verification guidance without losing source content", async () => {
+  const agentDirectory = await mkdtemp(join(tmpdir(), "cake-static-html-docs-"));
+  directories.push(agentDirectory);
+  const directory = await cakeAgentDocumentationDirectory(agentDirectory);
+  for (const [name, source] of Object.entries({ interactions, presentation })) {
+    const published = await readFile(join(directory, `${name}.md`), "utf8");
+    expect(published).toBe(source);
+    for (const fact of [
+      "no host theme tokens, app CSS or fonts",
+      "no unresolved required variables",
+      "rendered",
+      "every alternative",
+      "published, visually unverified",
+      "Publication alone is not visual verification",
+    ])
+      expect(published, name).toContain(fact);
+  }
 });

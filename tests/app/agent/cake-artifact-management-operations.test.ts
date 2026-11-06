@@ -121,6 +121,21 @@ function makeHarness(initial: CakeArtifactV1 = markdown(1, "one")) {
 }
 
 describe("Cake artifact management operations", () => {
+  it("explains static HTML styling, sizing and visual verification in operation help", async () => {
+    const { registry } = makeHarness();
+    const help = await registry.invoke({ command: "html.present.help" }, context());
+    for (const fact of [
+      "no host theme tokens, app CSS or fonts",
+      "no unresolved required variables",
+      "HTML/React widgets receive live host theme tokens",
+      "readable at a realistic viewport",
+      "inspect every alternative’s rendered pixels",
+      "Static HTML has no retained artifacts.preview",
+      "published, visually unverified",
+    ])
+      expect(help.text).toContain(fact);
+  });
+
   it("presents authored static HTML in one call with a durable regular-Pi pointer", async () => {
     const { registry, callbacks, appendEntry } = makeHarness();
     const html =
