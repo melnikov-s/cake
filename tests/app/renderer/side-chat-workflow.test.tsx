@@ -296,7 +296,10 @@ describe("Secondary conversation workflows", () => {
       },
     };
     using fixture = renderSideChats(start, { threads: [first, second] });
-    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 2 open" }));
+    const trigger = screen.getByRole("button", { name: "Side chats, 2 open" });
+    expect(within(trigger).getByText("2").classList.contains("bg-card")).toBe(true);
+    await fixture.user.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
     await fixture.user.click(screen.getByRole("button", { name: /First discussion/ }));
     expect(screen.getByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Side chats, 2 open" }));

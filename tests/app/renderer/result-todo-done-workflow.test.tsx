@@ -275,7 +275,11 @@ async function renderChat(kind: ChatKind) {
   const pane = async () => {
     const open = screen.queryByRole("complementary", { name: "To-do" });
     if (open) return open;
-    await user.click(screen.getByRole("button", { name: "To-do" }));
+    const trigger = screen.getByRole("button", { name: "To-do" });
+    const count = chat.todos.openItems.length;
+    expect(trigger.getAttribute("aria-description")).toBe(`${count} open to-dos`);
+    expect(within(trigger).getByText(String(count)).classList.contains("bg-card")).toBe(true);
+    await user.click(trigger);
     return screen.getByRole("complementary", { name: "To-do" });
   };
   return {

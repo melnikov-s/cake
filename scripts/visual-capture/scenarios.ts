@@ -4459,6 +4459,104 @@ const reportHeadersScenario: VisualCaptureScenario = {
 const resultTodoSessionId = "3d4e5f6a-7b8c-4d9e-8f01-2a3b4c5d6e71";
 const resultTodoNoticeSessionId = "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b82";
 
+function numberedIconButtonsScenario(todoCount: number): VisualCaptureScenario {
+  return {
+    name: todoCount === 35 ? "numbered-icon-buttons" : "numbered-icon-buttons-large",
+    description:
+      "Opaque, inset artifact, to-do and side-chat count bubbles in real Cake Chat chrome",
+    states: ["default", "hover", "focus"],
+    async seed(paths, theme) {
+      await sideChatActions.seed(paths, theme);
+      const file = join(paths.cakeHome, "state", "application.json");
+      const state = JSON.parse(await readFile(file, "utf8"));
+      state.data.cakeChatTodos = {
+        selectedId: null,
+        sequence: 0,
+        deliveryToken: null,
+        pending: [],
+        items: Array.from({ length: todoCount }, (_, index) => ({
+          id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+          title: `Task ${index + 1}`,
+          description: "Review implementation",
+          status: "Open",
+          state: "open",
+          revision: 0,
+          associations: [],
+        })),
+      };
+      await writeFile(file, JSON.stringify(state));
+      for (let index = 0; index < 4; index++) {
+        await seedArtifact(
+          paths,
+          {
+            protocol: "cake.artifact/v1",
+            id: `numbered-button-report-${index}`,
+            sessionId: CAKE_CHAT_SESSION_ID,
+            revision: 1,
+            kind: "markdown",
+            title: `Report ${index + 1}`,
+            payload: { markdown: "Numbered toolbar fixture" },
+            fallback: { markdown: "Numbered toolbar fixture" },
+          },
+          new Date(0).toISOString(),
+        );
+      }
+    },
+    async prepare(page, state) {
+      await assistantMarkdownCode.prepare(page, "default");
+      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      const header = page.locator('[data-slot="workspace-header"]');
+      await expect(header.locator("strong")).toHaveText("Cake Chat");
+      const artifact = header.getByRole("button", { name: "4 artifacts", exact: true });
+      const todo = header.getByRole("button", { name: "To-do", exact: true });
+      const chats = header.getByRole("button", { name: "Side chats, 1 open", exact: true });
+      await expect(artifact).toBeVisible({ timeout: 20_000 });
+      await expect(todo).toHaveAttribute("aria-description", `${todoCount} open to-dos`);
+      await expect(todo.getByText(String(todoCount), { exact: true })).toBeVisible();
+      await expect(chats).toBeVisible();
+      // Check actual CSS and geometry, not only the intended utility strings.
+      for (const trigger of [artifact, todo, chats]) {
+        const geometry = await trigger.evaluate((button) => {
+          const badge = button.querySelector(".bg-card")!;
+          const b = badge.getBoundingClientRect();
+          const t = button.getBoundingClientRect();
+          return {
+            background: getComputedStyle(badge).backgroundColor,
+            width: t.width,
+            height: t.height,
+            contained:
+              b.left >= t.left && b.right <= t.right && b.top >= t.top && b.bottom <= t.bottom,
+          };
+        });
+        expect(geometry.background).not.toMatch(/\/|rgba|transparent/);
+        expect(geometry.width).toBeGreaterThanOrEqual(32);
+        expect(geometry.height).toBeGreaterThanOrEqual(32);
+        expect(geometry.contained).toBe(true);
+      }
+      await artifact.click();
+      await expect(page.getByRole("dialog", { name: "Artifacts", exact: true })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(artifact).toBeFocused();
+      await chats.click();
+      await expect(page.getByRole("dialog", { name: "Open side chats" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(chats).toBeFocused();
+      if (state === "hover") {
+        await artifact.hover();
+        await expect(page.getByRole("tooltip", { name: "4 artifacts", exact: true })).toBeVisible();
+      } else if (state === "focus") {
+        await page.keyboard.press("Shift+Tab");
+        await expect(todo).toBeFocused();
+      } else {
+        await chats.blur();
+        await page.mouse.move(1, 1);
+      }
+      await page.waitForFunction(() => document.fonts.status === "loaded");
+    },
+    region: (page) => page.locator('[data-slot="workspace-header"]'),
+  };
+}
+
 const incomingTaskSectionsScenario: VisualCaptureScenario = {
   name: "incoming-task-sections",
   description: "Incoming Cake Chat result disclosures with task sections and the shared To-do pane",
@@ -7408,6 +7506,8 @@ const assistantStandaloneDiagram: VisualCaptureScenario = {
 export const visualCaptureScenarios: VisualCaptureScenario[] = [
   sessionChangesScenario,
   sideChatActions,
+  numberedIconButtonsScenario(35),
+  numberedIconButtonsScenario(1000),
   assistantStandaloneDiagram,
   rendererCrash,
   workflowChoiceScenario,

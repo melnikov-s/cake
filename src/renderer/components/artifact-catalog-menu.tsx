@@ -7,7 +7,7 @@ import {
   Popover,
   PopoverContent,
   PopoverIconTrigger,
-  PopoverTrigger,
+  PopoverNumberedIconTrigger,
 } from "@/components/ui/popover";
 import { LoadingState } from "@/components/ui/loading-state";
 import type { ArtifactLibraryStore } from "../stores/ArtifactLibraryStore";
@@ -57,16 +57,13 @@ export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
       }}
     >
       {sessionArtifacts ? (
-        <PopoverTrigger
-          variant="ghost"
-          size="sm"
-          className="h-8 gap-1.5 px-2 text-muted-foreground"
+        <PopoverNumberedIconTrigger
+          count={items.length}
+          tooltip={`${items.length} artifacts`}
           data-cake-hint-key="a"
-          aria-label={`${items.length} artifacts`}
         >
           <ArtifactIcon />
-          <span className="font-mono text-xs tabular-nums">{items.length}</span>
-        </PopoverTrigger>
+        </PopoverNumberedIconTrigger>
       ) : (
         <PopoverIconTrigger tooltip="Artifacts" data-cake-hint-key="a">
           <ArtifactIcon />

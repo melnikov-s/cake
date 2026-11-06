@@ -1,5 +1,5 @@
 import { observer } from "r-state-tree/react";
-import { IconButton } from "./ui/icon-button";
+import { NumberedIconButton } from "./ui/numbered-icon-button";
 import { DiffIcon } from "./ui/icons";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 
@@ -13,9 +13,9 @@ export const SessionChangesToggle = observer(function SessionChangesToggle({
   const store = session.changesStore;
   const count = store.data?.totalCommits;
   return (
-    <IconButton
+    <NumberedIconButton
+      count={count}
       tooltip={`Review changes${count === undefined ? "" : ` · ${count} commits`}`}
-      className="inline-flex h-8 w-auto items-center gap-1.5 px-2"
       pressedAppearance="subtle"
       aria-pressed={store.open}
       aria-expanded={store.open}
@@ -25,9 +25,6 @@ export const SessionChangesToggle = observer(function SessionChangesToggle({
       }}
     >
       <DiffIcon />
-      {count !== undefined && (
-        <span className="rounded-full bg-muted px-1 font-mono text-xs tabular-nums">{count}</span>
-      )}
-    </IconButton>
+    </NumberedIconButton>
   );
 });

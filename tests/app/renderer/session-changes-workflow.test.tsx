@@ -288,6 +288,7 @@ describe("Session Changes review", () => {
     await openChanges(fixture);
     await fixture.user.click(screen.getByText("Other session", { exact: true }));
     const toggle = await screen.findByRole("button", { name: "Review changes · 0 commits" });
+    expect(within(toggle).getByText("0").classList.contains("bg-card")).toBe(true);
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(screen.queryByRole("complementary", { name: "Changes" })).toBeNull();
     await fixture.user.click(toggle);

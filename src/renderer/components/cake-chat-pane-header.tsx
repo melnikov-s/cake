@@ -1,5 +1,6 @@
 import { observer, useStore } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
+import { NumberedIconButton } from "@/components/ui/numbered-icon-button";
 import { cn } from "../lib/utils";
 import {
   BrowserIcon,
@@ -54,12 +55,13 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
         />
       )}
       {paneSession.todos.available && !overlay && (
-        <IconButton
+        <NumberedIconButton
           tooltip="To-do"
+          count={paneSession.todos.openItems.length}
+          aria-description={`${paneSession.todos.openItems.length} open to-dos`}
           pressedAppearance="subtle"
           viewFocused={paneSession.todos.focusedItems.length > 0}
           className={cn(
-            "flex h-8 w-auto gap-1.5 px-2",
             paneSession.todos.focusedItems.length === 0 &&
               "aria-pressed:bg-muted aria-pressed:text-foreground aria-pressed:hover:bg-muted",
           )}
@@ -70,10 +72,7 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
           }}
         >
           <CheckIcon />
-          <span className="font-mono text-xs tabular-nums">
-            {paneSession.todos.openItems.length}
-          </span>
-        </IconButton>
+        </NumberedIconButton>
       )}
       <SideChatsMenu
         store={paneSession}

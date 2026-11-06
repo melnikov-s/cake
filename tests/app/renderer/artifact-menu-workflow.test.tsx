@@ -149,7 +149,10 @@ function renderArtifacts(
 }
 
 const openMenu = async (fixture: ReturnType<typeof renderArtifacts>) => {
-  await fixture.user.click(await screen.findByRole("button", { name: "2 artifacts" }));
+  const trigger = await screen.findByRole("button", { name: "2 artifacts" });
+  expect(within(trigger).getByText("2").classList.contains("bg-card")).toBe(true);
+  await fixture.user.click(trigger);
+  expect(trigger.getAttribute("aria-expanded")).toBe("true");
   return screen.getByRole("dialog", { name: "Artifacts" });
 };
 

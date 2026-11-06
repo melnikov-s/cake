@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { ReviewThread } from "../models/ReviewThread";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { ChatIcon } from "./ui/icons";
-import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
+import { Popover, PopoverContent, PopoverNumberedIconTrigger } from "./ui/popover";
 import { StatusDot } from "./ui/status-dot";
 
 function threadTitle(thread: ReviewThread) {
@@ -39,21 +38,14 @@ export const SideChatsMenu = observer(function SideChatsMenu({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverIconTrigger
-        className="relative"
+      <PopoverNumberedIconTrigger
+        count={threads.length}
         data-cake-hint-key="c"
         tooltip={`Side chats, ${threads.length} open`}
         onClick={onOpen}
       >
         <ChatIcon size={14} />
-        <Badge
-          className="absolute -right-1 -top-1 min-w-4 justify-center px-1"
-          size="xs"
-          variant="mono"
-        >
-          {threads.length}
-        </Badge>
-      </PopoverIconTrigger>
+      </PopoverNumberedIconTrigger>
       <PopoverContent
         align="end"
         className="w-[min(22rem,calc(100vw-24px))] overflow-hidden p-0"

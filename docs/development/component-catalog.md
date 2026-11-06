@@ -34,6 +34,8 @@ See `AGENTS.md` for renderer implementation rules.
 
 [`AnnotationColorPicker`](../../src/renderer/components/ui/annotation-color-picker.tsx) is a compact dot trigger and preset-dot popover for image annotations. Its explicit image colors are independent of Cake's theme; screenshot preferences own the selected value.
 
+[`NumberedIconButton`](../../src/renderer/components/ui/numbered-icon-button.tsx) composes `IconButton` and `Badge` for toolbar counts. The opaque `card` bubble sits inside a minimum 32px target that grows for multi-digit counts. Zero is shown; an undefined count omits the bubble. Supply count meaning in the accessible label or description. `PopoverNumberedIconTrigger` supplies the same popover semantics and focus restoration as `PopoverIconTrigger`.
+
 `PopoverContent` accepts `initialFocusSelector` to prefer an input over toolbar controls once an opening is visible, without refocusing on content updates. `dismissOnEscapeCapture` lets an explicit-dismissal popup handle Escape before an input consumes it.
 
 [`ContextMenu`](../../src/renderer/components/ui/context-menu.tsx) composes `Popover` and `Button` for pointer/keyboard context actions, expandable submenus and in-place interactive panels.
