@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
+import type { ChildProcessSpawner } from "effect/unstable/process";
 import type { invokeGlobalArtifactCommand } from "../artifacts/globalArtifacts";
 import type { AutomationRecords } from "../../services/automations/AutomationRecords";
 import type { AutomationConfiguration } from "../../services/automations/AutomationConfiguration";
@@ -49,6 +50,7 @@ import { agentListLabel, agentListPage } from "../../contracts/agent/agent-list-
 /** Explicit capability set breaks the type-inference cycle with Project runtime assembly. */
 type WorkflowControlServices =
   | HttpClient.HttpClient
+  | ChildProcessSpawner.ChildProcessSpawner
   | Effect.Services<ReturnType<typeof invokeGlobalArtifactCommand>>
   | AutomationRecords
   | AutomationConfiguration

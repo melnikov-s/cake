@@ -52,10 +52,16 @@ outside files. Titles/descriptions are ordinary artifact metadata.
 Executable widgets can publish trusted backend logic/typed tools with
 `artifacts.runtime.publish`. Their view is disposable; independent QuickJS logic
 and artifact-scoped persistence are backend-owned. Both view and runtime have the
-canonical Cake-command bridge, including supported filesystem/network operations
+canonical Cake-command bridge, including supported filesystem/network/shell operations
 and explicit-destination, artifact-attributed chat. Agent calls carry the actual
 calling session; background calls invent no session. Discover bridge schemas with
 `artifacts.commands`; `artifacts.command` has the same supported bridge semantics.
+`shell.run({command,cwd,timeoutSeconds?,env?})` runs shell syntax on the backend with
+required absolute `cwd`, inherited environment plus overlays, and separate bounded
+stdout/stderr, exit status and timeout/truncation flags. It needs no session/view;
+GUI PATH may need an explicit `env.PATH` or absolute CLI path. Use a timeout for
+shell work inside admitted semantic handlers. See the
+[authoring guide](../development/global-artifact-authoring.md#shell-backed-cli-integrations).
 This is not a promise that every Pi tool is a Cake command. A handler must not
 synchronously invoke/control/publish its own runtime through Cake; these operations
 reject before changes rather than waiting on the handler itself. Use an external

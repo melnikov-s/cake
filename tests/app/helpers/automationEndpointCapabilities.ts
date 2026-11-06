@@ -1,5 +1,6 @@
 import { Effect, FileSystem, Layer, Path, Stream } from "effect";
 import { HttpClient } from "effect/unstable/http";
+import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   AutomationRecords,
   type AutomationRecordSnapshot,
@@ -18,6 +19,10 @@ const empty: AutomationRecordSnapshot = {
 
 /** Complete endpoint membership for tests exercising other features. Mutation/memory calls fail loudly. */
 export const unusedAutomationEndpointCapabilities = Layer.mergeAll(
+  Layer.succeed(
+    ChildProcessSpawner.ChildProcessSpawner,
+    ChildProcessSpawner.make(() => Effect.die("Unexpected artifact shell command")),
+  ),
   Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make(() => Effect.die("Unexpected artifact network request")),

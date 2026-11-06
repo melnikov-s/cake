@@ -17,6 +17,7 @@ import { ApplicationState } from "../../services/storage/ApplicationState";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { rejectArtifactRuntimeReentry } from "../../services/artifact-runtime/ArtifactRuntimeExecution";
 import * as agentControl from "../application/agentControl";
+import * as artifactShell from "./artifactShell";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import * as chatTargets from "../cake-chats/cakeChatTargets";
 import * as metadata from "../project-sessions/projectSessionMetadata";
@@ -153,6 +154,8 @@ const host = Effect.fn("ArtifactCommands.host")(function* (
       yield* fs.writeFile(write.path, bytes);
       return toJsonValue({ ok: true, command, path: write.path, bytesWritten: bytes.byteLength });
     }
+    case "shell.run":
+      return toJsonValue(yield* artifactShell.run(invocation.arguments));
     case "network.request": {
       const input = invocation.arguments;
       const client = yield* HttpClient.HttpClient;

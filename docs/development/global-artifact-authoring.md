@@ -121,6 +121,8 @@ settings and automation commands, plus:
 - `filesystem.read({path,encoding?:"utf8"|"base64"})`.
 - `filesystem.write({path,content,encoding?})` (parent directory must exist).
 - `filesystem.list({path})`.
+- `shell.run({command,cwd,timeoutSeconds?,env?})` executes shell syntax in a real
+  backend subprocess, with separate stdout/stderr and the actual nonzero exit code.
 - `network.request({url,method?,headers?,body?,responseEncoding?})` returns status,
   headers and text/base64 body, including non-2xx responses; no automatic retry.
 - `chat.prompt({sessionId,text,delivery?})` submits artifact-attributed input to an
@@ -137,6 +139,57 @@ actual renderer connection independently of a conversation link, including calls
 from an unlinked global view and its semantic handler. Native/window/device
 functionality uses that real connected host; later background invocations do not
 inherit an earlier UI window and fail when no required host context exists. Such failures do not create a Pi session or shadow backend.
+
+### Shell-backed CLI integrations
+
+Backend logic, UI `cake.call`, and agent `artifacts.command` share `shell.run`:
+
+```js
+const result = await cake("shell.run", {
+  command: "my-cli changes --json",
+  cwd: "/absolute/backend/repository",
+  timeoutSeconds: 30,
+  env: { PATH: "/absolute/cli/bin:/usr/local/bin:/usr/bin:/bin" },
+});
+if (result.timedOut) throw new Error("CLI timed out and was stopped");
+if (result.exitCode !== 0) throw new Error(result.stderr || `CLI exited ${result.exitCode}`);
+if (result.stdoutTruncated) throw new Error("CLI JSON exceeded the output limit");
+const changes = JSON.parse(result.stdout);
+```
+
+`command` uses the backend platform's command shell (`/bin/sh` on Unix,
+`ComSpec` on Windows), non-interactive and non-login, with stdin closed. Pipes,
+quoting and redirection are shell syntax; interpolate external values carefully.
+`cwd` is required and must be an absolute backend-host path. There is no creator,
+Pi session, renderer, or open-view dependency. No packages, credentials, or shell
+profiles are installed/loaded by Cake. CLI authentication/configuration is the
+backend host user's own environment.
+
+Environment variables inherit from the backend process, overlaid by `env` without
+clearing unrelated variables. In particular a GUI-launched backend may not inherit
+terminal PATH customizations: pass an explicit `env.PATH` or use an absolute CLI
+path. A remote backend runs commands on the remote host, not the viewing desktop.
+
+The JSON result is `{stdout,stderr,exitCode,timedOut,stdoutTruncated,stderrTruncated}`.
+Each stream retains its first 50 KiB of bytes as UTF-8 text (a cut multibyte character
+may decode as a replacement character); the remaining bytes are drained and discarded.
+There is no full-output file. Check truncation before parsing structured output.
+Nonzero exits are normal results, not fabricated successes or typed launch failures.
+Timeout returns partial output, `timedOut:true` and `exitCode:null` rather than inventing
+an exit status. Invalid input/cwd and process launch/read failures are typed
+`ArtifactCommandError` failures. A signal-terminated process also fails with the
+platform error message rather than inventing an exit code.
+
+Omitting `timeoutSeconds` means no deadline. Timeout and cancellation close the
+invocation's process scope, terminating the process group with up to five seconds
+for the shell to exit, then force-killing any remaining group members (including
+children of an already-exited shell); timeout returns only after cleanup. Direct Cake
+command cancellation propagates interruption, not a successful result. Existing
+semantic `artifacts.call` handlers serialize admitted work and are uninterruptible
+once admitted, so cancelling that outer call waits for the handler; set
+`timeoutSeconds` for bounded shell work inside a handler. Closing a view does not
+cancel independent backend logic. Commands that deliberately daemonize out of the
+process group are outside the scoped runner's cleanup guarantee.
 
 ## Durable background work
 

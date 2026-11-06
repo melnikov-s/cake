@@ -9,6 +9,7 @@ import {
   type Path,
 } from "effect";
 import type { HttpClient } from "effect/unstable/http";
+import type { ChildProcessSpawner } from "effect/unstable/process";
 import * as artifactCommands from "../artifacts/artifactCommands";
 import {
   ArtifactCakeCallInput,
@@ -99,7 +100,8 @@ export type AgentControlServices =
   | Effect.Services<ReturnType<typeof invokeGlobalArtifactCommand>>
   | FileSystem.FileSystem
   | Path.Path
-  | HttpClient.HttpClient;
+  | HttpClient.HttpClient
+  | ChildProcessSpawner.ChildProcessSpawner;
 
 const labels = Effect.fn("AgentControl.labels")(function* () {
   const state = (yield* ApplicationState).snapshot();

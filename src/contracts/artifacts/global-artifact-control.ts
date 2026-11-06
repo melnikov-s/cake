@@ -69,7 +69,7 @@ export const globalArtifactOperationContracts = [
   {
     command: "artifacts.command",
     summary:
-      "Invoke a canonical Cake command for an artifact, preserving the actual caller when present. Host filesystem/network commands also work without a session.",
+      "Invoke a canonical Cake command for an artifact, preserving the actual caller when present. Host filesystem/network/shell.run commands also work without a session. shell.run requires explicit absolute backend cwd; discover its schema with artifacts.commands.",
     inputSchema: ArtifactCakeCallInput,
     outputSchema: Schema.Json,
   },

@@ -151,7 +151,8 @@ Runtime `cake(command,input)` and UI `cake.call(command,input)` use the validate
 canonical backend Cake bridge, broad by default. Artifact-authored code is trusted
 for host functionality, with process isolation and boundary validation rather
 than capability grants or a permissions UI. Supported host commands include
-filesystem read/write/list, HTTP(S) requests and explicit-destination,
+filesystem read/write/list, scoped backend shell commands with explicit absolute
+working directories, HTTP(S) requests and explicit-destination,
 artifact-attributed chat input. Background calls have no inferred/creator session;
 agent calls carry their actual calling session. UI-originated calls retain their
 real renderer connection separately from a conversation link, including semantic

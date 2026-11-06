@@ -674,6 +674,7 @@ it.effect("trusted artifact bridge discovers canonical commands and validates he
       "settings.list",
       "artifacts.globals",
       "filesystem.read",
+      "shell.run",
       "network.request",
       "chat.prompt",
     ]) {
@@ -683,6 +684,21 @@ it.effect("trusted artifact bridge discovers canonical commands and validates he
       ok: true,
       commands: [{ command: "filesystem.write", parameters: { required: ["path", "content"] } }],
     });
+    expect(yield* f.artifact("commands.help", { command: "shell.run" })).toMatchObject({
+      ok: true,
+      commands: [{ command: "shell.run", parameters: { required: ["command", "cwd"] } }],
+    });
+    const invalidShellInputs: JsonValue[] = [
+      { command: "true" },
+      { command: "true", cwd: "relative" },
+      { command: "true", cwd: "/work", timeoutSeconds: 0 },
+      { command: "true", cwd: "/work", unexpected: true },
+    ];
+    for (const input of invalidShellInputs)
+      expect(yield* f.artifact("shell.run", input).pipe(Effect.result)).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "ArtifactCommandError", command: "shell.run" },
+      });
     expect(yield* f.artifact("commands.help", { command: "not-a-command" })).toMatchObject({
       ok: false,
     });

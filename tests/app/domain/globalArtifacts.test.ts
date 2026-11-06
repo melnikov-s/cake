@@ -1,9 +1,9 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { NodeChildProcessSpawner, NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import { TestClock } from "effect/testing";
 import { runSchedulePass } from "../../../src/domain/automations/automationWorker";
@@ -254,6 +254,80 @@ const configure = () =>
   );
 
 describe("global artifact domain workflow", () => {
+  it.live(
+    "runs a closed-view semantic tool through the canonical Cake bridge into a real subprocess without caller or window",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* Effect.promise(fixture);
+        const context = yield* Layer.build(
+          Layer.mergeAll(
+            unusedEndpointServices,
+            WorkflowTestLive,
+            makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
+            Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
+            f.layer,
+            NodeChildProcessSpawner.layer.pipe(
+              Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
+            ),
+          ),
+        );
+        yield* Effect.gen(function* () {
+          yield* f.initializeWithoutHost;
+          yield* Layer.build(ArtifactRuntimeHostLive);
+          yield* artifacts.publishRuntime(
+            {
+              lineageId,
+              expectedRevision: revision(1),
+              runtime: {
+                source: `return { tools: { cli: input => cake("shell.run", input) } };`,
+                tools: [
+                  {
+                    name: "cli",
+                    description: "Run a local CLI",
+                    inputSchema: { type: "object" },
+                    outputSchema: true,
+                  },
+                ],
+              },
+            },
+            "creator",
+          );
+          expect(
+            yield* artifacts.callTool({
+              lineageId,
+              name: "cli",
+              input: {
+                command: "printf 'closed view' | tr ' ' '-'; printf 'diagnostic' >&2; exit 9",
+                cwd: tmpdir(),
+              },
+            }),
+          ).toEqual({
+            stdout: "closed-view",
+            stderr: "diagnostic",
+            exitCode: 9,
+            timedOut: false,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+          });
+          const timedOut = yield* artifacts.callTool({
+            lineageId,
+            name: "cli",
+            input: {
+              command: "printf '%s\\n' \"$$\"; exec sleep 60",
+              cwd: tmpdir(),
+              timeoutSeconds: 0.5,
+            },
+          });
+          expect(timedOut).toMatchObject({ timedOut: true, exitCode: null });
+          const { stdout } = yield* Schema.decodeUnknownEffect(
+            Schema.Struct({ stdout: Schema.String }),
+          )(timedOut);
+          const pid = Number(stdout.trim());
+          expect(pid).toBeGreaterThan(0);
+          expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }));
+        }).pipe(Effect.provide(context));
+      }),
+  );
   it.effect(
     "uses the canonical runtime host and real network command envelope with only HTTP faked",
     () =>
