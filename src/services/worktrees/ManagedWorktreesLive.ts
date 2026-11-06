@@ -1,10 +1,6 @@
 import {
-  Cache,
-  DateTime,
   Deferred,
-  Duration,
   Effect,
-  Exit,
   FileSystem,
   Layer,
   Path,
@@ -20,8 +16,6 @@ import type {
 } from "../../contracts/worktrees/managed-worktree-data";
 import {
   worktreeStatusSchema,
-  type WorktreeLandOutcome,
-  type WorktreeLandRequest,
   type WorktreeRebaseOutcome,
   type WorktreeStatus,
 } from "../../contracts/worktrees/worktree-contract";
@@ -34,38 +28,15 @@ import {
   type WorktreeLifecycle,
   type WorktreeRemoveReason,
 } from "./ManagedWorktrees";
-import { WorktreeCommands, type WorktreeCommandRequest } from "./WorktreeCommands";
-import { renderWorktreeCommand } from "./worktree-command-template";
-
-interface LandingEntry {
-  readonly operationId: string;
-  readonly worktreePath: string;
-  readonly ready: Deferred.Deferred<void, Error>;
-}
-interface LandingQueue {
-  readonly active: LandingEntry | undefined;
-  readonly pending: ReadonlyArray<LandingEntry>;
-}
-interface SquashProposal {
-  readonly message: string;
-  readonly head: string;
-  readonly targetHead: string;
-}
-/** Where one checkout lives and what it checks out, as substituted into lifecycle commands. */
-interface CheckoutFacts {
-  readonly projectPath: string;
-  readonly branch: string;
-  readonly baseBranch: string;
-  readonly baseCommit: string;
-  readonly checkoutPath: string;
-  readonly worktreePath: string;
-}
+import type { WorktreeCommands } from "./WorktreeCommands";
+import { makeWorktreeRepository } from "./WorktreeRepository";
+import { makeWorktreeCheckout } from "./WorktreeCheckout";
+import { makeWorktreeLanding } from "./WorktreeLanding";
+import { makeWorktreeLandingQueue } from "./WorktreeLandingQueue";
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 const internalError = (message: string) => Effect.fail(new Error(message));
 const resolveNormalized = (path: string) => path.replace(/\/+$/, "");
-const worktreeNameOf = (branch: string) => branch.replace(/^agent\//, "");
-const checkoutOf = (record: WorktreeRecord) => record.checkoutPath ?? record.worktreePath;
 /** Effect-native Managed Worktree capability. Mutable authority is held in Refs,
  * repository mutations use keyed Effect Semaphores, and landing reservations use
  * interruptible Deferred queues with exact FIFO promotion. */
@@ -80,17 +51,27 @@ export const ManagedWorktreesLive: Layer.Layer<
     const storage = yield* WorktreeStorage;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const commands = yield* WorktreeCommands;
     const scope = yield* Effect.scope;
     const initialRecords = yield* storage.load();
     const recordsRef = yield* Ref.make<ReadonlyArray<WorktreeRecord>>(initialRecords);
     const recordsLock = yield* Semaphore.make(1);
-    const repositoryLocks = yield* Ref.make(new Map<string, Semaphore.Semaphore>());
-    // Serializes removal and restoration of one checkout while its slow commands run unlocked.
-    const worktreeLocks = yield* Ref.make(new Map<string, Semaphore.Semaphore>());
-    const landingQueues = yield* Ref.make(new Map<string, LandingQueue>());
-    const squashProposals = yield* Ref.make(new Map<string, SquashProposal>());
-    const awaitingSquashProposals = yield* Ref.make(new Set<string>());
+    const repository = yield* makeWorktreeRepository();
+    const {
+      git,
+      gitMutation,
+      gitOptional,
+      exists,
+      repositoryRoot,
+      repositoryIdentity,
+      withRepositoryLock,
+      withWorktreeLock,
+      revParseExists,
+      revListCount,
+      dirtyFileCount,
+      isAncestor,
+      rebaseInProgress,
+      unmergedFiles,
+    } = repository;
     const deferredSetups = yield* Ref.make(
       new Map<string, Deferred.Deferred<void, ManagedWorktreeError>>(),
     );
@@ -102,23 +83,6 @@ export const ManagedWorktreesLive: Layer.Layer<
           (cause) => new ManagedWorktreeError({ operation, message: messageOf(cause) }),
         ),
       );
-    const exists = (target: string) => fileSystem.exists(target);
-    const git = Effect.fn("ManagedWorktrees.git")((cwd: string, ...args: ReadonlyArray<string>) =>
-      gitService.run(cwd, args),
-    );
-    // GitRunner only acknowledges Promise settlement, so defer interruption for mutations until
-    // settlement. Reads and repository-lock acquisition remain interruptible.
-    const gitMutation = Effect.fn("ManagedWorktrees.gitMutation")(
-      (cwd: string, ...args: ReadonlyArray<string>) =>
-        git(cwd, ...args).pipe(Effect.uninterruptible),
-    );
-    const gitOptional = Effect.fn("ManagedWorktrees.gitOptional")(
-      (cwd: string, args: ReadonlyArray<string>) =>
-        git(cwd, ...args).pipe(
-          Effect.map((value) => value.trim()),
-          Effect.option,
-        ),
-    );
     const mutateRecords = Effect.fn("ManagedWorktrees.mutateRecords")(function* (
       change: (records: ReadonlyArray<WorktreeRecord>) => ReadonlyArray<WorktreeRecord>,
     ) {
@@ -168,21 +132,6 @@ export const ManagedWorktreesLive: Layer.Layer<
         return closed;
       });
     });
-    const keyedLock =
-      (registry: Ref.Ref<Map<string, Semaphore.Semaphore>>) =>
-      <A, E, R>(key: string, effect: Effect.Effect<A, E, R>) =>
-        Ref.modify(registry, (locks) => {
-          const current = locks.get(key);
-          if (current) return [current, locks] as const;
-          const created = Semaphore.makeUnsafe(1);
-          const next = new Map(locks);
-          next.set(key, created);
-          return [created, next] as const;
-        }).pipe(Effect.flatMap((lock) => lock.withPermits(1)(effect)));
-    const repositoryLock = keyedLock(repositoryLocks);
-    /** Always taken before, never inside, a repository lock. */
-    const withWorktreeLock = <A, E, R>(worktreePath: string, effect: Effect.Effect<A, E, R>) =>
-      keyedLock(worktreeLocks)(resolveNormalized(worktreePath), effect);
     const publish = Effect.fn("ManagedWorktrees.publish")(function* (worktreePath: string) {
       const record = (yield* Ref.get(recordsRef)).find(
         (item) => item.worktreePath === worktreePath,
@@ -193,692 +142,26 @@ export const ManagedWorktreesLive: Layer.Layer<
           event: { _tag: "Upserted", worktree: record },
         });
     });
-    const repositoryRoot = Effect.fn("ManagedWorktrees.repositoryRoot")(function* (
-      projectPath: string,
-    ) {
-      return yield* git(projectPath, "rev-parse", "--show-toplevel").pipe(
-        Effect.map((value) => value.trim()),
-        Effect.catch(() => internalError("Worktrees require a Git repository")),
-      );
-    });
-    const repositoryIdentityCache = yield* Cache.makeWith(
-      Effect.fn("ManagedWorktrees.resolveRepositoryIdentity")(function* (workingDirectory: string) {
-        const commonDirectory = (yield* git(
-          workingDirectory,
-          "rev-parse",
-          "--path-format=absolute",
-          "--git-common-dir",
-        )).trim();
-        return yield* fileSystem.realPath(commonDirectory);
-      }),
-      {
-        capacity: 1_024,
-        timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero),
-      },
+    const checkout = yield* makeWorktreeCheckout(
+      repository,
+      recordsRef,
+      mutateRecords,
+      updateRecord,
     );
-    const repositoryIdentity = Effect.fn("ManagedWorktrees.repositoryIdentity")(
-      (workingDirectory: string) => Cache.get(repositoryIdentityCache, workingDirectory),
-    );
-    const withRepositoryLock = Effect.fn("ManagedWorktrees.withRepositoryLock")(function* <A, E, R>(
-      workingDirectory: string,
-      effect: Effect.Effect<A, E, R>,
-    ) {
-      return yield* repositoryLock(yield* repositoryIdentity(workingDirectory), effect);
-    });
-    const revParseExists = Effect.fn("ManagedWorktrees.revParseExists")(function* (
-      cwd: string,
-      ref: string,
-    ) {
-      return (
-        (yield* Effect.result(git(cwd, "rev-parse", "--verify", "-q", ref)))._tag === "Success"
-      );
-    });
-    const revListCount = Effect.fn("ManagedWorktrees.revListCount")(function* (
-      cwd: string,
-      ...revisions: ReadonlyArray<string>
-    ) {
-      return (
-        Number.parseInt((yield* git(cwd, "rev-list", "--count", ...revisions)).trim(), 10) || 0
-      );
-    });
-    // Pre-checkpoint preserve landings can be recovered from target history, not patch IDs.
-    // If that history has expired (or was squashed), retain the conservative target comparison.
-    const withLandingCheckpoint = Effect.fn("ManagedWorktrees.withLandingCheckpoint")(function* (
-      record: WorktreeRecord,
-    ) {
-      if (record.state !== "landed") return record;
-      const pending = record.pendingLandedSourceCommit;
-      if (pending && !(yield* rebaseInProgress(record.worktreePath))) {
-        const completed = yield* isAncestor(record.worktreePath, pending, "HEAD");
-        yield* updateRecord(record, (current) => {
-          if (current.pendingLandedSourceCommit !== pending) return current;
-          const next = { ...current };
-          if (completed) next.landedSourceCommit = pending;
-          Reflect.deleteProperty(next, "pendingLandedSourceCommit");
-          return next;
-        });
-        record =
-          (yield* Ref.get(recordsRef)).find(
-            (current) => current.worktreePath === record.worktreePath,
-          ) ?? record;
-      }
-      if (record.landedSourceCommit) return record;
-      const history = yield* gitOptional(record.worktreePath, [
-        "reflog",
-        "show",
-        "--format=%H",
-        record.baseBranch,
-      ]);
-      let checkpoint: string | undefined;
-      if (history._tag === "Some") {
-        for (const tip of new Set(history.value.split("\n").filter(Boolean))) {
-          const common = yield* gitOptional(record.worktreePath, ["merge-base", "HEAD", tip]);
-          if (common._tag !== "Some" || !common.value) continue;
-          if (!checkpoint || (yield* isAncestor(record.worktreePath, checkpoint, common.value)))
-            checkpoint = common.value;
-        }
-      }
-      if (!checkpoint) return record;
-      const recovered = checkpoint;
-      yield* updateRecord(record, (current) =>
-        current.landedSourceCommit ? current : { ...current, landedSourceCommit: recovered },
-      );
-      return (
-        (yield* Ref.get(recordsRef)).find(
-          (current) => current.worktreePath === record.worktreePath,
-        ) ?? record
-      );
-    });
-    const newCommitCount = Effect.fn("ManagedWorktrees.newCommitCount")(function* (
-      record: WorktreeRecord,
-      source = "HEAD",
-    ) {
-      // Exclude both acknowledged source history and work already present on the target.
-      return yield* revListCount(
-        record.worktreePath,
-        ...(record.landedSourceCommit
-          ? [source, `^${record.landedSourceCommit}`, `^${record.baseBranch}`]
-          : [`${record.baseBranch}..${source}`]),
-      );
-    });
-    const dirtyFileCount = Effect.fn("ManagedWorktrees.dirtyFileCount")(function* (cwd: string) {
-      return (yield* git(cwd, "status", "--porcelain"))
-        .split("\n")
-        .filter((line) => line.trim().length > 0).length;
-    });
-    const isAncestor = Effect.fn("ManagedWorktrees.isAncestor")(function* (
-      cwd: string,
-      ancestor: string,
-      descendant: string,
-    ) {
-      return (
-        (yield* Effect.result(git(cwd, "merge-base", "--is-ancestor", ancestor, descendant)))
-          ._tag === "Success"
-      );
-    });
-    const rebaseInProgress = Effect.fn("ManagedWorktrees.rebaseInProgress")(function* (
-      cwd: string,
-    ) {
-      for (const marker of ["rebase-merge", "rebase-apply"]) {
-        const gitPath = yield* gitOptional(cwd, ["rev-parse", "--git-path", marker]);
-        if (
-          gitPath._tag === "Some" &&
-          gitPath.value &&
-          (yield* exists(path.resolve(cwd, gitPath.value)))
-        )
-          return true;
-      }
-      return false;
-    });
-    const unmergedFiles = Effect.fn("ManagedWorktrees.unmergedFiles")(function* (cwd: string) {
-      return (yield* git(cwd, "diff", "--name-only", "--diff-filter=U"))
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean);
-    });
-    const factsOf = (record: WorktreeRecord): CheckoutFacts => ({
-      projectPath: record.projectPath,
-      branch: record.branch,
-      baseBranch: record.baseBranch,
-      baseCommit: record.baseCommit ?? "",
-      checkoutPath: checkoutOf(record),
-      worktreePath: record.worktreePath,
-    });
-    const subpathOf = (record: WorktreeRecord) =>
-      record.checkoutPath ? path.relative(record.checkoutPath, record.worktreePath) : "";
-    /** The same checkout facts for a checkout Git found somewhere else. */
-    const relocated = (facts: CheckoutFacts, checkoutPath: string, subpath: string) => ({
-      ...facts,
-      checkoutPath,
-      worktreePath: subpath ? path.join(checkoutPath, subpath) : checkoutPath,
-    });
-    const runConfigured = Effect.fn("ManagedWorktrees.runConfigured")(function* (
-      label: "create" | "setup" | "remove",
-      template: string,
-      workingDirectory: string,
-      facts: CheckoutFacts,
-      lifecycle: WorktreeLifecycle,
-      removeReason = "",
-    ) {
-      const request = {
-        label,
-        script: renderWorktreeCommand(template, {
-          projectPath: facts.projectPath,
-          worktreePath: facts.worktreePath,
-          checkoutPath: facts.checkoutPath,
-          worktreeName: worktreeNameOf(facts.branch),
-          branchName: facts.branch,
-          baseBranch: facts.baseBranch,
-          baseCommit: facts.baseCommit,
-          removeReason,
-        }),
-        workingDirectory,
-        logName: worktreeNameOf(facts.branch),
-      } satisfies WorktreeCommandRequest;
-      yield* commands.run(
-        lifecycle.timeout === undefined ? request : { ...request, timeout: lifecycle.timeout },
-      );
-    });
-    /** Git, not the configured command, reports where a branch is checked out. */
-    const checkoutForBranch = Effect.fn("ManagedWorktrees.checkoutForBranch")(function* (
-      workingDirectory: string,
-      branch: string,
-    ) {
-      let current: string | undefined;
-      for (const line of (yield* git(workingDirectory, "worktree", "list", "--porcelain")).split(
-        "\n",
-      )) {
-        if (line.startsWith("worktree ")) current = line.slice("worktree ".length);
-        else if (current && line === `branch refs/heads/${branch}`) {
-          const checkoutPath = current;
-          return yield* fileSystem
-            .realPath(checkoutPath)
-            .pipe(Effect.orElseSucceed(() => checkoutPath));
-        }
-      }
-      return undefined;
-    });
-    /** Runs the configured (or built-in) create command for an existing branch, then locates the
-     * checkout it made and the project's directory inside it. */
-    const materializeCheckout = Effect.fn("ManagedWorktrees.materializeCheckout")(function* (
-      facts: CheckoutFacts,
-      lifecycle: WorktreeLifecycle,
-      subpath: string,
-    ) {
-      if (lifecycle.createCommand)
-        yield* runConfigured(
-          "create",
-          lifecycle.createCommand,
-          facts.projectPath,
-          facts,
-          lifecycle,
-        );
-      else {
-        yield* fileSystem.makeDirectory(path.dirname(facts.checkoutPath), { recursive: true });
-        yield* gitMutation(facts.projectPath, "worktree", "add", facts.checkoutPath, facts.branch);
-      }
-      const checkoutPath = yield* checkoutForBranch(facts.projectPath, facts.branch);
-      if (!checkoutPath)
-        return yield* internalError(
-          `The worktree create command finished, but no checkout has ${facts.branch} checked out.`,
-        );
-      const located = relocated(facts, checkoutPath, subpath);
-      if (!(yield* exists(located.worktreePath)))
-        return yield* internalError(
-          `The new checkout at ${checkoutPath} does not contain ${subpath}.`,
-        );
-      return located;
-    });
-    const removeCheckout = Effect.fn("ManagedWorktrees.removeCheckout")(function* (
-      facts: CheckoutFacts,
-      lifecycle: WorktreeLifecycle,
-      reason: WorktreeRemoveReason,
-    ) {
-      if (lifecycle.removeCommand)
-        yield* runConfigured(
-          "remove",
-          lifecycle.removeCommand,
-          facts.projectPath,
-          facts,
-          lifecycle,
-          reason,
-        );
-      else {
-        // Resolution never forces: Git itself refuses to delete uncommitted or untracked work.
-        yield* gitMutation(
-          facts.projectPath,
-          "worktree",
-          "remove",
-          ...(reason === "resolve" ? [] : ["--force"]),
-          facts.checkoutPath,
-        );
-        yield* gitMutation(facts.projectPath, "worktree", "prune");
-      }
-      // Configured tools may report success without removing anything.
-      if (yield* exists(facts.checkoutPath))
-        return yield* internalError(
-          `The worktree remove command finished, but ${facts.checkoutPath} still exists.`,
-        );
-    });
-    const runSetup = Effect.fn("ManagedWorktrees.runSetup")(function* (
-      record: WorktreeRecord,
-      lifecycle: WorktreeLifecycle,
-    ) {
-      if (lifecycle.setupCommand)
-        yield* runConfigured(
-          "setup",
-          lifecycle.setupCommand,
-          record.worktreePath,
-          factsOf(record),
-          lifecycle,
-        );
-    });
-    const rollbackCreation = Effect.fn("ManagedWorktrees.rollbackCreation")(function* (
-      root: string,
-      facts: CheckoutFacts,
-      subpath: string,
-      lifecycle: WorktreeLifecycle,
-    ) {
-      // The branch was reserved for this creation, so any checkout of it is this creation's.
-      const checkoutPath = yield* checkoutForBranch(facts.projectPath, facts.branch).pipe(
-        Effect.orElseSucceed(() => undefined),
-      );
-      if (checkoutPath)
-        yield* removeCheckout(relocated(facts, checkoutPath, subpath), lifecycle, "rollback").pipe(
-          Effect.catch((cause) =>
-            Effect.logWarning("Cake could not remove a failed worktree checkout", cause),
-          ),
-        );
-      yield* withRepositoryLock(root, gitMutation(root, "branch", "-D", facts.branch)).pipe(
-        Effect.ignore,
-      );
-      yield* mutateRecords((current) => {
-        const next = current.filter(
-          (item) => item.projectPath !== facts.projectPath || item.branch !== facts.branch,
-        );
-        return next.length === current.length ? current : next;
-      }).pipe(Effect.ignore);
-    });
-    const createRecord = Effect.fn("ManagedWorktrees.createRecord")(function* (
-      root: string,
-      plan: WorktreeCheckoutPlan,
-      backgroundSetup: boolean,
-    ) {
-      const facts = relocated(
-        {
-          projectPath: plan.projectPath,
-          branch: plan.branch,
-          baseBranch: plan.baseBranch,
-          baseCommit: plan.baseCommit,
-          checkoutPath: plan.checkoutPath,
-          worktreePath: plan.checkoutPath,
-        },
-        plan.checkoutPath,
-        plan.projectSubpath,
-      );
-      return yield* Effect.gen(function* () {
-        const located = yield* materializeCheckout(facts, plan.lifecycle, plan.projectSubpath);
-        const record: WorktreeRecord = {
-          projectPath: plan.projectPath,
-          worktreePath: located.worktreePath,
-          branch: plan.branch,
-          baseBranch: plan.baseBranch,
-          baseCommit: plan.baseCommit,
-          state: "active",
-          createdAt: DateTime.formatIso(yield* DateTime.now),
-        };
-        if (located.checkoutPath !== located.worktreePath)
-          Object.assign(record, { checkoutPath: located.checkoutPath });
-        if (plan.parentWorktreePath)
-          Object.assign(record, { parentWorktreePath: plan.parentWorktreePath });
-        if (!backgroundSetup) yield* runSetup(record, plan.lifecycle);
-        yield* mutateRecords((current) => [...current, record]);
-        return record;
-      }).pipe(
-        Effect.onExit((exit) =>
-          Exit.isFailure(exit)
-            ? rollbackCreation(root, facts, plan.projectSubpath, plan.lifecycle)
-            : Effect.void,
-        ),
-      );
-    });
+    const { factsOf, removeCheckout, runSetup, createRecord } = checkout;
 
-    const landingState = Effect.fn("ManagedWorktrees.landingState")(function* (
-      record: WorktreeRecord,
-    ) {
-      const queue = (yield* Ref.get(landingQueues)).get(
-        yield* repositoryIdentity(record.projectPath),
-      );
-      if (!queue) return undefined;
-      const normalized = resolveNormalized(record.worktreePath);
-      if (queue.active?.worktreePath === normalized)
-        return { state: "running" as const, operationId: queue.active.operationId };
-      const index = queue.pending.findIndex((entry) => entry.worktreePath === normalized);
-      const entry = queue.pending[index];
-      return entry
-        ? { state: "queued" as const, operationId: entry.operationId, position: index + 1 }
-        : undefined;
-    });
-    const releaseLanding = Effect.fn("ManagedWorktrees.releaseLanding")(function* (
-      record: WorktreeRecord,
-      operationId: string,
-    ) {
-      const repository = yield* repositoryIdentity(record.projectPath);
-      const promoted = yield* Ref.modify(landingQueues, (queues) => {
-        const queue = queues.get(repository);
-        if (!queue || queue.active?.operationId !== operationId)
-          return [undefined, queues] as const;
-        const [nextActive, ...pending] = queue.pending;
-        const next = new Map(queues);
-        if (nextActive) next.set(repository, { active: nextActive, pending });
-        else next.delete(repository);
-        return [nextActive?.ready, next] as const;
-      });
-      if (promoted) yield* Deferred.succeed(promoted, undefined);
-    });
-    const acquireLanding = Effect.fn("ManagedWorktrees.acquireLanding")(function* (
-      record: WorktreeRecord,
-      operationId: string,
-      onQueued?: Effect.Effect<void>,
-      waitForTurn = true,
-    ) {
-      const ready = yield* Deferred.make<void, Error>();
-      const entry: LandingEntry = {
-        operationId,
-        worktreePath: resolveNormalized(record.worktreePath),
-        ready,
-      };
-      const repository = yield* repositoryIdentity(record.projectPath);
-      const waiting = yield* Ref.modify(landingQueues, (queues) => {
-        const current = queues.get(repository);
-        if (current?.active?.operationId === operationId) return [undefined, queues] as const;
-        const existing = current?.pending.find((item) => item.operationId === operationId);
-        if (existing) return [existing.ready, queues] as const;
-        const next = new Map(queues);
-        if (!current) next.set(repository, { active: entry, pending: [] });
-        else next.set(repository, { ...current, pending: [...current.pending, entry] });
-        return [current ? ready : undefined, next] as const;
-      });
-      if (waiting && waitForTurn)
-        yield* (onQueued ?? Effect.void).pipe(
-          Effect.andThen(Deferred.await(waiting)),
-          Effect.onInterrupt(() => cancelLandingInternal(record, operationId, false)),
-        );
-    });
-    const cancelLandingInternal = Effect.fn("ManagedWorktrees.cancelLandingInternal")(function* (
-      record: WorktreeRecord,
-      operationId: string,
-      onlyIfQueued: boolean,
-    ) {
-      const repository = yield* repositoryIdentity(record.projectPath);
-      const result = yield* Ref.modify<
-        Map<string, LandingQueue>,
-        "missing" | "active" | { readonly _tag: "pending"; readonly entry: LandingEntry }
-      >(landingQueues, (queues) => {
-        const queue = queues.get(repository);
-        if (!queue) return ["missing" as const, queues] as const;
-        if (queue.active?.operationId === operationId) return ["active" as const, queues] as const;
-        const index = queue.pending.findIndex((entry) => entry.operationId === operationId);
-        if (index < 0) return ["missing" as const, queues] as const;
-        const entry = queue.pending[index];
-        if (!entry) return ["missing" as const, queues] as const;
-        const next = new Map(queues);
-        next.set(repository, {
-          ...queue,
-          pending: queue.pending.filter((_, itemIndex) => itemIndex !== index),
-        });
-        return [{ _tag: "pending" as const, entry }, next] as const;
-      });
-      if (result === "active") {
-        if (onlyIfQueued)
-          return yield* internalError("This merge has already started and cannot be canceled.");
-        yield* releaseLanding(record, operationId);
-      } else if (result === "missing") {
-        if (onlyIfQueued)
-          return yield* internalError("This merge has already started and cannot be canceled.");
-      } else if (result.entry)
-        yield* Deferred.fail(result.entry.ready, new Error("Worktree landing was canceled."));
-      return result !== "missing";
-    });
+    const landingQueue = yield* makeWorktreeLandingQueue(repositoryIdentity);
+    const { landingState, acquireLanding, releaseLanding, cancelLandingInternal } = landingQueue;
 
-    const rememberPendingLanding = Effect.fn("ManagedWorktrees.rememberPendingLanding")(function* (
-      record: WorktreeRecord,
-      strategy: WorktreeLandRequest["strategy"],
-    ) {
-      if (record.pendingStrategy !== strategy)
-        yield* updateRecord(record, (current) => ({ ...current, pendingStrategy: strategy }));
-    });
-    const dryRunConflicts = Effect.fn("ManagedWorktrees.dryRunConflicts")(function* (
-      root: string,
-      baseBranch: string,
-      branch: string,
-    ) {
-      const result = yield* Effect.result(
-        gitMutation(root, "merge-tree", "--write-tree", "--name-only", baseBranch, branch),
-      );
-      if (result._tag === "Success") return [];
-      const cause = result.failure;
-      const stdout = cause instanceof Error && "stdout" in cause ? String(cause.stdout) : "";
-      if (!stdout) return null;
-      return stdout
-        .split("\n")
-        .slice(1)
-        .map((line) => line.trim())
-        .filter(Boolean);
-    });
-    const rebaseOntoTarget = Effect.fn("ManagedWorktrees.rebaseOntoTarget")(function* (
-      record: WorktreeRecord,
-      target = record.baseBranch,
-    ) {
-      const current =
-        (yield* Ref.get(recordsRef)).find((entry) => entry.worktreePath === record.worktreePath) ??
-        record;
-      const targetHead = (yield* git(record.worktreePath, "rev-parse", target)).trim();
-      const result = yield* Effect.result(
-        gitMutation(
-          record.worktreePath,
-          "rebase",
-          ...(current.landedSourceCommit
-            ? ["--onto", targetHead, current.landedSourceCommit]
-            : [targetHead]),
-        ),
-      );
-      const resolving = result._tag === "Failure" && (yield* rebaseInProgress(record.worktreePath));
-      if (current.landedSourceCommit && (result._tag === "Success" || resolving))
-        yield* updateRecord(current, (entry) => {
-          const next = { ...entry };
-          if (resolving) next.pendingLandedSourceCommit = targetHead;
-          else {
-            next.landedSourceCommit = targetHead;
-            Reflect.deleteProperty(next, "pendingLandedSourceCommit");
-          }
-          return next;
-        });
-      if (result._tag === "Success") return null;
-      if (resolving) return yield* unmergedFiles(record.worktreePath);
-      return yield* internalError(
-        `Cake could not replay the worktree commits onto the target branch: ${messageOf(result.failure)}`,
-      );
-    });
-    const hasFreshProposal = Effect.fn("ManagedWorktrees.hasFreshProposal")(function* (
-      record: WorktreeRecord,
-    ) {
-      const proposal = (yield* Ref.get(squashProposals)).get(
-        resolveNormalized(record.worktreePath),
-      );
-      if (!proposal) return false;
-      const head = (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim();
-      if (proposal.head !== head) return false;
-      const targetHead = (yield* git(
-        record.parentWorktreePath ?? record.projectPath,
-        "rev-parse",
-        "HEAD",
-      )).trim();
-      return proposal.targetHead === targetHead;
-    });
-    const consumeProposal = Effect.fn("ManagedWorktrees.consumeProposal")(function* (
-      record: WorktreeRecord,
-      targetPath: string,
-    ) {
-      const normalized = resolveNormalized(record.worktreePath);
-      const proposal = yield* Ref.modify(squashProposals, (proposals) => {
-        const current = proposals.get(normalized);
-        const next = new Map(proposals);
-        next.delete(normalized);
-        return [current, next] as const;
-      });
-      if (!proposal) return undefined;
-      const head = (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim();
-      const targetHead = (yield* git(targetPath, "rev-parse", "HEAD")).trim();
-      return proposal.head === head && proposal.targetHead === targetHead
-        ? proposal.message
-        : undefined;
-    });
-    const squashMerge = Effect.fn("ManagedWorktrees.squashMerge")(function* (
-      record: WorktreeRecord,
-      message: string,
-    ) {
-      const targetPath = record.parentWorktreePath ?? record.projectPath;
-      const sourceCommit = (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim();
-      yield* gitMutation(targetPath, "merge", "--squash", sourceCommit)
-        .pipe(Effect.andThen(gitMutation(targetPath, "commit", "-m", message)))
-        .pipe(
-          Effect.tapCause(() => gitMutation(targetPath, "reset", "--merge").pipe(Effect.ignore)),
-        );
-      const commit = (yield* git(targetPath, "rev-parse", "HEAD")).trim();
-      yield* closeRecord(record, "landed", sourceCommit);
-      return commit;
-    });
-    const landSquash = Effect.fn("ManagedWorktrees.landSquash")(function* (
-      record: WorktreeRecord,
-      message: string | undefined,
-      prepareOnly: boolean,
-    ): Effect.fn.Return<WorktreeLandOutcome | { readonly outcome: "ready" }, unknown, never> {
-      const normalized = resolveNormalized(record.worktreePath);
-      const targetPath = record.parentWorktreePath ?? record.projectPath;
-      if (message) {
-        const head = (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim();
-        const targetHead = (yield* git(targetPath, "rev-parse", "HEAD")).trim();
-        yield* Ref.update(squashProposals, (proposals) =>
-          new Map(proposals).set(normalized, { message, head, targetHead }),
-        );
-      }
-      const conflicts = yield* dryRunConflicts(targetPath, record.baseBranch, record.branch);
-      if (conflicts === null || conflicts.length > 0) {
-        yield* gitMutation(
-          record.worktreePath,
-          "merge",
-          "--no-ff",
-          "--no-edit",
-          record.baseBranch,
-        ).pipe(Effect.ignore);
-        if (yield* revParseExists(record.worktreePath, "MERGE_HEAD")) {
-          yield* Ref.update(awaitingSquashProposals, (items) => new Set(items).add(normalized));
-          return {
-            outcome: "resolving",
-            files: conflicts ?? (yield* unmergedFiles(record.worktreePath)),
-          };
-        }
-      }
-      if (prepareOnly && (yield* hasFreshProposal(record))) return { outcome: "ready" };
-      const requested = prepareOnly ? undefined : yield* consumeProposal(record, targetPath);
-      if (!requested) {
-        yield* Ref.update(awaitingSquashProposals, (items) => new Set(items).add(normalized));
-        return { outcome: "proposal" };
-      }
-      return { outcome: "landed", commit: yield* squashMerge(record, requested) };
-    });
-    const requireSourceBranch = Effect.fn("ManagedWorktrees.requireSourceBranch")(function* (
-      record: WorktreeRecord,
-    ) {
-      const branch = (yield* git(record.worktreePath, "rev-parse", "--abbrev-ref", "HEAD")).trim();
-      if (branch !== record.branch)
-        return yield* internalError(`Switch the source worktree back to "${record.branch}" first.`);
-    });
-    const landRecord = Effect.fn("ManagedWorktrees.landRecord")(function* (
-      record: WorktreeRecord,
-      request: WorktreeLandRequest,
-      prepareOnly = false,
-    ): Effect.fn.Return<WorktreeLandOutcome | { readonly outcome: "ready" }, unknown, never> {
-      // Queue waiters must use the checkpoint committed by the preceding landing.
-      record =
-        (yield* Ref.get(recordsRef)).find((entry) => entry.worktreePath === record.worktreePath) ??
-        record;
-      if (!(yield* exists(record.worktreePath))) {
-        yield* closeRecord(record, "missing");
-        return yield* internalError("The worktree no longer exists on disk");
-      }
-      if (
-        (yield* rebaseInProgress(record.worktreePath)) ||
-        (yield* revParseExists(record.worktreePath, "MERGE_HEAD"))
-      ) {
-        yield* rememberPendingLanding(record, request.strategy);
-        return { outcome: "resolving", files: yield* unmergedFiles(record.worktreePath) };
-      }
-      if ((yield* dirtyFileCount(record.worktreePath)) > 0)
-        return yield* internalError(
-          "The worktree has uncommitted changes. Commit or discard them first.",
-        );
-      yield* requireSourceBranch(record);
-      const targetPath = record.parentWorktreePath ?? record.projectPath;
-      if (!(yield* exists(targetPath)))
-        return yield* internalError("The worktree landing target no longer exists");
-      if (
-        !prepareOnly &&
-        (yield* git(targetPath, "rev-parse", "--abbrev-ref", "HEAD")).trim() !== record.baseBranch
-      )
-        return yield* internalError(
-          `Switch the landing target back to "${record.baseBranch}" first.`,
-        );
-      // Squash commits the target index wholesale; it cannot preserve unrelated staged work.
-      if (
-        !prepareOnly &&
-        (yield* dirtyFileCount(targetPath)) > 0 &&
-        (!request.allowDirtyTarget || request.strategy === "squash")
-      )
-        return yield* internalError(
-          "The landing target has uncommitted changes. Commit or stash them first.",
-        );
-      record = yield* withLandingCheckpoint(record);
-      const sourceCommit = (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim();
-      if ((yield* newCommitCount(record, sourceCommit)) === 0) {
-        if (prepareOnly) return { outcome: "ready" };
-        yield* closeRecord(record, "landed", sourceCommit);
-        return { outcome: "landed" };
-      }
-      if (request.strategy === "squash") {
-        if (record.landedSourceCommit) {
-          const conflicts = yield* rebaseOntoTarget(record);
-          if (conflicts) {
-            yield* rememberPendingLanding(record, "squash");
-            return { outcome: "resolving", files: conflicts };
-          }
-        }
-        const outcome = yield* landSquash(record, request.message, prepareOnly);
-        if (outcome.outcome !== "landed" && outcome.outcome !== "ready")
-          yield* rememberPendingLanding(record, "squash");
-        return outcome;
-      }
-      let lastError = "unknown Git failure";
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        const conflicts = yield* rebaseOntoTarget(record);
-        if (conflicts) {
-          yield* rememberPendingLanding(record, "preserve");
-          return { outcome: "resolving", files: conflicts };
-        }
-        if (prepareOnly) return { outcome: "ready" };
-        const merge = yield* Effect.result(
-          gitMutation(targetPath, "merge", "--ff-only", record.branch),
-        );
-        if (merge._tag === "Success") {
-          const commit = (yield* git(targetPath, "rev-parse", "HEAD")).trim();
-          yield* closeRecord(record, "landed", commit);
-          return { outcome: "landed", commit };
-        }
-        lastError = messageOf(merge.failure);
-      }
-      return yield* internalError(`Cake could not fast-forward the landing target: ${lastError}`);
-    });
+    const landing = yield* makeWorktreeLanding(repository, recordsRef, updateRecord, closeRecord);
+    const {
+      withLandingCheckpoint,
+      newCommitCount,
+      rebaseOntoTarget,
+      requireSourceBranch,
+      hasFreshProposal,
+      landRecord,
+    } = landing;
     /** Removes the checkout with its project's command outside the repository lock, then
      * updates the branch and record under it. */
     const cleanup = Effect.fn("ManagedWorktrees.cleanup")(function* (
@@ -902,16 +185,7 @@ export const ManagedWorktreesLive: Layer.Layer<
           return yield* internalError(
             "Remove child worktrees before removing their landing target.",
           );
-      yield* Ref.update(awaitingSquashProposals, (items) => {
-        const next = new Set(items);
-        next.delete(normalized);
-        return next;
-      });
-      yield* Ref.update(squashProposals, (items) => {
-        const next = new Map(items);
-        next.delete(normalized);
-        return next;
-      });
+      yield* landing.clearProposal(record);
       const facts = factsOf(record);
       if (yield* exists(facts.checkoutPath))
         yield* removeCheckout(facts, options.lifecycle, options.reason);
@@ -929,14 +203,7 @@ export const ManagedWorktreesLive: Layer.Layer<
         }),
       );
       // Removed checkouts cannot retain reservations, including a paused squash landing.
-      const queue = (yield* Ref.get(landingQueues)).get(
-        yield* repositoryIdentity(record.projectPath),
-      );
-      for (const pending of queue?.pending ?? [])
-        if (pending.worktreePath === normalized)
-          yield* cancelLandingInternal(record, pending.operationId, false);
-      if (queue?.active?.worktreePath === normalized)
-        yield* releaseLanding(record, queue.active.operationId);
+      yield* landingQueue.remove(record);
     });
 
     const records = Effect.fn("ManagedWorktrees.records")(function* () {
@@ -1206,17 +473,7 @@ export const ManagedWorktreesLive: Layer.Layer<
                     Reflect.deleteProperty(next, "pendingStrategy");
                     return next;
                   });
-                  const normalized = resolveNormalized(record.worktreePath);
-                  yield* Ref.update(awaitingSquashProposals, (items) => {
-                    const next = new Set(items);
-                    next.delete(normalized);
-                    return next;
-                  });
-                  yield* Ref.update(squashProposals, (items) => {
-                    const next = new Map(items);
-                    next.delete(normalized);
-                    return next;
-                  });
+                  yield* landing.clearProposal(record);
                   yield* publish(worktreePath);
                 }
               } else if (onlyIfQueued)
@@ -1356,163 +613,15 @@ export const ManagedWorktreesLive: Layer.Layer<
             return retired;
           }),
         ),
-      restoreResolved: (worktreePath, lifecycle) => {
-        const restore = Effect.fn("ManagedWorktrees.restoreResolvedInternal")(function* (
-          target: string,
-        ): Effect.fn.Return<WorktreeRecord | undefined, unknown> {
-          const normalized = resolveNormalized(target);
-          const pending = (yield* Ref.get(recordsRef)).find(
-            (entry) => resolveNormalized(entry.worktreePath) === normalized,
-          );
-          if (!pending) return undefined;
-          if (pending.parentWorktreePath && !(yield* exists(pending.parentWorktreePath)))
-            yield* restore(pending.parentWorktreePath);
-          return yield* withWorktreeLock(target, restoreRecord(normalized));
-        });
-        const restoreRecord = Effect.fn("ManagedWorktrees.restoreRecord")(function* (
-          normalized: string,
-        ): Effect.fn.Return<WorktreeRecord | undefined, unknown> {
-          const record = (yield* Ref.get(recordsRef)).find(
-            (entry) =>
-              entry.state === "resolved" && resolveNormalized(entry.worktreePath) === normalized,
-          );
-          if (!record) return undefined;
-          let recreatedSourceCommit: string | undefined;
-          if (!(yield* exists(record.worktreePath))) {
-            const targetPath = record.parentWorktreePath ?? record.projectPath;
-            if (!(yield* exists(targetPath)))
-              return yield* internalError("The worktree restore target no longer exists");
-            const facts = factsOf(record);
-            const existing = yield* checkoutForBranch(record.projectPath, record.branch);
-            if (existing)
-              return yield* internalError(
-                `${record.branch} is already checked out at ${existing}.`,
-              );
-            const createdBranch = yield* withRepositoryLock(
-              record.projectPath,
-              Effect.gen(function* () {
-                if (yield* revParseExists(record.projectPath, `refs/heads/${record.branch}`))
-                  return false;
-                yield* gitMutation(
-                  record.projectPath,
-                  "branch",
-                  "--no-track",
-                  record.branch,
-                  record.baseBranch,
-                );
-                return true;
-              }),
-            );
-            const tip = (yield* git(
-              record.projectPath,
-              "rev-parse",
-              `refs/heads/${record.branch}`,
-            )).trim();
-            yield* Effect.gen(function* () {
-              const located = yield* materializeCheckout(
-                { ...facts, baseCommit: tip },
-                lifecycle,
-                subpathOf(record),
-              );
-              // Pi stores sessions by Working Directory, so they need their original path.
-              const original = yield* fileSystem
-                .realPath(record.worktreePath)
-                .pipe(Effect.orElseSucceed(() => undefined));
-              if (original !== located.worktreePath)
-                return yield* internalError(
-                  `The worktree create command restored ${record.branch} at ${located.checkoutPath}, not ${facts.checkoutPath}.`,
-                );
-            }).pipe(
-              Effect.onExit((exit) =>
-                Exit.isFailure(exit)
-                  ? Effect.gen(function* () {
-                      const checkoutPath = yield* checkoutForBranch(
-                        record.projectPath,
-                        record.branch,
-                      );
-                      if (checkoutPath)
-                        yield* removeCheckout(
-                          relocated(facts, checkoutPath, subpathOf(record)),
-                          lifecycle,
-                          "rollback",
-                        );
-                      if (createdBranch)
-                        yield* withRepositoryLock(
-                          record.projectPath,
-                          gitMutation(record.projectPath, "branch", "-D", record.branch),
-                        );
-                    }).pipe(
-                      Effect.catch((cause) =>
-                        Effect.logWarning(
-                          "Cake could not roll back a failed worktree restore",
-                          cause,
-                        ),
-                      ),
-                    )
-                  : Effect.void,
-              ),
-            );
-            if (createdBranch && record.resolvedFrom === "landed") recreatedSourceCommit = tip;
-          }
-          const restored = {
-            ...record,
-            state: record.resolvedFrom === "landed" ? "landed" : "active",
-            resolvedFrom: undefined,
-          } satisfies WorktreeRecord;
-          if (recreatedSourceCommit) restored.landedSourceCommit = recreatedSourceCommit;
-          yield* updateRecord(record, () => restored);
-          return restored;
-        });
-        return mapError(
-          "ManagedWorktrees.restoreResolved",
-          restore(worktreePath).pipe(Effect.tap(() => publish(worktreePath))),
-        );
-      },
-      proposeSquashMessage: (input) =>
+      restoreResolved: (worktreePath, lifecycle) =>
         mapError(
-          "ManagedWorktrees.proposeSquashMessage",
-          Effect.gen(function* () {
-            const normalized = resolveNormalized(input.workspacePath);
-            const record = (yield* Ref.get(recordsRef)).find(
-              (entry) =>
-                ["active", "landed"].includes(entry.state ?? "active") &&
-                resolveNormalized(entry.worktreePath) === normalized,
-            );
-            if (!record)
-              return yield* internalError("Cake could not find a worktree for this workspace");
-            if (yield* revParseExists(record.worktreePath, "MERGE_HEAD"))
-              return yield* internalError(
-                "Complete the in-progress merge before proposing the squash message",
-              );
-            if (yield* rebaseInProgress(record.worktreePath))
-              return yield* internalError(
-                "Complete the in-progress rebase before proposing the squash message",
-              );
-            const awaiting = yield* Ref.modify(awaitingSquashProposals, (items) => {
-              const found = items.has(normalized);
-              const next = new Set(items);
-              next.delete(normalized);
-              return [found, next] as const;
-            });
-            if (!awaiting && record.pendingStrategy !== "squash")
-              return yield* internalError(
-                "No worktree landing is waiting for a squash commit message",
-              );
-            const head = (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim();
-            const targetHead = (yield* git(
-              record.parentWorktreePath ?? record.projectPath,
-              "rev-parse",
-              "HEAD",
-            )).trim();
-            yield* Ref.update(squashProposals, (proposals) =>
-              new Map(proposals).set(normalized, {
-                message: input.body ? `${input.subject}\n\n${input.body}` : input.subject,
-                head,
-                targetHead,
-              }),
-            );
-          }),
+          "ManagedWorktrees.restoreResolved",
+          checkout
+            .restoreResolved(worktreePath, lifecycle)
+            .pipe(Effect.tap(() => publish(worktreePath))),
         ),
+      proposeSquashMessage: (input) =>
+        mapError("ManagedWorktrees.proposeSquashMessage", landing.proposeSquashMessage(input)),
     });
     return service;
   }),
