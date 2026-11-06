@@ -7,11 +7,11 @@ import { describe, expect } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { snapshotPromptFiles } from "../../../../src/services/filesystem/prompt-files";
 import { ProjectAccess } from "../../../../src/services/projects/ProjectAccess";
+import { projectSessionEntries } from "../../../../src/services/pi/runtime/session-projection";
 import {
-  projectSessionEntries,
   promptText,
   parseContextAttachmentBlocks,
-} from "../../../../src/services/pi/runtime/session-projection";
+} from "../../../../src/services/pi/runtime/user-message-transport";
 import { inspectSessionHistory } from "../../../../src/services/pi/runtime/session-inspection";
 import { readMessageReference } from "../../../../src/services/pi/runtime/message-references";
 import {

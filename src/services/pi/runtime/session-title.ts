@@ -1,7 +1,8 @@
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { dirname } from "node:path";
 import { SESSION_TITLE_MAX_LENGTH } from "../../../contracts/conversations/session-contract";
-import { textFromContent, visibleUserMessageText } from "./session-projection";
+import { textFromContent } from "./tool-projection";
+import { visibleUserMessageText } from "./user-message-transport";
 import { stripPresentationModeReminder } from "../../../contracts/conversations/presentation-mode-reminders";
 import { stripResponseModeReminder } from "../../../contracts/conversations/response-mode-reminders";
 

@@ -14,7 +14,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createCakeSessionRuntimeTurnController } from "../../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
 import { TurnCanceledError } from "../../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
-import { projectQueuedMessages } from "../../../../src/services/pi/runtime/session-projection";
+import { projectQueuedMessages } from "../../../../src/services/pi/runtime/queued-message-projection";
 import { projectConversationDisplay } from "../../../../src/services/pi/runtime/conversation-display-projection";
 import { appendToolCompactedBranch } from "../../../../src/services/pi/runtime/session-tool-compaction";
 import {

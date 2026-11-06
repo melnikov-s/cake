@@ -10,8 +10,8 @@ import {
 import {
   locateQueuedMessage,
   projectQueuedMessages,
-  projectSessionEntries,
-} from "../../../src/services/pi/runtime/session-projection";
+} from "../../../src/services/pi/runtime/queued-message-projection";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 
 const message: ScheduledMessage = {
   id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",

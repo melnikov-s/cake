@@ -1,6 +1,7 @@
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { internalInputOrigins, isAutomaticInput } from "./internal-input-projection";
-import { parseContextAttachmentBlocks, textFromContent } from "./session-projection";
+import { parseContextAttachmentBlocks } from "./user-message-transport";
+import { textFromContent } from "./tool-projection";
 import {
   sideChatInputReferenceIds,
   type SideChatHistory,

@@ -12,7 +12,7 @@ import { makeAttachmentReferenceControl } from "../../../src/domain/conversation
 import { createAttachmentReferenceOperations } from "../../../src/domain/conversations/cake-attachment-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { makePiCallbackExecutor } from "../../../src/services/pi/PiCallbackAdapter";
-import { imageContent, promptText } from "../../../src/services/pi/runtime/session-projection";
+import { imageContent, promptText } from "../../../src/services/pi/runtime/user-message-transport";
 import {
   prepareTaskInputs,
   prepareCoordinatorMessage,

@@ -7,7 +7,7 @@ import {
 } from "../../../src/contracts/artifacts/artifact-presentation-context";
 import { passiveNoticeContext } from "../../../src/contracts/conversations/passive-notice";
 import type { InternalInput } from "../../../src/contracts/conversations/internal-input";
-import { promptText } from "../../../src/services/pi/runtime/session-projection";
+import { promptText } from "../../../src/services/pi/runtime/user-message-transport";
 import { artifactTarget } from "../../fixtures/artifact-presentation";
 
 it("splits exact artifact context before host attachments/image hints without removing user-authored reminders", () => {

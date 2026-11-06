@@ -6,10 +6,8 @@ import {
   type CrossSessionMessageMetadata,
 } from "../../../src/contracts/conversations/cross-session-message";
 import { deriveCrossSessionDeliveryStatus } from "../../../src/contracts/conversations/cross-session-coordination";
-import {
-  projectQueuedMessages,
-  projectSessionEntries,
-} from "../../../src/services/pi/runtime/session-projection";
+import { projectQueuedMessages } from "../../../src/services/pi/runtime/queued-message-projection";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 
 const metadata: CrossSessionMessageMetadata = {
   version: 1,

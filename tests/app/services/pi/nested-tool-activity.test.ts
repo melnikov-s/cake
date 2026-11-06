@@ -6,10 +6,8 @@ import {
   type UiPart,
 } from "../../../../src/contracts/conversations/session-contract";
 import { createCakeSessionRuntimeEventProjection } from "../../../../src/services/pi/runtime/cake-session-runtime-event-projection";
-import {
-  projectNestedToolCalls,
-  projectSessionEntries,
-} from "../../../../src/services/pi/runtime/session-projection";
+import { projectNestedToolCalls } from "../../../../src/services/pi/runtime/tool-projection";
+import { projectSessionEntries } from "../../../../src/services/pi/runtime/session-projection";
 import { Conversation } from "../../../../src/renderer/models/Conversation";
 import {
   applyPartUpdate,

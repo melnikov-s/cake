@@ -10,12 +10,9 @@ import {
 import { withoutPassiveNotices } from "../../../src/contracts/conversations/internal-input";
 import { passiveNoticeContext } from "../../../src/contracts/conversations/passive-notice";
 import { internalInputEntryType } from "../../../src/services/pi/runtime/internal-input-projection";
-import {
-  createLiveMessageProjector,
-  imageContent,
-  projectSessionEntries,
-  promptText,
-} from "../../../src/services/pi/runtime/session-projection";
+import { createLiveMessageProjector } from "../../../src/services/pi/runtime/message-projection";
+import { imageContent, promptText } from "../../../src/services/pi/runtime/user-message-transport";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { updateBatchReminder } from "../../../src/contracts/conversations/update-batch";
 import { addArtifactPresentationReminder } from "../../../src/contracts/artifacts/artifact-presentation-context";
 import type { Attachment } from "../../../src/contracts/conversations/session-contract";

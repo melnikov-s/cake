@@ -9,7 +9,7 @@ import {
   applyConversationSnapshot,
   applyConversationUpdate,
 } from "../../../src/renderer/reducers/ConversationReducer";
-import { createLiveMessageProjector } from "../../../src/services/pi/runtime/session-projection";
+import { createLiveMessageProjector } from "../../../src/services/pi/runtime/message-projection";
 import { internalInputEntryType } from "../../../src/services/pi/runtime/internal-input-projection";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";

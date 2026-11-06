@@ -8,10 +8,8 @@ import {
   projectTodoReminder,
 } from "../../../src/contracts/projects/project-todos";
 import { artifactTarget } from "../../fixtures/artifact-presentation";
-import {
-  projectSessionEntries,
-  promptText,
-} from "../../../src/services/pi/runtime/session-projection";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
+import { promptText } from "../../../src/services/pi/runtime/user-message-transport";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import {

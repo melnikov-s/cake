@@ -6,16 +6,16 @@ import {
   createAgentSession,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { existsSync } from "node:fs";
+import { createCakeSessionRuntimeSubscription } from "./cake-session-runtime-subscription";
 import { shutdownDiagnostics, shutdownResource } from "../../diagnostics/shutdown-diagnostics";
 import type { ProjectTodo } from "../../../contracts/projects/project-todos";
 import type { IdleCompactionResult } from "../../../contracts/project-sessions/session-compaction";
-import { internalInputEntryType } from "./internal-input-projection";
+
 import { resolve } from "node:path";
 import { observeMessageBoardRequests } from "./message-board-extension";
-import { createTurnResultCapture } from "./turn-result-capture";
+
 import { keepAutoCompactionEnabled } from "./settings-translation";
-import { reportSlowCakeToolExecution } from "./cake-tool-timing";
+
 import type { PiTurnResult } from "../../../contracts/pi/turn-result-data";
 import type {
   CurrentSessionControl,
@@ -27,7 +27,7 @@ import type { MessageBoardControl } from "../../../contracts/artifacts/message-b
 import type { CakeModelPresetCatalog } from "../../../contracts/model-presets/cake-model-selection";
 import type { CakeChatMemoryOptions } from "../cake-chat-memory-options";
 import { Schema } from "effect";
-import { promptFilesSchema } from "../../../contracts/conversations/prompt-files";
+import { createCakeSessionRuntimeOperationApi } from "./cake-session-runtime-operation-api";
 import {
   assertInitialModelRegistered,
   registerAgentDirectoryExtensionProviders,
@@ -50,7 +50,7 @@ import type {
   ExplicitCakeModelSelection,
   CakeModelLaunch,
 } from "../../../contracts/model-presets/cake-model-selection";
-import { crossSessionContextSnapshot } from "../../../contracts/conversations/cross-session-message";
+
 import type {
   PiPendingMessageReorder,
   PiPendingMessages,
@@ -78,14 +78,11 @@ import {
   reviewRunEntrySchema,
   reviewRunEntryType,
   reviewRunPart,
-  textFromContent,
   userMessagePresentationEntrySchema,
   userMessagePresentationEntryType,
-  turnHandoffEntryType,
-  turnStopEntryType,
-  type AbortPresentation,
   type ReviewRunEntry,
 } from "./session-projection";
+import { type AbortPresentation } from "./message-projection";
 import {
   activeCompactionNotice,
   createCakeSessionRuntimeEventProjection,
@@ -94,22 +91,14 @@ import { projectCakeSessionRuntimeSnapshot } from "./cake-session-runtime-snapsh
 import { createCakeSessionRuntimeTurnController } from "./cake-session-runtime-turn-controller";
 import { createCakeSessionRuntimeRecovery } from "./cake-session-runtime-recovery";
 import type { RuntimeRecoveryInput } from "../../storage/RuntimeRecoveryStorage";
-import {
-  recoveryInputEntryType,
-  restartDecision,
-  restartResumePrompt,
-  unfinishedTools,
-} from "./restart-recovery";
+import { restartDecision, restartResumePrompt, unfinishedTools } from "./restart-recovery";
 import {
   createCakeSessionRuntimeResourceLifecycle,
   shutdownCakeSessionExtensions,
 } from "./cake-session-runtime-resources";
 import { createCakeMcpExtensions } from "./mcp-integration";
-import { stripPresentationModeReminder } from "../../../contracts/conversations/presentation-mode-reminders";
-import {
-  stripResponseModeReminder,
-  type ConversationResponseMode,
-} from "../../../contracts/conversations/response-mode-reminders";
+
+import { type ConversationResponseMode } from "../../../contracts/conversations/response-mode-reminders";
 import { createCakeSessionRuntimeCapabilities } from "./cake-session-runtime-capabilities";
 import type {
   ProjectCakeOperations,
@@ -433,14 +422,6 @@ export async function createCakeSessionRuntime(
   );
   if (options.messageBoardControl)
     observeMessageBoardRequests(session, options.messageBoardControl);
-  const resolveTarget = (reference: string, signal: AbortSignal) => {
-    if (options.sessionReferences) return options.sessionReferences.resolve(reference, signal);
-    if (/^s:/i.test(reference))
-      return Promise.reject(
-        new Error("Session reference resolution is unavailable in this runtime"),
-      );
-    return Promise.resolve(reference);
-  };
   const cakeSessionId = session.sessionManager.getSessionId();
   configurationState.attachModel(session.model);
   configurationState.attachSession(session.sessionManager);
@@ -701,273 +682,25 @@ export async function createCakeSessionRuntime(
     await continuations.toolCompact(entry.id);
   };
 
-  let initialTranscriptPublished = !options.newSession;
-  let automaticTitleForNextMessage = true;
-  const captureTurnResult = createTurnResultCapture(
-    () => turnController.executingTurnIds(),
-    (turnId, result) => options.onTurnResult?.(turnId, result),
-    () =>
-      session.sessionManager
-        .getBranch()
-        .findLast((entry) => entry.type === "message" && entry.message.role === "assistant")?.id,
-    () => session.model,
-  );
-  const unsubscribe = session.subscribe((event) => {
-    if (disposed) return;
-    captureTurnResult(event);
-    if (event.type === "tool_execution_end") reportSlowCakeToolExecution("pi", event);
-    if (
-      event.type === "message_end" &&
-      event.message.role === "assistant" &&
-      (event.message.stopReason === "aborted" || event.message.stopReason === "error")
-    ) {
-      const presentation = abortPresentation();
-      // Aborting during a tool makes Pi's follow-up request end as `error` ("This operation
-      // was aborted"). Only a handoff claims that ending; a stop keeps today's presentation.
-      if (presentation.kind === "handoff")
-        session.sessionManager.appendCustomEntry(turnHandoffEntryType, {
-          timestamp: event.message.timestamp,
-        });
-      else if (presentation.kind === "stopped" && event.message.stopReason === "aborted")
-        session.sessionManager.appendCustomEntry(turnStopEntryType, {
-          timestamp: event.message.timestamp,
-          stop: presentation.stop,
-        });
-    }
-    projection.projectEvent(event);
-    if (event.type === "session_info_changed" && event.name)
-      void options.sessionTitleChanged?.(cakeSessionId, event.name).catch(() => undefined);
-    if (event.type === "compaction_end") {
-      if (!event.aborted && !event.errorMessage) emitSnapshotInBackground();
-      turnController.compactionEnded(event.willRetry);
-    }
-    if (
-      !initialTranscriptPublished &&
-      event.type === "message_end" &&
-      (event.message.role === "user" || event.message.role === "assistant")
-    ) {
-      // Pi notifies public listeners before synchronously appending the message.
-      // Do not release catalog publication from inside that pre-persistence event.
-      queueMicrotask(() => {
-        if (disposed || initialTranscriptPublished || !session.sessionFile) return;
-        if (!existsSync(session.sessionFile)) return;
-        initialTranscriptPublished = true;
-        options.onInitialTranscriptPersisted?.();
-      });
-    }
-    if (event.type === "message_end" && event.message.role === "user") {
-      const content = textFromContent(event.message.content);
-      const internal = turnController.internalInput(content);
-      if (internal)
-        session.sessionManager.appendCustomEntry(internalInputEntryType, {
-          timestamp: event.message.timestamp,
-          origin: internal,
-        });
-      const consumedTurnId = turnController.consumeUserMessage(content);
-      if (consumedTurnId && !options.ephemeral)
-        session.sessionManager.appendCustomEntry(recoveryInputEntryType, {
-          turnId: consumedTurnId,
-          timestamp: event.message.timestamp,
-        });
-      const presentation = projection.consumeUserPresentation(content);
-      if (presentation?.renderUserMessageAsMarkdown)
-        queueMicrotask(() => {
-          if (disposed) return;
-          const target = session.sessionManager
-            .getEntries()
-            .findLast((entry) => entry.type === "message" && entry.message === event.message);
-          if (!target) return;
-          session.sessionManager.appendCustomEntry(userMessagePresentationEntryType, {
-            targetId: target.id,
-            renderAs: "markdown",
-          });
-          emitSnapshotInBackground();
-        });
-      const automaticTitle = automaticTitleForNextMessage;
-      automaticTitleForNextMessage = true;
-      if (!options.auxiliary && !internal)
-        void continuations.initializeSessionFromFirstMessage(
-          textFromContent(event.message.content),
-          automaticTitle,
-        );
-    }
-    if (event.type === "agent_settled" && !turnController.cancellationPending()) {
-      turnController.settleTurn();
-      void continuations.finishSettledTurn();
-    }
+  const subscription = createCakeSessionRuntimeSubscription({
+    options,
+    session,
+    turnController,
+    projection,
+    continuations,
+    isDisposed: () => disposed,
+    abortPresentation,
+    emitSnapshotInBackground,
   });
 
-  const currentContextSnapshot = () =>
-    crossSessionContextSnapshot(session.getSessionStats().contextUsage);
-
-  capabilities.operationApi.current = {
-    resolveModelSelection: configuration.resolveModelSelection,
-    async info() {
-      const firstUserMessage = session.sessionManager
-        .getBranch()
-        .flatMap((entry) =>
-          entry.type === "message" && entry.message.role === "user"
-            ? [
-                stripResponseModeReminder(
-                  stripPresentationModeReminder(textFromContent(entry.message.content)),
-                ).trim(),
-              ]
-            : [],
-        )
-        .find(Boolean);
-      const info: JsonObject = {
-        sessionId: cakeSessionId,
-        title: continuations.activeSessionTitle(),
-        sessionFile: session.sessionFile ?? "",
-        ...(firstUserMessage ? { firstUserMessage } : null),
-        workspacePath: options.cwd,
-        resolved: options.currentSessionControl?.resolved() ?? false,
-        model: {
-          provider: session.model?.provider ?? "unknown",
-          id: session.model?.id ?? "unknown",
-          reasoning: session.thinkingLevel,
-        },
-      };
-      const family = (await options.currentSessionControl?.readPolicy())?.family;
-      return Schema.decodeUnknownSync(jsonValueSchema)(
-        family === undefined ? info : { ...info, family },
-      );
-    },
-    usage() {
-      const stats = session.getSessionStats();
-      return Schema.decodeUnknownSync(jsonValueSchema)({
-        inputTokens: stats.tokens.input,
-        outputTokens: stats.tokens.output,
-        cacheReadTokens: stats.tokens.cacheRead,
-        cacheWriteTokens: stats.tokens.cacheWrite,
-        reportedCostUsd: stats.cost,
-        pricingCoverage: options.partialPricingCoverage
-          ? "partial"
-          : session.model
-            ? "complete"
-            : "unknown",
-      });
-    },
-    contextStatus() {
-      const { usedTokens: tokens, windowTokens: limit } = currentContextSnapshot();
-      return Schema.decodeUnknownSync(jsonValueSchema)({
-        tokens,
-        limit,
-        remaining: tokens === null || limit === null ? null : Math.max(0, limit - tokens),
-        utilization: tokens === null || limit === null ? null : tokens / limit,
-        measurement: "estimated",
-      });
-    },
-    async compact(instructions) {
-      await turnController.compact(instructions);
-      await capabilities.reportAgentAction("compact");
-      return { status: "compacted" };
-    },
-    async rename(title) {
-      const committedTitle = await continuations.rename(title, true);
-      return { sessionId: cakeSessionId, title: committedTitle };
-    },
-    async createSession(input, signal) {
-      if (!options.currentSessionControl?.createSession)
-        throw new Error("This Cake runtime cannot create project sessions");
-      return options.currentSessionControl.createSession(
-        { ...input, model: configuration.resolveModelSelection(input.model) },
-        signal,
-      );
-    },
-    async createDraftSession(input, signal) {
-      if (!options.currentSessionControl?.createDraftSession)
-        throw new Error("This Cake runtime cannot create project draft sessions");
-      return options.currentSessionControl.createDraftSession(
-        { ...input, model: configuration.resolveModelSelection(input.model) },
-        signal,
-      );
-    },
-    async createChildSession(input, requestId, signal) {
-      if (!options.currentSessionControl?.createChildSession)
-        throw new Error("This Project Session cannot create child sessions");
-      return options.currentSessionControl.createChildSession(
-        {
-          requestId: input.requestId ?? requestId,
-          title: input.title,
-          assignment: input.assignment,
-          resultDelivery: input.resultDelivery,
-          placement: input.placement,
-          model: configuration.resolveModelSelection(input.model),
-          ...(input.worktreeName === undefined ? null : { worktreeName: input.worktreeName }),
-          senderContext: currentContextSnapshot(),
-        },
-        signal,
-      );
-    },
-    async forkSession(input) {
-      return continuations.scheduleFork(input);
-    },
-    async pendingMessages(sessionId, signal) {
-      const pending = options.currentSessionControl?.pendingMessages;
-      if (!pending) throw new Error("Project Session queues are unavailable in this runtime");
-      return pending(await resolveTarget(sessionId, signal), signal);
-    },
-    async reorderPendingMessage(sessionId, input, signal) {
-      const reorder = options.currentSessionControl?.reorderPendingMessage;
-      if (!reorder) throw new Error("Project Session queues are unavailable in this runtime");
-      return reorder(await resolveTarget(sessionId, signal), input, signal);
-    },
-    async mergeSession(targetSessionId, signal) {
-      const merge = options.currentSessionControl?.mergeSession;
-      if (!merge) throw new Error("Managed Worktree merge is unavailable in this runtime");
-      return merge(
-        targetSessionId === undefined ? undefined : await resolveTarget(targetSessionId, signal),
-        signal,
-      );
-    },
-    async discardSession(targetSessionId, keepBranch, signal) {
-      const discard = options.currentSessionControl?.discardSession;
-      if (!discard) throw new Error("Managed Worktree discard is unavailable in this runtime");
-      return discard(
-        targetSessionId === undefined ? undefined : await resolveTarget(targetSessionId, signal),
-        keepBranch,
-        signal,
-      );
-    },
-    async invokeAppControl(command, input, signal) {
-      if (
-        (command === "sessions.send" || command === "sessions.reply") &&
-        input.promptFiles !== undefined
-      ) {
-        const { promptFiles, ...rest } = input;
-        const paths = Schema.decodeUnknownSync(promptFilesSchema)(promptFiles);
-        const capture = options.currentSessionControl?.snapshotPromptFiles;
-        if (!capture) throw new Error("Prompt files are unavailable in this runtime");
-        const text = await capture(
-          Schema.decodeUnknownSync(Schema.String)(input.text),
-          paths,
-          signal,
-        );
-        input = { ...rest, text };
-      }
-      if (typeof input.sessionId === "string")
-        input = { ...input, sessionId: await resolveTarget(input.sessionId, signal) };
-      const familyResult =
-        command === "sessions.send" || command === "sessions.reply"
-          ? await options.currentSessionControl?.routeFamilyMessage?.(
-              command,
-              input,
-              signal,
-              currentContextSnapshot(),
-            )
-          : undefined;
-      let result = familyResult;
-      if (result === undefined) {
-        const invoke = options.currentSessionControl?.invokeAppControl;
-        if (!invoke) throw new Error("Cross-session Cake controls are unavailable in this runtime");
-        result = await invoke(command, input, signal);
-      }
-      return capabilities.recordAppControlResult(result, session);
-    },
-    setResolved: continuations.setResolved,
-    setModel: configuration.setOperationModel,
-  };
+  capabilities.operationApi.current = createCakeSessionRuntimeOperationApi({
+    options,
+    session,
+    configuration,
+    continuations,
+    capabilities,
+    turnController,
+  });
 
   const callCakeTool = async (
     command: string,
@@ -1163,7 +896,7 @@ export async function createCakeSessionRuntime(
       responseMode,
       internal,
     ) {
-      automaticTitleForNextMessage = automaticTitle;
+      subscription.setAutomaticTitle(automaticTitle);
       // Manual Continue (including after an explicit stop) must inspect uncertain
       // effects too, without automatically resuming deliberately stopped work.
       const interruptedTools = !session.isStreaming
@@ -1262,7 +995,7 @@ export async function createCakeSessionRuntime(
         projection.dispose();
         recovery.dispose();
         resources.dispose();
-        unsubscribe();
+        subscription.dispose();
       });
       disposePromise = shutdownDiagnostics.promise("pi.dispose", resource, async () => {
         try {

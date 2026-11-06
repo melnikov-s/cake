@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   promptText,
   parseContextAttachmentBlocks,
-} from "../../../../src/services/pi/runtime/session-projection";
+} from "../../../../src/services/pi/runtime/user-message-transport";
 
 describe("promptText file attachments", () => {
   it("preserves whitespace in file paths and projects compact attachments rather than backend paths as user text", () => {

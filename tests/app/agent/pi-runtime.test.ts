@@ -34,16 +34,16 @@ import {
   streamWorkspaceSessions,
   suggestProjectFiles,
 } from "../../../src/services/pi/runtime/session-discovery";
+import { createLiveMessageProjector } from "../../../src/services/pi/runtime/message-projection";
 import {
-  createLiveMessageProjector,
   formatToolResult,
   formatUnknown,
-  promptText,
-  projectQueuedMessages,
-  projectSessionEntries,
   toolArtifactId,
   toolResultContent,
-} from "../../../src/services/pi/runtime/session-projection";
+} from "../../../src/services/pi/runtime/tool-projection";
+import { promptText } from "../../../src/services/pi/runtime/user-message-transport";
+import { projectQueuedMessages } from "../../../src/services/pi/runtime/queued-message-projection";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { loadReviewSessionProjection } from "../../../src/services/pi/runtime/sidecar-runtime";
 import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
 import { SessionManager, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";

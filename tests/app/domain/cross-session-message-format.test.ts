@@ -9,7 +9,7 @@ import {
   type CrossSessionNotice,
 } from "../../../src/contracts/conversations/cross-session-message";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
-import { queuedUserMessageDisplay } from "../../../src/services/pi/runtime/session-projection";
+import { queuedUserMessageDisplay } from "../../../src/services/pi/runtime/queued-message-projection";
 import {
   addSessionDigestReminder,
   formatSessionDigestReminder,

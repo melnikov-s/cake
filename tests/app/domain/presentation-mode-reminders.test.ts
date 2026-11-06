@@ -4,7 +4,7 @@ import {
   presentationModeFromReminder,
   stripPresentationModeReminder,
 } from "../../../src/contracts/conversations/presentation-mode-reminders";
-import { projectQueuedMessages } from "../../../src/services/pi/runtime/session-projection";
+import { projectQueuedMessages } from "../../../src/services/pi/runtime/queued-message-projection";
 
 const reminder = (from: "normal" | "vscode" | "browser", to: "normal" | "vscode" | "browser") =>
   addPresentationModeReminder("Keep working", from, to);

@@ -10,10 +10,8 @@ import {
   withoutRuntimeSystemPrompt,
 } from "../../../src/services/pi/runtime/system-context-projection";
 
-import {
-  createLiveMessageProjector,
-  projectSessionEntries,
-} from "../../../src/services/pi/runtime/session-projection";
+import { createLiveMessageProjector } from "../../../src/services/pi/runtime/message-projection";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { withoutTerminalDocumentation } from "../../../src/services/pi/runtime/pi-documentation";
 
 const tools = [

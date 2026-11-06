@@ -20,11 +20,8 @@ import { attachmentLink } from "../../../src/contracts/conversations/message-ref
 import { CakeChatSurface } from "../../../src/renderer/components/cake-chat-surface";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
-import {
-  imageContent,
-  projectSessionEntries,
-  promptText,
-} from "../../../src/services/pi/runtime/session-projection";
+import { imageContent, promptText } from "../../../src/services/pi/runtime/user-message-transport";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";

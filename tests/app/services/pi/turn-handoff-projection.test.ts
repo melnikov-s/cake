@@ -1,8 +1,8 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
+import { createLiveMessageProjector } from "../../../../src/services/pi/runtime/message-projection";
 import {
-  createLiveMessageProjector,
   projectSessionEntries,
   turnHandoffEntryType,
   turnStopEntryType,

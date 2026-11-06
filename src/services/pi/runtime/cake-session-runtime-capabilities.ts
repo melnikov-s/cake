@@ -38,7 +38,7 @@ import projectPromptTemplate from "./prompts/project.md?raw";
 import commonPromptTemplate from "./prompts/common.md?raw";
 import { projectInvestigationSystemPrompt } from "../subagent-system-prompt";
 import { renderPromptTemplate } from "./prompt-template";
-import { formatUnknown } from "./session-projection";
+import { formatUnknown } from "./tool-projection";
 import { toolFailureMessage } from "./tool-error-text";
 import { projectCakeOperationRuntime } from "./cake-operation-context";
 import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";

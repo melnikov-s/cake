@@ -7,7 +7,8 @@ import {
   type MessageReadResult,
 } from "../../contracts/conversations/message-reference";
 import type { SessionInspectionQuery } from "../../contracts/conversations/session-query-data";
-import { parseContextAttachmentBlocks, textFromContent } from "../pi/runtime/session-projection";
+import { parseContextAttachmentBlocks } from "../pi/runtime/user-message-transport";
+import { textFromContent } from "../pi/runtime/tool-projection";
 import { durableInputPresentation } from "./durable-input-presentation";
 
 import { DURABLE_SIDE_CHAT_IMPORT } from "./durable-side-chat-history";

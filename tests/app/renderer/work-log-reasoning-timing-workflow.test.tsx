@@ -2,10 +2,8 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { act, cleanup, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import {
-  createLiveMessageProjector,
-  projectSessionEntries,
-} from "../../../src/services/pi/runtime/session-projection";
+import { createLiveMessageProjector } from "../../../src/services/pi/runtime/message-projection";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { readFile, renderWorkLog } from "./work-log-presentation-workflow-fixture";
 
 function assistant(thinking: string): AssistantMessage {

@@ -3,7 +3,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { PiTurnResult } from "../../../contracts/pi/turn-result-data";
 import { parseCrossSessionMessage } from "../../../contracts/conversations/cross-session-message";
 import { splitContextReminders } from "./session-context-reminders";
-import { textFromContent } from "./session-projection";
+import { textFromContent } from "./tool-projection";
 
 /** Token limits of the model that answered; absent when the runtime has no model. */
 export interface TurnModelLimits {

@@ -23,9 +23,9 @@ import {
   imageContent,
   promptText,
   parseContextAttachmentBlocks,
-  projectSessionEntries,
-  createLiveMessageProjector,
-} from "../../../../src/services/pi/runtime/session-projection";
+} from "../../../../src/services/pi/runtime/user-message-transport";
+import { projectSessionEntries } from "../../../../src/services/pi/runtime/session-projection";
+import { createLiveMessageProjector } from "../../../../src/services/pi/runtime/message-projection";
 import type { Attachment } from "../../../../src/contracts/conversations/session-contract";
 import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
 import {

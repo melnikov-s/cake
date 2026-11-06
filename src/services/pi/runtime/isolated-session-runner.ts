@@ -32,7 +32,6 @@ import type {
 } from "../../../contracts/conversations/session-contract";
 import {
   boundedProjectionKey,
-  createLiveMessageProjector,
   formatToolInput,
   formatToolResult,
   toolArtifactId,
@@ -40,7 +39,8 @@ import {
   toolFilePath,
   toolResultOutputContent,
   toolResultDiff,
-} from "./session-projection";
+} from "./tool-projection";
+import { createLiveMessageProjector } from "./message-projection";
 
 export interface IsolatedSessionOptions {
   cwd: string;

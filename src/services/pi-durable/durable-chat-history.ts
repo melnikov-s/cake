@@ -11,8 +11,8 @@ import type { InterviewEntry } from "../../contracts/interviews/interview";
 import { durableToolInterview, withDurableToolInterview } from "./durable-side-chat-interviews";
 import { internalInputEntryType } from "../pi/runtime/internal-input-projection";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import { boundedProjectionKey } from "../pi/runtime/tool-projection";
 import {
-  boundedProjectionKey,
   projectSessionEntries,
   userMessagePresentationEntryType,
 } from "../pi/runtime/session-projection";

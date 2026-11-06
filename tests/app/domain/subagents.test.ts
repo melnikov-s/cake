@@ -45,10 +45,8 @@ import type { PiTurnResult } from "../../../src/contracts/pi/turn-result-data";
 import { splitContextReminders } from "../../../src/services/pi/runtime/session-context-reminders";
 import * as subagents from "../../../src/domain/subagents/subagents";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
-import {
-  projectQueuedMessages,
-  projectSessionEntries,
-} from "../../../src/services/pi/runtime/session-projection";
+import { projectQueuedMessages } from "../../../src/services/pi/runtime/queued-message-projection";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { RuntimeRecoveryInput } from "../../../src/services/storage/RuntimeRecoveryStorage";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import {

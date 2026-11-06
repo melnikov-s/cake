@@ -4,7 +4,7 @@ import {
   createCakeSessionRuntimeEventProjection,
   type RuntimeProjectionEvent,
 } from "../../../../src/services/pi/runtime/cake-session-runtime-event-projection";
-import { projectQueuedMessages } from "../../../../src/services/pi/runtime/session-projection";
+import { projectQueuedMessages } from "../../../../src/services/pi/runtime/queued-message-projection";
 
 describe("Cake runtime streaming projection", () => {
   it("preserves accepted text at Stop, fences late provider/tool events, and resumes only explicitly", () => {

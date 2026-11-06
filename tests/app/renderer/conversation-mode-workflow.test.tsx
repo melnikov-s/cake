@@ -8,7 +8,7 @@ import { detectFixtureSpeech } from "../../helpers/speech-detection";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { createLiveMessageProjector } from "../../../src/services/pi/runtime/session-projection";
+import { createLiveMessageProjector } from "../../../src/services/pi/runtime/message-projection";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";

@@ -7,7 +7,7 @@ import {
 import { stripResponseModeReminder } from "../../../contracts/conversations/response-mode-reminders";
 import { stripPresentationModeReminder } from "../../../contracts/conversations/presentation-mode-reminders";
 import { jsonValueSchema } from "../../../contracts/serialization/json-contract";
-import { textFromContent } from "./session-projection";
+import { textFromContent } from "./tool-projection";
 import {
   toolCompactEntryType,
   toolCompactMarkerSchema,

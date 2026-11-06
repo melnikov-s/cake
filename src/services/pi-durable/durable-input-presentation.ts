@@ -14,11 +14,8 @@ import {
   type UiPart,
 } from "../../contracts/conversations/session-contract";
 import type { InboxItem } from "@earendil-works/pi-durable";
-import {
-  parseContextAttachmentBlocks,
-  promptText,
-  queuedUserMessageDisplay,
-} from "../pi/runtime/session-projection";
+import { parseContextAttachmentBlocks, promptText } from "../pi/runtime/user-message-transport";
+import { queuedUserMessageDisplay } from "../pi/runtime/queued-message-projection";
 import { splitContextReminders } from "../pi/runtime/session-context-reminders";
 import { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import { addPresentationModeReminder } from "../../contracts/conversations/presentation-mode-reminders";

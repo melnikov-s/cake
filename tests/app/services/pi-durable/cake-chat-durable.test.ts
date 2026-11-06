@@ -61,10 +61,8 @@ import {
   researchOrigin,
   researchMarkdown,
 } from "../../../fixtures/subagent-report";
-import {
-  projectSessionEntries,
-  promptText,
-} from "../../../../src/services/pi/runtime/session-projection";
+import { projectSessionEntries } from "../../../../src/services/pi/runtime/session-projection";
+import { promptText } from "../../../../src/services/pi/runtime/user-message-transport";
 import { subagentCompletionMessage } from "../../../../src/contracts/subagents/subagent-report";
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
 import { cakeChatCacheFreshness } from "../../../../src/contracts/cake-chats/context-policy";

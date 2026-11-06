@@ -8,18 +8,17 @@ import type {
 import {
   boundedProjectionKey,
   cakeOperationCommand,
-  createLiveMessageProjector,
   formatToolInput,
   formatToolResult,
-  projectQueuedMessages,
   textFromContent,
   toolArtifactId,
   toolArtifactRevision,
   toolFilePath,
   toolResultDiff,
   toolResultOutputContent,
-  type AbortPresentation,
-} from "./session-projection";
+} from "./tool-projection";
+import { createLiveMessageProjector, type AbortPresentation } from "./message-projection";
+import { projectQueuedMessages } from "./queued-message-projection";
 import type { ResponseRetryNotice } from "./response-retry";
 import { createNestedToolActivityProjection } from "./nested-tool-activity-projection";
 import { projectRuntimeSystemPrompt, runtimeSystemTools } from "./system-context-projection";

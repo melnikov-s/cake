@@ -8,10 +8,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMessageOperations } from "../../../src/domain/conversations/cake-message-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { readMessageReference } from "../../../src/services/pi/runtime/message-references";
-import {
-  projectSessionEntries,
-  promptText,
-} from "../../../src/services/pi/runtime/session-projection";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
+import { promptText } from "../../../src/services/pi/runtime/user-message-transport";
 import { attachmentLink } from "../../../src/contracts/conversations/message-reference";
 import type { Client } from "../../../src/renderer/client/Client";
 import { messageNavigationTarget } from "../../../src/contracts/conversations/message-reference";

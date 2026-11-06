@@ -11,7 +11,7 @@ import {
 import { Type } from "@earendil-works/pi-durable-ai";
 import { Predicate } from "effect";
 import { messageReference } from "../../contracts/conversations/message-reference";
-import { textFromContent } from "../pi/runtime/session-projection";
+import { textFromContent } from "../pi/runtime/tool-projection";
 import { withoutDurableInputPresentation } from "./durable-input-presentation";
 
 export const durableArchiveRecallInstructions = (sessionId: string) => `

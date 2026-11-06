@@ -32,14 +32,13 @@ import {
   presentationModeFromReminder,
   stripPresentationModeReminder,
 } from "../../../contracts/conversations/presentation-mode-reminders";
+import { imageContent, promptText } from "./user-message-transport";
 import {
-  imageContent,
   locateQueuedMessage,
   queuedMessageIds,
-  promptText,
   projectQueuedMessages,
-  shellCommandPart,
-} from "./session-projection";
+} from "./queued-message-projection";
+import { shellCommandPart } from "./tool-projection";
 
 import type { IdleCompactionResult } from "../../../contracts/project-sessions/session-compaction";
 

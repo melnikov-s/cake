@@ -6,7 +6,8 @@ import {
   type MessageMetadata,
   type MessageReadResult,
 } from "../../../contracts/conversations/message-reference";
-import { parseContextAttachmentBlocks, textFromContent } from "./session-projection";
+import { parseContextAttachmentBlocks } from "./user-message-transport";
+import { textFromContent } from "./tool-projection";
 
 type MessageEntry = Extract<SessionEntry, { type: "message" }>;
 

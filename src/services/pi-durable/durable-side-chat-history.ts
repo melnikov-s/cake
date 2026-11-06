@@ -16,11 +16,8 @@ import {
   sideChatInputReferenceIds,
   type SideChatHistoryMessage,
 } from "../pi/side-chat-history";
-import {
-  parseContextAttachmentBlocks,
-  projectSessionEntries,
-  promptText,
-} from "../pi/runtime/session-projection";
+import { parseContextAttachmentBlocks, promptText } from "../pi/runtime/user-message-transport";
+import { projectSessionEntries } from "../pi/runtime/session-projection";
 import { internalInputEntryType, isAutomaticInput } from "../pi/runtime/internal-input-projection";
 import { durableInputPresentation, withoutDurableSideChatNote } from "./durable-input-presentation";
 

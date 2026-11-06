@@ -3,7 +3,7 @@ import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { ToolCall } from "@earendil-works/pi-ai";
 import type { PiTurnResult } from "../../../contracts/pi/turn-result-data";
 import { parseCrossSessionMessage } from "../../../contracts/conversations/cross-session-message";
-import { textFromContent } from "./session-projection";
+import { textFromContent } from "./tool-projection";
 
 export const recoveryInputEntryType = "cake.recovery-input";
 const recoveryInputEntry = Schema.Struct({ turnId: Schema.String, timestamp: Schema.Number });
