@@ -281,12 +281,10 @@ test("opens a new family child among hundreds of restored session identities", a
         familyChildOrder: 1,
         familyDepth: 1,
         workingDirectory: f.project,
-        placement: "right",
+        open: true,
       },
     });
-    const parent = page.locator(`[data-slot="session-pane"][data-session-id="${id(0)}"]`);
     const child = page.locator(`[data-slot="session-pane"][data-session-id="${id(sessionCount)}"]`);
-    await expect(parent.locator(".transcript").getByText(title(0), { exact: true })).toBeVisible();
     await expect(
       child.locator(".transcript").getByText(title(sessionCount), { exact: true }),
     ).toBeVisible();
@@ -416,7 +414,7 @@ test("compares session switching in isolated baseline and patched Electron appli
         .poll(async () => {
           const saved = JSON.parse(await readFile(join(f.userData, "window-state.json"), "utf8"));
           const layout = saved.data.children.sessionLayoutStore.state;
-          return layout.layout.history[layout.layout.historyCursor];
+          return layout.history[layout.historyCursor];
         })
         .toBe(id(0));
       await page.evaluate(() => {

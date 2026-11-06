@@ -15,7 +15,7 @@ import {
 import { WorkbenchErrorNotice } from "./workbench-error-notice";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { Chat } from "../../../src/renderer/components/chat";
-import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
+import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
 import {
   fixtureTimestamp,
   projectRecord,
@@ -64,6 +64,7 @@ async function renderManagement(
     projects: [projectRecord({ path: projectPath, name: "Cake", workflow })],
   });
   const { root } = fixture;
+  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded(projectPath);
   await root.sessionRegistry.pendingSessions.refreshSavedDrafts();
   const pending = options.pendingSessionId
     ? root.sessionRegistry.pendingSessions.prepare(projectPath, options.pendingSessionId)
@@ -95,33 +96,7 @@ async function renderManagement(
   }
   const view = render(
     <StoreProvider store={root}>
-      {[false, true].map((resolved) => (
-        <section
-          key={String(resolved)}
-          aria-label={resolved ? "Resolved sessions" : "Active sessions"}
-        >
-          <SidebarProjectGroup
-            cakeChat={root.cakeChatCollectionStore}
-            onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
-            store={root.sidebarStore}
-            sessionList={root.sidebarStore.sessionListStore}
-            sessionMetadata={root.sessionMetadataStore}
-            projects={root.projectCatalogStore}
-            chat={root.projectWorkbenchStore}
-            shell={root.appShellStore}
-            appearance={root.settingsStore.appearance}
-            path={projectPath}
-            resolved={resolved}
-            flattenSessions
-            onCreateSession={(path) => void root.navigationStore.createSession(path)}
-            onOpenSession={(id) => void root.navigationStore.openSession(id)}
-            onRemoveProject={(path, deleteSessions) =>
-              root.projectRemovalStore.remove(path, deleteSessions)
-            }
-            onOpenSettings={(path) => root.projectSettingsStore.open(path)}
-          />
-        </section>
-      ))}
+      <ConversationNavigator projectPath={projectPath} />
       {pending && <Chat store={pending.conversationSessionStore.chatStore} />}
       <WorkbenchErrorNotice store={root.projectWorkbenchStore} />
     </StoreProvider>,

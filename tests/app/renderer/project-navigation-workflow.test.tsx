@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
@@ -95,6 +95,8 @@ function renderNavigation(
   fixture.root.navigationStore.selectProjectSession("alpha");
   fixture.root.projectWorkbenchStore.showLoadedSession("alpha");
   fixture.root.sessionLayoutStore.ensureSession("alpha");
+  fixture.root.workspaceNavigatorStore.show("sessions");
+  const user = userEvent.setup();
   const view = render(
     <StoreProvider store={fixture.root}>
       <App />
@@ -103,7 +105,17 @@ function renderNavigation(
   return {
     root: fixture.root,
     models: fixture.models,
-    user: userEvent.setup(),
+    user,
+    async openSession(title: string) {
+      await user.click(screen.getByRole("button", { name: "Search sessions" }));
+      await user.type(
+        within(screen.getByRole("dialog", { name: "Search sessions" })).getByRole("combobox", {
+          name: "Search session titles",
+        }),
+        title,
+      );
+      await user.keyboard("{Enter}");
+    },
     async hydrate(id: string) {
       await act(async () => publish(id));
     },
@@ -225,66 +237,29 @@ function pressActiveSessionShortcut(direction: "next" | "previous") {
   });
 }
 
+function pressHistoryShortcut(direction: "back" | "forward") {
+  const mac = defaultHotkeyBinding("history-back").startsWith("Mod+");
+  fireEvent.keyDown(window, {
+    key: mac
+      ? direction === "back"
+        ? "["
+        : "]"
+      : direction === "back"
+        ? "ArrowLeft"
+        : "ArrowRight",
+    code: mac
+      ? direction === "back"
+        ? "BracketLeft"
+        : "BracketRight"
+      : direction === "back"
+        ? "ArrowLeft"
+        : "ArrowRight",
+    metaKey: mac,
+    altKey: !mac,
+  });
+}
+
 describe("Project navigation workflow", () => {
-  it("reveals a newly hydrated Project Chat when switching projects in a split without another interaction", async () => {
-    using fixture = renderNavigation(undefined, sessions, undefined, true);
-    const matchMedia = window.matchMedia;
-    vi.stubGlobal("matchMedia", (query: string) => ({ ...matchMedia(query), matches: false }));
-    const exits: Animation[] = [];
-    Object.defineProperty(HTMLElement.prototype, "animate", {
-      configurable: true,
-      value: function (this: HTMLElement) {
-        const animation = { cancel: vi.fn(), onfinish: null } as unknown as Animation;
-        if (this.dataset.slot === "content-transition-outgoing") exits.push(animation);
-        return animation;
-      },
-    });
-    await fixture.user.click(screen.getByRole("button", { name: "Split right" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Open Project Chat for beta" }));
-    await fixture.hydrateProjectChat(1);
-    await fixture.user.click(screen.getByRole("button", { name: "Open Project Chat for gamma" }));
-    const live = document.querySelectorAll<HTMLElement>(
-      '[data-slot="chat"] > [data-slot="content-transition"] > [data-slot="content-transition-live"]',
-    )[1]!;
-    await act(async () => {
-      for (const exit of exits.splice(0)) exit.onfinish?.call(exit, {} as AnimationPlaybackEvent);
-    });
-    // First-history navigation keeps the existing chat visible until the
-    // destination's persisted projection arrives, instead of mounting a blank pane.
-    expect(live.classList.contains("opacity-0")).toBe(false);
-    expect(
-      document.querySelectorAll<HTMLElement>('[data-slot="session-pane"]')[1]!.dataset.sessionId,
-    ).toBe(`project-chat:${"2".repeat(64)}`);
-    await fixture.hydrateProjectChat(2);
-    await act(async () => {
-      for (const exit of exits.splice(0)) exit.onfinish?.call(exit, {} as AnimationPlaybackEvent);
-    });
-    await waitFor(() => expect(live.classList.contains("opacity-0")).toBe(false));
-    expect(
-      document.querySelectorAll<HTMLElement>('[data-slot="session-pane"]')[1]!.dataset.sessionId,
-    ).toBe(`project-chat:${"3".repeat(64)}`);
-    expect(live.hasAttribute("aria-hidden")).toBe(false);
-    expect(live.inert).toBe(false);
-    expect(document.querySelectorAll('[data-slot="session-pane"]')).toHaveLength(2);
-    expect(screen.getByPlaceholderText("Ask Cake to work in alpha…")).toBeDefined();
-  });
-
-  it("keeps a newer split-pane selection when an earlier session open finishes", async () => {
-    const opening = deferred<void>();
-    const open = vi.fn<Client["projectSessions"]["open"]>(() => opening.promise);
-    using fixture = renderNavigation(open);
-    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
-    await fixture.user.click(screen.getByRole("button", { name: "Split right" }));
-    expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(2);
-    expect(screen.getByText("New chat", { exact: true })).toBeDefined();
-    await act(async () => opening.resolve());
-    await fixture.hydrate("beta");
-    expect(screen.getByText("New chat", { exact: true })).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: /^beta session / }).getAttribute("aria-current"),
-    ).not.toBe("page");
-  });
-
   it("does not let an older delayed exact-ID lookup replace a newer navigation", async () => {
     const slow = sessionSummary({ sessionId: "slow", projectPath: "/beta" });
     const fast = sessionSummary({ sessionId: "fast", projectPath: "/gamma" });
@@ -442,110 +417,6 @@ describe("Project navigation workflow", () => {
     );
   });
 
-  it("cycles only working sessions in the focused project, wraps, and restores global scope on exit", async () => {
-    using fixture = renderNavigation(undefined, [
-      sessions[0]!,
-      sessionSummary({ sessionId: "idle", projectPath: "/alpha", unread: true }),
-      sessionSummary({
-        sessionId: "second",
-        title: "Second alpha session",
-        projectPath: "/alpha",
-        workingDirectory: "/alpha-worktree",
-        modifiedAt: "2025-01-01T00:00:00.000Z",
-      }),
-      sessions[1]!,
-    ]);
-    await fixture.publishActivity(["alpha", "second", "beta"]);
-    await fixture.publishCakeChatActivity(true);
-    await fixture.user.click(screen.getByRole("button", { name: "Project actions for alpha" }));
-    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on alpha" }));
-    const pane = () =>
-      document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id");
-    pressActiveSessionShortcut("next");
-    await waitFor(() => expect(pane()).toBe("second"));
-    pressActiveSessionShortcut("next");
-    await waitFor(() => expect(pane()).toBe("alpha"));
-    pressActiveSessionShortcut("previous");
-    await waitFor(() => expect(pane()).toBe("second"));
-    await fixture.publishActivity(["alpha", "beta"]);
-    pressActiveSessionShortcut("next");
-    await waitFor(() => expect(pane()).toBe("alpha"));
-    pressActiveSessionShortcut("previous");
-    expect(pane()).toBe("alpha");
-    await fixture.publishActivity(["beta"]);
-    pressActiveSessionShortcut("next");
-    pressActiveSessionShortcut("previous");
-    expect(pane()).toBe("alpha");
-    await fixture.user.click(screen.getByRole("button", { name: "Exit focus mode for alpha" }));
-    pressActiveSessionShortcut("next");
-    await waitFor(() => expect(pane()).toBe("beta"));
-    pressActiveSessionShortcut("next");
-    expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
-  });
-
-  it("enters the focused project's working sessions when the selection belongs to another project", async () => {
-    using fixture = renderNavigation();
-    await fixture.publishActivity(["alpha", "beta"]);
-    await fixture.publishCakeChatActivity(true);
-    await fixture.user.click(screen.getByRole("button", { name: "Project actions for beta" }));
-    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on beta" }));
-    pressActiveSessionShortcut("previous");
-    await waitFor(() =>
-      expect(
-        document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
-      ).toBe("beta"),
-    );
-    pressActiveSessionShortcut("next");
-    pressActiveSessionShortcut("previous");
-    expect(
-      document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
-    ).toBe("beta");
-  });
-
-  it("filters both history directions by project without changing the selection when focus starts", async () => {
-    using fixture = renderNavigation(undefined, [
-      ...sessions,
-      sessionSummary({
-        sessionId: "second",
-        title: "Second alpha session",
-        projectPath: "/alpha",
-        workingDirectory: "/alpha-worktree",
-      }),
-    ]);
-    await fixture.publishActivity([]);
-    await fixture.publishCakeChatActivity(false);
-    const pane = () =>
-      document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id");
-    // Each visit must land before the next click can supersede its asynchronous open.
-    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
-    await waitFor(() => expect(pane()).toBe("beta"));
-    await fixture.user.click(screen.getByRole("button", { name: /^Cake Chat$/ }));
-    expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: /^Second alpha session / }));
-    await waitFor(() => expect(pane()).toBe("second"));
-    await fixture.user.click(screen.getByRole("button", { name: "Project actions for alpha" }));
-    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on alpha" }));
-    const back = screen.getByRole("button", { name: "Go back in session history" });
-    const forward = screen.getByRole("button", { name: "Go forward in session history" });
-    expect(pane()).toBe("second");
-    await fixture.user.click(back);
-    await waitFor(() => expect(pane()).toBe("alpha"));
-    expect(back.hasAttribute("disabled")).toBe(true);
-    await fixture.user.click(forward);
-    await waitFor(() => expect(pane()).toBe("second"));
-    expect(forward.hasAttribute("disabled")).toBe(true);
-    await fixture.user.click(back);
-    await waitFor(() => expect(pane()).toBe("alpha"));
-    await fixture.user.click(screen.getByRole("button", { name: "Exit focus mode for alpha" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Project actions for beta" }));
-    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on beta" }));
-    expect(pane()).toBe("alpha");
-    expect(back.hasAttribute("disabled")).toBe(true);
-    await fixture.user.click(forward);
-    await waitFor(() => expect(pane()).toBe("beta"));
-    expect(forward.hasAttribute("disabled")).toBe(true);
-  });
-
   it("reaches a running child inside a collapsed family instead of its idle parent", async () => {
     using fixture = renderNavigation(undefined, [
       sessionSummary({ ...sessions[0]!, familyChildSessionIds: ["child"] }),
@@ -559,9 +430,7 @@ describe("Project navigation workflow", () => {
       sessions[1]!,
     ]);
     await fixture.publishActivity(["child"]);
-    await fixture.user.click(
-      screen.getByRole("button", { name: "Collapse children of alpha session" }),
-    );
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse alpha session" }));
     pressActiveSessionShortcut("next");
     await waitFor(() =>
       expect(
@@ -614,7 +483,7 @@ describe("Project navigation workflow", () => {
     const open = vi.fn<Client["projectSessions"]["open"]>(() => opening.promise);
     using fixture = renderNavigation(open);
     expect(screen.getByPlaceholderText("Ask Cake to work in alpha…")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
+    await fixture.openSession("beta session");
     expect(open).toHaveBeenCalledWith(
       { sessionId: "beta", workingDirectory: "/beta" },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -624,12 +493,12 @@ describe("Project navigation workflow", () => {
     expect(screen.getByPlaceholderText("Ask Cake to work in alpha…")).toBeDefined();
     await fixture.hydrate("beta");
     expect(await screen.findByPlaceholderText("Ask Cake to work in beta…")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Go back in session history" }));
+    pressHistoryShortcut("back");
     expect(await screen.findByPlaceholderText("Ask Cake to work in alpha…")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
+    await fixture.openSession("beta session");
     expect(await screen.findByPlaceholderText("Ask Cake to work in beta…")).toBeDefined();
     const calls = open.mock.calls.length;
-    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
+    await fixture.openSession("beta session");
     expect(open).toHaveBeenCalledTimes(calls);
   });
 
@@ -657,7 +526,7 @@ describe("Project navigation workflow", () => {
         return animation;
       },
     });
-    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
+    await fixture.openSession("beta session");
     expect(operations).toEqual(["open", "fade-out"]);
     await act(async () => exit!.onfinish?.call(exit!, {} as AnimationPlaybackEvent));
     const live = document.querySelector<HTMLElement>('[data-slot="content-transition-live"]')!;
@@ -666,8 +535,13 @@ describe("Project navigation workflow", () => {
     expect(operations).toEqual(["open", "fade-out"]);
     expect(live.classList.contains("opacity-0")).toBe(true);
     await fixture.hydrate("beta");
-    await waitFor(() => expect(operations).toEqual(["open", "fade-out", "fade-in"]));
-    expect(live.classList.contains("opacity-0")).toBe(false);
+    await waitFor(() =>
+      expect(
+        document
+          .querySelector<HTMLElement>('[data-slot="content-transition-live"]')
+          ?.classList.contains("opacity-0"),
+      ).toBe(false),
+    );
     expect(screen.getByPlaceholderText("Ask Cake to work in beta…")).toBeDefined();
   });
 
@@ -685,7 +559,7 @@ describe("Project navigation workflow", () => {
         return animation;
       },
     });
-    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
+    await fixture.openSession("beta session");
     await act(async () => exit!.onfinish?.call(exit!, {} as AnimationPlaybackEvent));
     const live = document.querySelector<HTMLElement>('[data-slot="content-transition-live"]')!;
     expect(live.classList.contains("opacity-0")).toBe(true);
@@ -694,12 +568,16 @@ describe("Project navigation workflow", () => {
     expect(live.classList.contains("opacity-0")).toBe(false);
     expect(live.inert).toBe(false);
     expect(screen.getByPlaceholderText("Ask Cake to work in alpha…")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
+    await fixture.openSession("beta session");
     await act(async () => exit!.onfinish?.call(exit!, {} as AnimationPlaybackEvent));
     await fixture.hydrate("beta");
     expect(await screen.findByPlaceholderText("Ask Cake to work in beta…")).toBeDefined();
     expect(open).toHaveBeenCalledTimes(2);
-    expect(live.classList.contains("opacity-0")).toBe(false);
+    expect(
+      document
+        .querySelector<HTMLElement>('[data-slot="content-transition-live"]')
+        ?.classList.contains("opacity-0"),
+    ).toBe(false);
   });
 
   it("retains the current project after an open failure and lets the user retry", async () => {
@@ -708,21 +586,12 @@ describe("Project navigation workflow", () => {
       .mockRejectedValueOnce(new Error("Session temporarily unavailable"))
       .mockResolvedValue(undefined);
     using fixture = renderNavigation(open);
-    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
+    await fixture.openSession("beta session");
     expect(screen.getByPlaceholderText("Ask Cake to work in alpha…")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
+    await fixture.openSession("beta session");
     await fixture.hydrate("beta");
     expect(await screen.findByPlaceholderText("Ask Cake to work in beta…")).toBeDefined();
     expect(open).toHaveBeenCalledTimes(2);
-  });
-
-  it("focuses the sidebar on a project without replacing the active conversation", async () => {
-    using fixture = renderNavigation();
-    await fixture.user.click(screen.getByRole("button", { name: "Project actions for beta" }));
-    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on beta" }));
-    expect(screen.queryByRole("button", { name: /^alpha session / })).toBeNull();
-    expect(screen.getByRole("button", { name: /^beta session / })).toBeDefined();
-    expect(screen.getByPlaceholderText("Ask Cake to work in alpha…")).toBeDefined();
   });
 
   it("reorders projects through drag and drop and retains that order when activity changes", async () => {
@@ -740,21 +609,37 @@ describe("Project navigation workflow", () => {
     fireEvent.dragEnd(source, { dataTransfer });
     const projectButtons = () =>
       screen
-        .getAllByRole("button", { name: /^Collapse (alpha|beta|gamma)$/ })
+        .getAllByRole("button", { name: /^Open Project Chat for (alpha|beta|gamma)$/ })
         .map((button) => button.getAttribute("aria-label"));
-    expect(projectButtons()).toEqual(["Collapse beta", "Collapse gamma", "Collapse alpha"]);
+    expect(projectButtons()).toEqual([
+      "Open Project Chat for beta",
+      "Open Project Chat for gamma",
+      "Open Project Chat for alpha",
+    ]);
     await fixture.changeActivity();
-    expect(projectButtons()).toEqual(["Collapse beta", "Collapse gamma", "Collapse alpha"]);
+    expect(projectButtons()).toEqual([
+      "Open Project Chat for beta",
+      "Open Project Chat for gamma",
+      "Open Project Chat for alpha",
+    ]);
   });
 
   it("keeps project order stable when activity changes", async () => {
     using fixture = renderNavigation();
     const projectButtons = () =>
       screen
-        .getAllByRole("button", { name: /^Collapse (alpha|beta|gamma)$/ })
+        .getAllByRole("button", { name: /^Open Project Chat for (alpha|beta|gamma)$/ })
         .map((button) => button.getAttribute("aria-label"));
-    expect(projectButtons()).toEqual(["Collapse alpha", "Collapse beta", "Collapse gamma"]);
+    expect(projectButtons()).toEqual([
+      "Open Project Chat for alpha",
+      "Open Project Chat for beta",
+      "Open Project Chat for gamma",
+    ]);
     await fixture.changeActivity();
-    expect(projectButtons()).toEqual(["Collapse alpha", "Collapse beta", "Collapse gamma"]);
+    expect(projectButtons()).toEqual([
+      "Open Project Chat for alpha",
+      "Open Project Chat for beta",
+      "Open Project Chat for gamma",
+    ]);
   });
 });

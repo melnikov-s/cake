@@ -25,7 +25,6 @@ const pages: Array<{ page: SettingsPageId; title: string; introduction?: string 
   },
   { page: "mcp", title: "MCP servers" },
   { page: "appearance", title: "Appearance" },
-  { page: "editor", title: "VS Code" },
   {
     page: "voice",
     title: "Voice & Dictation",

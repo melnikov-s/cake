@@ -5,6 +5,8 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
 
+import { createSessionInProject } from "./fixtures/workspace-navigation";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 test("promotes a staged chat immediately and leaves New Chat free for the next session", async () => {
@@ -173,7 +175,7 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     const stop = page.getByRole("button", { name: "Stop" });
     await expect(stop).toBeVisible();
     await stop.click();
-    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await createSessionInProject(page, /^project(?: |$)/i);
     await expect(page.locator(".session-item.active")).toHaveCount(0);
     await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("New chat");
     await expect(composer).toHaveValue("");

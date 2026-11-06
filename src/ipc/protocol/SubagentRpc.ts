@@ -4,6 +4,7 @@ import {
   SubagentError,
   SubagentHandleId,
   SubagentParent,
+  SubagentMetadata,
   SubagentUpdate,
 } from "../../contracts/subagents/subagent-data";
 
@@ -13,6 +14,12 @@ import {
 } from "../../contracts/conversations/attachment-reference-control";
 
 export const SubagentRpc = RpcGroup.make(
+  Rpc.make("subagents.observeMetadata", {
+    payload: SubagentParent,
+    success: Schema.Array(SubagentMetadata),
+    error: SubagentError,
+    stream: true,
+  }),
   Rpc.make("subagents.observe", {
     payload: SubagentParent,
     success: SubagentUpdate,

@@ -56,6 +56,22 @@ export const DiscussionThread = Schema.Struct({
 });
 export interface DiscussionThread extends Schema.Schema.Type<typeof DiscussionThread> {}
 
+/** Lightweight navigation catalog; titles come from saved anchors, never transcript reads. */
+export const DiscussionThreadMetadata = Schema.Struct({
+  id: DiscussionThread.fields.id,
+  workingDirectory: DiscussionThread.fields.workingDirectory,
+  parentSessionId: DiscussionThread.fields.parentSessionId,
+  sidecarSessionId: DiscussionThread.fields.sidecarSessionId,
+  title: boundedText,
+  running: Schema.Boolean,
+  status: DiscussionThread.fields.status,
+  createdAt: DiscussionThread.fields.createdAt,
+  updatedAt: DiscussionThread.fields.updatedAt,
+});
+export interface DiscussionThreadMetadata extends Schema.Schema.Type<
+  typeof DiscussionThreadMetadata
+> {}
+
 export const DiscussionSessionTarget = Schema.Struct({
   parentSessionId: boundedId,
   workingDirectory: Schema.String,

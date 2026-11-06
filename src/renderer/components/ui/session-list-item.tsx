@@ -39,12 +39,13 @@ export interface SessionListItemProps {
   revealWhenSelected?: boolean;
   /** Advisory to-do association; never replaces actual selection. */
   associated?: boolean;
-  paneNumber?: number;
   resolved: boolean;
   activity?: SessionActivity;
   /** Effective activity comes from descendants, not the parent's own work. */
   childrenWorking?: boolean;
   activityTime: string;
+  /** Semantic conversation kind in recursive navigation; destination pickers can omit it. */
+  kindLabel?: string;
   labels: readonly SessionLabel[];
   avatarSeed: string;
   avatarsEnabled: boolean;
@@ -80,11 +81,11 @@ export const SessionListItem = observer(function SessionListItem({
   activateOnMouseDown = false,
   revealWhenSelected = false,
   associated = false,
-  paneNumber,
   resolved,
   activity,
   childrenWorking,
   activityTime,
+  kindLabel,
   labels,
   avatarSeed,
   avatarsEnabled,
@@ -258,16 +259,11 @@ export const SessionListItem = observer(function SessionListItem({
             </span>
           }
           badge={
-            (session.draft || paneNumber !== undefined) && (
+            session.draft && (
               <span className="flex items-center gap-1">
                 {session.draft && (
                   <Badge variant="outline" size="xs" className="text-muted-foreground">
                     Draft
-                  </Badge>
-                )}
-                {paneNumber !== undefined && (
-                  <Badge variant={selected ? "default" : "outline"} size="xs">
-                    {paneNumber}
                   </Badge>
                 )}
               </span>
@@ -301,6 +297,12 @@ export const SessionListItem = observer(function SessionListItem({
                   <span aria-hidden="true">·</span>
                 </>
               )}
+              {kindLabel && (
+                <>
+                  <span>{kindLabel}</span>
+                  <span aria-hidden="true">·</span>
+                </>
+              )}
               <SessionActivityTime
                 modifiedAt={session.modifiedAt}
                 workingStartedAt={session.workingStartedAt}
@@ -327,8 +329,13 @@ export const SessionListItem = observer(function SessionListItem({
             </span>
           }
           trailing={
-            (activity || canResolve) && (
-              <div className="session-meta relative grid size-6 shrink-0 place-items-center">
+            (activity || canResolve || kindLabel) && (
+              <div
+                className="session-meta relative grid size-6 shrink-0 place-items-center"
+                data-slot="own-activity"
+                aria-label={activity ? undefined : "Idle"}
+                title={activity ? undefined : "Idle"}
+              >
                 {activity && (
                   <span
                     className={cn(

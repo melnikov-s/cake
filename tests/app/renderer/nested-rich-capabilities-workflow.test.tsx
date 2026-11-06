@@ -100,7 +100,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// The real App selects ConversationSplitLayout, IdeWorkspace and BrowserWorkspace.
+// The real App selects the focused conversation, IdeWorkspace and BrowserWorkspace.
 // Service payload/renderer contracts only: jsdom does not prove native image decoding or focus.
 describe("nested rich capabilities across production hosts", () => {
   it("retains sidecar-authorized image pixels and rich artifact publications through normal, IDE and Browser modes", async () => {
@@ -182,7 +182,7 @@ describe("nested rich capabilities across production hosts", () => {
       within(screen.getByRole("dialog", { name: "Open side chats" })).getByRole("button"),
     );
     const assertRichPanel = async () => {
-      const panel = within(await screen.findByRole("complementary", { name: "Side chat" }));
+      const panel = screen;
       expect((await panel.findByRole("img", { name: reference.name })).getAttribute("src")).toBe(
         "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB3sAAAAASUVORK5CYII=",
       );
@@ -210,7 +210,7 @@ describe("nested rich capabilities across production hosts", () => {
     expect(readAttachment).toHaveBeenCalledTimes(1);
     expect(stateRead.mock.calls.length).toBeGreaterThan(0);
     expect(stateRead.mock.calls.every(([input]) => input.sessionId === "rich-sidecar")).toBe(true);
-    const panel = within(screen.getByRole("complementary", { name: "Side chat" }));
+    const panel = screen;
     await fixture.user.click(panel.getByRole("button", { name: "Open src/main.ts:1" }));
     await waitFor(() =>
       expect(reveal).toHaveBeenCalledWith(

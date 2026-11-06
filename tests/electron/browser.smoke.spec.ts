@@ -7,6 +7,8 @@ import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
 
+import { openProjectSettings, showSessions } from "./fixtures/workspace-navigation";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const sessionId = "browser-smoke-session";
 const otherSessionId = "browser-smoke-other-session";
@@ -163,6 +165,7 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     });
     await expect(page.getByText("main#seeded", { exact: true })).toBeVisible();
     await expect(page.getByText(/cake-browser-attachment/)).toHaveCount(0);
+    await showSessions(page);
     // Warm both sessions so switching exercises the synchronous hydrated-session path.
     await page.locator(`.session-item[data-session-id="${otherSessionId}"]`).click();
     await expect(page.locator(".transcript").getByText("Other browser fixture")).toBeVisible();
@@ -172,8 +175,7 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     ).toBeVisible();
     // Configure the project through the actual controlled Settings input before
     // creating a page, so no external network is needed for startup verification.
-    await page.getByRole("button", { name: "Project actions for project" }).click();
-    await page.getByRole("menuitem", { name: "Open settings for project" }).click();
+    await openProjectSettings(application, page, /^Open Project Chat for project$/);
     const defaultUrl = page.getByRole("textbox", { name: "Browser default URL" });
     await expect(defaultUrl).toHaveValue("");
     await defaultUrl.fill(origin);
@@ -186,29 +188,8 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(addressInput).toHaveValue(`${origin}/`);
 
     const workspace = page.getByRole("region", { name: "Browser workspace", exact: true });
-    if (process.platform === "darwin") {
-      // The browser toolbar and its chat header are the title bar: every control, the
-      // address field and the session title share the traffic lights' centerline.
-      const lights = await (
-        await application.browserWindow(page)
-      ).evaluate((window) => window.getWindowButtonPosition());
-      expect(lights).not.toBeNull();
-      const centerline = lights!.y + 7;
-      const centers = await page
-        .locator(
-          '[aria-label="Browser workspace"] button:visible, [aria-label="Browser address"], aside header > *',
-        )
-        .evaluateAll((nodes) =>
-          nodes
-            .map((node) => node.getBoundingClientRect())
-            .filter((box) => box.top < 60 && box.height > 0)
-            .map((box) => box.top + box.height / 2),
-        );
-      expect(centers.length).toBeGreaterThan(5);
-      for (const center of centers) expect(Math.abs(center - centerline)).toBeLessThan(0.25);
-    }
     const chatToggle = workspace.locator('[data-slot="header-chat-toggle"]');
-    const sidebarToggle = workspace.locator('[data-slot="header-sidebar-toggle"]');
+    const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(chatToggle).toHaveAccessibleName("Close chat");
     await chatToggle.click();
@@ -217,20 +198,11 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(chatToggle).toHaveAttribute("aria-expanded", "false");
     await chatToggle.click();
     await expect(composer).toBeVisible();
-    await expect(sidebarToggle).toBeHidden();
-    await page.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
-    await expect(page.locator(`.session-item[data-session-id="${sessionId}"]`)).toBeHidden();
-    await expect(sidebarToggle).toHaveAccessibleName("Open sidebar");
-    expect((await sidebarToggle.boundingBox())?.x).toBeGreaterThanOrEqual(84);
-    const sharing = workspace.getByRole("button", { name: /^Browser sharing:/ });
-    await expect(sharing).toBeVisible();
-    const sidebarBounds = (await sidebarToggle.boundingBox())!;
-    const sharingBounds = (await sharing.boundingBox())!;
-    expect(sharingBounds.x - sidebarBounds.x - sidebarBounds.width).toBe(2);
-    await sidebarToggle.click();
+    await rail.getByRole("button", { name: "Close Workspace", exact: true }).click();
+    await expect(page.getByRole("complementary", { name: "Workspace", exact: true })).toBeHidden();
+    await expect(rail.getByRole("button", { name: /^Browser sharing:/ })).toBeVisible();
+    await rail.getByRole("button", { name: "Open Workspace", exact: true }).click();
     await expect(page.locator(`.session-item[data-session-id="${sessionId}"]`)).toBeVisible();
-    await expect(sidebarToggle).toBeHidden();
-    await expect(page.getByRole("button", { name: "Toggle sidebar", exact: true })).toBeVisible();
 
     const browserState = (url: string) => () =>
       application.evaluate(async ({ webContents }, expectedUrl) => {
@@ -252,8 +224,7 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await addressInput.press("Enter");
     await expect.poll(browserState(`${origin}/second`)).toMatchObject({ title: "Second page" });
     await page.getByRole("button", { name: "Back to agent" }).click();
-    await page.getByRole("button", { name: "Project actions for project" }).click();
-    await page.getByRole("menuitem", { name: "Open settings for project" }).click();
+    await openProjectSettings(application, page, /^Open Project Chat for project$/);
     await expect(defaultUrl).toHaveValue(origin);
     await defaultUrl.fill(`${origin}/changed-default`);
     await page.getByRole("button", { name: "Save settings" }).click();
@@ -467,8 +438,7 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     const restoredAddress = restoredPage.getByLabel("Browser address");
     await expect(restoredAddress).toHaveValue(`${origin}/changed-default`, { timeout: 20_000 });
     await restoredPage.getByRole("button", { name: "Back to agent" }).click();
-    await restoredPage.getByRole("button", { name: "Project actions for project" }).click();
-    await restoredPage.getByRole("menuitem", { name: "Open settings for project" }).click();
+    await openProjectSettings(application, restoredPage, /^Open Project Chat for project$/);
     await expect(restoredPage.getByRole("textbox", { name: "Browser default URL" })).toHaveValue(
       `${origin}/changed-default`,
     );

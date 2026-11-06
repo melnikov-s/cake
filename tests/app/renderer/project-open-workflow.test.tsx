@@ -7,7 +7,9 @@ import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import type { Client } from "../../../src/renderer/client/Client";
+import { createSessionInProject } from "./workspace-navigation-actions";
 import { App } from "../../../src/renderer/components/app";
+import { NewSessionDialog } from "../../../src/renderer/components/new-session-dialog";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
 import { projectRecord } from "./fixtures/catalog-fixtures";
@@ -39,6 +41,7 @@ function renderProjectOpen(
   const view = render(
     <StoreProvider store={fixture.root}>
       <App />
+      <NewSessionDialog store={fixture.root.newSessionStore} />
     </StoreProvider>,
   );
   return {
@@ -157,7 +160,7 @@ describe("Project opening workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Open project" }));
     expect(await screen.findByRole("combobox", { name: "Message" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
-    await fixture.user.click(screen.getByRole("button", { name: "New chat in existing" }));
+    await createSessionInProject(fixture.user, /^Existing/i);
     await act(async () => pending.resolve({ ...inspect.mock.calls[1]![0] }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(registerProject).toHaveBeenCalledTimes(1);

@@ -9,7 +9,6 @@ import { WorkflowProgress } from "./workflow-progress";
 import type { ChatStore } from "../stores/ChatStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import type { WorkflowRunStore } from "../stores/WorkflowRunStore";
-import type { SessionLayoutStore, SessionPaneNode } from "../stores/SessionLayoutStore";
 
 export type ConversationChatProps = Omit<ComponentProps<typeof Chat>, "store">;
 
@@ -22,22 +21,18 @@ export type PrimarySessionStore = Store & {
 };
 
 /** Keep loading/readiness reads in this pane’s own observed render, not a layout callback. */
-export const ConversationSplitPane = observer(function ConversationSplitPane<
+export const FocusedConversationPane = observer(function FocusedConversationPane<
   T extends PrimarySessionStore,
 >({
-  layout,
-  pane,
   session,
   chatProps,
   wrapPane,
 }: {
-  layout: SessionLayoutStore;
-  pane: SessionPaneNode;
   session: T;
-  chatProps(session: T, pane: SessionPaneNode): ConversationChatProps;
+  chatProps(session: T): ConversationChatProps;
   wrapPane?(session: T, children: ReactNode): ReactNode;
 }) {
-  const props = chatProps(session, pane);
+  const props = chatProps(session);
   const workflows = session.workflowRunStores ?? [];
   const conversation = (
     <WorkflowConversationLayout stores={workflows}>
@@ -47,14 +42,14 @@ export const ConversationSplitPane = observer(function ConversationSplitPane<
           <NestedChat
             store={sideChatStore}
             composerHeader={composerHeader}
-            composerFocusEnabled={layout.focusedPaneId === pane.paneId}
+            composerFocusEnabled
             parentBehavior={props.transcriptBehavior}
           />
         )}
       >
         <Chat
           store={session.conversationSessionStore.chatStore}
-          composerFocusEnabled={layout.focusedPaneId === pane.paneId}
+          composerFocusEnabled
           {...props}
           footer={
             <>

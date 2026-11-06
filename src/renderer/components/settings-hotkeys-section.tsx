@@ -9,7 +9,7 @@ export const SettingsHotkeysSection = observer(function SettingsHotkeysSection({
 }: {
   hotkeys: HotkeySettingsStore;
 }) {
-  const groups = ["Editor & tools", "Panes", "Navigation", "Conversation"] as const;
+  const groups = ["Editor & tools", "Navigation", "Conversation"] as const;
   return (
     <section className="grid gap-4" aria-labelledby="hotkeys-title">
       <header className="flex items-center justify-between gap-3 px-0.5">

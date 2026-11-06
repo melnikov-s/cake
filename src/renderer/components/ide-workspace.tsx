@@ -34,10 +34,6 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   projectComposerHeader,
   projectComposerContent,
   projectComposerLeadingAccessory,
-  projectSidebar,
-  projectSidebarVisible,
-  projectSidebarWidth,
-  onProjectSidebarWidthChange,
   sessionTitle,
   terminalDock,
   transcriptBehavior,
@@ -54,10 +50,6 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   projectComposerHeader?: ReactNode;
   projectComposerContent?: ReactNode;
   projectComposerLeadingAccessory?: ComponentProps<typeof Chat>["composerLeadingAccessory"];
-  projectSidebar: ReactNode;
-  projectSidebarVisible: boolean;
-  projectSidebarWidth: number;
-  onProjectSidebarWidthChange(width: number): void;
   sessionTitle: string;
   terminalDock?: ReactNode;
   transcriptBehavior: ChatTranscriptBehavior;
@@ -92,7 +84,6 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   const conversation = (
     <SideChatLayout
       store={sideChat}
-      hideTodos
       renderChat={(sideChatStore, composerHeader) => (
         <NestedChat
           store={sideChatStore}
@@ -130,14 +121,8 @@ export const IdeWorkspace = observer(function IdeWorkspace({
       className={cn(
         "flex shrink-0 select-none items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 [-webkit-app-region:drag]",
         contextualAnchor ? "min-h-title-bar flex-wrap py-2" : "box-content h-title-bar",
-        !editor.chatSidebarVisible && !projectSidebarVisible && "pl-[84px]",
       )}
     >
-      {headerLeading && (
-        <div className="flex shrink-0 items-center [-webkit-app-region:no-drag]">
-          {headerLeading}
-        </div>
-      )}
       <div className={cn("min-w-0 flex-1", contextualAnchor && "basis-48")}>
         <strong className="block truncate text-xs font-semibold text-foreground">
           {contextualAnchor ? "Chat about selection" : sessionTitle}
@@ -154,10 +139,9 @@ export const IdeWorkspace = observer(function IdeWorkspace({
           contextualAnchor && "max-w-full flex-wrap",
         )}
       >
-        {headerActions}
         {contextualAnchor ? (
           <Button variant="ghost" size="sm" onClick={closeContext}>
-            Project chat
+            Conversation
           </Button>
         ) : null}
       </div>
@@ -168,20 +152,23 @@ export const IdeWorkspace = observer(function IdeWorkspace({
     <WorkspaceChatLayout
       workspace={
         <div className="flex h-full min-h-0 flex-col">
-          {!editor.chatSidebarVisible && headerLeading && header}
           <div className="min-h-0 flex-1">
             <EmbeddedEditorPane store={editor} />
           </div>
         </div>
       }
+      workspaceHeader={
+        <header className="flex min-h-title-bar shrink-0 flex-col gap-1 border-b border-border/65 bg-background px-3 py-1 [-webkit-app-region:drag]">
+          <div className="min-w-0 pl-7 [-webkit-app-region:no-drag]">{headerLeading}</div>
+          <div className="flex flex-wrap items-center gap-1 [-webkit-app-region:no-drag]">
+            {headerActions}
+          </div>
+        </header>
+      }
       workspaceLabel="VS Code workspace"
       chatSidebarVisible={editor.chatSidebarVisible}
       chatSidebarWidth={editor.chatSidebarWidth}
       onChatSidebarWidthChange={(width) => editor.setChatSidebarWidth(width)}
-      projectSidebar={projectSidebar}
-      projectSidebarVisible={projectSidebarVisible}
-      projectSidebarWidth={projectSidebarWidth}
-      onProjectSidebarWidthChange={onProjectSidebarWidthChange}
       terminalDock={terminalDock}
       chatSidebar={
         <>

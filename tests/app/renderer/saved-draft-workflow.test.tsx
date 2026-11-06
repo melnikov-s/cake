@@ -11,7 +11,7 @@ import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-wo
 import type { Attachment } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
-import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
+import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
 import { WorktreePill } from "../../../src/renderer/components/worktree-pill";
 import { SavedDraftRecovery } from "../../../src/renderer/components/saved-draft-recovery";
 import { fakeSavedDrafts } from "./fakes/saved-drafts";
@@ -97,6 +97,7 @@ async function renderDrafts(
   fixture.root.navigationStore.selectProjectSession(sessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
   const { root } = fixture;
+  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded(projectPath);
   root.sessionRegistry
     .findSession(sessionId)!
     .conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
@@ -113,29 +114,7 @@ async function renderDrafts(
     return (
       <>
         <aside>
-          {[false, true].map((resolved) => (
-            <SidebarProjectGroup
-              cakeChat={root.cakeChatCollectionStore}
-              onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
-              key={String(resolved)}
-              store={root.sidebarStore}
-              sessionList={root.sidebarStore.sessionListStore}
-              sessionMetadata={root.sessionMetadataStore}
-              projects={root.projectCatalogStore}
-              chat={root.projectWorkbenchStore}
-              shell={root.appShellStore}
-              appearance={root.settingsStore.appearance}
-              path={projectPath}
-              resolved={resolved}
-              flattenSessions
-              onCreateSession={(path) => void root.navigationStore.createSession(path)}
-              onOpenSession={(id) => void root.navigationStore.openSession(id)}
-              onRemoveProject={(path, deleteSessions) =>
-                root.projectRemovalStore.remove(path, deleteSessions)
-              }
-              onOpenSettings={(path) => root.projectSettingsStore.open(path)}
-            />
-          ))}
+          <ConversationNavigator projectPath={projectPath} />
         </aside>
         <Chat
           store={chat}

@@ -10,6 +10,8 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 import { windowState } from "../fixtures/window-state";
 
 const execFileAsync = promisify(execFile);
+import { createSessionInProject } from "./fixtures/workspace-navigation";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 const sessionEntries = (sessionId: string, worktreePath: string) => {
@@ -70,12 +72,10 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
 
   try {
     const page = await application.firstWindow();
-    await expect(
-      page.getByRole("button", { name: "New chat in project", exact: true }),
-    ).toBeVisible({
+    await expect(page.getByRole("button", { name: "New Session", exact: true })).toBeVisible({
       timeout: 20_000,
     });
-    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await createSessionInProject(page, /^project(?: |$)/i);
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     const newWorktree = page.getByRole("button", { name: "New worktree" });
@@ -275,9 +275,9 @@ test("filters existing worktrees from the keyboard in the new-chat composer", as
 
   try {
     const page = await application.firstWindow();
-    const newChat = page.getByRole("button", { name: "New chat in project", exact: true });
+    const newChat = page.getByRole("button", { name: "New Session", exact: true });
     await expect(newChat).toBeVisible({ timeout: 20_000 });
-    await newChat.click();
+    await createSessionInProject(page, /^project(?: |$)/i);
     const trigger = page.getByRole("button", { name: "Choose existing worktree" });
     await expect(trigger).toBeEnabled({ timeout: 20_000 });
     await trigger.click();

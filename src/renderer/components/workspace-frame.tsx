@@ -3,10 +3,9 @@ import { observer, useStore } from "r-state-tree/react";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { RootStore } from "../stores/RootStore";
-import { AppSidebar } from "./app-sidebar";
+import { ConversationFocusContext } from "../lib/conversation-focus-context";
 import { BrowserWorkspace } from "./browser-workspace";
 import { IdeWorkspace } from "./ide-workspace";
-import { QuakeTerminal } from "./quake-terminal";
 
 /** Shared composition only; the caller provides the workflow's exact-class Store scope. */
 export const WorkspaceFrame = observer(function WorkspaceFrame({
@@ -28,33 +27,19 @@ export const WorkspaceFrame = observer(function WorkspaceFrame({
   | "transcriptBehavior"
 >) {
   const root = useStore(RootStore);
-  const sidebar = root.sidebarStore;
   const presentation = root.projectWorkbenchStore.presentationStore;
-  const terminal = root.terminalStore;
   const commonProps = {
     ...slots,
-    projectSidebar: <AppSidebar />,
-    projectSidebarVisible: sidebar.visible,
-    projectSidebarWidth: sidebar.focusModeProjectPath
-      ? Math.max(sidebar.width, 360)
-      : sidebar.width,
-    onProjectSidebarWidthChange: (width: number) => sidebar.setWidth(width),
-    projectChat: session.conversationSessionStore.chatStore,
+    projectChat:
+      session.conversationSessionStore.sideChatStore.target?.chatStore ??
+      session.conversationSessionStore.chatStore,
     sideChat: session.conversationSessionStore.sideChatStore,
-    terminalDock: terminal.docked ? (
-      <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
-    ) : undefined,
   };
 
   return (
-    <>
+    <ConversationFocusContext.Provider value>
       {mode === "browser" ? (
-        <BrowserWorkspace
-          {...commonProps}
-          browser={presentation.browserStore}
-          onToggleSidebar={() => sidebar.toggle()}
-          onToggleChatSidebar={() => session.toggleWorkspaceChatSidebar()}
-        />
+        <BrowserWorkspace {...commonProps} browser={presentation.browserStore} />
       ) : (
         <IdeWorkspace
           {...commonProps}
@@ -63,6 +48,6 @@ export const WorkspaceFrame = observer(function WorkspaceFrame({
           reviews={root.reviewsStore}
         />
       )}
-    </>
+    </ConversationFocusContext.Provider>
   );
 });

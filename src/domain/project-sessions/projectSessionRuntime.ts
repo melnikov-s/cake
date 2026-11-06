@@ -599,7 +599,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             ),
             { signal },
           );
-          // Register background children for live observation too; pane placement is optional.
+          // Register background children for live observation too; opening them is optional.
           // This best-effort client request is not an admission dependency.
           if (result.launch.status !== "failed")
             void runtimeIntegrations
@@ -612,7 +612,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                   familyChildOrder: result.familyChildOrder,
                   familyDepth: result.familyDepth,
                   workingDirectory: result.workingDirectory,
-                  placement: input.placement,
+                  open: input.open,
                 },
                 signal,
               )
@@ -683,7 +683,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                 ),
               ),
             );
-          if (input.placement !== "none")
+          if (input.open)
             void runtimeIntegrations
               .requestApplicationControl(
                 {
@@ -691,7 +691,6 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                   sourceSessionId: sessionId,
                   forkSessionId: result.sessionId,
                   workingDirectory: destinationWorkingDirectory,
-                  placement: input.placement,
                 },
                 new AbortController().signal,
               )
@@ -699,7 +698,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           return toJsonValue({
             ok: true,
             sessionId: result.sessionId,
-            placement: input.placement,
+            open: input.open,
             sourceResolved: input.resolveSource,
           });
         },

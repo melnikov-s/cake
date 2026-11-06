@@ -11,7 +11,7 @@ const projectPath = "/project";
 
 /** User navigation is real; only session opening and conversation authority are controlled. */
 export function renderSessionObservation(
-  options: { restored?: boolean; split?: boolean; archivedCount?: number } = {},
+  options: { restored?: boolean; loadRunning?: boolean; archivedCount?: number } = {},
 ) {
   const sessions = [
     ...["selected", "visible", "running", ...Array.from({ length: 6 }, (_, i) => `idle-${i}`)].map(
@@ -99,12 +99,8 @@ export function renderSessionObservation(
   root.navigationStore.selectProjectSession("selected");
   root.projectWorkbenchStore.showLoadedSession("selected");
   root.sessionLayoutStore.ensureSession("selected");
-  if (options.split) {
-    root.sessionRegistry.load("visible", projectPath);
-    root.sessionRegistry.load("running", projectPath);
-    root.sessionLayoutStore.splitFocused("visible", "x");
-    root.sessionLayoutStore.focusSession("selected");
-  }
+  if (options.loadRunning) root.sessionRegistry.load("running", projectPath);
+  root.workspaceNavigatorStore.show("sessions");
   const view = render(
     <StoreProvider store={root}>
       <App />

@@ -104,13 +104,15 @@ export function agentActionReceipt(
       message: "Updated Cake Project settings",
       coalesceKey: `project-settings:${result.projectPath}`,
     };
-  if (result.command === "app.split")
+  if (result.command === "app.workspace")
     return {
-      message: `Split this chat ${result.direction === "right" ? "to the right" : "down"}`,
-      targetSessionId: result.sessionId,
-      targetKind: result.kind,
-      coalesceKey: `split:${result.paneId}`,
+      message: result.workspace.visible
+        ? `Opened Workspace · ${result.workspace.mode === "todos" ? "To-dos" : "Sessions"}`
+        : "Closed Workspace",
+      coalesceKey: "app-workspace",
     };
+  if (result.command === "app.home")
+    return { message: "Returned to chat home", coalesceKey: "app-home" };
   if (result.command === "sessions.open")
     return {
       message: `Opened “${projectTitle(result.opened.sessionId)}”`,

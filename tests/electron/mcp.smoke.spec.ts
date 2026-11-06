@@ -8,6 +8,8 @@ import { expect, test } from "@playwright/test";
 import { startMcpServer } from "../fixtures/mcp-server";
 import { windowState } from "../fixtures/window-state";
 
+import { createSessionInProject } from "./fixtures/workspace-navigation";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 for (const remote of [false, true]) {
@@ -174,7 +176,7 @@ export default (pi) => {
       const commandSession = page.locator(".session-item.active");
       await expect(commandSession).toHaveCount(1);
       const commandSessionId = await commandSession.getAttribute("data-session-id");
-      await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+      await createSessionInProject(page, /^project(?: |$)/i);
       await expect(composer).toHaveValue("");
       await expect(composer).toBeFocused();
       // Exceed the four-session idle observation budget. The command-only
@@ -189,7 +191,7 @@ export default (pi) => {
         await page.getByRole("button", { name: "Send", exact: true }).click();
         await expect(page.getByText("Fixture session ready", { exact: true })).toBeVisible();
         await expect(composer).toHaveValue("");
-        await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+        await createSessionInProject(page, /^project(?: |$)/i);
         await expect(composer).toBeFocused();
       }
       expect(
@@ -217,7 +219,7 @@ export default (pi) => {
       expect(server.tokenRequests()).toBe(0);
 
       // Native configuration Settings uses the same backend files and dialog routing.
-      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: /^MCP servers/ }).click();
       await page.getByRole("button", { name: "Add MCP server", exact: true }).click();
       const serverName = page.getByRole("textbox", { name: "MCP server name", exact: true });
@@ -311,7 +313,7 @@ export default (pi) => {
       await page.getByRole("button", { name: "Send", exact: true }).click();
       await expect(page.getByText(/oauth: connected/).last()).toBeVisible();
       await expect(composer).toHaveValue("");
-      await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+      await createSessionInProject(page, /^project(?: |$)/i);
       await expect(composer).toBeFocused();
       await selectFixture();
       await composer.click();

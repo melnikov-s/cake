@@ -2,12 +2,12 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
-import { observer } from "r-state-tree/react";
+import { observer, StoreProvider } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { Chat } from "../../../src/renderer/components/chat";
-import { SidebarCakeChatGroup } from "../../../src/renderer/components/sidebar-cake-chat-group";
+import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
 import type { RootStore } from "../../../src/renderer/stores/RootStore";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { SideChatLayout } from "../../../src/renderer/components/side-chat-layout";
@@ -24,11 +24,9 @@ const Surface = observer(function Surface({ root }: { root: RootStore }) {
   const chat = root.cakeChatCollectionStore.activeSession;
   return (
     <>
-      <SidebarCakeChatGroup
-        cakeChat={root.cakeChatCollectionStore}
-        shell={root.appShellStore}
-        onOpenCakeChat={(id) => void root.navigationStore.openCakeChat(id)}
-      />
+      <StoreProvider store={root}>
+        <ConversationNavigator projectPath={undefined} />
+      </StoreProvider>
       {chat && (
         <SideChatLayout
           store={chat.conversationSessionStore.sideChatStore}
@@ -484,12 +482,11 @@ it("hydrating Cake Chat keeps the visible pane mounted instead of replacing it m
   using fixture = createRendererStoreFixture();
   const collection = fixture.root.cakeChatCollectionStore;
   // The drop-down shows and focuses the composer before the catalog finishes loading.
-  collection.sessionLayoutStore.ensureSession(CAKE_CHAT_SESSION_ID, "visible-pane");
+  collection.sessionLayoutStore.ensureSession(CAKE_CHAT_SESSION_ID);
   applySnapshot(fixture.models.cakeChatCatalog, {
     loaded: true,
     sessions: [{ sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" }],
   });
   await act(() => collection.openSession(CAKE_CHAT_SESSION_ID));
-  expect(collection.sessionLayoutStore.panes.map((pane) => pane.paneId)).toEqual(["visible-pane"]);
   expect(collection.sessionLayoutStore.focusedSessionId).toBe(CAKE_CHAT_SESSION_ID);
 });

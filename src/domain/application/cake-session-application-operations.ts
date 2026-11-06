@@ -44,11 +44,11 @@ export function createSessionApplicationOperations(
       requires: "invokeAppControl",
       topic: "app",
       summary:
-        "Inspect the invoking Cake window's selection, layout, counts and visible browser/editor metadata.",
+        "Inspect the invoking Cake window's selection, focused conversation, current workspace, counts and visible browser/editor metadata.",
       inputSchema: empty,
       examples: [{}],
       result:
-        "Selection/layout, counts and workspaceView (browser location without credentials/query/fragment, or visible VS Code paths/groups). Hidden/loading/unavailable views do not imply current files. Canonical session IDs avoid global discovery; use projects.list/sessions.list for collections.",
+        "Selection/focused conversation, current workspace, counts and workspaceView (browser location without credentials/query/fragment, or visible VS Code paths/groups). Hidden/loading/unavailable views do not imply current files. Canonical session IDs avoid global discovery; use projects.list/sessions.list for collections.",
       execute: (_input, context) => api().invokeAppControl("app.state", {}, context.signal),
     },
     {
@@ -75,15 +75,27 @@ export function createSessionApplicationOperations(
       execute: invokeAppControl("projects.info"),
     },
     {
-      command: "app.split",
+      command: "app.workspace",
       requires: "invokeAppControl",
       topic: "app",
-      summary: "Split the calling conversation pane and open a new chat in it.",
-      guidance: ["Splits are relative to the calling conversation's pane."],
-      inputSchema: Schema.Struct({ direction: Schema.Literals(["right", "down"]) }),
-      examples: [{ input: { direction: "right" } }],
-      result: "The new pane and conversation identity.",
-      execute: invokeAppControl("app.split"),
+      summary: "Read or change the invoking window's To-dos/Sessions Workspace accessory.",
+      inputSchema: Schema.Struct({
+        visible: Schema.optionalKey(Schema.Boolean),
+        mode: Schema.optionalKey(Schema.Literals(["todos", "sessions"])),
+      }),
+      examples: [{}, { input: { mode: "sessions", visible: true } }, { input: { visible: false } }],
+      result: "The canonical Workspace visibility and mode after the operation.",
+      execute: invokeAppControl("app.workspace"),
+    },
+    {
+      command: "app.home",
+      requires: "invokeAppControl",
+      topic: "app",
+      summary: "Return to the focused Project's Project Chat home in chat mode.",
+      inputSchema: empty,
+      examples: [{}],
+      result: "Whether Project Chat or global Cake Chat was opened.",
+      execute: invokeAppControl("app.home"),
     },
     {
       command: "settings.window.get",

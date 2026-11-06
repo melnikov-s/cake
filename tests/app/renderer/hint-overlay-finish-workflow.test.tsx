@@ -40,6 +40,7 @@ function renderHintOverlayFinish() {
     },
   });
   fixture.root.navigationStore.showLoadedProjectSession(session.sessionId);
+  fixture.root.workspaceNavigatorStore.show("sessions");
   const view = render(
     <RendererRoot
       rootStore={fixture.root}
@@ -92,33 +93,33 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("uses a real static hint to toggle the sidebar while reserving its prefix from dynamic session hints", async () => {
+it("uses a real static hint to toggle the Workspace while reserving its prefix from dynamic session hints", async () => {
   using fixture = renderHintOverlayFinish();
   fixture.deliverHintCommand();
   const sidebarToggle = document.querySelector<HTMLElement>('[data-cake-hint-label="s"]');
-  expect(sidebarToggle?.getAttribute("aria-label")).toBe("Toggle sidebar");
+  expect(sidebarToggle?.getAttribute("aria-label")).toBe("Close Workspace");
   const session = screen.getByRole("button", { name: /^Hint conversation / });
   expect(session.getAttribute("data-cake-hint-label")).toHaveLength(2);
   expect(session.getAttribute("data-cake-hint-label")).not.toMatch(/^s/);
   await fixture.user.keyboard("s");
-  expect(document.querySelector('[data-slot="sidebar"]')).toBeNull();
+  expect(document.querySelector('[data-slot="workspace-navigator"]')).toBeNull();
   expect(document.querySelector('[data-slot="ui-hint-overlay"]')).toBeNull();
   expect(sidebarToggle?.hasAttribute("data-cake-hint-target")).toBe(false);
 });
 
 it("updates real toolbar tooltip shortcuts when Settings clears and resets the binding, without renaming the control", async () => {
   using fixture = renderHintOverlayFinish();
-  const toggle = () => screen.getAllByRole("button", { name: "Toggle sidebar" })[0]!;
+  const toggle = () => screen.getAllByRole("button", { name: "Close Workspace" })[0]!;
   await fixture.user.hover(toggle());
   expect((await screen.findByRole("tooltip")).textContent).toBe(
-    `Toggle sidebar (${formatHotkey("Mod+Shift+B")})`,
+    `Close Workspace (${formatHotkey("Mod+Shift+B")})`,
   );
-  expect(toggle().getAttribute("aria-label")).toBe("Toggle sidebar");
+  expect(toggle().getAttribute("aria-label")).toBe("Close Workspace");
   await fixture.user.unhover(toggle());
   const openHotkeys = async () => {
-    await fixture.user.click(screen.getAllByRole("button", { name: "Open settings" })[0]!);
+    await fixture.user.click(screen.getAllByRole("button", { name: "Settings" })[0]!);
     await fixture.user.click(screen.getByRole("button", { name: /^Hotkeys(?: |$)/ }));
-    const recorder = screen.getByRole("button", { name: "Toggle sidebar shortcut" });
+    const recorder = screen.getByRole("button", { name: "Toggle Workspace shortcut" });
     const group = recorder.parentElement;
     if (!group) throw new Error("Missing shortcut controls");
     return within(group);
@@ -127,14 +128,14 @@ it("updates real toolbar tooltip shortcuts when Settings clears and resets the b
   await fixture.user.click(cleared.getByRole("button", { name: "Clear" }));
   await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
   await fixture.user.hover(toggle());
-  expect((await screen.findByRole("tooltip")).textContent).toBe("Toggle sidebar");
+  expect((await screen.findByRole("tooltip")).textContent).toBe("Close Workspace");
   await fixture.user.unhover(toggle());
   const reset = await openHotkeys();
   await fixture.user.click(reset.getByRole("button", { name: "Reset" }));
   await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
   await fixture.user.hover(toggle());
   expect((await screen.findByRole("tooltip")).textContent).toBe(
-    `Toggle sidebar (${formatHotkey("Mod+B")})`,
+    `Close Workspace (${formatHotkey("Mod+B")})`,
   );
-  expect(toggle().getAttribute("aria-label")).toBe("Toggle sidebar");
+  expect(toggle().getAttribute("aria-label")).toBe("Close Workspace");
 });

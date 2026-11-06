@@ -26,6 +26,50 @@ const layout = (sessionId: string) =>
 // Persistence/bootstrap has no GUI trigger. Exercise migration through the real mounted Root;
 // visible restored-surface journeys are in app-shell-navigation-workflow.test.tsx.
 describe("navigation snapshot migrations", () => {
+  it("collapses a persisted split tree into focused history while retaining visits from the other panes", () => {
+    const saved = store(
+      {},
+      {
+        appShellStore: store({ navigationVersion: 3, workspace: "project-sessions" }),
+        sessionLayoutStore: store({
+          focusedPaneId: "focused",
+          layout: {
+            kind: "split",
+            splitId: "old",
+            axis: "x",
+            ratio: 0.6,
+            first: {
+              kind: "pane",
+              paneId: "other",
+              history: ["other-first", "other-last"],
+              historyCursor: 1,
+            },
+            second: {
+              kind: "pane",
+              paneId: "focused",
+              history: ["parent", "child", "forward"],
+              historyCursor: 1,
+            },
+          },
+        }),
+      },
+    );
+    const before = structuredClone(saved);
+    using fixture = createRendererStoreFixture({ snapshot: saved });
+    const focused = fixture.root.sessionLayoutStore;
+    expect(focused.focusedSessionId).toBe("child");
+    expect(focused.focusedSessionHistory).toEqual([
+      "other-first",
+      "other-last",
+      "parent",
+      "child",
+      "forward",
+    ]);
+    expect(focused.goBack()).toBe("parent");
+    expect(focused.goForward()).toBe("child");
+    expect(focused.goForward()).toBe("forward");
+    expect(saved).toEqual(before);
+  });
   it.each(["project-session", "cake-chat"] as const)(
     "persisted-window restore derives %s from the pane when old shell identities disagree",
     (kind) => {
@@ -60,7 +104,7 @@ describe("navigation snapshot migrations", () => {
       expect(focusedLayout.focusedSessionHistory).toEqual(["older", "pane-current"]);
       expect(toSnapshot(fixture.root).children.appShellStore).toEqual(
         store({
-          navigationVersion: 3,
+          navigationVersion: 4,
           workspace: kind === "project-session" ? "project-sessions" : "cake-chat",
           coveringSurface: undefined,
           sessionHistory: visits,
@@ -129,8 +173,9 @@ describe("navigation snapshot migrations", () => {
       "regular",
       sessionId,
     ]);
-    expect(fixture.root.cakeChatCollectionStore.sessionLayoutStore.panes).toHaveLength(0);
-    expect(fixture.root.sessionLayoutStore.canSplit).toBe(true);
+    expect(
+      fixture.root.cakeChatCollectionStore.sessionLayoutStore.focusedSessionId,
+    ).toBeUndefined();
   });
 
   it("seeds a missing Project Session layout, while home retains its inactive pane history", () => {

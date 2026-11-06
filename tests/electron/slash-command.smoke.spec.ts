@@ -8,6 +8,8 @@ import { expect, test } from "@playwright/test";
 import { installLocalModelHttpGuard } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
 
+import { createSessionInProject } from "./fixtures/workspace-navigation";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 test("selects and runs slash commands from the composer with the keyboard", async () => {
@@ -187,7 +189,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     await composer.press("Enter");
     await expect(page.getByRole("complementary", { name: "Session tree" })).toBeVisible();
 
-    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await createSessionInProject(page, /^project(?: |$)/i);
     await composer.fill("/skill:desktop");
     await expect(
       page.getByRole("option", { name: /skill:desktop-fixture Desktop fixture skill/ }),
@@ -252,7 +254,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     await expect(removeAttachment).toHaveCount(0);
 
     if (process.platform === "darwin" && process.arch === "arm64") {
-      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: /Voice & Dictation/ }).click();
       await page.getByRole("switch", { name: "Dictation mode" }).click();
       await page.getByRole("button", { name: "Back to chat" }).click();

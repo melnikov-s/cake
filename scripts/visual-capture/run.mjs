@@ -17,6 +17,8 @@ try {
     bundle: true,
     platform: "node",
     packages: "external",
+    // Keep the queue shim's import.meta.url anchored in scripts/, not this bundled CLI.
+    external: ["../queued-electron.mjs"],
     format: "esm",
     logLevel: "silent",
   });

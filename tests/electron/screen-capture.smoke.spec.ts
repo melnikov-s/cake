@@ -130,7 +130,9 @@ test("captures and annotates through the hidden native overlay into the existing
     await page.keyboard.type("Keep this draft");
     await expect(composer).toBeFocused();
     await expect(composer).toHaveValue("Keep this draft");
-    const settings = page.getByRole("complementary").getByLabel("Open settings", { exact: true });
+    const settings = page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Settings", exact: true });
     // Startup navigation restoration may still select its staged session after first paint.
     await expect(async () => {
       await settings.click();
@@ -420,14 +422,11 @@ test("captures and annotates through the hidden native overlay into the existing
     await expect(destinationMenu).toHaveCount(0);
     await expect(destinationTrigger).toBeFocused();
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
-    const mainSidebar = page.locator('[data-slot="sidebar"][data-view="navigation"]');
-    await mainSidebar.getByRole("button", { name: "Collapse project", exact: true }).click();
     await destinationTrigger.click();
     await expect(
       destinationMenu.getByRole("button", { name: "Collapse project", exact: true }),
     ).toHaveAttribute("aria-expanded", "true");
     await destinationMenu.getByRole("button", { name: "Collapse project", exact: true }).click();
-    await mainSidebar.getByRole("button", { name: "Expand project", exact: true }).click();
     await expect(
       destinationMenu.getByRole("button", { name: "Expand project", exact: true }),
     ).toHaveAttribute("aria-expanded", "false");

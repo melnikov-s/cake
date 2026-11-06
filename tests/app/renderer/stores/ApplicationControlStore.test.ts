@@ -48,7 +48,7 @@ const childRequest = (id: number, childSessionId: string): ProjectSessionControl
     familyChildOrder: 0,
     familyDepth: 1,
     workingDirectory: projectPath,
-    placement: "none",
+    open: false,
   },
 });
 
@@ -221,7 +221,7 @@ describe("Application control transport integration", () => {
       {
         sessionId: "parent",
         controlRequestId: requestId(2),
-        result: { ok: true, childSessionId: "child-1", placement: "none" },
+        result: { ok: true, childSessionId: "child-1", opened: false },
       },
       {
         sessionId: "parent",
@@ -274,7 +274,7 @@ describe("Application control transport integration", () => {
     expect(respondControl).toHaveBeenCalledExactlyOnceWith(
       "parent",
       requestId(8),
-      { ok: true, childSessionId: "pending-child", placement: "none" },
+      { ok: true, childSessionId: "pending-child", opened: false },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(fixture.root.projectWorkbenchStore.error).toBe("Project response expired");

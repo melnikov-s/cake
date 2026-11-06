@@ -14,7 +14,7 @@ import {
   type ConversationSnapshot,
 } from "../../../src/contracts/conversations/conversation-data";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
-import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
+import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
 import { observeSurfaceEvents } from "../../../src/renderer/observers/surface-events";
 import {
   applyConversationSnapshot,
@@ -98,31 +98,9 @@ function renderOrdering(sessions: SessionSummaryFixture[] = initialSessions) {
       conversation(session.sessionId),
     );
   }
-  const common = {
-    store: root.sidebarStore,
-    sessionList: root.sidebarStore.sessionListStore,
-    shell: root.appShellStore,
-    resolved: false,
-  };
   const view = render(
     <StoreProvider store={root}>
-      <SidebarProjectGroup
-        cakeChat={root.cakeChatCollectionStore}
-        onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
-        {...common}
-        sessionMetadata={root.sessionMetadataStore}
-        projects={root.projectCatalogStore}
-        chat={root.projectWorkbenchStore}
-        appearance={root.settingsStore.appearance}
-        path={projectPath}
-        flattenSessions
-        onCreateSession={(path) => void root.navigationStore.createSession(path)}
-        onOpenSession={(id) => void root.navigationStore.openSession(id)}
-        onRemoveProject={(path, deleteSessions) =>
-          root.projectRemovalStore.remove(path, deleteSessions)
-        }
-        onOpenSettings={(path) => root.projectSettingsStore.open(path)}
-      />
+      <ConversationNavigator projectPath={projectPath} />
     </StoreProvider>,
   );
   const user = userEvent.setup();
@@ -171,9 +149,11 @@ function renderOrdering(sessions: SessionSummaryFixture[] = initialSessions) {
       });
     },
     order: () =>
-      [...view.container.querySelectorAll(".session-item")].map((row) =>
-        row.getAttribute("data-session-id"),
-      ),
+      [
+        ...view.container.querySelectorAll(
+          '[data-slot="conversation-navigator-row"][data-session-id]',
+        ),
+      ].map((row) => row.getAttribute("data-session-id")),
     selected,
     [Symbol.dispose]() {
       view.unmount();

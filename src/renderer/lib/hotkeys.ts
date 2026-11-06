@@ -3,7 +3,7 @@ import { isMacPlatform } from "./platform";
 
 export interface HotkeyDefinition {
   readonly id: CakeHotkeyActionId;
-  readonly group: "Editor & tools" | "Panes" | "Navigation" | "Conversation";
+  readonly group: "Editor & tools" | "Navigation" | "Conversation";
   readonly label: string;
   readonly description: string;
   readonly defaultBinding: string;
@@ -62,8 +62,8 @@ export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
   {
     id: "toggle-sidebar",
     group: "Editor & tools",
-    label: "Toggle sidebar",
-    description: "Show or hide Cake's project sidebar.",
+    label: "Toggle Workspace",
+    description: "Show or hide the To-dos and Sessions workspace.",
     defaultBinding: "Mod+B",
   },
   {
@@ -74,87 +74,24 @@ export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
     defaultBinding: "Mod+Shift+E",
   },
   {
-    id: "split-right",
-    group: "Panes",
-    label: "Split pane right",
-    description: "Create a side-by-side conversation pane.",
-    defaultBinding: "Mod+\\",
-  },
-  {
-    id: "split-down",
-    group: "Panes",
-    label: "Split pane down",
-    description: "Create a stacked conversation pane.",
-    defaultBinding: "Mod+Shift+\\",
-  },
-  {
-    id: "focus-left",
-    group: "Panes",
-    label: "Focus pane left",
-    description: "Move focus to the pane on the left.",
-    defaultBinding: "Mod+Alt+ArrowLeft",
-  },
-  {
-    id: "focus-right",
-    group: "Panes",
-    label: "Focus pane right",
-    description: "Move focus to the pane on the right.",
-    defaultBinding: "Mod+Alt+ArrowRight",
-  },
-  {
-    id: "focus-above",
-    group: "Panes",
-    label: "Focus pane above",
-    description: "Move focus to the pane above.",
-    defaultBinding: "Mod+Alt+ArrowUp",
-  },
-  {
-    id: "focus-below",
-    group: "Panes",
-    label: "Focus pane below",
-    description: "Move focus to the pane below.",
-    defaultBinding: "Mod+Alt+ArrowDown",
-  },
-  {
-    id: "focus-pane-1",
-    group: "Panes",
-    label: "Focus pane 1",
-    description: "Focus the first visible conversation pane.",
-    defaultBinding: "Mod+1",
-  },
-  {
-    id: "focus-pane-2",
-    group: "Panes",
-    label: "Focus pane 2",
-    description: "Focus the second visible conversation pane.",
-    defaultBinding: "Mod+2",
-  },
-  {
-    id: "focus-pane-3",
-    group: "Panes",
-    label: "Focus pane 3",
-    description: "Focus the third visible conversation pane.",
-    defaultBinding: "Mod+3",
-  },
-  {
-    id: "focus-pane-4",
-    group: "Panes",
-    label: "Focus pane 4",
-    description: "Focus the fourth visible conversation pane.",
-    defaultBinding: "Mod+4",
+    id: "return-to-project-chat",
+    group: "Navigation",
+    label: "Return to Project Chat",
+    description: "Open the focused conversation's Project Chat home.",
+    defaultBinding: "Mod+Shift+H",
   },
   {
     id: "history-back",
     group: "Navigation",
     label: "Go back",
-    description: "Go to the previous session in pane or application history.",
+    description: "Go to the previous session in conversation history.",
     defaultBinding: isMacPlatform ? "Mod+[" : "Alt+ArrowLeft",
   },
   {
     id: "history-forward",
     group: "Navigation",
     label: "Go forward",
-    description: "Go to the next session in pane or application history.",
+    description: "Go to the next session in conversation history.",
     defaultBinding: isMacPlatform ? "Mod+]" : "Alt+ArrowRight",
   },
   {

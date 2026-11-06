@@ -42,8 +42,6 @@ export interface SessionPresentationStoreProps {
   dismissCommandPane(): void;
   startCakeChat(prompt?: string): Promise<void>;
   toggleProjectSidebar(): void;
-  enterProjectSidebarMode(): void;
-  leaveProjectSidebarMode(): void;
   projectSidebarWidth(): number;
 }
 
@@ -93,8 +91,6 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
         );
       },
       startCakeChat: this.props.startCakeChat,
-      enterProjectSidebarMode: this.props.enterProjectSidebarMode,
-      leaveProjectSidebarMode: this.props.leaveProjectSidebarMode,
       projectSidebarWidth: this.props.projectSidebarWidth,
     });
   }
@@ -115,8 +111,6 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
         this.session?.conversationSessionStore.composerStore.draftStore.appendAttachments([
           attachment,
         ]),
-      enterProjectSidebarMode: this.props.enterProjectSidebarMode,
-      leaveProjectSidebarMode: this.props.leaveProjectSidebarMode,
     });
   }
 

@@ -124,7 +124,7 @@ export function createSessionFamilyOperations(
         resultDeliveryGuidance,
         "Read workgroups.md and family-delegation.md before launch. Substantive family coordination belongs on the Workboard unless the user explicitly overrides that default. Supply a substantive assignment, not merely a board-discovery instruction. Cake includes it inline once with authoritative operating basics, exact addressed Workboard calls and effective result-delivery behavior; parents need not repeat boilerplate. Later changing coordination uses the supplied live-context call, while additional operations remain in task guides.",
         "Later board posts route to explicit recipients and the family root, excluding the author. Completion posts are passive and do not replace correlated result delivery. Read family-coordination.md for events, batching and delivery evidence.",
-        "Pane placement defaults to none. Set placement to right or down only when the child should be opened beside the parent.",
+        "Children start in the background by default. Set open to true to focus the child conversation in the invoking window.",
         "Omit model unless the user explicitly asks for a specific model. When omitted, the child uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
       ],
       inputSchema: Schema.Struct({
@@ -135,9 +135,7 @@ export function createSessionFamilyOperations(
         ),
         model: Schema.optionalKey(CakeModelSelection),
         resultDelivery: Schema.optionalKey(ResultDelivery),
-        placement: Schema.Literals(["none", "right", "down"]).pipe(
-          Schema.withDecodingDefaultKey(Effect.succeed("none" as const)),
-        ),
+        open: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
         worktreeName: Schema.optionalKey(
           Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,62}$/)),
         ),
@@ -151,7 +149,7 @@ export function createSessionFamilyOperations(
               body: "Own the storage files and tests. Post your commit, verification and any blockers on the Workboard addressed to the parent.",
             },
             resultDelivery: "reply",
-            placement: "right",
+            open: true,
           },
           description:
             "Dependent implementation: queue a parent continuation on confirmed completion, without blocking. Use notification instead for background review.",
@@ -172,7 +170,7 @@ export function createSessionFamilyOperations(
             requestId?: string;
             model?: CakeModelSelection;
             resultDelivery?: ResultDelivery;
-            placement: "none" | "right" | "down";
+            open: boolean;
             worktreeName?: string;
           },
           context.toolCallId,

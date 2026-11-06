@@ -5,24 +5,23 @@ import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 
 export const SessionChangesToggle = observer(function SessionChangesToggle({
   session,
-  onOpen,
 }: {
   session: ProjectSessionStore;
-  onOpen(): void;
 }) {
   const store = session.changesStore;
   const count = store.data?.totalCommits;
+  const secondaryFocused = Boolean(
+    session.conversationSessionStore.sideChatStore.target?.chatStore,
+  );
   return (
     <NumberedIconButton
       count={count}
-      tooltip={`Review changes${count === undefined ? "" : ` · ${count} commits`}`}
+      tooltip={`Review changes${secondaryFocused ? ` in ${session.workspacePath}` : ""}${count === undefined ? "" : ` · ${count} commits`}`}
+      wrapTooltip={secondaryFocused}
       pressedAppearance="subtle"
       aria-pressed={store.open}
       aria-expanded={store.open}
-      onClick={() => {
-        onOpen();
-        store.toggle();
-      }}
+      onClick={() => store.toggle()}
     >
       <DiffIcon />
     </NumberedIconButton>

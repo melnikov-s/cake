@@ -299,12 +299,11 @@ describe("focused projection lifetimes", () => {
     }
   });
 
-  it("observes selected, visible, and running pins alongside the real four-session idle LRU", async () => {
+  it("observes focused and running pins alongside the real four-session idle LRU", async () => {
     using fixture = createRendererStoreFixture({
       projects: [projectRecord({ path: "/project" })],
       sessions: [
         "selected",
-        "visible",
         "running",
         "idle-0",
         "idle-1",
@@ -317,12 +316,9 @@ describe("focused projection lifetimes", () => {
     const projection = fixture.models;
     const root = fixture.root;
     root.navigationStore.selectProjectSession("selected");
-    root.sessionLayoutStore.splitFocused("visible", "x");
-    root.sessionLayoutStore.focusSession("selected");
     projection.projectConversation("running", "/project").streaming = true;
     for (const sessionId of [
       "selected",
-      "visible",
       "running",
       "idle-0",
       "idle-1",
@@ -349,35 +345,33 @@ describe("focused projection lifetimes", () => {
     );
     const stop = observeModels(runtime, projection, root);
     try {
-      for (let index = 0; index < 7; index += 1) await Effect.runPromise(Queue.take(applied));
+      for (let index = 0; index < 6; index += 1) await Effect.runPromise(Queue.take(applied));
       expect(new Set(conversations.mock.calls.map(([target]) => target.sessionId))).toEqual(
-        new Set(["selected", "visible", "running", "idle-1", "idle-2", "idle-3", "idle-4"]),
+        new Set(["selected", "running", "idle-1", "idle-2", "idle-3", "idle-4"]),
       );
       expect(projection.findProjectConversation("idle-0")?.observedSnapshotRevision).toBe(0);
       const count = cancellations.length;
-      const ensure = vi.spyOn(projection, "projectConversation");
       batch(() => {
-        root.navigationStore.selectProjectSession("visible");
-        root.sessionRegistry.observationRetention.retain("visible");
+        root.navigationStore.selectProjectSession("idle-4");
+        root.sessionRegistry.observationRetention.retain("idle-4");
       });
-      expect(conversations).toHaveBeenCalledTimes(7);
+      expect(conversations).toHaveBeenCalledTimes(6);
       expect(cancellations).toHaveLength(count);
       expect(cancellations.every((cancel) => cancel.mock.calls.length === 0)).toBe(true);
-      // All demanded identities remain hot; the loaded-registry reconciler is
-      // independent of selection. Demand may consult focused staged metadata.
-      expect(ensure.mock.calls.every(([id]) => id !== "idle-0")).toBe(true);
+      // Inspecting navigator metadata does not demand an idle conversation stream.
+      expect(projection.findProjectConversation("idle-0")?.observedSnapshotRevision).toBe(0);
 
-      // Losing a visible pin moves it into the idle LRU, evicting only its oldest
+      // Losing a focused pin moves it into the idle LRU, evicting only its oldest
       // idle peer while selected/running projections stay authoritative.
       batch(() => {
         root.navigationStore.selectProjectSession("replacement");
         root.sessionRegistry.load("replacement", "/project");
       });
-      expect(conversations).toHaveBeenCalledTimes(8);
+      expect(conversations).toHaveBeenCalledTimes(7);
       // Conversation, discussions, schedules, subagents and compact workflows.
       expect(cancellations.filter((cancel) => cancel.mock.calls.length > 0)).toHaveLength(5);
       expect(projection.findProjectConversation("idle-1")?.parts).toEqual([]);
-      expect(projection.findProjectConversation("visible")?.observedSnapshotRevision).toBe(1);
+      expect(projection.findProjectConversation("idle-4")?.observedSnapshotRevision).toBe(1);
       expect(projection.findProjectConversation("running")?.streaming).toBe(true);
       expect(projection.findProjectConversation("selected")?.observedSnapshotRevision).toBe(1);
     } finally {

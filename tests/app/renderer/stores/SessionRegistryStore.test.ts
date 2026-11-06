@@ -160,7 +160,7 @@ describe("Session Registry identity and observation integration", () => {
         familyId: "family",
         familyChildOrder: 1,
         familyDepth: 1,
-        placement: "none",
+        open: false,
       },
     });
     const child = registry.findSession("child")!;

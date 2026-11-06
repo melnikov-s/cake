@@ -91,9 +91,7 @@ export function createProjectSessionOperations(
           Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
         ),
         resolveSource: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
-        placement: Schema.Literals(["none", "right", "down"]).pipe(
-          Schema.withDecodingDefaultKey(Effect.succeed("none" as const)),
-        ),
+        open: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
         destinationWorkingDirectory: Schema.optionalKey(
           Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32_768)),
         ),
@@ -104,7 +102,7 @@ export function createProjectSessionOperations(
             prompt: "Continue by implementing the agreed approach.",
             title: "Implement fork tool",
             resolveSource: true,
-            placement: "right",
+            open: true,
           },
         },
       ],
@@ -118,7 +116,7 @@ export function createProjectSessionOperations(
             prompt?: string;
             title?: string;
             resolveSource: boolean;
-            placement: "none" | "right" | "down";
+            open: boolean;
             destinationWorkingDirectory?: string;
           },
         );

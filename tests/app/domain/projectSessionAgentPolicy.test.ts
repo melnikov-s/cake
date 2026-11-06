@@ -161,7 +161,7 @@ describe("Project Session live agent policy", () => {
         assert.equal((yield* Effect.promise(() => control.readPolicy())).canFork, true);
         yield* addChild("root", "child");
         yield* Effect.promise(() =>
-          assert.rejects(agentFork({ entryId: "entry", resolveSource: false, placement: "none" }), {
+          assert.rejects(agentFork({ entryId: "entry", resolveSource: false, open: false }), {
             _tag: "ProjectSessionError",
             operation: "fork",
             message: "Session Family members cannot be forked by their agent",

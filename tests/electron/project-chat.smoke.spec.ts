@@ -8,6 +8,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 const codeServerPath = "/opt/homebrew/bin/code-server";
@@ -156,7 +157,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
         '[data-slot="content-transition"] > [data-slot="content-transition-live"] .transcript',
       );
     await page.setViewportSize({ width: 1400, height: 900 });
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
     let input = page.getByRole("combobox", { name: "Message Cake Chat" });
     await expect(input).toBeVisible();
     await input.click();
@@ -195,14 +196,16 @@ test("Project Chat isolates history and restores its root workspace, while globa
       ).toBeVisible();
       await input.press("Enter");
       await expect(input).toHaveValue("");
-      const sideChat = page.getByRole("complementary", { name: "Side chat" });
+      const sideChat = page.locator('[data-slot="focused-secondary-conversation"]');
       await expect(sideChat).toBeVisible();
       const sideChatInput = sideChat.getByRole("combobox");
       await expect(sideChatInput).toBeFocused();
       await sideChatInput.pressSequentially("Draft a follow-up");
       await expect(sideChatInput).toHaveValue("Draft a follow-up");
       await expect(sideChat.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-      await sideChat.getByRole("button", { name: "Close Side chat" }).click();
+      await page
+        .getByRole("button", { name: /^Return to (?:Project|Cake) Chat$/, exact: true })
+        .click();
       await expect(input).toBeFocused();
       expect(requests).toHaveLength(requestCount);
       await input.click();
@@ -261,9 +264,8 @@ test("Project Chat isolates history and restores its root workspace, while globa
     const projectId = `project-chat:${createHash("sha256").update(project).digest("hex")}`;
     const openProject = () =>
       page
-        .locator(
-          `[data-slot="project-header"][data-session-id="${projectId}"] [data-slot="project-label"]`,
-        )
+        .getByRole("navigation", { name: "Projects and global utilities" })
+        .getByRole("button", { name: "Open Project Chat for zombies", exact: true })
         .click();
     await openProject();
     input = page.getByRole("combobox", { name: "Message Project Chat" });
@@ -362,64 +364,19 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await expect(transcript()).not.toContainText("GLOBAL_PRIVATE");
     await verifySchedule("Project scheduled follow-up");
 
-    const header = page.locator(`[data-slot="project-header"][data-session-id="${projectId}"]`);
-    const status = header.locator('[data-slot="project-chat-status"]');
-    const actions = header.locator('[data-slot="project-actions"]');
-    await input.click();
-    await expect(status).toHaveCSS("opacity", "1");
-    await expect(actions).toHaveCSS("opacity", "0");
+    await showSessions(page);
+    const projectRow = page.locator(
+      `[data-slot="conversation-navigator-row"][data-session-id="${projectId}"]`,
+    );
     const task = page.locator(`.session-item[data-session-id="${sessionId}"]`);
-    const taskDot = task.getByRole("img", { name: "Ready, unread" });
-    const assertDotAlignment = async () => {
-      // A selected, idle Project Chat has no dot; its reserved column stays aligned.
-      const projectBounds = await status.boundingBox();
-      const taskBounds = await taskDot.boundingBox();
-      expect(projectBounds).not.toBeNull();
-      expect(taskBounds).not.toBeNull();
-      expect(
-        Math.abs(
-          projectBounds!.x + projectBounds!.width / 2 - taskBounds!.x - taskBounds!.width / 2,
-        ),
-      ).toBeLessThan(1);
-    };
+    await expect(task.getByRole("img", { name: "Ready, unread" })).toBeVisible();
     for (const theme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme: theme });
-      await expect(header).toHaveClass(/bg-sidebar-active/);
-      await expect(header.locator('[data-slot="project-label"]')).toHaveAttribute(
-        "aria-current",
-        "page",
-      );
-      await assertDotAlignment();
-      // The status is a descendant of the selected full-width surface, not the label button.
-      expect(
-        await header.evaluate((element) => getComputedStyle(element).backgroundColor),
-      ).not.toBe("rgba(0, 0, 0, 0)");
+      await expect(projectRow).toHaveAttribute("data-navigation-active", "true");
+      await expect(
+        projectRow.getByRole("button", { name: "Project Chat", exact: true }),
+      ).toBeVisible();
     }
-    await header.getByRole("button", { name: "Project actions for zombies" }).click();
-    await page.getByRole("menuitem", { name: "Focus on zombies", exact: true }).click();
-    await input.click();
-    await assertDotAlignment();
-    await page.getByRole("button", { name: "Exit focus mode for zombies", exact: true }).click();
-    await input.click();
-    await assertDotAlignment();
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-    await expect(header).not.toHaveClass(/bg-sidebar-active/);
-    await assertDotAlignment();
-    await openProject();
-    await input.click();
-    await header.hover();
-    await expect(status).toHaveCSS("opacity", "0");
-    await expect(actions).toHaveCSS("opacity", "1");
-    await header.locator('[data-slot="project-label"]').hover();
-    await expect(header.locator('[data-slot="project-label"]')).toHaveCSS(
-      "background-color",
-      "rgba(0, 0, 0, 0)",
-    );
-    await header.getByRole("button", { name: "Project actions for zombies", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "By date", exact: true }).click();
-    await input.click();
-    await expect(status).toHaveCSS("opacity", "1");
-    await expect(actions).toHaveCSS("opacity", "0");
 
     await page.getByRole("button", { name: "Terminal", exact: true }).click();
     await expect(page.getByRole("button", { name: "Hide terminal", exact: true })).toBeVisible();
@@ -455,7 +412,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
       )
       .toBe(true);
     await page.getByRole("button", { name: "Back to agent", exact: true }).click();
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
     await expect(transcript()).toContainText("GLOBAL_PRIVATE");
     await expect(transcript()).not.toContainText("PROJECT_PRIVATE");
     await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
@@ -618,7 +575,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
     // A real Durable fork imports full dialogue without another provider request.
     await input.fill("/side");
     await input.press("Enter");
-    const sideChat = page.getByRole("complementary", { name: "Side chat" });
+    const sideChat = page.locator('[data-slot="focused-secondary-conversation"]');
     const sideInput = sideChat.getByRole("combobox");
     await expect(sideInput).toBeFocused();
     const sidePrompt = "SIDE_MERGE_EXACT: keep this original dialogue";
@@ -629,21 +586,20 @@ test("Project Chat isolates history and restores its root workspace, while globa
     const merge = sideChat.getByRole("button", { name: "Merge into main chat", exact: true });
     await expect(merge).toBeEnabled();
     await merge.click();
-    const imported = page.locator('[data-slot="side-chat-import"]');
-    await expect(imported).toHaveCount(1);
-    await expect(imported).toContainText("2 messages");
-    await expect(imported.getByText(sidePrompt, { exact: true })).toHaveCount(0);
     expect(requests).toHaveLength(beforeSide + 1);
-    await imported.getByRole("button", { name: /Merged from Side chat/ }).click();
-    await expect(imported.getByText(sidePrompt, { exact: true })).toBeVisible();
-    await expect(imported.getByText(`Reply ${beforeSide + 1}`, { exact: true })).toBeVisible();
     await merge.click();
     await expect(
       sideChat.getByRole("button", { name: "Already merged", exact: true }),
     ).toBeVisible();
-    await expect(imported).toHaveCount(1);
     expect(requests).toHaveLength(beforeSide + 1);
-    await sideChat.getByRole("button", { name: "Close Side chat" }).click();
+    await page.getByRole("button", { name: "Return to Project Chat", exact: true }).click();
+    const imported = page.locator('[data-slot="side-chat-import"]');
+    await expect(imported).toHaveCount(1);
+    await expect(imported).toContainText("2 messages");
+    await expect(imported.getByText(sidePrompt, { exact: true })).toHaveCount(0);
+    await imported.getByRole("button", { name: /Merged from Side chat/ }).click();
+    await expect(imported.getByText(sidePrompt, { exact: true })).toBeVisible();
+    await expect(imported.getByText(`Reply ${beforeSide + 1}`, { exact: true })).toBeVisible();
     await input.fill("Continue after importing the side conversation");
     await input.press("Enter");
     await expect(page.getByText(`Reply ${beforeSide + 2}`, { exact: true })).toBeVisible();

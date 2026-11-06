@@ -1,10 +1,9 @@
-import { act, render } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot, toSnapshot } from "r-state-tree";
 import type { CakeChatSummary } from "../../../src/contracts/cake-chats/cake-chat-data";
 import { StoreProvider } from "r-state-tree/react";
 import type { ProjectRecord } from "../../../src/contracts/application/application-data";
-import type { CakeEditorSettings } from "../../../src/contracts/application/cake-settings-data";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/worktree-landing-data";
 import type {
@@ -34,33 +33,6 @@ export function sidebarSummary(
   });
 }
 
-export const sidebarFamily = [
-  sidebarSummary("root", 1, {
-    familyId: "root",
-    familyChildSessionIds: ["planner", "sibling"],
-    familyDepth: 0,
-  }),
-  sidebarSummary("planner", 2, {
-    familyId: "root",
-    familyParentSessionId: "root",
-    familyChildSessionIds: ["worker"],
-    familyChildOrder: 0,
-    familyDepth: 1,
-  }),
-  sidebarSummary("worker", 30, {
-    familyId: "root",
-    familyParentSessionId: "planner",
-    familyChildOrder: 0,
-    familyDepth: 2,
-  }),
-  sidebarSummary("sibling", 1, {
-    familyId: "root",
-    familyParentSessionId: "root",
-    familyChildOrder: 1,
-    familyDepth: 1,
-  }),
-];
-
 function snapshot(sessionId: string): ConversationSnapshot {
   return {
     sessionId,
@@ -82,16 +54,13 @@ export function renderSidebarNavigation(
   options: RendererStoreFixtureOptions & {
     loadedIds?: readonly string[];
     worktrees?: readonly WorktreeRecord[];
-    ide?: {
-      sidebarAutoHide: "always" | "below-width";
-      width?: CakeEditorSettings["sidebarAutoHideWidth"];
-    };
   },
 ) {
   const fixture = createRendererStoreFixture({
     ...options,
     client: {
       ...options.client,
+      projectSessions: { open: async () => undefined, ...options.client?.projectSessions },
       vscode: {
         open: async () => undefined,
         updateBounds: async () => undefined,
@@ -117,24 +86,38 @@ export function renderSidebarNavigation(
       },
     );
   }
-  if (options.ide) {
-    const id = options.loadedIds![0]!;
-    fixture.root.settingsStore.embeddedEditor.sidebarAutoHide = options.ide.sidebarAutoHide;
-    fixture.root.settingsStore.embeddedEditor.sidebarAutoHideWidth = options.ide.width ?? 1440;
-    fixture.root.navigationStore.selectProjectSession(id);
-    fixture.root.projectWorkbenchStore.showLoadedSession(id);
-    fixture.root.sessionLayoutStore.ensureSession(id);
-    fixture.root.projectWorkbenchStore.presentationStore.embeddedEditorStore.applyState({
-      status: "ready",
-    });
-  }
   const view = render(
     <StoreProvider store={fixture.root}>
       <App />
     </StoreProvider>,
   );
+  const user = userEvent.setup();
   return {
-    user: userEvent.setup(),
+    user,
+    root: fixture.root,
+    models: fixture.models,
+    client: fixture.client,
+    async selectSession(sessionId: string) {
+      await user.click(screen.getByRole("button", { name: "Search sessions" }));
+      const dialog = within(screen.getByRole("dialog", { name: "Search sessions" }));
+      const session = fixture.root.sessionCatalogStore.find(sessionId);
+      if (!session) throw new Error(`Missing session fixture ${sessionId}`);
+      const includeResolved = dialog.getByRole("switch", { name: "Include resolved" });
+      if (session.resolved && includeResolved.getAttribute("aria-checked") !== "true")
+        await user.click(includeResolved);
+      await user.type(dialog.getByRole("combobox"), session.title);
+      await user.click(await dialog.findByRole("option", { name: new RegExp(session.title) }));
+    },
+    async showSessions(resolved = false) {
+      const reopen = screen.queryByRole("button", { name: "Open Workspace" });
+      if (reopen) await user.click(reopen);
+      const workspace = within(screen.getByRole("complementary", { name: "Workspace" }));
+      await user.click(workspace.getByRole("button", { name: /^Sessions/ }));
+      if (resolved) {
+        const toggle = workspace.getByRole("button", { name: "Resolved sessions" });
+        if (toggle.getAttribute("aria-expanded") !== "true") await user.click(toggle);
+      }
+    },
     snapshot: () => toSnapshot(fixture.root),
     async publishProjectChats(sessions: readonly CakeChatSummary[]) {
       await act(async () =>

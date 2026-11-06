@@ -286,7 +286,8 @@ describe("Session Changes review", () => {
   it("keeps review state scoped to its session", async () => {
     using fixture = renderChanges();
     await openChanges(fixture);
-    await fixture.user.click(screen.getByText("Other session", { exact: true }));
+    await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
+    await fixture.user.click(screen.getByRole("option", { name: /^Other session / }));
     const toggle = await screen.findByRole("button", { name: "Review changes · 0 commits" });
     expect(within(toggle).getByText("0").classList.contains("bg-card")).toBe(true);
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
@@ -294,7 +295,8 @@ describe("Session Changes review", () => {
     await fixture.user.click(toggle);
     expect(await screen.findByText("No commits")).toBeDefined();
     expect(await screen.findByText("Working tree clean")).toBeDefined();
-    await fixture.user.click(screen.getByText("Editor conversation", { exact: true }));
+    await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
+    await fixture.user.click(screen.getByRole("option", { name: /^Editor conversation / }));
     expect(
       (await screen.findByRole("button", { name: "Review changes · 2 commits" })).getAttribute(
         "aria-pressed",

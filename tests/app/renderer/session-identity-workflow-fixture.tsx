@@ -44,6 +44,7 @@ export function renderSessionIdentity(
     root.projectWorkbenchStore.showLoadedSession("staged-original");
   }
   if (options.terminalReady) root.terminalStore.readyForEvents();
+  root.workspaceNavigatorStore.show("sessions");
   const view = render(
     <StoreProvider store={root}>
       <App />

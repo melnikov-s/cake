@@ -7,6 +7,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 import { callRpcHarness, openRpcHarness } from "./rpc-harness";
 import { emitRendererEvent } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -149,15 +150,19 @@ test("Quake terminal runs a shell and retains tabs when a Project Session is res
 
     await page.getByRole("button", { name: "Pin terminal to bottom" }).click();
     const workspace = page.locator('[data-slot="workspace"]');
-    const sidebar = page.locator('[data-slot="sidebar"]');
+    const rail = page.locator('[data-slot="project-rail"]');
+    const navigator = page.getByRole("complementary", { name: "Workspace", exact: true });
     const dockedBounds = await panel.boundingBox();
     const workspaceBounds = await workspace.boundingBox();
-    const sidebarBounds = await sidebar.boundingBox();
+    const railBounds = await rail.boundingBox();
+    const navigatorBounds = await navigator.boundingBox();
     expect(dockedBounds).not.toBeNull();
     expect(workspaceBounds).not.toBeNull();
-    expect(sidebarBounds).not.toBeNull();
+    expect(railBounds).not.toBeNull();
+    expect(navigatorBounds).not.toBeNull();
     expect(dockedBounds!.x).toBeGreaterThanOrEqual(workspaceBounds!.x);
-    expect(dockedBounds!.x).toBeGreaterThanOrEqual(sidebarBounds!.x + sidebarBounds!.width - 1);
+    expect(dockedBounds!.x).toBeGreaterThanOrEqual(railBounds!.x + railBounds!.width - 1);
+    expect(dockedBounds!.x + dockedBounds!.width).toBeLessThanOrEqual(navigatorBounds!.x + 1);
     expect(dockedBounds!.width).toBeLessThanOrEqual(workspaceBounds!.width + 1);
     expect(dockedBounds!.y + dockedBounds!.height).toBeLessThanOrEqual(
       workspaceBounds!.y + workspaceBounds!.height + 1,
@@ -250,15 +255,15 @@ test("Quake terminal runs a shell and retains tabs when a Project Session is res
     await page.waitForTimeout(250);
     await toggleTerminalViaMenu();
     await expect(panel).toHaveAttribute("aria-hidden", "true");
+    await showSessions(page);
     const resolveAction = page.locator(
       `.session-item[data-session-id='${sessionId}'] .session-resolve-action`,
     );
     await resolveAction.click();
     await expect(page.getByText(/Retire and stop running programs?\?/)).toHaveCount(0);
-    await page.getByRole("button", { name: "Expand Resolved" }).click();
-    await page.getByRole("button", { name: "Expand project resolved" }).last().click();
+    await page.getByRole("button", { name: "Resolved sessions", exact: true }).click();
     const resolvedSession = page.locator(
-      `[data-slot="resolved-lane"] .session-item[data-session-id="${sessionId}"]`,
+      `section[aria-label="Resolved sessions"] .session-item[data-session-id="${sessionId}"]`,
     );
     await expect(resolvedSession.locator(".session-resolve-action")).toHaveAttribute(
       "aria-label",

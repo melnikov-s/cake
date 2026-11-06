@@ -90,13 +90,13 @@ test("records and dispatches standalone Right Option once, without intercepting 
     await tap();
     await expect(mute).toHaveText(rightLabel);
     // Exercise the real native input pipeline with an observable action (no native speech build).
-    const sidebarBinding = page.getByRole("button", { name: /^Toggle sidebar shortcut/ });
+    const sidebarBinding = page.getByRole("button", { name: /^Toggle Workspace shortcut/ });
     await sidebarBinding.click();
     await tap();
     await expect(sidebarBinding).toHaveText(rightLabel);
     await expect(mute).toHaveText("Not assigned");
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
-    const sidebar = page.locator('[data-slot="sidebar"]');
+    const sidebar = page.locator('[data-slot="workspace-navigator"]');
     await message.focus();
     await page.keyboard.type("typed draft");
     await expect(message).toHaveValue("typed draft");

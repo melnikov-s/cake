@@ -20,6 +20,13 @@ export type SessionCatalogChange =
       readonly workingDirectory: string;
       readonly sessionDirectory: string;
     }
+  | {
+      readonly _tag: "DiscussionSessionActivityChanged";
+      readonly sessionId: string;
+      readonly parentSessionId: string;
+      readonly workingDirectory: string;
+      readonly sessionDirectory: string;
+    }
   | { readonly _tag: "ProjectSessionRemoved"; readonly sessionId: string }
   | {
       readonly _tag: "ProjectSessionsTransitioned";

@@ -35,6 +35,7 @@ import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { CakeChatSurface } from "../../../src/renderer/components/cake-chat-surface";
+import { AppShellLayout } from "../../../src/renderer/components/app-shell-layout";
 import { Chat } from "../../../src/renderer/components/chat";
 import { projectTranscriptBehaviorFor } from "../../../src/renderer/lib/project-transcript-behavior";
 import { nestedTranscriptBehaviorFor } from "../../../src/renderer/lib/nested-transcript-behavior";
@@ -260,7 +261,9 @@ async function renderChat(kind: ChatKind) {
   const view = render(
     <StoreProvider store={fixture.root}>
       <VirtuosoMockContext.Provider value={{ viewportHeight: 4000, itemHeight: 100 }}>
-        <CakeChatSurface />
+        <AppShellLayout overlays={null} commandPaneWidth={420} onCommandPaneWidthChange={() => {}}>
+          <CakeChatSurface />
+        </AppShellLayout>
       </VirtuosoMockContext.Provider>
     </StoreProvider>,
   );
@@ -273,14 +276,14 @@ async function renderChat(kind: ChatKind) {
       .querySelector(`[data-part-id="${partId}"]`)
       ?.querySelector('[data-slot="result-todo-done"]') ?? null;
   const pane = async () => {
-    const open = screen.queryByRole("complementary", { name: "To-do" });
+    const open = screen.queryByRole("complementary", { name: "Workspace" });
     if (open) return open;
-    const trigger = screen.getByRole("button", { name: "To-do" });
+    const trigger = screen.getByRole("button", { name: "To-dos" });
     const count = chat.todos.openItems.length;
     expect(trigger.getAttribute("aria-description")).toBe(`${count} open to-dos`);
     expect(within(trigger).getByText(String(count)).classList.contains("bg-card")).toBe(true);
     await user.click(trigger);
-    return screen.getByRole("complementary", { name: "To-do" });
+    return screen.getByRole("complementary", { name: "Workspace" });
   };
   return {
     root: fixture.root,
@@ -569,7 +572,7 @@ it.each(chats)(
     await f.user.click(
       screen.getAllByRole("button", { name: "Show in To-do: Research options" })[0]!,
     );
-    expect(screen.getByRole("complementary", { name: "To-do" })).toBeDefined();
+    expect(screen.getByRole("complementary", { name: "Workspace" })).toBeDefined();
     expect(f.mutateUser).not.toHaveBeenCalled();
     expect(f.chat.todos.focusedItems).toEqual([]);
     const item = await f.read(A);
@@ -761,6 +764,7 @@ it("opens global Cake Chat's To-do pane when its first item arrives, not on hydr
         },
       }),
     );
+  fixture.root.workspaceNavigatorStore.close();
   const first = item("00000000-0000-4000-8000-000000000001", "Research options");
   const second = item("00000000-0000-4000-8000-000000000002", "Fix the build");
   project(1, [second]);

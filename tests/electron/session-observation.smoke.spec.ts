@@ -7,6 +7,8 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 import { seedCakeChatHistory } from "./durable-chat-fixture";
 import { windowState } from "../fixtures/window-state";
 
+import { createSessionInProject } from "./fixtures/workspace-navigation";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 test("selects multiple project sessions and Cake Chat with independent transcripts", async () => {
@@ -129,7 +131,7 @@ test("selects multiple project sessions and Cake Chat with independent transcrip
     ).toBeVisible();
     expect(failures).toEqual([]);
     expect(await page.evaluate(() => Reflect.get(window, "emptySessionFlashes"))).toEqual([]);
-    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await createSessionInProject(page, /^project(?: |$)/i);
     await expect(
       page
         .locator(".transcript")

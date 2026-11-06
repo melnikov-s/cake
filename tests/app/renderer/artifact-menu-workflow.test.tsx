@@ -149,12 +149,27 @@ function renderArtifacts(
   return { ...fixture, readExact };
 }
 
-const openMenu = async (fixture: ReturnType<typeof renderArtifacts>) => {
-  const trigger = await screen.findByRole("button", { name: "2 artifacts" });
+const chooseConversation = async (fixture: ReturnType<typeof renderArtifacts>, id: string) => {
+  if (id === "cake")
+    await fixture.user.click(screen.getByRole("button", { name: "Open Cake Chat" }));
+  else {
+    await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
+    await fixture.user.click(
+      screen.getByRole("option", { name: new RegExp(`^${id} conversation `) }),
+    );
+  }
+};
+
+const openMenu = async (fixture: ReturnType<typeof renderArtifacts>, ownerLabel?: string) => {
+  const trigger = await screen.findByRole("button", {
+    name: `2 artifacts${ownerLabel ? ` for ${ownerLabel}` : ""}`,
+  });
   expect(within(trigger).getByText("2").classList.contains("bg-card")).toBe(true);
   await fixture.user.click(trigger);
   expect(trigger.getAttribute("aria-expanded")).toBe("true");
-  return screen.getByRole("dialog", { name: "Artifacts" });
+  return screen.getByRole("dialog", {
+    name: ownerLabel ? `Artifacts for ${ownerLabel}` : "Artifacts",
+  });
 };
 
 describe("Artifact accessory workflow", () => {
@@ -166,9 +181,7 @@ describe("Artifact accessory workflow", () => {
       );
       using fixture = renderArtifacts({ sessionChats: { prompt } });
       const sessionId = id === "cake" ? CAKE_CHAT_SESSION_ID : "alpha";
-      await fixture.user.click(
-        screen.getByRole("button", { name: id === "cake" ? "Cake Chat" : /^alpha conversation / }),
-      );
+      await chooseConversation(fixture, id);
       const menu = await openMenu(fixture);
       expect(within(menu).getAllByRole("button")).toHaveLength(3);
       await fixture.user.click(
@@ -234,7 +247,7 @@ describe("Artifact accessory workflow", () => {
       await send(document.body, "ordinary message");
       await waitFor(() => expect(prompt).toHaveBeenCalledTimes(4));
       expect(prompt.mock.calls[3]![0].artifactPresentation).toBeNull();
-      await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+      await chooseConversation(fixture, "beta");
       await send(document.body, "other conversation");
       await waitFor(() => expect(prompt).toHaveBeenCalledTimes(5));
       expect(prompt.mock.calls[4]![0]).toMatchObject({ sessionId: "beta" });
@@ -308,30 +321,24 @@ describe("Artifact accessory workflow", () => {
     const openSideChat = async () => {
       await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
       await fixture.user.click(screen.getByRole("button", { name: /Review the report/ }));
-      return screen.getByRole("complementary", { name: "Side chat" });
+      return screen.getByRole("combobox", { name: "Reply to side chat" });
     };
     const chat = await openSideChat();
-    await fixture.user.type(
-      within(chat).getByRole("combobox", { name: "Reply to side chat" }),
-      "Keep this draft",
-    );
-    const menu = await openMenu(fixture);
+    await fixture.user.type(chat, "Keep this draft");
+    expect(screen.getByRole("button", { name: /^Review changes in \/alpha/ })).toBeDefined();
+    const menu = await openMenu(fixture, "alpha conversation");
+    expect(within(menu).getByText("Artifacts for alpha conversation")).toBeDefined();
     await fixture.user.click(within(menu).getByRole("button", { name: /Report alpha markdown/ }));
     expect(await screen.findByRole("complementary", { name: "Report alpha" })).toBeDefined();
-    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Reply to side chat" })).toBeNull();
     const reopened = await openSideChat();
-    expect(within(reopened).getByRole("combobox", { name: "Reply to side chat" })).toHaveProperty(
-      "value",
-      "Keep this draft",
-    );
+    expect(reopened).toHaveProperty("value", "Keep this draft");
     expect(screen.queryByRole("complementary", { name: "Report alpha" })).toBeNull();
   });
 
   it.each(["alpha", "cake"])("keeps %s's explicit library-browsing action", async (id) => {
     using fixture = renderArtifacts();
-    await fixture.user.click(
-      screen.getByRole("button", { name: id === "cake" ? "Cake Chat" : /^alpha conversation / }),
-    );
+    await chooseConversation(fixture, id);
     const menu = await openMenu(fixture);
     await fixture.user.click(within(menu).getByRole("button", { name: "Browse all artifacts" }));
     expect(await screen.findByRole("textbox", { name: "Search artifact library" })).toBeDefined();
@@ -348,9 +355,7 @@ describe("Artifact accessory workflow", () => {
       );
       using fixture = renderArtifacts({ sessionChats: { prompt } });
       const sessionId = id === "cake" ? CAKE_CHAT_SESSION_ID : "alpha";
-      await fixture.user.click(
-        screen.getByRole("button", { name: id === "cake" ? "Cake Chat" : /^alpha conversation / }),
-      );
+      await chooseConversation(fixture, id);
       const menu = await openMenu(fixture);
       await fixture.user.click(
         within(menu).getByRole("button", { name: new RegExp(`Report ${id} markdown`) }),
@@ -373,9 +378,17 @@ describe("Artifact accessory workflow", () => {
   it("opens a global menu selection fullscreen without replacing Settings, and still browses explicitly", async () => {
     using fixture = renderArtifacts();
     await fixture.user.click(
-      within(screen.getByRole("complementary")).getByRole("button", { name: "Open settings" }),
+      within(screen.getByRole("navigation", { name: "Projects and global utilities" })).getByRole(
+        "button",
+        { name: "Settings" },
+      ),
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Artifacts" }));
+    await fixture.user.click(
+      within(screen.getByRole("navigation", { name: "Projects and global utilities" })).getByRole(
+        "button",
+        { name: "Artifacts" },
+      ),
+    );
     const menu = screen.getByRole("dialog", { name: "Artifacts" });
     await fixture.user.click(within(menu).getByRole("button", { name: /Report unrelated/ }));
     const surface = await screen.findByRole("dialog", { name: "Report unrelated" });
@@ -383,7 +396,12 @@ describe("Artifact accessory workflow", () => {
     expect(screen.queryByRole("textbox", { name: "Search artifact library" })).toBeNull();
     await fixture.user.keyboard("{Escape}");
     expect(screen.getByRole("button", { name: "Back to chat" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Artifacts" }));
+    await fixture.user.click(
+      within(screen.getByRole("navigation", { name: "Projects and global utilities" })).getByRole(
+        "button",
+        { name: "Artifacts" },
+      ),
+    );
     await fixture.user.click(
       within(screen.getByRole("dialog", { name: "Artifacts" })).getByRole("button", {
         name: "Browse all artifacts",
@@ -394,13 +412,13 @@ describe("Artifact accessory workflow", () => {
 
   it("closes the artifact pane on conversation navigation without carrying selection into another session", async () => {
     using fixture = renderArtifacts();
-    await fixture.user.click(screen.getByRole("button", { name: /^alpha conversation / }));
+    await chooseConversation(fixture, "alpha");
     const menu = await openMenu(fixture);
     await fixture.user.click(within(menu).getByRole("button", { name: /Report alpha markdown/ }));
     const surface = await screen.findByRole("complementary", { name: "Report alpha" });
     expect(await within(surface).findByText("alpha body revision 1")).toBeDefined();
     // Cross-conversation navigation can also originate in fullscreen side chat.
-    await fixture.user.click(screen.getByRole("button", { name: "Cake Chat" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Open Cake Chat" }));
     expect(await screen.findByRole("button", { name: "2 artifacts" })).toBeDefined();
     expect(screen.queryByRole("complementary", { name: "Report alpha" })).toBeNull();
   });

@@ -7,8 +7,8 @@ import { defineControl } from "./control-definition";
 export const applicationControls = [
   defineControl({
     ...windowControlDefinitions["app.state"],
-    run: async (_input, { host, source }, command): Promise<AppControlResult> => {
-      return { ok: true, command, state: await getAppState(host, source) };
+    run: async (_input, { host }, command): Promise<AppControlResult> => {
+      return { ok: true, command, state: await getAppState(host) };
     },
   }),
   defineControl({
@@ -18,23 +18,30 @@ export const applicationControls = [
     },
   }),
   defineControl({
-    ...windowControlDefinitions["app.split"],
-    run: async (input, { host, source }, command): Promise<AppControlResult> => {
-      if (!source)
+    ...windowControlDefinitions["app.workspace"],
+    run: async (input, { host }, command): Promise<AppControlResult> => {
+      if (
+        (input.visible !== undefined || input.mode !== undefined) &&
+        !host.sessions.navigationEnabled()
+      )
         return {
           ok: false,
           command,
-          error: "Cake can only split a pane for a calling conversation.",
+          error: "Agent session navigation is disabled in Settings → Agent for this window.",
         };
-      const split = host.presentation.splitView(source, input.direction);
-      if (!split)
-        return { ok: false, command, error: "Cake could not split that conversation pane." };
-      return {
-        ok: true,
-        command,
-        direction: input.direction,
-        ...split,
-      };
+      return { ok: true, command, workspace: host.presentation.workspace(input) };
+    },
+  }),
+  defineControl({
+    ...windowControlDefinitions["app.home"],
+    run: async (_input, { host }, command): Promise<AppControlResult> => {
+      if (!host.sessions.navigationEnabled())
+        return {
+          ok: false,
+          command,
+          error: "Agent session navigation is disabled in Settings → Agent for this window.",
+        };
+      return { ok: true, command, opened: await host.presentation.returnToProjectChat() };
     },
   }),
   defineControl({

@@ -8,6 +8,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { recordedRendererErrors, recordRendererErrors } from "../fixtures/renderer-errors";
 import { windowState } from "../fixtures/window-state";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -318,9 +319,12 @@ for (const scenario of [
       const transcript = page.locator(
         '.transcript:not([data-slot="content-transition-outgoing"] *)',
       );
-      const firstSession = page.locator(`.session-item[data-session-id="${firstSessionId}"]`);
-      const secondSession = page.locator(`.session-item[data-session-id="${secondSessionId}"]`);
       await expect(transcript).toBeVisible({ timeout: 20_000 });
+      const workspace = await showSessions(page);
+      const firstSession = workspace.locator(`.session-item[data-session-id="${firstSessionId}"]`);
+      const secondSession = workspace.locator(
+        `.session-item[data-session-id="${secondSessionId}"]`,
+      );
       await expect(firstSession).toHaveClass(/active/);
       // An empty or still-positioning transcript also has a zero bottom gap.
       // Wait for the actual seeded history and its revealed native bottom before
@@ -1095,7 +1099,7 @@ for (const scenario of [
       }
 
       if (scenario === "restores session position") {
-        await page.getByRole("button", { name: "Open settings", exact: true }).click();
+        await page.getByRole("button", { name: "Settings", exact: true }).click();
         await page.getByLabel("Back to chat").click();
         await expectRestoredAnchor(transcript, savedAnchor);
 
@@ -1157,10 +1161,7 @@ for (const scenario of [
 
         // Another session settling rerenders the application shell. Exercise the
         // same parent-render boundary after Virtuoso has restored this transcript.
-        await page
-          .getByRole("complementary")
-          .getByRole("button", { name: "Toggle sidebar" })
-          .click();
+        await workspace.getByRole("button", { name: "Close Workspace" }).click();
         await expect
           .poll(() =>
             transcript.evaluate(

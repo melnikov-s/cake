@@ -98,7 +98,7 @@ export const windowControlDefinitions = {
     discovery: {
       topic: "app",
       summary:
-        "Inspect Cake's current selection, split-pane layout, neighbors, counts and visible embedded browser location or VS Code editor paths/groups. URLs omit credentials, query and fragment; unavailable/hidden views are explicit. Uses canonical session IDs without global discovery.",
+        "Inspect Cake's current selection, focused conversation, current workspace, counts and visible embedded browser location or VS Code editor paths/groups. URLs omit credentials, query and fragment; unavailable/hidden views are explicit. Uses canonical session IDs without global discovery.",
     },
   },
   "app.user-selection": {
@@ -111,14 +111,27 @@ export const windowControlDefinitions = {
       result: "The currently selected text, or no text if nothing is highlighted in Cake.",
     },
   },
-  "app.split": {
-    command: "app.split",
-    args: Schema.Struct({ direction: Schema.Literals(["right", "down"]) }),
+  "app.workspace": {
+    command: "app.workspace",
+    args: Schema.Struct({
+      visible: Schema.optionalKey(Schema.Boolean),
+      mode: Schema.optionalKey(Schema.Literals(["todos", "sessions"])),
+    }),
     scope: "global",
     discovery: {
       topic: "app",
       summary:
-        "Split the calling conversation pane to the right or down and open a new chat in it.",
+        "Read or change the invoking window's Workspace accessory. Mode selects To-dos or Sessions; visible closes/reopens it. Omit both to inspect.",
+    },
+  },
+  "app.home": {
+    command: "app.home",
+    args: emptyArgumentsSchema,
+    scope: "global",
+    discovery: {
+      topic: "app",
+      summary:
+        "Return the invoking window to Project Chat in chat mode for its focused Project, or Cake Chat when no Project is selected.",
     },
   },
   "notifications.send": {

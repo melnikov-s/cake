@@ -8,7 +8,7 @@ import { ManagedWorktreeCatalogUpdate } from "../../../src/contracts/worktrees/m
 import { observe } from "../../../src/domain/worktrees/worktreeCatalog";
 import { Git, GitError } from "../../../src/services/git/Git";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
-import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
+import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
 import { applyManagedWorktreeCatalogUpdate } from "../../../src/renderer/reducers/WorktreeCatalogReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -89,24 +89,7 @@ it.each([
     const { root } = fixture;
     const view = render(
       <StoreProvider store={root}>
-        <SidebarProjectGroup
-          cakeChat={root.cakeChatCollectionStore}
-          onOpenCakeChat={() => {}}
-          store={root.sidebarStore}
-          sessionList={root.sidebarStore.sessionListStore}
-          sessionMetadata={root.sessionMetadataStore}
-          projects={root.projectCatalogStore}
-          chat={root.projectWorkbenchStore}
-          shell={root.appShellStore}
-          appearance={root.settingsStore.appearance}
-          path={record.projectPath}
-          resolved={false}
-          flattenSessions
-          onCreateSession={() => {}}
-          onOpenSession={() => {}}
-          onRemoveProject={async () => true}
-          onOpenSettings={() => {}}
-        />
+        <ConversationNavigator projectPath={record.projectPath} />
       </StoreProvider>,
     );
     try {

@@ -71,19 +71,21 @@ value remains accessible.
 
 ## Layout
 
-Keep the conversation primary in ordinary chat surfaces. The transcript needs
-generous room for explanations and diffs, anchored by a stable, clearly framed
-composer. Source-list navigation helps users locate projects and sessions;
-inspector and accessory panes provide detail without turning the window into a
-wall of competing toolbars.
+Project Chat is each project's home. Keep one focused conversation primary, with
+generous room for explanations and diffs and a stable, clearly framed composer.
+The compact left project rail always exposes project artwork and global utilities.
+The right Workspace accessory shows either To-dos or the recursive Sessions source
+list, never both, and can close without hiding global actions. Persistent clickable
+breadcrumbs show the conversation's full ownership path and a direct route home.
 
-The existing [app shell](src/renderer/components/app-shell-layout.tsx) owns the
-macOS split-view arrangement: traffic-light-safe titlebar drag regions,
-collapsible source-list sidebar, central workspace canvas, and resizable
-accessory pane. Immersive editor, browser, and drawing workspaces make the task
-surface primary while keeping conversation available through the shared
-[workspace chat layout](src/renderer/components/workspace-chat-layout.tsx).
-Reuse these layouts rather than imposing a second shell.
+The shared [app shell](src/renderer/components/app-shell-layout.tsx) owns the macOS
+arrangement: traffic-light-safe titlebar drag regions, project rail, central work
+surface, and resizable Workspace accessory. Real editor and browser modes remain
+inside that same shell. The shared
+[workspace chat layout](src/renderer/components/workspace-chat-layout.tsx) can keep
+the same focused conversation beside its tool surface; it is not an arbitrary
+multi-conversation split. Reuse these layouts rather than imposing a second shell.
+The global drop-down Cake Chat and Quake terminal retain their separate behavior.
 
 Separate panes with single-pixel hairline borders (`border-border/65` to
 `border-border/75`) and interactive [ResizeHandle](src/renderer/components/ui/resize-handle.tsx)

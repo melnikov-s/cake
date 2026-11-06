@@ -1,15 +1,14 @@
-import { useCallback, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { observer, useStore } from "r-state-tree/react";
-import { IconButton } from "@/components/ui/icon-button";
-import { Button } from "./ui/button";
-import { SettingsIcon } from "@/components/ui/icons";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { CommandPane } from "@/components/command-pane";
 import { QuakeTerminal } from "@/components/quake-terminal";
 import { cn } from "@/lib/utils";
 import { RootStore } from "../stores/RootStore";
-import { AppSidebar } from "./app-sidebar";
+import { ProjectRail } from "./project-rail";
+import { WorkspaceNavigator } from "./workspace-navigator";
 import { AppSurfaceHeader } from "./app-surface-header";
+import { ConversationFocusContext } from "../lib/conversation-focus-context";
 
 export const AppShellLayout = observer(function AppShellLayout({
   children,
@@ -24,90 +23,33 @@ export const AppShellLayout = observer(function AppShellLayout({
 }) {
   const root = useStore(RootStore);
   const store = root.projectWorkbenchStore;
-  const sidebar = root.sidebarStore;
   const shell = root.appShellStore;
+  const navigator = root.workspaceNavigatorStore;
   const terminal = root.terminalStore;
-  const extensionUi = root.extensionUiStore;
-  const surface = shell.surface;
-  const conversationPaneVisible =
-    surface === "workbench"
-      ? Boolean(store.activeSession)
-      : surface === "cake-chat" &&
-        shell.selection.kind === "cake-chat" &&
-        Boolean(
-          shell.selection.sessionId &&
-          root.cakeChatCollectionStore.registry.find(shell.selection.sessionId),
-        );
-  const sidebarCollapsed = !sidebar.visible;
-  const projectSidebarVisible = !sidebarCollapsed && surface !== "settings";
-  const sidebarWidth = sidebar.width;
-  const displayedSidebarWidth = sidebar.focusModeProjectPath
-    ? Math.max(sidebarWidth, 360)
-    : sidebarWidth;
+  const conversationPaneVisible = Boolean(root.workspaceSession) && !shell.coveringSurface;
+  const navigatorVisible = navigator.visible && !shell.coveringSurface;
   const shellRef = useRef<HTMLElement>(null);
   const [resizingPanel, setResizingPanel] = useState(false);
-  const sidebarMax = Math.max(
-    240,
-    window.innerWidth - (store.commandPaneStore.pane ? commandPaneWidth : 0) - 360,
-  );
-  const commandPaneMax = Math.max(
+  const commandVisible = Boolean(store.commandPaneStore.pane);
+  const accessoryWidth = Math.min(navigator.width, Math.max(240, window.innerWidth - 414));
+  const commandMax = Math.max(
     320,
-    window.innerWidth - (sidebarCollapsed ? 0 : displayedSidebarWidth) - 360,
+    window.innerWidth - (navigatorVisible ? accessoryWidth : 0) - 414,
   );
-  const setSidebarWidth = useCallback((width: number) => sidebar.setWidth(width), [sidebar]);
-  const previewSidebarWidth = useCallback(
-    (width: number) => {
-      const displayedWidth = sidebar.focusModeProjectPath ? Math.max(width, 360) : width;
-      shellRef.current?.style.setProperty(
-        "--sidebar-width",
-        `${Math.min(displayedWidth, sidebarMax)}px`,
-      );
-    },
-    [sidebar.focusModeProjectPath, sidebarMax],
-  );
-  const shellStyle: CSSProperties & Record<"--sidebar-width" | "--right-pane-width", string> = {
-    "--sidebar-width": projectSidebarVisible
-      ? `${Math.min(displayedSidebarWidth, sidebarMax)}px`
-      : "0px",
-    "--right-pane-width": store.commandPaneStore.pane
-      ? `${Math.min(commandPaneWidth, commandPaneMax)}px`
-      : "0px",
+  const shellStyle: CSSProperties & Record<"--navigator-width" | "--command-width", string> = {
+    "--navigator-width": navigatorVisible ? `${accessoryWidth}px` : "0px",
+    "--command-width": commandVisible ? `${Math.min(commandPaneWidth, commandMax)}px` : "0px",
   };
   return (
     <main
       ref={shellRef}
       className={cn(
-        "relative grid h-full w-full max-w-[100vw] overflow-hidden bg-background text-foreground transition-[grid-template-columns] duration-180 ease-out",
-        "grid-cols-[var(--sidebar-width)_minmax(0,1fr)_var(--right-pane-width)] max-[820px]:grid-cols-[min(var(--sidebar-width),230px)_minmax(0,1fr)_var(--right-pane-width)] max-[620px]:grid-cols-[0px_minmax(0,1fr)] phone:grid-cols-[0px_minmax(0,1fr)]",
-        resizingPanel && "cursor-col-resize select-none transition-none",
+        "relative grid h-full w-full max-w-[100vw] grid-cols-[54px_minmax(0,1fr)_var(--navigator-width)_var(--command-width)] overflow-hidden bg-background text-foreground max-[700px]:grid-cols-[44px_minmax(0,1fr)_0px_0px]",
+        resizingPanel && "cursor-col-resize select-none",
       )}
       style={shellStyle}
     >
-      {projectSidebarVisible && (
-        <>
-          <Button
-            variant="ghost"
-            aria-label="Close navigation"
-            className="absolute inset-0 z-40 hidden h-full w-full rounded-none bg-foreground/28 max-[620px]:block phone:block"
-            onClick={() => sidebar.toggle()}
-          />
-          <AppSidebar />
-        </>
-      )}
-      {projectSidebarVisible && (
-        <ResizeHandle
-          className="left-[calc(var(--sidebar-width)-5px)] max-[820px]:left-[calc(min(var(--sidebar-width),230px)-5px)] max-[620px]:hidden phone:hidden"
-          label="Resize project sidebar"
-          value={displayedSidebarWidth}
-          min={220}
-          max={sidebarMax}
-          edge="left"
-          onChange={setSidebarWidth}
-          onDrag={previewSidebarWidth}
-          onResizeStart={() => setResizingPanel(true)}
-          onResizeEnd={() => setResizingPanel(false)}
-        />
-      )}
+      <ProjectRail />
       <section
         data-slot="workspace"
         className={cn(
@@ -116,43 +58,43 @@ export const AppShellLayout = observer(function AppShellLayout({
             ? "grid-rows-[minmax(0,1fr)_auto]"
             : "grid-rows-[auto_minmax(0,1fr)_auto]",
         )}
-        data-session-id={
-          shell.selection.kind === "cake-chat"
-            ? shell.selection.sessionId
-            : shell.selection.kind === "project-session"
-              ? shell.selection.sessionId
-              : undefined
-        }
+        data-session-id={shell.activeConversation?.sessionId}
       >
-        {surface !== "settings" && (
-          <IconButton
-            className={cn(
-              "absolute bottom-[9.5px] left-4 z-20 hidden phone:!hidden size-8 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground max-[620px]:grid",
-              sidebarCollapsed && "grid",
-            )}
-            data-slot="workspace-settings"
-            data-cake-hint-key="g"
-            tooltip="Open settings"
-            hotkey="open-settings"
-            onClick={() => root.navigationStore.showSettings()}
-          >
-            <SettingsIcon />
-          </IconButton>
-        )}
         {!conversationPaneVisible && <AppSurfaceHeader />}
-        {children}
+        <ConversationFocusContext.Provider value={true}>
+          {children}
+        </ConversationFocusContext.Provider>
         {terminal.docked && (
           <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
         )}
       </section>
-      <CommandPane store={store} extensionUi={extensionUi} />
-      {store.commandPaneStore.pane && (
+      {navigatorVisible && (
+        <div className="col-start-3 min-h-0 min-w-0 max-[700px]:absolute max-[700px]:inset-y-0 max-[700px]:left-11 max-[700px]:right-0 max-[700px]:z-30">
+          <WorkspaceNavigator />
+        </div>
+      )}
+      {navigatorVisible && (
         <ResizeHandle
-          className="right-[calc(var(--right-pane-width)-5px)] max-[620px]:hidden phone:hidden"
+          className="right-[calc(var(--command-width)+var(--navigator-width)-5px)] max-[700px]:hidden"
+          label="Resize Workspace"
+          value={accessoryWidth}
+          min={240}
+          max={Math.min(520, Math.max(240, window.innerWidth - 414))}
+          edge="right"
+          onChange={(width) => navigator.setWidth(width)}
+          onDrag={(width) => shellRef.current?.style.setProperty("--navigator-width", `${width}px`)}
+          onResizeStart={() => setResizingPanel(true)}
+          onResizeEnd={() => setResizingPanel(false)}
+        />
+      )}
+      <CommandPane store={store} extensionUi={root.extensionUiStore} />
+      {commandVisible && (
+        <ResizeHandle
+          className="right-[calc(var(--command-width)-5px)] max-[700px]:hidden"
           label="Resize command pane"
           value={commandPaneWidth}
           min={320}
-          max={commandPaneMax}
+          max={commandMax}
           edge="right"
           onChange={onCommandPaneWidthChange}
           onResizeStart={() => setResizingPanel(true)}

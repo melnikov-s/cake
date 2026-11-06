@@ -142,9 +142,13 @@ grip; the owning pane supplies resizing and chrome.
 
 ### Workspace and chat shell
 
-[`WorkspaceChatLayout`](../../src/renderer/components/workspace-chat-layout.tsx)
-composes the sidebar, primary workspace, authoritative Chat drawer and terminal dock.
-Use it for immersive workspace modes rather than rebuilding layout/resize behavior.
+[`AppShellLayout`](../../src/renderer/components/app-shell-layout.tsx) owns the persistent
+project/global rail and exclusive To-dos/Sessions Workspace accessory across conversation
+and native tool modes. [`ConversationBreadcrumb`](../../src/renderer/components/conversation-breadcrumb.tsx)
+shows clickable public ownership lineage and the registered route home.
+[`WorkspaceChatLayout`](../../src/renderer/components/workspace-chat-layout.tsx) composes
+the primary tool workspace and optional authoritative Chat companion for that same focused
+conversation. Use it inside the shared shell rather than rebuilding layout/resize behavior.
 Every conversation surface uses [`Chat`](../../src/renderer/components/chat.tsx)
 and [`ChatStore`](../../src/renderer/stores/ChatStore.ts).
 Permanent Project Chat and global Cake Chat opt into a shared `IconButton` reply action

@@ -54,8 +54,8 @@ const landed = (
 
 /**
  * A family whose root, two children and a nested grandchild share one Managed Worktree, plus an
- * unrelated standalone session in its own worktree. Every session is visible in its own pane, so
- * each owns a live Worktree Store observing its Working Directory's landing operation.
+ * unrelated standalone session in its own worktree. Each session's Worktree control is mounted to
+ * exercise the shared backend operation independently of conversation selection.
  */
 function renderSessions(selectedSessionId = "parent") {
   const sessions = [
@@ -117,10 +117,6 @@ function renderSessions(selectedSessionId = "parent") {
       fixture.root.sessionRegistry.load(session.sessionId, session.workingDirectory),
     ]),
   );
-  fixture.root.navigationStore.selectProjectSession(selectedSessionId);
-  for (const session of sessions)
-    if (!fixture.root.sessionLayoutStore.hasSession(session.sessionId))
-      fixture.root.sessionLayoutStore.splitFocused(session.sessionId, "x");
   fixture.root.navigationStore.selectProjectSession(selectedSessionId);
   const view = render(
     <>

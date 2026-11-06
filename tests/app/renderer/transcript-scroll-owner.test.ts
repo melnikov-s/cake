@@ -63,6 +63,65 @@ describe("transcript scroll owner measurement boundaries", () => {
     scroller.remove();
   });
 
+  it("finishes a restored row's exact offset after hidden index estimates settle", () => {
+    owner.dispose();
+    const row = list.firstElementChild!.firstElementChild as HTMLElement;
+    row.dataset.transcriptAnchorId = "saved-message";
+    list.style.visibility = "hidden";
+    scroller.scrollTop = 1_097;
+    const cancelVirtualNavigation = vi.fn();
+    owner = createTranscriptScrollOwner(scroller, scroller.firstElementChild as HTMLElement, {
+      following: false,
+      restore: { messageId: "saved-message", offset: -9 },
+      cancelVirtualNavigation,
+    });
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_097);
+
+    const provisional = addRow("older", 700, 200, 100);
+    list.style.visibility = "visible";
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_097);
+    expect(cancelVirtualNavigation).not.toHaveBeenCalled();
+
+    provisional.dataset.knownSize = "200";
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(989);
+    expect(row.getBoundingClientRect().top).toBe(-9);
+    expect(cancelVirtualNavigation).toHaveBeenCalledOnce();
+
+    // Restoration is one-shot; normal reading compensation owns later resizes.
+    shift = 80;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_069);
+    expect(row.getBoundingClientRect().top).toBe(-9);
+    expect(cancelVirtualNavigation).toHaveBeenCalledOnce();
+    scroller.scrollTop += 100;
+    scroller.dispatchEvent(new Event("scroll"));
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_169);
+  });
+
+  it("yields pending restoration to reader input before the row is revealed", () => {
+    owner.dispose();
+    const row = list.firstElementChild!.firstElementChild as HTMLElement;
+    row.dataset.transcriptAnchorId = "saved-message";
+    list.style.visibility = "hidden";
+    scroller.scrollTop = 1_097;
+    const cancelVirtualNavigation = vi.fn();
+    owner = createTranscriptScrollOwner(scroller, scroller.firstElementChild as HTMLElement, {
+      following: false,
+      restore: { messageId: "saved-message", offset: -9 },
+      cancelVirtualNavigation,
+    });
+    owner.reconcile();
+    scroller.dispatchEvent(new Event("pointerdown"));
+    list.style.visibility = "visible";
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_097);
+    expect(cancelVirtualNavigation).toHaveBeenCalledOnce();
+  });
+
   it("ignores transient range estimates, then compensates settled padding once", () => {
     const mounted = addRow("older", 700, 300, 100);
     shift = 700;

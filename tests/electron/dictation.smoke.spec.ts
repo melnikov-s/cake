@@ -8,6 +8,8 @@ import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { store, windowStateChildren, windowStateDocument } from "../fixtures/window-state";
 
+import { createSessionInProject } from "./fixtures/workspace-navigation";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 /** Isolated profile with fake native dictation assets and a scriptable external recognizer. */
@@ -224,7 +226,7 @@ test("discard filters restore typed selection and preserve lowercase speech in t
     const page = await application.firstWindow();
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await page.getByRole("textbox", { name: "Discard phrase" }).fill("Yeah.");
     await page.getByRole("button", { name: "Add filter", exact: true }).click();
@@ -295,7 +297,7 @@ for (const draft of ["typed", "dictated"] as const) {
       const page = await application.firstWindow();
       const composer = page.getByRole("combobox", { name: "Message", exact: true });
       await expect(composer).toBeVisible({ timeout: 20_000 });
-      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: /Voice & Dictation/ }).click();
       await page.getByRole("switch", { name: "Submit message by voice" }).click();
       await page.getByRole("button", { name: "Back to chat" }).click();
@@ -523,7 +525,7 @@ test("Dictation refocus preference applies live and survives restart", async () 
         name: "Prevent automatic refocusing while dictating",
       });
     const openSettings = async () => {
-      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     };
     const savedPreference = async () => {
@@ -541,7 +543,7 @@ test("Dictation refocus preference applies live and survives restart", async () 
     await composer().pressSequentially("Normal automatic focus");
     await expect(composer()).toHaveValue("Normal automatic focus");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await createSessionInProject(page, /^project(?: |$)/i);
     await expect(composer()).toBeFocused();
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
     await expect(composer()).toBeFocused();
@@ -589,7 +591,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await expect(
       page.getByText("Inspect this implementation before changing it.", { exact: true }),
     ).toBeVisible({ timeout: 20_000 });
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     const postProcess = page.getByLabel("Text processing", { exact: true });
     await expect(postProcess).toHaveValue("raw");
@@ -834,7 +836,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
 
     // Temporary mute preserves typing-mode convenience focus, even across sessions.
     await page.getByRole("button", { name: "Mute dictation", exact: true }).click();
-    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await createSessionInProject(page, /^project(?: |$)/i);
     await expect(composer).toBeFocused();
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
     await expect(composer).toBeFocused();
@@ -842,7 +844,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await expect(indicator).toHaveText("Listening");
 
     // New-session mount and returning-session focus requests both park, with native Tab entry.
-    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await createSessionInProject(page, /^project(?: |$)/i);
     await expect(focusAnchor).toBeFocused();
     await expect(composer).not.toBeFocused();
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
@@ -877,7 +879,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
         }
       })
       .toBe(true);
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await configure({ ready: true, speech: false, text: "" });
     await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await sample.focus();
@@ -1003,7 +1005,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
     await page.keyboard.press("Escape");
     await expect(indicator).toHaveCount(0);
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await configure({ ready: true, text: "Discard this tail" });
     // Drain the held external reply before a later phase holds recognition again.
     await expect

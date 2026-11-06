@@ -1,9 +1,10 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
 import type { JsonValue } from "../../../src/contracts/serialization/json-contract";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import { sessionSummary } from "./fixtures/catalog-fixtures";
 import {
   editorLease,
   editorSessionId,
@@ -77,7 +78,6 @@ describe("app.state visible workspace metadata", () => {
           sessionId: editorSessionId,
           status: "ready",
           url: "https://example.com/current/page",
-          paneId: expect.any(String),
         },
       },
     });
@@ -282,8 +282,55 @@ describe("app.state visible workspace metadata", () => {
 });
 
 describe("Workspace mode navigation", () => {
+  it("opens the worker CWD while retaining its owning project and draft across tool companions", async () => {
+    const open = vi.fn<Client["vscode"]["open"]>(async () => editorLease("a"));
+    using fixture = renderEmbeddedEditor(
+      { vscode: { open } },
+      {
+        additionalSessions: [
+          sessionSummary({
+            sessionId: "worktree-worker",
+            title: "Worktree worker",
+            projectPath: "/project",
+            workingDirectory: "/project-worktree",
+          }),
+        ],
+      },
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
+    await fixture.user.click(screen.getByRole("option", { name: /^Worktree worker / }));
+    await within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).findByRole(
+      "button",
+      { name: "Worktree worker" },
+    );
+    await fixture.user.type(
+      screen.getByRole("combobox", { name: "Message" }),
+      "Keep this worker draft",
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await waitFor(() =>
+      expect(open).toHaveBeenCalledWith(
+        "/project-worktree",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Open Project Chat for Project" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    await fixture.user.click(screen.getByRole("button", { name: "Close chat" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Open chat" }));
+    expect(screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" }).value).toBe(
+      "Keep this worker draft",
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    expect(screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" }).value).toBe(
+      "Keep this worker draft",
+    );
+  });
   it.each(["Open Browser Mode", "Open VS Code"] as const)(
-    "replaces %s with a working return-to-Agent action and keeps the other mode available",
+    "selects %s without changing the conversation and keeps all workspace modes available",
     async (action) => {
       const browserState = {
         sessionId: editorSessionId,
@@ -316,7 +363,9 @@ describe("Workspace mode navigation", () => {
         );
         expect(openBrowser).toHaveBeenCalledOnce();
       }
-      expect(screen.queryByRole("button", { name: action })).toBeNull();
+      expect(screen.getByRole("button", { name: action }).getAttribute("aria-pressed")).toBe(
+        "true",
+      );
       const other = action === "Open VS Code" ? "Open Browser Mode" : "Open VS Code";
       expect(screen.getByRole("button", { name: other })).toBeDefined();
       expect(screen.getByRole("button", { name: "Terminal" })).toBeDefined();

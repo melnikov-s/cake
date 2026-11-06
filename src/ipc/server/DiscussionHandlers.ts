@@ -4,6 +4,8 @@ import * as discussionSessions from "../../domain/discussion-sessions/discussion
 import { DiscussionRpc } from "../protocol/DiscussionRpc";
 
 export const discussionHandlers = DiscussionRpc.of({
+  "discussionSessions.observeMetadata": (input) =>
+    Stream.unwrap(discussionSessions.observeMetadata(input)),
   "discussionSessions.observeCatalog": (input) =>
     Stream.unwrap(discussionSessions.observeCatalog(input)),
   "discussionSessions.list": (input) => discussionSessions.list(input),

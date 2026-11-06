@@ -31,7 +31,10 @@ afterEach(() => {
 });
 
 const projectComposer = () => screen.getByPlaceholderText("Ask Cake to work in alpha…");
-const openAlpha = () => screen.getByRole("button", { name: /^alpha conversation / });
+async function openAlpha(user: ReturnType<typeof renderAppShellNavigation>["user"]) {
+  await user.click(screen.getByRole("button", { name: "Search sessions" }));
+  await user.click(screen.getByRole("option", { name: /^alpha conversation / }));
+}
 
 describe("window presentation persistence workflows", () => {
   it.each([false, true])("starts a fresh browser (phone: %s)", async (phone) => {
@@ -42,11 +45,10 @@ describe("window presentation persistence workflows", () => {
     if (phone) {
       expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
       expect(screen.queryByRole("button", { name: /^alpha conversation / })).toBeNull();
-      await fixture.user.click(screen.getByRole("button", { name: "Toggle sidebar" }));
     } else {
       expect(screen.getByRole("heading", { name: "What should we build?" })).toBeDefined();
     }
-    await fixture.user.click(openAlpha());
+    await openAlpha(fixture.user);
     expect(await screen.findByPlaceholderText("Ask Cake to work in alpha…")).toBeDefined();
   });
 
@@ -63,11 +65,11 @@ describe("window presentation persistence workflows", () => {
         using fixture = renderAppShellNavigation({ windowState: { save } });
         using persistence = new WindowStatePersistence(fixture.client, reportError);
         persistence.observe(fixture.root);
-        await fixture.user.click(openAlpha());
+        await openAlpha(fixture.user);
         await screen.findByPlaceholderText("Ask Cake to work in alpha…");
         await fixture.user.type(projectComposer(), "Continue this unsent investigation");
-        await fixture.user.click(screen.getAllByRole("button", { name: "Toggle sidebar" })[0]!);
-        await fixture.user.click(screen.getAllByRole("button", { name: "Open settings" })[0]!);
+        await fixture.user.click(screen.getAllByRole("button", { name: "Close Workspace" })[0]!);
+        await fixture.user.click(screen.getAllByRole("button", { name: "Settings" })[0]!);
         expect(await screen.findByText("Model configuration")).toBeDefined();
         // Window-close flushing is a lifecycle boundary, not an invented UI command.
         await act(async () => persistence.flush());
@@ -82,8 +84,7 @@ describe("window presentation persistence workflows", () => {
       if (phone) {
         expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
         expect(screen.queryByRole("button", { name: /^alpha conversation / })).toBeNull();
-        await restored.user.click(screen.getByRole("button", { name: "Toggle sidebar" }));
-        await restored.user.click(openAlpha());
+        await openAlpha(restored.user);
       } else {
         expect(await screen.findByText("Model configuration")).toBeDefined();
         await restored.user.click(screen.getByRole("button", { name: "Back to chat" }));

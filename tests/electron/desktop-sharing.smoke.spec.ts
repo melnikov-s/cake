@@ -9,7 +9,7 @@ import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const openSharing = async (page: Page) => {
-  await page.getByRole("button", { name: "Open settings", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: "Network & privacy", exact: true }).click();
   await expect(page.getByRole("switch", { name: "Enable browser sharing" })).toBeEnabled();
 };
@@ -120,7 +120,10 @@ test("desktop Settings shares the existing backend; window closure, reopen, disa
     const remote = await browser.newPage();
     remote.setDefaultTimeout(15_000);
     await remote.goto(url);
-    const remoteSession = remote.locator(`[data-slot="sidebar"] [data-session-id="${id}"]`).first();
+    await remote.getByRole("button", { name: "Search sessions", exact: true }).click();
+    const remoteSession = remote
+      .getByRole("dialog", { name: "Search sessions", exact: true })
+      .locator(`.session-item[data-session-id="${id}"]`);
     await expect(remoteSession).toBeVisible();
     await remoteSession.click();
     await expect(remote.locator(".transcript").getByText(title, { exact: true })).toBeVisible();
@@ -340,7 +343,7 @@ test("connection preferences survive quitting and a fresh desktop process withou
     application = await launch();
     const fresh = await application.firstWindow();
     // A saved window snapshot may restore the Settings cover, otherwise open it.
-    const open = fresh.getByRole("button", { name: "Open settings", exact: true });
+    const open = fresh.getByRole("button", { name: "Settings", exact: true });
     await expect(
       fresh.getByRole("button", { name: "Network & privacy", exact: true }).or(open).first(),
     ).toBeVisible();

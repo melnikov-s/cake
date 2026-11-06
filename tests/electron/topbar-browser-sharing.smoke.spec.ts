@@ -9,59 +9,28 @@ import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-async function expectPairedNavigation(page: Page) {
-  const toggles = page.getByRole("button", { name: "Toggle sidebar", exact: true });
-  expect(await toggles.count()).toBeGreaterThan(0);
-  for (const toggle of await toggles.all()) {
-    const connection = toggle.locator("..").getByRole("button", { name: /^Browser sharing:/ });
-    await expect(connection).toBeVisible();
-    await expect(connection).toBeInViewport({ ratio: 1 });
-    // Read both bounds in one frame, including while the sidebar animates.
-    await expect
-      .poll(() =>
-        toggle.evaluate((element) => {
-          const navigation = element.getBoundingClientRect();
-          const connection = element.nextElementSibling!.getBoundingClientRect();
-          return {
-            gap: connection.x - navigation.right,
-            verticalOffset: connection.y - navigation.y,
-          };
-        }),
-      )
-      .toEqual({ gap: 4, verticalOffset: 0 });
-    // Optional actions may scroll, but neither navigation control belongs to that scroller.
-    expect(
-      await connection.evaluate((element) => {
-        for (let parent = element.parentElement; parent; parent = parent.parentElement) {
-          if (getComputedStyle(parent).overflowX === "auto") return true;
-        }
-        return false;
-      }),
-    ).toBe(false);
-  }
-}
-
 async function checkResponsiveNavigation(page: Page) {
-  const sidebar = page.getByRole("complementary");
+  const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
+  const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+  if (!(await workspace.isVisible()))
+    await rail.getByRole("button", { name: "Open Workspace", exact: true }).click();
   for (const expanded of [true, false]) {
     for (const width of [1280, 820, 621, 620, 420, 320]) {
       await page.setViewportSize({ width, height: 700 });
-      await expectPairedNavigation(page);
+      const sharing = rail.getByRole("button", { name: /^Browser sharing:/ });
+      await expect(sharing).toBeVisible();
+      await expect(sharing).toBeInViewport({ ratio: 1 });
       if (width === 420) {
-        const owner = expanded ? sidebar : page.locator('[data-slot="workspace-header"]');
-        await owner.getByRole("button", { name: /^Browser sharing:/ }).click();
+        await sharing.click();
         await expect(page.getByRole("dialog", { name: "Browser sharing" })).toBeVisible();
         await page.keyboard.press("Escape");
       }
     }
     await page.setViewportSize({ width: 1280, height: 900 });
-    if (expanded) {
-      await sidebar.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
-      await expect(sidebar).not.toBeVisible();
-    }
+    if (expanded) await rail.getByRole("button", { name: "Close Workspace", exact: true }).click();
   }
-  await page.locator('[data-slot="header-sidebar-toggle"]').click();
-  await expect(sidebar).toBeVisible();
+  await rail.getByRole("button", { name: "Open Workspace", exact: true }).click();
+  await expect(workspace).toBeVisible();
 }
 
 test("topbar sharing supports keyboard access, real listener actions and Settings synchronization", async () => {
@@ -186,7 +155,10 @@ test("topbar sharing supports keyboard access, real listener actions and Setting
     await expect(offline).toHaveAttribute("aria-expanded", "false");
     await page.setViewportSize({ width: 1280, height: 900 });
     await checkResponsiveNavigation(page);
-    await page.locator('[data-slot="cake-chat-group"]').click();
+    await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Open Cake Chat", exact: true })
+      .click();
     await expect(
       page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
     ).toBeVisible();

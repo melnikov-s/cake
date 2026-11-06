@@ -9,6 +9,7 @@ import {
   DiscussionSessionTarget,
   DiscussionSessionUpdate,
   DiscussionThread,
+  DiscussionThreadMetadata,
 } from "../../contracts/discussion-sessions/discussion-session-data";
 
 const catalogTarget = {
@@ -22,6 +23,12 @@ const catalogTarget = {
  * group addressed by the sidecar's Pi Session ID.
  */
 export const DiscussionRpc = RpcGroup.make(
+  Rpc.make("discussionSessions.observeMetadata", {
+    payload: catalogTarget,
+    success: Schema.Array(DiscussionThreadMetadata),
+    error: DiscussionSessionError,
+    stream: true,
+  }),
   Rpc.make("discussionSessions.observeCatalog", {
     payload: catalogTarget,
     success: DiscussionCatalogUpdate,

@@ -2,15 +2,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-const headerSidebarToggle = (page: Page) =>
-  page.locator("header").getByRole("button", { name: "Toggle sidebar" });
-
-test("workspace settings icon visibility follows sidebar state", async () => {
+test("global Settings stays usable when Workspace closes and reopens", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-settings-icon-check-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -52,13 +49,15 @@ test("workspace settings icon visibility follows sidebar state", async () => {
       timeout: 20_000,
     });
 
-    const settings = page.getByRole("button", { name: "Open settings", exact: true });
+    const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
+    const settings = rail.getByRole("button", { name: "Settings", exact: true });
     await expect(settings).toBeVisible();
-
-    await page.getByRole("complementary").getByRole("button", { name: "Toggle sidebar" }).click();
+    await rail.getByRole("button", { name: "Close Workspace", exact: true }).click();
     await expect(settings).toBeVisible();
-
-    await headerSidebarToggle(page).click();
+    await settings.click();
+    await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await rail.getByRole("button", { name: "Open Workspace", exact: true }).click();
     await expect(settings).toBeVisible();
   } finally {
     await application.close();

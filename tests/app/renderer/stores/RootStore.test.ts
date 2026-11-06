@@ -165,7 +165,7 @@ describe("RootStore agent-control transport and composition", () => {
         prompt: "Continue in the fork.",
         title: "Forked work",
         resolveSource: true,
-        placement: "none",
+        open: false,
       },
     });
 
@@ -203,7 +203,7 @@ describe("RootStore agent-control transport and composition", () => {
       {
         ok: true,
         sessionId: "forked",
-        placement: "none",
+        opened: false,
         sourceResolved: true,
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -241,7 +241,7 @@ describe("RootStore agent-control transport and composition", () => {
         entryId: "entry-1",
         prompt: "This must not be sent.",
         resolveSource: false,
-        placement: "none",
+        open: false,
       },
     });
 

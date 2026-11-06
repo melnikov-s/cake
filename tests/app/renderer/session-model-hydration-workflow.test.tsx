@@ -75,6 +75,7 @@ function renderHydration() {
   root.sessionRegistry.load("first", "/project");
   root.navigationStore.selectProjectSession("first");
   root.projectWorkbenchStore.showLoadedSession("first");
+  root.workspaceNavigatorStore.show("sessions");
   const stop = observeModels(runtime, models, root);
   const view = render(
     <StoreProvider store={root}>

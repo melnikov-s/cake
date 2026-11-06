@@ -17,7 +17,9 @@ type Kind = "project" | "cake-chat";
 type Mode = "browser" | "vscode";
 
 beforeEach(() => {
-  vi.stubGlobal("innerWidth", 1600);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    () => new DOMRect(0, 0, 1200, 900),
+  );
   // jsdom has no SVG/text layout; Electron verifies actual geometry and input.
   Object.defineProperty(SVGElement.prototype, "getBBox", {
     configurable: true,
@@ -36,6 +38,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   Reflect.deleteProperty(SVGElement.prototype, "getBBox");
   Reflect.deleteProperty(Range.prototype, "getBoundingClientRect");
   Reflect.deleteProperty(Range.prototype, "getClientRects");
@@ -107,7 +110,6 @@ function renderWorkspace(kind: Kind, mode: Mode) {
   session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
     kind: "top",
   });
-  root.terminalStore.dock();
   const surface =
     kind === "project" ? (
       <ProjectWorkspaceSurface
@@ -144,31 +146,53 @@ function renderWorkspace(kind: Kind, mode: Mode) {
 // Real workflow Stores, Models, controls, Chat and side-chat composition.
 // These assertions cover rendered wiring, not pixel layout, native input or focus.
 describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
+  it("sizes the companion against the available center, not the desktop width", () => {
+    vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue(
+      new DOMRect(64, 0, 700, 900),
+    );
+    using f = renderWorkspace(kind, "browser");
+    expect(screen.getByRole("main").style.getPropertyValue("--workspace-chat-sidebar-width")).toBe(
+      "340px",
+    );
+    expect(f.session.workspaceChatSidebarWidth).toBe(440);
+  });
   it.each<Mode>(["browser", "vscode"])(
-    "%s retains sidebar selection/alignment, dock sizes, side chats and workflow slots",
+    "%s companion retains the same conversation and draft when closed and reopened",
     async (mode) => {
       using f = renderWorkspace(kind, mode);
-      const { container } = f.view;
+      const chat = f.session.conversationSessionStore.chatStore;
+      const draft = f.session.conversationSessionStore.composerStore.draftStore;
+      const sessionId = f.session.sessionId;
+      act(() => draft.setText("Continue the same conversation"));
+      await f.user.click(screen.getByRole("button", { name: "Close chat" }));
+      expect(f.session.workspaceChatSidebarVisible).toBe(false);
+      expect(f.session.sessionId).toBe(sessionId);
+      expect(f.session.conversationSessionStore.chatStore).toBe(chat);
+      expect(draft.text).toBe("Continue the same conversation");
+      await f.user.click(screen.getByRole("button", { name: "Open chat" }));
+      expect(f.session.workspaceChatSidebarVisible).toBe(true);
+      expect(f.session.conversationSessionStore.chatStore).toBe(chat);
+      expect(
+        screen.getByRole("combobox", {
+          name: kind === "project" ? "Message" : "Message Project Chat",
+        }).textContent,
+      ).toBe("Continue the same conversation");
+    },
+  );
+  it.each<Mode>(["browser", "vscode"])(
+    "%s retains the focused conversation, companion resizing, side chats and workflow slots",
+    async (mode) => {
+      using f = renderWorkspace(kind, mode);
       const main = screen.getByRole("main");
       const workspace = screen.getByRole("region", {
         name: mode === "browser" ? "Browser workspace" : "VS Code workspace",
       });
       expect(workspace).toBeDefined();
-      expect(main.style.getPropertyValue("--workspace-project-sidebar-width")).toBe("292px");
       expect(main.style.getPropertyValue("--workspace-chat-sidebar-width")).toBe("440px");
-      if (kind === "project") {
-        expect(
-          container
-            .querySelector(`[data-session-id="${f.session.sessionId}"]`)
-            ?.getAttribute("data-navigation-active"),
-        ).toBe("true");
-      } else {
-        expect(
-          screen
-            .getByRole("button", { name: "Open Project Chat for project" })
-            .getAttribute("aria-current"),
-        ).toBe("page");
-      }
+      expect(
+        screen.getByRole("complementary", { name: "Current conversation companion" }),
+      ).toBeDefined();
+      expect(screen.getByRole("group", { name: "Conversation workspace" })).toBeDefined();
       expect(
         screen.getByText(kind === "project" ? "Project task" : "Project coordinator", {
           selector: "strong",
@@ -194,19 +218,6 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
         screen.queryByRole("button", { name: "Continue from response in session tree" }) !== null,
       ).toBe(kind === "project");
 
-      act(() => f.root.sidebarStore.focusProject("/project"));
-      expect(main.style.getPropertyValue("--workspace-project-sidebar-width")).toBe("360px");
-      act(() => f.root.sidebarStore.setWidth(390));
-      expect(main.style.getPropertyValue("--workspace-project-sidebar-width")).toBe("390px");
-      const terminal = screen.getByLabelText("Terminal", { selector: "section" });
-      expect(terminal.style.height).toBe("360px");
-      // The dock spans workspace + chat, never the project navigation column.
-      expect(terminal.parentElement).toBe(workspace.parentElement?.parentElement);
-      fireEvent.keyDown(
-        within(terminal).getByRole("separator", { name: "Resize terminal", hidden: true }),
-        { key: "ArrowUp" },
-      );
-      expect(terminal.style.height).toBe("376px");
       fireEvent.keyDown(screen.getByRole("separator", { name: "Resize current session sidebar" }), {
         key: "ArrowLeft",
       });
@@ -231,7 +242,12 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
         });
       });
       expect(screen.getByRole("combobox", { name: "Message about selected text" })).toBeDefined();
-      await f.user.click(screen.getByRole("button", { name: "Close Side chat" }));
+      await f.user.click(
+        within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByRole(
+          "button",
+          { name: kind === "project" ? "Project task" : "Project Chat" },
+        ),
+      );
       expect(
         screen.getByRole("combobox", {
           name: kind === "project" ? "Message" : "Message Project Chat",

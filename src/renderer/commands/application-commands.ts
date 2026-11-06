@@ -5,7 +5,7 @@ import type { NavigationStore } from "../stores/NavigationStore";
 import type { NewSessionStore } from "../stores/NewSessionStore";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
-import type { SidebarStore } from "../stores/SidebarStore";
+import type { WorkspaceNavigatorStore } from "../stores/WorkspaceNavigatorStore";
 import type { TerminalStore } from "../stores/TerminalStore";
 import type { SessionAssistantStore } from "../stores/SessionAssistantStore";
 import type { DictationStore } from "../stores/DictationStore";
@@ -27,7 +27,7 @@ export function createApplicationCommandRegistry(owners: {
   cakeChat(): CakeChatCollectionStore;
   navigation(): NavigationStore;
   newSession(): NewSessionStore;
-  sidebar(): SidebarStore;
+  workspaceNavigator(): WorkspaceNavigatorStore;
   terminal(): TerminalStore;
   hints(): UiHintModeStore;
   assistant(): SessionAssistantStore;
@@ -103,33 +103,16 @@ export function createApplicationCommandRegistry(owners: {
         void owners.terminal().newTab();
       },
     },
-    "toggle-sidebar": { run: () => owners.sidebar().toggle() },
+    "toggle-sidebar": { run: () => owners.workspaceNavigator().toggle() },
     "toggle-session-tree": {
       enabled: editableProject,
       run: () => owners.workbench().commandPaneStore.toggle("tree"),
     },
-    "split-right": {
-      enabled: () =>
-        owners.shell().workspace === "project-sessions" && !owners.shell().coveringSurface,
+    "return-to-project-chat": {
       run: () => {
-        owners.navigation().splitFocusedSession("x");
+        void owners.navigation().returnToProjectChat();
       },
     },
-    "split-down": {
-      enabled: () =>
-        owners.shell().workspace === "project-sessions" && !owners.shell().coveringSurface,
-      run: () => {
-        owners.navigation().splitFocusedSession("y");
-      },
-    },
-    "focus-left": { run: () => owners.navigation().focusAdjacentSessionPane("left") },
-    "focus-right": { run: () => owners.navigation().focusAdjacentSessionPane("right") },
-    "focus-above": { run: () => owners.navigation().focusAdjacentSessionPane("above") },
-    "focus-below": { run: () => owners.navigation().focusAdjacentSessionPane("below") },
-    "focus-pane-1": { run: () => owners.navigation().focusSessionPaneNumber(1) },
-    "focus-pane-2": { run: () => owners.navigation().focusSessionPaneNumber(2) },
-    "focus-pane-3": { run: () => owners.navigation().focusSessionPaneNumber(3) },
-    "focus-pane-4": { run: () => owners.navigation().focusSessionPaneNumber(4) },
     "history-back": { run: () => owners.navigation().navigateBack() },
     "history-forward": { run: () => owners.navigation().navigateForward() },
     "next-active-session": { run: () => owners.navigation().navigateActiveSession("next") },

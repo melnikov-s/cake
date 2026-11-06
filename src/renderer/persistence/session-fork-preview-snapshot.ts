@@ -1,5 +1,4 @@
 import type { StoreSnapshot } from "r-state-tree";
-import type { SessionLayoutNode } from "../stores/SessionLayoutStore";
 import type { WindowConversationSelection } from "../stores/AppShellStore";
 
 function child(snapshot: StoreSnapshot, name: string) {
@@ -11,7 +10,7 @@ function child(snapshot: StoreSnapshot, name: string) {
 export function withoutSessionForkPreviews(
   snapshot: StoreSnapshot,
   sources: ReadonlyMap<string, string>,
-  layout: SessionLayoutNode | undefined,
+  history: readonly string[],
 ): StoreSnapshot {
   if (!sources.size) return snapshot;
   const registry = child(snapshot, "sessionRegistry");
@@ -35,20 +34,6 @@ export function withoutSessionForkPreviews(
   const lastTarget = capture?.state.lastTarget as WindowConversationSelection | undefined;
   if (capture && lastTarget?.kind === "project-session" && sources.has(lastTarget.sessionId))
     capture.state.lastTarget = { ...lastTarget, sessionId: sources.get(lastTarget.sessionId) };
-  if (panes) panes.state.layout = replaceLayout(layout, sources);
+  if (panes) panes.state.history = history.map((id) => sources.get(id) ?? id);
   return snapshot;
-}
-
-function replaceLayout(
-  node: SessionLayoutNode | undefined,
-  sources: ReadonlyMap<string, string>,
-): SessionLayoutNode | undefined {
-  if (!node) return undefined;
-  return node.kind === "pane"
-    ? { ...node, history: node.history.map((id) => sources.get(id) ?? id) }
-    : {
-        ...node,
-        first: replaceLayout(node.first, sources)!,
-        second: replaceLayout(node.second, sources)!,
-      };
 }

@@ -5,11 +5,12 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { emitRendererEvent } from "./main-harness";
-import { store, windowStateDocument } from "../fixtures/window-state";
+import { windowState } from "../fixtures/window-state";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("a native-control draft remains in the limited sidebar when activated", async () => {
+test("a native-control draft remains in the paginated Sessions accessory when activated", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-sidebar-control-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -35,7 +36,7 @@ test("a native-control draft remains in the limited sidebar when activated", asy
   );
   await writeFile(
     join(userData, "window-state.json"),
-    windowStateDocument({ projectCatalogStore: store({ projectOrder: [project] }) }),
+    windowState({ project, sessionId: "lightweight-9" }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),
@@ -66,7 +67,8 @@ test("a native-control draft remains in the limited sidebar when activated", asy
   });
   try {
     const page = await application.firstWindow();
-    await expect(page.locator('[data-session-id="lightweight-9"]')).toBeVisible({
+    await showSessions(page);
+    await expect(page.locator('.session-item[data-session-id="lightweight-9"]')).toBeVisible({
       timeout: 20_000,
     });
     await emitRendererEvent(application, {

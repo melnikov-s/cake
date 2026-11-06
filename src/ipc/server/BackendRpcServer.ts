@@ -13,7 +13,13 @@ import { Layer } from "effect";
 import { RpcServer } from "effect/unstable/rpc";
 import type { CakeChatRuntimeConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import { BackendRpc } from "../protocol/BackendRpc";
-import { RendererConnectionMiddlewareLive } from "../protocol/RendererConnectionMiddleware";
+import {
+  RendererConnectionMiddleware,
+  RendererConnectionMiddlewareLive,
+} from "../protocol/RendererConnectionMiddleware";
+import { SubagentRpc } from "../protocol/SubagentRpc";
+import { DiscussionRpc } from "../protocol/DiscussionRpc";
+import { CakeChatRpc } from "../protocol/CakeChatRpc";
 import { applicationStateHandlers } from "./ApplicationStateHandlers";
 import { artifactHandlers } from "./ArtifactHandlers";
 import { interviewHandlers } from "./InterviewHandlers";
@@ -39,8 +45,11 @@ import { attachmentUploadHandlers } from "./AttachmentUploadHandlers";
 export const makeBackendRpcHandlersLive = (
   homeDirectory: string,
   cakeChatConfiguration: CakeChatRuntimeConfiguration,
-) =>
-  BackendRpc.toLayer({
+) => {
+  // Existing feature groups bound handler inference while preserving BackendRpc's middleware contract.
+  const conversationGroups = SubagentRpc.merge(DiscussionRpc, CakeChatRpc);
+  const conversationTags = [...conversationGroups.requests.values()].map((rpc) => rpc._tag);
+  const handlers = BackendRpc.omit(...conversationTags).toLayer({
     ...automationHandlers,
     ...backendConnectionHandlers,
     ...vscodeHandlers,
@@ -51,13 +60,10 @@ export const makeBackendRpcHandlersLive = (
     ...attachmentUploadHandlers,
     ...terminalHandlers,
     ...managedWorktreeHandlers,
-    ...discussionHandlers,
-    ...subagentHandlers,
     ...dynamicWorkflowHandlers,
     ...applicationStateHandlers,
     ...artifactHandlers,
     ...interviewHandlers,
-    ...makeCakeChatHandlers(cakeChatConfiguration),
     ...makeConversationHandlers(cakeChatConfiguration),
     ...makeFoundationHandlers(homeDirectory),
     ...modelHandlers,
@@ -73,6 +79,15 @@ export const makeBackendRpcHandlersLive = (
     ...sessionChatHandlers,
     ...workspaceHandlers,
   });
+  return Layer.mergeAll(
+    handlers,
+    SubagentRpc.middleware(RendererConnectionMiddleware).toLayer(subagentHandlers),
+    DiscussionRpc.middleware(RendererConnectionMiddleware).toLayer(discussionHandlers),
+    CakeChatRpc.middleware(RendererConnectionMiddleware).toLayer(
+      makeCakeChatHandlers(cakeChatConfiguration),
+    ),
+  );
+};
 
 /** Acquires only the endpoint: the host supplies an already acquired backend and Protocol. */
 export const makeBackendRpcServerLive = (

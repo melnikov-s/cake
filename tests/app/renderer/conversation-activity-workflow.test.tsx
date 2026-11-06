@@ -103,7 +103,7 @@ function renderActivity(
     fixture.root.projectWorkbenchStore.showLoadedSession(parentId);
     fixture.root.sessionLayoutStore.showSession(parentId);
     if (splitSessionId) {
-      fixture.root.sessionLayoutStore.splitFocused(splitSessionId, "x");
+      fixture.root.sessionLayoutStore.showSession(splitSessionId);
       fixture.root.navigationStore.selectProjectSession(splitSessionId);
     }
   }
@@ -471,26 +471,14 @@ it("an idle child alone does not keep Activity visible, and resolving active chi
   expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
 });
 
-it("activity remains scoped to its pane when another Project Session is focused", async () => {
+it("does not show another conversation's running activity in the focused Session", () => {
   using view = renderActivity(
     "project",
-    [child({ sessionId: otherId, title: "Second pane", running: false })],
+    [child({ sessionId: otherId, title: "Another Session", running: false })],
     otherId,
   );
   view.publishWorker("running");
-  const parentPane = document.querySelector<HTMLElement>(
-    `[data-slot="session-pane"][data-session-id="${parentId}"]`,
-  )!;
-  const otherPane = document.querySelector<HTMLElement>(
-    `[data-slot="session-pane"][data-session-id="${otherId}"]`,
-  )!;
-  expect(within(otherPane).queryByRole("button", { name: /^Activity ·/ })).toBeNull();
-  await view.user.click(within(parentPane).getByRole("button", { name: "Activity · 1 running" }));
-  await view.user.click(
-    screen.getByRole("button", { name: "Inspect subagent: Inspect the boundary" }),
-  );
-  expect(within(parentPane).getByRole("complementary", { name: "Subagent" })).toBeTruthy();
-  expect(within(otherPane).queryByRole("complementary", { name: "Subagent" })).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
 });
 
 it("workers belonging to another conversation do not appear in this session's activity", () => {

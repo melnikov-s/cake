@@ -451,9 +451,12 @@ is a refactoring signal, not precedent.
   Capture choices and completion navigation never update that interaction record.
 - **Project Chat to-dos** are Project-owned ApplicationStorage data, projected through
   the existing Project catalog into `Project.todos`; `ProjectTodosStore` owns only
-  local edits, disclosure and side-pane interaction. The To-do toolbar toggle selects
-  the same accessory slot/width as side chat, with its existing narrow replacement
-  and composer-focus restoration. Actual new Project Sessions get one linked item at
+  local edits, disclosure and focus/context interaction. `WorkspaceNavigatorStore`
+  owns the right-hand accessory's visibility, width and exclusive To-dos/Sessions
+  mode across the focused chat and its real editor/browser surfaces. Each owning
+  Project's permanent `ProjectTodosStore` remains stable while workers or secondary
+  conversations are focused. Explicit reply context attaches to the actually focused
+  ChatStore through its existing composer; view focus never attaches context. Actual new Project Sessions get one linked item at
   start/child/fork boundaries, idempotent by canonical session identity. Agent guidance
   requires an item for building work, multi-step investigations or research, brainstorms the
   user wants to revisit and pending user decisions, but not for one-shot lookups or quick
@@ -605,24 +608,38 @@ is a refactoring signal, not precedent.
   automatic item. Session resolution reconciles both the session's Project list and this
   list; lifecycle user-change reminders reach it only for sessions it links. The renderer
   projects it from the application-state stream into `CakeChatTodoList`.
-- **Conversation navigation**: pane layouts own the focused session and pane-local
-  histories within the Project Session/Project Chat and global Cake Chat workspaces.
-  Permanent Project Chat uses the shared Project Session split layout while retaining
-  its canonical Cake Chat identity, registry, transcript, draft and accessory panes.
+- **Conversation navigation**: `SessionLayoutStore` owns one focused conversation and
+  backward/forward visits within each Project/global Cake Chat workspace. There are
+  no independent conversation splits or neighbor geometry. Project Chat retains its
+  canonical Cake Chat identity, registry, transcript, draft and reading position.
   `AppShellStore` owns the selected workspace and optional Settings/artifact-library
-  cover; its visible selection and retained conversation are derived from that
-  workspace's focused pane, never separately persisted session identities.
-  `NavigationStore` coordinates workspace changes and window visits. Window visit
-  history and pane-local history remain distinct; covering/uncovering a workspace
-  does not create a visit. The renderer navigation snapshot v1 → v2 migration
-  retains existing layouts (their focus wins over conflicting old shell IDs) and
-  seeds only missing layouts from old shell selection before mounting. Navigation
-  v2 → v3 moves the selected permanent Project Chat into the shared layout without
-  changing its conversation identity or discarding the retained Project pane history.
+  cover; visible selection derives from that workspace's focused conversation, never
+  a separately persisted session identity. `NavigationStore` coordinates workspace
+  changes and window visits. Covering/uncovering does not create a visit. Project
+  rail activation and `app.home` open Project Chat in Chat mode without resetting its
+  runtime; the registered Return to Project Chat shortcut uses the same intent.
+  `ConversationNavigatorStore` projects real grouping, family, side-chat and public
+  subagent ownership into one scoped recursive source list. Metadata-only catalog
+  observation discovers cold descendants without hydrating their transcripts.
+  `DiscussionNavigationStore` retains visited public Discussion identities and reuses
+  existing keyed Discussion/worker Stores and canonical conversation Models for actual
+  focus. The displayed `SideChatStore.target.navigationTarget` is the canonical
+  secondary selection for the center, breadcrumb and `app.state`; it never exposes
+  a private worker Pi identity. Ordinary selected secondary chats replace the center,
+  while detached/drop-down chat hosts retain their own existing accessory behavior.
+  Header artifact libraries keep their existing materialized owner authority and
+  explicitly name that owner during secondary focus; inline secondary artifacts keep
+  their existing conversation capabilities. `app.workspace` reads/changes the same
+  accessory Store as the UI, with existing agent-navigation permission for changes.
+  Navigation snapshot migrations v1 → v3 restore old selection authority and Project
+  Chat identity; v3 → v4 retains all old pane histories, focuses the previously focused
+  conversation, and discards obsolete split geometry. Drafts/read positions remain
+  conversation-owned. Child/fork launches default to background; `open: true` selects
+  their ordinary conversation, never creates another pane.
 - **Agent session navigation** uses `sessions.open` through the invoking renderer’s
   existing application-control gateway and `NavigationStore`. Project Session targets
-  are validated against the catalog; ordinary focused-pane/history policy applies,
-  including focusing an already-open target. `SettingsStore.agentNavigation` owns the
+  are validated against the catalog; ordinary focused-conversation/history policy applies,
+  including retaining an already-selected target. `SettingsStore.agentNavigation` owns the
   user-only permission: enabled by default, window-local, persisted in the existing
   window snapshot. It is not writable through agent Settings operations. Disabling it
   blocks agent navigation, not manual sidebar, history, or session-link navigation.

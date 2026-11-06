@@ -54,7 +54,7 @@ const cakeTopics = [
   {
     name: "app",
     summary:
-      "Inspect and arrange the Cake window (layout, split panes) and read the user's highlighted text.",
+      "Inspect the focused conversation, navigate home, control the To-dos/Sessions Workspace and read the user's highlighted text.",
   },
   {
     name: "automations",

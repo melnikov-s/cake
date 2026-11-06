@@ -12,8 +12,6 @@ export interface ProjectRemovalStoreProps {
   cakeChat(): CakeChatCollectionStore;
   registry: SessionRegistryStore;
   shell: AppShellStore;
-  focusedProjectPath(): string | undefined;
-  leaveProjectFocus(): void;
   navigate(target: SessionHistoryEntry): Promise<void>;
   showEmptyWorkbench(): void;
 }
@@ -46,7 +44,6 @@ export class ProjectRemovalStore extends Store<ProjectRemovalStoreProps> {
     }
 
     ProjectOpenContext.consume(this)!.clear(path);
-    if (this.props.focusedProjectPath() === path) this.props.leaveProjectFocus();
     const target = this.props.shell.removeSessionsFromHistory(sessionIds);
     chat.sessionLayoutStore.removeSessions(chatIds);
     for (const sessionId of chatIds) chat.registry.remove(sessionId);

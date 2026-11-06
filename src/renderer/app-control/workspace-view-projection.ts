@@ -41,12 +41,7 @@ export async function inspectWorkspaceView(
   const presentation = capabilities.projectWorkbenchStore.presentationStore;
   const mode = presentation.props.activeSession()?.presentationMode;
   if (mode !== "browser" && mode !== "vscode") return undefined;
-  const layout =
-    active.kind === "cake-chat"
-      ? capabilities.cakeChatCollectionStore.layoutFor(active.sessionId)
-      : capabilities.sessionLayoutStore;
-  const paneId = layout.paneForSession(active.sessionId)?.paneId;
-  const identity = { sessionId: active.sessionId, ...(paneId ? { paneId } : null) };
+  const identity = { sessionId: active.sessionId };
   const covered =
     capabilities.appShellStore.coveringSurface !== undefined ||
     capabilities.projectWorkbenchStore.activeSessionResolved;

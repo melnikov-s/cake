@@ -15,7 +15,6 @@ export function browserInitialSnapshot(
   const shell = snapshot.children.appShellStore as StoreSnapshot | undefined;
   // SAFETY: RootStore.cakeChatCollectionStore is a singular @child Store.
   const collection = snapshot.children.cakeChatCollectionStore as StoreSnapshot | undefined;
-  const paneId = crypto.randomUUID();
   return {
     ...snapshot,
     children: {
@@ -24,7 +23,7 @@ export function browserInitialSnapshot(
         ...shell,
         state: {
           ...shell?.state,
-          navigationVersion: 3,
+          navigationVersion: 4,
           workspace: "cake-chat",
           coveringSurface: undefined,
         },
@@ -36,8 +35,8 @@ export function browserInitialSnapshot(
           ...collection?.children,
           sessionLayoutStore: {
             state: {
-              layout: { kind: "pane", paneId, history: [CAKE_CHAT_SESSION_ID], historyCursor: 0 },
-              focusedPaneId: paneId,
+              history: [CAKE_CHAT_SESSION_ID],
+              historyCursor: 0,
             },
             children: {},
           },

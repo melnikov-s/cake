@@ -1,6 +1,6 @@
 import { type DragEvent, type ReactNode } from "react";
 
-export interface SortableItemDragHandleProps {
+interface SortableItemDragHandleProps {
   draggable: true;
   onDragStart(event: DragEvent): void;
   onDragEnd(): void;

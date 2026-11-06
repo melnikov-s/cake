@@ -100,7 +100,7 @@ describe("WindowStatePersistence", () => {
       children: {
         sessionRegistry: { state: { targets: [{ sessionId, workspacePath: workspace }] } },
         sessionLayoutStore: {
-          state: { layout: { history: [sessionId, sessionId], historyCursor: 1 } },
+          state: { history: [sessionId, sessionId], historyCursor: 1 },
         },
       },
     });
@@ -137,8 +137,8 @@ describe("WindowStatePersistence", () => {
     expect(JSON.parse(JSON.stringify(payload))).toEqual(payload);
     expect(payload).toMatchObject({
       children: {
-        appShellStore: { state: { navigationVersion: 3, workspace: "project-sessions" } },
-        sessionLayoutStore: { state: { layout: { history: [sessionId], historyCursor: 0 } } },
+        appShellStore: { state: { navigationVersion: 4, workspace: "project-sessions" } },
+        sessionLayoutStore: { state: { history: [sessionId], historyCursor: 0 } },
         sessionRegistry: {
           children: {
             sessions: [
@@ -264,7 +264,7 @@ describe("WindowStatePersistence", () => {
     expect(h.save).toHaveBeenCalledTimes(2);
   });
 
-  it("persists pane identities and unsent data while saved facts remain backend-owned", async () => {
+  it("persists focused conversation visits and unsent data while saved facts remain backend-owned", async () => {
     const h = harness({ savedDraftsReady: true });
     const saved = {
       sessionId: savedId,
@@ -319,8 +319,6 @@ describe("WindowStatePersistence", () => {
     settings.appearance.setWorkLogViewMode("log");
     settings.appearance.setWorkLogsExpansion("expanded");
     settings.agentNavigation.setEnabled(false);
-    settings.embeddedEditor.setSidebarAutoHide("below-width");
-    settings.embeddedEditor.setSidebarAutoHideWidth(1728);
     const action = settings.hotkeys.definitions[0]!.id;
     settings.hotkeys.clear(action);
     settings.hotkeys.assign("toggle-dictation-mute", "AltRight");

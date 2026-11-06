@@ -5,6 +5,8 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
 
+import { createSessionInProject } from "./fixtures/workspace-navigation";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 interface Preset {
@@ -182,7 +184,7 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
     await expect(mainPage.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
       timeout: 20_000,
     });
-    await mainPage.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await createSessionInProject(mainPage, /^project(?: |$)/i);
     await expect(mainPage.getByRole("button", { name: "Model configuration" })).toContainText(
       "Unavailable but editable",
     );
@@ -192,7 +194,7 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
       "Unavailable but editable",
     );
 
-    const openSettings = mainPage.locator('button[aria-label="Open settings"]:visible');
+    const openSettings = mainPage.locator('button[aria-label="Settings"]:visible');
     await expect(openSettings).toBeVisible({ timeout: 20_000 });
     await openSettings.click();
     const modelPresets = mainPage.getByLabel("Model Presets");

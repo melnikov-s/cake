@@ -41,7 +41,6 @@ export interface AppShellStoreProps {
     workspace: "project-sessions" | "cake-chat" | "automation-sessions",
   ): string | undefined;
   automationSessionResolved?(sessionId: string): boolean;
-  sessionInNavigationScope(entry: SessionHistoryEntry): boolean;
   onProjectSessionSelectionChanged(current: string | undefined, previous: string | undefined): void;
 }
 
@@ -58,7 +57,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     if (target.kind !== "automation-session") this.lastInteractedConversation = { ...target };
   }
 
-  @snapshot readonly navigationVersion = 3;
+  @snapshot readonly navigationVersion = 4;
   @snapshot workspace: ConversationWorkspace = "home";
   @snapshot coveringSurface: "settings" | "artifact-library" | "automations" | undefined;
 
@@ -214,7 +213,6 @@ export class AppShellStore extends Store<AppShellStoreProps> {
       cursor += direction
     ) {
       const entry = this.sessionHistory[cursor]!;
-      if (!this.props.sessionInNavigationScope(entry)) continue;
       if (target && !sameSessionEntry(entry, target)) continue;
       if (
         entry.kind === "automation-session"

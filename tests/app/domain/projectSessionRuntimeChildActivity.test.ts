@@ -16,12 +16,11 @@ import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { makeRuntimeRecoveryStorageTestLayer, fakeRuntime } from "../helpers/piRuntimeFixture";
 
 it.effect.each([
-  { placement: "none" as const, launchFails: false, rendererUnavailable: false },
-  { placement: "right" as const, launchFails: false, rendererUnavailable: false },
-  { placement: "down" as const, launchFails: false, rendererUnavailable: false },
-  { placement: "none" as const, launchFails: true, rendererUnavailable: false },
-  { placement: "none" as const, launchFails: false, rendererUnavailable: true },
-])("projects child activity independently of pane placement (%j)", (scenario) => {
+  { open: false, launchFails: false, rendererUnavailable: false },
+  { open: true, launchFails: false, rendererUnavailable: false },
+  { open: false, launchFails: true, rendererUnavailable: false },
+  { open: false, launchFails: false, rendererUnavailable: true },
+])("projects child activity independently of whether it is opened (%j)", (scenario) => {
   const requestApplicationControl = vi.fn(async () => {
     if (scenario.rendererUnavailable) throw new Error("No renderer connected");
     return { ok: true };
@@ -86,7 +85,7 @@ it.effect.each([
           title: "Background worker",
           assignment: { description: "Background work", body: "Work without being selected" },
           model: { provider: "test", modelId: "test", thinkingLevel: "off", fastMode: false },
-          placement: scenario.placement,
+          open: scenario.open,
           senderContext: { usedTokens: 1000, windowTokens: 128000 },
         },
         new AbortController().signal,
@@ -112,7 +111,7 @@ it.effect.each([
           familyChildOrder: 0,
           familyDepth: 1,
           workingDirectory: "/project",
-          placement: scenario.placement,
+          open: scenario.open,
         },
         expect.any(AbortSignal),
       );

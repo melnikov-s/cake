@@ -108,7 +108,7 @@ function renderResources(
     fixture.root.navigationStore.selectProjectSession("alpha");
     fixture.root.projectWorkbenchStore.showLoadedSession("alpha");
     fixture.root.sessionLayoutStore.ensureSession("alpha");
-    if (texts.beta !== undefined) fixture.root.sessionLayoutStore.splitFocused("beta", "x");
+    if (texts.beta !== undefined) fixture.root.sessionLayoutStore.showSession("beta");
   }
   const view = render(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 900, itemHeight: 160 }}>
@@ -123,11 +123,7 @@ function renderResources(
   return {
     root: fixture.root,
     async focus(sessionId: string) {
-      await act(async () =>
-        fixture.root.navigationStore.focusSessionPane(
-          fixture.root.sessionLayoutStore.paneForSession(sessionId)!.paneId,
-        ),
-      );
+      await act(async () => fixture.root.navigationStore.showLoadedProjectSession(sessionId));
     },
     [Symbol.dispose]() {
       view.unmount();
@@ -161,7 +157,7 @@ afterEach(() => {
 
 // Real RendererRoot -> production pane behavior -> ChatTranscript -> Markdown -> validated Client.
 // These assert authority/resource bindings, not native focus, layout, scrolling or iframe execution.
-it("loads identical relative names from each displayed working directory and keeps them on pane-selection changes", async () => {
+it("loads relative resources from the focused conversation's working directory across navigation", async () => {
   const readImage = vi.fn<Client["filesystem"]["readImage"]>(async (directory) => ({
     data: directory === "/alpha-tree" ? "AQID" : "BAUG",
     mimeType: "image/png",
@@ -170,23 +166,20 @@ it("loads identical relative names from each displayed working directory and kee
     { alpha: "![Alpha image](screen.png)", beta: "![Beta image](screen.png)" },
     { filesystem: { readImage } },
   );
-  const alpha = await screen.findByRole("img", { name: "Alpha image" });
   const beta = await screen.findByRole("img", { name: "Beta image" });
+  expect(beta.getAttribute("src")).toBe("data:image/png;base64,BAUG");
+  await fixture.focus("alpha");
+  const alpha = await screen.findByRole("img", { name: "Alpha image" });
   expect(alpha.getAttribute("src")).toBe("data:image/png;base64,AQID");
   expect(beta.getAttribute("src")).toBe("data:image/png;base64,BAUG");
   expect(new Set(readImage.mock.calls.map(([directory]) => directory))).toEqual(
     new Set(["/alpha-tree", "/beta-tree"]),
   );
   await fixture.focus("alpha");
-  const settledReads = readImage.mock.calls.length;
   await fixture.focus("beta");
   await fixture.focus("alpha");
-  expect(readImage.mock.calls).toHaveLength(settledReads);
-  expect(screen.getByRole("img", { name: "Alpha image" }).getAttribute("src")).toBe(
+  expect((await screen.findByRole("img", { name: "Alpha image" })).getAttribute("src")).toBe(
     "data:image/png;base64,AQID",
-  );
-  expect(screen.getByRole("img", { name: "Beta image" }).getAttribute("src")).toBe(
-    "data:image/png;base64,BAUG",
   );
 });
 
@@ -221,7 +214,7 @@ it("reads global Cake Chat images without a Working Directory rather than fallin
 });
 
 it.each(["Markdown", "tool"] as const)(
-  "authorizes %s artifact/widget state using each displayed public conversation, not the selected pane",
+  "authorizes %s artifact/widget state using each focused public conversation across selection",
   async (surface) => {
     const stateRead = vi.fn<Client["artifacts"]["stateRead"]>(async ({ lineageId }) => ({
       lineageId,
@@ -284,6 +277,8 @@ it.each(["Markdown", "tool"] as const)(
         },
       },
     );
+    await fixture.focus("alpha");
+    await fixture.focus("beta");
     await waitFor(() =>
       expect(new Set(stateRead.mock.calls.map(([input]) => input.sessionId))).toEqual(
         new Set(["alpha", "beta"]),

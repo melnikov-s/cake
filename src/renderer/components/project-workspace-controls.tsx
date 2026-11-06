@@ -4,6 +4,9 @@ import { RootStore } from "../stores/RootStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
 import { ConversationActivity } from "./conversation-activity";
+import { WorkspaceTodosToggle } from "./workspace-todos-toggle";
+import { SessionChangesToggle } from "./session-changes-toggle";
+import { SideChatsMenu } from "./side-chats-menu";
 
 export const ProjectWorkspaceControls = observer(function ProjectWorkspaceControls({
   session,
@@ -28,7 +31,12 @@ export const ProjectWorkspaceControls = observer(function ProjectWorkspaceContro
         />
       )}
       <SessionArtifactMenu session={session} />
+      <SideChatsMenu store={session} />
+      <SessionChangesToggle session={session} />
+      <WorkspaceTodosToggle />
       <WorkspaceModeControls
+        chatSidebarVisible={session.workspaceChatSidebarVisible}
+        onToggleChatSidebar={() => session.toggleWorkspaceChatSidebar()}
         mode={mode}
         terminalAvailable={terminal.available}
         terminalOpen={terminal.open}

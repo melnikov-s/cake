@@ -1,11 +1,10 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
-import { sessionSummary } from "./fixtures/catalog-fixtures";
 
 beforeEach(() => {
   vi.stubGlobal("PointerEvent", MouseEvent);
@@ -30,18 +29,21 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const back = () => screen.getByRole("button", { name: "Go back in session history" });
-const forward = () => screen.getByRole("button", { name: "Go forward in session history" });
-const settings = () => screen.getAllByRole("button", { name: "Open settings" })[0]!;
+const settings = () => screen.getByRole("button", { name: "Settings" });
 const openLibrary = async (user: ReturnType<typeof renderAppShellNavigation>["user"]) => {
   if (!screen.queryByRole("button", { name: "Browse all artifacts" })) {
-    await user.click(screen.getByRole("button", { name: /^(?:\d+ artifacts|Artifacts)$/ }));
+    await user.click(
+      within(screen.getByRole("navigation", { name: "Projects and global utilities" })).getByRole(
+        "button",
+        { name: /^(?:\d+ artifacts|Artifacts)$/ },
+      ),
+    );
   }
   await user.click(await screen.findByRole("button", { name: "Browse all artifacts" }));
 };
 const sessionButton = (name: string) =>
   screen.getByRole("button", { name: new RegExp(`^${name} conversation `) });
-const cakeChatButton = () => screen.getByRole("button", { name: "Cake Chat" });
+const cakeChatButton = () => screen.getByRole("button", { name: "Open Cake Chat" });
 const expectProjectChat = async (name: string) => {
   expect(await screen.findByPlaceholderText(`Ask Cake to work in ${name}…`)).toBeDefined();
 };
@@ -62,9 +64,9 @@ describe("App shell navigation workflow", () => {
       let saved: StoreSnapshot;
       {
         using fixture = renderAppShellNavigation();
-        await fixture.user.click(sessionButton("alpha"));
+        await fixture.selectSession("alpha");
         await expectProjectChat("alpha");
-        await fixture.user.click(sessionButton("beta"));
+        await fixture.selectSession("beta");
         await expectProjectChat("beta");
         if (workspace === "cake-chat") {
           await fixture.user.click(cakeChatButton());
@@ -86,10 +88,10 @@ describe("App shell navigation workflow", () => {
       else await expectProjectChat("beta");
       // Window visits survive covering/restoration without becoming pane-local history.
       await openLibrary(restored.user);
-      await restored.user.click(back());
+      await restored.pressHistory("back");
       await expectProjectChat(workspace === "cake-chat" ? "beta" : "alpha");
       await openLibrary(restored.user);
-      await restored.user.click(forward());
+      await restored.pressHistory("forward");
       if (workspace === "cake-chat") await expectCakeChat();
       else await expectProjectChat("beta");
     },
@@ -98,46 +100,46 @@ describe("App shell navigation workflow", () => {
   it("traverses project and Cake Chat visits without recording reselections and truncates a divergent forward branch", async () => {
     const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
     using fixture = renderAppShellNavigation({ projectSessions: { open } });
-    expect(back()).toHaveProperty("disabled", true);
-    expect(forward()).toHaveProperty("disabled", true);
-    await fixture.user.click(sessionButton("alpha"));
+    expect(fixture.root.appShellStore.canGoBack).toBe(false);
+    expect(fixture.root.appShellStore.canGoForward).toBe(false);
+    await fixture.selectSession("alpha");
     await expectProjectChat("alpha");
-    await fixture.user.click(sessionButton("alpha"));
+    await fixture.selectSession("alpha");
     await expectProjectChat("alpha");
     await fixture.user.click(cakeChatButton());
     await expectCakeChat();
     await fixture.user.click(cakeChatButton());
     await openLibrary(fixture.user);
-    await fixture.user.click(back());
+    await fixture.pressHistory("back");
     await expectProjectChat("alpha");
-    expect(back()).toHaveProperty("disabled", true);
-    expect(forward()).toHaveProperty("disabled", false);
+    expect(fixture.root.appShellStore.canGoBack).toBe(false);
+    expect(fixture.root.appShellStore.canGoForward).toBe(true);
     await openLibrary(fixture.user);
-    await fixture.user.click(forward());
+    await fixture.pressHistory("forward");
     await expectCakeChat();
-    expect(forward()).toHaveProperty("disabled", true);
+    expect(fixture.root.appShellStore.canGoForward).toBe(false);
 
-    await fixture.user.click(sessionButton("beta"));
+    await fixture.selectSession("beta");
     await expectProjectChat("beta");
     await openLibrary(fixture.user);
-    await fixture.user.click(back());
+    await fixture.pressHistory("back");
     await expectCakeChat();
-    await fixture.user.click(sessionButton("gamma"));
+    await fixture.selectSession("gamma");
     await expectProjectChat("gamma");
-    expect(forward()).toHaveProperty("disabled", true);
+    expect(fixture.root.appShellStore.canGoForward).toBe(false);
     await openLibrary(fixture.user);
-    await fixture.user.click(back());
+    await fixture.pressHistory("back");
     await expectCakeChat();
     await openLibrary(fixture.user);
-    await fixture.user.click(forward());
+    await fixture.pressHistory("forward");
     await expectProjectChat("gamma");
 
     // Selecting an earlier visited session directly is a new visit, not a traversal.
-    await fixture.user.click(sessionButton("alpha"));
+    await fixture.selectSession("alpha");
     await expectProjectChat("alpha");
-    expect(forward()).toHaveProperty("disabled", true);
+    expect(fixture.root.appShellStore.canGoForward).toBe(false);
     await openLibrary(fixture.user);
-    await fixture.user.click(back());
+    await fixture.pressHistory("back");
     await expectProjectChat("gamma");
     expect(open).toHaveBeenCalledWith(
       { sessionId: "gamma", workingDirectory: "/gamma" },
@@ -147,28 +149,28 @@ describe("App shell navigation workflow", () => {
 
   it("skips newly resolved project visits in both directions but retains the permanent Cake Chat", async () => {
     using fixture = renderAppShellNavigation();
-    await fixture.user.click(sessionButton("alpha"));
+    await fixture.selectSession("alpha");
     await expectProjectChat("alpha");
-    await fixture.user.click(sessionButton("beta"));
+    await fixture.selectSession("beta");
     await expectProjectChat("beta");
     await fixture.user.click(cakeChatButton());
-    await fixture.user.click(sessionButton("gamma"));
+    await fixture.selectSession("gamma");
     await expectProjectChat("gamma");
     await fixture.publishResolved("beta");
     await openLibrary(fixture.user);
-    await fixture.user.click(back());
+    await fixture.pressHistory("back");
     await expectCakeChat();
     await openLibrary(fixture.user);
-    await fixture.user.click(back());
+    await fixture.pressHistory("back");
     await expectProjectChat("alpha");
-    expect(back()).toHaveProperty("disabled", true);
+    expect(fixture.root.appShellStore.canGoBack).toBe(false);
     await openLibrary(fixture.user);
-    await fixture.user.click(forward());
+    await fixture.pressHistory("forward");
     await expectCakeChat();
     await openLibrary(fixture.user);
-    await fixture.user.click(forward());
+    await fixture.pressHistory("forward");
     await expectProjectChat("gamma");
-    expect(forward()).toHaveProperty("disabled", true);
+    expect(fixture.root.appShellStore.canGoForward).toBe(false);
   });
 
   it("keeps an archived preview out of history until restoration is published", async () => {
@@ -177,30 +179,29 @@ describe("App shell navigation workflow", () => {
       { projectSessions: { restore } },
       { resolvedIds: ["beta"] },
     );
-    await fixture.user.click(sessionButton("alpha"));
+    await fixture.selectSession("alpha");
     await expectProjectChat("alpha");
-    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
-    await fixture.user.click(screen.getAllByRole("button", { name: "Expand beta resolved" })[0]!);
-    await fixture.user.click(sessionButton("beta"));
+    await fixture.selectSession("beta");
     await expectProjectChat("beta");
-    expect(back()).toHaveProperty("disabled", true);
-    expect(forward()).toHaveProperty("disabled", true);
+    expect(fixture.root.appShellStore.canGoBack).toBe(false);
+    expect(fixture.root.appShellStore.canGoForward).toBe(false);
+    await fixture.showSessions(true);
     await fixture.user.click(screen.getByRole("button", { name: "Restore beta conversation" }));
     expect(restore).toHaveBeenCalledWith(
       { sessionId: "beta", workingDirectory: "/beta", userInitiated: true },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     // Successful RPC alone must not promote an archived preview.
-    expect(back()).toHaveProperty("disabled", true);
+    expect(fixture.root.appShellStore.canGoBack).toBe(false);
     await fixture.publishResolved("beta", false);
     await openLibrary(fixture.user);
-    await fixture.user.click(back());
+    await fixture.pressHistory("back");
     await expectProjectChat("alpha");
-    expect(back()).toHaveProperty("disabled", true);
+    expect(fixture.root.appShellStore.canGoBack).toBe(false);
     await openLibrary(fixture.user);
-    await fixture.user.click(forward());
+    await fixture.pressHistory("forward");
     await expectProjectChat("beta");
-    expect(forward()).toHaveProperty("disabled", true);
+    expect(fixture.root.appShellStore.canGoForward).toBe(false);
   });
 
   it("deletes an archived preview and returns to the retained visit without recording the preview", async () => {
@@ -215,12 +216,11 @@ describe("App shell navigation workflow", () => {
       },
       { resolvedIds: ["beta"] },
     );
-    await fixture.user.click(sessionButton("alpha"));
+    await fixture.selectSession("alpha");
     await expectProjectChat("alpha");
-    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
-    await fixture.user.click(screen.getAllByRole("button", { name: "Expand beta resolved" })[0]!);
-    await fixture.user.click(sessionButton("beta"));
+    await fixture.selectSession("beta");
     await expectProjectChat("beta");
+    await fixture.showSessions(true);
     await fixture.user.pointer({ target: sessionButton("beta"), keys: "[MouseRight]" });
     await waitFor(() =>
       expect(deleteSession).toHaveBeenCalledWith(
@@ -229,8 +229,8 @@ describe("App shell navigation workflow", () => {
       ),
     );
     await expectProjectChat("alpha");
-    expect(back()).toHaveProperty("disabled", true);
-    expect(forward()).toHaveProperty("disabled", true);
+    expect(fixture.root.appShellStore.canGoBack).toBe(false);
+    expect(fixture.root.appShellStore.canGoForward).toBe(false);
   });
 
   it.each([false, true])(
@@ -244,7 +244,7 @@ describe("App shell navigation workflow", () => {
         return frameId;
       });
       vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
-      await fixture.user.click(sessionButton("alpha"));
+      await fixture.selectSession("alpha");
       expect(screen.getByPlaceholderText("Ask Cake to work in beta…")).toBeDefined();
       expect(frames.size).toBeGreaterThan(0);
       if (showSettings) {
@@ -264,39 +264,6 @@ describe("App shell navigation workflow", () => {
     },
   );
 
-  it("traverses repeated scoped visits to the visible session without waiting for metadata", async () => {
-    let holdLookup = false;
-    let finish!: () => void;
-    const pending = new Promise<void>((resolve) => {
-      finish = resolve;
-    });
-    const lookup = vi.fn<Client["projectSessions"]["lookup"]>(async ({ sessionId }) => {
-      if (holdLookup) await pending;
-      return sessionSummary({
-        sessionId,
-        title: `${sessionId} conversation`,
-        projectPath: `/${sessionId}`,
-      });
-    });
-    using fixture = renderAppShellNavigation(
-      { projectSessions: { lookup } },
-      { history: ["alpha", "beta", "alpha", "gamma", "alpha", "beta"] },
-    );
-    await fixture.user.click(screen.getByRole("button", { name: "Project actions for alpha" }));
-    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on alpha" }));
-    await fixture.user.click(back());
-    await expectProjectChat("alpha");
-    holdLookup = true;
-    await fixture.user.click(back());
-    expect(back()).toHaveProperty("disabled", false);
-    await fixture.user.click(back());
-    expect(back()).toHaveProperty("disabled", true);
-    await act(async () => finish());
-    await expectProjectChat("alpha");
-    expect(back()).toHaveProperty("disabled", true);
-    expect(forward()).toHaveProperty("disabled", false);
-  });
-
   it.each([false, true])(
     "commits history only when a deferred destination lands and discards a superseded traversal (diverge: %s)",
     async (diverge) => {
@@ -312,26 +279,26 @@ describe("App shell navigation workflow", () => {
         { history: ["alpha", "beta", "gamma"], unhydratedIds: ["beta"] },
       );
       await openLibrary(fixture.user);
-      await fixture.user.click(back());
+      await fixture.pressHistory("back");
       await waitFor(() =>
         expect(open).toHaveBeenCalledWith(
           { sessionId: "beta", workingDirectory: "/beta" },
           expect.objectContaining({ signal: expect.any(AbortSignal) }),
         ),
       );
-      expect(forward()).toHaveProperty("disabled", true);
+      expect(fixture.root.appShellStore.canGoForward).toBe(false);
       if (diverge) {
-        await fixture.user.click(sessionButton("alpha"));
+        await fixture.selectSession("alpha");
         await expectProjectChat("alpha");
       }
       await act(async () => finish());
       await fixture.publishHydrated("beta");
       await expectProjectChat(diverge ? "alpha" : "beta");
-      expect(forward()).toHaveProperty("disabled", diverge);
+      expect(fixture.root.appShellStore.canGoForward).toBe(!diverge);
       await openLibrary(fixture.user);
-      await fixture.user.click(diverge ? back() : forward());
+      await fixture.pressHistory(diverge ? "back" : "forward");
       await expectProjectChat("gamma");
-      expect(forward()).toHaveProperty("disabled", diverge ? false : true);
+      expect(fixture.root.appShellStore.canGoForward).toBe(diverge);
     },
   );
 
@@ -344,7 +311,7 @@ describe("App shell navigation workflow", () => {
       hasMore: false,
     }));
     using fixture = renderAppShellNavigation({ artifacts: { catalog } });
-    await fixture.user.click(sessionButton("alpha"));
+    await fixture.selectSession("alpha");
     await expectProjectChat("alpha");
     await fixture.user.click(settings());
     expect(await screen.findByText("Model configuration")).toBeDefined();

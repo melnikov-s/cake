@@ -20,8 +20,6 @@ export interface BrowserStoreProps {
   chatSidebarWidth(): number;
   setChatSidebarWidth(width: number): void;
   appendAttachment(attachment: Attachment): void;
-  enterProjectSidebarMode(): void;
-  leaveProjectSidebarMode(): void;
 }
 
 export interface BrowserViewport {
@@ -110,7 +108,6 @@ export class BrowserStore extends Store<BrowserStoreProps> {
     const sessionId = this.sessionId;
     if (!sessionId) return;
     this.props.setPresentationMode("browser");
-    if (!this.visible) this.props.enterProjectSidebarMode();
     this.visible = true;
     this.error = undefined;
     this.errorDetails = undefined;
@@ -143,7 +140,6 @@ export class BrowserStore extends Store<BrowserStoreProps> {
     const sessionId = this.sessionId;
     if (!sessionId) return;
     this.props.setPresentationMode("browser");
-    if (!this.visible) this.props.enterProjectSidebarMode();
     this.visible = true;
     this.openedSessionId = sessionId;
     void this.refresh();
@@ -248,7 +244,6 @@ export class BrowserStore extends Store<BrowserStoreProps> {
   }
 
   suspend() {
-    if (this.visible) this.props.leaveProjectSidebarMode();
     this.visible = false;
   }
 

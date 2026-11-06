@@ -7,6 +7,7 @@ import { WorkspaceFrame } from "./workspace-frame";
 import { CakeChatWorkspaceControls } from "./cake-chat-workspace-controls";
 import { ConversationActivity } from "./conversation-activity";
 import { ProjectTodoSelectionBar } from "./project-todo-selection-bar";
+import { ConversationBreadcrumb } from "./conversation-breadcrumb";
 
 export const CakeChatWorkspaceSurface = observer(function CakeChatWorkspaceSurface({
   session,
@@ -23,6 +24,7 @@ export const CakeChatWorkspaceSurface = observer(function CakeChatWorkspaceSurfa
       <WorkspaceFrame
         session={session}
         mode={mode}
+        headerLeading={<ConversationBreadcrumb sessionId={session.sessionId} />}
         projectComposerLeadingAccessory={
           root.settingsStore.appearance.sessionAvatarsEnabled
             ? {

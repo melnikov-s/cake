@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { App } from "../../../src/renderer/components/app";
+import { NewSessionDialog } from "../../../src/renderer/components/new-session-dialog";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import {
   projectRecord,
@@ -55,9 +56,11 @@ export function renderRootAppWorkflow(client: TestClientOverrides) {
       tree: [],
     },
   });
+  fixture.root.workspaceNavigatorStore.show("sessions");
   const view = render(
     <StoreProvider store={fixture.root}>
       <App />
+      <NewSessionDialog store={fixture.root.newSessionStore} />
     </StoreProvider>,
   );
   return {

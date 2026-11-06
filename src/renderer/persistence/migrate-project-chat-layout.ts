@@ -1,6 +1,6 @@
 import type { StoreSnapshot } from "r-state-tree";
 import { isProjectChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
-import type { SessionLayoutNode } from "../stores/SessionLayoutStore";
+import type { PersistedSplitLayout } from "./migrate-focused-conversation";
 
 /** v2 -> v3: move the old single Project Chat pane into the shared Project layout. */
 export function migrateProjectChatLayout(snapshot: StoreSnapshot): StoreSnapshot {
@@ -9,11 +9,12 @@ export function migrateProjectChatLayout(snapshot: StoreSnapshot): StoreSnapshot
     return value && !Array.isArray(value) ? value : undefined;
   };
   const shell = child(snapshot, "appShellStore");
-  if (!shell || shell.state.navigationVersion === 3) return snapshot;
+  if (!shell || shell.state.navigationVersion === 3 || shell.state.navigationVersion === 4)
+    return snapshot;
   const collection = child(snapshot, "cakeChatCollectionStore");
   const oldLayout = collection && child(collection, "sessionLayoutStore");
   // SAFETY: this is the serialized SessionLayoutStore.layout field; v2 allowed only one Cake Chat pane.
-  const pane = oldLayout?.state.layout as SessionLayoutNode | undefined;
+  const pane = oldLayout?.state.layout as PersistedSplitLayout | undefined;
   const sessionId = pane?.kind === "pane" ? pane.history[pane.historyCursor] : undefined;
   const children = { ...snapshot.children };
   const state: StoreSnapshot["state"] = { ...shell.state, navigationVersion: 3 };
@@ -21,7 +22,7 @@ export function migrateProjectChatLayout(snapshot: StoreSnapshot): StoreSnapshot
     if (shell.state.workspace === "cake-chat") {
       state.workspace = "project-sessions";
       const projectLayout = child(snapshot, "sessionLayoutStore");
-      const append = (node: SessionLayoutNode): SessionLayoutNode => {
+      const append = (node: PersistedSplitLayout): PersistedSplitLayout => {
         if (node.kind === "split")
           return { ...node, first: append(node.first), second: append(node.second) };
         if (node.paneId !== projectLayout?.state.focusedPaneId) return node;
@@ -29,7 +30,7 @@ export function migrateProjectChatLayout(snapshot: StoreSnapshot): StoreSnapshot
         return { ...node, history, historyCursor: history.length - 1 };
       };
       // SAFETY: this is the same serialized SessionLayoutStore.layout field as the old layout above.
-      const retained = projectLayout?.state.layout as SessionLayoutNode | undefined;
+      const retained = projectLayout?.state.layout as PersistedSplitLayout | undefined;
       children.sessionLayoutStore = {
         state: {
           ...projectLayout?.state,

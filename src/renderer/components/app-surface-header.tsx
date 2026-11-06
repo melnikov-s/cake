@@ -1,10 +1,7 @@
-import { useCallback } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import { Avatar } from "@/components/ui/avatar";
 import { IconButton } from "@/components/ui/icon-button";
 import { BackIcon, CloseIcon, TerminalIcon } from "@/components/ui/icons";
-import { ArtifactCatalogMenu } from "@/components/artifact-catalog-menu";
-import { BrowserSharingMenu } from "@/components/browser-sharing-menu";
 import { SidebarNavigationControls } from "./sidebar-navigation-controls";
 import { cn } from "@/lib/utils";
 import { RootStore } from "../stores/RootStore";
@@ -17,23 +14,13 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
   const surface = root.appShellStore.surface;
   const extensionUi = root.extensionUiStore;
   const terminal = root.terminalStore;
-  const sidebarCollapsed = !root.sidebarStore.visible;
   const returnToWorkbench = () => root.navigationStore.returnToWorkbench();
-  const openArtifactLibrary = useCallback(() => root.navigationStore.showArtifactLibrary(), [root]);
-  const artifactCatalogMenu = (
-    <ArtifactCatalogMenu
-      store={root.artifactLibraryStore}
-      onOpenArtifact={(lineageId) => root.navigationStore.openArtifact(undefined, lineageId)}
-      onOpenLibrary={openArtifactLibrary}
-    />
-  );
   return (
     <header
       data-slot="workspace-header"
       className={cn(
         "relative box-content flex h-title-bar w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-[88px] phone:pl-[88px]",
-        sidebarCollapsed && surface !== "settings" && "pl-[156px]",
-        surface === "settings" && "pl-[84px]",
+        "pl-10",
       )}
     >
       <div className="flex w-0 min-w-0 flex-1 items-center gap-3">
@@ -76,11 +63,6 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
         </strong>
       </div>
       <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
-        {surface === "settings" && <BrowserSharingMenu />}
-        {surface !== "artifact-library" &&
-          surface !== "automations" &&
-          surface !== "automation-session" &&
-          artifactCatalogMenu}
         {surface === "artifact-library" && (
           <IconButton tooltip="Close all artifacts" onClick={returnToWorkbench}>
             <CloseIcon />

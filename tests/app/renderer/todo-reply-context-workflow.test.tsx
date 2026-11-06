@@ -104,6 +104,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
         ],
       },
     });
+    await f.root.navigationStore.openCakeChat(sessionId);
     owner.todos.open();
     const chat = owner.conversationSessionStore.chatStore;
     chat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });

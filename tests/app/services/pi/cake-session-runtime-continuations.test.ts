@@ -122,7 +122,7 @@ describe("live Project Session continuation policy", () => {
       },
     };
     const f = fixture({ currentSessionControl: control });
-    const pending = { entryId: "entry", resolveSource: false, placement: "none" as const };
+    const pending = { entryId: "entry", resolveSource: false, open: false };
     expect(await f.continuations.scheduleFork(pending)).toMatchObject({ forkOnSettle: true });
     state.family = promotedFamily;
     f.settle();

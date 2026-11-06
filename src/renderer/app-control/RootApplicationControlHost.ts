@@ -14,6 +14,8 @@ import type { SessionManagementStore } from "../stores/SessionManagementStore";
 import type { ProjectSessionCreationStore } from "../stores/ProjectSessionCreationStore";
 import type { SessionCatalogStore } from "../stores/SessionCatalogStore";
 import type { SessionLayoutStore } from "../stores/SessionLayoutStore";
+import type { WorkspaceNavigatorStore } from "../stores/WorkspaceNavigatorStore";
+import type { ConversationNavigationNode } from "../lib/conversation-navigation-tree";
 import type { SessionRegistryStore } from "../stores/SessionRegistryStore";
 import type { SettingsStore } from "../stores/SettingsStore";
 import type { ToastStore } from "../stores/ToastStore";
@@ -37,6 +39,8 @@ export interface RootApplicationControlCapabilities {
   projectSessionCreationStore: ProjectSessionCreationStore;
   sessionCatalogStore: SessionCatalogStore;
   sessionLayoutStore: SessionLayoutStore;
+  workspaceNavigatorStore: WorkspaceNavigatorStore;
+  focusedNavigationNode(): ConversationNavigationNode | undefined;
   sessionRegistry: SessionRegistryStore;
   settingsStore: SettingsStore;
   sessionMetadataStore: SessionMetadataStore;
@@ -116,21 +120,18 @@ export function createRootApplicationControlHost(
           return { kind: "settings" as const, page: capabilities.settingsStore.activePage };
         return { kind: "workbench" as const };
       },
-      sessionLayout: (source) => {
-        const layout =
-          source?.kind === "cake-chat"
-            ? capabilities.cakeChatCollectionStore.layoutFor(source.sessionId)
-            : capabilities.sessionLayoutStore;
-        const relativeSessionId =
-          source?.sessionId && layout.hasSession(source.sessionId)
-            ? source.sessionId
-            : layout.focusedSessionId;
-        return {
-          focusedSessionId: layout.focusedSessionId,
-          ...(relativeSessionId ? { originSessionId: relativeSessionId } : null),
-          panes: layout.panePlacements.map((pane) => ({ ...pane })),
-          ...(relativeSessionId ? { neighbors: layout.neighbors(relativeSessionId) } : null),
+      focusedConversation: () => {
+        const node = capabilities.focusedNavigationNode();
+        const focused: ReturnType<NonNullable<AppControlHost["state"]["focusedConversation"]>> = {
+          workspace: capabilities.appShellStore.workspace,
+          sessionId: capabilities.appShellStore.activeConversation?.sessionId,
+          workspaceAccessory: {
+            visible: capabilities.workspaceNavigatorStore.visible,
+            mode: capabilities.workspaceNavigatorStore.mode,
+          },
         };
+        if (node) focused.target = { ...node.target, key: node.key, title: node.title };
+        return focused;
       },
       projects: () => capabilities.projectCatalogStore.projects,
       sessions: () => capabilities.sessionCatalogStore.sessions,
@@ -369,13 +370,13 @@ export function createRootApplicationControlHost(
         ),
     },
     presentation: {
-      splitView: (source, direction) => {
-        const axis = direction === "right" ? "x" : "y";
-        const pane = capabilities.sessionLayoutStore.paneForSession(source.sessionId);
-        if (!pane) return undefined;
-        capabilities.navigationStore.focusSessionPane(pane.paneId);
-        const split = capabilities.navigationStore.splitFocusedSession(axis);
-        return split ? { kind: "project-session", ...split } : undefined;
+      returnToProjectChat: () => capabilities.navigationStore.returnToProjectChat(),
+      workspace: (input) => {
+        const workspace = capabilities.workspaceNavigatorStore;
+        if (input.mode) workspace.show(input.mode);
+        if (input.visible === false) workspace.close();
+        else if (input.visible === true) workspace.show(input.mode ?? workspace.mode);
+        return { visible: workspace.visible, mode: workspace.mode };
       },
       showNotification: (input) => capabilities.notificationStore.enqueue(input),
       showAgentAction: ({ source, message, targetSessionId, targetKind, coalesceKey }) => {

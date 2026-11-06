@@ -34,7 +34,7 @@ export interface RuntimeOperationApi {
       assignment: ChildSessionAssignment;
       model?: CakeModelSelection;
       resultDelivery?: ResultDelivery;
-      placement: "none" | "right" | "down";
+      open: boolean;
       worktreeName?: string;
     },
     requestId: string,
@@ -45,7 +45,7 @@ export interface RuntimeOperationApi {
     prompt?: string;
     title?: string;
     resolveSource: boolean;
-    placement: "none" | "right" | "down";
+    open: boolean;
     destinationWorkingDirectory?: string;
   }): Promise<JsonValue>;
   invokeAppControl(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;

@@ -203,7 +203,7 @@ describe("child-scoped nested interaction routing", () => {
       interviewRequestId: "sidecar-request",
       record: interview("sidecar"),
     });
-    const panel = within(screen.getByRole("complementary", { name: "Side chat" }));
+    const panel = within(screen.getByRole("region", { name: "Side chat" }));
     await fixture.user.type(
       await panel.findByRole("textbox", { name: "Answer" }),
       "Use the child context",
@@ -219,6 +219,12 @@ describe("child-scoped nested interaction routing", () => {
           cancelled: false,
         },
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    await fixture.user.click(
+      within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByRole(
+        "button",
+        { name: parentSessionId },
       ),
     );
     expect(screen.getByRole("textbox", { name: "Answer" })).toBeDefined();
@@ -281,7 +287,7 @@ describe("child-scoped nested interaction routing", () => {
       if (!summary) throw new Error("Missing work log disclosure");
       await fixture.user.click(summary);
       await fixture.user.click(await screen.findByRole("button", { name: "Open subagent chat" }));
-      const panel = within(screen.getByRole("complementary", { name: "Subagent" }));
+      const panel = within(screen.getByRole("region", { name: "Subagent" }));
       expect((await panel.findByRole("img", { name: reference.name })).getAttribute("src")).toBe(
         "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB3sAAAAASUVORK5CYII=",
       );

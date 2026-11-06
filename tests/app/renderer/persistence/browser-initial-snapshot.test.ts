@@ -50,7 +50,10 @@ describe("browser presentation snapshot boundary", () => {
         };
         const before = structuredClone(saved);
         const phone = browserInitialSnapshot(saved, true);
-        expect(phone.children.sessionLayoutStore).toEqual(saved.children.sessionLayoutStore);
+        expect(phone.children.sessionLayoutStore).toEqual({
+          state: { history: ["previous"], historyCursor: 0 },
+          children: {},
+        });
         expect(phone.children.sidebarStore).toMatchObject({
           state: { hidden: true, width: 330, navigationMode: "activity" },
         });

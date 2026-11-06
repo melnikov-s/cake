@@ -2,6 +2,7 @@ import { Cache, Effect, Stream, SubscriptionRef } from "effect";
 import type { SubagentHandleId } from "../../contracts/subagents/subagent-data";
 import {
   type SubagentActivity,
+  type SubagentMetadata,
   type SubagentUpdate,
 } from "../../contracts/subagents/subagent-data";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
@@ -58,6 +59,48 @@ const parentActivities = (state: SubagentCoordinatorState, parentSessionId: stri
 
 const backgroundActive = (activities: ReadonlyArray<SubagentActivity>) =>
   activities.some((activity) => activity.status === "queued" || activity.status === "running");
+
+/** Ownership/activity catalog only: no Pi hydration or historical transcript inspection. */
+export const observeMetadata = Effect.fn("Subagents.observeMetadata")(function* (
+  parentSessionId: string,
+) {
+  const coordinator = yield* SubagentCoordinator;
+  return SubscriptionRef.changes(coordinator.state).pipe(
+    Stream.mapEffect((state) =>
+      coordinator.storage.history.list().pipe(
+        Effect.map((history): readonly SubagentMetadata[] => [
+          ...[...state.handles.values()]
+            .filter((handle) => handle.parentSessionId === parentSessionId)
+            .map((handle) => ({
+              parentSessionId: handle.parentSessionId,
+              handleId: handle.handleId,
+              anchorPartId: handle.anchorPartId,
+              task: handle.task,
+              ...(handle.projectPath ? { projectPath: handle.projectPath } : null),
+              status: handle.status,
+              streaming: handle.streaming,
+              released: false,
+            })),
+          ...history
+            .filter(
+              (record) =>
+                record.parentSessionId === parentSessionId && !state.handles.has(record.handleId),
+            )
+            .map((record) => ({
+              parentSessionId: record.parentSessionId,
+              handleId: record.handleId,
+              anchorPartId: record.anchorPartId,
+              task: record.task,
+              ...(record.projectPath ? { projectPath: record.projectPath } : null),
+              status: record.status,
+              streaming: false,
+              released: true,
+            })),
+        ]),
+      ),
+    ),
+  );
+});
 
 export const observe = Effect.fn("Subagents.observe")(function* (parentSessionId: string) {
   const coordinator = yield* SubagentCoordinator;

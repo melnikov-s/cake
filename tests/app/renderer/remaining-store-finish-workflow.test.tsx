@@ -31,6 +31,7 @@ function renderRemainingStoreCatalog(start: Client["projectSessions"]["start"]) 
   fixture.root.navigationStore.selectProjectSession(sessionId);
   fixture.root.sessionLayoutStore.ensureSession(sessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
+  fixture.root.workspaceNavigatorStore.show("sessions");
   const view = render(
     <StoreProvider store={fixture.root}>
       <App />
@@ -72,12 +73,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const group = (name: string) =>
-  within(
-    screen
-      .getByRole("button", { name: `Open Project Chat for ${name.toLowerCase()}` })
-      .closest<HTMLElement>('[data-slot="project-group"]')!,
-  );
+const sessions = () => within(screen.getByRole("region", { name: "Sessions" }));
 
 describe("Remaining Store catalog workflow", () => {
   it("moves a submitted row to its authoritative Project while start is pending, without duplicating or resurrecting it", async () => {
@@ -89,8 +85,12 @@ describe("Remaining Store catalog workflow", () => {
     await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "Pending title");
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
-    expect(group("Project").getByRole("button", { name: /^Pending title / })).toBeDefined();
-    expect(group("Other").queryByRole("button", { name: /^Pending title / })).toBeNull();
+    expect(sessions().getByRole("button", { name: /^Pending title / })).toBeDefined();
+    expect(
+      screen
+        .getByRole("button", { name: "Open Project Chat for Project" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
 
     // Catalog membership may be corrected independently of the runtime Working Directory.
     await fixture.publish([
@@ -101,11 +101,13 @@ describe("Remaining Store catalog workflow", () => {
         title: "Authoritative title",
       }),
     ]);
-    expect(group("Project").queryByRole("button", { name: /^Pending title / })).toBeNull();
-    expect(group("Project").queryByRole("button", { name: /^Authoritative title / })).toBeNull();
-    expect(group("Other").getAllByRole("button", { name: /^Authoritative title / })).toHaveLength(
-      1,
-    );
+    expect(sessions().queryByRole("button", { name: /^Pending title / })).toBeNull();
+    expect(sessions().getAllByRole("button", { name: /^Authoritative title / })).toHaveLength(1);
+    expect(
+      screen
+        .getByRole("button", { name: "Open Project Chat for Other" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
     expect(document.querySelectorAll(`.session-item[data-session-id="${sessionId}"]`)).toHaveLength(
       1,
     );
@@ -114,9 +116,7 @@ describe("Remaining Store catalog workflow", () => {
       accept(TurnId.make("20000000-0000-4000-8000-000000000001"));
       await receipt;
     });
-    expect(group("Other").getAllByRole("button", { name: /^Authoritative title / })).toHaveLength(
-      1,
-    );
+    expect(sessions().getAllByRole("button", { name: /^Authoritative title / })).toHaveLength(1);
     expect(start).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId, workingDirectory: "/project", text: "Pending title" }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),

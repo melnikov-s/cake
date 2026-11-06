@@ -5,7 +5,7 @@ import { StoreProvider } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ResolutionCleanupFailed } from "../../../src/contracts/project-sessions/project-session-resolution";
 import { WorkbenchErrorNotice } from "./workbench-error-notice";
-import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
+import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -93,26 +93,7 @@ function renderRetirement(
   const { root } = fixture;
   const view = render(
     <StoreProvider store={root}>
-      <SidebarProjectGroup
-        cakeChat={root.cakeChatCollectionStore}
-        onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
-        store={root.sidebarStore}
-        sessionList={root.sidebarStore.sessionListStore}
-        sessionMetadata={root.sessionMetadataStore}
-        projects={root.projectCatalogStore}
-        chat={root.projectWorkbenchStore}
-        shell={root.appShellStore}
-        appearance={root.settingsStore.appearance}
-        path="/project"
-        resolved={false}
-        flattenSessions
-        onCreateSession={(path) => void root.navigationStore.createSession(path)}
-        onOpenSession={(id) => void root.navigationStore.openSession(id)}
-        onRemoveProject={(path, deleteSessions) =>
-          root.projectRemovalStore.remove(path, deleteSessions)
-        }
-        onOpenSettings={(path) => root.projectSettingsStore.open(path)}
-      />
+      <ConversationNavigator projectPath="/project" />
       <WorkbenchErrorNotice store={root.projectWorkbenchStore} />
       {sessions.map(({ name, session, record }) => (
         <section key={name} aria-label={`Worktree ${name}`}>

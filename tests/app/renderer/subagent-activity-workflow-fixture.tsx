@@ -1,7 +1,7 @@
 import { applySnapshot } from "r-state-tree";
-import { StoreProvider } from "r-state-tree/react";
+import { observer, StoreProvider } from "r-state-tree/react";
 import type { ProjectTodos } from "../../../src/contracts/projects/project-todos";
-import { ProjectTodosPanel } from "../../../src/renderer/components/project-todos-panel";
+import { WorkspaceNavigator } from "../../../src/renderer/components/workspace-navigator";
 import { MarkdownLinkProvider } from "../../../src/renderer/components/ai-elements/markdown";
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -163,6 +163,9 @@ export function renderSubagentActivity(options: {
     ...session.subagentActivityStore.chatStores,
   ])
     chat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
+  const Todos = observer(function Todos() {
+    return fixture.root.workspaceNavigatorStore.visible ? <WorkspaceNavigator /> : null;
+  });
   const view = render(
     <StoreProvider store={fixture.root}>
       <MarkdownLinkProvider
@@ -179,11 +182,7 @@ export function renderSubagentActivity(options: {
         }}
       >
         <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
-          {todos && !options.projectChat && (
-            <ProjectTodosPanel
-              store={fixture.root.cakeChatCollectionStore.registry.load(projectChatSessionId).todos}
-            />
-          )}
+          {todos && <Todos />}
           <SideChatLayout
             store={session.conversationSessionStore.sideChatStore}
             renderChat={(chat, composerHeader) => (

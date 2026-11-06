@@ -259,8 +259,10 @@ const projectChatId = `project-chat:${"a".repeat(64)}`;
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
 
-const normalSidebar = () =>
-  document.querySelector<HTMLElement>('[data-slot="sidebar"][data-view="navigation"]')!;
+const navigator = () => screen.getByRole("complementary", { name: "Workspace" });
+async function showSessions(fixture: ReturnType<typeof renderCapture>) {
+  await fixture.user.click(within(navigator()).getByRole("button", { name: /^Sessions / }));
+}
 const popup = () => screen.getByRole("dialog", { name: "Screenshot destination" });
 const rowIds = (scope: HTMLElement) =>
   [...scope.querySelectorAll(".session-item")]
@@ -347,7 +349,8 @@ describe("Screen capture attachment destinations", () => {
   it("defaults to the most recently user-interacted conversation, not a programmatic open or screenshot choice", async () => {
     using fixture = renderCapture();
     await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
-    await fixture.user.click(within(normalSidebar()).getByRole("button", { name: /^Session B / }));
+    await showSessions(fixture);
+    await fixture.user.click(within(navigator()).getByRole("button", { name: /^Session B / }));
     await waitFor(() =>
       expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("beta"),
     );
@@ -363,9 +366,7 @@ describe("Screen capture attachment destinations", () => {
     await fixture.user.click(menu.getByRole("button", { name: /^Session C / }));
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
     await screen.findByRole("button", { name: /^View Screenshot-/ });
-    await fixture.user.click(
-      within(normalSidebar()).getByRole("button", { name: "Open settings" }),
-    );
+    await fixture.user.click(screen.getByRole("button", { name: "Settings" }));
     await begin(fixture);
     expect(screen.getByRole("button", { name: "Screenshot destination" }).textContent).toContain(
       "Session B",
@@ -379,9 +380,7 @@ describe("Screen capture attachment destinations", () => {
     act(() => fixture.select("beta"));
     await fixture.user.click(screen.getByRole("combobox", { name: "Message" }));
     await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "Hello");
-    await fixture.user.click(
-      within(normalSidebar()).getByRole("button", { name: "Open settings" }),
-    );
+    await fixture.user.click(screen.getByRole("button", { name: "Settings" }));
     await begin(fixture);
     expect(screen.getByRole("button", { name: "Screenshot destination" }).textContent).toContain(
       "Session B",
@@ -413,30 +412,27 @@ describe("Screen capture attachment destinations", () => {
     );
     await begin(fixture);
     await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
+    await showSessions(fixture);
+    await fixture.user.click(within(navigator()).getByRole("button", { name: "Collapse Parent" }));
     await fixture.user.click(
-      within(normalSidebar()).getByRole("button", { name: "Collapse children of Parent" }),
-    );
-    await fixture.user.click(
-      within(normalSidebar()).getByRole("button", { name: "Collapse Project" }),
+      within(navigator()).getByRole("button", { name: "Collapse Project Chat" }),
     );
     let menu = await openMenu(fixture);
     expect(rowIds(popup())).toEqual(["beta", "alpha"]); // never seeded from sidebar disclosures
     await fixture.user.click(menu.getByRole("button", { name: "Collapse children of Parent" }));
     await fixture.user.click(screen.getByRole("button", { name: "Screenshot destination" }));
     await fixture.user.click(
-      within(normalSidebar()).getByRole("button", { name: "Expand Project" }),
+      within(navigator()).getByRole("button", { name: "Expand Project Chat" }),
     );
-    await fixture.user.click(
-      within(normalSidebar()).getByRole("button", { name: "Expand children of Parent" }),
-    );
+    await fixture.user.click(within(navigator()).getByRole("button", { name: "Expand Parent" }));
     menu = await openMenu(fixture);
     expect(rowIds(popup())).toEqual(["beta"]);
-    expect(rowIds(normalSidebar())).toEqual(["beta", "alpha"]);
+    expect(rowIds(navigator())).toEqual(["beta", "alpha"]);
     await fixture.user.click(menu.getByRole("button", { name: "Expand children of Parent" }));
     await fixture.user.click(menu.getByRole("button", { name: "Collapse children of Parent" }));
-    expect(rowIds(normalSidebar())).toEqual(["beta", "alpha"]);
+    expect(rowIds(navigator())).toEqual(["beta", "alpha"]);
     await fixture.user.click(menu.getByRole("button", { name: "Collapse Project" }));
-    expect(rowIds(normalSidebar())).toEqual(["beta", "alpha"]);
+    expect(rowIds(navigator())).toEqual(["beta", "alpha"]);
     await fixture.user.click(screen.getByRole("button", { name: "Screenshot destination" }));
     menu = await openMenu(fixture);
     expect(menu.getByRole("button", { name: "Expand Project" })).toBeDefined();

@@ -76,19 +76,22 @@ describe("IDE conversation workflows", () => {
         threads: [discussion("message")],
       },
     );
-    // App exposes SideChatsMenu in Agent mode, not in its IDE header.
+    // The same selection side chat remains available beside the real workspace.
     await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     await fixture.user.click(screen.getByRole("button", { name: /important detail/ }));
     await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
     await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
     expect(screen.getAllByText("Editor conversation")).toHaveLength(2);
     expect(screen.queryByLabelText("Open side chats")).toBeNull();
-    const panel = within(screen.getByRole("complementary", { name: "Side chat" }));
-    expect(await panel.findByText("Because it preserves state.")).toBeDefined();
-    expect(panel.getByRole("combobox", { name: "Reply to selection side chat" })).toBeDefined();
-    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
-    await fixture.user.click(panel.getByRole("button", { name: "Close Side chat" }));
-    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
+    expect(await screen.findByText("Because it preserves state.")).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "Reply to selection side chat" })).toBeDefined();
+    expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
+    await fixture.user.click(
+      within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByRole(
+        "button",
+        { name: "Editor conversation" },
+      ),
+    );
     expect(screen.getByTitle("VS Code workspace")).toBeDefined();
     expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
   });
@@ -140,7 +143,7 @@ describe("IDE conversation workflows", () => {
     );
   });
 
-  it("scopes native review navigation to the active session and restores project chat explicitly", async () => {
+  it("scopes native review navigation to the active session and restores its conversation explicitly", async () => {
     using fixture = renderEmbeddedEditor(
       { vscode: { open: async () => editorLease("a") } },
       {
@@ -164,7 +167,7 @@ describe("IDE conversation workflows", () => {
     expect(screen.getByRole("combobox", { name: "Reply to code chat" })).toBeDefined();
     expect(await screen.findByText("Because it preserves state.")).toBeDefined();
     expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Project chat" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Conversation" }));
     expect(screen.queryByText("Chat about selection")).toBeNull();
     expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
     expect(screen.getByTitle("VS Code workspace")).toBeDefined();

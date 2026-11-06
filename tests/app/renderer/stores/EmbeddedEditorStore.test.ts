@@ -42,8 +42,8 @@ function createHarness() {
 }
 
 const surfaceRect = { x: 292, y: 0, width: 480, height: 820 };
-const shownBounds = { visible: true, ...surfaceRect, projectSidebarWidth: 292 };
-const hiddenBounds = { visible: false, ...surfaceRect, projectSidebarWidth: 292 };
+const shownBounds = { visible: true, ...surfaceRect, projectSidebarWidth: 0 };
+const hiddenBounds = { visible: false, ...surfaceRect, projectSidebarWidth: 0 };
 
 // Native/transport exceptions, not React or native-layout proof. Root owns all
 // session, presentation, sidebar, terminal and retirement collaborators here;
@@ -116,7 +116,7 @@ describe("Embedded editor native presentation boundaries", () => {
     expect(client.updateBounds).toHaveBeenLastCalledWith(shownBounds, expect.any(Object));
     store.setMeasuredBounds(undefined);
     expect(client.updateBounds).toHaveBeenLastCalledWith(
-      { visible: false, x: 0, y: 0, width: 0, height: 0, projectSidebarWidth: 292 },
+      { visible: false, x: 0, y: 0, width: 0, height: 0, projectSidebarWidth: 0 },
       expect.any(Object),
     );
   });

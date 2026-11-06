@@ -63,9 +63,7 @@ test("remaps application hotkeys from Settings", async () => {
     await expect(messageInput).toBeFocused();
     await expect(page.locator('[data-slot="ui-hint-overlay"]')).toHaveCount(0);
 
-    const settingsButton = page
-      .getByRole("complementary")
-      .getByLabel("Open settings", { exact: true });
+    const settingsButton = page.getByLabel("Settings", { exact: true });
     await page.keyboard.press(`${modifier}+G`);
     const settingsHint = await settingsButton.getAttribute("data-cake-hint-label");
     expect(settingsHint).toBeTruthy();
@@ -74,6 +72,9 @@ test("remaps application hotkeys from Settings", async () => {
     await expect(page.getByRole("heading", { name: "Hotkeys" })).toBeVisible();
 
     const terminalShortcut = page.getByRole("button", { name: "Toggle terminal shortcut" });
+    await expect(
+      page.getByRole("button", { name: "Return to Project Chat shortcut" }),
+    ).toContainText(process.platform === "darwin" ? "⌘⇧H" : "Ctrl+Shift+H");
     await expect(terminalShortcut).toContainText(process.platform === "darwin" ? "⌘J" : "Ctrl+J");
     await page.getByRole("button", { name: "Back to chat" }).click();
     const terminal = page.locator('section[aria-label="Terminal"]');
@@ -96,9 +97,9 @@ test("remaps application hotkeys from Settings", async () => {
     await pressRemappedKey();
     await expect(terminal).toHaveAttribute("aria-hidden", "true");
 
-    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+    await page.getByLabel("Settings", { exact: true }).click();
     await page.getByRole("button", { name: "Hotkeys" }).click();
-    const sidebarShortcut = page.getByRole("button", { name: "Toggle sidebar shortcut" });
+    const sidebarShortcut = page.getByRole("button", { name: "Toggle Workspace shortcut" });
     await sidebarShortcut.click();
     await pressRemappedKey();
     await expect(sidebarShortcut).toContainText(
@@ -107,11 +108,11 @@ test("remaps application hotkeys from Settings", async () => {
     await expect(terminalShortcut).toContainText("Not assigned");
     await page.getByRole("button", { name: "Back to chat" }).click();
     await pressRemappedKey();
-    await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
+    await expect(page.locator('[data-slot="workspace-navigator"]')).toHaveCount(0);
     await pressRemappedKey();
-    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+    await expect(page.locator('[data-slot="workspace-navigator"]')).toBeVisible();
 
-    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+    await page.getByLabel("Settings", { exact: true }).click();
     await page.getByRole("button", { name: "Hotkeys" }).click();
     await page.getByRole("button", { name: "Reset all" }).click();
     await sidebarShortcut.click();
@@ -136,11 +137,11 @@ test("remaps application hotkeys from Settings", async () => {
     );
     await page.getByRole("button", { name: "Back to chat" }).click();
     await page.keyboard.press(`${modifier}+B`);
-    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+    await expect(page.locator('[data-slot="workspace-navigator"]')).toBeVisible();
     await page.keyboard.press(`${modifier}+Shift+B`);
-    await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
+    await expect(page.locator('[data-slot="workspace-navigator"]')).toHaveCount(0);
     await page.keyboard.press(`${modifier}+Shift+B`);
-    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+    await expect(page.locator('[data-slot="workspace-navigator"]')).toBeVisible();
 
     await expect(terminal).toHaveAttribute("aria-hidden", "true");
     await page.keyboard.press(`${modifier}+Shift+Y`);
@@ -173,7 +174,7 @@ test("remaps application hotkeys from Settings", async () => {
     }).toPass({ timeout: 10_000 });
     await page.reload();
     await expect(messageInput).toBeVisible();
-    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+    await page.getByLabel("Settings", { exact: true }).click();
     await page.getByRole("button", { name: /^Hotkeys\b/ }).click();
     await expect(sidebarShortcut).toHaveText(
       process.platform === "darwin" ? "⌘⇧B" : "Ctrl+Shift+B",
@@ -186,11 +187,20 @@ test("remaps application hotkeys from Settings", async () => {
     ).toHaveText("Not assigned");
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await page.keyboard.press(`${modifier}+B`);
-    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+    await expect(page.locator('[data-slot="workspace-navigator"]')).toBeVisible();
     await page.keyboard.press(`${modifier}+Shift+B`);
-    await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
+    await expect(page.locator('[data-slot="workspace-navigator"]')).toHaveCount(0);
     await page.keyboard.press(`${modifier}+Shift+B`);
-    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+    await expect(page.locator('[data-slot="workspace-navigator"]')).toBeVisible();
+    await page.keyboard.press(`${modifier}+Shift+H`);
+    await expect(
+      page.locator('[data-slot="session-pane"][data-session-id^="project-chat:"]'),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("navigation", { name: "Conversation breadcrumb" })
+        .getByRole("button", { name: "Project Chat", exact: true }),
+    ).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

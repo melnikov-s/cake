@@ -21,7 +21,8 @@ function themeFile(content: string, name = "ocean.json") {
 }
 import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import { SettingsAppearanceSection } from "../../../src/renderer/components/settings-appearance-section";
-import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
+import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
+import { ProjectRail } from "../../../src/renderer/components/project-rail";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -48,25 +49,8 @@ function renderAppearanceSettings(snapshot?: StoreSnapshot, customIcon = false) 
     <StoreProvider store={root}>
       <DocumentTheme root={root} />
       <SettingsAppearanceSection appearance={root.settingsStore.appearance} />
-      <SidebarProjectGroup
-        cakeChat={root.cakeChatCollectionStore}
-        onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
-        store={root.sidebarStore}
-        sessionList={root.sidebarStore.sessionListStore}
-        sessionMetadata={root.sessionMetadataStore}
-        projects={root.projectCatalogStore}
-        chat={root.projectWorkbenchStore}
-        shell={root.appShellStore}
-        appearance={root.settingsStore.appearance}
-        path={projectPath}
-        resolved={false}
-        onCreateSession={(path) => void root.navigationStore.createSession(path)}
-        onOpenSession={(id) => void root.navigationStore.openSession(id)}
-        onRemoveProject={(path, deleteSessions) =>
-          root.projectRemovalStore.remove(path, deleteSessions)
-        }
-        onOpenSettings={(path) => root.projectSettingsStore.open(path)}
-      />
+      <ProjectRail />
+      <ConversationNavigator projectPath={projectPath} />
     </StoreProvider>,
   );
   return {
@@ -119,9 +103,7 @@ describe("Appearance settings workflow", () => {
       {
         using fixture = renderAppearanceSettings(undefined, customIcon);
         const toggle = screen.getByRole("switch", { name: "Show session characters" });
-        const projectImage = fixture.container.querySelector(
-          '[data-slot="project-group"] > div img',
-        )!;
+        const projectImage = fixture.container.querySelector('[data-slot="project-rail"] img')!;
         projectImageSource = projectImage.getAttribute("src");
         expect(projectImageSource).toBeTruthy();
         if (customIcon) expect(projectImageSource).toBe("data:image/png;base64,aWNvbg==");
@@ -150,9 +132,7 @@ describe("Appearance settings workflow", () => {
       ).toBe("true");
       expect(restored.container.querySelectorAll('[data-variant="artwork"]')).toHaveLength(2);
       expect(
-        restored.container
-          .querySelector('[data-slot="project-group"] > div img')
-          ?.getAttribute("src"),
+        restored.container.querySelector('[data-slot="project-rail"] img')?.getAttribute("src"),
       ).toBe(projectImageSource);
       await restored.user.click(screen.getByRole("switch", { name: "Show session characters" }));
       expect(restored.container.querySelectorAll('[data-variant="square"]')).toHaveLength(1);

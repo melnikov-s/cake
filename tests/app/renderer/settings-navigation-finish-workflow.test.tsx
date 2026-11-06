@@ -29,13 +29,11 @@ describe("Settings search navigation workflow", () => {
     const search = screen.getByRole("searchbox", { name: "Search settings" });
     const pages = within(screen.getByRole("navigation", { name: "Settings pages" }));
 
-    await fixture.user.type(search, "auto-hide");
-    expect(pages.getByText("VS Code", { exact: true })).toBeDefined();
-    await fixture.user.click(pages.getByRole("button", { name: "Auto-hide project sidebar" }));
-    expect(screen.getAllByRole("heading", { level: 2 })[0]?.textContent).toBe("VS Code");
-    expect(
-      screen.getByRole("combobox", { name: "Auto-hide project sidebar in VS Code" }),
-    ).toBeDefined();
+    await fixture.user.type(search, "return project chat");
+    expect(pages.getByText("Hotkeys", { exact: true })).toBeDefined();
+    await fixture.user.click(pages.getByRole("button", { name: "Return to Project Chat" }));
+    expect(screen.getByRole("heading", { name: "Hotkeys", level: 2 })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Return to Project Chat shortcut" })).toBeDefined();
 
     // Neither the setting label nor its page metadata contains both words alone.
     await fixture.user.clear(search);

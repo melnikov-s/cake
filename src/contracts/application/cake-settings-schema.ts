@@ -25,15 +25,6 @@ const AppearanceChanges = Schema.Struct({
   }),
 );
 
-const EditorChanges = Schema.Struct({
-  sidebarAutoHide: Schema.optionalKey(Schema.Literals(["never", "always", "below-width"])),
-  sidebarAutoHideWidth: Schema.optionalKey(Schema.Literals([1024, 1280, 1440, 1728, 1920])),
-}).check(
-  Schema.makeFilter((changes) => Object.values(changes).some((value) => value !== undefined), {
-    expected: "at least one editor setting",
-  }),
-);
-
 const HotkeyBindingChange = Schema.Struct({
   action: Schema.Literals(cakeHotkeyActionIds),
   binding: Schema.NullOr(Schema.String.check(Schema.isMaxLength(128))),
@@ -52,14 +43,13 @@ const HotkeyChanges = Schema.Struct({
 
 export const CakeSettingsUpdateInput = Schema.Union([
   Schema.Struct({ section: Schema.Literal("appearance"), changes: AppearanceChanges }),
-  Schema.Struct({ section: Schema.Literal("editor"), changes: EditorChanges }),
   Schema.Struct({ section: Schema.Literal("hotkeys"), changes: HotkeyChanges }),
 ]);
 
 export const windowSettingsGetHelp = {
   topic: "settings",
   summary:
-    "Read one per-window settings section (appearance, editor, hotkeys) in the Cake window showing the calling chat.",
+    "Read one per-window settings section (appearance, hotkeys) in the Cake window showing the calling chat.",
 };
 
 export const windowSettingsUpdateHelp = {

@@ -16,6 +16,8 @@ import type { Client } from "../../../src/renderer/client/Client";
 import { createCommandClientFinishFixture } from "./command-client-finish-fixture";
 import { fakeSavedDrafts } from "./fakes/saved-drafts";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { ReviewThread } from "../../../src/renderer/models/ReviewThread";
+import { SubagentActivity } from "../../../src/renderer/models/SubagentActivity";
 
 describe("AppControlRegistry", () => {
   it("derives help from the input schema and decodes defaults before calling the typed handler", async () => {
@@ -155,7 +157,7 @@ describe("Application controls over the real Root host", () => {
     };
 
     expect(() => Schema.decodeUnknownSync(CakeChatTarget)(target)).not.toThrow();
-    expect(target.tools.some((tool) => tool.command === "app.split")).toBe(true);
+    expect(target.tools.some((tool) => tool.command === "app.home")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "sessions.create-draft")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "notifications.send")).toBe(true);
     for (const command of [
@@ -472,36 +474,130 @@ describe("Application controls over the real Root host", () => {
     });
   });
 
-  it("describes real pane layout relative to the caller and does not invent an unwired Cake Chat split", async () => {
-    using fixture = createCommandClientFinishFixture({
-      workspaces: { loadStagedSlashCommands: async () => [] },
-    });
-    const result = await fixture.invoke("app.split", { direction: "right" });
-    expect(result).toMatchObject({
+  it("controls exclusive Workspace modes and visibility through the real Store and respects navigation permission", async () => {
+    using fixture = createCommandClientFinishFixture();
+    expect(
+      await fixture.invoke("app.workspace", { mode: "sessions", visible: true }),
+    ).toMatchObject({ ok: true, workspace: { mode: "sessions", visible: true } });
+    expect(fixture.root.workspaceNavigatorStore.mode).toBe("sessions");
+    expect(await fixture.invoke("app.workspace", { visible: false })).toMatchObject({
       ok: true,
-      kind: "project-session",
-      paneId: expect.any(String),
-      sessionId: expect.any(String),
+      workspace: { mode: "sessions", visible: false },
     });
     expect(await fixture.invoke("app.state")).toMatchObject({
+      state: { focusedConversation: { workspaceAccessory: { mode: "sessions", visible: false } } },
+    });
+    fixture.root.settingsStore.agentNavigation.setEnabled(false);
+    expect(await fixture.invoke("app.workspace")).toMatchObject({
+      ok: true,
+      workspace: { visible: false },
+    });
+    expect(await fixture.invoke("app.workspace", { mode: "todos" })).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("disabled"),
+    });
+    expect(await fixture.invoke("app.home")).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("disabled"),
+    });
+    expect(fixture.root.workspaceNavigatorStore.mode).toBe("sessions");
+    await expect(fixture.invoke("app.workspace", { mode: "both" })).rejects.toThrow();
+  });
+
+  it("reports public Side chat and Subagent targets from the canonical navigator selection", async () => {
+    using fixture = createCommandClientFinishFixture();
+    const owner = fixture.root.sessionRegistry.findSession("calling")!;
+    const thread = ReviewThread.create({
+      id: "planning-thread",
+      parentSessionId: "calling",
+      sidecarSessionId: "planning-side-chat",
+      workingDirectory: "/project",
+      status: "open",
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    });
+    thread.anchor = { ...thread.anchor, view: "session", selectedText: "Planning detail" };
+    fixture.models.discussionCatalog("calling").threads.push(thread);
+    fixture.models.discussionConversation("planning-side-chat", "/project", "calling");
+    await fixture.root.navigationStore.openConversationTarget({
+      kind: "side-chat",
+      sessionId: "planning-side-chat",
+      parentSessionId: "calling",
+      threadId: thread.id,
+    });
+    expect(owner.conversationSessionStore.sideChatStore.target?.key).toBe(
+      `discussion:${thread.id}`,
+    );
+    expect(await fixture.invoke("app.state")).toMatchObject({
       state: {
-        sessionLayout: {
-          originSessionId: "calling",
-          panes: [
-            { sessionId: "calling", x: 0, width: 0.5 },
-            { x: 0.5, width: 0.5 },
-          ],
+        focusedConversation: {
+          sessionId: "calling",
+          target: {
+            key: "session:planning-side-chat",
+            kind: "side-chat",
+            title: "Planning detail",
+            sessionId: "planning-side-chat",
+            parentSessionId: "calling",
+            threadId: thread.id,
+          },
         },
       },
     });
-    const before = fixture.root.cakeChatCollectionStore.sessionLayoutStore.panes.length;
-    expect(
-      await fixture.invoke(
-        "app.split",
-        { direction: "right" },
-        { kind: "cake-chat", sessionId: "cake-chat", title: "Cake Chat" },
-      ),
-    ).toMatchObject({ ok: false });
-    expect(fixture.root.cakeChatCollectionStore.sessionLayoutStore.panes).toHaveLength(before);
+    const handleId = "10000000-0000-4000-8000-000000000001";
+    const workers = fixture.models.subagentCatalog("calling");
+    workers.loaded = true;
+    workers.activities.push(
+      SubagentActivity.create({
+        parentSessionId: "calling",
+        handleId,
+        anchorPartId: "spawn-worker",
+        revision: 1,
+        task: "Inspect target orientation",
+        projectPath: "/project",
+        status: "running",
+        streaming: true,
+      }),
+    );
+    await fixture.root.navigationStore.openConversationTarget({
+      kind: "subagent",
+      sessionId: "calling",
+      handleId,
+    });
+    expect(await fixture.invoke("app.state")).toMatchObject({
+      state: {
+        focusedConversation: {
+          sessionId: "calling",
+          target: {
+            key: `subagent:calling:${handleId}`,
+            kind: "subagent",
+            title: "Inspect target orientation",
+            sessionId: "calling",
+            handleId,
+          },
+        },
+      },
+    });
+  });
+
+  it("reports the focused conversation and workspace", async () => {
+    using fixture = createCommandClientFinishFixture();
+    await fixture.root.navigationStore.openConversationTarget({
+      kind: "project-session",
+      sessionId: "calling",
+    });
+    expect(await fixture.invoke("app.state")).toMatchObject({
+      state: {
+        focusedConversation: {
+          workspace: "project-sessions",
+          sessionId: "calling",
+          target: {
+            key: "session:calling",
+            kind: "project-session",
+            sessionId: "calling",
+            title: "Planner",
+          },
+        },
+      },
+    });
   });
 });

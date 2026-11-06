@@ -168,6 +168,7 @@ it("opens a report's recorded source, follows catalog renames and falls back hon
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     ),
   );
+  await fixture.user.click(screen.getByRole("button", { name: /^Sessions / }));
   await fixture.user.click(screen.getByRole("button", { name: /^Review inbox / }));
   expect(await screen.findByRole("heading", { name: "Report findings" })).toBeDefined();
 

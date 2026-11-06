@@ -165,7 +165,7 @@ it.live(
       const fork = options.runtime.currentSessionControl?.forkSession;
       assert.ok(fork);
       const forked = yield* Effect.promise(() =>
-        fork({ entryId: "entry-1", resolveSource: false, placement: "none" }),
+        fork({ entryId: "entry-1", resolveSource: false, open: false }),
       );
       assert.equal((forked as { sessionId: string }).sessionId, "fork");
       // Source and continuation pass through the real Cake domain/runtime;
@@ -180,7 +180,7 @@ it.live(
             title: "Child task",
             assignment: { description: "Child work", body: "Child work" },
             model,
-            placement: "none",
+            open: false,
             worktreeName: "child-isolated",
             senderContext: { usedTokens: 100, windowTokens: 1000 },
           },

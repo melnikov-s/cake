@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 
+import { openProjectSettings } from "./fixtures/workspace-navigation";
+
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
 test("roundtrips browser, separate Project Chat, coding instructions and worktree settings", async () => {
@@ -48,8 +50,7 @@ test("roundtrips browser, separate Project Chat, coding instructions and worktre
 
   try {
     const page = await application.firstWindow();
-    await page.getByRole("button", { name: "Project actions for project" }).click();
-    await page.getByRole("menuitem", { name: "Open settings for project" }).click();
+    await openProjectSettings(application, page, /^Open Project Chat for /);
     const browserUrl = page.getByRole("textbox", { name: "Browser default URL", exact: true });
     await expect(browserUrl).toHaveValue("");
     await browserUrl.fill("http://localhost:3000/");
@@ -94,8 +95,7 @@ test("roundtrips browser, separate Project Chat, coding instructions and worktre
         customInstructions: "Prefer concise explanations for this project.",
         projectChatInstructions: "  Discuss ideas before creating coding tasks.  ",
       });
-    await page.getByRole("button", { name: "Project actions for project" }).click();
-    await page.getByRole("menuitem", { name: "Open settings for project" }).click();
+    await openProjectSettings(application, page, /^Open Project Chat for /);
     await expect(browserUrl).toHaveValue("http://localhost:3000/");
     await expect(page.getByRole("textbox", { name: /^Project Chat instructions/ })).toHaveValue(
       "  Discuss ideas before creating coding tasks.  ",

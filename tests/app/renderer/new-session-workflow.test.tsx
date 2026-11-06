@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
-import { Sidebar } from "../../../src/renderer/components/sidebar";
+import { ProjectRail } from "../../../src/renderer/components/project-rail";
 import { NewSessionDialog } from "../../../src/renderer/components/new-session-dialog";
 import { projectRecord } from "./fixtures/catalog-fixtures";
 import {
@@ -50,37 +50,7 @@ function renderPicker(options: Pick<RendererStoreFixtureOptions, "projects" | "s
         : root.projectWorkbenchStore.activeSession;
     return (
       <>
-        <Sidebar
-          store={root.sidebarStore}
-          sessionList={root.sidebarStore.sessionListStore}
-          sessionMetadata={root.sessionMetadataStore}
-          projects={root.projectCatalogStore}
-          chat={root.projectWorkbenchStore}
-          cakeChat={root.cakeChatCollectionStore}
-          shell={root.appShellStore}
-          projectSettings={root.projectSettingsStore}
-          appearance={root.settingsStore.appearance}
-          onOpenSettings={() => root.navigationStore.showSettings()}
-          onOpenCakeChat={(id) => {
-            void root.navigationStore.openCakeChat(id);
-          }}
-          onNewSession={() => root.newSessionStore.show()}
-          onOpenSession={(id) => {
-            void root.navigationStore.openSession(id);
-          }}
-          onCreateSession={(path) => {
-            void root.navigationStore.createSession(path);
-          }}
-          onRemoveProject={(path, deleteSessions) =>
-            root.projectRemovalStore.remove(path, deleteSessions)
-          }
-          onChooseProject={() => {
-            void root.navigationStore.chooseProject();
-          }}
-          onGoBack={() => root.navigationStore.navigateBack()}
-          onGoForward={() => root.navigationStore.navigateForward()}
-          onToggle={() => root.sidebarStore.toggle()}
-        />
+        <ProjectRail />
         <NewSessionDialog store={root.newSessionStore} />
         {session && (
           <Chat
@@ -115,7 +85,7 @@ afterEach(cleanup);
 describe("New session destination workflow", () => {
   it("filters registered projects and opens an unsent session in the selected project", async () => {
     using fixture = renderPicker();
-    await fixture.user.click(screen.getByRole("button", { name: "New session" }));
+    await fixture.user.click(screen.getByRole("button", { name: "New Session" }));
     expect(screen.getAllByRole("option")).toHaveLength(3);
     await fixture.user.type(screen.getByRole("combobox", { name: "Filter projects" }), "BETA");
     expect(screen.getAllByRole("option")).toHaveLength(1);
@@ -131,17 +101,18 @@ describe("New session destination workflow", () => {
 
   it("opens Cake Chat without inspecting a project", async () => {
     using fixture = renderPicker();
-    await fixture.user.click(screen.getByRole("button", { name: "New session" }));
+    await fixture.user.click(screen.getByRole("button", { name: "New Session" }));
     await fixture.user.click(screen.getByRole("option", { name: /Cake Chat/ }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
     expect(fixture.inspect).not.toHaveBeenCalled();
   });
 
-  it("preselects the last new-session project, including sidebar creation, without changing it on cancellation or Cake Chat", async () => {
+  it("preselects the last new-session project without changing it on cancellation or Cake Chat", async () => {
     using fixture = renderPicker();
-    const open = () => fixture.user.click(screen.getByRole("button", { name: "New session" }));
-    await fixture.user.click(screen.getByRole("button", { name: "New chat in beta" }));
+    const open = () => fixture.user.click(screen.getByRole("button", { name: "New Session" }));
+    await open();
+    await fixture.user.click(screen.getByRole("option", { name: /Beta/ }));
     await screen.findByRole("combobox", { name: "Message" });
     await open();
     expect(screen.getByRole("option", { selected: true }).textContent).toContain("Beta");
@@ -164,14 +135,14 @@ describe("New session destination workflow", () => {
     let snapshot: StoreSnapshot;
     {
       using fixture = renderPicker();
-      await fixture.user.click(screen.getByRole("button", { name: "New session" }));
+      await fixture.user.click(screen.getByRole("button", { name: "New Session" }));
       await fixture.user.click(screen.getByRole("option", { name: /Beta/ }));
       await screen.findByRole("combobox", { name: "Message" });
       snapshot = fixture.snapshot();
     }
     {
       using fixture = renderPicker({ snapshot });
-      await fixture.user.click(screen.getByRole("button", { name: "New session" }));
+      await fixture.user.click(screen.getByRole("button", { name: "New Session" }));
       expect(screen.getByRole("option", { selected: true }).textContent).toContain("Beta");
     }
     {
@@ -179,12 +150,12 @@ describe("New session destination workflow", () => {
         snapshot,
         projects: [projectRecord({ path: "/work/alpha", name: "Alpha" })],
       });
-      await fixture.user.click(screen.getByRole("button", { name: "New session" }));
+      await fixture.user.click(screen.getByRole("button", { name: "New Session" }));
       expect(screen.getByRole("option", { selected: true }).textContent).toContain("Cake Chat");
     }
     {
       using fixture = renderPicker({ snapshot, projects: [] });
-      await fixture.user.click(screen.getByRole("button", { name: "New session" }));
+      await fixture.user.click(screen.getByRole("button", { name: "New Session" }));
       expect(screen.getByRole("option", { selected: true }).textContent).toContain("Cake Chat");
       act(() =>
         applySnapshot(fixture.models.projects, {
@@ -197,7 +168,7 @@ describe("New session destination workflow", () => {
 
   it("shows no matches, supports clearing the filter, and resets on cancellation", async () => {
     using fixture = renderPicker();
-    const open = () => fixture.user.click(screen.getByRole("button", { name: "New session" }));
+    const open = () => fixture.user.click(screen.getByRole("button", { name: "New Session" }));
     await open();
     await fixture.user.type(screen.getByRole("combobox", { name: "Filter projects" }), "missing");
     expect(screen.getByRole("status").textContent).toContain("No matching");

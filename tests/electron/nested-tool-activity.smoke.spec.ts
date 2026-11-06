@@ -7,6 +7,8 @@ import { expect, test } from "@playwright/test";
 import { nestedUsage } from "../fixtures/nested-tool-activity";
 import { windowState } from "../fixtures/window-state";
 
+import { createSessionInProject } from "./fixtures/workspace-navigation";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const script =
   'const results = await Promise.all([tools.fixture_child({label: "slow"}), tools.fixture_child({label: "fast"}), tools.fixture_child({label: "error"})]); return results;';
@@ -154,7 +156,7 @@ export default (pi) => {
     // Reopen through the real session workflow. No ephemeral child output is
     // persisted; error summaries and the bounded record remain available.
     const sessionId = await page.locator(".session-item.active").getAttribute("data-session-id");
-    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await createSessionInProject(page, /^project(?: |$)/i);
     await page.locator(`.session-item[data-session-id='${sessionId}'] .session-row`).click();
     await expect(log).toBeVisible();
     if ((await log.getAttribute("open")) === null) await log.locator(":scope > summary").click();

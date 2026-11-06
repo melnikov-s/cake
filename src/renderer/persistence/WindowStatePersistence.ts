@@ -58,7 +58,7 @@ export class WindowStatePersistence implements Disposable {
       withoutSessionForkPreviews(
         snapshot,
         root.sessionRegistry.forkPreviewSources,
-        root.sessionLayoutStore.layout,
+        root.sessionLayoutStore.history,
       );
     // After migration commits, this window persists only unsent navigation/composer state.
     const windowSnapshot = this.savedDraftsReady

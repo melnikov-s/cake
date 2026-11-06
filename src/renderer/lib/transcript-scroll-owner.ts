@@ -57,6 +57,8 @@ export interface TranscriptScrollOwner {
 export interface TranscriptScrollOwnerOptions {
   /** Whether to follow the bottom before the reader has scrolled. */
   following: boolean;
+  /** Saved row placement; virtual index navigation only estimates this position. */
+  restore?: { messageId: string; offset: number };
   /** Cancels the virtualizer's pending index-navigation retries without moving. */
   cancelVirtualNavigation(): void;
 }
@@ -85,6 +87,7 @@ export function createTranscriptScrollOwner(
   let anchor: Anchor | undefined;
   let pendingReveal: string | undefined;
   let pendingBottom: string | undefined;
+  let pendingRestore = options.restore;
   // The last scrollTop this owner wrote or observed. Any other position was
   // caused by someone else: the reader, or the browser clamping.
   let knownTop = scroller.scrollTop;
@@ -269,9 +272,10 @@ export function createTranscriptScrollOwner(
   };
 
   const cancelReveal = () => {
-    if (pendingReveal === undefined && pendingBottom === undefined) return;
+    if (pendingReveal === undefined && pendingBottom === undefined && !pendingRestore) return;
     pendingReveal = undefined;
     pendingBottom = undefined;
+    pendingRestore = undefined;
     options.cancelVirtualNavigation();
   };
 
@@ -310,6 +314,25 @@ export function createTranscriptScrollOwner(
       knownTop = scroller.scrollTop;
       if (following) pin();
       return;
+    }
+    // Initial index navigation uses estimated row heights. Once the actual row
+    // is revealed and measured, finish restoring its saved viewport offset.
+    if (pendingRestore && !pendingMeasurements) {
+      const restore = pendingRestore;
+      const element = Array.from(rows()).find(
+        (candidate) => candidate.dataset.transcriptAnchorId === restore.messageId,
+      );
+      if (element) {
+        options.cancelVirtualNavigation();
+        write(
+          scroller.scrollTop +
+            layoutTop(element) -
+            scroller.getBoundingClientRect().top -
+            restore.offset,
+        );
+        pendingRestore = undefined;
+        anchor = findAnchor();
+      }
     }
     // A native movement whose scroll event is still queued (layout commits and
     // ResizeObservers can run first) must not be pinned over.

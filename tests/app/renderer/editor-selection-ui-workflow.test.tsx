@@ -50,9 +50,10 @@ const removeNext = () => screen.getByRole("button", { name: /^Remove src\/next\.
 // about native editor navigation, manual text selection, focus or geometry.
 // Manual editor-context events and annotation payloads have composer coverage.
 describe("Editor selection pills workflow", () => {
-  it("keeps each session's pills and native highlights isolated across sidebar navigation", async () => {
+  it("keeps each session's pills and native highlights isolated across conversation navigation", async () => {
     using fixture = await renderSelectionUi({}, { secondary: true });
-    await fixture.user.click(screen.getByRole("button", { name: /^other-tour / }));
+    await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
+    await fixture.user.click(screen.getByRole("option", { name: /^other-tour / }));
     expect(screen.queryByRole("button", { name: /^Reveal src\// })).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
     await waitFor(() =>
@@ -70,7 +71,8 @@ describe("Editor selection pills workflow", () => {
       );
     });
     expect(screen.getByRole("button", { name: /^Reveal src\/other.ts/ })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: /^tour-session / }));
+    await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
+    await fixture.user.click(screen.getByRole("option", { name: /^tour-session / }));
     await waitFor(() => expect(revealTour()).toBeDefined());
     expect(revealNext()).toBeDefined();
     expect(screen.queryByRole("button", { name: /^Reveal src\/other.ts/ })).toBeNull();

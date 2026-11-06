@@ -704,10 +704,13 @@ describe("Session artifact workflows", () => {
         : [effective()];
     });
     await using fixture = renderSessionArtifacts({ effective: query });
-    const sidebar = within(screen.getByRole("complementary"));
+    const chooseSession = async (name: RegExp) => {
+      await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
+      await fixture.user.click(screen.getByRole("option", { name }));
+    };
     await screen.findByRole("button", { name: "0 artifacts" });
     for (const title of ["Child session", "Unrelated session", "Parent session"]) {
-      await fixture.user.click(sidebar.getByRole("button", { name: new RegExp(`^${title}`) }));
+      await chooseSession(new RegExp(`^${title}`));
       await screen.findByRole("button", { name: "0 artifacts" });
     }
     await waitFor(() => expect(query).toHaveBeenCalledTimes(3));
@@ -729,20 +732,20 @@ describe("Session artifact workflows", () => {
     await fixture.user.click(await screen.findByRole("button", { name: "2 artifacts" }));
     let popup = await screen.findByRole("dialog", { name: "Artifacts" });
     expect(within(popup).getByRole("button", { name: /Appendix/ })).toBeDefined();
-    await fixture.user.click(sidebar.getByRole("button", { name: /^Child session/ }));
+    await chooseSession(/^Child session/);
     await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
     popup = await screen.findByRole("dialog", { name: "Artifacts" });
     expect(within(popup).getByRole("button", { name: /Family report/ })).toBeDefined();
     expect(within(popup).queryByRole("button", { name: /Appendix/ })).toBeNull();
-    await fixture.user.click(sidebar.getByRole("button", { name: /^Unrelated session/ }));
+    await chooseSession(/^Unrelated session/);
     await fixture.user.click(await screen.findByRole("button", { name: "0 artifacts" }));
     expect(await screen.findByText("No artifacts yet.")).toBeDefined();
     linked = false;
     await act(() => fixture.emit({ type: "artifact-catalog-invalidated", lineageId: "shared" }));
-    await fixture.user.click(sidebar.getByRole("button", { name: /^Parent session/ }));
+    await chooseSession(/^Parent session/);
     await fixture.user.click(await screen.findByRole("button", { name: "0 artifacts" }));
     expect(await screen.findByText("No artifacts yet.")).toBeDefined();
-    await fixture.user.click(sidebar.getByRole("button", { name: /^Child session/ }));
+    await chooseSession(/^Child session/);
     await fixture.user.click(await screen.findByRole("button", { name: "0 artifacts" }));
     expect(await screen.findByText("No artifacts yet.")).toBeDefined();
   });

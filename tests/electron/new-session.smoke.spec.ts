@@ -196,9 +196,9 @@ test("new session dialog supports filtering, keyboard, mouse and cancellation", 
     await expect(dialog).toBeHidden();
     await expect(message).toBeFocused();
 
-    // The global shortcut works with the sidebar hidden, too.
+    // The global shortcut works with Workspace hidden, too.
     await page.keyboard.press(`${modifier}+B`);
-    await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
+    await expect(page.locator('[data-slot="workspace-navigator"]')).toHaveCount(0);
     await page.keyboard.press(`${modifier}+N`);
     await expect(filter).toHaveValue("");
     await expect(filter).toBeFocused();
@@ -220,7 +220,7 @@ test("new session dialog supports filtering, keyboard, mouse and cancellation", 
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 
     await page.keyboard.press(`${modifier}+B`);
-    await page.getByRole("button", { name: "New session", exact: true }).click();
+    await page.getByRole("button", { name: "New Session", exact: true }).click();
     await expect(filter).toBeFocused();
     await dialog.getByRole("option", { name: /Beta/ }).click();
     await expect(dialog).toBeHidden();
@@ -229,7 +229,10 @@ test("new session dialog supports filtering, keyboard, mouse and cancellation", 
     await expect(message).toHaveValue("A Beta project draft");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 
-    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Settings", exact: true })
+      .click();
     await page.keyboard.press(`${modifier}+N`);
     await expect(filter).toBeFocused();
     await expect(selected).toContainText("Beta");

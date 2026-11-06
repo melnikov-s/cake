@@ -8,6 +8,8 @@ import { resolveCakePaths } from "../../src/config/CakePaths";
 import { workingDirectorySessionPath } from "../../src/services/storage/session-files";
 import { windowState } from "../fixtures/window-state";
 
+import { createSessionInProject, showSessions } from "./fixtures/workspace-navigation";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 test("opens a durable Pi session in the sandboxed desktop and survives a Pi runtime reset", async () => {
@@ -83,9 +85,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(
-      page.getByRole("button", { name: "New chat in project", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "New Session", exact: true })).toBeVisible();
     const configuration = page.getByRole("button", { name: "Model configuration" });
     await expect(configuration).toBeVisible();
     await configuration.click();
@@ -98,43 +98,12 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(modelSearch).toBeVisible();
     await expect(page.getByRole("button", { name: /Manage model presets/ })).toBeVisible();
     await configuration.click();
-    await expect(page.locator(".workspace-settings-icon")).toBeHidden();
-    await page.getByRole("button", { name: "Toggle sidebar" }).click();
-    await expect
-      .poll(() =>
-        page.evaluate(() => {
-          const sidebarElement = document.querySelector('[data-slot="sidebar"]');
-          const sidebar = sidebarElement?.getBoundingClientRect();
-          const toggle = document
-            .querySelector('[data-slot="header-sidebar-toggle"]')
-            ?.getBoundingClientRect();
-          const settingsElement = document.querySelector('[data-slot="workspace-settings"]');
-          const settings = settingsElement?.getBoundingClientRect();
-          const composer = document.querySelector('[data-slot="composer-dock"]');
-          return {
-            sidebarRemoved: !sidebarElement || sidebar?.width === 0,
-            toggleClearsWindowControls: Boolean(toggle && toggle.left >= 84),
-            settingsOnWorkspace: Boolean(
-              settings && settings.left === 16 && Math.abs(innerHeight - settings.bottom - 9.5) < 1,
-            ),
-            settingsAboveComposer: Boolean(
-              settingsElement &&
-              composer &&
-              Number(getComputedStyle(settingsElement).zIndex) >
-                Number(getComputedStyle(composer).zIndex),
-            ),
-          };
-        }),
-      )
-      .toEqual({
-        sidebarRemoved: true,
-        toggleClearsWindowControls: true,
-        settingsOnWorkspace: true,
-        settingsAboveComposer: true,
-      });
-    await page.getByRole("button", { name: "Toggle sidebar" }).click();
-    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
-    await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
+    const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
+    await rail.getByRole("button", { name: "Close Workspace", exact: true }).click();
+    await expect(page.getByRole("complementary", { name: "Workspace", exact: true })).toBeHidden();
+    await expect(rail.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
+    await rail.getByRole("button", { name: "Open Workspace", exact: true }).click();
+    await rail.getByRole("button", { name: "Settings", exact: true }).click();
     await expect(page.getByLabel("Settings sections")).toBeVisible();
     await page.getByRole("button", { name: /Agent/ }).click();
     const autoCompact = page
@@ -155,11 +124,12 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       "true",
     );
     await page.getByRole("button", { name: "Back to chat" }).click();
+    await showSessions(page);
     await expect(
       page.locator(".session-item").filter({ hasText: "Existing investigation" }),
     ).toBeVisible();
     const sessionCountBeforeNewChat = await page.locator(".session-item").count();
-    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await createSessionInProject(page, /^project(?: |$)/i);
     const newChatComposer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(newChatComposer).toBeVisible();
     await expect(newChatComposer).toBeFocused();
@@ -169,10 +139,13 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
 
     // New Chat is one durable staged composer, not a sidebar session. Navigating
     // away and choosing New Chat again must recover the exact in-progress input.
-    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Settings", exact: true })
+      .click();
     await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to chat" }).click();
-    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await createSessionInProject(page, /^project(?: |$)/i);
     await expect(newChatComposer).toHaveValue("Immediate draft");
     await expect(newChatComposer).toBeFocused();
     await expect(page.locator(".session-item")).toHaveCount(sessionCountBeforeNewChat);
@@ -203,12 +176,14 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await modelPicker.click();
     // An explicitly saved draft is the pseudo-session that belongs in the sidebar.
     await expect(page.locator(".session-item")).toHaveCount(sessionCountBeforeNewChat + 1);
-    await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("New chat");
+    await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
+      "New chat",
+    );
     await expect(page.getByLabel("Back to chat")).toHaveCount(0);
     await page.evaluate(() => {
       const longTitle = `Investigate-${"very-long-session-name-".repeat(500)}`;
       const headerTitle = document.querySelector<HTMLElement>(
-        '[data-slot="workspace-header"] strong',
+        '[aria-label="Conversation breadcrumb"] [aria-current="page"]',
       );
       const sidebarTitle = document.querySelector<HTMLElement>(".session-row span");
       if (headerTitle) headerTitle.textContent = longTitle;
@@ -218,21 +193,19 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       await page.evaluate(() => {
         const transcript = document.querySelector(".transcript");
         const composer = document.querySelector(".workbench-composer");
-        const sidebar = document.querySelector('[data-slot="sidebar"]');
         const workspace = document.querySelector('[data-slot="workspace"]');
         const conversation = document.querySelector('[aria-label="Conversation"]');
-        const sidebarRect = sidebar?.getBoundingClientRect();
         const workspaceRect = workspace?.getBoundingClientRect();
         const composerRect = composer?.getBoundingClientRect();
         const conversationRect = conversation?.getBoundingClientRect();
-        const visibleWorkspaceCenter = sidebarRect
-          ? sidebarRect.right + (innerWidth - sidebarRect.right) / 2
+        const visibleWorkspaceCenter = workspaceRect
+          ? workspaceRect.left + workspaceRect.width / 2
           : 0;
         return {
           documentFits:
             document.documentElement.scrollWidth <= document.documentElement.clientWidth,
           transcriptFits: !transcript || transcript.scrollWidth <= transcript.clientWidth,
-          workspaceFits: !workspaceRect || Math.abs(workspaceRect.right - innerWidth) < 1,
+          workspaceFits: !workspaceRect || workspaceRect.right <= innerWidth,
           composerFits: !composerRect || composerRect.right <= innerWidth,
           composerCentered:
             !composerRect ||

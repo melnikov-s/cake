@@ -1,12 +1,12 @@
 import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import { LoadingState } from "@/components/ui/loading-state";
-import { ConversationSplitLayout } from "@/components/conversation-split-layout";
+import { FocusedConversationLayout } from "@/components/focused-conversation-layout";
 import { cn } from "@/lib/utils";
-import { SidebarNavigationControls } from "./sidebar-navigation-controls";
 import { cakeChatPropsFor } from "../lib/cake-chat-props";
 import { RootStore } from "../stores/RootStore";
 import { CakeChatPaneHeader, type CakeChatOverlayChrome } from "./cake-chat-pane-header";
 import { CaptureDestinationPicker } from "./capture-destination-picker";
+import { ConversationBreadcrumb } from "./conversation-breadcrumb";
 import { ProjectChatHeaderLink } from "./project-chat-header-link";
 import { ProjectTodoSelectionBar } from "./project-todo-selection-bar";
 
@@ -26,9 +26,8 @@ export const CakeChatSurface = observer(function CakeChatSurface({
   const layout = cakeChatSession
     ? cakeChatCollection.layoutFor(cakeChatSession.sessionId)
     : cakeChatCollection.sessionLayoutStore;
-  const sidebarCollapsed = !root.sidebarStore.visible;
   return cakeChatSession ? (
-    <ConversationSplitLayout
+    <FocusedConversationLayout
       store={layout}
       findSession={(sessionId) => cakeChatCollection.registry.find(sessionId)}
       chatProps={(session) => cakeChatPropsFor(root, session, Boolean(overlay))}
@@ -39,16 +38,12 @@ export const CakeChatSurface = observer(function CakeChatSurface({
         </div>
       )}
       title={(sessionId) =>
+        (!overlay
+          ? root.conversationNavigatorStore.lineageFor(sessionId).at(-1)?.title
+          : undefined) ??
         cakeChatCollection.summaries.find((summary) => summary.sessionId === sessionId)?.title ??
         "New chat"
       }
-      titleLeading={(sessionId) => (
-        <ProjectChatHeaderLink
-          projectPath={
-            cakeChatCollection.summaries.find((chat) => chat.sessionId === sessionId)?.projectPath
-          }
-        />
-      )}
       renderTitle={
         overlay
           ? () => (
@@ -60,31 +55,25 @@ export const CakeChatSurface = observer(function CakeChatSurface({
                 />
               </StoreProvider>
             )
+          : (sessionId) => <ConversationBreadcrumb sessionId={sessionId} />
+      }
+      titleLeading={
+        overlay
+          ? (sessionId) => (
+              <ProjectChatHeaderLink
+                projectPath={
+                  cakeChatCollection.summaries.find((chat) => chat.sessionId === sessionId)
+                    ?.projectPath
+                }
+              />
+            )
           : undefined
       }
+      compactHeader={Boolean(overlay)}
       loadingLabel="Opening Cake Chat"
-      headerClassName={(pane) =>
-        // The frameless overlay has no traffic lights or sidebar toggle to make room for.
-        !overlay && layout.panes[0]?.paneId === pane.paneId
-          ? cn("max-[620px]:pl-[88px] phone:pl-[88px]", sidebarCollapsed && "pl-[156px]")
-          : undefined
-      }
-      renderNavigation={(pane) =>
-        !overlay && layout.panes[0]?.paneId === pane.paneId ? (
-          <SidebarNavigationControls header />
-        ) : null
-      }
-      renderHeader={(pane, session) => (
-        <CakeChatPaneHeader pane={pane} session={session} overlay={overlay} />
-      )}
+      renderHeader={(session) => <CakeChatPaneHeader session={session} overlay={overlay} />}
       onInteract={(sessionId) =>
         root.appShellStore.recordConversationInteraction({ kind: "cake-chat", sessionId })
-      }
-      onFocus={(paneId) => root.navigationStore.focusCakeChatPane(paneId)}
-      onClose={(paneId) =>
-        layout === root.sessionLayoutStore
-          ? root.navigationStore.closeSessionPane(paneId)
-          : root.navigationStore.closeCakeChatPane(paneId)
       }
     />
   ) : (

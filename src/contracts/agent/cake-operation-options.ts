@@ -76,7 +76,7 @@ export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
       assignment: ChildSessionAssignment;
       model: ChatConfiguration;
       resultDelivery?: ResultDelivery;
-      placement: "none" | "right" | "down";
+      open: boolean;
       worktreeName?: string;
       senderContext: CrossSessionContextSnapshot;
     },
@@ -87,7 +87,7 @@ export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
     prompt?: string;
     title?: string;
     resolveSource: boolean;
-    placement: "none" | "right" | "down";
+    open: boolean;
     destinationWorkingDirectory?: string;
   }): Promise<JsonValue>;
   routeFamilyMessage?(

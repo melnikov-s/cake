@@ -1,58 +1,52 @@
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { cn } from "../lib/utils";
 import { ResizeHandle } from "./ui/resize-handle";
 
-/** Shared VS Code/browser shell: project navigation, primary workspace, and authoritative chat drawer. */
+/** Primary tool surface and its authoritative same-conversation companion. */
 export function WorkspaceChatLayout({
   workspace,
+  workspaceHeader,
   className,
   workspaceLabel,
   chatSidebar,
   chatSidebarVisible,
   chatSidebarWidth,
   onChatSidebarWidthChange,
-  projectSidebar,
-  projectSidebarVisible,
-  projectSidebarWidth,
-  onProjectSidebarWidthChange,
   terminalDock,
 }: {
   workspace: ReactNode;
+  workspaceHeader?: ReactNode;
   className?: string;
   workspaceLabel: string;
   chatSidebar: ReactNode;
   chatSidebarVisible: boolean;
   chatSidebarWidth: number;
   onChatSidebarWidthChange(width: number): void;
-  projectSidebar: ReactNode;
-  projectSidebarVisible: boolean;
-  projectSidebarWidth: number;
-  onProjectSidebarWidthChange(width: number): void;
   terminalDock?: ReactNode;
 }) {
   const workspaceRef = useRef<HTMLElement>(null);
   const [resizing, setResizing] = useState(false);
-  const chatSidebarMax = Math.max(
-    320,
-    window.innerWidth - (projectSidebarVisible ? projectSidebarWidth : 0) - 480,
-  );
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const element = workspaceRef.current;
+    if (!element) return;
+    const measure = () => setWidth(element.getBoundingClientRect().width);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const chatSidebarMax = Math.max(320, width - 360);
   const visibleChatSidebarWidth = Math.min(chatSidebarWidth, chatSidebarMax);
-  const projectSidebarMax = Math.max(
-    220,
-    window.innerWidth - (chatSidebarVisible ? visibleChatSidebarWidth : 0) - 360,
-  );
-  const visibleProjectSidebarWidth = Math.min(projectSidebarWidth, projectSidebarMax);
-  const workspaceStyle: CSSProperties &
-    Record<"--workspace-chat-sidebar-width" | "--workspace-project-sidebar-width", string> = {
+  const workspaceStyle: CSSProperties & Record<"--workspace-chat-sidebar-width", string> = {
     "--workspace-chat-sidebar-width": `${visibleChatSidebarWidth}px`,
-    "--workspace-project-sidebar-width": `${visibleProjectSidebarWidth}px`,
   };
 
   return (
     <main
       ref={workspaceRef}
       className={cn(
-        "relative flex h-screen min-h-0 w-screen overflow-hidden bg-background text-foreground",
+        "relative flex h-full min-h-0 w-full overflow-hidden bg-background text-foreground",
         // Cross-origin widget frames otherwise swallow drag events even after
         // pointer capture. Restore their interaction as soon as resizing ends.
         resizing && "cursor-col-resize select-none [&_iframe]:pointer-events-none",
@@ -60,31 +54,8 @@ export function WorkspaceChatLayout({
       )}
       style={workspaceStyle}
     >
-      {projectSidebarVisible ? (
-        <>
-          <div className="w-[var(--workspace-project-sidebar-width)] min-w-0 shrink-0">
-            {projectSidebar}
-          </div>
-          <ResizeHandle
-            className="left-[calc(var(--workspace-project-sidebar-width)-5px)]"
-            label="Resize project sidebar"
-            value={visibleProjectSidebarWidth}
-            min={220}
-            max={projectSidebarMax}
-            edge="left"
-            onChange={onProjectSidebarWidthChange}
-            onDrag={(width) =>
-              workspaceRef.current?.style.setProperty(
-                "--workspace-project-sidebar-width",
-                `${width}px`,
-              )
-            }
-            onResizeStart={() => setResizing(true)}
-            onResizeEnd={() => setResizing(false)}
-          />
-        </>
-      ) : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {workspaceHeader}
         <div className="flex min-h-0 min-w-0 flex-1">
           <section className="min-w-0 flex-1" aria-label={workspaceLabel}>
             {workspace}
@@ -110,7 +81,8 @@ export function WorkspaceChatLayout({
               />
               <aside
                 data-popover-boundary
-                className="@container/session-pane flex w-[var(--workspace-chat-sidebar-width)] min-w-0 flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]"
+                aria-label="Current conversation companion"
+                className="@container/session-pane flex w-[var(--workspace-chat-sidebar-width)] min-w-0 shrink-0 flex-col border-l border-border/65 bg-background"
               >
                 {chatSidebar}
               </aside>

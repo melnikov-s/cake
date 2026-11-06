@@ -130,6 +130,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     if (!scroller || !content) return;
     const owner = createTranscriptScrollOwner(scroller, content, {
       following: initiallyFollowing,
+      restore: restoredScrollPosition?.kind === "message" ? restoredScrollPosition : undefined,
       cancelVirtualNavigation: () => virtuosoRef.current?.cancelScrollToIndex(),
     });
     scrollOwner.current = owner;
@@ -137,7 +138,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       owner.dispose();
       scrollOwner.current = undefined;
     };
-  }, [initiallyFollowing, scroller]);
+  }, [initiallyFollowing, restoredScrollPosition, scroller]);
   const reconcileScroll = useCallback(() => scrollOwner.current?.reconcile(), []);
   // Sending a message (from any composer path) is the only time the transcript
   // scrolls to the bottom for the reader.

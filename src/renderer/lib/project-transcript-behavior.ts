@@ -26,25 +26,16 @@ export function projectTranscriptBehaviorFor(
     onFork: resolved
       ? undefined
       : (entryId: string) => {
-          root.navigationStore.focusSessionPane(
-            root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
-          );
           void store.sessionContinuationStore.forkAt(entryId);
         },
     onTree: resolved
       ? undefined
       : (entryId: string) => {
-          root.navigationStore.focusSessionPane(
-            root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
-          );
           store.commandPaneStore.requestNavigation(entryId);
         },
     openSourceLocation: resolved
       ? undefined
       : (location: SourceLocation) => {
-          root.navigationStore.focusSessionPane(
-            root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
-          );
           void store.presentationStore
             .openFile(editorLocationFromPath(location))
             .catch((error: unknown) =>
@@ -58,9 +49,6 @@ export function projectTranscriptBehaviorFor(
     onOpenReviewRun: resolved
       ? undefined
       : (threadId?: string) => {
-          root.navigationStore.focusSessionPane(
-            root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
-          );
           if (threadId) void store.presentationStore.openReviewThread(threadId);
         },
     waitingForUser:

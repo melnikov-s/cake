@@ -5,6 +5,8 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
 
+import { createSessionInProject } from "./fixtures/workspace-navigation";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 test("switches Project Session, Project Chat and Cake Chat workspaces and restores covered composers", async () => {
@@ -51,22 +53,22 @@ test("switches Project Session, Project Chat and Cake Chat workspaces and restor
     const page = await application.firstWindow();
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
-    const newFirst = page.getByRole("button", { name: "New chat in first", exact: true });
-    const newSecond = page.getByRole("button", { name: "New chat in second", exact: true });
+    const newFirst = () => createSessionInProject(page, /^First(?: |$)/i);
+    const newSecond = () => createSessionInProject(page, /^Second(?: |$)/i);
 
-    await newFirst.click();
+    await newFirst();
     await expect(composer).toBeFocused();
     await composer.pressSequentially("First project draft");
     await expect(composer).toHaveValue("First project draft");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 
     // Repeating New Chat in the same Project retains the staged conversation.
-    await newFirst.click();
+    await newFirst();
     await expect(composer).toBeFocused();
     await expect(composer).toHaveValue("First project draft");
 
     // No existing-session detour should be needed to start in another Project.
-    await newSecond.click();
+    await newSecond();
     await expect(composer).toHaveValue("");
     await expect(composer).toBeFocused();
     await composer.pressSequentially("Second project draft");
@@ -74,10 +76,10 @@ test("switches Project Session, Project Chat and Cake Chat workspaces and restor
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await newFirst.click();
+    await newFirst();
     await expect(composer).toHaveValue("First project draft");
     await expect(composer).toBeFocused();
-    await newSecond.click();
+    await newSecond();
     await expect(composer).toHaveValue("Second project draft");
     await expect(composer).toBeFocused();
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
@@ -95,7 +97,7 @@ test("switches Project Session, Project Chat and Cake Chat workspaces and restor
     await cakeChat.pressSequentially("Cake Chat draft");
     await expect(cakeChat).toHaveValue("Cake Chat draft");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    await page.getByRole("button", { name: "Open settings", exact: true }).first().click();
+    await page.getByRole("button", { name: "Settings", exact: true }).first().click();
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await expect(cakeChat).toHaveValue("Cake Chat draft");
 
@@ -108,7 +110,7 @@ test("switches Project Session, Project Chat and Cake Chat workspaces and restor
     ).toBeVisible();
     await page.getByRole("button", { name: "Close all artifacts", exact: true }).click();
     await expect(projectChat).toHaveValue("Project Chat draft");
-    await newSecond.click();
+    await newSecond();
     await expect(composer).toHaveValue("Second project draft");
     await expect(composer).toBeFocused();
   } finally {

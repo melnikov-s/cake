@@ -164,10 +164,6 @@ export function FullscreenSurface({
             {...chatSidebar}
             className="h-full w-full"
             workspaceLabel={title}
-            projectSidebar={null}
-            projectSidebarVisible={false}
-            projectSidebarWidth={0}
-            onProjectSidebarWidthChange={() => undefined}
             workspace={content}
           />
         </div>

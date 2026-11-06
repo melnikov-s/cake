@@ -1,5 +1,7 @@
-import { act, render } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
+import { isMacPlatform } from "../../../src/renderer/lib/platform";
 import userEvent from "@testing-library/user-event";
+import { VirtuosoMockContext } from "react-virtuoso";
 import { applySnapshot, type StoreSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
@@ -35,6 +37,7 @@ export function renderAppShellNavigation(
     resolvedIds?: readonly string[];
     history?: readonly string[];
     unhydratedIds?: readonly string[];
+    transcriptViewport?: boolean;
   } = {},
 ) {
   let sessions = ["alpha", "beta", "gamma"].map((name) =>
@@ -108,18 +111,60 @@ export function renderAppShellNavigation(
     fixture.root.sessionLayoutStore.ensureSession(current);
   }
   let cakeChatRevision = 1;
-  const view = render(
+  const app = (
     <StoreProvider store={fixture.root}>
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
         <App />
       </StoreProvider>
-    </StoreProvider>,
+    </StoreProvider>
   );
+  const view = render(
+    options.transcriptViewport ? (
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 900, itemHeight: 160 }}>
+        {app}
+      </VirtuosoMockContext.Provider>
+    ) : (
+      app
+    ),
+  );
+  const user = userEvent.setup();
   return {
     root: fixture.root,
     models: fixture.models,
     client: fixture.client,
-    user: userEvent.setup(),
+    user,
+    async selectSession(sessionId: string) {
+      const summary = sessions.find((session) => session.sessionId === sessionId);
+      if (!summary) throw new Error(`Missing session fixture ${sessionId}`);
+      await user.click(screen.getByRole("button", { name: "Search sessions" }));
+      const dialog = within(screen.getByRole("dialog", { name: "Search sessions" }));
+      const resolved = dialog.getByRole("switch", { name: "Include resolved" });
+      if (summary.resolved && resolved.getAttribute("aria-checked") !== "true")
+        await user.click(resolved);
+      await user.type(dialog.getByRole("combobox"), summary.title);
+      await user.click(await dialog.findByRole("option", { name: new RegExp(summary.title) }));
+    },
+    async showSessions(resolved = false) {
+      const reopen = screen.queryByRole("button", { name: "Open Workspace" });
+      if (reopen) await user.click(reopen);
+      const workspace = within(screen.getByRole("complementary", { name: "Workspace" }));
+      await user.click(workspace.getByRole("button", { name: /^Sessions/ }));
+      if (resolved) {
+        const toggle = workspace.getByRole("button", { name: "Resolved sessions" });
+        if (toggle.getAttribute("aria-expanded") !== "true") await user.click(toggle);
+      }
+    },
+    async pressHistory(direction: "back" | "forward") {
+      const modifier = isMacPlatform ? "Meta" : "Alt";
+      const key = isMacPlatform
+        ? direction === "back"
+          ? "BracketLeft"
+          : "BracketRight"
+        : direction === "back"
+          ? "ArrowLeft"
+          : "ArrowRight";
+      await user.keyboard(`{${modifier}>}[${key}]{/${modifier}}`);
+    },
     async publishCakeChatProjection(
       sessionId: string,
       parts: ConversationSnapshot["parts"] = [],

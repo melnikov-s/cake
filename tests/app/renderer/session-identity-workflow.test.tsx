@@ -1,6 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
-import type { StoreSnapshot } from "r-state-tree";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
@@ -43,11 +42,6 @@ afterEach(() => {
 function inputs() {
   return screen.getAllByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
 }
-function paneFor(input: HTMLElement) {
-  const pane = input.closest("section");
-  if (!pane) throw new Error("Missing session pane");
-  return within(pane);
-}
 
 describe("Session identity workflows", () => {
   it("routes terminal actions through authoritative identity and falls back to the loaded directory after catalog removal", async () => {
@@ -79,35 +73,6 @@ describe("Session identity workflows", () => {
     });
     expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
     expect(open).toHaveBeenCalledTimes(2);
-  });
-
-  it("restores independent unsent pane inputs and closing one leaves the other usable", async () => {
-    const start = vi.fn<Client["projectSessions"]["start"]>();
-    let snapshot: StoreSnapshot;
-    {
-      using fixture = renderSessionIdentity({ client: { projectSessions: { start } } });
-      await fixture.user.type(inputs()[0]!, "Keep original task");
-      await fixture.user.click(screen.getByRole("button", { name: "Split right" }));
-      await waitFor(() => expect(inputs()).toHaveLength(2));
-      await fixture.user.type(inputs()[1]!, "Independent second task");
-      expect(inputs().map((input) => input.value)).toEqual([
-        "Keep original task",
-        "Independent second task",
-      ]);
-      snapshot = fixture.snapshot();
-    }
-    using restored = renderSessionIdentity({ snapshot, client: { projectSessions: { start } } });
-    expect(inputs().map((input) => input.value)).toEqual([
-      "Keep original task",
-      "Independent second task",
-    ]);
-    await restored.user.click(paneFor(inputs()[0]!).getByRole("button", { name: "Close pane" }));
-    expect(inputs()).toHaveLength(1);
-    expect(inputs()[0]!.value).toBe("Independent second task");
-    await restored.user.type(inputs()[0]!, " with retained context");
-    expect(inputs()[0]!.value).toBe("Independent second task with retained context");
-    expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(false);
-    expect(start).not.toHaveBeenCalled();
   });
 
   it("replaces the new-checkout creation fact with authoritative status and never resurrects it after removal", async () => {

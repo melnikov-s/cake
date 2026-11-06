@@ -66,7 +66,6 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   private initialization: Promise<void> | undefined;
   private resolveInitialization: (() => void) | undefined;
   private initializing = false;
-  private hydrationPaneId: string | undefined;
   private selectionRevision = 0;
   private openingSession: { sessionId: string; revision: number } | undefined;
   /** Same window-local completion acknowledgement as Project Sessions, not transcript storage. */
@@ -81,7 +80,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
 
   @child
   get sessionLayoutStore(): SessionLayoutStore {
-    return createStore(SessionLayoutStore, { allowSplit: false });
+    return createStore(SessionLayoutStore);
   }
 
   @child
@@ -109,7 +108,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       operations: this.operations,
       isVisible: (sessionId) =>
         this.openingSession?.sessionId === sessionId ||
-        this.layoutFor(sessionId).hasSession(sessionId),
+        this.layoutFor(sessionId).focusedSessionId === sessionId,
       modelPresets: this.props.modelPresets,
       openModelPresetSettings: this.props.openModelPresetSettings,
     });
@@ -154,11 +153,8 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   }
 
   activityFor(sessionId: string): SessionActivity | undefined {
-    const model = this.props.sessionModel(sessionId);
     const subagents = this.props.subagentCatalog(sessionId);
     if (
-      model.streaming ||
-      model.activeTurnIds.length > 0 ||
       subagents.activities.some(
         (activity) =>
           !subagents.releasedHandleIds.includes(activity.handleId) &&
@@ -166,6 +162,13 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       )
     )
       return "running";
+    return this.ownActivityFor(sessionId);
+  }
+
+  /** The owner's own activity, deliberately excluding running descendants. */
+  ownActivityFor(sessionId: string): SessionActivity | undefined {
+    const model = this.props.sessionModel(sessionId);
+    if (model.streaming || model.activeTurnIds.length > 0) return "running";
     const settled = settledSessionActivity(model.settledTurns.at(-1)?.outcome, model.parts);
     // Reading acknowledges a response, not an unresolved execution failure.
     if (settled === "error" || settled === "stopped") return settled;
@@ -252,12 +255,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     try {
       this.reconcileAuthoritativeSessions();
       this.hydrated = true;
-      // Hydration rebuilds one pane, reusing the visible pane's identity so a composer
-      // already on screen (the drop-down focuses it at once) is not remounted mid-typing.
       const restoredSessionId = this.sessionId;
-      this.hydrationPaneId = this.sessionLayoutStore.focusedPaneId;
-      this.sessionLayoutStore.layout = undefined;
-      this.sessionLayoutStore.focusedPaneId = undefined;
       const restored = restoredSessionId
         ? this.summaries.find(
             (summary) => summary.sessionId === restoredSessionId && !summary.resolved,
@@ -281,7 +279,6 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error, "Cake Chat could not load sessions");
     } finally {
-      this.hydrationPaneId = undefined;
       this.initializing = false;
       this.resolveInitialization?.();
       this.resolveInitialization = undefined;
@@ -389,24 +386,6 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     if (prompt?.trim()) await session.conversationSessionStore.chatStore.submit(prompt);
   }
 
-  focusPane(paneId: string) {
-    const sessionId = this.sessionLayoutStore.focusPane(paneId);
-    if (sessionId) this.selectionRevision += 1;
-    return sessionId;
-  }
-
-  closePane(paneId: string) {
-    const result = this.sessionLayoutStore.closePane(paneId);
-    if (!result) return undefined;
-    this.selectionRevision += 1;
-    for (const sessionId of result.removedSessionIds)
-      if (this.pendingSessions.isPending(sessionId)) {
-        this.registry.remove(sessionId);
-        this.pendingSessions.remove(sessionId);
-      }
-    return result;
-  }
-
   reportError(error: unknown, context?: string) {
     if (this.activeSession)
       this.activeSession.conversationSessionStore.composerStore.reportError(error, context);
@@ -438,8 +417,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   private selectSession(sessionId: string) {
     this.selectionRevision += 1;
     const layout = this.layoutFor(sessionId);
-    if (layout.layout) layout.showSession(sessionId);
-    else layout.ensureSession(sessionId, this.hydrationPaneId);
+    layout.showSession(sessionId);
   }
 
   private reconcileAuthoritativeSessions() {

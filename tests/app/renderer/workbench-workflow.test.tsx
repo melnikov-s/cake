@@ -12,6 +12,7 @@ import { App } from "../../../src/renderer/components/app";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { openSessionFromSearch, showSessions } from "./workspace-navigation-actions";
 import type { TestClientOverrides } from "./test-client";
 
 const record: WorktreeRecord = {
@@ -146,7 +147,7 @@ describe("Workbench workflow", () => {
       },
       true,
     );
-    fireEvent.contextMenu(screen.getByRole("button", { name: "Open Project Chat for project" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Open Project Chat for Project" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Delete resolved worktrees?" });
     expect(within(dialog).getByText(/1 landed worktree/)).toBeDefined();
     await fixture.user.click(within(dialog).getByRole("button", { name: "Delete worktrees" }));
@@ -180,11 +181,10 @@ describe("Workbench workflow", () => {
       }),
     );
     using fixture = renderWorkbench({ projectSessions: { resolveWorkingDirectory } });
-    await fixture.user.click(screen.getByRole("button", { name: /^two conversation / }));
-    await fixture.user.click(screen.getByRole("button", { name: /^one conversation / }));
+    await openSessionFromSearch(fixture.user, /^two conversation /);
+    await openSessionFromSearch(fixture.user, /^one conversation /);
     await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));
-    expect(await screen.findByText("New chat")).toBeDefined();
-    expect(screen.getByPlaceholderText("Ask Cake to work in Project…")).toBeDefined();
+    expect(await screen.findByPlaceholderText("Ask Cake to work in Project…")).toBeDefined();
     expect(resolveWorkingDirectory).toHaveBeenCalledWith(
       { workingDirectory: "/worktree" },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -209,25 +209,18 @@ describe("Workbench workflow", () => {
       );
       using fixture = renderWorkbench({ projectSessions: { resolveWorkingDirectory } });
       for (const id of visits) {
-        await fixture.user.click(
-          screen.getByRole("button", { name: new RegExp(`^${id} conversation `) }),
-        );
+        await openSessionFromSearch(fixture.user, new RegExp(`^${id} conversation `));
         await waitFor(() =>
           expect(screen.getAllByText(`${id} conversation`).length).toBeGreaterThan(1),
         );
       }
       await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));
       await waitFor(() =>
-        expect(screen.getAllByText("previous conversation").length).toBeGreaterThan(1),
+        expect(
+          document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+        ).toBe("previous"),
       );
-      expect(screen.getByRole("button", { name: "Go back in session history" })).toHaveProperty(
-        "disabled",
-        true,
-      );
-      expect(screen.getByRole("button", { name: "Go forward in session history" })).toHaveProperty(
-        "disabled",
-        true,
-      );
+      expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
       expect(resolveWorkingDirectory).toHaveBeenCalledOnce();
     },
   );
@@ -242,7 +235,7 @@ describe("Workbench workflow", () => {
     expect(screen.getByRole("button", { name: "Open VS Code" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));
     await waitFor(() => expect(resolveWorkingDirectory).toHaveBeenCalledOnce());
-    await fixture.user.click(screen.getByRole("button", { name: /^two conversation / }));
+    await openSessionFromSearch(fixture.user, /^two conversation /);
     await waitFor(() => expect(screen.getAllByText("two conversation").length).toBeGreaterThan(1));
     await act(async () =>
       pending.resolve({
@@ -261,11 +254,13 @@ describe("Workbench workflow", () => {
     const open = vi.fn<Client["vscode"]["open"]>(async () => undefined);
     const openSourceControl = vi.fn<Client["vscode"]["openSourceControl"]>(async () => undefined);
     using fixture = renderWorkbench({ vscode: { open, openSourceControl } }, true);
-    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
+    await showSessions(fixture.user);
+    await fixture.user.click(screen.getByRole("button", { name: "Resolved sessions" }));
     await fixture.user.click(
-      screen.getAllByRole("button", { name: "Expand Project resolved" })[0]!,
+      within(screen.getByRole("region", { name: "Resolved sessions" })).getByRole("button", {
+        name: /^two conversation /,
+      }),
     );
-    await fixture.user.click(screen.getByRole("button", { name: /^two conversation / }));
     await waitFor(() => expect(screen.getAllByText("two conversation").length).toBeGreaterThan(1));
     expect(screen.queryByRole("button", { name: "Open VS Code" })).toBeNull();
     expect(open).not.toHaveBeenCalled();

@@ -52,7 +52,7 @@ test("opens a restored Project without an approval prompt", async () => {
       timeout: 20_000,
     });
     await expect(
-      page.getByRole("button", { name: "New chat in project", exact: true }),
+      page.getByRole("button", { name: "Open Project Chat for project", exact: true }),
     ).toBeVisible();
   } finally {
     await application.close();

@@ -372,22 +372,6 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
           },
         ],
       },
-      {
-        page: "editor",
-        label: "VS Code",
-        settings: [
-          {
-            label: "Auto-hide project sidebar",
-            targetId: "setting-editor-sidebar-auto-hide",
-            keywords: "embedded editor vscode",
-          },
-          {
-            label: "Window width",
-            targetId: "setting-editor-sidebar-auto-hide-width",
-            keywords: "sidebar threshold narrow",
-          },
-        ],
-      },
     ],
   },
 ];

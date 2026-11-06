@@ -32,14 +32,6 @@ function Icon({
   );
 }
 
-export const MoreHorizontalIcon = () => (
-  <Icon>
-    <circle cx="5" cy="12" r="1" />
-    <circle cx="12" cy="12" r="1" />
-    <circle cx="19" cy="12" r="1" />
-  </Icon>
-);
-
 export const AudioLinesIcon = () => (
   <Icon size={14}>
     <path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4" />
@@ -87,6 +79,12 @@ export const EarOffIcon = () => (
   </Icon>
 );
 
+export const HomeIcon = () => (
+  <Icon>
+    <path d="m3 10 9-7 9 7v10H14v-6h-4v6H3z" />
+  </Icon>
+);
+
 export const FolderIcon = () => (
   <Icon>
     <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />
@@ -104,12 +102,6 @@ export const CakeIcon = () => (
 export const PlusIcon = () => (
   <Icon>
     <path d="M12 5v14M5 12h14" />
-  </Icon>
-);
-export const BellIcon = () => (
-  <Icon>
-    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-    <path d="M10 21h4" />
   </Icon>
 );
 export const CropIcon = () => (
@@ -343,20 +335,6 @@ export const ChatSidebarIcon = () => (
   <Icon>
     <rect x="3.5" y="4" width="17" height="16" rx="3" />
     <path d="M15 4v16" />
-  </Icon>
-);
-export const SplitRightIcon = () => (
-  <Icon>
-    <rect x="3.5" y="4" width="17" height="16" rx="3" />
-    <path d="M12 4v16" />
-    <path d="m15 9 3 3-3 3" />
-  </Icon>
-);
-export const SplitDownIcon = () => (
-  <Icon>
-    <rect x="3.5" y="4" width="17" height="16" rx="3" />
-    <path d="M3.5 12h17" />
-    <path d="m9 15 3 3 3-3" />
   </Icon>
 );
 export const ChevronIcon = ({ className }: { className?: string }) => (

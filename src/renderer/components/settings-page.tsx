@@ -1,4 +1,3 @@
-import { usePhoneLayout } from "../lib/phone-layout";
 import { SettingsCompanionSection } from "./settings-companion-section";
 import { SettingsCakeChatSection } from "./settings-cake-chat-section";
 import { SettingsCakeChatOverlaySection } from "./settings-cake-chat-overlay-section";
@@ -48,7 +47,6 @@ function transportMode(value: string) {
 import { SettingsToggle } from "./settings/settings-toggle";
 import { SettingsDesktopSharingSection } from "./settings-desktop-sharing-section";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
-import { SettingsEmbeddedEditorSection } from "./settings-embedded-editor-section";
 import { SettingsHotkeysSection } from "./settings-hotkeys-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
 import type { SettingsStore } from "../stores/SettingsStore";
@@ -75,11 +73,10 @@ export const SettingsPage = observer(function SettingsPage({
   const providers = settings.providers;
   const utility = settings.utilityModel;
   const appearance = settings.appearance;
-  const phone = usePhoneLayout();
-  const activePage = phone && settings.activePage === "editor" ? "appearance" : settings.activePage;
+  const activePage = settings.activePage;
   const navigationGroups = SETTINGS_NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => !phone || item.page !== "editor"),
+    items: group.items,
   }));
   const pageMetadata = SETTINGS_NAV_GROUPS.flatMap((group) => group.items).find(
     (page) => page.page === activePage,
@@ -973,9 +970,6 @@ export const SettingsPage = observer(function SettingsPage({
               <SettingsScreenCaptureSection capture={settings.screenCapture} />
             ))}
           {activePage === "hotkeys" && <SettingsHotkeysSection hotkeys={settings.hotkeys} />}
-          {activePage === "editor" && (
-            <SettingsEmbeddedEditorSection settings={settings.embeddedEditor} />
-          )}
         </div>
       </div>
     </div>

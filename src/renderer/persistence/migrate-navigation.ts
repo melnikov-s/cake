@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import type { StoreSnapshot } from "r-state-tree";
 import { migrateProjectChatLayout } from "./migrate-project-chat-layout";
+import { migrateFocusedConversation } from "./migrate-focused-conversation";
 
 const legacyConversationSchema = Schema.Struct({
   kind: Schema.Literals(["project-session", "cake-chat"]),
@@ -46,7 +47,12 @@ function seedLayout(snapshot: StoreSnapshot | undefined, sessionId: string): Sto
  */
 function migrateNavigationV2(snapshot: StoreSnapshot): StoreSnapshot {
   const shell = child(snapshot, "appShellStore");
-  if (!shell || shell.state.navigationVersion === 2 || shell.state.navigationVersion === 3)
+  if (
+    !shell ||
+    shell.state.navigationVersion === 2 ||
+    shell.state.navigationVersion === 3 ||
+    shell.state.navigationVersion === 4
+  )
     return snapshot;
   // Startup-only decoding: malformed legacy navigation fails restoration rather than
   // silently choosing a different conversation. The rest of the Store snapshot is unchanged.
@@ -97,5 +103,5 @@ function migrateNavigationV2(snapshot: StoreSnapshot): StoreSnapshot {
 }
 
 export function migrateNavigation(snapshot: StoreSnapshot): StoreSnapshot {
-  return migrateProjectChatLayout(migrateNavigationV2(snapshot));
+  return migrateFocusedConversation(migrateProjectChatLayout(migrateNavigationV2(snapshot)));
 }

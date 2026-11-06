@@ -160,6 +160,8 @@ async function fixture(
   await f.root.cakeChatCollectionStore.initialize();
   f.root.terminalStore.readyForEvents();
   f.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
+  f.root.workspaceNavigatorStore.close();
+  const user = userEvent.setup();
   const view = render(
     <StoreProvider store={f.root}>
       <StoreProvider store={f.root.fullscreenSurfaceStore}>
@@ -179,7 +181,17 @@ async function fixture(
   );
   return {
     ...f,
-    user: userEvent.setup(),
+    user,
+    async openTask() {
+      await user.click(screen.getByRole("button", { name: "Search sessions" }));
+      await user.type(
+        within(screen.getByRole("dialog", { name: "Search sessions" })).getByRole("combobox", {
+          name: "Search session titles",
+        }),
+        "task",
+      );
+      await user.keyboard("{Enter}");
+    },
     publish(id: string, parts: UiPart[], streaming: boolean, preview = false) {
       act(() => publish(id, parts, streaming, preview));
     },
@@ -290,7 +302,7 @@ it.each(
   async ({ workingDirectory, mode, chatSidebarVisible }) => {
     using f = await fixture(undefined, undefined, workingDirectory);
     await act(async () => f.root.navigationStore.openCakeChat(otherId));
-    await f.user.click(screen.getByRole("button", { name: /^task(?: |$)/ }));
+    await f.openTask();
     await waitFor(() =>
       expect(
         document.querySelector('[data-slot="session-pane"][data-session-id="task"]'),
@@ -310,13 +322,12 @@ it.each(
       if (!chatSidebarVisible) {
         act(() => {
           f.root.sessionRegistry.findSession("task")!.toggleWorkspaceChatSidebar();
-          f.root.sidebarStore.toggle();
+          f.root.workspaceNavigatorStore.close();
         });
       }
     }
     act(() => f.root.projectWorkbenchStore.projectOpenStore.activate("/finance"));
-    const link = screen.getByRole("button", { name: "Go to Project Chat for zombies" });
-    expect(link.querySelector('[data-slot="avatar"]')).toBeTruthy();
+    const link = screen.getByRole("button", { name: "Return to Project Chat" });
     await f.user.click(link);
     await waitFor(() =>
       expect(
@@ -336,8 +347,7 @@ it("shows the owning project artwork in Project Chat and reuses the chat and pan
   const pane = document.querySelector<HTMLElement>(
     `[data-slot="session-pane"][data-session-id="${projectId}"]`,
   )!;
-  const header = pane.querySelector<HTMLElement>('[data-slot="workspace-header"]')!;
-  const link = within(header).getByRole("button", { name: "Go to Project Chat for zombies" });
+  const link = screen.getByRole("button", { name: "Open Project Chat for zombies" });
   expect(link.querySelector('[data-slot="avatar"] img')).toBeTruthy();
   const input = screen.getByRole("combobox", { name: "Message Project Chat" });
   await f.user.type(input, "Keep my project draft");
@@ -351,107 +361,6 @@ it("shows the owning project artwork in Project Chat and reuses the chat and pan
   );
   expect(f.chatOpen).not.toHaveBeenCalled();
 });
-
-it.each(["Split right", "Split down"])(
-  "opens Project Chat in shared panes with %s and preserves routing on focus, switching and close",
-  async (direction) => {
-    using f = await fixture();
-    await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
-    const pane = () =>
-      document.querySelector<HTMLElement>(
-        `[data-slot="session-pane"][data-session-id="${projectId}"]`,
-      )!;
-    const input = within(pane()).getByRole("combobox", { name: "Message Project Chat" });
-    await f.user.type(input, "Project Chat draft");
-    await f.user.click(within(pane()).getByRole("button", { name: "To-do" }));
-    expect(within(pane()).getByRole("complementary", { name: "To-do" })).toBeTruthy();
-    f.publish(
-      projectId,
-      [
-        {
-          id: "entry-project-answer-text-0",
-          entryId: "project-answer",
-          renderKey: "assistant-project-answer-text-0",
-          kind: "text",
-          role: "assistant",
-          text: "Only Project Chat sees this",
-          status: "complete",
-        },
-      ],
-      false,
-    );
-    expect(
-      f.root.cakeChatCollectionStore.registry.find(projectId)!.conversationSessionStore.chatStore
-        .parts,
-    ).toContainEqual(expect.objectContaining({ text: "Only Project Chat sees this" }));
-    await f.user.click(within(pane()).getByRole("button", { name: direction }));
-    expect(document.querySelectorAll('[data-slot="session-pane"]')).toHaveLength(2);
-    expect(
-      f.root.cakeChatCollectionStore.registry.find(projectId)!.conversationSessionStore.chatStore
-        .parts,
-    ).toContainEqual(expect.objectContaining({ text: "Only Project Chat sees this" }));
-    const other = () =>
-      document.querySelector<HTMLElement>('[data-slot="session-pane"][data-focused="true"]')!;
-    expect(other()).not.toBe(pane());
-    await f.user.type(
-      within(other()).getByRole("combobox", { name: "Message" }),
-      "New session draft",
-    );
-    await f.user.click(screen.getByRole("button", { name: /^task(?: |$)/ }));
-    await waitFor(() => expect(other().dataset.sessionId).toBe("task"));
-    expect(
-      f.root.sessionRegistry.findSession("task")!.conversationSessionStore.chatStore.parts,
-    ).toEqual([]);
-    // Opening the same canonical Project Chat focuses its existing pane, not a duplicate.
-    await f.user.click(
-      within(other()).getByRole("button", { name: "Go to Project Chat for zombies" }),
-    );
-    expect(document.querySelectorAll('[data-slot="session-pane"]')).toHaveLength(2);
-    expect(pane().dataset.focused).toBe("true");
-    expect(within(pane()).getByRole("combobox", { name: "Message Project Chat" })).toHaveProperty(
-      "value",
-      "Project Chat draft",
-    );
-    expect(within(pane()).getByRole("complementary", { name: "To-do" })).toBeTruthy();
-    expect(f.root.appShellStore.activeConversation).toEqual({
-      kind: "cake-chat",
-      sessionId: projectId,
-    });
-    expect(f.root.sessionRegistry.findSession(projectId)).toBeUndefined();
-    expect(
-      f.root.cakeChatCollectionStore.registry.observationTargets.some(
-        (target) => target.sessionId === projectId,
-      ),
-    ).toBe(true);
-    await f.user.click(within(pane()).getByRole("button", { name: "Close pane" }));
-    expect(document.querySelectorAll('[data-slot="session-pane"]')).toHaveLength(1);
-    expect(
-      document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
-    ).toBe("task");
-    await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
-    expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toHaveProperty(
-      "value",
-      "Project Chat draft",
-    );
-    await f.user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() =>
-      expect(f.prompt).toHaveBeenCalledWith(
-        expect.objectContaining({ sessionId: projectId, text: "Project Chat draft" }),
-        expect.anything(),
-      ),
-    );
-    await f.user.click(screen.getByRole("button", { name: /^task(?: |$)/ }));
-    const taskInput = await screen.findByRole("combobox", { name: "Message" });
-    await f.user.type(taskInput, "Task-only input");
-    await f.user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() =>
-      expect(f.prompt).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sessionId: "task", text: "Task-only input" }),
-        expect.anything(),
-      ),
-    );
-  },
-);
 
 function createTodoRuntime() {
   return ManagedRuntime.make(
@@ -482,7 +391,7 @@ it.each(
       await runtime.runPromise(upsertProject("/finance", "finance"));
       using f = await fixture();
       await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
-      const panel = () => screen.queryByRole("complementary", { name: "To-do" });
+      const panel = () => screen.queryByRole("complementary", { name: "Workspace" });
       let revision = 0;
       const publish = async () => {
         const projects = await runtime.runPromise(
@@ -514,8 +423,8 @@ it.each(
       );
       await publish();
       expect(panel()).toBeNull();
-      expect(screen.getByRole("button", { name: "To-do" }).textContent).toBe("0");
-      if (alreadyOpen) await f.user.click(screen.getByRole("button", { name: "To-do" }));
+      expect(screen.getByRole("button", { name: "To-dos" }).textContent).toBe("0");
+      if (alreadyOpen) await f.user.click(screen.getByRole("button", { name: "To-dos" }));
       const first = await runtime.runPromise(
         projectTodos.create("/zombies", {
           title: "First commitment",
@@ -525,10 +434,14 @@ it.each(
       );
       await publish();
       expect(within(panel()!).getByText(first.title)).toBeTruthy();
-      expect(screen.getByRole("button", { name: "To-do" }).getAttribute("aria-pressed")).toBe(
+      expect(screen.getByRole("button", { name: "To-dos" }).getAttribute("aria-pressed")).toBe(
         "true",
       );
-      await f.user.click(screen.getByRole("button", { name: "Close To-do" }));
+      await f.user.click(
+        within(screen.getByRole("complementary", { name: "Workspace" })).getByRole("button", {
+          name: "Close Workspace",
+        }),
+      );
       // Closing remains respected across later creation, status and lifecycle changes.
       const second = await runtime.runPromise(
         projectTodos.create("/zombies", {
@@ -569,9 +482,9 @@ it.each(
       );
       await publish();
       expect(panel()).toBeNull(); // Done history means the list is not empty.
-      await f.user.click(screen.getByRole("button", { name: "To-do" }));
+      await f.user.click(screen.getByRole("button", { name: "To-dos" }));
       expect(within(panel()!).getByText("New work after Done")).toBeTruthy();
-      await f.user.click(screen.getByRole("button", { name: "To-do" }));
+      await f.user.click(screen.getByRole("button", { name: "To-dos" }));
       expect(panel()).toBeNull();
     } finally {
       await runtime.dispose();
@@ -607,7 +520,7 @@ it.each(["initial load", "snapshot hydration"] as const)(
       act(() =>
         applyProjectCatalogUpdate(f.models.projects, { _tag: "Snapshot", revision: 1, projects }),
       );
-    expect(screen.queryByRole("complementary", { name: "To-do" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
     // Unrelated live updates after hydration cannot turn it into a creation event.
     act(() =>
       applyProjectCatalogUpdate(f.models.projects, {
@@ -616,8 +529,8 @@ it.each(["initial load", "snapshot hydration"] as const)(
         event: { _tag: "Upserted", project: { ...projects[0]!, name: "Renamed" } },
       }),
     );
-    expect(screen.queryByRole("complementary", { name: "To-do" })).toBeNull();
-    await f.user.click(screen.getByRole("button", { name: "To-do" }));
+    expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
+    await f.user.click(screen.getByRole("button", { name: "To-dos" }));
     expect(screen.getByText("Existing commitment")).toBeTruthy();
   },
 );
@@ -670,12 +583,12 @@ it("toggles Project Chat to-dos in the existing side pane, focuses/unfocuses, co
       }),
     );
     await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
-    const toggle = screen.getByRole("button", { name: "To-do" });
+    const toggle = screen.getByRole("button", { name: "To-dos" });
     // Count only open items, with the label reserved for accessibility and the tooltip.
     expect(toggle.textContent).toBe("1");
     expect(toggle.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
     await f.user.click(toggle);
-    const panel = screen.getByRole("complementary", { name: "To-do" });
+    const panel = screen.getByRole("complementary", { name: "Workspace" });
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
     expect(within(panel).getByText(item.description)).toBeTruthy();
     expect(within(panel).queryByText("Earlier question")).toBeNull();
@@ -706,7 +619,7 @@ it("toggles Project Chat to-dos in the existing side pane, focuses/unfocuses, co
         .getByRole("button", { name: item.title })
         .getAttribute("aria-pressed"),
     ).toBe("false");
-    await f.user.click(screen.getByRole("button", { name: "Close To-do" }));
+    await f.user.click(within(panel).getByRole("button", { name: "Close Workspace" }));
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
     await f.user.click(toggle);
@@ -762,7 +675,7 @@ it.each(["response", "table"] as const)(
     );
     f.publish(projectId, [input, answer], false);
     await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
-    await f.user.click(screen.getByRole("button", { name: "To-do" }));
+    await f.user.click(screen.getByRole("button", { name: "To-dos" }));
     // Focus is window-local view state: focusing the other task folds sections attributed later.
     await f.user.click(screen.getByRole("button", { name: `Task ${second}` }));
     const title = surface === "response" ? "Cake" : "Table";
@@ -839,7 +752,7 @@ it.each([projectId, CAKE_CHAT_SESSION_ID, "task"])(
     };
     f.publish(id, [live], true);
     if (id === "task") {
-      await f.user.click(screen.getByRole("button", { name: /^task(?: |$)/ }));
+      await f.openTask();
       await screen.findByRole("combobox", { name: "Message" });
     } else if (id === projectId) {
       await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
@@ -877,9 +790,8 @@ it.each([projectId, CAKE_CHAT_SESSION_ID, "task"])(
   },
 );
 
-it("opens Project Chat from its collapsed project header with VS Code and Terminal at the registered project root", async () => {
+it("opens Project Chat from its project rail with VS Code and Terminal at the registered project root", async () => {
   using f = await fixture();
-  await f.user.click(screen.getByRole("button", { name: "Collapse zombies" }));
   await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
   await waitFor(() =>
     expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy(),
@@ -900,203 +812,52 @@ it("opens Project Chat from its collapsed project header with VS Code and Termin
   expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
 });
 
-it("shows each chat's own status and selection on its project header", async () => {
+it("keeps own Project Chat and Session running/error states distinct while switching the focused conversation", async () => {
   using f = await fixture();
-  const projectHeader = screen
-    .getByRole("button", { name: "Open Project Chat for zombies" })
-    .closest<HTMLElement>('[data-slot="project-header"]')!;
-  const financeHeader = screen
-    .getByRole("button", { name: "Open Project Chat for finance" })
-    .closest<HTMLElement>('[data-slot="project-header"]')!;
-  expect(within(projectHeader).queryByRole("img")).toBeNull();
-  expect(projectHeader.classList.contains("bg-sidebar-active")).toBe(false);
-  expect(financeHeader.classList.contains("bg-sidebar-active")).toBe(false);
-  act(() =>
-    applyConversationUpdate(f.models.cakeChatConversation(projectId), {
-      _tag: "Event",
-      revision: 2,
-      event: { _tag: "StreamingChanged", sessionId: projectId, streaming: true },
-    }),
-  );
-  expect(within(projectHeader).getByRole("img", { name: "Running" })).toBeTruthy();
-  expect(within(financeHeader).queryByRole("img")).toBeNull();
-  await f.user.click(
-    within(projectHeader).getByRole("button", { name: "Open Project Chat for zombies" }),
-  );
-  expect(
-    within(projectHeader)
-      .getByRole("button", { name: "Open Project Chat for zombies" })
-      .getAttribute("aria-current"),
-  ).toBe("page");
-  expect(projectHeader.classList.contains("bg-sidebar-active")).toBe(true);
-  expect(financeHeader.classList.contains("bg-sidebar-active")).toBe(false);
-
-  // Expansion is independent of selection, including when opening a collapsed chat.
-  await f.user.click(screen.getByRole("button", { name: "Collapse zombies" }));
-  expect(projectHeader.classList.contains("bg-sidebar-active")).toBe(true);
-  await f.user.click(screen.getByRole("button", { name: "Expand zombies" }));
-  const task = document.querySelector<HTMLElement>('[data-session-id="task"]')!;
-  await f.user.click(within(task).getByRole("button", { name: /^task / }));
-  await waitFor(() => expect(task.getAttribute("data-navigation-active")).toBe("true"));
-  expect(projectHeader.classList.contains("bg-sidebar-active")).toBe(false);
-
-  await f.user.click(
-    within(financeHeader).getByRole("button", { name: "Open Project Chat for finance" }),
-  );
-  expect(financeHeader.classList.contains("bg-sidebar-active")).toBe(true);
-  expect(projectHeader.classList.contains("bg-sidebar-active")).toBe(false);
-  await f.user.click(screen.getByRole("button", { name: "Cake Chat" }));
-  expect(financeHeader.classList.contains("bg-sidebar-active")).toBe(false);
-  expect(projectHeader.classList.contains("bg-sidebar-active")).toBe(false);
+  await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+  await f.user.click(screen.getByRole("button", { name: "Open Workspace" }));
+  await f.user.click(screen.getByRole("button", { name: /^Sessions / }));
+  const row = (id: string) =>
+    document.querySelector<HTMLElement>(
+      `[data-slot="conversation-navigator-row"][data-session-id="${id}"]`,
+    )!;
+  const models = [
+    f.models.cakeChatConversation(projectId),
+    f.models.projectConversation("task", "/zombies"),
+  ];
+  const turnId = TurnId.make("00000000-0000-4000-8000-000000000001");
+  let revision = 10;
+  act(() => {
+    for (const model of models)
+      applyConversationUpdate(model, {
+        _tag: "Event",
+        revision: ++revision,
+        event: { _tag: "TurnAccepted", sessionId: model.sessionId, turnId, delivery: "prompt" },
+      });
+  });
+  for (const id of [projectId, "task"]) {
+    const dot = within(row(id)).getByRole("img", { name: "Running" });
+    expect(dot.classList).toContain("bg-accent");
+  }
+  await f.user.click(within(row("task")).getByRole("button", { name: /^task / }));
+  expect(await screen.findByRole("combobox", { name: "Message" })).toBeTruthy();
+  act(() => {
+    for (const model of models)
+      applyConversationUpdate(model, {
+        _tag: "Event",
+        revision: ++revision,
+        event: { _tag: "TurnSettled", sessionId: model.sessionId, turnId, outcome: "failed" },
+      });
+  });
+  for (const id of [projectId, "task"])
+    expect(within(row(id)).getByRole("img", { name: "Error" }).classList).toContain(
+      "bg-destructive",
+    );
+  await f.user.click(within(row(projectId)).getByRole("button", { name: "Project Chat" }));
+  expect(await screen.findByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
+  for (const id of [projectId, "task"])
+    expect(within(row(id)).getByRole("img", { name: "Error" })).toBeTruthy();
 });
-
-it.each(
-  (["projects", "activity"] as const).flatMap((surface) =>
-    (["complete", "failed", "aborted", "stopped"] as const).map((ending) => ({ surface, ending })),
-  ),
-)(
-  "matches Project Chat and Session dots through $ending transitions in $surface",
-  async ({ surface, ending }) => {
-    using f = await fixture();
-    if (surface === "activity")
-      await f.user.click(screen.getByRole("button", { name: "Show activity" }));
-    const entries = () => [
-      document.querySelector<HTMLElement>(
-        surface === "projects"
-          ? `[data-slot="project-header"][data-session-id="${projectId}"]`
-          : `[data-slot="project-chat-item"][data-session-id="${projectId}"]`,
-      )!,
-      document.querySelector<HTMLElement>('.session-item[data-session-id="task"]')!,
-    ];
-    const openEntry = async (entry: HTMLElement, index: number) => {
-      await f.user.click(
-        within(entry).getByRole("button", {
-          name:
-            index === 1
-              ? /^task(?: |$)/
-              : surface === "projects"
-                ? "Open Project Chat for zombies"
-                : /^zombies /,
-        }),
-      );
-      await screen.findByRole("combobox", {
-        name: index === 1 ? "Message" : "Message Project Chat",
-      });
-    };
-    const models = [
-      f.models.cakeChatConversation(projectId),
-      f.models.projectConversation("task", "/zombies"),
-    ];
-    let revision = 1;
-    const turnId = TurnId.make("00000000-0000-4000-8000-000000000001");
-    const assertDots = (label?: string, color?: string) => {
-      for (const entry of entries()) {
-        if (!label) expect(within(entry).queryByRole("img")).toBeNull();
-        else {
-          const dot = within(entry).getByRole("img", { name: label });
-          expect(dot.classList).toContain(color);
-          expect(dot.classList).toContain("size-2");
-          expect(dot.classList).not.toContain("bg-muted-foreground");
-          expect(dot.classList).not.toContain("bg-primary");
-        }
-      }
-    };
-    assertDots();
-    act(() => {
-      for (const model of models)
-        applyConversationUpdate(model, {
-          _tag: "Event",
-          revision: ++revision,
-          event: { _tag: "TurnAccepted", sessionId: model.sessionId, turnId, delivery: "prompt" },
-        });
-    });
-    assertDots("Running", "bg-accent");
-    // Selection must not turn either running dot neutral, or hide it.
-    for (const [index, entry] of entries().entries()) {
-      await openEntry(entry, index);
-      assertDots("Running", "bg-accent");
-    }
-    await f.user.click(screen.getByRole("button", { name: "Cake Chat" }));
-    act(() => {
-      for (const model of models) {
-        if (ending === "stopped")
-          applyConversationUpdate(model, {
-            _tag: "Event",
-            revision: ++revision,
-            event: {
-              _tag: "PartUpdated",
-              sessionId: model.sessionId,
-              part: {
-                id: "deliberate-stop",
-                kind: "notice",
-                tone: "info",
-                title: "Stopped",
-                detail: "Stopped by you",
-              },
-            },
-          });
-        applyConversationUpdate(model, {
-          _tag: "Event",
-          revision: ++revision,
-          event: {
-            _tag: "TurnSettled",
-            sessionId: model.sessionId,
-            turnId,
-            outcome: ending === "stopped" ? "aborted" : ending,
-          },
-        });
-      }
-    });
-    if (ending === "stopped") assertDots();
-    else
-      assertDots(
-        ending === "complete" ? "Ready, unread" : "Error",
-        ending === "complete" ? "bg-success" : "bg-destructive",
-      );
-    // Reading acknowledges completed responses, not unresolved execution errors.
-    for (const [index, entry] of entries().entries()) {
-      await openEntry(entry, index);
-      if (ending === "failed" || ending === "aborted") assertDots("Error", "bg-destructive");
-    }
-    await f.user.click(screen.getByRole("button", { name: "Cake Chat" }));
-    if (ending === "failed" || ending === "aborted") {
-      assertDots("Error", "bg-destructive");
-      // A successful retry replaces the error with an ordinary unread response.
-      const retryTurnId = TurnId.make("00000000-0000-4000-8000-000000000002");
-      act(() => {
-        for (const model of models)
-          applyConversationUpdate(model, {
-            _tag: "Event",
-            revision: ++revision,
-            event: {
-              _tag: "TurnAccepted",
-              sessionId: model.sessionId,
-              turnId: retryTurnId,
-              delivery: "prompt",
-            },
-          });
-      });
-      assertDots("Running", "bg-accent");
-      act(() => {
-        for (const model of models)
-          applyConversationUpdate(model, {
-            _tag: "Event",
-            revision: ++revision,
-            event: {
-              _tag: "TurnSettled",
-              sessionId: model.sessionId,
-              turnId: retryTurnId,
-              outcome: "complete",
-            },
-          });
-      });
-      assertDots("Ready, unread", "bg-success");
-      for (const [index, entry] of entries().entries()) await openEntry(entry, index);
-      await f.user.click(screen.getByRole("button", { name: "Cake Chat" }));
-      assertDots();
-    } else assertDots();
-  },
-);
 
 it("gives global and project chats their own Browser destinations and returns to the same composer", async () => {
   using f = await fixture();
@@ -1117,39 +878,4 @@ it("gives global and project chats their own Browser destinations and returns to
     expect(f.browserOpen).toHaveBeenLastCalledWith(projectId, undefined, expect.anything()),
   );
   expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
-});
-
-it("keeps Activity in creation order through task and Project Chat message updates", async () => {
-  using f = await fixture();
-  await f.user.click(screen.getByRole("button", { name: "Show activity" }));
-  const rows = () =>
-    [...document.querySelectorAll<HTMLElement>('[data-slot="sidebar"] [data-session-id]')].map(
-      (row) => row.dataset.sessionId,
-    );
-  expect(rows().indexOf("task")).toBeLessThan(rows().indexOf(projectId));
-  act(() =>
-    applySnapshot(f.models.sessionCatalog, {
-      sessions: [
-        sessionSummary({
-          sessionId: "task",
-          projectPath: "/zombies",
-          createdAt: "2026-01-03T00:00:00Z",
-          modifiedAt: "2026-01-05T00:00:00Z",
-        }),
-      ],
-      resolvedHasMoreByProject: {},
-    }),
-  );
-  expect(rows().indexOf("task")).toBeLessThan(rows().indexOf(projectId));
-  act(() =>
-    applySnapshot(f.models.cakeChatCatalog, {
-      loaded: true,
-      sessions: [
-        chatSummary(CAKE_CHAT_SESSION_ID),
-        chatSummary(projectId, "/zombies", "2026-01-06T00:00:00Z"),
-        chatSummary(otherId, "/finance"),
-      ],
-    }),
-  );
-  expect(rows().indexOf("task")).toBeLessThan(rows().indexOf(projectId));
 });

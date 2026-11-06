@@ -117,7 +117,13 @@ it.effect(
               const owner = catalog.find(project);
               return owner && { scope: project, chat: "Project Chat" as const, owner };
             },
-            sidePanel: () => sidePanel,
+            pane: () => ({
+              visible: Boolean(sidePanel.target),
+              open: () => {
+                throw new Error("Reconciliation must not open a pane");
+              },
+              close: () => sidePanel.close(),
+            }),
             replyContext: () => {},
           }),
         );

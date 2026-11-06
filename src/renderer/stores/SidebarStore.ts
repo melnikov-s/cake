@@ -2,31 +2,25 @@ import { Store, child, computed, createStore, snapshot } from "r-state-tree";
 import { formatRelativeSessionTime } from "../../utils/format-relative-session-time";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { ClientContext } from "./context/ClientContext";
-import type { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
-import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import { SessionManagementContext } from "./context/SessionManagementContext";
 import { SessionRetirementContext } from "./context/SessionRetirementContext";
 import { SessionRegistryContext } from "./context/SessionRegistryContext";
 import { SidebarSessionListStore } from "./SidebarSessionListStore";
 import { SessionSearchStore } from "./SessionSearchStore";
+import { WorkspaceNavigatorContext } from "./context/WorkspaceNavigatorContext";
 
 export interface SidebarStoreProps {
   catalog: SessionCatalogStore;
   createAutomation?(projectPath: string): void;
   cakeChat(): CakeChatCollectionStore;
   selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
-  embeddedEditorSettings: EmbeddedEditorSettingsStore;
 }
 
 /** Owns sidebar visibility, sizing, navigation mode, and Project focus presentation. */
 export class SidebarStore extends Store<SidebarStoreProps> {
   get electron() {
     return ClientContext.consume(this)!.electron;
-  }
-
-  private get projects() {
-    return ProjectCatalogContext.consume(this)!;
   }
 
   private get sessions() {
@@ -36,12 +30,6 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   @snapshot hidden = false;
   @snapshot width = 292;
   @snapshot navigationMode: "projects" | "activity" = "projects";
-  /** Window-local presentation mode that narrows navigation to one Project. */
-  @snapshot focusedProjectPath: string | undefined;
-  private ideActive = false;
-  private ideHidden: boolean | undefined;
-  private ideVisibilityManuallySet = false;
-  private ideViewportWidth = Number.POSITIVE_INFINITY;
   now = Date.now();
 
   constructor(props: SidebarStore["props"]) {
@@ -52,20 +40,6 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       }, 60_000);
       return () => clearInterval(timer);
     });
-    this.effect(() => {
-      const browserWindow = globalThis.window;
-      if (!browserWindow) return;
-      const updateViewportWidth = () => this.updateIdeViewportWidth(browserWindow.innerWidth);
-      browserWindow.addEventListener("resize", updateViewportWidth);
-      return () => browserWindow.removeEventListener("resize", updateViewportWidth);
-    });
-    this.reaction(
-      () => [
-        this.props.embeddedEditorSettings.sidebarAutoHide,
-        this.props.embeddedEditorSettings.sidebarAutoHideWidth,
-      ],
-      () => this.applyIdeAutoHide(),
-    );
   }
 
   @child
@@ -81,45 +55,24 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   get sessionSearchStore(): SessionSearchStore {
     return createStore(SessionSearchStore, {
       catalog: this.props.catalog,
-      focusedProjectPath: () => this.focusModeProjectPath,
     });
   }
 
   get visible() {
-    return !(this.ideActive ? (this.ideHidden ?? this.hidden) : this.hidden);
-  }
-
-  get focusModeProjectPath() {
-    const path = this.focusedProjectPath;
-    return path && this.projects.find(path) ? path : undefined;
-  }
-
-  focusProject(path: string) {
-    if (!this.projects.find(path)) return;
-    this.focusedProjectPath = path;
-    this.sessionListStore.expandActiveGroup(path);
-  }
-
-  leaveProjectFocus() {
-    this.focusedProjectPath = undefined;
+    return !this.hidden;
   }
 
   managedWorktree(workingDirectory: string) {
     return this.props.catalog.managedWorktree(workingDirectory);
   }
 
-  /** Project-to-Project navigation keeps this projection undefined, so unrelated
-   * rows do not subscribe to every change of the selected conversation.
-   */
+  /** Focus is scope-owned, so its associations survive worker/tool navigation and pane closure. */
   @computed
   private get focusedTodos() {
-    const conversation = this.props.selectedConversation?.();
-    return conversation?.kind === "cake-chat"
-      ? this.props.cakeChat().registry.find(conversation.sessionId)?.todos.focusedItems
-      : undefined;
+    return WorkspaceNavigatorContext.consume(this)?.todos?.focusedItems;
   }
 
-  /** Focus cues are shown only while their chat is focused with its panel open. */
+  /** Association cues are independent of navigation selection and attention. */
   isSessionAssociatedWithFocusedTodos(sessionId: string) {
     return (
       this.focusedTodos?.some((todo) =>
@@ -139,42 +92,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   toggle() {
-    if (this.ideActive) {
-      this.ideHidden = this.visible;
-      this.ideVisibilityManuallySet = true;
-      return;
-    }
     this.hidden = !this.hidden;
-  }
-
-  enterIdeMode(viewportWidth = globalThis.window?.innerWidth ?? Number.POSITIVE_INFINITY) {
-    if (this.ideActive) return;
-    this.ideActive = true;
-    this.ideViewportWidth = viewportWidth;
-    this.ideVisibilityManuallySet = false;
-    this.applyIdeAutoHide();
-  }
-
-  leaveIdeMode() {
-    this.ideActive = false;
-    this.ideHidden = undefined;
-    this.ideVisibilityManuallySet = false;
-  }
-
-  updateIdeViewportWidth(width: number) {
-    this.ideViewportWidth = width;
-    this.applyIdeAutoHide();
-  }
-
-  private applyIdeAutoHide() {
-    if (!this.ideActive || this.ideVisibilityManuallySet) return;
-    const settings = this.props.embeddedEditorSettings;
-    this.ideHidden =
-      settings.sidebarAutoHide === "always" ||
-      (settings.sidebarAutoHide === "below-width" &&
-        this.ideViewportWidth < settings.sidebarAutoHideWidth)
-        ? true
-        : undefined;
   }
 
   setWidth(width: number) {
@@ -220,7 +138,6 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   showActivity() {
-    this.focusedProjectPath = undefined;
     this.navigationMode = "activity";
   }
 

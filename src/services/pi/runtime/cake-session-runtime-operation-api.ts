@@ -127,7 +127,7 @@ export function createCakeSessionRuntimeOperationApi(input: {
           title: input.title,
           assignment: input.assignment,
           resultDelivery: input.resultDelivery,
-          placement: input.placement,
+          open: input.open,
           model: configuration.resolveModelSelection(input.model),
           ...(input.worktreeName === undefined ? null : { worktreeName: input.worktreeName }),
           senderContext: currentContextSnapshot(),

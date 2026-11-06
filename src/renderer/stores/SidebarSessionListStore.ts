@@ -129,11 +129,11 @@ export class SidebarSessionListStore extends Store<{
     return this.flattenProjectSessionRoots(byId, visibleRoots);
   }
 
-  /** Canonical sidebar order within the navigation scope, independent of pagination or collapse. */
-  adjacentActiveSession(direction: "next" | "previous", projectPath?: string) {
-    const projectPaths = projectPath ? [projectPath] : this.projects.orderedProjectPaths;
+  /** Canonical conversation order across projects, independent of pagination or collapse. */
+  adjacentActiveSession(direction: "next" | "previous") {
+    const projectPaths = this.projects.orderedProjectPaths;
     const conversations = [
-      ...(projectPath ? [] : this.cakeChatSessions()).map((session) => ({
+      ...this.cakeChatSessions().map((session) => ({
         kind: "cake-chat" as const,
         sessionId: session.sessionId,
         active: this.props.cakeChat().registry.find(session.sessionId)?.streaming === true,

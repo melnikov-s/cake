@@ -19,6 +19,7 @@ import {
 import {
   CakeChatSideChatStartInput,
   DiscussionSessionAcceptedTurn,
+  DiscussionThreadMetadata,
 } from "../../contracts/discussion-sessions/discussion-session-data";
 import { TurnId } from "../../contracts/conversations/conversation-data";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
@@ -82,6 +83,12 @@ export const CakeChatRpc = RpcGroup.make(
    * sidecar conversations and resolution use the shared `discussionSessions`
    * and `sessionChats` operations once they exist.
    */
+  Rpc.make("cakeChats.observeSideChatMetadata", {
+    payload: { sessionId: Schema.optionalKey(Schema.String) },
+    success: Schema.Array(DiscussionThreadMetadata),
+    error: CakeChatError,
+    stream: true,
+  }),
   Rpc.make("cakeChats.observeSideChats", {
     payload: { sessionId: Schema.optionalKey(Schema.String) },
     success: DiscussionCatalogUpdate,

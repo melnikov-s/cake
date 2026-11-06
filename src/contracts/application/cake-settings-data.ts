@@ -1,5 +1,5 @@
 import type { AppearanceMode, ColorThemeChoice } from "../themes/color-theme";
-export const cakeSettingsSectionIds = ["appearance", "editor", "hotkeys"] as const;
+export const cakeSettingsSectionIds = ["appearance", "hotkeys"] as const;
 export type CakeSettingsSectionId = (typeof cakeSettingsSectionIds)[number];
 
 export const cakeHotkeyActionIds = [
@@ -12,16 +12,7 @@ export const cakeHotkeyActionIds = [
   "new-terminal-tab",
   "toggle-sidebar",
   "toggle-session-tree",
-  "split-right",
-  "split-down",
-  "focus-left",
-  "focus-right",
-  "focus-above",
-  "focus-below",
-  "focus-pane-1",
-  "focus-pane-2",
-  "focus-pane-3",
-  "focus-pane-4",
+  "return-to-project-chat",
   "history-back",
   "history-forward",
   "next-active-session",
@@ -48,11 +39,6 @@ interface CakeAppearanceSettings {
   readonly workLogsExpansion: "collapsed" | "expanded" | "fully-expanded";
 }
 
-export interface CakeEditorSettings {
-  readonly sidebarAutoHide: "never" | "always" | "below-width";
-  readonly sidebarAutoHideWidth: 1024 | 1280 | 1440 | 1728 | 1920;
-}
-
 interface CakeHotkeySetting {
   readonly action: CakeHotkeyActionId;
   readonly label: string;
@@ -68,17 +54,12 @@ interface CakeHotkeySettings {
 
 export type CakeSettingsSectionView =
   | { readonly section: "appearance"; readonly settings: CakeAppearanceSettings }
-  | { readonly section: "editor"; readonly settings: CakeEditorSettings }
   | { readonly section: "hotkeys"; readonly settings: CakeHotkeySettings };
 
 export type CakeSettingsUpdate =
   | {
       readonly section: "appearance";
       readonly changes: Partial<CakeAppearanceSettings>;
-    }
-  | {
-      readonly section: "editor";
-      readonly changes: Partial<CakeEditorSettings>;
     }
   | {
       readonly section: "hotkeys";

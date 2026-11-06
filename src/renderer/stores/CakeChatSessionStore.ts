@@ -4,6 +4,7 @@ import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-ident
 import { CAKE_CHAT_TODO_SCOPE } from "../../contracts/projects/project-todos";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ProjectTodosStore } from "./ProjectTodosStore";
+import { WorkspaceNavigatorContext } from "./context/WorkspaceNavigatorContext";
 import { Store, child, createStore, snapshot } from "r-state-tree";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import { EditorSelectionsStore } from "./EditorSelectionsStore";
@@ -176,9 +177,9 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
           : undefined;
         return project && { scope: project.path, chat: "Project Chat" as const, owner: project };
       },
-      sidePanel: () => this.conversationSessionStore.sideChatStore,
+      pane: () => WorkspaceNavigatorContext.consume(this)!.todoPane(this.sessionId),
       replyContext: (name, text) =>
-        this.conversationSessionStore.chatStore.addReplyContext(name, text),
+        WorkspaceNavigatorContext.consume(this)!.replyContext(name, text),
     });
   }
 
@@ -226,9 +227,11 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   }
 
   openSideChat(threadId: string, sourceEntryId?: string) {
+    // Metadata discovery precedes full thread hydration when navigating a cold owner.
+    this.pendingSideChatThreadId = threadId;
     const thread = this.sideChatThreads.find((candidate) => candidate.id === threadId);
     const chatStore = this.sideChats.chatStore(threadId);
-    if (!thread || !chatStore) return false;
+    if (!thread || !chatStore || !thread.sidecarSessionId) return false;
     this.pendingSideChatThreadId = undefined;
     if (sourceEntryId) {
       const part = chatStore.parts.find(
@@ -239,6 +242,12 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     }
     this.conversationSessionStore.sideChatStore.open({
       key: `discussion:${thread.id}`,
+      navigationTarget: {
+        kind: "side-chat",
+        sessionId: thread.sidecarSessionId,
+        parentSessionId: thread.parentSessionId,
+        threadId: thread.id,
+      },
       title: "Side chat",
       merge: this.sideChats.discussionSession(threadId)?.mergeStore,
       eyebrow: () => (thread.anchor.selectedText ? "Selection" : "Message"),

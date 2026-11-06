@@ -5,8 +5,10 @@ import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
+import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { it } from "@effect/vitest";
-import { Effect, Layer, Logger, Scope, Stream } from "effect";
+import { Deferred, Effect, Fiber, Layer, Logger, Queue, Scope, Stream } from "effect";
+import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import { describe, expect } from "vitest";
 import * as discussionSessions from "../../../src/domain/discussion-sessions/discussionSessions";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
@@ -87,6 +89,7 @@ const makeLayer = (
     readonly mergeQueued?: "parent" | "source";
     readonly mergeReferences?: readonly string[];
     readonly mergeFailure?: boolean;
+    readonly activityGate?: { entered: Deferred.Deferred<void>; complete: Deferred.Deferred<void> };
   } = {},
 ) => {
   const durableFork = options.durableFork;
@@ -155,6 +158,7 @@ const makeLayer = (
   const queueOperations: string[] = [];
   let preparedContexts = 0;
   let parentIndexRefreshes = 0;
+  let inspections = 0;
   const createdRecords: Array<{ workingDirectory: string; parentSessionId: string }> = [];
   const linkedSidecars: string[] = [];
   const runtime = (options: CakeSessionRuntimeSetup): CakeSessionRuntime => {
@@ -225,6 +229,12 @@ const makeLayer = (
       }),
       prompt: async (...input) => {
         prompts.push(input);
+        if (mergeOptions.activityGate) {
+          await Effect.runPromise(Deferred.succeed(mergeOptions.activityGate.entered, undefined));
+          await Effect.runPromise(Deferred.await(mergeOptions.activityGate.complete));
+          const turnId = input[4];
+          if (turnId) options.onTurnResult?.(turnId, { stopReason: "stop", text: "Settled" });
+        }
         options.onEvent({ type: "streaming", sessionId, streaming: false });
       },
       setUserMessageMarkdown: async () => undefined,
@@ -280,7 +290,11 @@ const makeLayer = (
             }
           : undefined,
       ),
-    inspect: () => Effect.succeed(undefined),
+    inspect: () =>
+      Effect.sync(() => {
+        inspections++;
+        return undefined;
+      }),
     createRuntime: (options) =>
       Effect.sync(() => {
         runtimeOptions.push(options);
@@ -343,6 +357,7 @@ const makeLayer = (
   return {
     layer: Layer.mergeAll(
       WorkflowTestLive,
+      SessionCatalogChanges.layer,
       Layer.succeed(CakeChatConfiguration, {
         location: { workingDirectory: "/home", sessionDirectory: "/cake/cake-chat" },
         agentDirectory: "/cake",
@@ -423,6 +438,7 @@ const makeLayer = (
       }),
     ),
     options: runtimeOptions,
+    inspections: () => inspections,
     prompts,
     queueOperations,
     preparedContexts: () => preparedContexts,
@@ -1022,3 +1038,58 @@ describe("Discussion Sessions domain", () => {
     }).pipe(Effect.provide(fixture.layer));
   });
 });
+
+it.effect(
+  "publishes Discussion own start/settle metadata without a full transcript observation",
+  () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const complete = yield* Deferred.make<void>();
+      const stopped = yield* Deferred.make<void>();
+      const f = makeLayer({ activityGate: { entered, complete } });
+      yield* Effect.gen(function* () {
+        const updates = yield* Queue.unbounded<boolean>();
+        const metadata = yield* discussionSessions.observeMetadata({
+          workingDirectory: "/project",
+          parentSessionId: "parent-1",
+        });
+        const consumer = yield* metadata.pipe(
+          Stream.map((threads) => threads.some((thread) => thread.running)),
+          Stream.changes,
+          Stream.runForEach((running) => Queue.offer(updates, running)),
+          Effect.ensuring(Deferred.succeed(stopped, undefined)),
+          Effect.forkScoped,
+        );
+        expect(yield* Queue.take(updates)).toBe(false);
+        expect(f.inspections()).toBe(0);
+        const started = yield* discussionSessions.start({
+          workingDirectory: "/project",
+          parentSessionId: "parent-1",
+          anchor,
+          text: "Start the discussion",
+        });
+        yield* Deferred.await(entered);
+        expect(yield* Queue.take(updates)).toBe(true);
+        const readsAtStart = f.inspections();
+        yield* Deferred.succeed(complete, undefined);
+        expect(yield* Queue.take(updates)).toBe(false);
+        expect(f.inspections()).toBe(readsAtStart);
+        expect(started.thread.sidecarSessionId).toBe(f.linkedSidecars[0]);
+        yield* Fiber.interrupt(consumer);
+        yield* Deferred.await(stopped);
+        expect(yield* Queue.size(updates)).toBe(0);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            f.layer,
+            Layer.mock(ReviewStorage, {
+              changes: () => Stream.succeed(1).pipe(Stream.concat(Stream.never)),
+              agentSessionDirectory: () => "/cake/reviews/thread-1",
+              reviewContextPath: () => "/cake/reviews/context.md",
+              discussionParentContextPath: () => "/cake/reviews/context/parent.md",
+            }),
+          ),
+        ),
+      );
+    }),
+);

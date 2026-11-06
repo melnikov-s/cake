@@ -253,7 +253,7 @@ describe("Cake operation registry", () => {
     const line = (topic: string) => lines.find((entry) => entry.startsWith(`${topic} — `)) ?? "";
     expect(line("sessions")).toMatch(/schedule \(one-off or recurring .*check-ins\)/);
     expect(line("sessions")).toContain("fork");
-    expect(line("app")).toContain("split panes");
+    expect(line("app")).toContain("To-dos/Sessions Workspace");
     expect(line("app")).toContain("highlighted text");
     expect(line("projects")).toContain("configure");
     expect(line("models")).toContain("session.set-model");

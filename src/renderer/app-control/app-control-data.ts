@@ -9,6 +9,7 @@ import type {
   ThemeControlSuccess,
 } from "../../contracts/themes/theme-operations";
 import type { AppWorkspaceView } from "../../contracts/application/app-workspace-view";
+import type { ConversationNavigationTarget } from "../lib/conversation-navigation-tree";
 import {
   type SessionInspectionQuery,
   type QueuedSessionCommandReceipt,
@@ -138,23 +139,11 @@ export interface AppControlHost {
     currentSelection(): AppControlSelection;
     workspaceView?(): Promise<AppWorkspaceView | undefined>;
     userSelection(): string | null;
-    sessionLayout?(source?: AgentControlSource): {
-      focusedSessionId?: string;
-      originSessionId?: string;
-      panes: Array<{
-        paneId: string;
-        sessionId: string;
-        number: number;
-        focused: boolean;
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-      }>;
-      neighbors?: Record<
-        "left" | "right" | "above" | "below",
-        Array<{ paneId: string; sessionId: string }>
-      >;
+    focusedConversation?(): {
+      workspace: string;
+      sessionId?: string;
+      target?: ConversationNavigationTarget & { readonly key: string; readonly title: string };
+      workspaceAccessory: { visible: boolean; mode: "todos" | "sessions" };
     };
     projects(): readonly ProjectRecord[];
     sessions(): readonly SessionSummaryView[];
@@ -236,10 +225,11 @@ export interface AppControlHost {
     setProjectSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
   };
   presentation: {
-    splitView(
-      source: AgentControlSource,
-      direction: "right" | "down",
-    ): { kind: "project-session" | "cake-chat"; paneId: string; sessionId: string } | undefined;
+    returnToProjectChat(): Promise<boolean>;
+    workspace(input: { visible?: boolean; mode?: "todos" | "sessions" }): {
+      visible: boolean;
+      mode: "todos" | "sessions";
+    };
     showNotification(input: {
       title: string;
       body: string;
@@ -294,7 +284,7 @@ interface AppControlSessionLabel extends SessionLabel {
 export interface AppControlState {
   selection: AppControlSelection;
   workspaceView?: AppWorkspaceView;
-  sessionLayout?: ReturnType<NonNullable<AppControlHost["state"]["sessionLayout"]>>;
+  focusedConversation?: ReturnType<NonNullable<AppControlHost["state"]["focusedConversation"]>>;
   projectCount: number;
   sessionCount: number;
 }
@@ -337,11 +327,13 @@ type AppControlSuccess =
     }
   | {
       ok: true;
-      command: "app.split";
-      direction: "right" | "down";
-      kind: "project-session" | "cake-chat";
-      paneId: string;
-      sessionId: string;
+      command: "app.home";
+      opened: boolean;
+    }
+  | {
+      ok: true;
+      command: "app.workspace";
+      workspace: { visible: boolean; mode: "todos" | "sessions" };
     }
   | {
       ok: true;

@@ -2,21 +2,19 @@ import { Store } from "r-state-tree";
 import type { ProjectSessionControlInvocation } from "../../contracts/project-sessions/project-session-data";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
 import { ClientContext } from "./context/ClientContext";
-import type { SessionLayoutStore } from "./SessionLayoutStore";
 import { SessionRegistryContext } from "./context/SessionRegistryContext";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
 
 export interface ProjectSessionPlacementStoreProps {
-  layout: SessionLayoutStore;
   dismissSecondarySurfaces(): void;
   selectSession(sessionId: string): void;
   showLoadedSession(sessionId: string): void;
 }
 
 /**
- * Owns runtime opening and optional pane placement for agent-created Project Sessions.
+ * Owns runtime opening and optional conversation selection for agent-created Project Sessions.
  * Pi/main owns the created transcript and family membership; this window-scoped Store owns only
- * renderer registration, open-before-command sequencing, placement, and failed-open cleanup.
+ * renderer registration, open-before-command sequencing, selection, and failed-open cleanup.
  * Each request runs independently because the main authority serializes creation per source.
  */
 export class ProjectSessionPlacementStore extends Store<ProjectSessionPlacementStoreProps> {
@@ -81,26 +79,19 @@ export class ProjectSessionPlacementStore extends Store<ProjectSessionPlacementS
         },
         { signal: this.signal },
       );
-    if (input.placement === "none")
+    if (!input.open)
       return {
         ok: true,
         sessionId: result.sessionId,
-        placement: input.placement,
+        opened: input.open,
         sourceResolved: input.resolveSource,
       };
 
-    const paneId = this.props.layout.showChildSession(
-      sourceSessionId,
-      result.sessionId,
-      input.placement === "right" ? "x" : "y",
-    );
-    if (!paneId) throw new Error("Cake could not open the fork beside its source session.");
     this.present(result.sessionId);
     return {
       ok: true,
       sessionId: result.sessionId,
-      placement: input.placement,
-      paneId,
+      opened: input.open,
       sourceResolved: input.resolveSource,
     };
   }
@@ -109,14 +100,8 @@ export class ProjectSessionPlacementStore extends Store<ProjectSessionPlacementS
     input: Extract<ProjectSessionControlInvocation, { _tag: "PresentForkSession" }>,
   ): Promise<JsonValue> {
     this.registry.load(input.forkSessionId, input.workingDirectory);
-    const paneId = this.props.layout.showChildSession(
-      input.sourceSessionId,
-      input.forkSessionId,
-      input.placement === "right" ? "x" : "y",
-    );
-    if (!paneId) throw new Error("Cake could not open the fork beside its source session.");
     this.present(input.forkSessionId);
-    return { ok: true, sessionId: input.forkSessionId, paneId, placement: input.placement };
+    return { ok: true, sessionId: input.forkSessionId, opened: true };
   }
 
   async openChild(
@@ -143,17 +128,10 @@ export class ProjectSessionPlacementStore extends Store<ProjectSessionPlacementS
       this.registry.removeSession(input.childSessionId);
       throw error;
     }
-    if (input.placement === "none")
-      return { ok: true, childSessionId: input.childSessionId, placement: input.placement };
+    if (!input.open) return { ok: true, childSessionId: input.childSessionId, opened: input.open };
 
-    const paneId = this.props.layout.showChildSession(
-      parentSessionId,
-      input.childSessionId,
-      input.placement === "right" ? "x" : "y",
-    );
-    if (!paneId) throw new Error("Cake could not open a child pane beside its parent.");
     this.present(input.childSessionId);
-    return { ok: true, childSessionId: input.childSessionId, placement: input.placement, paneId };
+    return { ok: true, childSessionId: input.childSessionId, opened: input.open };
   }
 
   private present(sessionId: string) {

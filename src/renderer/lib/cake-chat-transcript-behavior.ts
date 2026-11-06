@@ -30,10 +30,6 @@ export function cakeChatTranscriptBehaviorFor(
     inlineWidgets: root.inlineWidgetStore,
     inlineArtifactPreviews: root.inlineArtifactPreviewStore,
     openSourceLocation: (location) => {
-      const pane = root.cakeChatCollectionStore
-        .layoutFor(session.sessionId)
-        .paneForSession(session.sessionId);
-      if (pane) root.navigationStore.focusCakeChatPane(pane.paneId);
       void root.projectWorkbenchStore.presentationStore
         .openFile(editorLocationFromPath(location))
         .catch((error: unknown) =>

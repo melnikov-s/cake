@@ -12,7 +12,8 @@ export function discussionSessionFor(
     root.reviewsStore.discussionSessions.find(matches) ??
     root.cakeChatCollectionStore.registry.sessions
       .flatMap((session) => session.sideChats.discussionSessions)
-      .find(matches)
+      .find(matches) ??
+    root.discussionNavigationStore.sessions.find(matches)
   );
 }
 
@@ -23,7 +24,10 @@ export function nestedTranscriptBehaviorFor(
   parent: ChatTranscriptBehavior = {},
 ): ChatTranscriptBehavior {
   const discussion = discussionSessionFor(root, (session) => session.chatStore === chat);
-  const subagents = parent.subagents;
+  const subagents = [
+    ...(parent.subagents ? [parent.subagents] : []),
+    ...root.discussionNavigationStore.subagents,
+  ].find((owner) => owner.runs.some((run) => owner.chatStore(run.key) === chat));
   const worker = subagents?.runs.find((run) => subagents.chatStore(run.key) === chat);
   const workerContext = worker && subagents?.resourceContext(worker.key);
   const workspacePath = discussion?.thread.workingDirectory ?? workerContext?.workspacePath;

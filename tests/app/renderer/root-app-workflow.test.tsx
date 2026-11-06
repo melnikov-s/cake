@@ -3,6 +3,7 @@ import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import type { Client } from "../../../src/renderer/client/Client";
+import { createSessionInProject } from "./workspace-navigation-actions";
 import {
   renderRootAppWorkflow,
   rootAppProjects,
@@ -17,7 +18,6 @@ function deferred<Value>() {
   return { promise, resolve };
 }
 const input = () => screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
-const newChat = (project: string) => screen.getByRole("button", { name: `New chat in ${project}` });
 
 beforeEach(() => {
   Object.defineProperty(SVGElement.prototype, "getBBox", {
@@ -57,7 +57,7 @@ describe("Root App workflow", () => {
     }));
     using fixture = renderRootAppWorkflow({ workspaces: { inspect, registerProject } });
     await fixture.user.type(input(), "Current draft");
-    await fixture.user.click(newChat("beta"));
+    await createSessionInProject(fixture.user, /^Beta/);
     await waitFor(() => expect(inspect).toHaveBeenCalledOnce());
     expect(input().value).toBe("Current draft");
     expect(screen.getAllByText("Current conversation").length).toBeGreaterThan(1);
@@ -67,14 +67,14 @@ describe("Root App workflow", () => {
     await waitFor(() => expect(input().placeholder).toBe("Ask Cake to work in Beta…"));
     expect(input().value).toBe("");
     await fixture.user.type(input(), "Beta staged draft");
-    await fixture.user.click(newChat("alpha"));
+    await createSessionInProject(fixture.user, /^Alpha/);
     await waitFor(() => expect(input().placeholder).toBe("Ask Cake to work in Alpha…"));
     await fixture.user.type(input(), "Alpha staged draft");
-    await fixture.user.click(newChat("alpha"));
+    await createSessionInProject(fixture.user, /^Alpha/);
     expect(input().value).toBe("Alpha staged draft");
-    await fixture.user.click(newChat("beta"));
+    await createSessionInProject(fixture.user, /^Beta/);
     await waitFor(() => expect(input().value).toBe("Beta staged draft"));
-    await fixture.user.click(newChat("alpha"));
+    await createSessionInProject(fixture.user, /^Alpha/);
     await waitFor(() => expect(input().value).toBe("Alpha staged draft"));
     expect(inspect.mock.calls.map(([request]) => request.path)).toEqual(["/beta", "/alpha"]);
   });
@@ -108,7 +108,7 @@ describe("Root App workflow", () => {
       workspaces: { removeProject },
     });
     await fixture.user.pointer({
-      target: screen.getByRole("button", { name: "Open Project Chat for alpha" }),
+      target: screen.getByRole("button", { name: /Open Project Chat for Alpha/i }),
       keys: "[MouseRight]",
     });
     const dialog = await screen.findByRole("alertdialog", { name: "Remove Alpha?" });
@@ -135,6 +135,6 @@ describe("Root App workflow", () => {
     fixture.publishSessions([]);
     expect(await screen.findByRole("heading", { name: "What should we build?" })).toBeDefined();
     expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Open Project Chat for alpha" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Open Project Chat for Alpha/i })).toBeNull();
   });
 });

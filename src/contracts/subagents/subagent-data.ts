@@ -23,6 +23,19 @@ export const SubagentStatus = Schema.Literals([
 ]);
 export type SubagentStatus = Schema.Schema.Type<typeof SubagentStatus>;
 
+/** Navigation facts only. Never contains a worker's private Pi identity or transcript. */
+export const SubagentMetadata = Schema.Struct({
+  parentSessionId: Schema.String,
+  handleId: SubagentHandleId,
+  anchorPartId: Schema.String,
+  task: Schema.String,
+  projectPath: Schema.optionalKey(Schema.String),
+  status: SubagentStatus,
+  streaming: Schema.Boolean,
+  released: Schema.Boolean,
+});
+export interface SubagentMetadata extends Schema.Schema.Type<typeof SubagentMetadata> {}
+
 export const AgentModelPreference = Schema.Union([
   Schema.Struct({ prefer: Schema.Literal("utility") }),
   Schema.Struct({ prefer: Schema.Literal("default") }),

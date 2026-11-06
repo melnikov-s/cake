@@ -1,4 +1,5 @@
 import { createServer } from "node:net";
+import { createChatFirstNavigationScenario } from "./chat-first-navigation.ts";
 import { serializeModelReference } from "../../src/contracts/model-presets/model-reference.ts";
 import { toolCallRowsScenario } from "./tool-call-rows";
 import { cakeColorPalettes } from "../../src/utils/cake-color-palettes.ts";
@@ -78,7 +79,7 @@ interface ScenarioFixturePaths {
   readonly userData: string;
 }
 
-interface VisualCaptureScenario {
+export interface VisualCaptureScenario {
   readonly name: string;
   readonly description: string;
   readonly states: readonly string[];
@@ -284,7 +285,7 @@ const assistantMarkdownCode: VisualCaptureScenario = {
 const sideChatActions: VisualCaptureScenario = {
   ...assistantMarkdownCode,
   name: "side-chat-actions",
-  description: "Side-chat header close control and merge action above the follow-up composer",
+  description: "Focused Side chat and its existing merge action above the follow-up composer",
   states: ["default", "draft"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
@@ -373,27 +374,24 @@ const sideChatActions: VisualCaptureScenario = {
       await composer.fill("/sidechat ");
       await composer.press("Escape");
       await composer.press("Enter");
-      const panel = page.getByRole("complementary", { name: "Side chat", exact: true });
+      const conversation = page.locator('[data-slot="focused-secondary-conversation"]');
       await expect(
-        panel.getByRole("combobox", { name: "Message side chat", exact: true }),
-      ).toBeVisible();
-      await expect(
-        panel.locator(":scope > header").getByRole("button", { name: "Close Side chat" }),
+        conversation.getByRole("combobox", { name: "Message side chat", exact: true }),
       ).toBeVisible();
       await page.waitForFunction(() => document.fonts.status === "loaded");
       await page.mouse.move(1, 1);
       return;
     }
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
     await page.getByRole("button", { name: "Side chats, 1 open" }).click();
     await page.getByRole("dialog", { name: "Open side chats" }).getByRole("button").click();
-    const panel = page.getByRole("complementary", { name: "Side chat", exact: true });
-    await expect(panel.getByText("Hi! What’s on your mind?")).toBeVisible();
-    await expect(panel.getByRole("button", { name: "Merge into main chat" })).toBeEnabled();
+    const conversation = page.locator('[data-slot="focused-secondary-conversation"]');
+    await expect(conversation.getByText("Hi! What’s on your mind?")).toBeVisible();
+    await expect(conversation.getByRole("button", { name: "Merge into main chat" })).toBeEnabled();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },
-  region: (page) => page.getByRole("complementary", { name: "Side chat", exact: true }),
+  region: (page) => page.locator('[data-slot="focused-secondary-conversation"]'),
 };
 
 const toastNotificationsScenario: VisualCaptureScenario = {
@@ -1029,7 +1027,7 @@ async function configureVisualSpeech(page: Page, application: ElectronApplicatio
   // closing Settings; reopen until the Voice page holds. A dispatched click avoids waiting
   // for the animated nav row to report as stable.
   await expect(async () => {
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: /Voice & Dictation/ }).dispatchEvent("click");
     await expect(provider).toBeEnabled({ timeout: 1_000 });
     await page.waitForTimeout(500);
@@ -1158,7 +1156,7 @@ const speechOutputSettingsScenario: VisualCaptureScenario = {
     await expect(async () => {
       const section = page.getByRole("button", { name: /Voice & Dictation/ });
       if (!(await section.isVisible()))
-        await page.getByRole("button", { name: "Open settings", exact: true }).click();
+        await page.getByRole("button", { name: "Settings", exact: true }).click();
       await section.dispatchEvent("click");
       await expect(page.locator("#speech-output-title")).toBeVisible({ timeout: 1_000 });
       await page.waitForTimeout(500);
@@ -1204,7 +1202,7 @@ const experimentalSettingsScenario: VisualCaptureScenario = {
   seed: assistantMarkdownCode.seed,
   async prepare(page, _state, application) {
     await assistantMarkdownCode.prepare(page, "default", application);
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: /^Experimental/ }).click();
     const toggle = page.getByRole("switch", { name: "Dynamic workflows" });
     await expect(toggle).not.toBeChecked();
@@ -1225,7 +1223,7 @@ const agentNavigationSettingsScenario: VisualCaptureScenario = {
   seed: assistantMarkdownCode.seed,
   async prepare(page, state, application) {
     await assistantMarkdownCode.prepare(page, "default", application);
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: /^Agent Behavior and content$/ }).click();
     const toggle = page.getByRole("switch", { name: "Allow agent session navigation" });
     await expect(toggle).toBeChecked();
@@ -1246,7 +1244,7 @@ const screenCaptureSettingsScenario: VisualCaptureScenario = {
   seed: assistantMarkdownCode.seed,
   async prepare(page, state, application) {
     await assistantMarkdownCode.prepare(page, state, application);
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: /^Screen Capture/ }).click();
     await expect(page.locator("#screen-capture-title")).toBeVisible();
     await expect(page.getByLabel("Maximum image dimension")).toHaveValue("2048");
@@ -1339,7 +1337,7 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
       },
       dimensions,
     );
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await page.getByRole("switch", { name: "Dictation mode" }).click();
     await page.getByRole("button", { name: /^Screen Capture/ }).click();
@@ -2345,13 +2343,13 @@ const cakePromptsSettingsScenario: VisualCaptureScenario = {
     );
   },
   async prepare(page, state) {
-    await page.getByRole("button", { name: "Open settings", exact: true }).waitFor({
+    await page.getByRole("button", { name: "Settings", exact: true }).waitFor({
       state: "visible",
       timeout: 20_000,
     });
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.waitForTimeout(1_000);
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     const prompts = page.getByRole("button", { name: "Instructions & prompts" });
     await prompts.waitFor({ state: "visible", timeout: 20_000 });
     await prompts.click();
@@ -2393,7 +2391,7 @@ const mcpSettingsScenario: VisualCaptureScenario = {
   },
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: /^MCP servers/ }).click();
     const edit = page.getByRole("button", { name: "Edit documentation", exact: true });
     await edit.waitFor({ state: "visible", timeout: 20_000 });
@@ -2415,7 +2413,7 @@ const localMcpSettingsScenario: VisualCaptureScenario = {
   states: ["default", "running"],
   seed: cakePromptsSettingsScenario.seed,
   async prepare(page, state) {
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: /^MCP servers/ }).click();
     const section = page.getByRole("region", { name: "Cake MCP server", exact: true });
     await expect(
@@ -2459,7 +2457,7 @@ const mcpSettingsLayoutScenario: VisualCaptureScenario = {
     );
   },
   async prepare(page) {
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: /^MCP servers/ }).click();
     await page.getByRole("button", { name: "Edit godot-ai", exact: true }).waitFor();
     await page.waitForFunction(() => document.fonts.status === "loaded");
@@ -2470,17 +2468,20 @@ const mcpSettingsLayoutScenario: VisualCaptureScenario = {
 
 const browserSharingScenario: VisualCaptureScenario = {
   name: "topbar-browser-sharing",
-  description: "Browser-sharing shortcut beside sidebar navigation and anchored offline controls",
-  states: ["default", "open", "collapsed", "collapsed-open"],
+  description:
+    "Browser-sharing controls in the real Browser workspace with Workspace open or closed",
+  states: ["default", "open", "workspace-closed", "workspace-closed-open"],
   seed: assistantMarkdownCode.seed,
   async prepare(page, state) {
     await page.locator('[data-streamdown="code-block-body"] code').waitFor({ timeout: 20_000 });
     await expect(page.getByText("Opening session", { exact: true })).not.toBeVisible();
-    const closeNavigation = page.getByRole("button", { name: "Close navigation", exact: true });
-    if (await closeNavigation.isVisible()) await closeNavigation.click();
-    if (state.startsWith("collapsed") && (await page.getByRole("complementary").isVisible())) {
-      await page.getByRole("complementary").getByRole("button", { name: "Toggle sidebar" }).click();
-    }
+    await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Browser address", exact: true })).toBeVisible();
+    if (state.startsWith("workspace-closed"))
+      await page
+        .getByRole("navigation", { name: "Projects and global utilities" })
+        .getByRole("button", { name: "Close Workspace", exact: true })
+        .click();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     const trigger = page
       .getByRole("button", { name: "Browser sharing: Offline — go online" })
@@ -2497,13 +2498,7 @@ const browserSharingScenario: VisualCaptureScenario = {
   region: (page, state) =>
     state.endsWith("open")
       ? page.getByRole("dialog", { name: "Browser sharing" })
-      : state === "default"
-        ? page
-            .locator(
-              '[data-slot="sidebar"]:visible > div:first-of-type, [data-slot="workspace-header"]',
-            )
-            .first()
-        : page.locator('[data-slot="workspace-header"]'),
+      : page.getByRole("textbox", { name: "Browser address", exact: true }).locator(".."),
 };
 
 const browserSharingQrScenario: VisualCaptureScenario = {
@@ -2553,7 +2548,7 @@ const appearanceSettingsScenario: VisualCaptureScenario = {
   seed: assistantMarkdownCode.seed,
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: "Appearance", exact: true }).click();
     const toggle = page.getByRole("switch", { name: "Show session characters" });
     await expect(toggle).toHaveAttribute("aria-checked", "false");
@@ -2575,7 +2570,7 @@ const importedColorThemeScenario: VisualCaptureScenario = {
   seed: assistantMarkdownCode.seed,
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: "Appearance", exact: true }).click();
     const theme = vscodeColorThemeFixture(state.startsWith("light") ? "light" : "dark");
     await page
@@ -2686,7 +2681,7 @@ const bundledColorThemeScenario: VisualCaptureScenario = {
   seed: assistantMarkdownCode.seed,
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: "Appearance", exact: true }).click();
     const names: Record<string, string> = {
       "solarized-light": "Solarized Light",
@@ -2727,228 +2722,6 @@ const bundledColorThemeScenario: VisualCaptureScenario = {
     await page.mouse.move(1, 1);
   },
   region: assistantMarkdownCode.region,
-};
-
-const projectChatSidebar: VisualCaptureScenario = {
-  name: "project-chat-sidebar",
-  description: "Full-width Project Chat selection and status alignment with Project Sessions",
-  states: ["selected", "unselected", "focus", "hover", "collapsed", "collapsed-hover"],
-  async seed(paths, theme) {
-    await assistantMarkdownCode.seed(paths, theme);
-    const file = join(paths.cakeHome, "state", "application.json");
-    const document = JSON.parse(await readFile(file, "utf8"));
-    const state = document.data;
-    await writeFile(
-      file,
-      JSON.stringify({
-        ...document,
-        data: {
-          ...state,
-          projects: state.projects.map((project: { path: string }) => ({
-            ...project,
-            name: "cake",
-          })),
-          unreadSessionIds: ["visual-sidebar-unread"],
-        },
-      }),
-    );
-    const sessions = workspaceSessionDirectory(
-      paths.project,
-      join(paths.cakeHome, "pi", "sessions"),
-    );
-    const original = await readFile(
-      join(sessions, "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl"),
-      "utf8",
-    );
-    await writeFile(
-      join(sessions, "1970-01-01T00-00-00-000Z_visual-sidebar-unread.jsonl"),
-      original
-        .replaceAll("visual-assistant-markdown-code", "visual-sidebar-unread")
-        .replaceAll("How should agents capture Cake UI changes?", "Check sidebar dot alignment"),
-    );
-  },
-  async prepare(page, state) {
-    await assistantMarkdownCode.prepare(page, "default");
-    if (state !== "unselected") {
-      await page
-        .getByRole("button", { name: /^Open Project Chat for / })
-        .first()
-        .click();
-      await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
-      if (state === "focus") {
-        await page.getByRole("button", { name: /^Project actions for / }).click();
-        await page.getByRole("menuitem", { name: /^Focus on / }).click();
-      }
-      await page.getByRole("combobox", { name: "Message Project Chat" }).click();
-    }
-    await expect(
-      page
-        .locator('.session-item[data-session-id="visual-sidebar-unread"]')
-        .getByRole("img", { name: "Ready, unread" }),
-    ).toBeVisible();
-    await page.waitForFunction(() => document.fonts.status === "loaded");
-    const header = page.locator('[data-slot="project-header"]').first();
-    if (state.startsWith("collapsed")) {
-      const disclosure = header.locator("button[aria-expanded]").first();
-      await disclosure.click();
-      await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-      await expect(disclosure).toBeFocused();
-    }
-    const hovering = state === "hover" || state === "collapsed-hover";
-    if (hovering) await header.locator('[data-slot="project-label"]').hover();
-    else await page.mouse.move(1, 1);
-    await expect(header.locator('[data-slot="project-actions"]')).toHaveCSS(
-      "opacity",
-      hovering ? "1" : "0",
-    );
-    await expect(header.locator('[data-slot="project-chat-status"]')).toHaveCSS(
-      "opacity",
-      hovering ? "0" : "1",
-    );
-  },
-  region: (page, state) =>
-    state.startsWith("collapsed")
-      ? page.locator('[data-slot="project-header"]').first()
-      : page.locator('[data-slot="sidebar"]'),
-};
-
-const sidebarRowLayout: VisualCaptureScenario = {
-  name: "sidebar-row-layout",
-  description: "Long project and nested session names in narrow and wide sidebar columns",
-  states: ["narrow", "narrow-hover", "wide", "wide-hover"],
-  async seed(paths, theme) {
-    await projectChatSidebar.seed(paths, theme);
-    const file = join(paths.cakeHome, "state", "application.json");
-    const state = JSON.parse(await readFile(file, "utf8"));
-    state.data.projects[0].name = "engineering-workspace";
-    await writeFile(file, JSON.stringify(state));
-    const sessions = workspaceSessionDirectory(
-      paths.project,
-      join(paths.cakeHome, "pi", "sessions"),
-    );
-    const original = await readFile(
-      join(sessions, "1970-01-01T00-00-00-000Z_visual-sidebar-unread.jsonl"),
-      "utf8",
-    );
-    await writeFile(
-      join(sessions, "1970-01-01T00-00-00-000Z_visual-sidebar-unread.jsonl"),
-      original.replaceAll(
-        "Check sidebar dot alignment",
-        "Review Tutorial navigation and sidebar layout",
-      ),
-    );
-    await writeFile(
-      join(paths.cakeHome, "state", "session-families.json"),
-      JSON.stringify({
-        version: 1,
-        data: {
-          families: [
-            {
-              familyId: "sidebar-layout-family",
-              parentSessionId: "visual-assistant-markdown-code",
-              projectPath: paths.project,
-              workingDirectory: paths.project,
-              createdAt: new Date(0).toISOString(),
-              children: [
-                {
-                  sessionId: "visual-sidebar-unread",
-                  parentSessionId: "visual-assistant-markdown-code",
-                  requestId: "sidebar-layout-child",
-                  workingDirectory: paths.project,
-                  createdAt: new Date(0).toISOString(),
-                },
-              ],
-            },
-          ],
-        },
-      }),
-    );
-    const windowFile = join(paths.userData, "window-state.json");
-    const window = JSON.parse(await readFile(windowFile, "utf8"));
-    window.data.children.sidebarStore = { state: { width: 220 }, children: {} };
-    await writeFile(windowFile, JSON.stringify(window));
-  },
-  async prepare(page, state) {
-    await assistantMarkdownCode.prepare(page, "default");
-    const sidebar = page.locator('[data-slot="sidebar"]');
-    await expect(sidebar.locator('[data-family-role="child"]')).toBeVisible();
-    if (state.startsWith("wide")) {
-      const resize = page.getByRole("separator", { name: "Resize project sidebar", exact: true });
-      await resize.focus();
-      for (let step = 0; step < 10; step++) await page.keyboard.press("ArrowRight");
-    }
-    if (state.endsWith("hover")) await sidebar.locator('[data-slot="project-label"]').hover();
-    else await page.mouse.move(1, 1);
-    await page.waitForFunction(() => document.fonts.status === "loaded");
-    await expect
-      .poll(() =>
-        sidebar.evaluate((root) => {
-          const row = root.querySelector('.session-item[data-navigation-active="true"]');
-          const selection = root.querySelector('[data-slot="navigation-selection"]');
-          return row && selection
-            ? Math.abs(row.getBoundingClientRect().width - selection.getBoundingClientRect().width)
-            : Infinity;
-        }),
-      )
-      .toBeLessThan(1);
-  },
-  region: (page) => page.locator('[data-slot="sidebar"]'),
-};
-
-const projectChatHeader: VisualCaptureScenario = {
-  name: "project-chat-header",
-  description: "Owning Project Chat navigation beside session and Project Chat titles",
-  states: ["session", "project", "hover", "settings", "split-right", "split-down"],
-  async seed(paths, theme) {
-    await assistantMarkdownCode.seed(paths, theme);
-    const file = join(paths.cakeHome, "state", "application.json");
-    const state = JSON.parse(await readFile(file, "utf8"));
-    state.data.projects[0].name = "cake";
-    await writeFile(file, JSON.stringify(state));
-  },
-  async prepare(page, state) {
-    await assistantMarkdownCode.prepare(page, "default");
-    const link = () =>
-      page.locator('[data-slot="workspace-header"]').getByRole("button", {
-        name: "Go to Project Chat for cake",
-        exact: true,
-      });
-    await expect(link()).toBeEnabled();
-    if (state !== "session") {
-      await link().click();
-      await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
-      await expect(link()).toBeVisible();
-    }
-    if (state === "settings") {
-      await page.getByRole("button", { name: "Open settings", exact: true }).click();
-      await page.getByRole("button", { name: /^Appearance/ }).click();
-      await expect(page.getByRole("region", { name: "Work log display options" })).toBeVisible();
-    } else if (state === "split-right" || state === "split-down") {
-      await page
-        .getByRole("button", {
-          name: state === "split-right" ? "Split right" : "Split down",
-          exact: true,
-        })
-        .click();
-      const panes = page.locator('[data-slot="session-pane"]');
-      await expect(panes).toHaveCount(2);
-      const first = await panes.nth(0).boundingBox();
-      const second = await panes.nth(1).boundingBox();
-      if (!first || !second) throw new Error("Split panes must be visible");
-      if (state === "split-right") expect(second.x).toBeGreaterThan(first.x);
-      else expect(second.y).toBeGreaterThan(first.y);
-    } else if (state === "hover") {
-      await link().hover();
-      await expect(
-        page.getByRole("tooltip", { name: "Go to Project Chat for cake" }),
-      ).toBeVisible();
-    } else await page.mouse.move(1, 1);
-    await page.waitForFunction(() => document.fonts.status === "loaded");
-  },
-  region: (page, state) =>
-    state === "settings"
-      ? page.getByRole("region", { name: "Work log display options" })
-      : page.locator('[data-slot="workspace-header"]').first(),
 };
 
 const projectChatTodos: VisualCaptureScenario = {
@@ -3105,7 +2878,7 @@ const projectChatTodos: VisualCaptureScenario = {
     );
   },
   async prepare(page, state) {
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
     await page
       .getByRole("button", { name: /^Open Project Chat for / })
       .first()
@@ -3599,151 +3372,6 @@ const pendingTaskTurn: VisualCaptureScenario = {
   region: (page) => page.locator('[data-slot="side-chat-layout"]'),
 };
 
-const activeSidebarSessions: VisualCaptureScenario = {
-  name: "active-sidebar-sessions",
-  description:
-    "Working-first sidebar rows show activity time before worktree metadata, beside an unread Project Chat in Activity",
-  states: ["projects", "activity"],
-  async seed(paths, theme) {
-    await projectChatSidebar.seed(paths, theme);
-    // An unread Project Chat with history joins the Activity feed beside Project Sessions.
-    const file = join(paths.cakeHome, "state", "application.json");
-    const state = JSON.parse(await readFile(file, "utf8"));
-    const projectPath: string = state.projects[0].path;
-    const hash = createHash("sha256").update(projectPath).digest("hex");
-    await seedDurableChat(join(paths.cakeHome, "pi", "project-chats", hash), [
-      "Which sidebar rows still need alignment?",
-      "Project Chat rows now share the session status column.",
-    ]);
-    await writeFile(
-      file,
-      JSON.stringify({
-        ...state,
-        unreadSessionIds: [...state.unreadSessionIds, `project-chat:${hash}`],
-      }),
-    );
-    const sessions = workspaceSessionDirectory(
-      paths.project,
-      join(paths.cakeHome, "pi", "sessions"),
-    );
-    const original = await readFile(
-      join(sessions, "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl"),
-      "utf8",
-    );
-    await writeFile(
-      join(sessions, "1970-01-01T00-00-00-000Z_visual-sidebar-inactive.jsonl"),
-      original
-        .replaceAll("visual-assistant-markdown-code", "visual-sidebar-inactive")
-        .replaceAll(
-          "How should agents capture Cake UI changes?",
-          "Completed sidebar investigation",
-        ),
-    );
-  },
-  async prepare(page, state, application) {
-    if (!application) throw new Error("Active sidebar sessions require Electron");
-    await projectChatSidebar.prepare(page, "unselected", application);
-    // Native interview requests represent active turns blocked on user input; no model/network work.
-    for (const sessionId of ["visual-assistant-markdown-code", "visual-sidebar-unread"]) {
-      const row = page.locator(`.session-item[data-session-id="${sessionId}"]`);
-      await row.locator(".session-row").click();
-      await expect(row).toHaveAttribute("data-navigation-active", "true");
-      await emitRendererEvent(application, {
-        type: "interview-requested",
-        requestId: randomUUID(),
-        interviewRequestId: randomUUID(),
-        record: {
-          id: `interview-${sessionId}`,
-          sessionId,
-          request: {
-            protocol: "cake.request/v1",
-            id: "sidebar-question",
-            title: "Continue?",
-            responseSchema: { type: "object" },
-            view: { type: "form", fields: [{ id: "answer", label: "Answer", type: "text" }] },
-            fallback: { markdown: "Continue when ready." },
-          },
-        },
-      });
-      await expect(row.getByRole("img", { name: "Waiting for your answer" })).toBeVisible();
-      await expect(row.locator("time")).toHaveText("Working");
-    }
-    if (state === "activity") {
-      await page.getByRole("button", { name: "Show activity", exact: true }).click();
-      await expect(
-        page.locator('[data-slot="project-chat-item"]').getByRole("img", { name: "Ready, unread" }),
-      ).toBeVisible();
-    }
-    await expect(
-      page.locator('.session-item[data-session-id="visual-sidebar-inactive"] time'),
-    ).toBeVisible();
-    await page.mouse.move(1, 1);
-  },
-  region: projectChatSidebar.region,
-};
-
-const cakeChatSidebarUnread: VisualCaptureScenario = {
-  name: "cake-chat-sidebar-unread",
-  description:
-    "Permanent coordinator's persisted unread status alongside ordinary Project Sessions",
-  states: ["default"],
-  async seed(paths, theme) {
-    await cakeChatScenario.seed(paths, theme);
-    const file = join(paths.cakeHome, "state", "application.json");
-    const state = JSON.parse(await readFile(file, "utf8"));
-    await writeFile(
-      file,
-      JSON.stringify({
-        ...state,
-        data: {
-          ...state.data,
-          unreadSessionIds: ["ca4ec4a7-0000-4000-8000-000000000001", "visual-sidebar-unread"],
-        },
-      }),
-    );
-    const sessions = workspaceSessionDirectory(
-      paths.project,
-      join(paths.cakeHome, "pi", "sessions"),
-    );
-    const original = await readFile(
-      join(sessions, "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl"),
-      "utf8",
-    );
-    await writeFile(
-      join(sessions, "1970-01-01T00-00-00-000Z_visual-sidebar-unread.jsonl"),
-      original
-        .replaceAll("visual-assistant-markdown-code", "visual-sidebar-unread")
-        .replaceAll("How should agents capture Cake UI changes?", "Check sidebar dot alignment"),
-    );
-  },
-  async prepare(page) {
-    await assistantMarkdownCode.prepare(page, "default");
-    const coordinator = page.locator('[data-slot="cake-chat-group"]');
-    const coordinatorDot = coordinator.getByRole("img", { name: "Ready, unread" });
-    const sessionDot = page
-      .locator('.session-item[data-session-id="visual-sidebar-unread"]')
-      .getByRole("img", { name: "Ready, unread" });
-    await expect(coordinatorDot).toBeVisible();
-    await expect(sessionDot).toBeVisible();
-    await page.waitForFunction(() => document.fonts.status === "loaded");
-    await page.mouse.move(1, 1);
-    await expect
-      .poll(async () => {
-        const [cake, session] = await Promise.all([
-          coordinatorDot.boundingBox(),
-          sessionDot.boundingBox(),
-        ]);
-        if (!cake || !session) return Infinity;
-        return Math.abs(cake.x + cake.width / 2 - (session.x + session.width / 2));
-      })
-      .toBeLessThan(1);
-    await coordinator.hover();
-    await expect(coordinatorDot).toBeVisible();
-    await page.mouse.move(1, 1);
-  },
-  region: (page) => page.locator('[data-slot="sidebar"]'),
-};
-
 const cakeChatScenario: VisualCaptureScenario = {
   name: "cake-chat",
   description:
@@ -3768,8 +3396,10 @@ const cakeChatScenario: VisualCaptureScenario = {
   },
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-    await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+    await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
+      "Cake Chat",
+    );
     await expect(
       page.getByText("Will I still see my original conversation history?", { exact: true }),
     ).toBeVisible();
@@ -3804,7 +3434,7 @@ const cakeChatScenario: VisualCaptureScenario = {
       ).toBeVisible();
     }
     if (state === "settings") {
-      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page
         .getByLabel("Settings sections")
         .getByRole("button", { name: /^Cake Chat\b/ })
@@ -3876,7 +3506,10 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
       );
     }
     if (state.endsWith("-collapsed"))
-      await page.getByRole("button", { name: "Toggle sidebar", exact: true }).first().click();
+      await page
+        .getByRole("navigation", { name: "Projects and global utilities" })
+        .getByRole("button", { name: "Close Workspace", exact: true })
+        .click();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(700, 600);
     // Let layout-driven native view bounds and traffic-light positions settle.
@@ -3947,8 +3580,10 @@ const cakeChatConversationScenario: VisualCaptureScenario = {
     if (!application) throw new Error("Cake Chat conversation requires Electron");
     await conversationEntryScenario.prepare(page, "default", application);
     await configureVisualSpeech(page, application);
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-    await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+    await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
+      "Cake Chat",
+    );
     await expect(page.getByText("What's running right now?", { exact: true })).toBeVisible();
     if (state === "entry") {
       await page.waitForFunction(() => document.fonts.status === "loaded");
@@ -4209,8 +3844,10 @@ const subagentReportsScenario: VisualCaptureScenario = {
   },
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-    await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+    await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
+      "Cake Chat",
+    );
     const heading =
       state === "failed-report"
         ? "Subagent failed"
@@ -4333,7 +3970,7 @@ const reportHeadersScenario: VisualCaptureScenario = {
   },
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
     const [, , , task, badge] =
       reportHeaderCases.find(([name]) => name === state) ?? reportHeaderCases[0];
     // Worker display titles are intentionally capped independently of CSS truncation.
@@ -4504,9 +4141,9 @@ function numberedIconButtonsScenario(todoCount: number): VisualCaptureScenario {
     },
     async prepare(page, state) {
       await assistantMarkdownCode.prepare(page, "default");
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
       const header = page.locator('[data-slot="workspace-header"]');
-      await expect(header.locator("strong")).toHaveText("Cake Chat");
+      await expect(header.locator("strong")).toContainText("Cake Chat");
       const artifact = header.getByRole("button", { name: "4 artifacts", exact: true });
       const todo = header.getByRole("button", { name: "To-do", exact: true });
       const chats = header.getByRole("button", { name: "Side chats, 1 open", exact: true });
@@ -4738,8 +4375,10 @@ const incomingTaskSectionsScenario: VisualCaptureScenario = {
   },
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-    await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+    await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
+      "Cake Chat",
+    );
     const report = page.getByRole("article", { name: "Subagent complete", exact: true });
     await expect(report).toBeVisible({ timeout: 20_000 });
     if (state === "pane" || state === "done" || state === "done-tooltip") {
@@ -4927,8 +4566,10 @@ const sessionMessagesScenario: VisualCaptureScenario = {
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
     if (state !== "project") {
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-      await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
+      await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+      await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
+        "Cake Chat",
+      );
     }
     await expect(
       page.getByRole("region", { name: "Message from another session" }).first(),
@@ -5238,8 +4879,10 @@ const sessionMessageVariantsScenario: VisualCaptureScenario = {
       .first()
       .waitFor({ state: "visible", timeout: 20_000 });
     if (state === "default" || state === "reference" || state === "original") {
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
-      await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
+      await page.getByRole("button", { name: "Open Cake Chat", exact: true }).first().click();
+      await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
+        "Cake Chat",
+      );
     }
     await expect(
       page.getByRole("region", { name: "Notice about another session" }).last(),
@@ -5427,7 +5070,7 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
   },
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).first().click();
     const batch = page.getByRole("status", { name: "Session results" });
     await expect(batch.getByRole("button")).toHaveCount(5);
     const standalone = page
@@ -5607,7 +5250,7 @@ const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
     await startActivityFixtureSession(page, "docs-pass");
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
     const activity = page.getByRole("button", { name: "Activity · 1 running" });
     await expect(activity).toBeVisible();
     if (state === "open") {
@@ -6094,8 +5737,10 @@ const taskInputAttachmentsScenario: VisualCaptureScenario = {
       "base64",
     );
     if (state !== "project") {
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-      await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
+      await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+      await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
+        "Cake Chat",
+      );
     }
     const input = page.getByRole("combobox", {
       name: state === "project" ? "Message" : "Message Cake Chat",
@@ -6205,8 +5850,8 @@ const newSessionScenario: VisualCaptureScenario = {
 
 const sessionSearchScenario: VisualCaptureScenario = {
   name: "session-search",
-  description: "Deterministic session title picker across projects or in project focus",
-  states: ["default", "filtered", "empty", "focus", "sidebar"],
+  description: "Deterministic session title picker across registered projects",
+  states: ["default", "filtered", "empty"],
   async seed(paths, theme) {
     await cakePromptsSettingsScenario.seed(paths, theme);
     const website = resolve(paths.project, "../website");
@@ -6225,7 +5870,7 @@ const sessionSearchScenario: VisualCaptureScenario = {
     for (const [index, title] of [
       "Session search",
       "Search dialog keyboard",
-      "Sidebar layout",
+      "Workspace layout",
       "Website search",
     ].entries()) {
       const project = index === 3 ? website : paths.project;
@@ -6255,30 +5900,22 @@ const sessionSearchScenario: VisualCaptureScenario = {
     }
   },
   async prepare(page, state) {
-    await expect(page.locator('[data-slot="sidebar"] .session-item[data-session-id]')).toHaveCount(
-      4,
-      {
-        timeout: 20_000,
-      },
-    );
-    if (state === "focus") {
-      await page.getByRole("button", { name: "Project actions for project", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Focus on project", exact: true }).click();
-    }
-    if (state !== "sidebar") {
-      await page.getByRole("button", { name: "Search sessions", exact: true }).click();
-      const filter = page.getByRole("combobox", { name: "Search session titles" });
-      await expect(filter).toBeFocused();
-      if (state === "filtered" || state === "empty")
-        await filter.fill(state === "filtered" ? "srch dlg" : "missing");
-    }
+    await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Search sessions", exact: true })
+      .click();
+    const filter = page.getByRole("combobox", { name: "Search session titles" });
+    await expect(filter).toBeFocused();
+    await expect(page.getByRole("option")).toHaveCount(4);
+    if (state === "filtered" || state === "empty")
+      await filter.fill(state === "filtered" ? "srch dlg" : "missing");
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },
-  region(page, state) {
-    return state === "sidebar"
-      ? page.locator('[data-slot="sidebar"]')
-      : page.getByRole("dialog", { name: "Search sessions", exact: true }).locator(":scope > div");
+  region(page) {
+    return page
+      .getByRole("dialog", { name: "Search sessions", exact: true })
+      .locator(":scope > div");
   },
 };
 
@@ -6287,9 +5924,28 @@ const projectCustomInstructionsScenario: VisualCaptureScenario = {
   description: "Personal project instructions in the Project Settings dialog",
   states: ["default", "browser"],
   seed: (paths, theme) => cakePromptsSettingsScenario.seed(paths, theme),
-  async prepare(page, state) {
-    await page.getByRole("button", { name: "Project actions for project" }).click();
-    await page.getByRole("menuitem", { name: "Open settings for project" }).click();
+  async prepare(page, state, application) {
+    if (!application) throw new Error("Project settings capture requires Electron");
+    await application.evaluate(({ Menu }) => {
+      const build = Menu.buildFromTemplate.bind(Menu);
+      Menu.buildFromTemplate = (template) => {
+        const menu = build(template);
+        const settings = menu.items.find((item) => item.label === "Project Settings…");
+        if (settings) {
+          Menu.buildFromTemplate = build;
+          menu.popup = (options) => {
+            settings.click(settings, options!.window!, { triggeredByAccelerator: false });
+            options?.callback?.();
+          };
+        }
+        return menu;
+      };
+    });
+    await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click({ button: "right" });
     await page.getByRole("dialog", { name: /settings/ }).waitFor({ state: "visible" });
     await page.waitForFunction(() => document.fonts.status === "loaded");
     if (state === "browser") {
@@ -6336,7 +5992,7 @@ const dictationInputScenario: VisualCaptureScenario = {
     await expect(async () => {
       const section = page.getByRole("button", { name: /Voice & Dictation/ });
       if (!(await section.isVisible()))
-        await page.getByRole("button", { name: "Open settings", exact: true }).click();
+        await page.getByRole("button", { name: "Settings", exact: true }).click();
       await section.click({ timeout: 1000 });
       await expect(page.getByRole("switch", { name: "Dictation mode" })).toBeVisible({
         timeout: 1000,
@@ -6345,7 +6001,13 @@ const dictationInputScenario: VisualCaptureScenario = {
     await page.getByRole("switch", { name: "Dictation mode" }).click();
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await page
-      .locator('[data-navigation-item][data-session-id="visual-conversation-entry"]')
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Search sessions", exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name: "Search sessions", exact: true })
+      .locator('[data-session-id="visual-conversation-entry"]')
+      .getByRole("option")
       .click();
     const input = page.getByRole("combobox", { name: "Message", exact: true });
     await input.fill(
@@ -6556,7 +6218,7 @@ const dictationSettingsScenario: VisualCaptureScenario = {
   seed: assistantMarkdownCode.seed,
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await page.getByRole("heading", { name: "Voice & Dictation", exact: true }).waitFor();
     if (state !== "default") {
@@ -6606,12 +6268,10 @@ const serverClientSettingsScenario: VisualCaptureScenario = {
   states: ["backend", "sharing", "sharing-https", "sharing-google"],
   seed: (paths, theme) => cakePromptsSettingsScenario.seed(paths, theme),
   async prepare(page, state) {
-    await page
-      .getByRole("button", { name: "Open settings", exact: true })
-      .waitFor({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Settings", exact: true }).waitFor({ timeout: 20_000 });
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.waitForTimeout(1_000);
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     const network = page.getByRole("button", { name: "Network & privacy" });
     await network.waitFor({ state: "visible", timeout: 20_000 });
     await network.click();
@@ -7504,6 +7164,7 @@ const assistantStandaloneDiagram: VisualCaptureScenario = {
 };
 
 export const visualCaptureScenarios: VisualCaptureScenario[] = [
+  createChatFirstNavigationScenario(assistantMarkdownCode.seed, seedDurableChat),
   sessionChangesScenario,
   sideChatActions,
   numberedIconButtonsScenario(35),
@@ -7575,17 +7236,12 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   queuedAgentPromptsScenario,
   scheduledPromptsScenario,
   taskInputAttachmentsScenario,
-  cakeChatSidebarUnread,
-  projectChatSidebar,
-  sidebarRowLayout,
-  projectChatHeader,
   projectChatTodos,
   projectChatAttention,
   projectChatTaskRails,
   adjacentTaskHeadings,
   pendingTaskTurn,
   pdfTaskSwitch,
-  activeSidebarSessions,
   dictationInputScenario,
   compactComposerScenario,
   dictationSettingsScenario,

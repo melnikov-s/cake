@@ -135,7 +135,8 @@ describe("Project Session operation capabilities", () => {
     });
     const appBacked = [
       "app.state",
-      "app.split",
+      "app.home",
+      "app.workspace",
       "app.user-selection",
       "settings.window.get",
       "settings.window.update",

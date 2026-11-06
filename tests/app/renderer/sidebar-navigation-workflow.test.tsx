@@ -7,11 +7,7 @@ import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import { projectRecord } from "./fixtures/catalog-fixtures";
 import { fakeSavedDrafts } from "./fakes/saved-drafts";
-import {
-  renderSidebarNavigation,
-  sidebarFamily,
-  sidebarSummary,
-} from "./sidebar-navigation-fixture";
+import { renderSidebarNavigation, sidebarSummary } from "./sidebar-navigation-fixture";
 
 beforeEach(() => {
   vi.stubGlobal("PointerEvent", MouseEvent);
@@ -45,21 +41,11 @@ afterEach(() => {
 });
 
 const project = projectRecord({ path: "/cake" });
-const rowButton = (id: string) => screen.getByRole("button", { name: new RegExp(`^${id}(?: |$)`) });
+const rowButton = (id: string) =>
+  within(screen.getByRole("complementary", { name: "Workspace" })).getByRole("button", {
+    name: new RegExp(`^${id}(?: |$)`),
+  });
 const row = (id: string) => rowButton(id).closest<HTMLElement>(".session-item")!;
-const order = (container: HTMLElement = document.body) =>
-  [...container.querySelectorAll<HTMLElement>(".session-item")].map(
-    (element) => element.dataset.sessionId,
-  );
-const projectGroup = (name: string) =>
-  screen
-    .getByRole("button", { name: `Open Project Chat for ${name}` })
-    .closest<HTMLElement>('[data-slot="project-group"]')!;
-const resolvedGroup = (name: string) =>
-  screen
-    .getAllByRole("button", { name: `Collapse ${name} resolved` })[0]!
-    .closest<HTMLElement>('[data-slot="project-group"]')!;
-
 function deferred<Value>() {
   let resolve!: (value: Value) => void;
   const promise = new Promise<Value>((complete) => {
@@ -68,109 +54,30 @@ function deferred<Value>() {
   return { promise, resolve };
 }
 
-describe("Sidebar navigation workflow", () => {
-  it.each(["projects", "activity"] as const)(
-    "opens on primary down before release and retains keyboard activation in %s",
-    async (mode) => {
-      const sessions = [sidebarSummary("first"), sidebarSummary("second", 2)];
-      using fixture = renderSidebarNavigation({
-        projects: [project],
-        sessions,
-        loadedIds: ["first", "second"],
-        client: { projectSessions: { open: async () => undefined } },
-      });
-      if (mode === "activity")
-        await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
-      const paneId = () =>
-        document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id");
-      await fixture.user.pointer({ target: rowButton("first"), keys: "[MouseLeft>]" });
-      await waitFor(() => expect(paneId()).toBe("first"));
-      expect(row("first").getAttribute("data-navigation-active")).toBe("true");
-      await fixture.user.pointer({ keys: "[/MouseLeft]" });
-      expect(paneId()).toBe("first");
-      rowButton("second").focus();
-      await fixture.user.keyboard("{Enter}");
-      await waitFor(() => expect(paneId()).toBe("second"));
-      rowButton("first").focus();
-      await fixture.user.keyboard(" ");
-      await waitFor(() => expect(paneId()).toBe("first"));
-    },
-  );
-
-  it.each(["New chat in pi"])(
-    "starts an unsent conversation in the inactive project through %s",
-    async (control) => {
-      const inspect = vi.fn<Client["workspaces"]["inspect"]>(async (request) => ({
-        ...request,
-      }));
-      const start = vi.fn<Client["projectSessions"]["start"]>();
-      using fixture = renderSidebarNavigation({
-        projects: [project, projectRecord({ path: "/pi" })],
-        sessions: [sidebarSummary("current")],
-        loadedIds: ["current"],
-        client: {
-          workspaces: {
-            inspect,
-            registerProject: async () => defaultApplicationState(),
-            loadStagedSlashCommands: async () => [],
-          },
-          projectSessions: { start },
-          managedWorktrees: { landing: async () => ({}) },
-        },
-      });
-      await fixture.user.click(screen.getByRole("button", { name: control }));
-      expect(await screen.findByRole("combobox", { name: "Message" })).toBeDefined();
-      expect(inspect).toHaveBeenCalledWith(
-        expect.objectContaining({ path: "/pi" }),
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      );
-      expect(start).not.toHaveBeenCalled();
-    },
-  );
-
-  it("changes visible order by label and date without changing the stable project order", async () => {
-    const labelled = projectRecord({
-      path: "/cake",
-      workflow: {
-        labels: [{ id: "10000000-0000-4000-8000-000000000001", name: "Feature", color: "blue" }],
-        assignments: [{ sessionId: "older", labelIds: ["10000000-0000-4000-8000-000000000001"] }],
-        sessionDetails: [],
-      },
-    });
+describe("Workspace Sessions navigation workflow", () => {
+  it("opens on primary down before release and retains keyboard activation in Sessions", async () => {
+    const sessions = [sidebarSummary("first"), sidebarSummary("second", 2)];
     using fixture = renderSidebarNavigation({
-      projects: [labelled, projectRecord({ path: "/pi" })],
-      sessions: [sidebarSummary("newer", 3), sidebarSummary("older", 1)],
-      loadedIds: ["newer", "older"],
-      snapshot: {
-        state: {},
-        children: {
-          projectCatalogStore: { state: { projectOrder: ["/pi", "/cake"] }, children: {} },
-        },
-      },
+      projects: [project],
+      sessions,
+      loadedIds: ["first", "second"],
+      client: { projectSessions: { open: async () => undefined } },
     });
-    const projectOrder = () =>
-      screen
-        .getAllByRole("button", { name: /^Open Project Chat for/ })
-        .map((button) => button.textContent);
-    expect(projectOrder()).toEqual(["pi", "cake"]);
-    expect(order()).toEqual(["newer", "older"]);
-    await fixture.user.click(screen.getByRole("button", { name: "Project actions for cake" }));
-    await fixture.user.click(screen.getByRole("menuitemradio", { name: "By label" }));
-    expect(order()).toEqual(["older", "newer"]);
-    await fixture.publishStreaming(["newer"], true);
-    expect(order()).toEqual(["newer", "older"]);
-    await fixture.user.click(screen.getByRole("button", { name: "Project actions for cake" }));
-    expect(
-      screen.getByRole("menuitemradio", { name: "By label" }).getAttribute("aria-checked"),
-    ).toBe("true");
-    await fixture.user.click(screen.getByRole("menuitemradio", { name: "By date" }));
-    expect(order()).toEqual(["newer", "older"]);
-    await fixture.publishSessions([
-      sidebarSummary("older", 1, { modifiedAt: sidebarSummary("unused", 5).modifiedAt }),
-      sidebarSummary("newer", 3),
-    ]);
-    expect(order()).toEqual(["newer", "older"]);
-    expect(projectOrder()).toEqual(["pi", "cake"]);
+    await fixture.selectSession("first");
+    await fixture.showSessions();
+    const paneId = () =>
+      document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id");
+    await fixture.user.pointer({ target: rowButton("first"), keys: "[MouseLeft>]" });
+    await waitFor(() => expect(paneId()).toBe("first"));
+    expect(row("first").getAttribute("data-navigation-active")).toBe("true");
+    await fixture.user.pointer({ keys: "[/MouseLeft]" });
+    expect(paneId()).toBe("first");
+    rowButton("second").focus();
+    await fixture.user.keyboard("{Enter}");
+    await waitFor(() => expect(paneId()).toBe("second"));
+    rowButton("first").focus();
+    await fixture.user.keyboard(" ");
+    await waitFor(() => expect(paneId()).toBe("first"));
   });
 
   it("routes rename, unread and resolved deletion from native menu responses into services and authoritative rows", async () => {
@@ -191,12 +98,15 @@ describe("Sidebar navigation workflow", () => {
     using fixture = renderSidebarNavigation({
       projects: [project],
       sessions: initial,
+      loadedIds: ["original"],
       client: {
         electron: { showSessionContextMenu: menu },
-        projectSessions: { rename },
+        projectSessions: { rename, open: async () => undefined },
         workspaces: { setSessionUnread, deleteSession },
       },
     });
+    await fixture.selectSession("original");
+    await fixture.showSessions();
     const context = (target: HTMLElement) => fixture.user.pointer({ target, keys: "[MouseRight]" });
     await context(rowButton("original"));
     const input = await screen.findByRole("textbox", { name: "Session name" });
@@ -233,8 +143,7 @@ describe("Sidebar navigation workflow", () => {
       ),
     );
     expect(setSessionUnread).toHaveBeenCalledTimes(1);
-    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
-    await fixture.user.click(screen.getAllByRole("button", { name: "Expand cake resolved" })[0]!);
+    await fixture.showSessions(true);
     await context(rowButton("archive"));
     await waitFor(() =>
       expect(deleteSession).toHaveBeenCalledWith(
@@ -249,7 +158,7 @@ describe("Sidebar navigation workflow", () => {
     expect(screen.queryByRole("button", { name: /^archive / })).toBeNull();
   });
 
-  it("opens project settings from both actions and blocks project removal until the service completes", async () => {
+  it("opens project settings from the rail context menu and blocks project removal until the service completes", async () => {
     const menu = vi
       .fn<Client["electron"]["showProjectContextMenu"]>()
       .mockResolvedValueOnce("settings")
@@ -261,10 +170,6 @@ describe("Sidebar navigation workflow", () => {
       sessions: [sidebarSummary("kept")],
       client: { electron: { showProjectContextMenu: menu }, workspaces: { removeProject } },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Project actions for cake" }));
-    await fixture.user.click(screen.getByRole("menuitem", { name: "Open settings for cake" }));
-    expect(screen.getByRole("dialog", { name: "cake settings" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
     await fixture.user.pointer({
       target: screen.getByRole("button", { name: "Open Project Chat for cake" }),
       keys: "[MouseRight]",
@@ -292,7 +197,7 @@ describe("Sidebar navigation workflow", () => {
     await act(async () => pending.resolve(defaultApplicationState()));
     await fixture.publishProjects([]);
     expect(screen.queryByRole("alertdialog")).toBeNull();
-    expect(screen.getByText("Add a folder to start a project.")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Open Project Chat for cake" })).toBeNull();
   });
 
   it("keeps cleanup confirmation blocking while main deletes resolved worktrees", async () => {
@@ -355,7 +260,7 @@ describe("Sidebar navigation workflow", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 
-  it("interleaves saved Drafts by activity and archives them without opening a conversation", async () => {
+  it("archives and restores a saved Draft through the same Sessions rows without opening its runtime", async () => {
     const drafts = fakeSavedDrafts();
     await drafts.client.create({
       sessionId: "draft",
@@ -365,39 +270,24 @@ describe("Sidebar navigation workflow", () => {
       text: "Later",
       attachments: [],
     });
-    const open = vi.fn<Client["projectSessions"]["open"]>();
+    const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
     using fixture = renderSidebarNavigation({
-      projects: [project, projectRecord({ path: "/pi" })],
-      sessions: [
-        ...sidebarFamily,
-        sidebarSummary("newest", 31, {
-          projectPath: "/pi",
-          modifiedAt: new Date(
-            Date.parse(drafts.records.get("draft")!.modifiedAt) + 60_000,
-          ).toISOString(),
-        }),
-      ],
+      projects: [project],
+      sessions: [sidebarSummary("root")],
+      loadedIds: ["root"],
       client: { savedDrafts: drafts.client, projectSessions: { open } },
     });
-    await screen.findByRole("button", { name: /^Saved plan / });
-    await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
-    expect(order()).toEqual(["newest", "draft", "root", "planner", "worker", "sibling"]);
-    expect(screen.getByRole("button", { name: "Cake Chat" })).toBeDefined();
-    expect(within(row("newest")).getByText("pi")).toBeDefined();
+    await fixture.selectSession("root");
+    await fixture.showSessions();
+    open.mockClear();
+    expect(await screen.findByRole("button", { name: /^Saved plan / })).toBeTruthy();
     await fixture.user.click(screen.getByRole("button", { name: "Resolve Saved plan" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: /^Saved plan / })).toBeNull());
+    await waitFor(() => expect(drafts.records.get("draft")?.resolved).toBe(true));
     expect(open).not.toHaveBeenCalled();
-    expect(drafts.records.get("draft")?.resolved).toBe(true);
-    await fixture.user.click(screen.getByRole("button", { name: "Show projects" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
-    await fixture.user.click(screen.getAllByRole("button", { name: "Expand cake resolved" })[0]!);
-    expect(screen.getByRole("button", { name: /^Saved plan / })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Restore Saved plan" }));
-    await waitFor(() =>
-      expect(
-        within(projectGroup("cake")).getByRole("button", { name: /^Saved plan / }),
-      ).toBeDefined(),
-    );
+    await fixture.showSessions(true);
+    await fixture.user.click(await screen.findByRole("button", { name: "Restore Saved plan" }));
+    await waitFor(() => expect(drafts.records.get("draft")?.resolved).toBe(false));
+    expect(open).not.toHaveBeenCalled();
   });
   it("renders live waiting/running/failure facts and worktree lifecycle metadata without truncating titles", async () => {
     const title =
@@ -423,6 +313,8 @@ describe("Sidebar navigation workflow", () => {
       loadedIds: ["waiting", "running", "failed"],
       worktrees: [worktree],
     });
+    await fixture.selectSession("waiting");
+    await fixture.showSessions();
     expect(screen.getByRole("button", { name: new RegExp(`^${title} `) })).toBeDefined();
     expect(within(row("failed")).getByRole("img", { name: "Open worktree" })).toBeDefined();
     await fixture.publishWorktrees([{ ...worktree, state: "landed" }]);
@@ -430,7 +322,9 @@ describe("Sidebar navigation workflow", () => {
     expect(within(row("failed")).getByText("fix")).toBeDefined();
     expect(within(row("failed")).getByText("base")).toBeDefined();
     const worktreeMetadata = row("failed").querySelector('[data-slot="session-description"]')!;
-    expect(worktreeMetadata.firstElementChild?.tagName).toBe("TIME");
+    expect(worktreeMetadata.querySelector("time")?.getAttribute("datetime")).toBe(
+      sessions.find((session) => session.sessionId === "failed")!.modifiedAt,
+    );
     expect(
       worktreeMetadata
         .querySelector("time")!
@@ -441,8 +335,9 @@ describe("Sidebar navigation workflow", () => {
     const plainMetadata = document.querySelector(
       '[data-session-id="main"] [data-slot="session-description"]',
     )!;
-    expect(plainMetadata.firstElementChild?.tagName).toBe("TIME");
-    expect(plainMetadata.children).toHaveLength(1);
+    expect(plainMetadata.querySelector("time")?.getAttribute("datetime")).toBe(
+      sessions.find((session) => session.sessionId === "main")!.modifiedAt,
+    );
     expect(screen.getAllByRole("img", { name: /worktree$/ })).toHaveLength(1);
     await fixture.publishInterview({
       id: "interview-1",
@@ -480,7 +375,6 @@ describe("Sidebar navigation workflow", () => {
     expect(within(row("running")).getByRole("img", { name: "Running" })).toBeDefined();
     expect(within(row("failed")).getByRole("img", { name: "Error" })).toBeDefined();
     // Waiting still owns an active turn, so shares Working's priority below green.
-    expect(order()).toEqual(["green", "running", "waiting", "main", "failed"]);
     for (const id of ["waiting", "running", "failed"]) {
       // Hover/focus Resolve replaces every status dot, including active and failed turns.
       expect(within(row(id)).getByRole("button", { name: `Resolve ${id}` })).toBeDefined();
@@ -501,6 +395,8 @@ describe("Sidebar navigation workflow", () => {
         sessions: [failed],
         loadedIds: ["retry"],
       });
+      await fixture.selectSession("retry");
+      await fixture.showSessions();
       if (outcome === "failed")
         expect(within(row("retry")).getByRole("img", { name: "Error" })).toBeDefined();
       // Viewing acknowledges unread content, never the current failure.
@@ -529,1144 +425,4 @@ describe("Sidebar navigation workflow", () => {
       expect(within(row("retry")).getByRole("img", { name: "Error" })).toBeDefined();
     },
   );
-
-  it("restores window/list preferences and expands a collapsed project when entering focus", async () => {
-    const menu = vi.fn<Client["electron"]["showProjectContextMenu"]>(async () => "sort-by-date");
-    using fixture = renderSidebarNavigation({
-      projects: [project, projectRecord({ path: "/pi" })],
-      sessions: [...sidebarFamily, sidebarSummary("standalone", 3)],
-      client: { electron: { showProjectContextMenu: menu } },
-      snapshot: {
-        state: {},
-        children: {
-          sidebarStore: {
-            state: { hidden: true, width: 344, navigationMode: "activity" },
-            children: {
-              sessionListStore: {
-                state: {
-                  projectSessionSorts: { "/cake": "label" },
-                  expandedActiveGroups: { "cake-chat": true, "/cake": false },
-                  collapsedFamilies: { root: true },
-                },
-                children: {},
-              },
-            },
-          },
-        },
-      },
-    });
-    expect(screen.queryByRole("complementary")).toBeNull();
-    await fixture.user.click(screen.getAllByRole("button", { name: "Toggle sidebar" })[0]!);
-    expect(screen.getByRole("main").style.getPropertyValue("--sidebar-width")).toBe("344px");
-    expect(screen.getByRole("button", { name: "Show projects" })).toBeDefined();
-    expect(order()).toEqual(["standalone", "root"]);
-    await fixture.user.click(screen.getByRole("button", { name: "Show projects" }));
-    expect(screen.getByRole("button", { name: "Expand cake" })).toBeDefined();
-    expect(screen.queryByRole("button", { name: /^root / })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Project actions for cake" }));
-    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on cake" }));
-    expect(screen.getByRole("button", { name: "Exit focus mode for cake" })).toBeDefined();
-    expect(order()).toEqual(["root", "standalone"]);
-    await fixture.user.pointer({
-      target: screen.getByRole("button", { name: "Open Project Chat for cake" }),
-      keys: "[MouseRight]",
-    });
-    expect(menu).toHaveBeenCalledWith(
-      expect.objectContaining({ path: "/cake", sessionSort: "label" }),
-    );
-    await fixture.user.click(screen.getByRole("button", { name: "Exit focus mode for cake" }));
-    expect(screen.getByRole("button", { name: "Project actions for pi" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Collapse cake" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Expand children of root" }));
-    expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
-  });
-
-  it.each([false, true])(
-    "treats IDE sidebar visibility as an override, preserving the ordinary preference (hidden: %s)",
-    async (hidden) => {
-      const open = vi.fn<Client["vscode"]["open"]>(async () => undefined);
-      using fixture = renderSidebarNavigation({
-        projects: [project],
-        sessions: [sidebarSummary("editor")],
-        loadedIds: ["editor"],
-        ide: { sidebarAutoHide: "always" },
-        snapshot: { state: {}, children: { sidebarStore: { state: { hidden }, children: {} } } },
-        client: { vscode: { open } },
-      });
-      const sidebar = () => document.querySelector('[data-slot="sidebar"]');
-      expect(!!sidebar()).toBe(!hidden);
-      await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
-      expect(open).toHaveBeenCalledWith(
-        "/cake",
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      );
-      expect(sidebar()).toBeNull();
-      fixture.hostToggleSidebar();
-      expect(sidebar()).not.toBeNull();
-      // Once shown, Cake's sidebar provides its own real toggle control.
-      await fixture.user.click(screen.getByRole("button", { name: "Toggle sidebar" }));
-      expect(sidebar()).toBeNull();
-      await fixture.user.click(screen.getAllByRole("button", { name: "Back to agent" })[0]!);
-      expect(!!sidebar()).toBe(!hidden);
-      // Each new IDE entry resets only its temporary visibility override.
-      await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
-      fixture.hostToggleSidebar();
-      expect(sidebar()).not.toBeNull();
-      await fixture.user.click(screen.getAllByRole("button", { name: "Back to agent" })[0]!);
-      expect(!!sidebar()).toBe(!hidden);
-    },
-  );
-
-  it("ranks green unread rows before Working rows, then other statuses, preserving creation and identity ties", async () => {
-    const sessions = [
-      sidebarSummary("idle", 10),
-      sidebarSummary("blocked", 9, { recoveryIssue: "Needs recovery", unread: true }),
-      sidebarSummary("failed", 8, { latestTurnOutcome: "failed", unread: true }),
-      sidebarSummary("stopped", 7, { latestTurnOutcome: "aborted" }),
-      sidebarSummary("read-complete", 6, { latestTurnOutcome: "complete" }),
-      sidebarSummary("working-beta", 4, { running: true, unread: true }),
-      sidebarSummary("working-alpha", 4, { running: true }),
-      sidebarSummary("green-beta", 2, { unread: true, latestTurnOutcome: "complete" }),
-      sidebarSummary("green-alpha", 2, { unread: true }),
-    ];
-    using fixture = renderSidebarNavigation({ projects: [project], sessions });
-    const expected = [
-      "green-alpha",
-      "green-beta",
-      "working-alpha",
-      "working-beta",
-      "idle",
-      "blocked",
-      "failed",
-      "stopped",
-      "read-complete",
-    ];
-    expect(order()).toEqual(expected);
-    for (const id of expected.slice(0, 2))
-      expect(within(row(id)).getByRole("img", { name: "Ready, unread" })).toBeDefined();
-    expect(row("working-beta").querySelector("time")?.textContent).toBe("Working");
-    expect(within(row("blocked")).getByRole("img", { name: "Needs your input" })).toBeDefined();
-    expect(within(row("failed")).getByRole("img", { name: "Error" })).toBeDefined();
-    await fixture.publishSessions(
-      [...sessions].reverse().map((session) => ({
-        ...session,
-        modifiedAt: sidebarSummary("unused", 20).modifiedAt,
-      })),
-    );
-    expect(order()).toEqual(expected);
-    // Clearing unread moves the former green row into its normal creation group.
-    await fixture.publishSessions(
-      sessions.map((session) =>
-        session.sessionId === "green-alpha" ? { ...session, unread: false } : session,
-      ),
-    );
-    expect(order()).toEqual([...expected.filter((id) => id !== "green-alpha"), "green-alpha"]);
-    // A new unread projection moves an idle row above even the existing green rows.
-    await fixture.publishSessions(
-      sessions.map((session) =>
-        session.sessionId === "idle" ? { ...session, unread: true } : session,
-      ),
-    );
-    expect(order()).toEqual(["idle", ...expected.filter((id) => id !== "idle")]);
-  });
-
-  it("orders Project Sessions unread then read by last update, with running rows between in stable creation order", async () => {
-    const day = (n: number) => sidebarSummary("unused", n).modifiedAt;
-    const sessions = [
-      sidebarSummary("unread-stale", 9, {
-        modifiedAt: day(3),
-        unread: true,
-        latestTurnOutcome: "complete",
-      }),
-      sidebarSummary("unread-fresh", 1, { modifiedAt: day(8), unread: true }),
-      sidebarSummary("running-newer", 7, { modifiedAt: day(2), running: true }),
-      sidebarSummary("running-unread", 5, {
-        modifiedAt: day(10),
-        running: true,
-        unread: true,
-        latestTurnOutcome: "complete",
-      }),
-      sidebarSummary("running-older", 4, { modifiedAt: day(9), running: true }),
-      sidebarSummary("read-fresh", 2, { modifiedAt: day(6) }),
-      sidebarSummary("read-stale", 8, { modifiedAt: day(4) }),
-    ];
-    using fixture = renderSidebarNavigation({ projects: [project], sessions });
-    expect(order()).toEqual([
-      "unread-fresh",
-      "unread-stale",
-      "running-newer",
-      "running-unread",
-      "running-older",
-      "read-fresh",
-      "read-stale",
-    ]);
-    expect(within(row("running-unread")).getByRole("img", { name: "Running" })).toBeDefined();
-    // Running rows ignore their constant updates; read rows follow their latest update.
-    const update = (changes: Record<string, Partial<(typeof sessions)[number]>>) =>
-      sessions.map((session) => ({ ...session, ...changes[session.sessionId] }));
-    await fixture.publishSessions(
-      update({ "running-older": { modifiedAt: day(20) }, "read-stale": { modifiedAt: day(15) } }),
-    );
-    expect(order()).toEqual([
-      "unread-fresh",
-      "unread-stale",
-      "running-newer",
-      "running-unread",
-      "running-older",
-      "read-stale",
-      "read-fresh",
-    ]);
-    // Finishing unread moves a running row to the unread group by its last update.
-    await fixture.publishSessions(
-      update({
-        "running-older": { modifiedAt: day(20) },
-        "read-stale": { modifiedAt: day(15) },
-        "running-unread": { running: false },
-      }),
-    );
-    expect(order().slice(0, 3)).toEqual(["running-unread", "unread-fresh", "unread-stale"]);
-    expect(within(row("running-unread")).getByRole("img", { name: "Ready, unread" })).toBeDefined();
-    // Activity keeps its own creation order.
-    await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
-    expect(order()).toEqual([
-      "unread-stale",
-      "read-stale",
-      "running-newer",
-      "running-unread",
-      "running-older",
-      "read-fresh",
-      "unread-fresh",
-    ]);
-  });
-
-  it("keeps status priority above labels and drafts, retaining those rules inside each group", async () => {
-    const labelId = "10000000-0000-4000-8000-000000000001";
-    const sessions = [
-      sidebarSummary("idle-draft", 10, { draft: true }),
-      sidebarSummary("working", 9, { running: true }),
-      sidebarSummary("green-newer", 8, { unread: true }),
-      sidebarSummary("green-labeled", 1, { unread: true }),
-      sidebarSummary("idle-labeled", 2),
-      sidebarSummary("idle", 3),
-    ];
-    using fixture = renderSidebarNavigation({
-      projects: [
-        projectRecord({
-          ...project,
-          workflow: {
-            sessionDetails: [],
-            labels: [{ id: labelId, name: "Feature", color: "blue" }],
-            assignments: ["green-labeled", "idle-labeled"].map((sessionId) => ({
-              sessionId,
-              labelIds: [labelId],
-            })),
-          },
-        }),
-      ],
-      sessions,
-      snapshot: {
-        state: {},
-        children: {
-          sidebarStore: {
-            state: {},
-            children: {
-              sessionListStore: {
-                state: { projectSessionSorts: { "/cake": "label" } },
-                children: {},
-              },
-            },
-          },
-        },
-      },
-    });
-    expect(order()).toEqual([
-      "green-labeled",
-      "green-newer",
-      "working",
-      "idle-labeled",
-      "idle-draft",
-      "idle",
-    ]);
-    await fixture.publishSessions([...sessions].reverse());
-    expect(order()).toEqual([
-      "green-labeled",
-      "green-newer",
-      "working",
-      "idle-labeled",
-      "idle-draft",
-      "idle",
-    ]);
-  });
-
-  it.each(["projects", "activity"] as const)(
-    "preserves creation order within priorities through streaming, timestamp updates and refreshes in %s",
-    async (mode) => {
-      const sessions = ["newest", "middle", "oldest", "idle"].map((id, index) =>
-        sidebarSummary(id, 4 - index),
-      );
-      using fixture = renderSidebarNavigation({
-        projects: [project],
-        sessions,
-        loadedIds: sessions.map((session) => session.sessionId),
-        client: { projectSessions: { open: async () => undefined } },
-      });
-      if (mode === "activity")
-        await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
-      const originalRow = row("oldest");
-      const originalSection = originalRow.closest("section");
-      const originalHeading = originalSection?.querySelector("h2")?.textContent;
-      await fixture.publishStreaming(["middle", "oldest"], true);
-      const workingOrder =
-        mode === "projects"
-          ? ["middle", "oldest", "newest", "idle"]
-          : ["newest", "middle", "oldest", "idle"];
-      expect(order()).toEqual(workingOrder);
-      await fixture.user.click(rowButton("oldest"));
-      await waitFor(() => expect(row("oldest").dataset.navigationActive).toBe("true"));
-      await fixture.publishSessions(
-        [...sessions].reverse().map((session, index) => ({
-          ...session,
-          modifiedAt: sidebarSummary("unused", 6 + index).modifiedAt,
-        })),
-      );
-      expect(order()).toEqual(workingOrder);
-      expect(row("oldest").dataset.navigationActive).toBe("true");
-      expect(row("oldest").querySelector("time")?.textContent).toBe("Working");
-      // The selected row keeps its Working rank until the user leaves it.
-      await fixture.publishStreaming(["oldest"], false);
-      expect(order()).toEqual(
-        mode === "projects"
-          ? ["middle", "oldest", "newest", "idle"]
-          : ["newest", "middle", "oldest", "idle"],
-      );
-      expect(row("oldest").querySelector("time")?.dateTime).toBe(
-        sidebarSummary("oldest", 7).modifiedAt,
-      );
-      await fixture.publishStreaming(["middle"], false);
-      expect(order()).toEqual(
-        mode === "projects"
-          ? ["oldest", "newest", "middle", "idle"]
-          : ["newest", "middle", "oldest", "idle"],
-      );
-      await fixture.publishStreaming(["newest"], true);
-      expect(order()).toEqual(
-        mode === "projects"
-          ? ["newest", "oldest", "middle", "idle"]
-          : ["newest", "middle", "oldest", "idle"],
-      );
-      expect(row("oldest").dataset.navigationActive).toBe("true");
-      expect(row("oldest")).toBe(originalRow);
-      expect(row("oldest").closest("section")).toBe(originalSection);
-      expect(originalSection?.querySelector("h2")?.textContent).toBe(originalHeading);
-      // Explicit creation/lifecycle changes may enter or leave the list.
-      await fixture.publishSessions([
-        sidebarSummary("brand-new", 20),
-        ...sessions.map((session) => ({ ...session, resolved: session.sessionId === "middle" })),
-      ]);
-      expect(order()).toEqual(
-        mode === "projects"
-          ? ["newest", "oldest", "brand-new", "idle"]
-          : ["brand-new", "newest", "oldest", "idle"],
-      );
-    },
-  );
-
-  it("breaks equal creation-date ties by identity across catalog refresh and remount", async () => {
-    const sessions = [
-      sidebarSummary("beta", 2, { running: true }),
-      sidebarSummary("alpha", 2, { running: true }),
-      sidebarSummary("delta", 2),
-      sidebarSummary("charlie", 2),
-    ];
-    const saved = await (async () => {
-      using fixture = renderSidebarNavigation({ projects: [project], sessions });
-      expect(order()).toEqual(["alpha", "beta", "charlie", "delta"]);
-      await fixture.publishSessions([...sessions].reverse());
-      expect(order()).toEqual(["alpha", "beta", "charlie", "delta"]);
-      return fixture.snapshot();
-    })();
-    using fixture = renderSidebarNavigation({ projects: [project], sessions, snapshot: saved });
-    expect(order()).toEqual(["alpha", "beta", "charlie", "delta"]);
-    await fixture.publishSessions([...sessions].reverse());
-    expect(order()).toEqual(["alpha", "beta", "charlie", "delta"]);
-  });
-
-  it("marks Activity Project Chats with their Project's icon in the session status column", async () => {
-    const iconProject = projectRecord({
-      path: "/cake",
-      settings: {
-        ...project.settings!,
-        icon: { mimeType: "image/png", data: "aWNvbg==" },
-      },
-    });
-    using fixture = renderSidebarNavigation({
-      projects: [iconProject],
-      sessions: [sidebarSummary("session", 1)],
-      loadedIds: ["session"],
-    });
-    const chat = (unread: boolean) => ({
-      sessionId: "project-chat",
-      title: "cake",
-      projectPath: "/cake",
-      createdAt: sidebarSummary("unused", 1).modifiedAt,
-      modifiedAt: sidebarSummary("unused", 2).modifiedAt,
-      messageCount: 2,
-      resolved: false,
-      unread,
-    });
-    await fixture.publishProjectChats([chat(false)]);
-    await fixture.publishProjectChatStreaming("project-chat", true);
-    await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
-    const chatRow = document.querySelector<HTMLElement>('[data-slot="project-chat-item"]')!;
-    const leading = chatRow.querySelector('[data-slot="project-chat-leading"]')!;
-    expect(leading.querySelector("img")?.getAttribute("src")).toBe(
-      "data:image/png;base64,aWNvbg==",
-    );
-    const status = chatRow.querySelector<HTMLElement>('[data-slot="project-chat-status"]')!;
-    expect(within(status).getByRole("img", { name: "Running" })).toBeDefined();
-
-    await fixture.publishProjectChatStreaming("project-chat", false);
-    expect(
-      document.querySelector('[data-slot="project-chat-item"] [data-slot="project-chat-status"]'),
-    ).toBeNull();
-    await fixture.publishProjectChats([chat(true)]);
-    expect(
-      within(
-        document.querySelector<HTMLElement>(
-          '[data-slot="project-chat-item"] [data-slot="project-chat-status"]',
-        )!,
-      ).getByRole("img", { name: "Ready, unread" }),
-    ).toBeDefined();
-  });
-
-  it("keeps Project Chats interleaved by creation date through activity and refreshes", async () => {
-    const sessions = [sidebarSummary("newest", 4), sidebarSummary("oldest", 1)];
-    using fixture = renderSidebarNavigation({
-      projects: [project],
-      sessions,
-      loadedIds: ["newest", "oldest"],
-    });
-    const chat = (day: number) => ({
-      sessionId: "project-chat",
-      title: "Project Chat",
-      projectPath: "/cake",
-      createdAt: sidebarSummary("unused", 2).createdAt,
-      modifiedAt: sidebarSummary("unused", day).modifiedAt,
-      messageCount: 2,
-      resolved: false,
-      unread: false,
-    });
-    await fixture.publishProjectChats([chat(2)]);
-    await fixture.publishStreaming(["newest", "oldest"], true);
-    await fixture.publishProjectChatStreaming("project-chat", true);
-    await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
-    const mixedOrder = () =>
-      [...document.querySelectorAll('[data-slot="activity-feed"] [data-session-id]')].map(
-        (element) => element.getAttribute("data-session-id"),
-      );
-    expect(mixedOrder()).toEqual(["newest", "project-chat", "oldest"]);
-    const chatRow = document.querySelector('[data-slot="project-chat-item"]')!;
-    expect(chatRow.textContent).toBe("Project ChatProject Chat");
-    await fixture.publishProjectChats([chat(9)]);
-    await fixture.publishSessions(
-      [...sessions].reverse().map((session) => ({
-        ...session,
-        modifiedAt: sidebarSummary("unused", 10).modifiedAt,
-      })),
-    );
-    expect(mixedOrder()).toEqual(["newest", "project-chat", "oldest"]);
-    await fixture.publishProjectChatStreaming("project-chat", false);
-    expect(mixedOrder()).toEqual(["newest", "project-chat", "oldest"]);
-    expect(document.querySelector('[data-slot="project-chat-item"]')!.textContent).not.toBe(
-      "Project ChatProject Chat",
-    );
-  });
-
-  it.each(["projects", "activity"] as const)(
-    "holds the selected row while %s reorders other read rows by last update, without changing the open conversation",
-    async (mode) => {
-      const sessions = [
-        sidebarSummary("newest", 3),
-        sidebarSummary("middle", 2),
-        sidebarSummary("oldest", 1),
-      ];
-      using fixture = renderSidebarNavigation({
-        projects: [project],
-        sessions,
-        loadedIds: sessions.map((session) => session.sessionId),
-        client: { projectSessions: { open: async () => undefined } },
-      });
-      if (mode === "activity")
-        await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
-      await fixture.user.click(rowButton("middle"));
-      await waitFor(() =>
-        expect(
-          document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
-        ).toBe("middle"),
-      );
-      const pane = document.querySelector('[data-slot="session-pane"]');
-      const assertSelection = () => {
-        expect(
-          document
-            .querySelector('[data-navigation-active="true"].session-item')
-            ?.getAttribute("data-session-id"),
-        ).toBe("middle");
-        expect(document.querySelector('[data-slot="session-pane"]')).toBe(pane);
-        expect(pane?.getAttribute("data-session-id")).toBe("middle");
-      };
-      expect(order()).toEqual(["newest", "middle", "oldest"]);
-      // Selection and new messages do not change a row's position.
-      await fixture.publishSessions([
-        sessions[0]!,
-        { ...sessions[1]!, modifiedAt: sidebarSummary("unused", 5).modifiedAt },
-        sessions[2]!,
-      ]);
-      expect(order()).toEqual(["newest", "middle", "oldest"]);
-      assertSelection();
-      // A background message moves that Project Session up; Activity stays in creation order.
-      await fixture.publishSessions([
-        { ...sessions[2]!, modifiedAt: sidebarSummary("unused", 6).modifiedAt },
-        { ...sessions[1]!, modifiedAt: sidebarSummary("unused", 5).modifiedAt },
-        sessions[0]!,
-      ]);
-      expect(order()).toEqual(
-        mode === "projects" ? ["oldest", "newest", "middle"] : ["newest", "middle", "oldest"],
-      );
-      assertSelection();
-    },
-  );
-
-  it("sorts a family by its latest update anywhere in it, so child updates move the family", async () => {
-    const day = (n: number) => sidebarSummary("unused", n).modifiedAt;
-    const others = [sidebarSummary("standalone", 31), sidebarSummary("middle", 20)];
-    using fixture = renderSidebarNavigation({
-      projects: [project],
-      sessions: [...sidebarFamily, ...others],
-    });
-    // The root was last updated on day 1, but its grandchild on day 30.
-    expect(order()).toEqual(["standalone", "root", "planner", "worker", "sibling", "middle"]);
-    expect(row("root").querySelector("time")?.dateTime).toBe(day(1));
-    await fixture.publishSessions([
-      ...sidebarFamily.map((session) =>
-        session.sessionId === "sibling" ? { ...session, modifiedAt: day(40) } : session,
-      ),
-      ...others,
-    ]);
-    expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone", "middle"]);
-    // Collapsed, the family keeps the same place.
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
-    expect(order()).toEqual(["root", "standalone", "middle"]);
-  });
-
-  it("keeps a family in place on selected descendant activity without changing its selected child or open pane", async () => {
-    using fixture = renderSidebarNavigation({
-      projects: [project],
-      sessions: [...sidebarFamily, sidebarSummary("standalone", 31)],
-      loadedIds: ["worker", "standalone"],
-      client: { projectSessions: { open: async () => undefined } },
-    });
-    await fixture.user.click(rowButton("worker"));
-    await waitFor(() =>
-      expect(
-        document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
-      ).toBe("worker"),
-    );
-    const pane = document.querySelector('[data-slot="session-pane"]');
-    expect(order()).toEqual(["standalone", "root", "planner", "worker", "sibling"]);
-    await fixture.publishSessions([
-      ...sidebarFamily.map((session) =>
-        session.sessionId === "worker"
-          ? { ...session, modifiedAt: "2026-02-01T00:00:00.000Z" }
-          : session,
-      ),
-      sidebarSummary("standalone", 31),
-    ]);
-    expect(order()).toEqual(["standalone", "root", "planner", "worker", "sibling"]);
-    expect(row("worker").getAttribute("data-navigation-active")).toBe("true");
-    expect(document.querySelector('[data-slot="session-pane"]')).toBe(pane);
-    expect(pane?.getAttribute("data-session-id")).toBe("worker");
-    // Once the user moves on, the child's update moves its family up.
-    await fixture.user.click(rowButton("standalone"));
-    await waitFor(() => expect(row("standalone").dataset.navigationActive).toBe("true"));
-    expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
-  });
-
-  it("flattens nested families parent-first and preserves descendant activity on expanded and collapsed ancestors", async () => {
-    using fixture = renderSidebarNavigation({
-      projects: [project],
-      sessions: [...sidebarFamily, sidebarSummary("standalone", 3)],
-      loadedIds: ["worker"],
-    });
-    expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
-    await fixture.publishStreaming(["worker"], true);
-    expect(within(row("root")).getByRole("img", { name: "Running" })).toBeDefined();
-    expect(within(row("worker")).getByRole("img", { name: "Running" })).toBeDefined();
-    expect(row("worker").querySelector("time")?.textContent).toBe("Working");
-    expect(row("root").querySelector("time")?.textContent).toBe("Children are working");
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse children of planner" }));
-    expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
-    expect(within(row("planner")).getByRole("img", { name: "Running" })).toBeDefined();
-    expect(row("planner").querySelector("time")?.textContent).toBe("Children are working");
-    expect(within(row("root")).getByRole("img", { name: "Running" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
-    expect(order()).toEqual(["root", "standalone"]);
-    expect(within(row("root")).getByRole("img", { name: "Running" })).toBeDefined();
-    expect(row("root").querySelector("time")?.textContent).toBe("Children are working");
-    await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
-    // Hidden descendants still supply status, but never change family creation order.
-    expect(order()).toEqual(["standalone", "root"]);
-    await fixture.user.click(screen.getByRole("button", { name: "Show projects" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Expand children of root" }));
-    expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
-    expect(within(row("root")).getByRole("img", { name: "Running" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Expand children of planner" }));
-    expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
-  });
-
-  it.each(
-    (["projects", "activity"] as const).flatMap((mode) =>
-      (["running", "pending", "waiting", "blocked", "unread", "idle"] as const).map((state) => ({
-        mode,
-        state,
-      })),
-    ),
-  )(
-    "preserves family status and root order across disclosures with $state children in $mode",
-    async ({ mode, state }) => {
-      const sessions = [
-        ...sidebarFamily.map((session) =>
-          session.sessionId === "worker"
-            ? {
-                ...session,
-                running: state === "running",
-                unread: state === "unread",
-                recoveryIssue: state === "blocked" ? "Needs recovery" : undefined,
-              }
-            : session,
-        ),
-        sidebarSummary("recent", 31),
-        sidebarSummary("busy", 32, { running: true }),
-        sidebarSummary("ready", 33, { unread: true }),
-      ];
-      using fixture = renderSidebarNavigation({
-        projects: [project],
-        sessions,
-        loadedIds: ["worker"],
-      });
-      if (state === "pending")
-        await fixture.publishWorktreeOperations([
-          {
-            operationId: "pending-child-landing",
-            workspacePath: "/cake",
-            sessionId: "worker",
-            kind: "landing",
-            phase: "queued",
-            allowDirtyTarget: false,
-          },
-        ]);
-      if (state === "waiting")
-        await fixture.publishInterview({
-          id: "child-question",
-          sessionId: "worker",
-          request: {
-            protocol: "cake.request/v1",
-            id: "question",
-            title: "Choose",
-            responseSchema: { type: "object" },
-            view: { type: "form", fields: [{ id: "name", label: "Name", type: "text" }] },
-            fallback: { markdown: "What next?" },
-          },
-        });
-      if (mode === "activity")
-        await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
-      const label = {
-        running: "Running",
-        pending: "Running",
-        waiting: "Waiting for your answer",
-        blocked: "Needs your input",
-        unread: "Ready, unread",
-        idle: undefined,
-      }[state];
-      const expectedOrder =
-        mode === "activity"
-          ? ["ready", "busy", "recent", "root"]
-          : state === "unread"
-            ? ["ready", "root", "busy", "recent"]
-            : state === "blocked" || state === "idle"
-              ? ["ready", "busy", "recent", "root"]
-              : ["ready", "busy", "root", "recent"];
-      const active = state === "running" || state === "pending" || state === "waiting";
-      const assertFamily = (parentIds: string[]) => {
-        for (const id of parentIds) {
-          expect(row(id).querySelector(".session-status")?.getAttribute("aria-label")).toBe(label);
-          const time = row(id).querySelector("time");
-          if (active) expect(time?.textContent).toBe("Children are working");
-          else
-            expect(time?.dateTime).toBe(
-              sessions.find((session) => session.sessionId === id)!.modifiedAt,
-            );
-        }
-        expect(order().filter((id) => ["root", "recent", "busy", "ready"].includes(id!))).toEqual(
-          expectedOrder,
-        );
-      };
-      assertFamily(["root", "planner"]);
-      await fixture.user.click(
-        screen.getByRole("button", { name: "Collapse children of planner" }),
-      );
-      assertFamily(["root", "planner"]);
-      await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
-      assertFamily(["root"]);
-      await fixture.user.click(screen.getByRole("button", { name: "Expand children of root" }));
-      assertFamily(["root", "planner"]);
-      await fixture.user.click(screen.getByRole("button", { name: "Expand children of planner" }));
-      assertFamily(["root", "planner"]);
-      expect(row("worker").querySelector(".session-status")?.getAttribute("aria-label")).toBe(
-        label,
-      );
-      if (active) expect(row("worker").querySelector("time")?.textContent).toBe("Working");
-    },
-  );
-
-  it.each(["projects", "activity"] as const)(
-    "distinguishes parent work from child-only work in both disclosure states in %s",
-    async (mode) => {
-      using fixture = renderSidebarNavigation({
-        projects: [project],
-        sessions: sidebarFamily,
-        loadedIds: ["root", "worker"],
-      });
-      if (mode === "activity")
-        await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
-      await fixture.publishStreaming(["worker"], true);
-      for (const disclosure of ["Collapse", "Expand"]) {
-        expect(row("root").querySelector("time")?.textContent).toBe("Children are working");
-        await fixture.publishStreaming(["root"], true);
-        expect(row("root").querySelector("time")?.textContent).toBe("Working");
-        await fixture.publishStreaming(["root"], false);
-        expect(row("root").querySelector("time")?.textContent).toBe("Children are working");
-        await fixture.user.click(
-          screen.getByRole("button", { name: `${disclosure} children of root` }),
-        );
-        expect(row("root").querySelector("time")?.textContent).toBe("Children are working");
-      }
-      await fixture.publishStreaming(["worker"], false);
-      expect(row("root").querySelector("time")?.dateTime).toBe(sidebarFamily[0]!.modifiedAt);
-      expect(row("root").querySelector(".session-status")).toBeNull();
-    },
-  );
-
-  describe("revealing a selected family descendant", () => {
-    let scrollIntoView: ReturnType<typeof vi.fn>;
-    beforeEach(() => {
-      scrollIntoView = vi.fn();
-      Object.defineProperty(Element.prototype, "scrollIntoView", {
-        configurable: true,
-        value: scrollIntoView,
-      });
-    });
-    afterEach(() => {
-      Reflect.deleteProperty(Element.prototype, "scrollIntoView");
-    });
-    const familySessions = [...sidebarFamily, sidebarSummary("standalone", 3)];
-    const renderFamily = (snapshot: Parameters<typeof renderSidebarNavigation>[0]["snapshot"]) =>
-      renderSidebarNavigation({
-        projects: [project],
-        sessions: familySessions,
-        loadedIds: familySessions.map((session) => session.sessionId),
-        client: { projectSessions: { open: async () => undefined } },
-        snapshot,
-      });
-    const collapsed = (collapsedFamilies: Record<string, boolean>, projectCollapsed = false) => ({
-      state: {},
-      children: {
-        sidebarStore: {
-          state: {},
-          children: {
-            sessionListStore: {
-              state: {
-                collapsedFamilies,
-                expandedActiveGroups: { "cake-chat": true, "/cake": !projectCollapsed },
-              },
-              children: {},
-            },
-          },
-        },
-      },
-    });
-
-    it("expands the collapsed Project and every collapsed ancestor of a linked grandchild, persists it, and scrolls the row into view", async () => {
-      const saved = await (async () => {
-        using fixture = renderFamily(collapsed({ root: true, planner: true }, true));
-        expect(order()).toEqual([]);
-        await fixture.openSessionLink("worker");
-        expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
-        expect(row("worker").getAttribute("data-navigation-active")).toBe("true");
-        expect(scrollIntoView.mock.contexts).toContain(row("worker"));
-        expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
-        return fixture.snapshot();
-      })();
-      // Like a manual expand, the reveal persists with window presentation…
-      using fixture = renderFamily(saved);
-      expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
-      // …and is one-time: collapsing the selected row's parent or Project afterwards sticks.
-      await fixture.openSessionLink("worker");
-      await fixture.user.click(
-        screen.getByRole("button", { name: "Collapse children of planner" }),
-      );
-      expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
-      await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
-      expect(order()).toEqual([]);
-    });
-
-    it("expands only the ancestors of a linked child, leaving its own children collapsed", async () => {
-      using fixture = renderFamily(collapsed({ root: true, planner: true }));
-      await fixture.openSessionLink("planner");
-      expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
-      expect(row("planner").getAttribute("data-navigation-active")).toBe("true");
-      expect(screen.getByRole("button", { name: "Expand children of planner" })).toBeDefined();
-    });
-
-    it("leaves family expansion alone for a visible child or top-level session, revealing only its collapsed Project", async () => {
-      using fixture = renderFamily(collapsed({ planner: true }));
-      await fixture.user.click(rowButton("sibling"));
-      await waitFor(() =>
-        expect(row("sibling").getAttribute("data-navigation-active")).toBe("true"),
-      );
-      expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
-      await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
-      await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
-      expect(order()).toEqual([]);
-      await fixture.openSessionLink("standalone");
-      expect(row("standalone").getAttribute("data-navigation-active")).toBe("true");
-      expect(order()).toEqual(["root", "standalone"]);
-      await fixture.user.click(screen.getByRole("button", { name: "Expand children of root" }));
-      expect(screen.getByRole("button", { name: "Expand children of planner" })).toBeDefined();
-    });
-  });
-
-  it("reacts to nested work and completion on collapsed Projects without changing expanded activity or selection", async () => {
-    using fixture = renderSidebarNavigation({
-      projects: [project],
-      sessions: sidebarFamily,
-      loadedIds: ["worker", "root"],
-      client: { projectSessions: { open: async () => undefined } },
-    });
-    const header = () =>
-      projectGroup("cake").querySelector<HTMLElement>('[data-slot="project-header"]')!;
-    const headerStatus = () =>
-      within(header()).queryByRole("img", { name: /Running|Ready, unread/ });
-    await fixture.publishStreaming(["worker"], true);
-    expect(headerStatus()).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse children of planner" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
-    expect(within(row("root")).getByRole("img", { name: "Running" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
-    expect(order()).toEqual([]);
-    expect(headerStatus()?.getAttribute("aria-label")).toBe("Running");
-
-    await fixture.publishStreaming(["worker"], false);
-    expect(headerStatus()).toBeNull();
-    await fixture.publishStreaming(["worker"], true);
-    expect(headerStatus()?.getAttribute("aria-label")).toBe("Running");
-    await fixture.publishStreaming(["worker"], false);
-    await fixture.publishEvent({
-      _tag: "TurnSettled",
-      sessionId: "worker",
-      turnId: TurnId.make("10000000-0000-4000-8000-000000000002"),
-      outcome: "complete",
-    });
-    expect(headerStatus()?.getAttribute("aria-label")).toBe("Ready, unread");
-    await fixture.user.click(screen.getByRole("button", { name: "Expand cake" }));
-    expect(headerStatus()).toBeNull();
-    expect(within(row("root")).getByRole("img", { name: "Ready, unread" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Expand children of root" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Expand children of planner" }));
-    await fixture.user.click(rowButton("worker"));
-    await waitFor(() => expect(row("worker").getAttribute("data-navigation-active")).toBe("true"));
-    const pane = document.querySelector('[data-slot="session-pane"]');
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
-    // Selecting a session never reads it; leaving does.
-    expect(headerStatus()?.getAttribute("aria-label")).toBe("Ready, unread");
-    expect(document.querySelector('[data-slot="session-pane"]')).toBe(pane);
-    expect(pane?.getAttribute("data-session-id")).toBe("worker");
-    await fixture.user.click(screen.getByRole("button", { name: "Expand cake" }));
-    await fixture.user.click(rowButton("root"));
-    await waitFor(() => expect(row("root").getAttribute("data-navigation-active")).toBe("true"));
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
-    expect(headerStatus()).toBeNull();
-  });
-
-  it.each([
-    ["waiting", "Waiting for your answer"],
-    ["running", "Running"],
-    ["blocked", "Needs your input"],
-    ["error", "Error"],
-    ["unread", "Ready, unread"],
-    ["stopped", undefined],
-  ] as const)(
-    "shares collapsed-family precedence for mixed states starting with %s",
-    async (state, label) => {
-      const states = ["waiting", "running", "blocked", "error", "unread", "stopped"];
-      const included = (activity: string) => states.indexOf(activity) >= states.indexOf(state);
-      const sessions = [
-        ...sidebarFamily.map((session) => ({
-          ...session,
-          ...(session.sessionId === "root"
-            ? {
-                familyChildSessionIds: ["planner", "sibling", "blocked", "waiting"],
-                latestTurnOutcome: "aborted" as const,
-              }
-            : {}),
-          ...(session.sessionId === "planner" && included("error")
-            ? { latestTurnOutcome: "failed" as const }
-            : {}),
-          ...(session.sessionId === "worker" ? { running: included("running") } : {}),
-          ...(session.sessionId === "sibling" ? { unread: included("unread") } : {}),
-        })),
-        sidebarSummary("blocked", 1, {
-          familyParentSessionId: "root",
-          recoveryIssue: included("blocked") ? "Needs recovery" : undefined,
-        }),
-        sidebarSummary("waiting", 1, { familyParentSessionId: "root" }),
-      ];
-      using fixture = renderSidebarNavigation({
-        projects: [project],
-        sessions,
-        loadedIds: ["waiting"],
-      });
-      if (included("waiting"))
-        await fixture.publishInterview({
-          id: "precedence-question",
-          sessionId: "waiting",
-          request: {
-            protocol: "cake.request/v1",
-            id: "question",
-            title: "Choose",
-            responseSchema: { type: "object" },
-            view: { type: "form", fields: [{ id: "name", label: "Name", type: "text" }] },
-            fallback: { markdown: "What next?" },
-          },
-        });
-      await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
-      const parentDot = row("root").querySelector(".session-status");
-      expect(parentDot?.getAttribute("aria-label")).toBe(label);
-      await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
-      const projectDot = projectGroup("cake").querySelector(
-        '[data-slot="project-chat-status"] .session-status',
-      );
-      expect(projectDot?.getAttribute("aria-label")).toBe(label);
-    },
-  );
-
-  it("excludes resolved descendants from active family activity and includes them again on restore", async () => {
-    using fixture = renderSidebarNavigation({
-      projects: [project],
-      sessions: sidebarFamily.map((session) =>
-        session.sessionId === "worker" ? { ...session, resolved: true, unread: true } : session,
-      ),
-    });
-    expect(order()).not.toContain("worker");
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
-    expect(within(row("root")).queryByRole("img", { name: "Ready, unread" })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
-    expect(within(projectGroup("cake")).queryByRole("img", { name: "Ready, unread" })).toBeNull();
-    await fixture.publishSessions(
-      sidebarFamily.map((session) =>
-        session.sessionId === "worker" ? { ...session, resolved: false, unread: true } : session,
-      ),
-    );
-    expect(within(projectGroup("cake")).getByRole("img", { name: "Ready, unread" })).toBeDefined();
-  });
-
-  it("includes unpaginated sessions but not other Projects or standalone resolved rows, and retains Project Chat's own activity", async () => {
-    const sessions = [
-      ...Array.from({ length: 11 }, (_, index) =>
-        sidebarSummary(`task-${index}`, index + 1, { running: index === 0, unread: index > 0 }),
-      ),
-      sidebarSummary("resolved", 20, { resolved: true, recoveryIssue: "Needs recovery" }),
-      sidebarSummary("other-project", 20, { projectPath: "/pi", running: true }),
-    ];
-    using fixture = renderSidebarNavigation({
-      projects: [project, projectRecord({ path: "/pi" })],
-      sessions,
-    });
-    const chat = {
-      sessionId: "project-chat",
-      title: "Project Chat",
-      projectPath: "/cake",
-      createdAt: sessions[0]!.createdAt,
-      modifiedAt: sessions[0]!.modifiedAt,
-      messageCount: 2,
-      resolved: false,
-      unread: true,
-    };
-    await fixture.publishProjectChats([chat]);
-    const status = () =>
-      projectGroup("cake").querySelector('[data-slot="project-chat-status"] .session-status');
-    expect(order()[0]).toBe("task-10");
-    expect(order()).not.toContain("task-0");
-    expect(status()?.getAttribute("aria-label")).toBe("Ready, unread");
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
-    expect(status()?.getAttribute("aria-label")).toBe("Running");
-    await fixture.publishSessions(
-      sessions.map((session) => ({ ...session, running: false, unread: false })),
-    );
-    expect(status()?.getAttribute("aria-label")).toBe("Ready, unread");
-    await fixture.publishProjectChats([{ ...chat, unread: false }]);
-    expect(status()).toBeNull();
-    await fixture.publishProjectChatStreaming("project-chat", true);
-    expect(status()?.getAttribute("aria-label")).toBe("Running");
-    await fixture.user.click(screen.getByRole("button", { name: "Expand cake" }));
-    expect(status()?.getAttribute("aria-label")).toBe("Running");
-    await fixture.publishProjectChatStreaming("project-chat", false);
-    expect(status()).toBeNull();
-  });
-
-  it("keeps project and worktree details visible in Activity through mode and lifecycle changes", async () => {
-    using fixture = renderSidebarNavigation({
-      projects: [project],
-      sessions: [
-        sidebarSummary("feature", 3, { workingDirectory: "/cake-feature" }),
-        sidebarSummary("checkout", 2),
-        sidebarSummary("draft", 1, { workingDirectory: "/cake-feature", draft: true }),
-      ],
-    });
-    const worktree = {
-      projectPath: "/cake",
-      worktreePath: "/cake-feature",
-      branch: "agent/feature-branch",
-      baseBranch: "agent/release",
-      state: "active" as const,
-      createdAt: "2026-01-01T00:00:00.000Z",
-    };
-    await fixture.publishWorktrees([worktree]);
-    const assertWorktree = (state: "Open worktree" | "Merged worktree") => {
-      expect(within(row("feature")).getByText("feature-branch")).toBeDefined();
-      expect(within(row("feature")).getByText("release")).toBeDefined();
-      expect(within(row("feature")).getByRole("img", { name: state })).toBeDefined();
-      expect(row("feature").querySelector("time")?.textContent).toBeTruthy();
-      expect(row("checkout").querySelector("[data-worktree-state]")).toBeNull();
-      expect(row("draft").querySelector("[data-worktree-state]")).toBeNull();
-      expect(within(row("draft")).queryByText("feature-branch")).toBeNull();
-    };
-    assertWorktree("Open worktree");
-    await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
-    assertWorktree("Open worktree");
-    for (const id of ["feature", "checkout", "draft"]) {
-      expect(within(row(id)).getByText("cake")).toBeDefined();
-    }
-    await fixture.publishWorktrees([{ ...worktree, state: "landed" }]);
-    assertWorktree("Merged worktree");
-    await fixture.user.click(screen.getByRole("button", { name: "Show projects" }));
-    assertWorktree("Merged worktree");
-    await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
-    assertWorktree("Merged worktree");
-    expect(within(row("feature")).getByText("cake")).toBeDefined();
-  });
-
-  it("reveals ten roots per click without charging family children or sharing limits across projects and lanes", async () => {
-    const singles = Array.from({ length: 20 }, (_, index) =>
-      sidebarSummary(`single-${index}`, 20 - index),
-    );
-    const piSessions = Array.from({ length: 11 }, (_, index) =>
-      sidebarSummary(`pi-${index}`, 20 - index, { projectPath: "/pi" }),
-    );
-    const archives = Array.from({ length: 21 }, (_, index) =>
-      sidebarSummary(`archive-${index}`, 25 - index, { resolved: true }),
-    );
-    using fixture = renderSidebarNavigation({
-      projects: [project, projectRecord({ path: "/pi" })],
-      sessions: [...sidebarFamily, ...singles, ...piSessions, ...archives],
-    });
-    // The family's latest child update (day 30) puts it ahead of every single.
-    expect(order(projectGroup("cake"))).toEqual([
-      "root",
-      "planner",
-      "worker",
-      "sibling",
-      ...singles.slice(0, 9).map((session) => session.sessionId),
-    ]);
-    expect(order(projectGroup("pi"))).toHaveLength(10);
-    await fixture.user.click(
-      within(projectGroup("cake")).getByRole("button", { name: "Show more" }),
-    );
-    expect(order(projectGroup("cake"))).toHaveLength(23);
-    expect(within(projectGroup("cake")).queryByRole("button", { name: /^single-19 / })).toBeNull();
-    expect(order(projectGroup("pi"))).toHaveLength(10);
-    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
-    await fixture.user.click(screen.getAllByRole("button", { name: "Expand cake resolved" })[0]!);
-    expect(order(resolvedGroup("cake"))).toHaveLength(10);
-    await fixture.user.click(
-      within(resolvedGroup("cake")).getByRole("button", { name: "Show more" }),
-    );
-    expect(order(resolvedGroup("cake"))).toHaveLength(20);
-    expect(order(projectGroup("cake"))).toHaveLength(23);
-    expect(order(projectGroup("pi"))).toHaveLength(10);
-    await fixture.user.click(
-      within(projectGroup("cake")).getByRole("button", { name: "Show more" }),
-    );
-    expect(order(projectGroup("cake"))).toHaveLength(24);
-    expect(within(projectGroup("cake")).queryByRole("button", { name: "Show more" })).toBeNull();
-    expect(order(resolvedGroup("cake"))).toHaveLength(20);
-  }, 15_000);
-
-  it("shows every active session on project focus while keeping archives paginated and returning to the ordinary limit on exit", async () => {
-    const sessions = [false, true].flatMap((resolved) =>
-      Array.from({ length: 11 }, (_, index) =>
-        sidebarSummary(`${resolved ? "archive" : "active"}-${index}`, index + 1, { resolved }),
-      ),
-    );
-    using fixture = renderSidebarNavigation({
-      projects: [project, projectRecord({ path: "/pi" })],
-      sessions,
-    });
-    expect(order(projectGroup("cake"))).toHaveLength(10);
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
-    expect(order(projectGroup("cake"))).toHaveLength(0);
-    await fixture.user.click(screen.getByRole("button", { name: "Project actions for cake" }));
-    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on cake" }));
-    expect(order(projectGroup("cake"))).toHaveLength(11);
-    expect(within(projectGroup("cake")).queryByRole("button", { name: "Show more" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Open Project Chat for pi" })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
-    const archives = screen.getByRole("region", { name: "Resolved sessions" });
-    expect(order(archives)).toHaveLength(10);
-    expect(within(archives).getByRole("button", { name: "Show more" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Exit focus mode for cake" }));
-    expect(order(projectGroup("cake"))).toHaveLength(10);
-    expect(screen.getByRole("button", { name: "Open Project Chat for pi" })).toBeDefined();
-  });
-
-  it("shows queued landing as running only while it waits, not when landing work starts", async () => {
-    using fixture = renderSidebarNavigation({
-      projects: [project],
-      sessions: [
-        sidebarSummary("queued", 1, { workingDirectory: "/cake-worktree" }),
-        sidebarSummary("landing", 2, { workingDirectory: "/other-worktree" }),
-      ],
-    });
-    const queued = {
-      operationId: "merge-1",
-      workspacePath: "/cake-worktree",
-      sessionId: "queued",
-      kind: "landing" as const,
-      phase: "waiting" as const,
-      allowDirtyTarget: false,
-    };
-    const landing = {
-      operationId: "merge-2",
-      workspacePath: "/other-worktree",
-      sessionId: "landing",
-      kind: "landing" as const,
-      phase: "landing" as const,
-      allowDirtyTarget: false,
-    };
-    await fixture.publishWorktreeOperations([queued, landing]);
-    expect(within(row("queued")).getByRole("img", { name: "Running" })).toBeDefined();
-    expect(within(row("landing")).queryByRole("img", { name: "Running" })).toBeNull();
-    await fixture.publishWorktreeOperations([{ ...queued, phase: "landing" }, landing]);
-    expect(within(row("queued")).queryByRole("img", { name: "Running" })).toBeNull();
-    expect(within(row("landing")).queryByRole("img", { name: "Running" })).toBeNull();
-  });
 });

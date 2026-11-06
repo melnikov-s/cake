@@ -150,8 +150,8 @@ test("merging and resolving a family root shows one consolidated toast", async (
     const page = await application.firstWindow();
     const panes = page.locator('[data-slot="session-pane"]');
     await expect(panes).toHaveCount(1, { timeout: 20_000 });
-    // Open two descendants beside the root (the child pane is reused), so the root and both
-    // descendants have rendered Worktree pills observing the same landing.
+    // Visit two descendants through ordinary focused-conversation navigation, then return
+    // to the root before landing the family's shared worktree.
     for (const [index, child] of children.slice(0, 2).entries())
       await emitRendererEvent(application, {
         type: "project-session-control-requested",
@@ -165,11 +165,20 @@ test("merging and resolving a family root shows one consolidated toast", async (
           familyChildOrder: index,
           familyDepth: 1,
           workingDirectory: worktreePath,
-          placement: "right",
+          open: true,
         },
       });
-    await expect(panes).toHaveCount(2);
-    await expect(panes.nth(1)).toHaveAttribute("data-session-id", children[1]!.sessionId);
+    await expect(panes).toHaveAttribute("data-session-id", children[1]!.sessionId);
+    await emitRendererEvent(application, {
+      type: "project-session-control-requested",
+      sessionId: children[1]!.sessionId,
+      controlRequestId: "return-to-family-root",
+      invocation: {
+        _tag: "InvokeAppControl",
+        command: "sessions.open",
+        input: { sessionId: parent },
+      },
+    });
     const parentPane = page.locator(`[data-slot="session-pane"][data-session-id="${parent}"]`);
     await parentPane.getByRole("combobox", { name: "Message", exact: true }).click();
     const mergeAndResolve = parentPane.getByRole("button", { name: "Merge & resolve" });

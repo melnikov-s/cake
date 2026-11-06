@@ -5,6 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -84,7 +85,8 @@ for (const resolveSelected of [true, false]) {
     });
     try {
       const page = await application.firstWindow();
-      const rows = page.locator('[data-slot="project-group"] .session-item');
+      await showSessions(page);
+      const rows = page.locator('[data-slot="workspace-navigator"] .session-item');
       const order = () =>
         rows.evaluateAll((elements) =>
           elements.map((element) => element.getAttribute("data-session-id")),

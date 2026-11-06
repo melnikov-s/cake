@@ -7,6 +7,8 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type ElectronApplication } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
 
+import { createSessionInProject } from "./fixtures/workspace-navigation";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const execFile = promisify(execFileCallback);
 
@@ -185,7 +187,7 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
     await page.keyboard.press("Escape");
     await expect(input).toBeVisible();
 
-    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await createSessionInProject(page, /^project(?: |$)/i);
     await expect(input).toBeEnabled();
     await input.fill("[Sandboxed HTML](cake://artifact/cake-s4-html@r1)");
     await page.getByRole("button", { name: "Send", exact: true }).click();

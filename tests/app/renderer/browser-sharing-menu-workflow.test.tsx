@@ -12,6 +12,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { DesktopSharingState } from "../../../src/contracts/desktop/desktop-sharing-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { AppSurfaceHeader } from "../../../src/renderer/components/app-surface-header";
+import { ProjectRail } from "../../../src/renderer/components/project-rail";
 import { SettingsDesktopSharingSection } from "../../../src/renderer/components/settings-desktop-sharing-section";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -32,6 +33,7 @@ function setup(initial: DesktopSharingState = state("disabled")) {
   if (initial) sharing.apply(initial);
   const view = render(
     <StoreProvider store={fixture.root}>
+      <ProjectRail />
       <AppSurfaceHeader />
       <SettingsDesktopSharingSection sharing={sharing} />
     </StoreProvider>,
@@ -49,7 +51,7 @@ function setup(initial: DesktopSharingState = state("disabled")) {
 }
 const offline = () => screen.getByRole("button", { name: "Browser sharing: Offline — go online" });
 
-it("starts from the topbar with saved preferences, prevents repeated starts and shares Settings state", async () => {
+it("starts from the persistent rail with saved preferences, prevents repeated starts and shares Settings state", async () => {
   using f = setup();
   expect(f.configure).not.toHaveBeenCalled();
   const connectionIcon = renderToStaticMarkup(<NetworkIcon />);
@@ -97,13 +99,13 @@ it("starts from the topbar with saved preferences, prevents repeated starts and 
     { enabled: false, ...preferences },
     expect.anything(),
   );
-  // Settings still operates on exactly the same workflow and updates the topbar.
+  // Settings still operates on exactly the same workflow and updates the rail.
   await f.user.click(screen.getByRole("switch", { name: "Enable browser sharing" }));
   expect(await screen.findByRole("button", { name: "Browser sharing: Online" })).toBeDefined();
 });
 
 it.each([false, true])(
-  "shows a locally generated URL-only QR in the toolbar with Google protection=%s",
+  "shows a locally generated URL-only QR in the rail with Google protection=%s",
   async (google) => {
     const serving: DesktopSharingState = {
       ...state("serving"),
@@ -220,6 +222,7 @@ it("does not expose the local sharing listener when connected to a remote backen
   using fixture = createRendererStoreFixture({ desktopConnection: connection });
   const view = render(
     <StoreProvider store={fixture.root}>
+      <ProjectRail />
       <AppSurfaceHeader />
     </StoreProvider>,
   );

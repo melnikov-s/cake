@@ -319,12 +319,20 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   openSideChat(threadId: string) {
+    // Cold Sessions are discoverable from metadata before their full thread projection arrives.
+    this.pendingSideChatThreadId = threadId;
     const thread = this.sideChatThreads.find((candidate) => candidate.id === threadId);
     const chatStore = this.props.reviews().chatStore(threadId);
-    if (!thread || !chatStore) return false;
+    if (!thread || !chatStore || !thread.sidecarSessionId) return false;
     this.pendingSideChatThreadId = undefined;
     this.conversationSessionStore.sideChatStore.open({
       key: `discussion:${thread.id}`,
+      navigationTarget: {
+        kind: "side-chat",
+        sessionId: thread.sidecarSessionId,
+        parentSessionId: thread.parentSessionId,
+        threadId: thread.id,
+      },
       title: "Side chat",
       eyebrow: () =>
         thread.anchor.view === "artifact"

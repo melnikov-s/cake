@@ -71,6 +71,12 @@ export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration
           ),
         ),
       ),
+    "cakeChats.observeSideChatMetadata": ({ sessionId = CAKE_CHAT_SESSION_ID }) =>
+      Stream.unwrap(
+        Effect.flatMap(locations.resolve(configuration.location, sessionId), (location) =>
+          cakeChatSideChats.observeMetadata(location, sessionId),
+        ),
+      ),
     "cakeChats.observeSideChats": ({ sessionId = CAKE_CHAT_SESSION_ID }) =>
       Stream.unwrap(
         Effect.flatMap(locations.resolve(configuration.location, sessionId), (location) =>

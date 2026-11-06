@@ -1,5 +1,6 @@
 import { Store, child, createStore } from "r-state-tree";
 import { linkedMessageTarget } from "../lib/message-navigation";
+import type { ConversationNavigationTarget } from "../lib/conversation-navigation-tree";
 import { MessageReferencePreviewStore } from "./MessageReferencePreviewStore";
 import { AttachmentReferencePreviewStore } from "./AttachmentReferencePreviewStore";
 import {
@@ -23,7 +24,8 @@ import { CommandPaneContext } from "./context/CommandPaneContext";
 import { SessionContinuationContext } from "./context/SessionContinuationContext";
 import { ProjectOpenContext } from "./context/ProjectOpenContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
-import type { SessionLayoutStore, SessionSplitAxis } from "./SessionLayoutStore";
+import type { SessionLayoutStore } from "./SessionLayoutStore";
+import type { DiscussionNavigationStore } from "./DiscussionNavigationStore";
 import type { SessionMetadataStore } from "./SessionMetadataStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SettingsStore } from "./SettingsStore";
@@ -43,6 +45,7 @@ import type { SessionChatConfiguration } from "../../contracts/conversations/con
 export class NavigationStore extends Store<{
   shell: AppShellStore;
   layout: SessionLayoutStore;
+  discussionNavigation(): DiscussionNavigationStore;
   registry: SessionRegistryStore;
   catalog: SessionCatalogStore;
   metadata(): SessionMetadataStore;
@@ -121,6 +124,30 @@ export class NavigationStore extends Store<{
     if (!message) return this.messageReferencePreview.open(sessionId, messageId);
     session.conversationSessionStore.chatStore.transcriptInteraction.navigateToMessage(message.id);
     return true;
+  }
+
+  /** Select an existing public conversation destination using its authoritative owner facts. */
+  async openConversationTarget(target: ConversationNavigationTarget): Promise<void> {
+    const discussions = this.props.discussionNavigation();
+    discussions.cancelOpening();
+    if (
+      target.kind === "side-chat" ||
+      (target.kind === "subagent" && discussions.sessionIds.includes(target.sessionId))
+    ) {
+      await discussions.open(target);
+      return;
+    }
+    if (target.kind === "subagent") {
+      await this.openSubagentLink(target.sessionId, target.handleId);
+      return;
+    }
+    const owner =
+      this.props.cakeChat().registry.find(target.sessionId) ??
+      this.props.registry.findSession(target.sessionId);
+    if (owner?.conversationSessionStore.sideChatStore.target)
+      owner.conversationSessionStore.sideChatStore.close();
+    if (target.kind === "cake-chat") await this.openCakeChat(target.sessionId);
+    else await this.openSession(target.sessionId);
   }
 
   showAutomations() {
@@ -259,9 +286,26 @@ export class NavigationStore extends Store<{
     const resolved = resolveSessionLinkReference(parentReference, [
       ...this.props.catalog.sessions.map((session) => session.sessionId),
       ...this.props.cakeChat().summaries.map((session) => session.sessionId),
+      ...this.props.discussionNavigation().sessionIds,
     ]);
     if (!resolved.ok) throw new Error(resolved.error);
     const parentSessionId = resolved.sessionId;
+    const discussions = this.props.discussionNavigation();
+    if (discussions.sessionIds.includes(parentSessionId)) {
+      await discussions.open({ kind: "subagent", sessionId: parentSessionId, handleId });
+      if (messageId) {
+        const chat = discussions.subagents
+          .find((workers) => workers.parentSessionId === parentSessionId)
+          ?.chatStore(handleId);
+        const target = chat && linkedMessageTarget(chat.parts, messageId);
+        if (!target)
+          throw new Error(
+            "The linked message is unavailable in the retained subagent conversation",
+          );
+        chat?.transcriptInteraction.navigateToMessage(target.id);
+      }
+      return;
+    }
     await this.openSessionLink(parentSessionId);
     const parent = isCakeChatSessionId(parentSessionId)
       ? this.props.cakeChat().registry.find(parentSessionId)
@@ -289,11 +333,49 @@ export class NavigationStore extends Store<{
     }
     parent.conversationSessionStore.sideChatStore.open({
       key: `subagent:${handleId}`,
+      navigationTarget: { kind: "subagent", sessionId: parentSessionId, handleId },
       title: run.task,
       eyebrow: () => `Subagent · ${subagents.run(handleId)?.status ?? run.status}`,
       model: () => subagents.model(handleId),
       chatStore,
     });
+  }
+
+  /** Explicit project home intent; does not reset the conversation or its runtime. */
+  async openProjectChat(projectPath: string) {
+    this.props.discussionNavigation().cancelOpening();
+    const collection = this.props.cakeChat();
+    if (!collection.hydrated) await collection.initialize();
+    const chat = collection.projectChat(projectPath);
+    if (!chat) return false;
+    const home = collection.registry.load(chat.sessionId);
+    if (home.conversationSessionStore.sideChatStore.target)
+      home.conversationSessionStore.sideChatStore.close();
+    home.showPresentation("normal");
+    if ((await this.openCakeChat(chat.sessionId)) === false) return false;
+    return true;
+  }
+
+  async returnToProjectChat() {
+    const active = this.props.shell.activeConversation;
+    const projectPath =
+      active?.kind === "cake-chat"
+        ? this.props.cakeChat().summaries.find((chat) => chat.sessionId === active.sessionId)
+            ?.projectPath
+        : active
+          ? (this.props.catalog.find(active.sessionId)?.projectPath ??
+            this.props.catalog.projectPathFor(
+              this.props.registry.findSession(active.sessionId)?.workspacePath ?? "",
+            ))
+          : undefined;
+    if (projectPath) return this.openProjectChat(projectPath);
+    this.props.discussionNavigation().cancelOpening();
+    const home = this.props.cakeChat().registry.find(CAKE_CHAT_SESSION_ID);
+    if (home?.conversationSessionStore.sideChatStore.target)
+      home.conversationSessionStore.sideChatStore.close();
+    home?.showPresentation("normal");
+    await this.openCakeChat(CAKE_CHAT_SESSION_ID);
+    return true;
   }
 
   async createSession(workspacePath: string) {
@@ -314,37 +396,9 @@ export class NavigationStore extends Store<{
     await ProjectOpenContext.consume(this)!.chooseProject();
   }
 
-  sessionInNavigationScope(entry: SessionHistoryEntry) {
-    const projectPath = this.props.sidebar().focusModeProjectPath;
-    if (projectPath === undefined) return true;
-    if (entry.kind === "automation-session") {
-      const identity =
-        this.props
-          .automationSessions()
-          .identities.find((item) => item.sessionId === entry.sessionId) ??
-        this.props
-          .automationSessions()
-          .catalog.unresolvedSessions.find((item) => item.sessionId === entry.sessionId)?.identity;
-      return identity?.context._tag === "Project" && identity.context.projectPath === projectPath;
-    }
-    if (entry.kind === "cake-chat")
-      return (
-        this.props.cakeChat().summaries.find((chat) => chat.sessionId === entry.sessionId)
-          ?.projectPath === projectPath
-      );
-    if (entry.kind !== "project-session") return false;
-    const summary = this.props.catalog.find(entry.sessionId);
-    const workingDirectory = this.props.metadata().workingDirectory(entry.sessionId);
-    const entryProjectPath =
-      summary?.projectPath ??
-      (workingDirectory ? this.props.catalog.projectPathFor(workingDirectory) : undefined);
-    return entryProjectPath === projectPath;
-  }
-
   navigateBack() {
-    // Project focus uses scoped visit history rather than unfiltered pane history.
+    // Traverse focused conversation visits; covered surfaces use window-wide history.
     const sessionId =
-      !this.props.sidebar().focusModeProjectPath &&
       this.props.shell.workspace === "project-sessions" &&
       !this.props.shell.coveringSurface &&
       this.props.layout.goBack();
@@ -356,7 +410,6 @@ export class NavigationStore extends Store<{
 
   navigateForward() {
     const sessionId =
-      !this.props.sidebar().focusModeProjectPath &&
       this.props.shell.workspace === "project-sessions" &&
       !this.props.shell.coveringSurface &&
       this.props.layout.goForward();
@@ -368,109 +421,10 @@ export class NavigationStore extends Store<{
 
   navigateActiveSession(direction: "next" | "previous") {
     const sidebar = this.props.sidebar();
-    const target = sidebar.sessionListStore.adjacentActiveSession(
-      direction,
-      sidebar.focusModeProjectPath,
-    );
+    const target = sidebar.sessionListStore.adjacentActiveSession(direction);
     if (!target) return;
     if (target.kind === "cake-chat") void this.openCakeChat(target.sessionId);
     else void this.openSession(target.sessionId);
-  }
-
-  focusSessionPane(paneId: string) {
-    const previous = this.props.shell.activeConversation;
-    const sessionId = this.props.layout.focusPane(paneId);
-    if (
-      !sessionId ||
-      (this.props.shell.workspace === "project-sessions" && previous?.sessionId === sessionId)
-    )
-      return;
-    this.commitProjectSelection();
-    if (isCakeChatSessionId(sessionId))
-      this.props
-        .cakeChat()
-        .registry.find(sessionId)
-        ?.conversationSessionStore.composerStore.draftStore.requestFocus();
-    else this.workbench.showLoadedSession(sessionId);
-  }
-
-  focusAdjacentSessionPane(direction: "left" | "right" | "above" | "below") {
-    const cakeChatSelected = this.props.shell.workspace === "cake-chat";
-    const layout = cakeChatSelected ? this.props.cakeChat().sessionLayoutStore : this.props.layout;
-    const sessionId = layout.focusedSessionId;
-    const target = sessionId ? layout.neighbors(sessionId)[direction][0] : undefined;
-    if (!target) return;
-    if (cakeChatSelected) this.focusCakeChatPane(target.paneId);
-    else this.focusSessionPane(target.paneId);
-  }
-
-  focusSessionPaneNumber(number: number) {
-    const cakeChatSelected = this.props.shell.workspace === "cake-chat";
-    const layout = cakeChatSelected ? this.props.cakeChat().sessionLayoutStore : this.props.layout;
-    const pane = layout.panes[number - 1];
-    if (!pane) return;
-    if (cakeChatSelected) this.focusCakeChatPane(pane.paneId);
-    else this.focusSessionPane(pane.paneId);
-  }
-
-  splitFocusedSession(axis: SessionSplitAxis) {
-    const active = this.props.shell.activeConversation;
-    const workspacePath =
-      active?.kind === "cake-chat"
-        ? this.props.cakeChat().summaries.find((chat) => chat.sessionId === active.sessionId)
-            ?.projectPath
-        : active
-          ? this.props.registry.findSession(active.sessionId)?.workspacePath
-          : undefined;
-    if (
-      this.props.shell.workspace !== "project-sessions" ||
-      !workspacePath ||
-      !this.props.layout.canSplit
-    )
-      return;
-    const sessionId = crypto.randomUUID();
-    const session = this.props.registry.pendingSessions.prepareStaged(workspacePath, sessionId);
-    const paneId = this.props.layout.splitFocused(sessionId, axis);
-    if (!paneId) {
-      this.props.registry.removeSession(sessionId);
-      return;
-    }
-    this.commitProjectSelection();
-    this.workbench.showLoadedSession(sessionId);
-    void session.stagedCommandStore.load(workspacePath);
-    return { paneId, sessionId };
-  }
-
-  focusCakeChatPane(paneId: string) {
-    if (this.props.layout.panes.some((pane) => pane.paneId === paneId)) {
-      this.focusSessionPane(paneId);
-      return;
-    }
-    const sessionId = this.props.cakeChat().focusPane(paneId);
-    if (sessionId) this.commitCakeChatSelection(sessionId);
-  }
-
-  closeCakeChatPane(paneId: string) {
-    const result = this.props.cakeChat().closePane(paneId);
-    if (result?.focusedSessionId) this.commitCakeChatSelection(result.focusedSessionId);
-  }
-
-  closeSessionPane(paneId: string) {
-    const result = this.props.layout.closePane(paneId);
-    if (!result) return;
-    for (const sessionId of result.removedSessionIds) {
-      if (this.props.registry.pendingSessions.isStaged(sessionId))
-        this.props.registry.removeSession(sessionId);
-    }
-    if (result.focusedSessionId) {
-      this.commitProjectSelection();
-      if (isCakeChatSessionId(result.focusedSessionId))
-        this.props
-          .cakeChat()
-          .registry.find(result.focusedSessionId)
-          ?.conversationSessionStore.composerStore.draftStore.requestFocus();
-      else this.workbench.showLoadedSession(result.focusedSessionId);
-    }
   }
 
   async navigateToHistoryEntry(entry: SessionHistoryEntry | undefined) {
@@ -556,7 +510,7 @@ export class NavigationStore extends Store<{
     );
     // Keep the current conversation until Project Chat's history is available,
     // rather than mounting an empty destination or waiting for its full runtime.
-    if (projectChat && (await opening) === false) return;
+    if (projectChat && (await opening) === false) return false;
     this.commitCakeChatSelection(sessionId);
     this.presentation.restore();
     // Sidebar activation runs on mousedown. Restore input focus after the native

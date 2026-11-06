@@ -1,10 +1,9 @@
 import { backendAgentSettingsTools } from "../../contracts/application/agent-settings-tools";
 import { backendAgentTools } from "../../contracts/application/backend-agent-tools";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
-import type { AgentControlSource, AppControlHost, AppControlState } from "./app-control-data";
+import type { AgentControlSource, AppControlHost } from "./app-control-data";
 import { appControlRegistry } from "./app-control-registry";
 import type { ControlContext } from "./control-definition";
-import { getAppState } from "./control-projections";
 import { agentActionReceipt } from "./control-receipts";
 import { toJsonValue } from "./control-json";
 
@@ -29,10 +28,6 @@ export class AppControlBridge {
 
   listTools() {
     return listAppControlTools();
-  }
-
-  getAppState(source?: AgentControlSource): Promise<AppControlState> {
-    return getAppState(this.host, source);
   }
 
   supports(command: string): boolean {

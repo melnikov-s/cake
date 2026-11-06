@@ -9,7 +9,7 @@ import { defaultApplicationState } from "../../../src/contracts/application/appl
 import type { Client } from "../../../src/renderer/client/Client";
 import type { TestClientOverrides } from "./test-client";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";
-import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
+import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { configurationModel } from "./chat-configuration-workflow-fixture";
@@ -265,26 +265,7 @@ describe("Settings error ownership", () => {
     const user = userEvent.setup();
     const view = render(
       <StoreProvider store={root}>
-        <SidebarProjectGroup
-          cakeChat={root.cakeChatCollectionStore}
-          onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
-          store={root.sidebarStore}
-          sessionList={root.sidebarStore.sessionListStore}
-          sessionMetadata={root.sessionMetadataStore}
-          projects={root.projectCatalogStore}
-          chat={root.projectWorkbenchStore}
-          shell={root.appShellStore}
-          appearance={root.settingsStore.appearance}
-          path={projectPath}
-          resolved={false}
-          flattenSessions
-          onCreateSession={(path) => void root.navigationStore.createSession(path)}
-          onOpenSession={(id) => void root.navigationStore.openSession(id)}
-          onRemoveProject={(path, deleteSessions) =>
-            root.projectRemovalStore.remove(path, deleteSessions)
-          }
-          onOpenSettings={(path) => root.projectSettingsStore.open(path)}
-        />
+        <ConversationNavigator projectPath={projectPath} />
         <SettingsPage settings={root.settingsStore} />
       </StoreProvider>,
     );

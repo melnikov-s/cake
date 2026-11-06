@@ -38,16 +38,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const sessionButton = (name: string) =>
-  screen.getByRole("button", { name: new RegExp(`^${name} conversation `) });
 const expectChat = async (name: string) =>
   expect(await screen.findByPlaceholderText(`Ask Cake to work in ${name}…`)).toBeDefined();
 const openSettings = async (fixture: ReturnType<typeof renderAppShellNavigation>) => {
-  const settingsButton = screen.queryAllByRole("button", { name: "Open settings" })[0];
+  const settingsButton = screen.queryAllByRole("button", { name: "Settings" })[0];
   if (settingsButton) await fixture.user.click(settingsButton);
-  await fixture.user.click(
-    await screen.findByRole("button", { name: /^Agent Behavior and content$/ }),
-  );
+  await fixture.user.click(await screen.findByRole("button", { name: /^Agent\b/ }));
   return screen.getByRole("switch", { name: "Allow agent session navigation" });
 };
 
@@ -65,6 +61,62 @@ const requestOpen = async (
   );
 
 describe("Agent session navigation workflow", () => {
+  it("returns home after a worker/tool visit without replacing Project Chat's draft or reading state", async () => {
+    using fixture = renderAppShellNavigation();
+    const projectChatId = `project-chat:${"a".repeat(64)}`;
+    act(() =>
+      applySnapshot(fixture.models.cakeChatCatalog, {
+        loaded: true,
+        sessions: [
+          ...(toSnapshot(fixture.models.cakeChatCatalog).sessions ?? []),
+          {
+            sessionId: projectChatId,
+            projectPath: "/alpha",
+            title: "Alpha chat",
+            createdAt: new Date(0).toISOString(),
+            modifiedAt: new Date(0).toISOString(),
+            messageCount: 0,
+            resolved: false,
+            unread: false,
+          },
+        ],
+      }),
+    );
+    await fixture.publishCakeChatProjection(projectChatId);
+    await act(async () => {
+      await fixture.root.navigationStore.openProjectChat("/alpha");
+    });
+    const home = fixture.root.cakeChatCollectionStore.registry.find(projectChatId)!;
+    const chat = home.conversationSessionStore.chatStore;
+    act(() => {
+      home.conversationSessionStore.composerStore.draftStore.setText("retained Project Chat draft");
+      chat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
+      home.showPresentation("browser");
+    });
+    await act(async () => {
+      await fixture.root.navigationStore.openSession("alpha");
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Return to Project Chat" }));
+    await waitFor(() =>
+      expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(projectChatId),
+    );
+    expect(home.presentationMode).toBe("normal");
+    expect(home.conversationSessionStore.chatStore).toBe(chat);
+    expect(home.conversationSessionStore.composerStore.draftStore.text).toBe(
+      "retained Project Chat draft",
+    );
+    expect(chat.transcriptInteraction.transcriptScrollPosition).toEqual({ kind: "top" });
+    await act(async () => {
+      await fixture.root.navigationStore.openSession("alpha");
+    });
+    await act(async () => {
+      expect(
+        await fixture.root.applicationControlStore.invoke({ name: "app.home", arguments: {} }),
+      ).toMatchObject({ ok: true, opened: true });
+    });
+    expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(projectChatId);
+  });
+
   it("opens a real global Automation Session without Project lookup and still honors navigation permission", async () => {
     const lookup = vi.fn<Client["projectSessions"]["lookup"]>();
     using fixture = renderAppShellNavigation({ projectSessions: { lookup } });
@@ -104,25 +156,23 @@ describe("Agent session navigation workflow", () => {
     });
     expect(lookup).not.toHaveBeenCalled();
   });
-  it("opens the target in the invoking window's focused pane, not the background caller's pane", async () => {
+  it("opens the target in the invoking window, not a background caller's window", async () => {
     const respondControl = vi.fn<Client["projectSessions"]["respondControl"]>(
       async () => undefined,
     );
     using otherWindow = createRendererStoreFixture();
     using fixture = renderAppShellNavigation({ projectSessions: { respondControl } });
-    await fixture.user.click(sessionButton("alpha"));
+    await act(async () => {
+      await fixture.root.navigationStore.openSessionLink("alpha");
+    });
     await expectChat("alpha");
     await act(async () => {
-      fixture.root.navigationStore.splitFocusedSession("x");
+      await fixture.root.navigationStore.openSessionLink("gamma");
     });
-    await fixture.user.click(sessionButton("gamma"));
     await expectChat("gamma");
-    const focusedPane = fixture.root.sessionLayoutStore.focusedPaneId;
     await requestOpen(fixture, { sessionId: "beta" });
     await expectChat("beta");
-    expect(document.querySelectorAll('[data-slot="session-pane"]')).toHaveLength(2);
-    expect(fixture.root.sessionLayoutStore.paneForSession("beta")?.paneId).toBe(focusedPane);
-    expect(fixture.root.sessionLayoutStore.paneForSession("alpha")).toBeDefined();
+    expect(fixture.root.sessionLayoutStore.focusedSessionId).toBe("beta");
     expect(otherWindow.root.appShellStore.selection).toEqual({ kind: "workbench" });
     expect(respondControl).toHaveBeenCalledWith(
       "alpha",
@@ -206,7 +256,9 @@ describe("Agent session navigation workflow", () => {
       cakeChats: { lookup, open },
       projectSessions: { respondControl },
     });
-    await fixture.user.click(sessionButton("alpha"));
+    await act(async () => {
+      await fixture.root.navigationStore.openSessionLink("alpha");
+    });
     await expectChat("alpha");
     await fixture.publishCakeChatProjection(sessionId);
     expect(fixture.models.cakeChatCatalog.find(sessionId)).toBeUndefined();
@@ -247,7 +299,9 @@ describe("Agent session navigation workflow", () => {
       cakeChats: { lookup, open },
       projectSessions: { respondControl },
     });
-    await fixture.user.click(sessionButton("alpha"));
+    await act(async () => {
+      await fixture.root.navigationStore.openSessionLink("alpha");
+    });
     await expectChat("alpha");
     open.mockClear();
     await requestOpen(fixture, { sessionId });
@@ -295,7 +349,7 @@ describe("Agent session navigation workflow", () => {
       });
       fixture.root.cakeChatCollectionStore.registry.load(sessionId);
       fixture.root.navigationStore.selectCakeChat(sessionId);
-      fixture.root.sessionLayoutStore.splitFocused("alpha", "x");
+      fixture.root.sessionLayoutStore.showSession("alpha");
       fixture.root.navigationStore.selectProjectSession("alpha");
     });
     const draft =
@@ -310,6 +364,9 @@ describe("Agent session navigation workflow", () => {
     );
     // Electron covers actual input focus; this regression owns the async request timing.
     await waitFor(() => expect(draft.focusRequestRevision).toBe(before + 1));
+    await act(async () => {
+      await fixture.root.navigationStore.openSession("alpha");
+    });
     const otherInput = screen.getByRole("combobox", { name: "Message" });
     await fixture.user.click(otherInput);
     await fixture.user.type(otherInput, "Keep typing here");
@@ -489,7 +546,9 @@ describe("Agent session navigation workflow", () => {
         async () => undefined,
       );
       using fixture = renderAppShellNavigation({ projectSessions: { open, respondControl } });
-      await fixture.user.click(sessionButton("alpha"));
+      await act(async () => {
+        await fixture.root.navigationStore.openSessionLink("alpha");
+      });
       await expectChat("alpha");
       open.mockClear();
       await requestOpen(fixture, { sessionId });
@@ -510,7 +569,9 @@ describe("Agent session navigation workflow", () => {
       async () => undefined,
     );
     using fixture = renderAppShellNavigation({ projectSessions: { open, respondControl } });
-    await fixture.user.click(sessionButton("alpha"));
+    await act(async () => {
+      await fixture.root.navigationStore.openSessionLink("alpha");
+    });
     // This permission scenario starts from a landed conversation. Pending
     // selection versus a newer Settings intent is covered independently.
     await expectChat("alpha");
@@ -537,7 +598,9 @@ describe("Agent session navigation workflow", () => {
     await expectChat("alpha");
     expect(open).not.toHaveBeenCalled();
 
-    await fixture.user.click(sessionButton("beta"));
+    await act(async () => {
+      await fixture.root.navigationStore.openSessionLink("beta");
+    });
     await expectChat("beta");
     await act(async () => {
       await fixture.root.navigationStore.openSessionLink("gamma");

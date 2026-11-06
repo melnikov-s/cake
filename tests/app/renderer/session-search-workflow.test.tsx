@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
 import { projectRecord } from "./fixtures/catalog-fixtures";
 import { renderSidebarNavigation, sidebarSummary } from "./sidebar-navigation-fixture";
+import { openSessionFromSearch, showSessions } from "./workspace-navigation-actions";
 
 beforeEach(() => {
   vi.stubGlobal("PointerEvent", MouseEvent);
@@ -134,6 +135,7 @@ describe("Session search workflow", () => {
     async ({ avatars, characters }) => {
       const labelId = "10000000-0000-4000-8000-000000000001";
       using fixture = renderSidebarNavigation({
+        loadedIds: ["root"],
         projects: [
           projectRecord({
             path: "/cake",
@@ -144,6 +146,10 @@ describe("Session search workflow", () => {
             },
           }),
         ],
+        client: {
+          projectSessions: { open: async () => undefined },
+          workspaces: { loadStagedSlashCommands: async () => [] },
+        },
         sessions: [
           sidebarSummary("root", 1, {
             title: "Session search",
@@ -176,6 +182,8 @@ describe("Session search workflow", () => {
           createdAt: "2026-01-01T00:00:00.000Z",
         },
       ]);
+      await openSessionFromSearch(fixture.user, /^Session search /);
+      await showSessions(fixture.user);
       const sidebarRow = screen
         .getByRole("button", { name: /^Session search / })
         .closest<HTMLElement>(".session-item")!;
@@ -204,38 +212,4 @@ describe("Session search workflow", () => {
       expect(option.getAttribute("aria-selected")).toBe("true");
     },
   );
-
-  it("scopes focus-mode search to the project and resets the query on reopening", async () => {
-    using fixture = renderSidebarNavigation({ projects, sessions });
-    await fixture.user.click(screen.getByRole("button", { name: "Project actions for cake" }));
-    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on cake" }));
-    await fixture.user.click(searchButton());
-    expect(labels()).toHaveLength(2);
-    await fixture.user.click(dialog().getByRole("switch", { name: "Include resolved" }));
-    expect(labels()).toHaveLength(3);
-    await fixture.user.type(dialog().getByRole("combobox"), "elsewhere");
-    await waitFor(() =>
-      expect(dialog().getByRole("status").textContent).toBe("No matching sessions."),
-    );
-    await fixture.user.keyboard("{Enter}");
-    expect(dialog().getByRole("combobox")).toBeDefined();
-    await fixture.user.click(dialog().getByRole("button", { name: "Close" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Exit focus mode for cake" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
-    await fixture.user.click(searchButton());
-    expect((dialog().getByRole("combobox") as HTMLInputElement).value).toBe("");
-    expect(labels()).toHaveLength(3);
-    expect(
-      dialog().getByRole("switch", { name: "Include resolved" }).getAttribute("aria-checked"),
-    ).toBe("false");
-    await fixture.publishSessions(
-      sessions.map((session) =>
-        session.sessionId === "other" ? { ...session, title: "Renamed conversation" } : session,
-      ),
-    );
-    await fixture.user.type(dialog().getByRole("combobox"), "renamed");
-    await waitFor(() =>
-      expect(dialog().getByRole("option").textContent).toContain("Renamed conversation"),
-    );
-  });
 });

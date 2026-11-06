@@ -23,8 +23,6 @@ export interface EmbeddedEditorStoreProps {
   annotations(): EditorAnnotationSnapshot | undefined;
   selectionHighlights(): EditorSelectionHighlights;
   startCakeChat(prompt: string): Promise<void>;
-  enterProjectSidebarMode(): void;
-  leaveProjectSidebarMode(): void;
   projectSidebarWidth(): number;
 }
 
@@ -220,7 +218,6 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
 
   private activate() {
     this.props.setPresentationMode("vscode");
-    if (!this.visible) this.props.enterProjectSidebarMode();
     this.visible = true;
   }
 
@@ -434,7 +431,6 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   suspend() {
     this.leaseGeneration++;
     this.opening = undefined;
-    if (this.visible) this.props.leaveProjectSidebarMode();
     const leaseId = this.browserLeaseId;
     this.browserLeaseId = undefined;
     this.browserEditorEndpoint = undefined;

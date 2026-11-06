@@ -8,6 +8,7 @@ import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { installLocalModelHttpGuard } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 function chunk(content: string, finishReason: string | null = null) {
@@ -21,11 +22,11 @@ function chunk(content: string, finishReason: string | null = null) {
 }
 
 for (const [title, activityOrdering] of [
-  ["session shortcuts respect Project focus and restore cross-project navigation on exit", false],
   [
-    "activity reorders background rows while preserving the selected conversation and composer",
-    true,
+    "session shortcuts cycle working conversations across projects and preserve per-session drafts",
+    false,
   ],
+  ["Sessions status ordering preserves the selected conversation and composer", true],
 ] as const) {
   test(title, () => verifyNavigation(activityOrdering));
 }
@@ -152,16 +153,28 @@ async function verifyNavigation(activityOrdering: boolean) {
     const page = await application.firstWindow();
     const pane = page.locator('[data-slot="session-pane"]');
     const row = (id: string) => page.locator(`.session-item[data-session-id="${id}"]`);
+    const openSession = async (id: string) => {
+      await page
+        .getByRole("navigation", { name: "Projects and global utilities" })
+        .getByRole("button", { name: "Search sessions", exact: true })
+        .click();
+      const picker = page.getByRole("dialog", { name: "Search sessions" });
+      await picker.getByRole("combobox").fill(id);
+      await picker.getByRole("option", { name: new RegExp(id) }).click();
+      await expect(pane).toHaveAttribute("data-session-id", id);
+      await showSessions(page);
+    };
     const next = process.platform === "darwin" ? "Meta+Shift+BracketRight" : "Alt+Shift+ArrowRight";
     const previous =
       process.platform === "darwin" ? "Meta+Shift+BracketLeft" : "Alt+Shift+ArrowLeft";
     const back = process.platform === "darwin" ? "Meta+BracketLeft" : "Alt+ArrowLeft";
     const forward = process.platform === "darwin" ? "Meta+BracketRight" : "Alt+ArrowRight";
     await expect(pane).toHaveAttribute("data-session-id", "alpha-worker", { timeout: 20_000 });
+    await showSessions(page);
     if (activityOrdering) {
       const alphaOrder = () =>
-        row("alpha-worker")
-          .locator('xpath=ancestor::*[@data-slot="project-group"]')
+        page
+          .getByRole("complementary", { name: "Workspace", exact: true })
           .locator(".session-item")
           .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-session-id")));
       const composer = page.getByRole("combobox", { name: "Message", exact: true });
@@ -182,7 +195,7 @@ async function verifyNavigation(activityOrdering: boolean) {
       await expect.poll(alphaOrder).toEqual(["alpha-idle", "alpha-worker"]);
       await expect(row("alpha-worker")).toHaveAttribute("data-navigation-active", "true");
       await expect(pane).toHaveAttribute("data-session-id", "alpha-worker");
-      await row("alpha-idle").locator(".session-row").click();
+      await openSession("alpha-idle");
       await expect(pane).toHaveAttribute("data-session-id", "alpha-idle");
       await expect.poll(alphaOrder).toEqual(["alpha-worker", "alpha-idle"]);
       await composer.fill("Start idle");
@@ -217,7 +230,7 @@ async function verifyNavigation(activityOrdering: boolean) {
       return;
     }
     for (const id of ["alpha-worker", "beta-worker"]) {
-      await row(id).locator(".session-row").click();
+      await openSession(id);
       await expect(pane).toHaveAttribute("data-session-id", id);
       const composer = page.getByRole("combobox", { name: "Message", exact: true });
       await composer.click();
@@ -231,7 +244,7 @@ async function verifyNavigation(activityOrdering: boolean) {
     await expect.poll(() => streams.length).toBe(2);
     await row("alpha-idle").locator(".session-row").click();
     await expect(pane).toHaveAttribute("data-session-id", "alpha-idle");
-    await row("idle-session").locator(".session-row").click();
+    await openSession("idle-session");
     await expect(pane).toHaveAttribute("data-session-id", "idle-session");
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await composer.fill("Retained idle draft");
@@ -242,28 +255,6 @@ async function verifyNavigation(activityOrdering: boolean) {
     await page.keyboard.press(next);
     await expect(pane).toHaveAttribute("data-session-id", "alpha-worker");
     await page.keyboard.press(previous);
-    await expect(pane).toHaveAttribute("data-session-id", "beta-worker");
-
-    await page.getByRole("button", { name: "Project actions for alpha" }).click();
-    await page.getByRole("menuitem", { name: "Focus on alpha" }).click();
-    await expect(pane).toHaveAttribute("data-session-id", "beta-worker");
-    for (const id of ["alpha-worker", "alpha-worker", "alpha-idle", "alpha-worker"]) {
-      await page.keyboard.press(back);
-      await expect(pane).toHaveAttribute("data-session-id", id);
-    }
-    await expect(page.getByRole("button", { name: "Go back in session history" })).toBeDisabled();
-    for (const id of ["alpha-idle", "alpha-worker", "alpha-worker"]) {
-      await page.keyboard.press(forward);
-      await expect(pane).toHaveAttribute("data-session-id", id);
-    }
-    await expect(
-      page.getByRole("button", { name: "Go forward in session history" }),
-    ).toBeDisabled();
-    await page.keyboard.press(next);
-    await page.keyboard.press(previous);
-    await expect(pane).toHaveAttribute("data-session-id", "alpha-worker");
-    await page.getByRole("button", { name: "Exit focus mode for alpha" }).click();
-    await page.keyboard.press(next);
     await expect(pane).toHaveAttribute("data-session-id", "beta-worker");
 
     streams[1]!.end(chunk("Finished.", "stop") + "data: [DONE]\n\n");

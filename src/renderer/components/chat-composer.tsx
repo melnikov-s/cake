@@ -103,19 +103,26 @@ export const ChatComposer = observer(function ChatComposer({
               data-slot="composer-toolbar"
               separated={!inline && toolbarSeparated}
               className={cn(
-                "flex min-w-0 items-center justify-between gap-3 px-1.5 py-1",
+                "flex min-w-0 items-center justify-between gap-x-3 gap-y-1 px-1.5 py-1",
                 leadingAccessory && !input && "pl-12 @4xl/composer-dock:pl-1.5",
                 inline && "flex-none p-0",
               )}
             >
               {!inline && (
-                <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+                <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
                   {dictationNode}
                   {toolbarLeading}
                   {configuration && <ChatConfigurationSelector configuration={configuration} />}
                 </div>
               )}
-              <div className="flex shrink-0 items-center gap-1">{toolbarActions}</div>
+              <div
+                className={cn(
+                  "flex shrink-0 items-center gap-1",
+                  !inline && "ml-auto min-w-0 max-w-full flex-wrap justify-end",
+                )}
+              >
+                {toolbarActions}
+              </div>
             </ComposerToolbar>
           </Composer>
         </DictationIndicatorContext.Provider>

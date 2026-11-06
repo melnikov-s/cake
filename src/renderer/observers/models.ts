@@ -1,5 +1,5 @@
 import { Schema, Stream } from "effect";
-import { effect as reactiveEffect, reaction, type Model } from "r-state-tree";
+import { batch, effect as reactiveEffect, reaction, type Model } from "r-state-tree";
 import type {
   CakeChatCatalogQuery,
   CakeChatTarget,
@@ -69,6 +69,7 @@ import { applyScheduledMessageUpdate } from "../reducers/ScheduledMessageReducer
 import { applyManagedWorktreeCatalogUpdate } from "../reducers/WorktreeCatalogReducer";
 import { applyWorktreeOperationCatalogUpdate } from "../reducers/WorktreeOperationReducer";
 import type { StreamFailureAction } from "./observe-stream";
+import type { ConversationNavigationMetadataTarget } from "../lib/conversation-navigation-tree";
 
 type ObservedProjectSessionTarget = ProjectSessionTarget & {
   readonly workingDirectory: string;
@@ -76,6 +77,9 @@ type ObservedProjectSessionTarget = ProjectSessionTarget & {
 };
 
 interface ModelSource {
+  readonly navigationTargets?: () => readonly ConversationNavigationMetadataTarget[];
+  readonly focusedDiscussionOwners?: () => readonly ConversationNavigationMetadataTarget[];
+  readonly focusedDiscussionTargets?: () => readonly ReviewThread[];
   readonly workflowStores?: () => readonly WorkflowRunStore[];
   readonly projection: RootProjection;
   readonly projectSessionCatalogQueries: () => ReadonlyArray<ProjectSessionCatalogQuery>;
@@ -106,6 +110,16 @@ interface ModelObservation {
 type ModelObservationOptions = Omit<ModelObservation, "model" | "stop">;
 
 type ModelInput = {
+  readonly focusedDiscussionCatalogs?: readonly {
+    target: ConversationNavigationMetadataTarget;
+    discussions: DiscussionCatalog;
+    subagents: SubagentCatalog;
+  }[];
+  readonly navigationCatalogs?: readonly {
+    target: ConversationNavigationMetadataTarget;
+    discussions: DiscussionCatalog;
+    subagents: SubagentCatalog;
+  }[];
   readonly workflowStores?: readonly WorkflowRunStore[];
   readonly projects: ProjectCatalog;
   readonly automations?: AutomationCatalog;
@@ -418,6 +432,68 @@ export const createModelObserver = (
       }
     }
 
+    for (const { target, discussions, subagents } of input.navigationCatalogs ?? []) {
+      observe(
+        `navigation-discussions:${target.sessionId}`,
+        discussions,
+        (client) =>
+          target.kind === "cake-chat"
+            ? client.cakeChats.observeSideChatMetadata({ sessionId: target.sessionId })
+            : client.discussionSessions.observeMetadata({
+                parentSessionId: target.sessionId,
+                workingDirectory: target.workingDirectory,
+              }),
+        (metadata) =>
+          batch(() => {
+            discussions.metadata.splice(0, discussions.metadata.length, ...metadata);
+            discussions.metadataLoaded = true;
+          }),
+        {
+          clear: () =>
+            batch(() => {
+              discussions.metadata.splice(0, discussions.metadata.length);
+              discussions.metadataLoaded = false;
+            }),
+        },
+      );
+      observe(
+        `navigation-subagents:${target.sessionId}`,
+        subagents,
+        (client) => client.subagents.observeMetadata({ parentSessionId: target.sessionId }),
+        (metadata) =>
+          batch(() => {
+            subagents.metadata.splice(0, subagents.metadata.length, ...metadata);
+            subagents.metadataLoaded = true;
+          }),
+        {
+          clear: () =>
+            batch(() => {
+              subagents.metadata.splice(0, subagents.metadata.length);
+              subagents.metadataLoaded = false;
+            }),
+        },
+      );
+    }
+
+    for (const { target, discussions, subagents } of input.focusedDiscussionCatalogs ?? []) {
+      observeDiscussionCatalog(target, discussions);
+      observe(
+        `subagents:${target.sessionId}`,
+        subagents,
+        (client) => client.subagents.observe(target.sessionId),
+        (update: SubagentUpdate) => applySubagentUpdate(subagents, target.sessionId, update),
+        {
+          clear: () => {
+            subagents.loaded = false;
+            subagents.observationError = undefined;
+          },
+          failed: (error) => {
+            subagents.observationError = error instanceof Error ? error.message : String(error);
+          },
+        },
+      );
+    }
+
     for (const { target, model } of input.discussionCatalogs ?? [])
       observeDiscussionCatalog(target, model);
 
@@ -524,6 +600,13 @@ export const createModelObserver = (
         })),
       loadedCakeChatIds: source.loadedCakeChatIds?.().slice(),
       loadedAutomationIds: source.automationSessionTargets?.().map(({ sessionId }) => sessionId),
+      navigationIds: new Set([
+        ...(source.navigationTargets?.() ?? []).map(({ sessionId }) => sessionId),
+        ...(source.focusedDiscussionOwners?.() ?? []).map(({ sessionId }) => sessionId),
+        ...(source.focusedDiscussionTargets?.() ?? []).flatMap((thread) =>
+          thread.sidecarSessionId ? [thread.sidecarSessionId] : [],
+        ),
+      ]),
       stagedIds: new Set(
         (source.stagedProjectSessionTargets?.() ?? []).map(({ sessionId }) => sessionId),
       ),
@@ -536,6 +619,7 @@ export const createModelObserver = (
       loadedCakeChatIds,
       loadedAutomationIds,
       stagedIds,
+      navigationIds,
     }: ReturnType<typeof loadedIdentities>) => {
       if (loadedProjectSessions) {
         const loadedIds = new Set(loadedProjectSessions.map(({ sessionId }) => sessionId));
@@ -550,10 +634,15 @@ export const createModelObserver = (
         // Cake Chat also owns subagent and side chat catalogs keyed by its ID.
         const cakeChatIds = new Set(loadedCakeChatIds ?? []);
         for (const sessionId of projectionIds)
-          if (!loadedIds.has(sessionId) && !cakeChatIds.has(sessionId))
-            source.projection.removeProjectSessionProjections(sessionId, {
-              retainDiscussionCatalog: stagedIds.has(sessionId),
-            });
+          if (!loadedIds.has(sessionId) && !cakeChatIds.has(sessionId)) {
+            if (navigationIds.has(sessionId)) {
+              const conversation = source.projection.findProjectConversation(sessionId);
+              if (conversation) unloadConversationProjection(conversation);
+            } else
+              source.projection.removeProjectSessionProjections(sessionId, {
+                retainDiscussionCatalog: stagedIds.has(sessionId),
+              });
+          }
       }
       if (loadedAutomationIds) {
         const loadedIds = new Set(loadedAutomationIds);
@@ -611,7 +700,24 @@ export const createModelObserver = (
         ...discussionCatalogs.map(({ model }) => model),
         ...cakeChats.map(({ sideChats }) => sideChats),
       ].flatMap(({ threads }) => threads.filter(hasSidecarConversation));
+      for (const thread of source.focusedDiscussionTargets?.() ?? []) {
+        if (
+          hasSidecarConversation(thread) &&
+          !liveThreads.some((existing) => existing.sidecarSessionId === thread.sidecarSessionId)
+        )
+          liveThreads.push(thread);
+      }
       sync({
+        focusedDiscussionCatalogs: (source.focusedDiscussionOwners?.() ?? []).map((target) => ({
+          target,
+          discussions: source.projection.discussionCatalog(target.sessionId),
+          subagents: source.projection.subagentCatalog(target.sessionId),
+        })),
+        navigationCatalogs: (source.navigationTargets?.() ?? []).map((target) => ({
+          target,
+          discussions: source.projection.discussionCatalog(target.sessionId),
+          subagents: source.projection.subagentCatalog(target.sessionId),
+        })),
         workflowStores: source.workflowStores?.(),
         projects: source.projection.projects,
         automations: source.projection.automations,
@@ -699,6 +805,12 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
   });
   observer.observe({
     projection,
+    navigationTargets: () =>
+      root.appShellStore.activeConversation
+        ? root.conversationNavigatorStore.metadataTargets(root.workspaceProjectPath)
+        : [],
+    focusedDiscussionOwners: () => root.discussionNavigationStore.ownerTargets,
+    focusedDiscussionTargets: () => root.discussionNavigationStore.discussionTargets,
     projectSessionCatalogQueries: () =>
       root.sidebarStore.sessionListStore.projectSessionCatalogQueries,
     onProjectSessionTitleChanged: (sessionId, title) =>

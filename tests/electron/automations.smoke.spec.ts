@@ -2,10 +2,24 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { seedAutomationVisualFixture } from "../fixtures/automations";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
+async function openHistoryRun(page: Page, name: string) {
+  await page
+    .getByRole("navigation", { name: "Projects and global utilities" })
+    .getByRole("button", { name: "Automations", exact: true })
+    .click();
+  await page.getByRole("button", { name: "History", exact: true }).click();
+  await page
+    .getByRole("region", { name: "Automation run history" })
+    .getByRole("row")
+    .filter({ hasText: name })
+    .getByRole("button", { name: "Open run", exact: true })
+    .first()
+    .click();
+}
 async function launchAutomationFixture(theme: "light" | "dark" = "light") {
   const directory = await mkdtemp(join(tmpdir(), "cake-automation-ui-"));
   const paths = {
@@ -172,10 +186,7 @@ test("creates through native inputs and model popover, runs a real Automation Se
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeAttached();
     await expect(archive).toBeFocused();
-    await page
-      .getByRole("complementary")
-      .getByRole("button", { name: /^Evening review/ })
-      .click();
+    await openHistoryRun(page, "Evening review");
     await expect(composer).toHaveValue("Keep this follow-up in the same run.");
     await composer.clear();
     await page.getByRole("button", { name: "Stop", exact: true }).click();
@@ -237,12 +248,13 @@ test("global history and shared memory open real originals; restore is visibilit
     await expect(composer).toBeFocused();
     await expect(composer).toHaveValue("Follow-up without rerunning the automation");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    const sidebar = page.locator('[data-slot="sidebar-automations"]');
-    await sidebar.getByRole("button", { name: /Morning brief/ }).click();
+    await openHistoryRun(page, "Morning brief");
+    await page.getByRole("button", { name: "Go back in session history", exact: true }).click();
     await page.getByRole("button", { name: "Go back in session history", exact: true }).click();
     await expect(page.locator('[data-slot="workspace-header"]')).toContainText(
       "Review child replies",
     );
+    await page.getByRole("button", { name: "Go forward in session history", exact: true }).click();
     await page.getByRole("button", { name: "Go forward in session history", exact: true }).click();
     await expect(page.locator('[data-slot="workspace-header"]')).toContainText("Morning brief");
     await page.getByRole("button", { name: "Automation", exact: true }).click();

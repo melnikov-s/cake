@@ -56,10 +56,7 @@ describe("Session observation navigation integration", () => {
         .sort(),
     ).toEqual(["idle-0", "selected"]);
 
-    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
-    await fixture.user.click(
-      screen.getAllByRole("button", { name: "Expand Project resolved" })[0]!,
-    );
+    await fixture.user.click(screen.getByRole("button", { name: "Resolved sessions" }));
     await fixture.user.click(screen.getByRole("button", { name: /^Archived task / }));
     await waitFor(() => expect(fixture.opened).toContain("archive"));
     expect(fixture.demand().map((target) => target.sessionId)).toContain("archive");
@@ -93,10 +90,7 @@ describe("Session observation navigation integration", () => {
         .sort(),
     ).toEqual(["idle-0", "selected"]);
 
-    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
-    await fixture.user.click(
-      screen.getAllByRole("button", { name: "Expand Project resolved" })[0]!,
-    );
+    await fixture.user.click(screen.getByRole("button", { name: "Resolved sessions" }));
     await fixture.user.click(screen.getByRole("button", { name: /^Archived task / }));
     await waitFor(() => expect(fixture.opened).toContain("archive"));
     expect(fixture.demand()).toContainEqual({
@@ -107,9 +101,9 @@ describe("Session observation navigation integration", () => {
     expect(screen.getByRole("button", { name: "Restore Archived task" })).toBeDefined();
   });
 
-  it("keeps the visible pane and running session outside the idle budget while navigating, then trims after completion", async () => {
-    using fixture = renderSessionObservation({ split: true });
-    expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(2);
+  it("keeps the focused conversation and running session outside the idle budget while navigating, then trims after completion", async () => {
+    using fixture = renderSessionObservation({ loadRunning: true });
+    expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(1);
     for (let index = 0; index < 6; index += 1) {
       await fixture.user.click(
         screen.getByRole("button", { name: new RegExp(`^Task idle-${index} `) }),
@@ -121,9 +115,9 @@ describe("Session observation navigation integration", () => {
         .demand()
         .map(({ sessionId }) => sessionId)
         .sort(),
-    ).toEqual(["idle-1", "idle-2", "idle-3", "idle-4", "idle-5", "running", "visible"]);
+    ).toEqual(["idle-1", "idle-2", "idle-3", "idle-4", "idle-5", "running"]);
     expect(fixture.demand().every(({ allowCreate }) => !allowCreate)).toBe(true);
-    expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(2);
+    expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(1);
 
     fixture.settleRunning();
     expect(
@@ -131,7 +125,7 @@ describe("Session observation navigation integration", () => {
         .demand()
         .map(({ sessionId }) => sessionId)
         .sort(),
-    ).toEqual(["idle-2", "idle-3", "idle-4", "idle-5", "running", "visible"]);
-    expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(2);
+    ).toEqual(["idle-2", "idle-3", "idle-4", "idle-5", "running"]);
+    expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(1);
   });
 });

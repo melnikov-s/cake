@@ -23,7 +23,6 @@ import { LocalMcpSettingsStore } from "./LocalMcpSettingsStore";
 import { WidgetPackageSettingsStore } from "./WidgetPackageSettingsStore";
 import type { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { UtilityModelSettingsStore } from "./UtilityModelSettingsStore";
-import { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 import { HotkeySettingsStore } from "./HotkeySettingsStore";
 import { GlobalLabelSettingsStore } from "./GlobalLabelSettingsStore";
 import { CakeChatSettingsStore } from "./CakeChatSettingsStore";
@@ -104,9 +103,6 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
   @child get utilityModel(): UtilityModelSettingsStore {
     return createStore(UtilityModelSettingsStore);
-  }
-  @child get embeddedEditor(): EmbeddedEditorSettingsStore {
-    return createStore(EmbeddedEditorSettingsStore);
   }
   @child get hotkeys(): HotkeySettingsStore {
     return createStore(HotkeySettingsStore);
@@ -223,14 +219,6 @@ export class SettingsStore extends Store<SettingsStoreProps> {
           workLogsExpansion: this.appearance.workLogsExpansion,
         },
       };
-    if (section === "editor")
-      return {
-        section,
-        settings: {
-          sidebarAutoHide: this.embeddedEditor.sidebarAutoHide,
-          sidebarAutoHideWidth: this.embeddedEditor.sidebarAutoHideWidth,
-        },
-      };
     return {
       section,
       settings: {
@@ -264,12 +252,6 @@ export class SettingsStore extends Store<SettingsStoreProps> {
         this.appearance.setWorkLogViewMode(changes.workLogViewMode);
       if (changes.workLogsExpansion !== undefined)
         this.appearance.setWorkLogsExpansion(changes.workLogsExpansion);
-    } else if (input.section === "editor") {
-      const changes = input.changes;
-      if (changes.sidebarAutoHide !== undefined)
-        this.embeddedEditor.setSidebarAutoHide(changes.sidebarAutoHide);
-      if (changes.sidebarAutoHideWidth !== undefined)
-        this.embeddedEditor.setSidebarAutoHideWidth(changes.sidebarAutoHideWidth);
     } else {
       for (const change of input.changes.bindings) {
         if (change.binding === null) this.hotkeys.reset(change.action);

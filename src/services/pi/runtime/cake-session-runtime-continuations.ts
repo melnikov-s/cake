@@ -28,7 +28,7 @@ interface PendingSessionFork {
   readonly prompt?: string;
   readonly title?: string;
   readonly resolveSource: boolean;
-  readonly placement: "none" | "right" | "down";
+  readonly open: boolean;
   readonly destinationWorkingDirectory?: string;
 }
 

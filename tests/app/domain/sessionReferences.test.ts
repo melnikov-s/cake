@@ -328,7 +328,7 @@ it.effect("app.state retains canonical pane identities without any global roster
       command: "app.state",
       state: {
         selection: { kind: "project-session", sessionId: active },
-        sessionLayout: { focusedSessionId: active, panes: [{ sessionId: inactive }] },
+        focusedConversation: { workspace: "project-sessions", sessionId: active },
         workspaceView: {
           kind: "browser",
           sessionId: active,

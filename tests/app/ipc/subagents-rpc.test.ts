@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ResolvedAgentModel,
   SubagentActivity,
+  SubagentMetadata,
   SubagentHandleId,
   SubagentUpdate,
 } from "../../../src/contracts/subagents/subagent-data";
@@ -36,6 +37,16 @@ describe("Subagent Effect RPC contract", () => {
     expect(Schema.decodeUnknownSync(SubagentHandleId)(handleId)).toBe(handleId);
     expect(Schema.decodeUnknownSync(ResolvedAgentModel)(resolvedModel)).toEqual(resolvedModel);
     expect(Schema.decodeUnknownSync(SubagentActivity)(activity)).toEqual(activity);
+    const metadata = Schema.decodeUnknownSync(SubagentMetadata)({ ...activity, released: false });
+    expect(metadata).toMatchObject({
+      parentSessionId: "parent",
+      handleId,
+      task: "Audit the boundary",
+      status: "running",
+      released: false,
+    });
+    expect(metadata).not.toHaveProperty("parts");
+    expect(metadata).not.toHaveProperty("privateSessionId");
     expect(
       Schema.decodeUnknownSync(SubagentUpdate)({
         _tag: "Snapshot",
@@ -71,6 +82,7 @@ describe("Subagent Effect RPC contract", () => {
     });
     const client = await runtime.execute(Effect.service(CakeIpcClient));
     expect(Object.keys(client.subagents ?? {})).toEqual([
+      "observeMetadata",
       "observe",
       "readAttachment",
       "submit",

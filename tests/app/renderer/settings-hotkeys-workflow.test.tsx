@@ -40,7 +40,7 @@ describe("Hotkey settings workflow", () => {
   it("clears shortcuts, resets one without changing another, and restores all defaults", async () => {
     using fixture = renderHotkeys();
     const terminal = shortcut("Toggle terminal");
-    const sidebar = shortcut("Toggle sidebar");
+    const sidebar = shortcut("Toggle Workspace");
 
     expect(terminal.recorder.textContent).toMatch(/^(Ctrl\+|⌘)J$/);
     expect(terminal.reset).toHaveProperty("disabled", true);
@@ -68,7 +68,7 @@ describe("Hotkey settings workflow", () => {
 
   it("reclaims a default shortcut from another action when resetting, then restores that action", async () => {
     using fixture = renderHotkeys({ "toggle-sidebar": "", "open-settings": "Mod+B" });
-    const sidebar = shortcut("Toggle sidebar");
+    const sidebar = shortcut("Toggle Workspace");
     const settings = shortcut("Toggle Settings");
 
     expect(sidebar.recorder.textContent).toBe("Not assigned");

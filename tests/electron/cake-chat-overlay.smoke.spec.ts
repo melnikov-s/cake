@@ -138,7 +138,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
     try {
       const main = await app.firstWindow();
       await main.setViewportSize({ width: 1280, height: 900 });
-      await main.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      await main.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
       await expect(main.getByRole("combobox", { name: "Message Cake Chat" })).toBeVisible({
         timeout: 20_000,
       });

@@ -1,6 +1,5 @@
 import { useLayoutEffect, useRef, type ComponentProps, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
-import { cn } from "../lib/utils";
 import type { ChatTranscriptBehavior } from "./chat-message";
 import type { BrowserStore } from "../stores/BrowserStore";
 import type { ChatStore } from "../stores/ChatStore";
@@ -12,7 +11,6 @@ import { WorkspaceChatLayout } from "./workspace-chat-layout";
 import { IconButton } from "./ui/icon-button";
 import { Input } from "./ui/input";
 import { BrowserSharingMenu } from "./browser-sharing-menu";
-import { WorkspacePanelToggle } from "./ui/workspace-panel-toggle";
 import { BackIcon, ForwardIcon, InspectIcon, ReloadIcon, StopIcon } from "./ui/icons";
 
 /** Browser Mode workspace with native Chromium viewport and the authoritative project chat. */
@@ -26,12 +24,6 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   projectComposerHeader,
   projectComposerContent,
   projectComposerLeadingAccessory,
-  projectSidebar,
-  projectSidebarVisible,
-  projectSidebarWidth,
-  onProjectSidebarWidthChange,
-  onToggleSidebar,
-  onToggleChatSidebar,
   sessionTitle,
   terminalDock,
   transcriptBehavior,
@@ -45,12 +37,6 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   projectComposerHeader?: ReactNode;
   projectComposerContent?: ReactNode;
   projectComposerLeadingAccessory?: ComponentProps<typeof Chat>["composerLeadingAccessory"];
-  projectSidebar: ReactNode;
-  projectSidebarVisible: boolean;
-  projectSidebarWidth: number;
-  onProjectSidebarWidthChange(width: number): void;
-  onToggleSidebar(): void;
-  onToggleChatSidebar(): void;
   sessionTitle: string;
   terminalDock?: ReactNode;
   transcriptBehavior: ChatTranscriptBehavior;
@@ -83,7 +69,6 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   const conversation = (
     <SideChatLayout
       store={sideChat}
-      hideTodos
       renderChat={(store, composerHeader) => (
         <NestedChat
           store={store}
@@ -105,21 +90,10 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
 
   const workspace = (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <div
-        className={cn(
-          "box-content flex h-title-bar shrink-0 items-center gap-1.5 border-b border-border/65 bg-background/95 px-2.5 [-webkit-app-region:drag]",
-          !projectSidebarVisible && "pl-[84px]",
-        )}
-      >
-        <div className="flex shrink-0 items-center gap-0.5 [-webkit-app-region:no-drag]">
-          {!browser.chatSidebarVisible && headerLeading}
-          {!projectSidebarVisible && (
-            <>
-              <WorkspacePanelToggle panel="sidebar" visible={false} onToggle={onToggleSidebar} />
-              <BrowserSharingMenu />
-              <span aria-hidden="true" className="mx-1 h-4 w-px bg-border/65" />
-            </>
-          )}
+      <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-border/65 bg-background/95 px-2.5">
+        <div className="flex shrink-0 items-center gap-0.5">
+          <BrowserSharingMenu />
+          <span aria-hidden="true" className="mx-1 h-4 w-px bg-border/65" />
           <IconButton
             tooltip="Back"
             disabled={!browser.canGoBack}
@@ -160,17 +134,6 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
           >
             <InspectIcon />
           </IconButton>
-          {!browser.chatSidebarVisible && headerActions ? (
-            <>
-              <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-border/65" />
-              {headerActions}
-            </>
-          ) : null}
-          <WorkspacePanelToggle
-            panel="chat"
-            visible={browser.chatSidebarVisible}
-            onToggle={onToggleChatSidebar}
-          />
         </div>
       </div>
       {browser.error ? (
@@ -185,29 +148,25 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   return (
     <WorkspaceChatLayout
       workspace={workspace}
+      workspaceHeader={
+        <header className="flex min-h-title-bar shrink-0 flex-col gap-1 border-b border-border/65 bg-background px-3 py-1 [-webkit-app-region:drag]">
+          <div className="min-w-0 pl-7 [-webkit-app-region:no-drag]">{headerLeading}</div>
+          <div className="flex flex-wrap items-center gap-1 [-webkit-app-region:no-drag]">
+            {headerActions}
+          </div>
+        </header>
+      }
       workspaceLabel="Browser workspace"
       chatSidebarVisible={browser.chatSidebarVisible}
       chatSidebarWidth={browser.chatSidebarWidth}
       onChatSidebarWidthChange={(width) => browser.setChatSidebarWidth(width)}
-      projectSidebar={projectSidebar}
-      projectSidebarVisible={projectSidebarVisible}
-      projectSidebarWidth={projectSidebarWidth}
-      onProjectSidebarWidthChange={onProjectSidebarWidthChange}
       terminalDock={terminalDock}
       chatSidebar={
         <>
           <header className="box-content flex h-title-bar shrink-0 select-none items-center justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 [-webkit-app-region:drag]">
-            {headerLeading && (
-              <div className="flex shrink-0 items-center [-webkit-app-region:no-drag]">
-                {headerLeading}
-              </div>
-            )}
             <strong className="block min-w-0 flex-1 truncate text-xs font-semibold text-foreground">
               {sessionTitle}
             </strong>
-            <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
-              {headerActions}
-            </div>
           </header>
           {conversationHeader}
           <div className="min-h-0 flex-1">{conversation}</div>

@@ -10,7 +10,7 @@ import type { SessionCatalogUpdate } from "../../../src/contracts/application/ca
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
-import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
+import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
 import { fakeSavedDrafts } from "./fakes/saved-drafts";
 import {
   fixtureTimestamp,
@@ -56,6 +56,7 @@ async function renderCatalog(
     },
   });
   const { root } = fixture;
+  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded(projectPath);
   await root.sessionRegistry.pendingSessions.refreshSavedDrafts();
   const staged = root.sessionRegistry.pendingSessions.prepareStaged(projectPath, sessionId);
   root.navigationStore.selectProjectSession(sessionId);
@@ -64,33 +65,7 @@ async function renderCatalog(
   const view = render(
     <StoreProvider store={root}>
       <aside aria-label="Project sessions">
-        {[false, true].map((resolved) => (
-          <section
-            key={String(resolved)}
-            aria-label={resolved ? "Resolved sessions" : "Active sessions"}
-          >
-            <SidebarProjectGroup
-              cakeChat={root.cakeChatCollectionStore}
-              onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
-              store={root.sidebarStore}
-              sessionList={root.sidebarStore.sessionListStore}
-              sessionMetadata={root.sessionMetadataStore}
-              projects={root.projectCatalogStore}
-              chat={root.projectWorkbenchStore}
-              shell={root.appShellStore}
-              appearance={root.settingsStore.appearance}
-              path={projectPath}
-              resolved={resolved}
-              flattenSessions
-              onCreateSession={(path) => void root.navigationStore.createSession(path)}
-              onOpenSession={(id) => void root.navigationStore.openSession(id)}
-              onRemoveProject={(path, deleteSessions) =>
-                root.projectRemovalStore.remove(path, deleteSessions)
-              }
-              onOpenSettings={(path) => root.projectSettingsStore.open(path)}
-            />
-          </section>
-        ))}
+        <ConversationNavigator projectPath={projectPath} />
       </aside>
       <Chat store={staged.conversationSessionStore.chatStore} composerFocusEnabled={false} />
     </StoreProvider>,
@@ -368,9 +343,10 @@ describe("Session catalog lifecycle workflows", () => {
     const parentRow = () =>
       sidebar()
         .getByRole("button", { name: /^Parent / })
-        .closest<HTMLElement>(".session-item")!;
-    expect(within(parentRow()).getByRole("img", { name: "Running" })).toBeTruthy();
-    expect(within(parentRow()).getByText("Children are working")).toBeTruthy();
+        .closest<HTMLElement>('[data-slot="conversation-navigator-row"]')!;
+    expect(within(parentRow()).queryByRole("img", { name: "Running" })).toBeNull();
+    expect(within(parentRow()).getByLabelText("Idle")).toBeTruthy();
+    expect(within(parentRow()).getByLabelText("1 running descendants")).toBeTruthy();
     await fixture.publishUpdate({
       _tag: "Event",
       revision: 3,
@@ -382,7 +358,7 @@ describe("Session catalog lifecycle workflows", () => {
     });
     expect(within(row()).queryByRole("img", { name: "Running" })).toBeNull();
     expect(within(parentRow()).queryByRole("img", { name: "Running" })).toBeNull();
-    expect(within(parentRow()).queryByText("Children are working")).toBeNull();
+    expect(within(parentRow()).queryByLabelText(/running descendants/)).toBeNull();
     await fixture.publishUpdate({
       _tag: "Event",
       revision: 4,
@@ -404,7 +380,7 @@ describe("Session catalog lifecycle workflows", () => {
       },
     });
     expect(within(row()).getByRole("img", { name: "Running" })).toBeTruthy();
-    expect(within(parentRow()).getByText("Children are working")).toBeTruthy();
+    expect(within(parentRow()).getByLabelText("1 running descendants")).toBeTruthy();
     expect(open).not.toHaveBeenCalled();
   });
 

@@ -5,10 +5,11 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openProjectSettings, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("customizes labels and assigns multiple labels from the sidebar avatar", async () => {
+test("customizes labels and assigns multiple labels from the Sessions avatar", async () => {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-session-labels-"));
   const userData = join(temporaryRoot, "user-data");
@@ -94,11 +95,12 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
   });
   try {
     const page = await application.firstWindow();
+    await showSessions(page);
     await page.locator(`[data-session-id="${sessionId}"] .session-row`).click();
     await expect(
       page.locator('[data-slot="message-content"]', { hasText: "Categorize this work" }),
     ).toBeVisible({ timeout: 20_000 });
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: /^Session labels/ }).click();
     await expect(page.getByRole("heading", { name: "Global labels" })).toBeVisible();
     await expect(page.getByText("Feature", { exact: true })).toBeVisible();
@@ -108,12 +110,7 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
     await expect(page.getByText("In review", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Back to chat" }).click();
-    const projectGroup = page.locator('[data-slot="project-group"]', {
-      hasText: "Label project",
-    });
-    await projectGroup.hover();
-    await projectGroup.getByRole("button", { name: "Project actions for project" }).click();
-    await page.getByRole("menuitem", { name: "Open settings for project" }).click();
+    await openProjectSettings(application, page, /^Open Project Chat for Label project$/);
     await expect(page.getByRole("heading", { name: "Project-specific labels" })).toBeVisible();
     await page.getByRole("button", { name: "Add label" }).click();
     await page.getByLabel("New label name").fill("Project QA");
@@ -131,28 +128,15 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
     await expect(square).toHaveCSS("width", "8px");
     await expect(square).toHaveCSS("height", "8px");
     await expect(square).toHaveCSS("border-radius", "2px");
-    const projectIcon = projectGroup.locator(':scope > div [data-slot="avatar"]').first();
+    const projectIcon = page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Open Project Chat for Label project", exact: true })
+      .locator('[data-slot="avatar"]');
     await expect(projectIcon).toHaveAttribute("data-variant", "artwork");
     await expect(projectIcon).toHaveCSS("width", "20px");
     await expect(projectIcon).toHaveCSS("height", "20px");
     const projectImageSource = await projectIcon.locator("img").getAttribute("src");
     expect(projectImageSource).toBeTruthy();
-    const markerColumnOffset = async () => {
-      const sessionBounds = (await square.boundingBox())!;
-      const projectBounds = (await projectIcon.boundingBox())!;
-      return Math.abs(
-        sessionBounds.x + sessionBounds.width / 2 - projectBounds.x - projectBounds.width / 2,
-      );
-    };
-    await expect.poll(markerColumnOffset).toBeLessThan(0.5);
-    await projectGroup.hover();
-    await projectGroup.getByRole("button", { name: "Project actions for project" }).click();
-    await page.getByRole("menuitem", { name: "Focus on project" }).click();
-    await expect(square).toHaveCSS("width", "8px");
-    await expect(projectIcon).toHaveCSS("width", "28px");
-    await expect.poll(markerColumnOffset).toBeLessThan(0.5);
-    await page.getByRole("button", { name: "Exit focus mode for project" }).click();
-    await expect.poll(markerColumnOffset).toBeLessThan(0.5);
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await picker.click();
     const popup = page
@@ -198,14 +182,7 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
       /^oklch\(/,
     );
 
-    await page.getByRole("button", { name: "Show activity", exact: true }).click();
-    const sourceProjectIcon = sessionItem.locator(
-      '[data-slot="session-description"] [data-slot="avatar"]',
-    );
-    await expect(sourceProjectIcon).toHaveAttribute("data-variant", "artwork");
-    await expect(sourceProjectIcon).toHaveCSS("width", "14px");
-    await expect(sourceProjectIcon.locator("img")).toHaveAttribute("src", projectImageSource!);
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: "Appearance", exact: true }).click();
     const charactersToggle = page.getByRole("switch", { name: "Show session characters" });
     await expect(charactersToggle).toHaveAttribute("aria-checked", "false");
@@ -221,9 +198,6 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
       "data-variant",
       "artwork",
     );
-    await expect(sourceProjectIcon.locator("img")).toHaveAttribute("src", projectImageSource!);
-    await expect(sourceProjectIcon).toHaveCSS("width", "14px");
-    await page.getByRole("button", { name: "Show projects", exact: true }).click();
     await expect(projectIcon).toHaveAttribute("data-variant", "artwork");
     await expect(projectIcon.locator("img")).toHaveAttribute("src", projectImageSource!);
     await expect(selectedPicker.locator('[data-slot="session-character"]')).toBeVisible();
@@ -234,7 +208,7 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
     );
     await page.keyboard.press("Escape");
     await expect(selectedPicker).toBeFocused();
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await charactersToggle.click();
     await expect.poll(savedCharacterPreference).toBe(false);
     await page.getByRole("button", { name: "Back to chat" }).click();
@@ -244,7 +218,6 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
     );
     await expect(projectIcon).toHaveAttribute("data-variant", "artwork");
     await expect(projectIcon.locator("img")).toHaveAttribute("src", projectImageSource!);
-    await expect.poll(markerColumnOffset).toBeLessThan(0.5);
 
     await expect
       .poll(async () => {

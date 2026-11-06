@@ -27,6 +27,17 @@ export const observeCatalog = Effect.fn("CakeChatSideChats.observeCatalog")(func
   return catalog.pipe(Stream.mapError(asCakeChatError("observeSideChats")));
 });
 
+/** Same authoritative side-chat records, without transcript previews, for cold navigation. */
+export const observeMetadata = Effect.fn("CakeChatSideChats.observeMetadata")(function* (
+  location: CakeChatLocation,
+  parentSessionId = CAKE_CHAT_SESSION_ID,
+) {
+  const catalog = yield* discussionSessions
+    .observeMetadata({ workingDirectory: location.workingDirectory, parentSessionId })
+    .pipe(Effect.mapError(asCakeChatError("observeSideChatMetadata")));
+  return catalog.pipe(Stream.mapError(asCakeChatError("observeSideChatMetadata")));
+});
+
 /** Branches a new side chat from one Cake Chat message and delivers its first prompt. */
 export const start = Effect.fn("CakeChatSideChats.start")(function* (
   input: CakeChatSideChatStartInput,

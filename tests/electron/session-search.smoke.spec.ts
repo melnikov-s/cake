@@ -4,11 +4,12 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 for (const theme of ["light", "dark"] as const) {
-  test(`session search supports keyboard, selection, resolved sessions and project focus (${theme})`, async () => {
+  test(`session search supports keyboard, selection, resolved sessions and global cross-project discovery (${theme})`, async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-session-search-"));
     const paths = {
       userData: join(root, "user-data"),
@@ -31,12 +32,11 @@ for (const theme of ["light", "dark"] as const) {
     });
     try {
       const page = await application.firstWindow();
-      await scenario.prepare(page, "sidebar");
+      await scenario.prepare(page, "default");
       const trigger = page.getByRole("button", { name: "Search sessions", exact: true });
       const dialog = page.getByRole("dialog", { name: "Search sessions", exact: true });
       const filter = dialog.getByRole("combobox", { name: "Search session titles" });
       const message = page.getByRole("combobox", { name: "Message", exact: true });
-      await trigger.click();
       await expect(filter).toBeFocused();
       await expect(dialog.getByRole("listbox", { name: "Sessions", exact: true })).toBeVisible();
       await expect(dialog.getByRole("option")).toHaveCount(4);
@@ -63,9 +63,8 @@ for (const theme of ["light", "dark"] as const) {
       await page.keyboard.type("A retained search-session draft");
       await expect(message).toHaveValue("A retained search-session draft");
 
-      const selectedRow = page.locator(
-        '[data-slot="sidebar"] [data-session-id="visual-session-search-1"]',
-      );
+      await showSessions(page);
+      const selectedRow = page.locator('.session-item[data-session-id="visual-session-search-1"]');
       await selectedRow.locator(".session-resolve-action").click();
       await trigger.click();
       await page.keyboard.type("search dialog");
@@ -78,21 +77,6 @@ for (const theme of ["light", "dark"] as const) {
       await expect(dialog).toBeHidden();
       await expect(page.getByTestId("resolved-session-notice")).toBeVisible();
 
-      await page.getByRole("button", { name: "Project actions for project" }).click();
-      await page.getByRole("menuitem", { name: "Focus on project", exact: true }).click();
-      await expect(trigger).toBeVisible();
-      await trigger.click();
-      await expect(filter).toHaveValue("");
-      await expect(dialog.getByRole("switch", { name: "Include resolved" })).not.toBeChecked();
-      await expect(dialog.getByRole("option")).toHaveCount(2);
-      await page.keyboard.type("website");
-      await expect(dialog.getByRole("status")).toHaveText("No matching sessions.");
-      await page.keyboard.press("Enter");
-      await expect(dialog).toBeVisible();
-      await page.keyboard.press("Escape");
-      await expect(dialog).toBeHidden();
-      await expect(trigger).toBeFocused();
-      await page.getByRole("button", { name: "Exit focus mode for project" }).click();
       await trigger.click();
       await expect(filter).toHaveValue("");
       await page.keyboard.type("website");

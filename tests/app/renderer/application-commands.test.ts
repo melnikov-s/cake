@@ -2,11 +2,11 @@ import { applySnapshot, toSnapshot } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import { cakeHotkeyActionIds } from "../../../src/contracts/application/cake-settings-data";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
-import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
+import { sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 // Dispatch-policy regressions with real owners. Native keyboard/UI wiring is covered by
-// hotkeys, active-session-navigation, and session-split Electron workflows.
+// hotkeys and active-session-navigation Electron workflows.
 describe("Application command registry", () => {
   it("registers every non-DOM command and evaluates project availability against live selection and resolution", () => {
     const summary = sessionSummary({ sessionId: "session", projectPath: "/work/alpha" });
@@ -48,43 +48,6 @@ describe("Application command registry", () => {
     expect(root.uiHintModeStore.active).toBe(false);
   });
 
-  it("splits and focuses staged project panes, preserves drafts, and retires the closed staged pane", () => {
-    using fixture = createRendererStoreFixture({
-      projects: [projectRecord({ path: "/work/alpha" })],
-      client: { workspaces: { loadStagedSlashCommands: async () => [] } },
-    });
-    const { root } = fixture;
-    const source = root.sessionRegistry.pendingSessions.prepareStaged("/work/alpha", "source");
-    root.navigationStore.showLoadedProjectSession(source.sessionId);
-    source.conversationSessionStore.composerStore.draftStore.setText("source draft");
-    root.commands.execute("split-right");
-    expect(root.sessionLayoutStore.panes).toHaveLength(2);
-    const splitSessionId = root.sessionLayoutStore.focusedSessionId!;
-    expect(splitSessionId).not.toBe(source.sessionId);
-    const splitSession = root.sessionRegistry.findSession(splitSessionId)!;
-    splitSession.conversationSessionStore.composerStore.draftStore.setText("split draft");
-    root.commands.execute("focus-left");
-    expect(root.appShellStore.activeConversation?.sessionId).toBe(source.sessionId);
-    root.commands.execute("focus-pane-2");
-    expect(root.appShellStore.activeConversation?.sessionId).toBe(splitSessionId);
-    expect(source.conversationSessionStore.composerStore.draftStore.text).toBe("source draft");
-    expect(splitSession.conversationSessionStore.composerStore.draftStore.text).toBe("split draft");
-    root.navigationStore.closeSessionPane(root.sessionLayoutStore.focusedPaneId!);
-    expect(root.sessionRegistry.findSession(splitSessionId)).toBeUndefined();
-    expect(root.sessionLayoutStore.panes).toHaveLength(1);
-    expect(root.appShellStore.activeConversation?.sessionId).toBe(source.sessionId);
-
-    // Cake Chat focus must not redirect to the still-loaded Project pane; splitting is Project-only.
-    root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
-    root.commands.execute("focus-pane-1");
-    root.commands.execute("split-right");
-    expect(root.appShellStore.activeConversation).toEqual({
-      kind: "cake-chat",
-      sessionId: CAKE_CHAT_SESSION_ID,
-    });
-    expect(root.sessionLayoutStore.panes).toHaveLength(1);
-  });
-
   it("returns from Settings to the same conversation and leaves snapshot authority with shell and layout", () => {
     using fixture = createRendererStoreFixture();
     const { root } = fixture;
@@ -99,7 +62,7 @@ describe("Application command registry", () => {
     expect(root.appShellStore.surface).toBe("cake-chat");
     const snapshot = toSnapshot(root);
     expect(snapshot.children?.appShellStore).toMatchObject({
-      state: { navigationVersion: 3, workspace: "cake-chat" },
+      state: { navigationVersion: 4, workspace: "cake-chat" },
     });
     expect(snapshot.children?.navigationStore).toMatchObject({ state: {} });
   });

@@ -104,6 +104,7 @@ async function renderWorkerStatus(status: "queued" | "running" = "running") {
           }).pipe(Stream.concat(Stream.never)),
         observeControls: () => Stream.never,
         observeSideChats: () => Stream.never,
+        observeSideChatMetadata: () => Stream.never,
       },
       conversations: {
         observe: (target) =>
@@ -121,6 +122,23 @@ async function renderWorkerStatus(status: "queued" | "running" = "running") {
               }).pipe(Stream.concat(Stream.never)),
       },
       subagents: {
+        observeMetadata: ({ parentSessionId }) =>
+          parentSessionId === sessionId
+            ? SubscriptionRef.changes(workers).pipe(
+                Stream.filter((update) => update._tag === "Snapshot"),
+                Stream.map((update) =>
+                  update.activities.map((activity) => ({
+                    parentSessionId: activity.parentSessionId,
+                    handleId: activity.handleId,
+                    anchorPartId: activity.anchorPartId,
+                    task: activity.task,
+                    status: activity.status,
+                    streaming: activity.streaming,
+                    released: activity.released ?? false,
+                  })),
+                ),
+              )
+            : Stream.succeed([]).pipe(Stream.concat(Stream.never)),
         observe: (id) =>
           id === sessionId
             ? Stream.suspend(() => {
@@ -142,7 +160,9 @@ async function renderWorkerStatus(status: "queued" | "running" = "running") {
   );
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project" }), projectRecord({ path: "/other" })],
+    client: { cakeChats: { open: async () => undefined } },
   });
+  fixture.root.workspaceNavigatorStore.show("sessions");
   const view = render(
     <StoreProvider store={fixture.root}>
       <App />
@@ -150,10 +170,6 @@ async function renderWorkerStatus(status: "queued" | "running" = "running") {
   );
   const stop = observeModels(runtime, fixture.models, fixture.root);
   const user = userEvent.setup();
-  const projectRow = () =>
-    screen
-      .getByRole("button", { name: "Open Project Chat for project" })
-      .closest<HTMLElement>('[data-slot="project-header"]')!;
   try {
     await user.click(await screen.findByRole("button", { name: "Open Project Chat for project" }));
     await waitFor(() => expect(fixture.root.appShellStore.selection).toMatchObject({ sessionId }));
@@ -167,7 +183,19 @@ async function renderWorkerStatus(status: "queued" | "running" = "running") {
   }
   let revision = 1;
   return {
-    projectRow,
+    backgroundRunning: () =>
+      fixture.root.cakeChatCollectionStore.activityFor(sessionId) === "running",
+    async returnToProjectAndExpectIdle() {
+      await user.click(screen.getByRole("button", { name: "Open Project Chat for project" }));
+      await waitFor(() => {
+        const row = document.querySelector<HTMLElement>(
+          '[data-slot="conversation-navigator-row"][data-relationship="home"]',
+        );
+        expect(row).not.toBeNull();
+        expect(within(row!).queryByRole("img", { name: "Running" })).toBeNull();
+        expect(within(row!).queryByLabelText(/running descendants/)).toBeNull();
+      });
+    },
     unsubscribed,
     async disconnectWorkers() {
       await act(async () => {
@@ -250,7 +278,7 @@ it.each(
   async ({ initial, outcome }) => {
     await using f = await renderWorkerStatus(initial);
     await f.leaveAndSettleForeground();
-    expect(within(f.projectRow()).getByRole("img", { name: "Running" })).toBeTruthy();
+    expect(f.backgroundRunning()).toBe(true);
     expect(f.unsubscribed).not.toHaveBeenCalled();
     await f.publishWorkers([
       workerActivity({
@@ -261,10 +289,9 @@ it.each(
         parts: [],
       }),
     ]);
-    await waitFor(() =>
-      expect(within(f.projectRow()).queryByRole("img", { name: "Running" })).toBeNull(),
-    );
+    await waitFor(() => expect(f.backgroundRunning()).toBe(false));
     await waitFor(() => expect(f.unsubscribed).toHaveBeenCalledOnce());
+    await f.returnToProjectAndExpectIdle();
   },
 );
 
@@ -275,11 +302,10 @@ it("reconnects a hidden Project Chat worker stream and replaces its cached runni
   await f.publishWorkers([
     workerActivity({ parentSessionId: sessionId, status: "complete", streaming: false, parts: [] }),
   ]);
-  expect(within(f.projectRow()).getByRole("img", { name: "Running" })).toBeTruthy();
+  expect(f.backgroundRunning()).toBe(true);
   await f.reconnectWorkers();
-  await waitFor(() =>
-    expect(within(f.projectRow()).queryByRole("img", { name: "Running" })).toBeNull(),
-  );
+  await waitFor(() => expect(f.backgroundRunning()).toBe(false));
+  await f.returnToProjectAndExpectIdle();
 });
 
 it("keeps a hidden Project Chat running until every owned worker settles", async () => {
@@ -305,7 +331,7 @@ it("keeps a hidden Project Chat running until every owned worker settles", async
       parts: [],
     }),
   ]);
-  expect(within(f.projectRow()).getByRole("img", { name: "Running" })).toBeTruthy();
+  expect(f.backgroundRunning()).toBe(true);
   expect(f.unsubscribed).not.toHaveBeenCalled();
   await f.publishWorkers([
     workerActivity({ parentSessionId: sessionId, status: "complete", streaming: false, parts: [] }),
@@ -317,7 +343,5 @@ it("keeps a hidden Project Chat running until every owned worker settles", async
       parts: [],
     }),
   ]);
-  await waitFor(() =>
-    expect(within(f.projectRow()).queryByRole("img", { name: "Running" })).toBeNull(),
-  );
+  await waitFor(() => expect(f.backgroundRunning()).toBe(false));
 });

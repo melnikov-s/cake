@@ -9,7 +9,6 @@ import {
 import { parseSessionLink } from "../../contracts/conversations/message-reference";
 import { parseSubagentLink } from "../../contracts/subagents/subagent-reference";
 import { ClientContext } from "./context/ClientContext";
-import type { SideChatStore } from "./SideChatStore";
 import { describeError } from "../lib/error-details";
 
 /** A main-owned to-do list projection: a Project's list or global Cake Chat's own list. */
@@ -38,7 +37,7 @@ export interface TodoResultOrigin {
 
 export class ProjectTodosStore extends Store<{
   list(): TodoListSource | undefined;
-  sidePanel(): SideChatStore;
+  pane(): { readonly visible: boolean; open(): void; close(): void };
   replyContext(name: string, text: string): void;
 }> {
   query = "";
@@ -148,7 +147,7 @@ export class ProjectTodosStore extends Store<{
     this.query = query;
   }
   get visible() {
-    return this.props.sidePanel().target?.key === "project-todos";
+    return this.props.pane().visible;
   }
 
   /**
@@ -184,17 +183,11 @@ export class ProjectTodosStore extends Store<{
   }
 
   toggle() {
-    if (this.visible) this.props.sidePanel().close();
+    if (this.visible) this.props.pane().close();
     else this.open();
   }
   open() {
-    const source = this.source;
-    if (source)
-      this.props.sidePanel().open({
-        key: "project-todos",
-        title: "To-do",
-        todos: this,
-      });
+    if (this.source) this.props.pane().open();
   }
   /** Inspect a transcript task without changing view focus or the next message. */
   reveal(item: ProjectTodo) {

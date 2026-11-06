@@ -15,7 +15,6 @@ export const SettingsPageId = Schema.Literals([
   "prompts",
   "appearance",
   "hotkeys",
-  "editor",
   "voice",
   "screen-capture",
   "experimental",

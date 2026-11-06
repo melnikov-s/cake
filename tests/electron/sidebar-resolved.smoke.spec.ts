@@ -5,10 +5,11 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("resolves and restores the selected project session in the desktop sidebar", async () => {
+test("resolves and restores the selected session through the project Sessions accessory", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-sidebar-resolved-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -78,8 +79,7 @@ test("resolves and restores the selected project session in the desktop sidebar"
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByRole("button", { name: "Cake Chat", exact: true })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Expand Resolved" })).toHaveCount(0);
+    const workspace = await showSessions(page);
 
     const selectedSession = page
       .locator(".session-item.active")
@@ -93,12 +93,18 @@ test("resolves and restores the selected project session in the desktop sidebar"
     await expect(page.getByRole("button", { name: "Ask session assistant" })).toBeVisible();
     await selectedSession.locator(".session-resolve-action").click();
 
-    const resolvedLane = page.getByRole("region", { name: "Resolved sessions" });
-    await expect(resolvedLane).toBeVisible();
-    const resolvedToggle = page.getByRole("button", { name: "Expand Resolved" });
+    await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Open Project Chat for project", exact: true })
+      .click();
+    await showSessions(page);
+    const resolvedToggle = workspace.getByRole("button", {
+      name: "Resolved sessions",
+      exact: true,
+    });
     await expect(resolvedToggle).toHaveAttribute("aria-expanded", "false");
     await resolvedToggle.click();
-    await resolvedLane.getByRole("button", { name: "Expand project resolved" }).last().click();
+    const resolvedLane = workspace.getByRole("region", { name: "Resolved sessions" });
     const resolvedSession = resolvedLane.locator(`.session-item[data-session-id="${sessionId}"]`);
     await expect(resolvedSession.getByRole("img", { name: "Resolved session" })).toBeVisible();
     await resolvedSession.locator(".session-row").click();
@@ -116,39 +122,12 @@ test("resolves and restores the selected project session in the desktop sidebar"
     await restoreAction.click();
     await expect(restoreAction).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Ask session assistant" })).toBeVisible();
-    await expect(selectedSession.locator('[data-slot="avatar"]')).toHaveCSS("width", "8px");
-    await expect(
-      page.locator(`[data-slot="sidebar"] [data-session-id='${sessionId}']`),
-    ).toHaveCount(1);
-    const characters = page.locator('[data-slot="session-character"]');
-    await expect(characters).toHaveCount(1);
-    for (const character of await characters.all()) {
-      await expect(character).toHaveCSS("animation-name", "session-avatar-appear");
-      // Scrub the real CSS animation rather than depending on wall-clock timing.
-      const poses = await character.evaluate((element) => {
-        const animation = element.getAnimations()[0]!;
-        animation.pause();
-        const sample = (time: number) => {
-          animation.currentTime = time;
-          const style = getComputedStyle(element);
-          return { opacity: style.opacity, scale: new DOMMatrixReadOnly(style.transform).a };
-        };
-        const start = sample(0);
-        const overshoot = sample(250);
-        animation.finish();
-        return { start, overshoot, settled: sample(500) };
-      });
-      expect(poses.start.opacity).toBe("0");
-      expect(poses.start.scale).toBeLessThan(1);
-      expect(poses.overshoot.scale).toBeGreaterThan(1);
-      expect(poses.settled).toEqual({ opacity: "1", scale: 1 });
-    }
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    for (const character of await characters.all()) {
-      await expect(character).toHaveCSS("animation-name", "none");
-      await expect(character).toHaveCSS("opacity", "1");
-      await expect(character).toHaveCSS("transform", "none");
-    }
+    await expect(selectedSession.locator('[data-slot="avatar"]')).toHaveAttribute(
+      "data-variant",
+      "square",
+    );
+    await expect(workspace.locator(`.session-item[data-session-id="${sessionId}"]`)).toHaveCount(1);
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

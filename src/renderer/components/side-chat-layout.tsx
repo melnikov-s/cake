@@ -1,14 +1,13 @@
-import type { ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
+import { ConversationFocusContext } from "../lib/conversation-focus-context";
 import { observer } from "r-state-tree/react";
 import { AccessoryPanelLayout } from "@/components/ui/accessory-panel-layout";
 import { SidePanel } from "@/components/ui/side-panel";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
-import { SearchInput } from "@/components/ui/search-input";
 import type { ChatStore } from "../stores/ChatStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { SideChatContext } from "./side-chat-context";
-import { ProjectTodosPanel } from "./project-todos-panel";
 import { ArtifactMenuSurface } from "./artifact-menu-surface";
 import { ModelSummary } from "./model-summary";
 import { SessionChangesPanel } from "./session-changes-panel";
@@ -19,21 +18,16 @@ export const SideChatLayout = observer(function SideChatLayout({
   store,
   children,
   renderChat,
-  hideTodos = false,
   hideArtifact = false,
 }: {
   store: SideChatStore;
   children: ReactNode;
   renderChat(store: ChatStore, composerHeader: ReactNode): ReactNode;
-  /** Workspace chat drawers keep the conversation visible without clearing the to-do selection. */
-  hideTodos?: boolean;
   /** Fullscreen already hosts this artifact; do not recursively render it in its chat drawer. */
   hideArtifact?: boolean;
 }) {
-  const target =
-    (hideTodos && store.target?.todos) || (hideArtifact && store.target?.artifact)
-      ? undefined
-      : store.target;
+  const focusConversation = useContext(ConversationFocusContext);
+  const target = hideArtifact && store.target?.artifact ? undefined : store.target;
   const model = target?.model?.();
   // Keep merge near the composer; pane dismissal always belongs in the header.
   const dockMergeAction = Boolean(target?.chatStore?.composerVisible && target.merge);
@@ -55,6 +49,21 @@ export const SideChatLayout = observer(function SideChatLayout({
       {mergeAction}
     </div>
   );
+  // A selected Side chat/Subagent is the focused conversation, not an independent split.
+  // Preserve its existing ChatStore and Pi transcript; only presentation changes.
+  if (focusConversation && target?.chatStore)
+    return (
+      <SideChatContext.Provider value={store}>
+        <section
+          data-slot="focused-secondary-conversation"
+          aria-label={target.title}
+          className="flex h-full min-h-0 min-w-0 flex-col"
+        >
+          {target.merge?.error && <Callout variant="error">{target.merge.error}</Callout>}
+          <div className="min-h-0 flex-1">{renderChat(target.chatStore, composerHeader)}</div>
+        </section>
+      </SideChatContext.Provider>
+    );
   return (
     <SideChatContext.Provider value={store}>
       <AccessoryPanelLayout
@@ -82,13 +91,6 @@ export const SideChatLayout = observer(function SideChatLayout({
                   >
                     <ReloadIcon />
                   </IconButton>
-                ) : target.todos ? (
-                  <SearchInput
-                    label="Search to-dos"
-                    value={target.todos.query}
-                    onValueChange={(query) => target.todos?.setQuery(query)}
-                    className="w-36 max-w-[50%] shrink-0"
-                  />
                 ) : (
                   <>
                     {model && <ModelSummary {...model} className="max-w-[65%]" />}
@@ -102,8 +104,6 @@ export const SideChatLayout = observer(function SideChatLayout({
                 <div className="min-h-0 flex-1">
                   {target.changes ? (
                     <SessionChangesPanel store={target.changes} />
-                  ) : target.todos ? (
-                    <ProjectTodosPanel store={target.todos} />
                   ) : (
                     renderChat(target.chatStore, composerHeader)
                   )}

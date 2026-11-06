@@ -11,6 +11,7 @@ import type { StoreEvent } from "../../../src/renderer/events/StoreEvent";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { openSessionFromSearch } from "./workspace-navigation-actions";
 import type { TestClientOverrides } from "./test-client";
 
 function deferredOpen() {
@@ -237,7 +238,7 @@ describe("Workbench conversation lifecycle", () => {
     const lookup = vi.fn<Client["projectSessions"]["lookup"]>(() => pendingLookup);
     const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
     using fixture = renderCachedWorkbench(open, false, { projectSessions: { lookup } });
-    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    await openSessionFromSearch(fixture.user, /^beta conversation /);
     await waitFor(() =>
       expect(
         screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" }).placeholder,
@@ -273,9 +274,9 @@ describe("Workbench conversation lifecycle", () => {
     );
     const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
     using fixture = renderCachedWorkbench(open, false, { projectSessions: { lookup } });
-    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    await openSessionFromSearch(fixture.user, /^beta conversation /);
     await waitFor(() => expect(lookup).toHaveBeenCalledOnce());
-    await fixture.user.click(screen.getByRole("button", { name: /^alpha conversation / }));
+    await openSessionFromSearch(fixture.user, /^alpha conversation /);
     await waitFor(() => expect(open).toHaveBeenCalledOnce());
     await act(async () =>
       finishLookup(sessionSummary({ sessionId: "beta", projectPath: "/beta" })),
@@ -294,7 +295,7 @@ describe("Workbench conversation lifecycle", () => {
     const lookup = vi.fn<Client["projectSessions"]["lookup"]>(() => pendingLookup);
     const open = vi.fn<Client["projectSessions"]["open"]>();
     using fixture = renderCachedWorkbench(open, false, { projectSessions: { lookup } });
-    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    await openSessionFromSearch(fixture.user, /^beta conversation /);
     await waitFor(() => expect(lookup).toHaveBeenCalledOnce());
     await act(async () => failLookup(new Error("Session metadata unavailable")));
     const error = await screen.findByRole("alert");
@@ -353,7 +354,7 @@ describe("Workbench conversation lifecycle", () => {
         false,
         async (user) => {
           await waitFor(() => expect(inspect).toHaveBeenCalledOnce());
-          await user.click(screen.getAllByRole("button", { name: "Open settings" })[0]!);
+          await user.click(screen.getAllByRole("button", { name: "Settings" })[0]!);
           await user.click(screen.getByRole("button", { name: /^Agent Behavior and content$/ }));
           expect(
             screen.getByRole("switch", { name: "Allow agent session navigation" }),
@@ -470,14 +471,12 @@ describe("Workbench conversation lifecycle", () => {
     using fixture = renderCachedWorkbench(open);
     const input = () => screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
     const choose = (name: string) =>
-      fixture.user.click(
-        screen.getByRole("button", { name: new RegExp(`^${name} conversation `) }),
-      );
+      openSessionFromSearch(fixture.user, new RegExp(`^${name} conversation `));
 
     await fixture.user.type(input(), "Alpha unsent work");
     await choose("beta");
     await waitFor(() => expect(input().placeholder).toBe("Ask Cake to work in beta…"));
-    expect(screen.getAllByText("beta conversation").length).toBeGreaterThan(1);
+    expect(screen.getAllByText("beta conversation").length).toBeGreaterThanOrEqual(1);
     await fixture.user.type(input(), "Beta unsent work");
     await act(async () => failedOpen.reject(new Error("Beta runtime unavailable")));
     const error = await screen.findByRole("alert");

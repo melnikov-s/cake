@@ -44,23 +44,23 @@ test("icon buttons reveal their tooltip bubble on hover and hide on leave", asyn
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByRole("button", { name: "Toggle sidebar" })).toBeVisible({
+    await expect(page.getByRole("button", { name: "Close Workspace" }).first()).toBeVisible({
       timeout: 20_000,
     });
 
     const modifier = /Mac/.test(await page.evaluate(() => navigator.userAgent)) ? "⌘" : "Ctrl+";
-    const sidebarToggle = page.locator('[aria-label="Toggle sidebar"]').first();
+    const sidebarToggle = page.locator('[aria-label="Close Workspace"]').first();
     await sidebarToggle.hover();
-    await expect(page.getByRole("tooltip")).toHaveText(`Toggle sidebar (${modifier}B)`, {
+    await expect(page.getByRole("tooltip")).toHaveText(`Close Workspace (${modifier}B)`, {
       timeout: 2_000,
     });
 
     await page.mouse.move(400, 300);
     await expect(page.getByRole("tooltip")).toHaveCount(0);
 
-    const newSession = page.getByRole("button", { name: "New session", exact: true });
+    const newSession = page.getByRole("button", { name: "New Session", exact: true });
     await newSession.hover();
-    await expect(page.getByRole("tooltip")).toHaveText(`New session (${modifier}N)`, {
+    await expect(page.getByRole("tooltip")).toHaveText(`New Session (${modifier}N)`, {
       timeout: 2_000,
     });
   } finally {

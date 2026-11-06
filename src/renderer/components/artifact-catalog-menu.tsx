@@ -17,18 +17,22 @@ import type { SessionArtifactsStore } from "../stores/SessionArtifactsStore";
 export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
   store,
   sessionArtifacts,
+  ownerLabel,
   onOpen,
   onOpenArtifact,
   onOpenLibrary,
 }: {
   store: ArtifactLibraryStore;
   sessionArtifacts?: SessionArtifactsStore;
+  /** Explicit inherited library owner when a secondary conversation is focused. */
+  ownerLabel?: string;
   onOpen?(): void;
   onOpenArtifact(lineageId: string): void;
   onOpenLibrary(): void;
 }) {
   const [open, setOpen] = useState(false);
   const source = sessionArtifacts ?? store;
+  const title = ownerLabel ? `Artifacts for ${ownerLabel}` : "Artifacts";
   const items = sessionArtifacts
     ? sessionArtifacts.records.map(({ artifact }) => ({
         id: artifact.id,
@@ -59,7 +63,8 @@ export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
       {sessionArtifacts ? (
         <PopoverNumberedIconTrigger
           count={items.length}
-          tooltip={`${items.length} artifacts`}
+          tooltip={`${items.length} artifacts${ownerLabel ? ` for ${ownerLabel}` : ""}`}
+          wrapTooltip={Boolean(ownerLabel)}
           data-cake-hint-key="a"
         >
           <ArtifactIcon />
@@ -69,7 +74,12 @@ export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
           <ArtifactIcon />
         </PopoverIconTrigger>
       )}
-      <PopoverContent align="end" className="w-80 p-0" aria-label="Artifacts">
+      <PopoverContent align="end" className="w-80 p-0" aria-label={title}>
+        {ownerLabel && (
+          <div className="break-words border-b border-border/65 px-3 py-2 text-xs font-medium">
+            {title}
+          </div>
+        )}
         <nav className="max-h-80 overflow-auto p-2" aria-label="Artifact list">
           {source.loading ? (
             <LoadingState label="Loading artifacts" />

@@ -15,6 +15,7 @@ import { App } from "../../../src/renderer/components/app";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { openSessionFromSearch } from "./workspace-navigation-actions";
 import type { TestClientOverrides } from "./test-client";
 
 function snapshot(sessionId: string): ConversationSnapshot {
@@ -411,7 +412,7 @@ describe("Session continuation workflow", () => {
     await waitFor(() => expect(visibleSessionId()).toBe("forked"));
   });
 
-  it("preserves sidebar navigation to the source during background fork setup", async () => {
+  it("preserves navigation to the source through global search during background fork setup", async () => {
     const pendingFork = deferred<{ sessionId: string }>();
     const fork = vi.fn<Client["projectSessions"]["fork"]>(() => pendingFork.promise);
     using fixture = renderContinuation({
@@ -426,7 +427,7 @@ describe("Session continuation workflow", () => {
     expect(visibleSessionId()).not.toBe("source");
     expect(screen.getByText("Fork of Source conversation")).toBeDefined();
     expect(screen.getByRole("status", { name: "Preparing fork in progress" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: /^Source conversation/ }));
+    await openSessionFromSearch(fixture.user, /^Source conversation/);
     await waitFor(() => expect(visibleSessionId()).toBe("source"));
     await act(async () => pendingFork.resolve({ sessionId: "forked" }));
     await fixture.hydrateFork("/current-worktree");

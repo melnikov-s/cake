@@ -1050,7 +1050,7 @@ describe("Pi 1.0.0 foundation contract", () => {
                       prompt: "Continue in the fork.",
                       title: "Forked work",
                       resolveSource: true,
-                      placement: "right",
+                      open: true,
                     },
                   }),
                 },
@@ -1130,7 +1130,7 @@ describe("Pi 1.0.0 foundation contract", () => {
         prompt: "Continue in the fork.",
         title: "Forked work",
         resolveSource: true,
-        placement: "right",
+        open: true,
       });
     } finally {
       releaseFinalResponse();

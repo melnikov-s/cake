@@ -48,10 +48,7 @@ export interface ProjectWorkbenchStoreProps {
   /** Selects a Project Session in the application shell. */
   selectSession(sessionId: string): void;
   toggleProjectSidebar(): void;
-  enterIdeSidebarMode(): void;
-  leaveIdeSidebarMode(): void;
   projectSidebarWidth(): number;
-  paneNumber?(sessionId: string): number | undefined;
 }
 
 /** Coordinates accepted Project opens with Project Session and workbench presentation. */
@@ -126,8 +123,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       dismissCommandPane: () => this.commandPaneStore.dismiss(),
       startCakeChat: this.props.startCakeChat,
       toggleProjectSidebar: this.props.toggleProjectSidebar,
-      enterProjectSidebarMode: this.props.enterIdeSidebarMode,
-      leaveProjectSidebarMode: this.props.leaveIdeSidebarMode,
       projectSidebarWidth: this.props.projectSidebarWidth,
     });
   }
@@ -229,10 +224,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       .toLocaleLowerCase();
     const local = command === "/tree" || command === "/resources" || command === "/changelog";
     return local || this.agentAvailability === "available";
-  }
-
-  paneNumber(sessionId: string) {
-    return this.props.paneNumber?.(sessionId);
   }
 
   /**

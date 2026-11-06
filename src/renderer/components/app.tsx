@@ -44,30 +44,29 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     </>
   );
 
-  return mode && session ? (
-    <>
-      {root.appShellStore.activeConversation?.kind === "cake-chat" ? (
-        <CakeChatWorkspaceSurface
-          session={root.cakeChatCollectionStore.registry.find(session.sessionId)!}
-          mode={mode}
-          browserMode={browserMode}
-        />
-      ) : (
-        <ProjectWorkspaceSurface
-          session={workbench.activeSession!}
-          mode={mode}
-          browserMode={browserMode}
-        />
-      )}
-      {overlays}
-    </>
-  ) : (
+  return (
     <AppShellLayout
       overlays={overlays}
       commandPaneWidth={commandPaneWidth}
       onCommandPaneWidthChange={setCommandPaneWidth}
     >
-      <AppSurface browserMode={browserMode} />
+      {mode && session ? (
+        root.appShellStore.activeConversation?.kind === "cake-chat" ? (
+          <CakeChatWorkspaceSurface
+            session={root.cakeChatCollectionStore.registry.find(session.sessionId)!}
+            mode={mode}
+            browserMode={browserMode}
+          />
+        ) : (
+          <ProjectWorkspaceSurface
+            session={workbench.activeSession!}
+            mode={mode}
+            browserMode={browserMode}
+          />
+        )
+      ) : (
+        <AppSurface browserMode={browserMode} />
+      )}
     </AppShellLayout>
   );
 });

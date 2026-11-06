@@ -6,15 +6,13 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
  * than visible rows, so collapsed families remain findable. */
 export class SessionSearchStore extends Store<{
   catalog: SessionCatalogStore;
-  focusedProjectPath(): string | undefined;
 }> {
   open = false;
   includeResolved = false;
 
   @computed
   get search() {
-    const path = this.props.focusedProjectPath();
-    const sessions = path ? this.props.catalog.projectSessions(path) : this.props.catalog.sessions;
+    const sessions = this.props.catalog.sessions;
     const index = createSessionSearchIndex(
       this.includeResolved ? sessions : sessions.filter((session) => !session.resolved),
     );
@@ -41,14 +39,7 @@ export class SessionSearchStore extends Store<{
 
   select(id: string) {
     const session = this.props.catalog.find(id);
-    const path = this.props.focusedProjectPath();
-    if (
-      !this.open ||
-      !session ||
-      (!this.includeResolved && session.resolved) ||
-      (path !== undefined && session.projectPath !== path)
-    )
-      return false;
+    if (!this.open || !session || (!this.includeResolved && session.resolved)) return false;
     this.close();
     return true;
   }

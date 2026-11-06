@@ -130,7 +130,6 @@ export const ArtifactPresentationSurface = observer(function ArtifactPresentatio
               {session && behavior ? (
                 <SideChatLayout
                   store={session.conversationSessionStore.sideChatStore}
-                  hideTodos
                   hideArtifact
                   renderChat={(nested, composerHeader) => (
                     <NestedChat

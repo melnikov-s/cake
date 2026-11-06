@@ -309,7 +309,8 @@ describe("Embedded editor workflow", () => {
     );
     await fixture.user.click(await screen.findByRole("link", { name: "Inspect source" }));
     await waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
-    await fixture.user.click(screen.getByRole("button", { name: /^Other project / }));
+    await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
+    await fixture.user.click(screen.getByRole("option", { name: /^Other project / }));
     await screen.findByPlaceholderText("Ask Cake to work in Other…");
     await act(async () =>
       pending.resolve({
@@ -405,7 +406,7 @@ describe("Embedded editor workflow", () => {
       { ...boundary.client, vscode: { open } },
       { bootstrap: true, savedIde: true },
     );
-    await fixture.user.click(screen.getAllByRole("button", { name: "Open settings" })[0]!);
+    await fixture.user.click(screen.getAllByRole("button", { name: "Settings" })[0]!);
     await boundary.accept();
     await hydrateBootstrap(boundary, fixture);
     expect(screen.getByRole("button", { name: "Back to chat" })).toBeDefined();
@@ -511,7 +512,8 @@ describe("Embedded editor workflow", () => {
         },
       );
       await fixture.user.keyboard("{Control>}{Shift>}g{/Shift}{/Control}");
-      await fixture.user.click(screen.getByRole("button", { name: /^Other conversation / }));
+      await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
+      await fixture.user.click(screen.getByRole("option", { name: /^Other conversation / }));
       await act(async () => {
         pending.resolve(stale);
         await pending.promise;

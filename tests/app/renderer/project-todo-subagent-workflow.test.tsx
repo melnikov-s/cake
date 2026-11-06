@@ -129,7 +129,7 @@ it("matches a subagent by public handle AND parent, changes/clears the shared cu
   expect(row().getAttribute("data-associated")).toBe("true");
   // View focus is window-local; it never writes the persisted selection.
   expect(fixture.todos()?.selectedId).toBeNull();
-  await fixture.user.click(screen.getByRole("button", { name: "Close To-do" }));
+  await fixture.user.click(screen.getByRole("button", { name: "Close Workspace" }));
   expect(screen.queryByRole("button", { name: "Review worker" })).toBeNull();
   expect(row().getAttribute("data-associated")).toBe("true");
   act(() => fixture.root.cakeChatCollectionStore.registry.find(projectChat)!.todos.open());

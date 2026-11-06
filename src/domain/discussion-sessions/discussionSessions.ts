@@ -37,9 +37,11 @@ import {
   type DiscussionSessionTarget,
   type DiscussionSessionUpdate,
   type DiscussionThread,
+  type DiscussionThreadMetadata,
 } from "../../contracts/discussion-sessions/discussion-session-data";
 import { ReviewStorage } from "../../services/storage/ReviewStorage";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
+import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import type { InterviewRecord } from "../../contracts/interviews/interview";
 
 export * from "../../contracts/discussion-sessions/discussion-session-data";
@@ -142,6 +144,7 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
   const sessions = yield* CakeSessionRuntimes;
   const services = yield* Effect.context<RefreshServices>();
   const rendererRequests = yield* RendererRequestCoordinator;
+  const catalogChanges = yield* SessionCatalogChanges;
   const run = makePiCallbackExecutor(services);
   const location = yield* environment.location(record).pipe(asError("acquire"));
   // Hooks run long after acquisition, so they re-read the stored thread each time.
@@ -164,6 +167,13 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
   const handle = yield* acquireConversation(sessions, {
     profile: { _tag: "DiscussionSession" },
     runtime,
+    onTurnActivityChanged: catalogChanges.publish({
+      _tag: "DiscussionSessionActivityChanged",
+      sessionId: sidecarSessionId,
+      parentSessionId: record.parentSessionId,
+      workingDirectory: record.workingDirectory,
+      sessionDirectory: location.sessionDirectory,
+    }),
     onSessionChanged: refreshParentIndex,
     onTurnSettled: () => refreshParentIndex,
     admitTurn: (_input, accept) =>
@@ -292,6 +302,61 @@ export const list = Effect.fn("DiscussionSessions.list")(function* (input: {
         return projectThread(record, preview?.parts.map(jsonValue) ?? []);
       }),
     { concurrency: 8 },
+  );
+});
+
+/** Cold navigation observes ownership/status without inspecting or acquiring any Pi sidecar. */
+export const observeMetadata = Effect.fn("DiscussionSessions.observeMetadata")(function* (input: {
+  readonly workingDirectory: string;
+  readonly parentSessionId: string;
+}) {
+  const environment = yield* DiscussionSessionEnvironment;
+  const sessions = yield* CakeSessionRuntimes;
+  const catalog = yield* SessionCatalogChanges;
+  const changes = (yield* ReviewStorage).changes();
+  const project = Effect.fn("DiscussionSessions.projectMetadata")(function* (
+    record: DiscussionSessionRecord,
+  ): Effect.fn.Return<DiscussionThreadMetadata, DiscussionSessionError> {
+    let running = false;
+    if (record.sidecarSessionId) {
+      const location = yield* environment.location(record).pipe(asError("observeMetadata"));
+      const status = yield* sessions.currentStatus({
+        sessionId: record.sidecarSessionId,
+        workingDirectory: record.workingDirectory,
+        sessionDirectory: location.sessionDirectory,
+      });
+      running = status?.streaming === true;
+    }
+    return {
+      id: record.id,
+      workingDirectory: record.workingDirectory,
+      parentSessionId: record.parentSessionId,
+      ...(record.sidecarSessionId ? { sidecarSessionId: record.sidecarSessionId } : null),
+      title: record.anchor.selectedText || "Side chat",
+      running,
+      status: record.status,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    };
+  });
+  return changes.pipe(
+    Stream.merge(
+      catalog
+        .initialThenChanges(Stream.empty)
+        .pipe(
+          Stream.filter(
+            (change) =>
+              change._tag === "DiscussionSessionActivityChanged" &&
+              change.parentSessionId === input.parentSessionId,
+          ),
+        ),
+    ),
+    Stream.mapEffect(() =>
+      environment.list(input.workingDirectory, input.parentSessionId).pipe(
+        asError("observeMetadata"),
+        Effect.flatMap((records) => Effect.forEach(records, project, { concurrency: 8 })),
+      ),
+    ),
   );
 });
 

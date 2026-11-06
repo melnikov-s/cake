@@ -125,14 +125,13 @@ export const ProjectSessionControlInvocation = Schema.TaggedUnion({
     ),
     title: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
     resolveSource: Schema.Boolean,
-    placement: Schema.Literals(["none", "right", "down"]),
+    open: Schema.Boolean,
     destinationWorkingDirectory: Schema.optionalKey(boundedPath),
   },
   PresentForkSession: {
     sourceSessionId: boundedId,
     forkSessionId: boundedId,
     workingDirectory: boundedPath,
-    placement: Schema.Literals(["right", "down"]),
   },
   ProjectChildSession: {
     childSessionId: boundedId,
@@ -141,7 +140,7 @@ export const ProjectSessionControlInvocation = Schema.TaggedUnion({
     familyChildOrder: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
     familyDepth: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
     workingDirectory: boundedPath,
-    placement: Schema.Literals(["none", "right", "down"]),
+    open: Schema.Boolean,
   },
 });
 export type ProjectSessionControlInvocation = Schema.Schema.Type<

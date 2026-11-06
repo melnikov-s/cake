@@ -1,12 +1,10 @@
 import { observer, useStore } from "r-state-tree/react";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
-import { ProjectChatHeaderLink } from "./project-chat-header-link";
+import { ConversationBreadcrumb } from "./conversation-breadcrumb";
 import { ErrorNotice } from "@/components/error-notice";
 import { LoadingState } from "@/components/ui/loading-state";
-import { ConversationSplitLayout } from "@/components/conversation-split-layout";
+import { FocusedConversationLayout } from "@/components/focused-conversation-layout";
 import { BlockingInterviews } from "@/components/blocking-interviews";
-import { cn } from "@/lib/utils";
-import { SidebarNavigationControls } from "./sidebar-navigation-controls";
 import { RootStore } from "../stores/RootStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { projectTranscriptBehaviorFor } from "../lib/project-transcript-behavior";
@@ -29,9 +27,7 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
   const projectOpen = store.projectOpenStore;
   const settings = root.settingsStore;
   const extensionUi = root.extensionUiStore;
-  const sidebarCollapsed = !root.sidebarStore.visible;
-  // Track pane focus here: changing it must refresh the split layout's chat props,
-  // not only the independently observed pane headers.
+  // Observe selection here so conversation-specific composer and status props refresh.
   const focusedSessionId = root.sessionLayoutStore.focusedSessionId;
   const projectChatProps = (paneSession: ProjectSessionStore) => {
     const temporary = store.sessionRegistry.pendingSessions.isTemporary(paneSession.sessionId);
@@ -122,7 +118,7 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
   };
 
   return (
-    <ConversationSplitLayout
+    <FocusedConversationLayout
       store={root.sessionLayoutStore}
       findSession={(sessionId) =>
         root.cakeChatCollectionStore.registry.find(sessionId) ??
@@ -144,37 +140,20 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
         )
       }
       title={(sessionId) =>
+        root.conversationNavigatorStore.lineageFor(sessionId).at(-1)?.title ??
         store.sessionRegistry.forkPreviewTitle(sessionId) ??
         root.sessionCatalogStore.find(sessionId)?.title ??
         root.cakeChatCollectionStore.summaries.find((chat) => chat.sessionId === sessionId)
           ?.title ??
         "New chat"
       }
-      titleLeading={(sessionId) => (
-        <ProjectChatHeaderLink
-          projectPath={
-            root.sessionCatalogStore.find(sessionId)?.projectPath ??
-            root.cakeChatCollectionStore.summaries.find((chat) => chat.sessionId === sessionId)
-              ?.projectPath
-          }
-        />
-      )}
+      renderTitle={(sessionId) => <ConversationBreadcrumb sessionId={sessionId} />}
       loadingLabel="Opening session"
-      headerClassName={(pane) =>
-        root.sessionLayoutStore.panes[0]?.paneId === pane.paneId
-          ? cn("max-[620px]:pl-[88px] phone:pl-[88px]", sidebarCollapsed && "pl-[156px]")
-          : undefined
-      }
-      renderNavigation={(pane) =>
-        root.sessionLayoutStore.panes[0]?.paneId === pane.paneId ? (
-          <SidebarNavigationControls header />
-        ) : null
-      }
-      renderHeader={(pane, session) =>
+      renderHeader={(session) =>
         session instanceof CakeChatSessionStore ? (
-          <CakeChatPaneHeader pane={pane} session={session} />
+          <CakeChatPaneHeader session={session} />
         ) : (
-          <ProjectPaneHeader pane={pane} session={session} browserMode={browserMode} />
+          <ProjectPaneHeader session={session} browserMode={browserMode} />
         )
       }
       onInteract={(sessionId) =>
@@ -183,9 +162,6 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
           sessionId,
         })
       }
-      onFocus={(paneId) => root.navigationStore.focusSessionPane(paneId)}
-      onSplit={(axis) => root.navigationStore.splitFocusedSession(axis)}
-      onClose={(paneId) => root.navigationStore.closeSessionPane(paneId)}
     />
   );
 });

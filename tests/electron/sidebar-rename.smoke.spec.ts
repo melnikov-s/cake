@@ -6,6 +6,7 @@ import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { seedCakeChatHistory } from "./durable-chat-fixture";
 import { windowState } from "../fixtures/window-state";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -84,6 +85,7 @@ test("uses native session menus and preserves Cake Chat settings context", async
         return menu;
       };
     });
+    await showSessions(page);
     const sessionRow = page.locator(".session-row").filter({ hasText: "Original session title" });
     await expect(sessionRow).toHaveCount(1);
     await sessionRow.click({ button: "right" });
@@ -92,6 +94,11 @@ test("uses native session menus and preserves Cake Chat settings context", async
       .toBe(1);
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(page.getByLabel("Session name")).toHaveCount(0);
+    await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Open Cake Chat", exact: true })
+      .click();
+    await showSessions(page);
     const cakeChatRow = page.getByRole("button", { name: "Cake Chat", exact: true });
     await cakeChatRow.click({ button: "right" });
     await expect
@@ -105,7 +112,7 @@ test("uses native session menus and preserves Cake Chat settings context", async
       page.locator(".transcript").getByText("Original Cake Chat conversation", { exact: true }),
     ).toBeVisible();
     await composer.fill("Retained coordinator draft");
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: /Agent/ }).click();
     await expect(page.getByText("Auto-compact", { exact: true })).toBeVisible();

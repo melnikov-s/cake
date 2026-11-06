@@ -320,12 +320,12 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await link.click();
     const vscodeWorkspace = page.getByRole("region", { name: "VS Code workspace" });
     await expect(vscodeWorkspace).toBeVisible();
-    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
-    const projectSidebarResize = page.getByRole("separator", { name: "Resize project sidebar" });
-    await expect(projectSidebarResize).toHaveAttribute("aria-valuenow", "292");
+    await expect(page.locator('[data-slot="workspace-navigator"]')).toBeVisible();
+    const projectSidebarResize = page.getByRole("separator", { name: "Resize Workspace" });
+    const workspaceWidth = await projectSidebarResize.getAttribute("aria-valuenow");
     await projectSidebarResize.focus();
     await projectSidebarResize.press("ArrowRight");
-    await expect(projectSidebarResize).toHaveAttribute("aria-valuenow", "308");
+    await expect(projectSidebarResize).not.toHaveAttribute("aria-valuenow", workspaceWidth!);
     await expect
       .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
       .toBe(true);
@@ -333,7 +333,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     // A healthy editor has no status/error placeholder; the toolbar's Back action is separate.
     await expect(page.locator(".embedded-editor-pane")).toBeEmpty();
     await expect(page.getByRole("button", { name: "Back to agent", exact: true })).toBeVisible();
-    await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(false);
+    await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
     await expect.poll(isVsCodePrimarySidebarVisible, { timeout: 20_000 }).toBe(false);
     await expect(
       page
@@ -356,8 +356,8 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       .toBe(true);
     await expect.poll(() => hasVsCodeTitleAction("Toggle Secondary Side Bar")).toBe(false);
     await page
-      .locator('[data-slot="sidebar"]')
-      .getByRole("button", { name: "Toggle sidebar" })
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Close Workspace", exact: true })
       .click();
     await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
     await expect
@@ -369,18 +369,22 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
 
     expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
     await expect(vscodeWorkspace).toBeHidden();
-    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+    await expect(page.locator('[data-slot="workspace-navigator"]')).toBeHidden();
+    await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Open Workspace", exact: true })
+      .click();
 
     await link.click();
     await expect(vscodeWorkspace).toBeVisible();
     await page
-      .locator('[data-slot="sidebar"]')
-      .getByRole("button", { name: "Toggle sidebar" })
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Close Workspace", exact: true })
       .click();
     await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
     expect(await clickVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
-    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
-    await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(false);
+    await expect(page.locator('[data-slot="workspace-navigator"]')).toBeVisible();
+    await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
     await expect.poll(() => hasVsCodeText("Build with Agent")).toBe(false);
     await expect
       .poll(() => clickVsCodeText("Cake: Open · 0 replies"), { timeout: 20_000 })
@@ -480,10 +484,10 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
         );
       });
     await page
-      .locator('[data-slot="sidebar"]')
-      .getByRole("button", { name: "Toggle sidebar" })
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Close Workspace", exact: true })
       .click();
-    await expect(page.locator('[data-slot="sidebar"]')).toBeHidden();
+    await expect(page.locator('[data-slot="workspace-navigator"]')).toBeHidden();
     await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
     await expect(vscodeWorkspace).toBeVisible();
     await expect.poll(vscodeFillsWindow).toBe(true);

@@ -161,7 +161,8 @@ describe("Browser workspace workflow", () => {
       undefined,
       expect.objectContaining({ startupUrl: "https://primary.example/" }),
     );
-    await fixture.user.click(screen.getByRole("button", { name: /^Other task / }));
+    await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
+    await fixture.user.click(screen.getByRole("option", { name: /^Other task / }));
     await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
     await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
     expect(open).toHaveBeenLastCalledWith(
@@ -183,7 +184,8 @@ describe("Browser workspace workflow", () => {
     using fixture = renderBrowser({ browser: { open } }, true);
     await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
-    await fixture.user.click(screen.getByRole("button", { name: /^Other task / }));
+    await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
+    await fixture.user.click(screen.getByRole("option", { name: /^Other task / }));
     expect(screen.queryByRole("textbox", { name: "Browser address" })).toBeNull();
     await act(async () => {
       finish({ ...ready, url: "http://localhost:3000/stale" });
@@ -191,7 +193,8 @@ describe("Browser workspace workflow", () => {
     });
     expect(screen.queryByRole("textbox", { name: "Browser address" })).toBeNull();
     expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: /^Browser task / }));
+    await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
+    await fixture.user.click(screen.getByRole("option", { name: /^Browser task / }));
     await waitFor(() => expect(address().value).toBe(ready.url));
     expect(open).toHaveBeenCalledTimes(2);
     expect(open.mock.calls.map(([id]) => id)).toEqual([sessionId, sessionId]);

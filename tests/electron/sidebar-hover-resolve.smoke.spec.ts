@@ -6,6 +6,7 @@ import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -39,11 +40,11 @@ for (const theme of ["light", "dark"] as const) {
           projects: [
             { path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp },
           ],
-          unreadSessionIds: ["completed-projects", "completed-activity"],
+          unreadSessionIds: ["completed-first", "completed-second"],
         },
       }),
     );
-    for (const sessionId of ["selected", "completed-projects", "completed-activity"]) {
+    for (const sessionId of ["selected", "completed-first", "completed-second"]) {
       await writeFile(
         join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
         [
@@ -78,17 +79,11 @@ for (const theme of ["light", "dark"] as const) {
     });
     try {
       const page = await application.firstWindow();
-      const sidebar = page.locator('[data-slot="sidebar"]');
-      const selected = sidebar.locator('[data-session-id="selected"]');
+      const sidebar = await showSessions(page);
+      const selected = sidebar.locator('.session-item[data-session-id="selected"]');
       await expect(selected).toHaveAttribute("data-navigation-active", "true", { timeout: 20_000 });
-      for (const mode of ["projects", "activity"]) {
-        if (mode === "activity") {
-          await sidebar.getByRole("button", { name: "Show activity", exact: true }).click();
-        }
-        const scope = sidebar.locator(
-          mode === "projects" ? '[data-slot="project-group"]' : '[data-slot="activity-feed"]',
-        );
-        const row = scope.locator(`[data-session-id="completed-${mode}"]`);
+      for (const sessionId of ["completed-first", "completed-second"]) {
+        const row = sidebar.locator(`.session-item[data-session-id="${sessionId}"]`);
         const dot = row.getByRole("img", { name: "Ready, unread" });
         const action = row.getByRole("button", { name: /^Resolve / });
         await page.mouse.move(0, 0);

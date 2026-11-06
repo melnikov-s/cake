@@ -5,6 +5,8 @@ import { Effect, Stream } from "effect";
 import { SubagentRpc } from "../protocol/SubagentRpc";
 
 export const subagentHandlers = SubagentRpc.of({
+  "subagents.observeMetadata": ({ parentSessionId }) =>
+    Stream.unwrap(subagentObservation.observeMetadata(parentSessionId)),
   "subagents.observe": ({ parentSessionId }) =>
     Stream.unwrap(subagentObservation.observe(parentSessionId)),
   "subagents.readAttachment": (input) => subagentInputs.readAttachment(input),
