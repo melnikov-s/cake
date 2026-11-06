@@ -1,21 +1,16 @@
-import { messageReference } from "../../contracts/conversations/message-reference";
+import { makeTurnLifecycle } from "./projectSessionTurnLifecycle";
 import type { invokeGlobalArtifactCommand } from "../artifacts/globalArtifacts";
-import { AutomationEvents } from "../../services/automations/AutomationEvents";
 import type { AutomationRecords } from "../../services/automations/AutomationRecords";
 import type { AutomationConfiguration } from "../../services/automations/AutomationConfiguration";
 import type { OptMemory } from "../../services/opt-memory/OptMemory";
-import { publishProjectSession as publishProjectAutomationEvent } from "../automations/automationSourceEvents";
 import * as sessionFamilyAdmission from "../session-families/sessionFamilyAdmission";
 import * as backendAgentControl from "../application/agentControl";
 import type { PiSettings } from "../../services/pi/PiSettings";
 import type { McpSettings } from "../../services/pi/McpSettings";
 import type { WidgetPackages } from "../../services/widgets/WidgetPackages";
-import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
-import { parseScheduledMessage } from "../../contracts/conversations/scheduled-message-envelope";
-import { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
+import type { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
 import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import { ProjectTodoReports } from "../../services/projects/ProjectTodoReports";
-import { substantiveTurnResult, implicitTurnResultFor } from "../../contracts/pi/turn-result-data";
 import * as sessionFamilyMessaging from "../session-families/sessionFamilyMessaging";
 import * as projectSessionAgentPolicy from "./projectSessionAgentPolicy";
 import { cakeModelCatalog, resolveCakeModelSelection } from "../model-presets/cake-model-selection";
@@ -37,12 +32,11 @@ import * as projectSessionContinuations from "./projectSessionContinuations";
 import * as projectSessionOperations from "./projectSessionOperations";
 import * as sessionChats from "../conversations/sessionChats";
 import { inheritTaskInputProtection } from "../conversations/taskInputs";
-import { Context, Effect, Option, Schema, Schedule, type FileSystem, type Path } from "effect";
+import { Context, Effect, Option, Schema, type FileSystem, type Path } from "effect";
 import {
   deleteSessionPlugin,
   setProjectSessionLabelsIfUnlabelled,
   setSessionFastMode,
-  setSessionUnread,
   setSessionPluginState,
   patchSessionPluginState,
   upsertSessionPlugin,
@@ -59,8 +53,6 @@ import { forwardTaskInputControl } from "../cake-chats/taskInputControls";
 import { makeAttachmentReferenceControl } from "../conversations/attachmentReferences";
 import { makeSubagentControl } from "../subagents/subagentControl";
 import * as workflowControl from "../workflows/workflow-control";
-import { WorkflowSupervisor } from "../../services/workflows/WorkflowSupervisor";
-import * as workflowLifecycle from "../workflows/workflow-lifecycle";
 import {
   generateSessionTitle,
   selectInitialSessionLabels,
@@ -165,10 +157,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const configuration = yield* ProjectSessionConfiguration;
   const runtimeHost = yield* ProjectSessionRuntimeHost;
   const sessions = yield* CakeSessionRuntimes;
-  const workflowSupervisor = yield* WorkflowSupervisor;
   const families = yield* SessionFamilyStorage;
-  const automationEvents = yield* Effect.serviceOption(AutomationEvents);
-  const coordination = yield* SessionCoordination;
   const catalogs = yield* SessionCatalogChanges;
   const browser = yield* Effect.serviceOption(Browser);
   const vscode = yield* Effect.serviceOption(VsCodeServer);
@@ -337,30 +326,6 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     return { sessionId: targetId, location: targetLocation };
   });
   const getRuntimeOptions = () => runtimeOptions;
-  const publishActivity = catalogs.publish({
-    _tag: "ProjectSessionActivityChanged",
-    sessionId,
-    projectPath: location.projectPath,
-    workingDirectory: location.workingDirectory,
-    sessionDirectory: location.sessionDirectory,
-  });
-  // A finished turn is durably unread until a window shows it, so sessions no window
-  // observes still surface completion. The cheap activity event carries the flag.
-  const markFinishedTurnUnread = Effect.gen(function* () {
-    const namespace = yield* resolutionNamespace(sessionId, {
-      cwd: location.workingDirectory,
-      activeRoot: location.sessionDirectory,
-      resolvedRoot: location.resolvedSessionDirectory,
-    });
-    if (namespace === "resolved") return;
-    yield* setSessionUnread(sessionId, true);
-    yield* publishActivity;
-  }).pipe(
-    Effect.provideService(ApplicationState, application),
-    Effect.provideService(SessionFamilyStorage, families),
-    Effect.provideService(SessionArchiveStorage, archive),
-    Effect.catchCause((cause) => Effect.logWarning("Could not mark finished turn unread", cause)),
-  );
   const runtimeOptions: CakeSessionRuntimeAcquireOptions = {
     profile: { _tag: "ProjectSession" },
     onInitialize: preparedRuntime.initialize,
@@ -372,158 +337,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       workingDirectory: location.workingDirectory,
       resolved: false,
     }),
-    onTurnActivityChanged: publishActivity,
-    onSessionCreated: Option.isSome(automationEvents)
-      ? publishProjectAutomationEvent({
-          event: "session-created",
-          eventId: `created:${sessionId}`,
-          sessionId,
-          projectPath: location.projectPath,
-        }).pipe(
-          Effect.provideService(AutomationEvents, automationEvents.value),
-          Effect.provideService(SessionFamilyStorage, families),
-          Effect.tapError((error) => Effect.logWarning("Automation source event failed", error)),
-          Effect.ignore,
-        )
-      : Effect.void,
-    admitTurn: (input, accept) => {
-      const message = parseCrossSessionMessage(input.text);
-      const userText =
-        input.internal === undefined
-          ? input.text
-          : input.internal._tag === "UserWithReminders"
-            ? input.internal.userText
-            : undefined;
-      const sourceEvent =
-        Option.isSome(automationEvents) &&
-        userText !== undefined &&
-        !message &&
-        !parseScheduledMessage(input.text)
-          ? publishProjectAutomationEvent({
-              event: "user-message-received",
-              eventId: input.turnId,
-              sessionId,
-              projectPath: location.projectPath,
-              text: userText,
-            }).pipe(
-              Effect.provideService(AutomationEvents, automationEvents.value),
-              Effect.provideService(SessionFamilyStorage, families),
-              Effect.tapError((error) =>
-                Effect.logWarning("Automation source event failed", error),
-              ),
-              Effect.ignore,
-            )
-          : Effect.void;
-      // Bind before Pi can settle a fast turn; the existing family policy still owns admission.
-      const admit = message
-        ? coordination
-            .bindTurn(sessionId, message.metadata.messageId, input.turnId)
-            .pipe(Effect.andThen(accept))
-        : accept;
-      return coordination.checkStorage().pipe(
-        Effect.andThen(
-          sessionFamilyAdmission
-            .admitTurn(
-              sessionId,
-              {
-                cwd: location.workingDirectory,
-                activeRoot: configuration.sessionDirectory,
-                resolvedRoot: configuration.resolvedSessionDirectory,
-              },
-              input,
-              admit.pipe(Effect.andThen(sourceEvent)),
-            )
-            .pipe(
-              Effect.provideService(SessionFamilyStorage, families),
-              Effect.provideService(SessionArchiveStorage, archive),
-            ),
-        ),
-      );
-    },
-    onTurnSettled: (event) =>
-      Effect.gen(function* () {
-        if (
-          Option.isSome(automationEvents) &&
-          event.outcome === "complete" &&
-          event.result?.stopReason === "stop" &&
-          event.result.entryId
-        )
-          yield* publishProjectAutomationEvent({
-            event: "assistant-response-completed",
-            eventId: `${sessionId}:${event.result.entryId}`,
-            sessionId,
-            projectPath: location.projectPath,
-            sourceMessageId: event.result.entryId,
-            text: event.result.text,
-          }).pipe(
-            Effect.provideService(AutomationEvents, automationEvents.value),
-            Effect.provideService(SessionFamilyStorage, families),
-            Effect.tapError((error) => Effect.logWarning("Automation source event failed", error)),
-            Effect.ignore,
-          );
-        const boardDeliveries = (yield* families.state()).boardDeliveries ?? [];
-        if (boardDeliveries.some((item) => item.turnId === event.turnId))
-          yield* families.updateBoardDelivery(
-            event.turnId,
-            event.outcome === "complete"
-              ? "consumed"
-              : event.outcome === "aborted"
-                ? "canceled"
-                : "failed",
-            event.message,
-          );
-        if (
-          (event.outcome === "aborted" || event.outcome === "failed") &&
-          boardDeliveries.some((item) => item.recipientSessionId === sessionId)
-        )
-          yield* families.setBoardDeliveryPaused(sessionId, true);
-        yield* coordination.settleTurn(event.turnId, event.outcome);
-        if (event.outcome !== "aborted") yield* markFinishedTurnUnread;
-        const workflowOwnsCompletion = yield* workflowLifecycle
-          .holdsTurnCompletion(sessionId, event.turnId)
-          .pipe(Effect.provideService(WorkflowSupervisor, workflowSupervisor));
-        const familyTurn = (yield* families.state()).turns.find(
-          (turn) => turn.turnId === event.turnId,
-        );
-        // An explicit report was already queued when recorded; do not summarize it twice.
-        const todoReport = familyTurn?.report ? undefined : substantiveTurnResult(event.result);
-        if (event.outcome !== "aborted" && todoReport && Option.isSome(todoReports))
-          yield* todoReports.value.offer({
-            projectPath: location.projectPath,
-            sessionId,
-            text: todoReport,
-          });
-        if (workflowOwnsCompletion && familyTurn) return;
-        // Only an answer to the requester itself may become its implicit result.
-        const text = familyTurn
-          ? implicitTurnResultFor(event.result, familyTurn.senderSessionId)
-          : undefined;
-        const failed = event.outcome === "failed" || event.result?.stopReason === "error";
-        const outcome = event.outcome === "aborted" ? "aborted" : failed ? "failed" : "complete";
-        const diagnostic = (event.message ?? event.result?.errorMessage)?.trim().slice(0, 100_000);
-        const report =
-          failed && diagnostic
-            ? { outcome: "failed" as const, text: diagnostic }
-            : text
-              ? { outcome: "result" as const, text }
-              : undefined;
-        const resultMessageRef = event.result?.entryId
-          ? messageReference(sessionId, event.result.entryId)
-          : undefined;
-        yield* families
-          .settleTurn(
-            event.turnId,
-            outcome,
-            report ? { ...report, ...(resultMessageRef ? { resultMessageRef } : null) } : undefined,
-            event.stop,
-          )
-          .pipe(
-            Effect.tapError((error) =>
-              Effect.logError("Retrying durable session settlement", error),
-            ),
-            Effect.retry(Schedule.spaced("1 second")),
-          );
-      }),
+    ...(yield* makeTurnLifecycle({ sessionId, location })),
     runtime: {
       ...runtimeIntegrations,
       sessionReferences: {

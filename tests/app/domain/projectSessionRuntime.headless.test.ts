@@ -4,7 +4,7 @@ import { it } from "@effect/vitest";
 import { Context, Deferred, Effect, Exit, Layer, Scope, Stream } from "effect";
 import { expect, vi } from "vitest";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import {
   CakeSessionRuntimes,
   makeCakeSessionRuntimesLayer,
@@ -47,9 +47,11 @@ const adapter = (
 const dependencies = Layer.mergeAll(
   WorkflowTestLive,
   makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
-  Layer.mock(ApplicationState, { snapshot: () => defaultApplicationState() }),
+  ApplicationState.layer.pipe(
+    Layer.provide(Layer.mock(ApplicationStorage, { save: () => Effect.void })),
+  ),
   SessionCatalogChanges.layer,
-  Layer.mock(SessionArchiveStorage, {}),
+  Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active") }),
   Layer.mock(SessionFamilyStorage, {
     familyForMember: () => Effect.succeed(undefined),
     withMemberLock: (_sessionId, effect) => effect,

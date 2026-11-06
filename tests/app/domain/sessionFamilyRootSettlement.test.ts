@@ -3,7 +3,7 @@ import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Stream } from "effect";
 import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { initialize } from "../../../src/domain/session-families/sessionFamilies";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
@@ -58,11 +58,9 @@ const environment = (disposed: Deferred.Deferred<void>) =>
     familyStorageHarness().layer,
     makeProjectSessionRuntimeMechanismTestLayer(),
     SessionCatalogChanges.layer,
-    Layer.mock(ApplicationState, {
-      snapshot: () => ({
-        ...defaultApplicationState(),
-      }),
-    }),
+    ApplicationState.layer.pipe(
+      Layer.provide(Layer.mock(ApplicationStorage, { save: () => Effect.void })),
+    ),
     Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
     Layer.mock(ManagedWorktrees, {
       records: () => Effect.succeed([]),
