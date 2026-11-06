@@ -12,6 +12,10 @@ import { readWidgetTheme } from "../lib/widget-theme";
 import { cn } from "@/lib/utils";
 import type { CompiledInlineWidget } from "../../contracts/widgets/inline-widget-contract";
 import { widgetDocumentUrl } from "../lib/widget-document-url";
+import { Option, Schema } from "effect";
+import { inlineWidgetLinkMessage } from "../../utils/inline-widget-link-message";
+import { useMarkdownLinkActions } from "./ai-elements/markdown";
+import { openWidgetLink } from "../lib/open-widget-link";
 
 /** Authoritative opaque-origin execution frame for compiled Cake widgets. */
 export const InlineWidgetFrame = forwardRef<
@@ -39,7 +43,18 @@ export const InlineWidgetFrame = forwardRef<
   ref,
 ) {
   const colorTheme = useEditorColorTheme();
+  const linkActions = useMarkdownLinkActions();
   const frame = useRef<HTMLIFrameElement>(null);
+  useEffect(() => {
+    const receive = (event: MessageEvent<unknown>) => {
+      if (!linkActions || event.source !== frame.current?.contentWindow) return;
+      const parsed = Schema.decodeUnknownOption(inlineWidgetLinkMessage)(event.data);
+      if (Option.isNone(parsed) || parsed.value.token !== compiled.token) return;
+      openWidgetLink(parsed.value.value.url, linkActions);
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [compiled.token, linkActions]);
   // The initial theme is carried before first paint. Live changes are posted,
   // never assigned to src: reloading would erase widget interaction state.
   const [initial] = useState(() =>

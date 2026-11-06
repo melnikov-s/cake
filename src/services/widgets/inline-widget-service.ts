@@ -1,4 +1,5 @@
 import { widgetThemeColorTokens, widgetThemeFontTokens } from "../../utils/widget-theme";
+import { inlineWidgetLinks } from "./inline-widget-links";
 import { dirname } from "node:path";
 import { TextEncoder } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -114,6 +115,7 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
     applyPresentation(message.value);
   });
   const send = (type, value) => parent.postMessage({ source: "cake-inline-widget", token, type, value }, "*");
+  ${inlineWidgetLinks}
   addEventListener("error", (event) => send("error", event.error?.stack || event.message || "Widget runtime error"));
   addEventListener("unhandledrejection", (event) => send("error", event.reason?.stack || String(event.reason || "Unhandled widget rejection")));
   ${capability === "request" ? `globalThis.cakeRequest = Object.freeze({ submit: (value) => send("submit", value), cancel: () => send("cancel", true) });` : ""}

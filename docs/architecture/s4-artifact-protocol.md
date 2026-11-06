@@ -616,6 +616,17 @@ pages must not use viewport-dependent root heights. Review hosts without app tok
 use browser system-color defaults, not another Cake palette.
 
 The widget runs in an `allow-scripts` iframe without same-origin privilege.
+HTML/React `target="_blank"` links (including dynamically rendered links) send
+an `open-link` message with an absolute URL through the existing source- and
+compilation-token-bound channel. The hosting view reuses its normal external URL
+opener and scheme validation, or its conversation navigation for Cake artifact,
+session, message and subagent references. Electron opens HTTP(S) links on the
+viewing device; the browser host also supports mail links. This does not grant
+popups, parent navigation, Node access or an opener. Downloads, same-frame links,
+hash links and clicks already handled by authored code retain their normal behavior.
+`window.open(url)` uses the same URL-open operation and always returns `null`;
+target/features are not window controls, and blank windows, document writing,
+named-window reuse and WindowProxy access are not emulated.
 Artifact frames additionally allow downloads so ordinary library-owned controls can
 export local PNG, SVG, or editable documents; interviews and session plugins do not
 receive that download grant. Retained assets are served with explicit MIME types,

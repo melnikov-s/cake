@@ -93,6 +93,8 @@ the creation call reuses retained output without compilation or model review.
 
 ## Widget language and state
 
+Ordinary `<a href="https://…" target="_blank">` links open through the viewing device’s host, including React-rendered links. `window.open(url)` also opens a URL through that host but returns `null`: do not rely on popup handles, `document.write`, named-window reuse or window features. Downloads and local hash navigation remain ordinary anchors; do not replace them with `window.open`.
+
 `widgets.present` accepts `widget.language: "html"` for self-contained HTML with inline CSS/JavaScript: no JSX, packages, external scripts or bundling. React is the default for installed libraries, component-heavy UI and prototype-ui manifests. Both use the same sandbox, mandatory browser/visual review, immutable revisions, fallback and retained accepted PNG. Replacements preserve language.
 
 HTML saved state uses `globalThis.cakeArtifact.read()`, `getSnapshot()`, `subscribe(listener)` and `replace(jsonValue, expectedVersion)`; await hydration and handle conflicts. React uses `@cake/artifact-sdk`. The maintained artifact protocol has an HTML state example.
