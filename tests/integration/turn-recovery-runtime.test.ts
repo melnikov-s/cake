@@ -900,8 +900,9 @@ describe("response retry and recovery", () => {
     const { runtime } = await createFixtureRuntime(directory);
     await runtime.setPiSetting({ key: "retryEnabled", value: false });
 
+    // prompt joins response recovery; its settled snapshot is the readiness boundary.
     await runtime.prompt("Do the thing", "prompt", []);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect((await runtime.snapshot()).streaming).toBe(false);
 
     expect(provider.requestCount()).toBe(1);
   });
@@ -918,7 +919,7 @@ describe("response retry and recovery", () => {
     await vi.waitFor(() => expect(provider.requestCount()).toBe(1), { timeout: 2_000 });
     await runtime.abort();
     await prompt.catch(() => undefined);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect((await runtime.snapshot()).streaming).toBe(false);
 
     expect(provider.requestCount()).toBe(1);
     expect(

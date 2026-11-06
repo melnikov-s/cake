@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { DictationStore } from "../stores/DictationStore";
 import type { CakePromptSettingsStore } from "../stores/CakePromptSettingsStore";
@@ -22,9 +22,6 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
 }) {
   const state = store.state;
   const [testDraft, setTestDraft] = useState("");
-  useEffect(() => {
-    void store.refreshDevices();
-  }, [store]);
   const installing = store.busy || state?.status === "installing";
   return (
     <section className="grid gap-1.5" aria-labelledby="dictation-title">

@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -18,7 +18,7 @@ const extension: PiExtensionSetting = {
   source: "auto",
   enabled: true,
 };
-async function fixture(piSettings: TestClientOverrides["piSettings"]) {
+async function fixture(piSettings: TestClientOverrides["piSettings"], visible = true) {
   const stores = createRendererStoreFixture({
     client: {
       models: { list: async () => [] },
@@ -27,6 +27,7 @@ async function fixture(piSettings: TestClientOverrides["piSettings"]) {
   });
   await stores.root.settingsStore.providers.hydrate();
   stores.root.settingsStore.selectPage("runtime");
+  if (visible) stores.root.appShellStore.showSettings();
   const view = render(<SettingsPage settings={stores.root.settingsStore} />);
   return {
     stores,
@@ -80,6 +81,21 @@ describe("Automatic extension settings workflow", () => {
     expect(list).toHaveBeenCalledTimes(2);
     await f.user.click(screen.getByRole("button", { name: "Refresh extensions" }));
     expect(list).toHaveBeenCalledTimes(3);
+  });
+
+  it("refreshes on visible page entry, not render or request-state changes", async () => {
+    const list = vi.fn<Client["piSettings"]["extensions"]>(async () => [extension]);
+    using f = await fixture({ extensions: list }, false);
+    expect(list).not.toHaveBeenCalled();
+    act(() => f.stores.root.appShellStore.showSettings());
+    await screen.findByRole("switch", { name: "example.ts" });
+    expect(list).toHaveBeenCalledTimes(1);
+    await f.user.click(screen.getByRole("button", { name: "Appearance" }));
+    await f.user.click(screen.getByRole("button", { name: "Execution & resources" }));
+    await screen.findByRole("switch", { name: "example.ts" });
+    expect(list).toHaveBeenCalledTimes(2);
+    act(() => f.stores.root.appShellStore.showSettings());
+    expect(list).toHaveBeenCalledTimes(2);
   });
 
   it("shows a failed native update without presenting a successful toggle", async () => {

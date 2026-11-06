@@ -42,6 +42,22 @@ export class CakeChatOverlayStore extends Store<{
     }
   }
 
+  async resize(height: number) {
+    try {
+      await this.props.client.resizeCakeChatOverlay(Math.round(height), { signal: this.signal });
+    } catch (error) {
+      this.report(error, "Could not resize drop-down Cake Chat");
+    }
+  }
+
+  async dismiss() {
+    try {
+      await this.props.client.hideCakeChatOverlay({ signal: this.signal });
+    } catch (error) {
+      this.report(error, "Could not close drop-down Cake Chat");
+    }
+  }
+
   @child get destinationPicker(): CaptureDestinationPickerStore {
     const routing = () => this.props.routing();
     return createStore(CaptureDestinationPickerStore, {
@@ -70,10 +86,11 @@ export class CakeChatOverlayStore extends Store<{
     }
   }
 
-  private report(error: unknown) {
+  private report(error: unknown, title = "Could not open quick Cake Chat") {
+    if (this.signal.aborted) return;
     ToastContext.consume(this)!.show({
       tone: "error",
-      title: "Could not open quick Cake Chat",
+      title,
       message: error instanceof Error ? error.message : String(error),
     });
   }

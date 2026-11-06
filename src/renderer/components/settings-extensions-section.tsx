@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { observer } from "r-state-tree/react";
 import type { ProviderSettingsStore } from "../stores/ProviderSettingsStore";
 import { SettingsToggle } from "./settings/settings-toggle";
@@ -10,9 +9,6 @@ export const SettingsExtensionsSection = observer(function SettingsExtensionsSec
 }: {
   providers: ProviderSettingsStore;
 }) {
-  useEffect(() => {
-    void providers.loadExtensions();
-  }, [providers]);
   return (
     <section className="grid gap-1.5" aria-labelledby="extensions-title">
       <header className="flex items-center justify-between gap-3 px-0.5">

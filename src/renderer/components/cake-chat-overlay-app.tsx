@@ -25,27 +25,11 @@ export const CakeChatOverlayApp = observer(function CakeChatOverlayApp() {
     return () => window.removeEventListener("resize", resized);
   }, []);
   const resize = (next: number) => {
-    void root.client.electron.resizeCakeChatOverlay(Math.round(next)).catch((error: unknown) =>
-      root.toastStore.show({
-        tone: "error",
-        title: "Could not resize drop-down Cake Chat",
-        message: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    void root.cakeChatOverlayStore.resize(next);
   };
   useAppDocument(root);
   useTabInputFocus();
-  const hide = useCallback(
-    () =>
-      void root.client.electron.hideCakeChatOverlay().catch((error: unknown) =>
-        root.toastStore.show({
-          tone: "error",
-          title: "Could not close drop-down Cake Chat",
-          message: error instanceof Error ? error.message : String(error),
-        }),
-      ),
-    [root],
-  );
+  const hide = useCallback(() => void root.cakeChatOverlayStore.dismiss(), [root]);
 
   useEffect(() => {
     const focusComposer = () => {

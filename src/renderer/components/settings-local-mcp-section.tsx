@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { observer } from "r-state-tree/react";
 import type { LocalMcpSettingsStore } from "../stores/LocalMcpSettingsStore";
 import { Button } from "./ui/button";
@@ -13,9 +12,6 @@ export const SettingsLocalMcpSection = observer(function SettingsLocalMcpSection
 }: {
   settings: LocalMcpSettingsStore;
 }) {
-  useEffect(() => {
-    void settings.load();
-  }, [settings]);
   const snapshot = settings.snapshot;
   const enabled = snapshot?.configuration.enabled ?? false;
   const error = settings.error ?? snapshot?.runtime.error;

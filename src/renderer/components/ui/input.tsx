@@ -35,7 +35,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
     <input
       ref={ref}
       type={type}
-      className={cn(inputVariants({ size, variant }), className)}
+      className={cn(
+        type === "checkbox" ? "accent-primary" : inputVariants({ size, variant }),
+        className,
+      )}
       {...props}
     />
   );

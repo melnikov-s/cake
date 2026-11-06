@@ -899,6 +899,8 @@ export class RootStore extends Store<{
   @child
   get settingsStore(): SettingsStore {
     return createStore(SettingsStore, {
+      visible: () => this.appShellStore.coveringSurface === "settings",
+      browserHost: this.props.browserHost,
       dictation: this.dictationStore,
       experimentalFeatures: this.props.projection.experimentalFeatures,
       speech: this.speechSettingsStore,

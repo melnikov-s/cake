@@ -136,6 +136,35 @@ describe("ArtifactHost rendering integration", () => {
     expect(cells()).toEqual(["2", "1"]);
   });
 
+  it("keeps accessible table selection attached to row identity across sorting and filtering", async () => {
+    using fixture = renderArtifactHost({
+      ...base,
+      kind: "table",
+      payload: {
+        columns: [{ id: "score", label: "Score", type: "number" }],
+        rows: [
+          { id: "a", score: 2 },
+          { id: "b", score: 1 },
+        ],
+        selectable: true,
+      },
+    });
+    const selected = () => screen.getByRole("checkbox", { name: "Select a" });
+    expect(selected()).toHaveProperty("checked", false);
+    await fixture.user.click(selected());
+    expect(selected()).toHaveProperty("checked", true);
+    await fixture.user.click(screen.getByRole("button", { name: "Score" }));
+    expect(selected()).toHaveProperty("checked", true);
+    const filter = screen.getByRole("textbox", { name: "Filter table" });
+    await fixture.user.type(filter, "2");
+    expect(screen.getAllByRole("checkbox")).toHaveLength(1);
+    expect(selected()).toHaveProperty("checked", true);
+    await fixture.user.clear(filter);
+    expect(screen.getByRole("checkbox", { name: "Select b" })).toHaveProperty("checked", false);
+    await fixture.user.click(selected());
+    expect(selected()).toHaveProperty("checked", false);
+  });
+
   it.each([undefined, 120, 360])(
     "places authored HTML at height %s behind an empty sandbox and deny-by-default CSP",
     (height) => {

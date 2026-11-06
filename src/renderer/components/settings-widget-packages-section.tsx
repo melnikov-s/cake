@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { observer } from "r-state-tree/react";
 import type { WidgetPackageSettingsStore } from "../stores/WidgetPackageSettingsStore";
 import { Button } from "./ui/button";
@@ -11,9 +10,6 @@ export const SettingsWidgetPackagesSection = observer(function SettingsWidgetPac
 }: {
   settings: WidgetPackageSettingsStore;
 }) {
-  useEffect(() => {
-    void settings.load();
-  }, [settings]);
   return (
     <section id="widget-packages-title" aria-label="Widget packages" className="grid gap-1.5">
       <header className="flex items-center justify-between gap-3 px-0.5">

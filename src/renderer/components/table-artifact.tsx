@@ -104,9 +104,8 @@ export function TableArtifact({
               <tr className="transition-colors hover:bg-muted/40" key={row.id}>
                 {artifact.payload.selectable && (
                   <td className="px-3 py-2">
-                    <input
+                    <Input
                       type="checkbox"
-                      className="accent-primary"
                       aria-label={`Select ${row.id}`}
                       checked={selected.has(row.id)}
                       onChange={() =>

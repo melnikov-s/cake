@@ -488,6 +488,10 @@ describe("exact response presentation", () => {
         readMessageReference(source, request),
     );
     using fixture = createRendererStoreFixture({
+      client: {
+        sessionChats: { inspect },
+        electron: { setFullscreenSurfaceOpen: async () => undefined },
+      },
       projects: [projectRecord({ path: "/project" })],
       sessions: [
         sessionSummary({
@@ -496,7 +500,6 @@ describe("exact response presentation", () => {
           workingDirectory: "/project",
         }),
       ],
-      client: { sessionChats: { inspect } },
     });
     const session = fixture.root.sessionRegistry.load("parent", "/project");
     session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
@@ -523,11 +526,13 @@ describe("exact response presentation", () => {
     const show = () =>
       render(
         <StoreProvider store={fixture.root}>
-          <Chat
-            store={session.conversationSessionStore.chatStore}
-            compact
-            composerFocusEnabled={false}
-          />
+          <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
+            <Chat
+              store={session.conversationSessionStore.chatStore}
+              compact
+              composerFocusEnabled={false}
+            />
+          </StoreProvider>
         </StoreProvider>,
       );
     const user = userEvent.setup();
@@ -565,6 +570,21 @@ describe("exact response presentation", () => {
       expect.objectContaining({ entryId, offset: 20_000 }),
       expect.anything(),
     );
+    // Fullscreen reads the complete source without moving the inline reader's page.
+    await user.click(
+      screen.getByRole("button", { name: "View message fullscreen: Delegated review" }),
+    );
+    const fullscreen = screen.getByRole("dialog", { name: "Delegated review" });
+    expect(
+      await within(fullscreen).findByRole("heading", { name: "Detailed result" }),
+    ).toBeTruthy();
+    expect(await within(fullscreen).findByText(/Final original detail/)).toBeTruthy();
+    await user.click(
+      within(fullscreen).getByRole("button", { name: "Exit fullscreen Delegated review" }),
+    );
+    expect(screen.queryByRole("heading", { name: "Detailed result" })).toBeNull();
+    expect(screen.getByText(/Final original detail/)).toBeTruthy();
+
     // Copying from a later page still copies the whole original, not a truncated page.
     inspect.mockRejectedValueOnce(new Error("Source temporarily unavailable"));
     await user.click(screen.getByRole("button", { name: "Copy message" }));

@@ -113,7 +113,10 @@ export const SessionMessage = observer(function SessionMessage({
         canOpenFullscreen
           ? {
               label: `View message fullscreen: ${title}`,
-              onClick: () => setFullscreen(true),
+              onClick: () => {
+                for (const store of [...sources, ...originals]) store.openFullscreen();
+                setFullscreen(true);
+              },
             }
           : undefined
       }

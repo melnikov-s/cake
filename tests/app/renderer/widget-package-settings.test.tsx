@@ -14,6 +14,8 @@ const installed = { ...empty, packages: [{ name: "vis-network", version: "9.1.9"
 
 function renderPackages(client: TestClientOverrides) {
   const fixture = createRendererStoreFixture({ client });
+  fixture.root.settingsStore.selectPage("widget-packages");
+  fixture.root.appShellStore.showSettings();
   const view = render(
     <SettingsWidgetPackagesSection settings={fixture.root.settingsStore.widgetPackages} />,
   );

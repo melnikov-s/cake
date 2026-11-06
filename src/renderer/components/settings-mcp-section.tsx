@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { observer } from "r-state-tree/react";
 import type { McpSettingsStore } from "../stores/McpSettingsStore";
 import { Button } from "./ui/button";
@@ -14,9 +13,6 @@ export const SettingsMcpSection = observer(function SettingsMcpSection({
 }: {
   settings: McpSettingsStore;
 }) {
-  useEffect(() => {
-    void settings.load();
-  }, [settings]);
   const target = settings.projectScope ? "project" : "backend";
   return (
     <section

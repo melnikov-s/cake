@@ -77,6 +77,7 @@ async function setup(project = false, allowed = true) {
     await fixture.root.projectWorkbenchStore.startNewSession("/project");
   }
   fixture.root.settingsStore.selectPage("mcp");
+  fixture.root.appShellStore.showSettings();
   const view = render(<SettingsPage settings={fixture.root.settingsStore} />);
   await screen.findByRole("button", { name: "Edit docs" });
   return {

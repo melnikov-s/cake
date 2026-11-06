@@ -1,11 +1,10 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { Effect, Layer, ManagedRuntime } from "effect";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BootstrapLive } from "../../src/main/BootstrapLive";
 import {
   WorktreeCommands,
@@ -81,17 +80,22 @@ describe("WorktreeCommands", { timeout: 20_000 }, () => {
 
   it("stops a command and its children when the timeout expires", async () => {
     const { run, directory } = await harness();
-    const marker = join(directory, "child-survived");
+    const childPidPath = join(directory, "child.pid");
     const started = Date.now();
     const result = await run({
       label: "remove",
-      script: `(sleep 2; touch '${marker}') & sleep 30`,
+      script: `sleep 30 & child=$!; echo $child > '${childPidPath}'; wait $child`,
       timeout: "500 millis",
     });
     expect(Date.now() - started).toBeLessThan(10_000);
     expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "timeout" } });
-    await new Promise((resolve) => setTimeout(resolve, 2_500));
-    expect(existsSync(marker)).toBe(false);
+    const childPid = Number((await readFile(childPidPath, "utf8")).trim());
+    expect(childPid).toBeGreaterThan(0);
+    await vi.waitFor(() => {
+      expect(() => process.kill(childPid, 0)).toThrowError(
+        expect.objectContaining({ code: "ESRCH" }),
+      );
+    });
   });
 
   it("resolves tools through Cake's own PATH rather than a login shell's", async () => {

@@ -131,7 +131,7 @@ describe("widget speech reader", () => {
     speech.speak("frame", { id: "1", text: "A. B. C. D. E. F. G." }, listener);
     await vi.waitFor(() => expect(playbacks[0]!.enqueue).toHaveBeenCalledOnce());
     await vi.waitFor(() => expect(requests.length).toBe(3));
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // enqueue is held by the fake playback until flush(), so lookahead cannot advance.
     expect(requests).toEqual(["A.", "B.", "C."]);
     playbacks[0]!.flush();
     await vi.waitFor(() => expect(requests).toEqual(["A.", "B.", "C.", "D."]));

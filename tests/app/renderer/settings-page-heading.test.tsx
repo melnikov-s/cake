@@ -2,7 +2,8 @@
 import { act, cleanup, render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createStore, mount } from "r-state-tree";
+import { createStore, mount, updateStore } from "r-state-tree";
+import type { Microphone } from "../../../src/renderer/dictation/microphone";
 import { DesktopConnectionStore } from "../../../src/renderer/stores/DesktopConnectionStore";
 import { createTestClient } from "./test-client";
 import type { JsonObject } from "../../../src/contracts/serialization/json-contract";
@@ -113,6 +114,36 @@ describe("Settings section navigation", () => {
     expect(document.querySelector("[data-settings-highlighted]")).toBeNull();
     await expect(call("settings.open", { setting: "arbitrary-selector" })).rejects.toThrow();
   });
+  it("discovers microphones on visible Voice settings entry, not section mount or other pages", async () => {
+    const devices = vi.fn<Microphone["devices"]>(async () => [
+      { id: "usb-mic", label: "USB microphone" },
+    ]);
+    const open = vi.fn<Microphone["open"]>(async () => {
+      throw new Error("Settings device discovery must not start recording");
+    });
+    using fixture = createRendererStoreFixture({ microphone: { devices, open } });
+    const settings = fixture.root.settingsStore;
+    settings.selectPage("voice");
+    const view = render(<SettingsPage settings={settings} />);
+    try {
+      expect(screen.getByLabelText("Microphone")).toBeDefined();
+      expect(devices).not.toHaveBeenCalled();
+      act(() => settings.selectPage("appearance"));
+      act(() => fixture.root.appShellStore.showSettings());
+      expect(devices).not.toHaveBeenCalled();
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: /^Voice & Dictation/ }));
+      expect(await screen.findByRole("option", { name: "USB microphone" })).toHaveProperty(
+        "value",
+        "usb-mic",
+      );
+      expect(devices).toHaveBeenCalledOnce();
+      expect(open).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+    }
+  });
+
   it("opens the registered sections with their headings and introductions", async () => {
     using fixture = createRendererStoreFixture({
       client: {
@@ -127,6 +158,8 @@ describe("Settings section navigation", () => {
       },
     });
     const user = userEvent.setup();
+    updateStore(fixture.root, { browserHost: true });
+    fixture.root.appShellStore.showSettings();
     const view = render(<SettingsPage settings={fixture.root.settingsStore} browserMode />);
     try {
       const navigation = within(screen.getByRole("navigation", { name: "Settings pages" }));

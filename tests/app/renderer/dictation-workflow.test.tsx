@@ -1787,6 +1787,8 @@ describe("Dictation writing-field workflow", () => {
       });
       persistence.observe(fixture.root);
       await fixture.user.click(mode());
+      await fixture.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+      await screen.findByRole("option", { name: "USB microphone" });
       await fixture.user.selectOptions(screen.getByLabelText("Microphone"), "usb-mic");
       await fixture.user.click(trial());
       listening();
@@ -1808,6 +1810,7 @@ describe("Dictation writing-field workflow", () => {
     {
       using fixture = renderDictation({ snapshot: saved });
       expect(mode().getAttribute("aria-checked")).toBe("true");
+      await fixture.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
       await waitFor(() =>
         expect(screen.getByLabelText<HTMLSelectElement>("Microphone").value).toBe("usb-mic"),
       );

@@ -2,17 +2,11 @@
  * @vitest-environment jsdom
  */
 import React, { act } from "react";
+import { waitFor } from "@testing-library/react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DiffView } from "../../../../../src/renderer/components/ai-elements/diff-view";
 import { languageForSource } from "../../../../../src/renderer/components/ai-elements/code";
-
-async function waitForSyntaxTokens(container: HTMLElement) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (container.querySelector(".syntax-token")) return;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-}
 
 describe("DiffView", () => {
   let container: HTMLDivElement;
@@ -37,8 +31,8 @@ describe("DiffView", () => {
           diff={"@@ -1,0 +1,2 @@\n+  const value = true;\n+\treturn value;"}
         />,
       );
-      await waitForSyntaxTokens(container);
     });
+    await waitFor(() => expect(container.querySelector(".syntax-token")).not.toBeNull());
 
     const rows = [...container.querySelectorAll<HTMLElement>('[role="row"]')].slice(1);
     expect(rows[0]?.querySelector("code")?.textContent).toBe("+  const value = true;");

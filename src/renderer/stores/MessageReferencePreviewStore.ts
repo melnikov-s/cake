@@ -25,6 +25,11 @@ export class MessageReferencePreviewStore extends Store<{
     });
   }
 
+  /** Fullscreen is an explicit read intent, independent of the inline reader. */
+  openFullscreen() {
+    void this.fullscreenReader.load();
+  }
+
   toggle() {
     this.expanded = !this.expanded;
     if (this.expanded && !this.page && !this.loading) void this.load();

@@ -9,7 +9,7 @@ import { join, resolve } from "node:path";
 import { NodeSocket } from "@effect/platform-node-shared";
 import { chromium, expect as browserExpect } from "@playwright/test";
 import { Effect, Stream } from "effect";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import type { VsCodeLease } from "../../src/services/vscode/VsCodeServerRuntime";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
@@ -227,18 +227,18 @@ it("embeds only an isolated editor origin, supports editor resources and revokes
           const stopServer = processGroupFinalizer(server);
           try {
             upstreamUrl = `http://127.0.0.1:${port}/`;
-            let ready = false;
-            for (let attempt = 0; attempt < 60; attempt++) {
-              ready = await new Promise<boolean>((done) => {
-                httpGet(upstreamUrl, (response) => {
-                  response.resume();
-                  done(response.statusCode === 200 || response.statusCode === 302);
-                }).on("error", () => done(false));
-              });
-              if (ready) break;
-              await new Promise((done) => setTimeout(done, 250));
-            }
-            if (!ready) throw new Error("Installed code-server never became ready");
+            await vi.waitFor(
+              async () => {
+                const ready = await new Promise<boolean>((done) => {
+                  httpGet(upstreamUrl, (response) => {
+                    response.resume();
+                    done(response.statusCode === 200 || response.statusCode === 302);
+                  }).on("error", () => done(false));
+                });
+                expect(ready, "Installed code-server HTTP readiness").toBe(true);
+              },
+              { timeout: 15_000, interval: 250 },
+            );
             await page
               .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
               .last()

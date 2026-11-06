@@ -31,7 +31,8 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
   themeSource: ReadonlyMap<string, string> | undefined = undefined;
   themeEntries: string[] = observable([]);
   selectedEntry = "";
-  importedEntries = new Map<string, ColorThemeChoice>();
+  /** Import-session deduplication only; rendered choices live in importedThemes. */
+  private readonly importedEntries = new Map<string, ColorThemeChoice>();
   @snapshot projectAvatarsEnabled = true;
   @snapshot sessionAvatarsEnabled = true;
   @snapshot sidebarCharactersEnabled = false;

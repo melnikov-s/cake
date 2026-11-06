@@ -3,7 +3,7 @@ import type { ScreenCaptureAttachmentStore } from "./ScreenCaptureAttachmentStor
 import type { SpeechSettingsStore } from "./SpeechSettingsStore";
 import type { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
 import type { DesktopConnectionStore } from "./DesktopConnectionStore";
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, createStore, untracked } from "r-state-tree";
 import type {
   CakeSettingsSectionId,
   CakeSettingsSectionView,
@@ -38,6 +38,8 @@ import { settingsSectionError, type SettingsError } from "../lib/settings-error"
 import type { SettingsPageId } from "../../contracts/application/settings-navigation";
 
 export interface SettingsStoreProps {
+  visible(): boolean;
+  browserHost: boolean;
   dictation: DictationStore;
   experimentalFeatures: ExperimentalFeatures;
   speech: SpeechSettingsStore;
@@ -50,6 +52,22 @@ export interface SettingsStoreProps {
 
 /** Coordinates the focused workflows presented by the settings surface. */
 export class SettingsStore extends Store<SettingsStoreProps> {
+  constructor(props: SettingsStore["props"]) {
+    super(props);
+    this.effect(() => {
+      const page = this.props.visible() ? this.activePage : undefined;
+      // Page entry owns refresh; request state must not retrigger activation.
+      untracked(() => {
+        if (page === "mcp") {
+          void this.localMcp.load();
+          void this.mcp.load();
+        } else if (page === "widget-packages") void this.widgetPackages.load();
+        else if (page === "runtime") void this.providers.loadExtensions();
+        else if (page === "voice" && !this.props.browserHost) void this.dictation.refreshDevices();
+      });
+    });
+  }
+
   activePage: SettingsPageId = "models";
   /** Ephemeral navigation intent shared by Settings search and authorized agent controls. */
   scrollRequest: { targetId: string } | undefined;

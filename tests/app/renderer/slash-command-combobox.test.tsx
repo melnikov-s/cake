@@ -23,7 +23,8 @@ function command(name: string): SlashCommand {
 
 async function waitForFileSuggestions() {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    // Advance the component's file-suggestion debounce, including its Promise completion.
+    await vi.advanceTimersByTimeAsync(20);
   });
 }
 
@@ -32,6 +33,7 @@ describe("SlashCommandCombobox", () => {
   let root: Root;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     Object.assign(globalThis, {
       IS_REACT_ACT_ENVIRONMENT: true,
       requestAnimationFrame: (callback: FrameRequestCallback) => {
@@ -48,6 +50,7 @@ describe("SlashCommandCombobox", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    vi.useRealTimers();
   });
 
   it("moves through commands with arrow keys and selects the active command with Enter", () => {

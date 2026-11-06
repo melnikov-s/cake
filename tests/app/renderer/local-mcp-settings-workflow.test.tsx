@@ -56,6 +56,7 @@ async function setup(failure = false) {
     },
   });
   fixture.root.settingsStore.selectPage("mcp");
+  fixture.root.appShellStore.showSettings();
   const user = userEvent.setup();
   const view = render(<SettingsPage settings={fixture.root.settingsStore} />);
   const section = within(screen.getByRole("region", { name: "Cake MCP server" }));
