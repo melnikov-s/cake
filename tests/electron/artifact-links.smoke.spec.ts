@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Effect } from "effect";
@@ -13,7 +13,7 @@ import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-i
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 for (const language of ["html", "react"] as const) {
-  test(`opaque ${language} artifact links use the host opener without popups`, async () => {
+  test(`retained ${language} artifact without a link bridge uses the host opener without popups`, async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-artifact-links-"));
     const paths = {
       cakeHome: join(root, "cake-home"),
@@ -51,6 +51,17 @@ export default function Links() {
         ),
       ),
     );
+    const retainedPath = join(
+      paths.cakeHome,
+      "state",
+      "artifacts",
+      "browser-outputs",
+      browser.digest,
+      "document.html",
+    );
+    const retainedDocument = await readFile(retainedPath, "utf8");
+    // Reproduce pre-link-bridge artifacts: publication, not recompilation, must add host capabilities.
+    expect(retainedDocument).not.toContain('send("open-link"');
     await seedArtifact(
       paths,
       {
@@ -155,6 +166,7 @@ export default function Links() {
         "https://example.com/dynamic",
         "https://example.com/script",
       ]);
+      expect(await readFile(retainedPath, "utf8")).toBe(retainedDocument);
       expect(app.windows()).toHaveLength(1);
       expect(
         await app.evaluate(({ BrowserWindow }) =>

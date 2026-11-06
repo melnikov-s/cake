@@ -616,7 +616,10 @@ pages must not use viewport-dependent root heights. Review hosts without app tok
 use browser system-color defaults, not another Cake palette.
 
 The widget runs in an `allow-scripts` iframe without same-origin privilege.
-HTML/React `target="_blank"` links (including dynamically rendered links) send
+The host adds its link bootstrap when publishing each disposable document, for both
+fresh compilations and reopened retained outputs. Immutable retained bytes and authored
+source are unchanged; existing artifacts receive the current host capability without
+regeneration. HTML/React `target="_blank"` links (including dynamically rendered links) send
 an `open-link` message with an absolute URL through the existing source- and
 compilation-token-bound channel. The hosting view reuses its normal external URL
 opener and scheme validation, or its conversation navigation for Cake artifact,

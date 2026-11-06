@@ -20,7 +20,10 @@ import {
   publishInlineWidget,
   revokeInlineWidget,
 } from "../../../../src/services/widgets/inline-widget-document-registry";
-import type { CompiledInlineWidgetDocument } from "../../../../src/services/widgets/inline-widget-service";
+import {
+  compileInlineWidget,
+  type CompiledInlineWidgetDocument,
+} from "../../../../src/services/widgets/inline-widget-service";
 
 const fixture = <A, E>(
   run: (
@@ -69,6 +72,44 @@ const compiled = (): CompiledInlineWidgetDocument => ({
 });
 
 describe("InlineWidgets publication ownership", () => {
+  it.effect(
+    "adds one current link bootstrap to fresh and retained publications without changing retained output",
+    () =>
+      fixture(() =>
+        Effect.gen(function* () {
+          const widgets = yield* InlineWidgets;
+          const outputs = yield* WidgetBrowserOutputs;
+          const clients = yield* ClientConnections;
+          const owner = clients.socket();
+          const source = '<a href="https://example.com" target="_blank">Website</a>';
+          // The retained document has the pre-link-bridge format, with no link bootstrap.
+          const retained = yield* Effect.promise(() =>
+            compileInlineWidget("html", source, "artifact"),
+          );
+          expect(retained.document).not.toContain('send("open-link"');
+          const browser = yield* outputs.retain(retained);
+          const opened = (yield* widgets.open(owner, { browser })).widget;
+          const second = (yield* widgets.open(owner, { browser })).widget;
+          const fresh = (yield* widgets.compile(owner, {
+            language: "html",
+            source,
+            capability: "artifact",
+          })).widget;
+          for (const widget of [opened, second, fresh]) {
+            const resource = inlineWidgetResource(widget.token, "");
+            expect(resource).toBeDefined();
+            const document = Buffer.from(resource!.data).toString("utf8");
+            expect(document.match(/send\("open-link"/g)).toHaveLength(1);
+            expect(document).toContain(widget.token);
+            expect(document.indexOf('send("open-link"')).toBeLessThan(document.indexOf("</head>"));
+          }
+          expect(opened.token).not.toBe(second.token);
+          expect((yield* outputs.open(browser)).document).not.toContain('send("open-link"');
+          expect(retained.document).not.toContain('send("open-link"');
+        }),
+      ),
+  );
+
   it.effect("layer shutdown revokes all remaining publications", () =>
     Effect.gen(function* () {
       const { token, tokens } = yield* fixture((tokens) =>

@@ -1,5 +1,8 @@
-/** Shared by HTML, React, and Session Plugin documents, before authored code runs. */
-export const inlineWidgetLinks = `
+/** Host capability applied at publication, never retained in immutable browser output. */
+export function withInlineWidgetLinks(document: string, token: string): string {
+  const bootstrap = `<script>
+(() => {
+  const send = (type, value) => parent.postMessage({ source: "cake-inline-widget", token: ${JSON.stringify(token)}, type, value }, "*");
   const openLink = (value) => {
     if (value == null || String(value).trim() === "") return;
     const url = new URL(String(value), document.baseURI);
@@ -18,4 +21,8 @@ export const inlineWidgetLinks = `
     event.preventDefault();
     openLink(anchor.href);
   });
-`;
+})();
+</script>`;
+  // Compiler-owned shells have one head; insert before authored body scripts run.
+  return document.replace("</head>", `${bootstrap}</head>`);
+}
