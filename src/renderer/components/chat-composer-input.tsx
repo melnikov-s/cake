@@ -1,4 +1,7 @@
 import { useState, useRef, type RefObject } from "react";
+import { flushSync } from "react-dom";
+import { useOptionalStore } from "r-state-tree/react";
+import { DictationStore } from "../stores/DictationStore";
 import { ModelPicker } from "./model-picker";
 import {
   serializeModelReference,
@@ -44,6 +47,15 @@ export const ChatComposerInput = observer(function ChatComposerInput({
     ComposerSelection & { model?: ModelReferenceSelection }
   >();
   const referenceAnchor = useRef<HTMLElement | null>(null);
+  const dictation = useOptionalStore(DictationStore);
+  const [referenceInteraction, setReferenceInteraction] = useState(false);
+  const restoreWritingFocus = useRef(true);
+  const suspendReferenceDictation = () => {
+    // Opt out before opening the native menu: ordinary blur deliberately keeps capturing.
+    restoreWritingFocus.current = !dictation?.enabled || dictation.muted || dictation.capturing;
+    flushSync(() => setReferenceInteraction(true));
+    inputRef.current?.blur();
+  };
   const configuration = store.configuration;
   const openReference = (
     selection: ComposerSelection,
@@ -57,6 +69,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
   const selectReference = (model: ModelReferenceSelection) => {
     if (!reference || store.draft !== reference.draft) {
       setReference(undefined);
+      setReferenceInteraction(false);
       return;
     }
     const token = serializeModelReference(model);
@@ -66,8 +79,13 @@ export const ChatComposerInput = observer(function ChatComposerInput({
     const cursor = reference.start + token.length;
     setReference(undefined);
     requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.setSelectionRange(cursor, cursor);
+      // Focus while still opted out, then let normal focus eligibility re-register the field.
+      // A manually stopped user must not be re-armed by the textarea-to-chip-input swap.
+      if (restoreWritingFocus.current) {
+        inputRef.current?.focus();
+        inputRef.current?.setSelectionRange(cursor, cursor);
+      } else focusRef.current?.parkingAnchor()?.focus({ preventScroll: true });
+      setReferenceInteraction(false);
     });
   };
   const conversation = store.conversationMode;
@@ -82,7 +100,10 @@ export const ChatComposerInput = observer(function ChatComposerInput({
           anchorRef={referenceAnchor}
           open
           onOpenChange={(open) => {
-            if (!open) setReference(undefined);
+            if (!open) {
+              setReference(undefined);
+              setReferenceInteraction(false);
+            }
           }}
           ariaLabel="Model reference"
           groups={() => configuration.connectedModelsByProvider}
@@ -114,7 +135,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
         />
       )}
       <SlashCommandCombobox
-        dictation={!voiceOwnsInput}
+        dictation={!voiceOwnsInput && !referenceInteraction}
         dictationSubmit={
           !store.editingMessage && !store.submitsAsDraft && !store.isDraftSession
             ? () => onSubmit(inputRef.current?.value ?? store.draft)
@@ -142,6 +163,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
         onEditModelReference={
           configuration
             ? (segment, anchor) => {
+                suspendReferenceDictation();
                 openReference(
                   {
                     draft: store.draft,
@@ -167,13 +189,18 @@ export const ChatComposerInput = observer(function ChatComposerInput({
             end,
             text: input.value.slice(start, end),
           };
+          suspendReferenceDictation();
           void store
             .showComposerContextMenu(selection.text, event.clientX, event.clientY)
             .then((action) => {
               if (action === "insert-model") openReference(selection, input);
-              else if (action === "reword") onReword(selection);
-              else if (action === "reword-with-prompt") onPromptedReword(selection);
-            });
+              else {
+                setReferenceInteraction(false);
+                if (action === "reword") onReword(selection);
+                else if (action === "reword-with-prompt") onPromptedReword(selection);
+              }
+            })
+            .catch(() => setReferenceInteraction(false));
         }}
         onPaste={(event) => {
           const text = store.canPasteText ? event.clipboardData.getData("text/plain") : "";
