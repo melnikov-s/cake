@@ -519,12 +519,14 @@ is a refactoring signal, not precedent.
   (revision and user/agent/sessions source). Requesting `done` on a done item is a no-op
   for state; a stale `done` edit whose only intervening change was that completion
   still applies its other fields, while any other intervening edit stays a revision
-  conflict. View focus exists only while that permanent chat's To-do panel is open:
-  closing the panel clears it without a user-change reminder, and app startup clears persisted
-  focus because no panel is open then. Completion and snoozing also clear focus atomically. A faint
-  shared association cue on the selected to-do and its linked session/worker rows shows only while
-  that Project Chat is the focused conversation with its panel open; it is distinct from actual
-  navigation selection and never navigates or wakes work.
+  conflict. Transcript view focus is window-local and survives closing the To-do panel;
+  explicit unfocus/clear or removal of the item ends it. A strong accent ring and tinted
+  highlight identify focused to-do rows and the To-do toolbar button (including its count),
+  even with the panel closed. Linked session/worker rows retain the quieter association
+  cue while that Project Chat is the focused conversation. These cues are distinct from
+  keyboard focus, attention and navigation selection and never wake work. Explicit task
+  focus reveals the latest attributed transcript message through shared message navigation;
+  background updates and composer focus never repeat the navigation.
   User context deltas coalesce in the Project record; read-only send preparation copies
   them into the existing recoverable input. A bound receipt is acknowledged only after
   Pi Durable has placed that input in originals, not on preparation or queue admission.

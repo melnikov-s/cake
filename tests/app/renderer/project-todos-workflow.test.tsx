@@ -794,7 +794,7 @@ it("highlights every linked session, including sessions in a managed worktree", 
   ).toHaveLength(0);
 });
 
-it("shares a weak association cue across all linked rows, updates and clears it without changing navigation", async () => {
+it("distinguishes strong to-do view focus from weak linked-session cues without changing navigation", async () => {
   using fixture = renderTodos(true);
   const row = (id: string) => fixture.container.querySelector(`[data-session-id="${id}"]`)!;
   const todo = (title: string) => screen.getByRole("button", { name: title });
@@ -811,8 +811,9 @@ it("shares a weak association cue across all linked rows, updates and clears it 
   await fixture.user.click(todo("Investigate startup"));
   expect(fixture.associated()).toEqual(["first", "second"]);
   expect(cue("Investigate startup").getAttribute("data-associated")).toBe("true");
-  expect(cue("Investigate startup").className).toContain("outline-dashed");
-  expect(cue("Investigate startup").className).toContain("bg-sidebar-hover/35");
+  expect(cue("Investigate startup").getAttribute("data-view-focused")).toBe("true");
+  expect(cue("Investigate startup").className).toContain("ring-accent");
+  expect(cue("Investigate startup").className).toContain("bg-accent/15");
   expect(cue("Investigate startup").className).not.toContain("bg-sidebar-active");
   expect(todo("Investigate startup").getAttribute("aria-pressed")).toBe("true");
   expect(row("second").className).toContain("outline-dashed");
@@ -830,6 +831,7 @@ it("shares a weak association cue across all linked rows, updates and clears it 
   await fixture.user.click(screen.getByRole("button", { name: "Unfocus to-do: Follow up" }));
   expect(fixture.associated()).toEqual(["first", "second"]);
   expect(cue("Follow up").hasAttribute("data-associated")).toBe(false);
+  expect(cue("Follow up").hasAttribute("data-view-focused")).toBe(false);
   await fixture.user.click(screen.getByRole("button", { name: "Mark done: Investigate startup" }));
   expect(fixture.associated()).toEqual(["first", "second"]);
   await fixture.user.click(
@@ -839,21 +841,21 @@ it("shares a weak association cue across all linked rows, updates and clears it 
   expectNavigationUnchanged();
 });
 
-it("closing the to-do panel clears the selection for the sidebar and the agent context", async () => {
+it("closing the to-do panel preserves view focus without attaching composer context", async () => {
   using fixture = renderTodos(true);
   await fixture.user.click(screen.getByRole("button", { name: "Investigate startup" }));
   expect(fixture.associated()).toEqual(["first", "second"]);
   expect(fixture.store.focusedItemIds).toEqual(["00000000-0000-4000-8000-000000000011"]);
   await act(async () => fixture.store.toggle());
   expect(fixture.store.visible).toBe(false);
-  expect(fixture.associated()).toEqual([]);
+  expect(fixture.associated()).toEqual(["first", "second"]);
   expect(fixture.todos().selectedId).toBeNull();
   const baseline = projectTodoBaseline(fixture.todos());
   expect(baseline).toContain('"activeCount":2');
   await act(async () => fixture.store.open());
   expect(
     screen.getByRole("button", { name: "Investigate startup" }).getAttribute("aria-pressed"),
-  ).toBe("false");
+  ).toBe("true");
 });
 
 it("hides the sidebar cue while another conversation is focused and restores it on return", async () => {

@@ -48,6 +48,8 @@ export class ProjectTodosStore extends Store<{
   inspectedItemId: string | undefined;
   /** Window-local view overlay; independent of lifecycle, attention and message context. */
   focusedItemIds: string[] = [];
+  /** One-shot explicit navigation, resolved against the committed transcript task sections. */
+  transcriptFocusRequest: { todoId: string } | undefined;
   paneRequest: { id: string; scroll: "top" | "nearest" | "none"; focus: boolean } | undefined;
   /** Window-local presentation only; never written into messages or to-do metadata. */
   transcriptSections: Record<string, boolean> = {};
@@ -66,12 +68,6 @@ export class ProjectTodosStore extends Store<{
       () => this.source?.owner.todoCreationRevision ?? 0,
       (revision, previous) => {
         if (revision > previous) this.open();
-      },
-    );
-    this.reaction(
-      () => this.visible,
-      (visible) => {
-        if (!visible) this.clearFocus();
       },
     );
     this.reaction(
@@ -94,7 +90,6 @@ export class ProjectTodosStore extends Store<{
     return this.source?.owner.todos;
   }
   get focusedItems() {
-    if (!this.visible) return [];
     const items = new Map(this.value?.items.map((item) => [item.id, item]));
     return this.focusedItemIds.flatMap((id) => items.get(id) ?? []);
   }
@@ -265,6 +260,7 @@ export class ProjectTodosStore extends Store<{
   focus(item: ProjectTodo) {
     if (this.isFocused(item.id)) return;
     this.focusedItemIds = [item.id, ...this.focusedItemIds];
+    this.transcriptFocusRequest = { todoId: item.id };
     this.requestPane(item.id, "top", true);
   }
   unfocus(item: ProjectTodo) {
@@ -277,6 +273,10 @@ export class ProjectTodosStore extends Store<{
   }
   clearFocus() {
     this.focusedItemIds = [];
+    this.completeTranscriptFocusRequest();
+  }
+  completeTranscriptFocusRequest() {
+    this.transcriptFocusRequest = undefined;
   }
   completePaneRequest() {
     this.paneRequest = undefined;

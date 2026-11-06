@@ -77,7 +77,11 @@ for (const global of [false, true])
       const titleBounds = (await navigation.boundingBox())!;
       const toggleBounds = (await toggle.boundingBox())!;
       const iconBounds = (await chevron.boundingBox())!;
-      expect(toggleBounds.x - titleBounds.x - titleBounds.width).toBeLessThanOrEqual(8);
+      const focusBounds = (await firstLabel
+        .getByRole("button", { name: `Focus to-do: ${titleA}`, exact: true })
+        .boundingBox())!;
+      expect(focusBounds.x).toBeGreaterThanOrEqual(titleBounds.x + titleBounds.width);
+      expect(toggleBounds.x - focusBounds.x - focusBounds.width).toBeLessThanOrEqual(8);
       expect(toggleBounds.x + toggleBounds.width).toBeCloseTo(labelBounds.x + labelBounds.width, 0);
       expect(iconBounds.x + iconBounds.width).toBeGreaterThan(
         labelBounds.x + labelBounds.width - 12,
@@ -130,14 +134,15 @@ for (const global of [false, true])
       await headingB.press("Space");
       await expect(headingB).toHaveAttribute("aria-expanded", "true");
       await selectB.click();
-      await expect(headingsA.nth(0)).toHaveAttribute("aria-expanded", "false");
-      await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "false");
-      await expect(headingB).toHaveAttribute("aria-expanded", "true");
-      await selectB.click();
-      await expect(bar).toHaveCount(0);
+      // View focus is additive. Clicking an already focused row is a no-op;
+      // explicit unfocus/clear controls own removal.
       await expect(headingsA.nth(0)).toHaveAttribute("aria-expanded", "true");
       await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "true");
-      await selectA.click();
+      await expect(headingB).toHaveAttribute("aria-expanded", "true");
+      await selectB.click();
+      await expect(bar).toBeVisible();
+      await panel.getByRole("button", { name: `Unfocus to-do: ${titleB}`, exact: true }).click();
+      await expect(selectA).toHaveAttribute("aria-pressed", "true");
       await clear.press("Enter");
       await expect(selectA).toHaveAttribute("aria-pressed", "false");
       await expect(bar).toHaveCount(0);
@@ -224,10 +229,14 @@ for (const global of [false, true])
       expect(barY).toBeGreaterThan(0);
       await expect(removeContext).toBeVisible();
       await expect(headingB).toHaveAttribute("aria-expanded", "true");
-      // Real domain mutations clear view focus without changing the attached snapshot.
+      // Lifecycle changes preserve local view focus and the attached snapshot.
       await selectA.click();
       await panel.getByRole("button", { name: `Mark done: ${titleA}`, exact: true }).click();
-      await expect(bar).toHaveCount(0);
+      await expect(
+        panel.getByRole("button", { name: `Reopen: ${titleA}`, exact: true }),
+      ).toBeVisible();
+      await expect(selectA).toHaveAttribute("aria-pressed", "true");
+      await expect(bar).toBeVisible();
       await expect(selectB).toHaveAttribute("aria-pressed", "false");
       await selectB.click();
       await expect(bar).toBeVisible();
@@ -236,6 +245,9 @@ for (const global of [false, true])
         .click({ button: "right" });
       await page.getByRole("menuitem", { name: "Snooze", exact: true }).click();
       await page.getByRole("menuitem", { name: "1 day", exact: true }).click();
+      await expect(bar).toBeVisible();
+      await expect(selectB).toHaveAttribute("aria-pressed", "true");
+      await clear.click();
       await expect(bar).toHaveCount(0);
       await expect(selectB).toHaveAttribute("aria-pressed", "false");
       await expect(removeContext).toBeVisible();

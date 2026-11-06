@@ -93,7 +93,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           wholeRowAction
           selectableText
           associated={selected || inspected}
-          title={`Focus to-do: ${item.title}`}
+          viewFocused={selected}
           aria-busy={store.busy}
           actionProps={{
             "aria-pressed": selected,

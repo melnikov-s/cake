@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "@/lib/utils";
+import { viewFocusHighlightClassName } from "./view-focus";
 
 /** Advisory relationship cue, deliberately weaker than navigation selection and focus. */
 export const associationHighlightClassName =
@@ -23,6 +24,8 @@ export interface NavItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "onCl
   active?: boolean;
   /** Related context, not navigation selection. Active always takes precedence. */
   associated?: boolean;
+  /** Persistent view focus, stronger than an advisory relationship or hover. */
+  viewFocused?: boolean;
   disabled?: boolean;
   /** Springy title movement on hover/selection and press; respects reduced motion. */
   motionFeedback?: boolean;
@@ -58,6 +61,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
     labelAction,
     active = false,
     associated = false,
+    viewFocused = false,
     disabled = false,
     motionFeedback = false,
     wholeRowAction = false,
@@ -146,13 +150,15 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
     <div
       ref={ref}
       data-associated={associated && !active ? "true" : undefined}
+      data-view-focused={viewFocused || undefined}
       className={cn(
         "group group/nav-item grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md px-2 py-1 text-left text-xs tracking-[-0.005em] transition-colors select-none [app-region:no-drag]",
         !trailing && "grid-cols-1",
         active
           ? "bg-sidebar-active text-sidebar-selection-foreground font-medium"
           : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
-        associated && !active && associationHighlightClassName,
+        associated && !active && !viewFocused && associationHighlightClassName,
+        viewFocused && viewFocusHighlightClassName,
         wholeRowAction && "relative",
         wholeRowAction && !disabled && "cursor-pointer",
         selectableText && "select-text cursor-text",

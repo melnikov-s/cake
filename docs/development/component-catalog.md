@@ -231,15 +231,17 @@ in the shared fullscreen preview; non-image attachments retain labels. Thumbnail
 are renderer presentation only: Cake Chat still admits opaque input references,
 not image payloads, to its model context.
 
-[`MarginRail`](../../src/renderer/components/ui/margin-rail.tsx) renders an unbordered task heading above its messages at every width, outdented up to 6rem from the centered message column, bounded by the transcript's safe left inset. The continuation rule begins below the complete title heading, including wrapped text, and task switches leave a gap in the rule. Rich artifact/widget rows break the rule, not the heading. Each heading has sibling keyboard-operable actions: the content-sized title opens the existing To-do pane without selecting next-message context or folding the conversation; the remaining space and far-right chevron toggle its contiguous stretch, with `aria-expanded`. The leading done/open status is read-only.
+[`MarginRail`](../../src/renderer/components/ui/margin-rail.tsx) renders an unbordered task heading above its messages at every width, outdented up to 6rem from the centered message column, bounded by the transcript's safe left inset. The continuation rule begins below the complete title heading, including wrapped text, and task switches leave a gap in the rule. Rich artifact/widget rows break the rule, not the heading. Each heading has sibling keyboard-operable actions: the content-sized title opens the existing To-do pane without selecting next-message context or folding the conversation; the focus action focuses that to-do and reveals its latest transcript message; the remaining space and far-right chevron toggle its contiguous stretch, with `aria-expanded`. Focus is view-only, never composer context. The leading done/open status is read-only.
 
 [`SelectionBar`](../../src/renderer/components/ui/selection-bar.tsx) shows a caller-provided label, compact truncating selection context and an accessible clear action beneath a surface header, outside its scrolling content.
 
 `NavItem.associated` and `SessionListItem.associated` share a faint tinted, dashed-outline
-relationship cue for the selected Project Chat or global Cake Chat to-do and its linked
-sidebar sessions.
-This is not navigation selection: active/selected rows keep their stronger treatment,
-while association leaves action semantics, hover and keyboard focus intact. Subagent work links
+relationship cue for inspected to-dos and linked sidebar sessions.
+`NavItem.viewFocused` and `IconButton.viewFocused` share a stronger accent ring and tint
+for persistent task view focus. The to-do row and toolbar button use it independently of
+pane visibility, keyboard focus, needs-attention and navigation selection; the entire
+numbered toolbar button receives the treatment. Clearing view focus removes it.
+Association leaves action semantics, hover and keyboard focus intact. Subagent work links
 use `cake://subagent/<encoded-parent>/<public-handle>` and the shared Markdown navigation to
 open the existing worker chat/report under its parent. Private Pi IDs are never session links.
 Subagent call rows use the same advisory cue; worker completion/release is not to-do resolution.

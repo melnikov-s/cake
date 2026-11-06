@@ -174,6 +174,16 @@ export const ChatTranscript = observer(function ChatTranscript({
   ];
   const allItemKeys = transcriptItemKeys(allItems);
   const selectedMessageId = store.transcriptInteraction.selectedMessageId;
+  const messageSelection = store.transcriptInteraction.messageSelection;
+  // Each selection revision is revealed once. A keyboard selection that survives a
+  // remount keeps the restored scroll position; linked navigation reveals again.
+  const revealedSelectionRevision = useRef(
+    untracked(() =>
+      store.transcriptInteraction.messageSelection?.origin === "keyboard"
+        ? store.transcriptInteraction.messageSelection.revision
+        : undefined,
+    ),
+  );
   const taskSections =
     (isCakeChatSessionId(store.id) || cakeChatSideChatParentId(store.id)) && behavior.todos
       ? transcriptTaskSections(allItems, (item) => {
@@ -187,6 +197,22 @@ export const ChatTranscript = observer(function ChatTranscript({
           return linked?.length === 1 ? linked[0]?.id : undefined;
         })
       : undefined;
+  // Resolve explicit task focus from the same attribution used for filtering,
+  // after the focus change has committed. Message navigation owns expansion and
+  // offscreen/virtualized reveals; background updates never create a request.
+  useLayoutEffect(() => {
+    const todos = behavior.todos;
+    const request = todos?.transcriptFocusRequest;
+    if (!request || !taskSections) return;
+    const target = allItems.findLast(
+      (item, index) =>
+        item.kind !== "loading-state" && taskSections.sections[index]?.todoId === request.todoId,
+    );
+    todos.completeTranscriptFocusRequest();
+    if (!target) return;
+    const messageId = "parts" in target ? target.parts.at(-1)?.id : target.id;
+    if (messageId) store.transcriptInteraction.navigateToMessage(messageId);
+  });
   // Keep every section heading in chronology, even when its body is folded.
   // Filtering the view avoids zero-height rows in the virtualizer.
   const sectionViews = taskSections?.sections.map((section, index) => {
@@ -220,7 +246,9 @@ export const ChatTranscript = observer(function ChatTranscript({
       ]
     : undefined;
   const revealSectionKey =
-    selectedHiddenSection && !selectedHiddenSection.expanded
+    selectedHiddenSection &&
+    !selectedHiddenSection.expanded &&
+    revealedSelectionRevision.current !== messageSelection?.revision
       ? selectedHiddenSection.key
       : undefined;
   // Message links and keyboard navigation must still reveal folded messages.
@@ -277,7 +305,6 @@ export const ChatTranscript = observer(function ChatTranscript({
     () => ({ ...transcriptBehavior, onReplyToMessage: undefined }),
     [transcriptBehavior],
   );
-  const messageSelection = store.transcriptInteraction.messageSelection;
   const selectedItemIndex = selectedMessageId
     ? items.findIndex((item) =>
         item.kind === "side-chat-import" ||
@@ -289,15 +316,6 @@ export const ChatTranscript = observer(function ChatTranscript({
       )
     : -1;
   const navigationItemIndex = messageSelection?.origin === "navigation" ? selectedItemIndex : -1;
-  // Each selection revision is revealed once. A keyboard selection that survives a
-  // remount keeps the restored scroll position; linked navigation reveals again.
-  const revealedSelectionRevision = useRef(
-    untracked(() =>
-      store.transcriptInteraction.messageSelection?.origin === "keyboard"
-        ? store.transcriptInteraction.messageSelection.revision
-        : undefined,
-    ),
-  );
   const restoredMessageItemIndex =
     restoredScrollPosition?.kind === "message"
       ? items.findIndex((item) =>

@@ -198,6 +198,69 @@ for (const global of [false, true]) {
   });
 }
 
+for (const entry of ["pane", "message"] as const) {
+  it(`reveals the latest task message once from ${entry} focus and safely ignores missing messages`, async () => {
+    using fixture = createRendererStoreFixture();
+    applySnapshot(fixture.models.cakeChatTodos, {
+      todos: { ...emptyProjectTodos(), items: [todo(a, "Task A"), todo(b, "Task B")] },
+    });
+    const session = fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID);
+    const chat = session.conversationSessionStore.chatStore;
+    [
+      user("a-first", a),
+      answer("a-first-answer"),
+      user("a-last", a),
+      answer("a-last-answer"),
+      user("casual-tail", null),
+    ].forEach((part) => applyPartUpdate(session.model.parts, part, session.sessionId));
+    session.todos.open();
+    const view = render(
+      <StoreProvider store={fixture.root}>
+        <section aria-label="Transcript">
+          <ChatTranscript store={chat} behavior={{ todos: session.todos }} virtualized={false} />
+        </section>
+        <aside aria-label="To-do">
+          <ProjectTodosPanel store={session.todos} />
+        </aside>
+      </StoreProvider>,
+    );
+    try {
+      const u = userEvent.setup();
+      const transcript = within(screen.getByRole("region", { name: "Transcript" }));
+      const panel = within(screen.getByRole("complementary", { name: "To-do" }));
+      const selected = () =>
+        view.container
+          .querySelector('[aria-current="true"]')
+          ?.getAttribute("data-transcript-anchor-id");
+      await u.click(
+        entry === "pane"
+          ? panel.getByRole("button", { name: "Task A" })
+          : transcript.getByRole("button", { name: "Focus to-do: Task A" }),
+      );
+      expect(selected()).toBe("a-last-answer");
+      expect(panel.getByRole("button", { name: "Task A" }).getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+      // Attribution/streaming updates must not turn view focus into a live follower.
+      act(() => {
+        applyPartUpdate(session.model.parts, user("a-new", a), session.sessionId);
+        applyPartUpdate(session.model.parts, answer("a-new-answer"), session.sessionId);
+      });
+      expect(selected()).toBe("a-last-answer");
+      await u.click(panel.getByRole("button", { name: "Task B" }));
+      expect(selected()).toBeUndefined();
+      expect(panel.getByRole("button", { name: "Task B" }).getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+      // A no-match request is consumed, not replayed when a matching message arrives.
+      act(() => applyPartUpdate(session.model.parts, user("b-later", b), session.sessionId));
+      expect(selected()).toBeUndefined();
+    } finally {
+      view.unmount();
+    }
+  });
+}
+
 it("interrupts source rows without changing the discussion or borrowing pane selection", async () => {
   const sourceA = "20000000-0000-4000-8000-000000000011";
   const sourceB = "20000000-0000-4000-8000-000000000012";

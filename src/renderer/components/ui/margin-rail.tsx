@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
-import { CheckIcon, ChevronIcon, CircleIcon } from "./icons";
+import { CheckIcon, ChevronIcon, CircleIcon, ExpandIcon } from "./icons";
 import { IconButton } from "./icon-button";
 
 /** An unbordered task heading above the section's message rule. */
@@ -9,6 +9,8 @@ export function MarginRail({
   done,
   start,
   onOpen,
+  onFocus,
+  focused,
   expanded,
   onToggle,
 }: {
@@ -16,6 +18,8 @@ export function MarginRail({
   done: boolean;
   start: boolean;
   onOpen(): void;
+  onFocus(): void;
+  focused: boolean;
   expanded: boolean;
   onToggle(): void;
 }) {
@@ -63,6 +67,9 @@ export function MarginRail({
           >
             <span className="min-w-0 wrap-anywhere">{title}</span>
           </Button>
+          <IconButton tooltip={`Focus to-do: ${title}`} aria-pressed={focused} onClick={onFocus}>
+            <ExpandIcon />
+          </IconButton>
           <IconButton
             data-slot="task-section-disclosure"
             tooltip={`${expanded ? "Collapse" : "Expand"} conversation: ${title}`}

@@ -1,5 +1,6 @@
 import { observer, useStore } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
+import { cn } from "../lib/utils";
 import {
   BrowserIcon,
   CheckIcon,
@@ -56,7 +57,12 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
         <IconButton
           tooltip="To-do"
           pressedAppearance="subtle"
-          className="flex h-8 w-auto gap-1.5 px-2 aria-pressed:bg-muted aria-pressed:text-foreground aria-pressed:hover:bg-muted"
+          viewFocused={paneSession.todos.focusedItems.length > 0}
+          className={cn(
+            "flex h-8 w-auto gap-1.5 px-2",
+            paneSession.todos.focusedItems.length === 0 &&
+              "aria-pressed:bg-muted aria-pressed:text-foreground aria-pressed:hover:bg-muted",
+          )}
           aria-pressed={paneSession.todos.visible}
           onClick={() => {
             root.navigationStore.focusCakeChatPane(pane.paneId);
