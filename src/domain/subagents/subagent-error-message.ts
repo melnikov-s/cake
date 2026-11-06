@@ -1,4 +1,14 @@
-import { Option, Schema, SchemaIssue } from "effect";
+import { Effect, Option, Schema, SchemaIssue } from "effect";
+import { SubagentError } from "../../contracts/subagents/subagent-data";
+import type { PiSessionError } from "../../services/pi/CakeSessionRuntimes";
+import type { SubagentEnvironmentError } from "../../services/subagents/SubagentEnvironment";
+
+export const asSubagentError = (operation: string) =>
+  Effect.mapError((error: PiSessionError | SubagentEnvironmentError | SubagentError | unknown) =>
+    error instanceof SubagentError
+      ? error
+      : new SubagentError({ operation, message: subagentErrorMessage(error) }),
+  );
 
 const MAX_DEPTH = 6;
 const MAX_LENGTH = 16_384;

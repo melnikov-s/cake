@@ -7,7 +7,8 @@ import {
   type ResultDelivery,
 } from "../../../src/contracts/conversations/result-delivery";
 import operatingBasics from "../../../docs/agent/family-startup.md?raw";
-import { createChild, initialize } from "../../../src/domain/session-families/sessionFamilies";
+import { initialize } from "../../../src/domain/session-families/sessionFamilies";
+import { createChild } from "../../../src/domain/session-families/sessionFamilyAdmission";
 import * as boards from "../../../src/domain/artifacts/messageBoards";
 import { MessageBoardError } from "../../../src/contracts/artifacts/message-board";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";

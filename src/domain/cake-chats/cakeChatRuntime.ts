@@ -76,7 +76,7 @@ import {
 } from "../../services/pi-durable/CakeChatConfiguration";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
-import * as sessionFamilies from "../session-families/sessionFamilies";
+import * as sessionFamilyAdmission from "../session-families/sessionFamilyAdmission";
 import { implicitTurnResultFor } from "../../contracts/pi/turn-result-data";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { makeSubagentControl } from "../subagents/subagentControl";
@@ -467,7 +467,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           : Effect.void;
       return coordination.checkStorage().pipe(
         Effect.andThen(
-          sessionFamilies
+          sessionFamilyAdmission
             .admitTurn(
               target.sessionId,
               {

@@ -1,3 +1,4 @@
+import * as coordinatorMessageRouting from "./coordinatorMessageRouting";
 import {
   SessionMessageDelivery,
   SessionMessageDeliveryOptions,
@@ -35,7 +36,6 @@ import { inheritTaskInputProtection } from "../conversations/taskInputs";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
 import { acquireOptions } from "../project-sessions/projectSessionRuntime";
-import * as sessionFamilies from "./sessionFamilies";
 
 /** Receiving contract for the runtime callback adapter. */
 export const FamilyMessageInput = Schema.Struct({
@@ -96,7 +96,7 @@ export const route: (
   const configuration = yield* ProjectSessionConfiguration;
   const catalogs = yield* SessionCatalogChanges;
   const family = yield* families.familyForMember(sessionId);
-  const spawnedResult = yield* sessionFamilies.routeCoordinatorMessage(
+  const spawnedResult = yield* coordinatorMessageRouting.routeCoordinatorMessage(
     sessionId,
     command,
     input,

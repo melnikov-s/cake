@@ -7,7 +7,7 @@ import { appendMessageReferences } from "../../../src/contracts/conversations/me
 import type { Attachment } from "../../../src/contracts/conversations/session-contract";
 import type { TaskInputReference } from "../../../src/contracts/conversations/task-input";
 import { acquireOptions as chatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
-import { deliver } from "../../../src/domain/session-families/sessionFamilies";
+import { deliver } from "../../../src/domain/session-families/sessionFamilyCompletion";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { Cause, Deferred, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";

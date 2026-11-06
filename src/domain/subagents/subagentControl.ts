@@ -1,3 +1,7 @@
+import * as subagents from "./subagents";
+import * as subagentInputs from "./subagentInputs";
+import * as subagentLifetime from "./subagentLifetime";
+import type { SubagentParentRuntime } from "./subagentTaskPreparation";
 import { Effect, Schema } from "effect";
 import { jsonValueSchema } from "../../contracts/serialization/json-contract";
 import type {
@@ -17,7 +21,6 @@ import type { SubagentCoordinator } from "../../services/subagents/SubagentCoord
 import type { SubagentEnvironment } from "../../services/subagents/SubagentEnvironment";
 import type { ApplicationState } from "../../services/storage/ApplicationState";
 import type { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
-import * as subagents from "./subagents";
 
 export type SubagentControlRequirements =
   | ApplicationState
@@ -83,7 +86,7 @@ export const makeSubagentParent = (
   parentSessionId: string,
   workingDirectory: string,
   runEffect: SubagentControlOptions["runEffect"],
-): subagents.SubagentParentRuntime => ({
+): SubagentParentRuntime => ({
   parentSessionId,
   workingDirectory,
   options,
@@ -139,7 +142,7 @@ export const makeSubagentControl =
         ).then((value) => Schema.decodeUnknownSync(jsonValueSchema)(value)),
       prompt: (input, parentSessionId, signal) =>
         runEffect(
-          subagents.prompt(
+          subagentInputs.prompt(
             parentSessionId,
             input.handleId,
             input.text,
@@ -164,7 +167,7 @@ export const makeSubagentControl =
           signal,
         ).then((value) => Schema.decodeUnknownSync(jsonValueSchema)(value)),
       abort: (handleId, parentSessionId) =>
-        runEffect(subagents.abort(parentSessionId, handleId)).then(() =>
+        runEffect(subagentLifetime.abort(parentSessionId, handleId)).then(() =>
           Schema.decodeUnknownSync(jsonValueSchema)({
             handleId,
             status: "aborted",
@@ -172,7 +175,7 @@ export const makeSubagentControl =
           }),
         ),
       close: (handleId, parentSessionId) =>
-        runEffect(subagents.close(parentSessionId, handleId)).then((value) =>
+        runEffect(subagentLifetime.close(parentSessionId, handleId)).then((value) =>
           Schema.decodeUnknownSync(jsonValueSchema)(value),
         ),
     };

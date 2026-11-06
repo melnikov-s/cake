@@ -1,3 +1,6 @@
+import * as subagents from "../../src/domain/subagents/subagents";
+import type { SubagentParentRuntime } from "../../src/domain/subagents/subagentTaskPreparation";
+import * as subagentData from "../../src/contracts/subagents/subagent-data";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -11,7 +14,7 @@ import {
   subagentCompletionMessage,
   subagentFinalAnswerPart,
 } from "../../src/contracts/subagents/subagent-report";
-import * as subagents from "../../src/domain/subagents/subagents";
+
 import { createProjectSessionRuntime } from "../../src/layers/CakeOperations";
 import { makeCakeSessionRuntimesLayer } from "../../src/services/pi/CakeSessionRuntimes";
 import { ApplicationState } from "../../src/services/storage/ApplicationState";
@@ -206,7 +209,7 @@ async function setUp(work: (afterTool: boolean) => Reply) {
         }),
     }),
   );
-  const parent: subagents.SubagentParentRuntime = {
+  const parent: SubagentParentRuntime = {
     parentSessionId: "parent",
     workingDirectory: project,
     options: {
@@ -227,7 +230,7 @@ async function setUp(work: (afterTool: boolean) => Reply) {
         subagents
           .run({ task: "Build the paper explainer site", continuation: "none" }, parent)
           .pipe(
-            Effect.flatMap(Schema.decodeUnknownEffect(subagents.SubagentResult)),
+            Effect.flatMap(Schema.decodeUnknownEffect(subagentData.SubagentResult)),
             Effect.provide(layer),
           ),
       ),

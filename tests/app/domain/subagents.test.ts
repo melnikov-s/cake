@@ -1,3 +1,11 @@
+import {
+  prepareTasks,
+  type SubagentParentRuntime,
+} from "../../../src/domain/subagents/subagentTaskPreparation";
+import * as subagentLifetime from "../../../src/domain/subagents/subagentLifetime";
+import * as subagentObservation from "../../../src/domain/subagents/subagentObservation";
+import * as subagentInputs from "../../../src/domain/subagents/subagentInputs";
+import * as subagentData from "../../../src/contracts/subagents/subagent-data";
 import type { InternalInput } from "../../../src/contracts/conversations/internal-input";
 import { ProjectTodoReports } from "../../../src/services/projects/ProjectTodoReports";
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
@@ -462,7 +470,7 @@ const parent = (
   fixture: Fixture,
   parentSessionId = "parent",
   workingDirectory = "/project",
-): subagents.SubagentParentRuntime => ({
+): SubagentParentRuntime => ({
   parentSessionId,
   workingDirectory,
   options: {
@@ -485,7 +493,7 @@ const completeChild = Effect.fn("SubagentsTest.completeChild")(function* (
   yield* Deferred.succeed(gate, undefined);
 });
 
-const cakeChatParent = (fixture: Fixture): subagents.SubagentParentRuntime => ({
+const cakeChatParent = (fixture: Fixture): SubagentParentRuntime => ({
   ...parent(fixture),
   parentSessionId: "parent-cake-chat",
   workingDirectory: "/home",
@@ -635,7 +643,7 @@ describe("subagent exact message references", () => {
             runEffect: (effect, signal) =>
               Effect.runPromise(Effect.provide(effect, context), { signal }),
           })(() => options, caller.workingDirectory);
-          const receipt = Schema.decodeUnknownSync(subagents.SubagentStartReceipt)(
+          const receipt = Schema.decodeUnknownSync(subagentData.SubagentStartReceipt)(
             yield* Effect.promise(() =>
               control.start(
                 { continuation: "resume", task: "Assess this exact source", messageRefs: [first] },
@@ -869,7 +877,7 @@ describe("subagent attachment references", () => {
           assert.ok(!empty.text.includes(textReference.id));
           yield* completeChild(fixture, firstId);
           yield* Queue.take(fixture.reports);
-          yield* subagents.prompt(
+          yield* subagentInputs.prompt(
             "parent-cake-chat",
             first.handleId,
             "Now inspect the diagram",
@@ -892,7 +900,7 @@ describe("subagent attachment references", () => {
           yield* Queue.take(fixture.reports);
           yield* completeChild(fixture, secondId);
           yield* Queue.take(fixture.reports);
-          yield* subagents.close("parent-cake-chat", second.handleId);
+          yield* subagentLifetime.close("parent-cake-chat", second.handleId);
         }).pipe(Effect.provide(fixture.layer));
       }),
   );
@@ -942,14 +950,14 @@ describe("subagent attachment references", () => {
           const id = yield* Queue.take(fixture.childStarted);
           yield* completeChild(fixture, id);
           yield* Queue.take(fixture.reports);
-          const rejected = yield* subagents
+          const rejected = yield* subagentInputs
             .prompt("parent-cake-chat", receipt.handleId, "Inspect missing", "follow-up", true, [
               "missing",
             ])
             .pipe(Effect.flip);
           assert.match(rejected.message, /not authorized/);
           assert.equal(yield* Queue.size(fixture.childStarted), 0);
-          yield* subagents.prompt(
+          yield* subagentInputs.prompt(
             "parent-cake-chat",
             receipt.handleId,
             "Still available",
@@ -975,7 +983,7 @@ describe("Cake Chat project investigators", () => {
             { continuation: "resume", task: "Cannot start" },
             cakeChatParent(fixture),
           );
-          const report = Schema.decodeUnknownSync(subagents.SubagentResult)(
+          const report = Schema.decodeUnknownSync(subagentData.SubagentResult)(
             yield* Queue.take(fixture.reports),
           );
           assert.equal(report.status, "error");
@@ -1019,13 +1027,13 @@ describe("Cake Chat project investigators", () => {
           assert.doesNotMatch(options.isolatedSystemPrompt ?? "", /Mutation mode/);
           assert.equal(receipt.projectPath, undefined);
           yield* completeChild(fixture, sessionId);
-          const report = Schema.decodeUnknownSync(subagents.SubagentResult)(
+          const report = Schema.decodeUnknownSync(subagentData.SubagentResult)(
             yield* Queue.take(fixture.reports),
           );
           assert.equal(report.status, "complete");
           assert.equal(report.projectPath, undefined);
           assert.equal(report.parts.length, 1);
-          yield* subagents.prompt(
+          yield* subagentInputs.prompt(
             "parent-cake-chat",
             receipt.handleId,
             "Compare deployment",
@@ -1114,7 +1122,7 @@ describe("Cake Chat project investigators", () => {
         const handleOf = (handleId: string) =>
           SubscriptionRef.get(coordinator.state).pipe(
             Effect.map((state) =>
-              state.handles.get(Schema.decodeUnknownSync(subagents.SubagentHandleId)(handleId)),
+              state.handles.get(Schema.decodeUnknownSync(subagentData.SubagentHandleId)(handleId)),
             ),
           );
         const receipt = yield* subagents.start(
@@ -1128,7 +1136,7 @@ describe("Cake Chat project investigators", () => {
         assert.equal((yield* handleOf(receipt.handleId))?.status, "running");
         assert.equal(yield* Queue.size(fixture.reports), 0);
         yield* completeChild(fixture, sessionId);
-        const first = Schema.decodeUnknownSync(subagents.SubagentResult)(
+        const first = Schema.decodeUnknownSync(subagentData.SubagentResult)(
           yield* Queue.take(fixture.reports),
         );
         assert.equal(first.status, "complete");
@@ -1140,7 +1148,7 @@ describe("Cake Chat project investigators", () => {
           Stream.runHead,
         );
         assert.equal(yield* handleOf(receipt.handleId), undefined);
-        const history = yield* subagents.observe("parent-cake-chat");
+        const history = yield* subagentObservation.observe("parent-cake-chat");
         const released = yield* history.pipe(
           Stream.filter((update) =>
             update._tag === "Snapshot"
@@ -1181,7 +1189,7 @@ describe("Cake Chat project investigators", () => {
           // The user's Project Session auto-compact choice never reaches a worker.
           assert.equal(worker?.alwaysAutoCompact, true);
           yield* completeChild(fixture, sessionId);
-          const report = Schema.decodeUnknownSync(subagents.SubagentResult)(
+          const report = Schema.decodeUnknownSync(subagentData.SubagentResult)(
             yield* Queue.take(fixture.reports),
           );
           assert.equal(report.status, "error");
@@ -1224,7 +1232,7 @@ describe("Cake Chat project investigators", () => {
         yield* completeChild(fixture, sessionId);
         yield* Queue.take(fixture.reports);
         yield* TestClock.adjust("20 minutes");
-        yield* subagents.prompt(
+        yield* subagentInputs.prompt(
           "parent-cake-chat",
           receipt.handleId,
           "Dig deeper",
@@ -1234,11 +1242,11 @@ describe("Cake Chat project investigators", () => {
         assert.equal(yield* Queue.take(fixture.childStarted), sessionId);
         yield* TestClock.adjust("3 hours");
         const during = (yield* SubscriptionRef.get(coordinator.state)).handles.get(
-          Schema.decodeUnknownSync(subagents.SubagentHandleId)(receipt.handleId),
+          Schema.decodeUnknownSync(subagentData.SubagentHandleId)(receipt.handleId),
         );
         assert.equal(during?.status, "running");
         yield* completeChild(fixture, sessionId);
-        const followUp = Schema.decodeUnknownSync(subagents.SubagentResult)(
+        const followUp = Schema.decodeUnknownSync(subagentData.SubagentResult)(
           yield* Queue.take(fixture.reports),
         );
         assert.equal(followUp.status, "complete");
@@ -1261,7 +1269,7 @@ describe("Cake Chat project investigators", () => {
                 { continuation: "resume", task: "Inspect config", projectPath },
                 cakeChatParent(fixture),
               )
-              .pipe(Effect.flip)) instanceof subagents.SubagentError,
+              .pipe(Effect.flip)) instanceof subagentData.SubagentError,
           );
         assert.equal(yield* Ref.get(fixture.constructions), 0);
         const wrongCaller = yield* subagents
@@ -1292,7 +1300,7 @@ describe("Cake Chat project investigators", () => {
         assert.equal(constructed.at(-1)?.cwd, "/repo/src/system/agents");
         yield* completeChild(fixture, sessionId);
         assert.equal(
-          Schema.decodeUnknownSync(subagents.SubagentResult)(yield* Queue.take(fixture.reports))
+          Schema.decodeUnknownSync(subagentData.SubagentResult)(yield* Queue.take(fixture.reports))
             .status,
           "complete",
         );
@@ -1319,15 +1327,15 @@ describe("Cake Chat project investigators", () => {
           );
           blockers.push(yield* Queue.take(fixture.childStarted));
         }
-        yield* subagents.prompt(
+        yield* subagentInputs.prompt(
           "parent-cake-chat",
           first.handleId,
           "Must not start after cancellation",
           "follow-up",
           true,
         );
-        yield* subagents.abort("parent-cake-chat", first.handleId);
-        const cancelled = Schema.decodeUnknownSync(subagents.SubagentResult)(
+        yield* subagentLifetime.abort("parent-cake-chat", first.handleId);
+        const cancelled = Schema.decodeUnknownSync(subagentData.SubagentResult)(
           yield* Queue.take(fixture.reports),
         );
         assert.equal(cancelled.handleId, first.handleId);
@@ -1380,7 +1388,7 @@ describe("Cake Chat project investigators", () => {
             "parent-cake-chat",
           );
           yield* completeChild(fixture, sessionId);
-          const first = Schema.decodeUnknownSync(subagents.SubagentResult)(
+          const first = Schema.decodeUnknownSync(subagentData.SubagentResult)(
             yield* Queue.take(fixture.reports),
           );
           assert.equal(first.parts.length, 1);
@@ -1392,8 +1400,8 @@ describe("Cake Chat project investigators", () => {
             ),
             /PRIVATE_TOOL_OUTPUT/,
           );
-          assert.equal(subagents.SubagentResult.make(first).projectPath, "/another");
-          const followUp = yield* subagents.prompt(
+          assert.equal(subagentData.SubagentResult.make(first).projectPath, "/another");
+          const followUp = yield* subagentInputs.prompt(
             "parent-cake-chat",
             receipt.handleId,
             "Recheck the current default",
@@ -1401,20 +1409,20 @@ describe("Cake Chat project investigators", () => {
             true,
           );
           assert.equal(
-            Schema.decodeUnknownSync(subagents.SubagentStartReceipt)(followUp).handleId,
+            Schema.decodeUnknownSync(subagentData.SubagentStartReceipt)(followUp).handleId,
             receipt.handleId,
           );
           assert.equal(yield* Queue.take(fixture.childStarted), sessionId);
           yield* completeChild(fixture, sessionId);
-          const second = Schema.decodeUnknownSync(subagents.SubagentResult)(
+          const second = Schema.decodeUnknownSync(subagentData.SubagentResult)(
             yield* Queue.take(fixture.reports),
           );
           assert.equal(second.parts.length, 1);
           assert.doesNotMatch(JSON.stringify(second), /PRIVATE_/);
           assert.equal(yield* Ref.get(fixture.constructions), 1);
-          yield* subagents.close("parent-cake-chat", receipt.handleId);
+          yield* subagentLifetime.close("parent-cake-chat", receipt.handleId);
           assert.equal((yield* SubscriptionRef.get(coordinator.state)).handles.size, 0);
-          const closed = yield* subagents
+          const closed = yield* subagentInputs
             .prompt("parent-cake-chat", receipt.handleId, "Again", "follow-up", true)
             .pipe(Effect.flip);
           assert.match(closed.message, /released.*read-only/);
@@ -1497,7 +1505,7 @@ describe("Subagents", () => {
           );
           yield* completeChild(fixture, id);
           yield* Queue.take(fixture.reports);
-          yield* subagents.prompt(
+          yield* subagentInputs.prompt(
             caller.parentSessionId,
             receipt.handleId,
             markdown,
@@ -1515,7 +1523,7 @@ describe("Subagents", () => {
           yield* completeChild(fixture, id);
           yield* Queue.take(fixture.reports);
           const plain = "Please confirm the evidence";
-          yield* subagents.prompt(
+          yield* subagentInputs.prompt(
             caller.parentSessionId,
             receipt.handleId,
             plain,
@@ -1533,7 +1541,7 @@ describe("Subagents", () => {
           yield* completeChild(fixture, id);
           yield* Queue.take(fixture.reports);
           // The renderer RPC intentionally uses the user default, even for Markdown text.
-          yield* subagents.prompt(
+          yield* subagentInputs.prompt(
             caller.parentSessionId,
             receipt.handleId,
             markdown,
@@ -1567,12 +1575,12 @@ describe("Subagents", () => {
           );
           const child = yield* Queue.take(original.childStarted);
           yield* completeChild(original, child);
-          const result = Schema.decodeUnknownSync(subagents.SubagentResult)(
+          const result = Schema.decodeUnknownSync(subagentData.SubagentResult)(
             yield* Queue.take(original.reports),
           );
           assert.equal(result.handleId, started.handleId);
           assert.equal(result.status, "complete");
-          assert.equal(subagents.SubagentResult.make(result).parts.length, 1);
+          assert.equal(subagentData.SubagentResult.make(result).parts.length, 1);
           const coordinator = yield* SubagentCoordinator;
           while (
             (yield* SubscriptionRef.get(coordinator.state)).handles.get(started.handleId)
@@ -1595,7 +1603,7 @@ describe("Subagents", () => {
           const caller = chat ? cakeChatParent(recovered) : parent(recovered);
           yield* subagents.restore(pending, caller, true);
           yield* subagents.restore(pending, caller, true);
-          const result = Schema.decodeUnknownSync(subagents.SubagentResult)(
+          const result = Schema.decodeUnknownSync(subagentData.SubagentResult)(
             yield* Queue.take(recovered.reports),
           );
           assert.equal(
@@ -1638,7 +1646,7 @@ describe("Subagents", () => {
           )
             yield* Effect.yieldNow;
           if (continuation === "resume") {
-            const result = Schema.decodeUnknownSync(subagents.SubagentResult)(
+            const result = Schema.decodeUnknownSync(subagentData.SubagentResult)(
               yield* Queue.take(fixture.reports),
             );
             assert.equal(result.status, "error");
@@ -1752,7 +1760,7 @@ describe("Subagents", () => {
           assert.equal(started.continuation, "resume");
           const childId = yield* Queue.take(fixture.childStarted);
           yield* completeChild(fixture, childId);
-          const result = Schema.decodeUnknownSync(subagents.SubagentResult)(
+          const result = Schema.decodeUnknownSync(subagentData.SubagentResult)(
             yield* Queue.take(fixture.reports),
           );
           assert.equal(result.handleId, started.handleId);
@@ -1801,14 +1809,14 @@ describe("Subagents", () => {
               assert.equal(results.length, 2);
               assert.equal(yield* Ref.get(fixture.constructions), 1);
             } else if (access === "observe") {
-              const updates = yield* subagents.observe("parent");
+              const updates = yield* subagentObservation.observe("parent");
               yield* updates.pipe(
                 Stream.filter((update) => update._tag === "Activity"),
                 Stream.runHead,
               );
               assert.equal(yield* Ref.get(fixture.constructions), 1);
             }
-            yield* subagents.close("parent", record.handleId);
+            yield* subagentLifetime.close("parent", record.handleId);
             if (access === "close")
               assert.deepEqual(yield* Ref.get(fixture.constructedOptions), []);
             assert.deepEqual(yield* (yield* SubagentCoordinator).storage.list(), []);
@@ -1832,7 +1840,7 @@ describe("Subagents", () => {
           const coordinator = yield* SubagentCoordinator;
           const record = (yield* coordinator.storage.list())[0];
           assert.ok(record);
-          yield* subagents.prompt(
+          yield* subagentInputs.prompt(
             "parent",
             record.handleId,
             "Background follow-up",
@@ -1969,6 +1977,43 @@ describe("Subagents", () => {
     }),
   );
 
+  it.effect(
+    "prepares normalized tasks and model fallback evidence without allocating a handle",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        yield* Effect.gen(function* () {
+          const [prepared] = yield* prepareTasks(
+            [{ task: "Inspect the policy", model: { prefer: "utility" } }],
+            parent(fixture),
+          );
+          assert.ok(prepared);
+          assert.deepEqual(prepared.input, {
+            task: "Inspect the policy",
+            continuation: "resume",
+            model: { prefer: "utility" },
+            fastMode: false,
+            allowMutations: false,
+          });
+          assert.deepEqual(prepared.resolvedModel, {
+            requested: "utility",
+            source: "current",
+            provider: "test",
+            modelId: "model",
+            thinkingLevel: "off",
+            fallbacks: [
+              { source: "utility", reason: "not-configured" },
+              { source: "default", reason: "not-configured" },
+            ],
+          });
+          assert.deepEqual(prepared.tools, ["read", "bash", "edit", "write", "message_parent"]);
+          const coordinator = yield* SubagentCoordinator;
+          assert.equal((yield* SubscriptionRef.get(coordinator.state)).handles.size, 0);
+          assert.equal(yield* Ref.get(fixture.constructions), 0);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
+
   it.effect("preflights an entire parallel batch before constructing a child runtime", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
@@ -2035,25 +2080,25 @@ describe("Subagents", () => {
         );
         const running = yield* Effect.forEach([1, 2, 3, 4], () => Queue.take(fixture.childTurns));
         const worker = receipts[4]!;
-        const first = yield* subagents.submitUserInput({
+        const first = yield* subagentInputs.submitUserInput({
           parentSessionId: "parent",
           handleId: worker.handleId,
           text: "**First follow-up**",
           renderUserMessageAsMarkdown: true,
         });
-        const canceled = yield* subagents.submitUserInput({
+        const canceled = yield* subagentInputs.submitUserInput({
           parentSessionId: "parent",
           handleId: worker.handleId,
           text: "Cancel before starting",
           renderUserMessageAsMarkdown: false,
         });
-        const second = yield* subagents.submitUserInput({
+        const second = yield* subagentInputs.submitUserInput({
           parentSessionId: "parent",
           handleId: worker.handleId,
           text: "Second follow-up",
           renderUserMessageAsMarkdown: false,
         });
-        const update = yield* Stream.runHead(yield* subagents.observe("parent"));
+        const update = yield* Stream.runHead(yield* subagentObservation.observe("parent"));
         assert.equal(update._tag, "Some");
         assert.ok(update._tag === "Some" && update.value._tag === "Snapshot");
         const activity = update.value.activities.find((item) => item.handleId === worker.handleId)!;
@@ -2065,7 +2110,7 @@ describe("Subagents", () => {
         const canceledPart = parts.find(
           (part) => part.kind === "text" && part.queuedInput?.turnId === canceled.turnId,
         )!;
-        yield* subagents.editQueuedUserInput({
+        yield* subagentInputs.editQueuedUserInput({
           parentSessionId: "parent",
           handleId: worker.handleId,
           partId: canceledPart.id,
@@ -2100,7 +2145,10 @@ describe("Subagents", () => {
         );
         yield* Effect.forEach(admitted, (turn) => Deferred.succeed(turn.gate, undefined));
         const result = yield* subagents.wait("parent", worker.handleId);
-        assert.equal(Schema.decodeUnknownSync(subagents.SubagentResult)(result).status, "complete");
+        assert.equal(
+          Schema.decodeUnknownSync(subagentData.SubagentResult)(result).status,
+          "complete",
+        );
         yield* Effect.forEach(running.slice(1), (turn) => Deferred.succeed(turn.gate, undefined));
       }).pipe(Effect.provide(fixture.layer));
     }),
@@ -2120,16 +2168,16 @@ describe("Subagents", () => {
         );
         const queued = receipts[4];
         assert.ok(queued);
-        yield* subagents.submitUserInput({
+        yield* subagentInputs.submitUserInput({
           parentSessionId: "parent",
           handleId: queued.handleId,
           text: "Cancel this accepted follow-up with its worker",
           renderUserMessageAsMarkdown: false,
         });
-        yield* subagents.abort("parent", queued.handleId);
+        yield* subagentLifetime.abort("parent", queued.handleId);
         const canceled = yield* subagents.wait("parent", queued.handleId);
         assert.equal(
-          Schema.decodeUnknownSync(subagents.SubagentResult)(canceled).status,
+          Schema.decodeUnknownSync(subagentData.SubagentResult)(canceled).status,
           "aborted",
         );
         yield* Effect.forEach(activeIds, (id) => completeChild(fixture, id), { discard: true });
@@ -2198,7 +2246,7 @@ describe("Subagents", () => {
           (yield* SubscriptionRef.get(coordinator.state)).handles.has(receipt.handleId),
           true,
         );
-        yield* subagents.close("parent", receipt.handleId);
+        yield* subagentLifetime.close("parent", receipt.handleId);
       });
       yield* program.pipe(Effect.provide(fixture.layer));
     }),
@@ -2260,7 +2308,7 @@ describe("Subagents", () => {
               Effect.runPromise(Effect.provide(effect, context), { signal }),
           })(() => caller.options, caller.workingDirectory);
           const signal = new AbortController().signal;
-          const receipt = Schema.decodeUnknownSync(subagents.SubagentStartReceipt)(
+          const receipt = Schema.decodeUnknownSync(subagentData.SubagentStartReceipt)(
             yield* Effect.promise(() =>
               control.start(
                 { continuation: "resume", task: "Investigate" },
@@ -2299,7 +2347,7 @@ describe("Subagents", () => {
           const child = yield* Queue.take(fixture.childStarted);
           const firstGate = (yield* Ref.get(fixture.childGates)).get(child);
           assert.ok(firstGate);
-          const human = yield* subagents.submitUserInput({
+          const human = yield* subagentInputs.submitUserInput({
             parentSessionId: "parent",
             handleId: receipt.handleId,
             text: "**Human follow-up**",
@@ -2321,7 +2369,7 @@ describe("Subagents", () => {
           assert.equal(reloaded.markdown, true);
           assert.equal(reloaded.delivery, "follow-up");
           const unauthorized = yield* Effect.flip(
-            subagents.submitUserInput({
+            subagentInputs.submitUserInput({
               parentSessionId: "another-parent",
               handleId: receipt.handleId,
               text: "No",
@@ -2330,7 +2378,7 @@ describe("Subagents", () => {
           );
           assert.match(unauthorized.message, /does not belong/);
           const conflict = yield* Effect.flip(
-            subagents.prompt("parent", receipt.handleId, "Agent prompt", "prompt"),
+            subagentInputs.prompt("parent", receipt.handleId, "Agent prompt", "prompt"),
           );
           assert.match(conflict.message, /already has active work/);
           yield* Deferred.succeed(firstGate, undefined);
@@ -2339,7 +2387,7 @@ describe("Subagents", () => {
           assert.equal((yield* Ref.get(fixture.completions)).length, 0);
           yield* completeChild(fixture, child);
           yield* Queue.take(fixture.reports);
-          const idle = yield* subagents.submitUserInput({
+          const idle = yield* subagentInputs.submitUserInput({
             parentSessionId: "parent",
             handleId: receipt.handleId,
             text: "Plain human",
@@ -2351,7 +2399,7 @@ describe("Subagents", () => {
           yield* completeChild(fixture, child);
           yield* subagents.wait("parent", receipt.handleId);
           assert.equal((yield* Ref.get(fixture.completions)).length, 1);
-          yield* subagents.close("parent", receipt.handleId);
+          yield* subagentLifetime.close("parent", receipt.handleId);
         }).pipe(Effect.provide(fixture.layer));
       }),
   );
@@ -2392,15 +2440,15 @@ describe("Subagents", () => {
             handleId: receipt.handleId,
             reference: imageReference.id,
           };
-          assert.equal((yield* subagents.readAttachment(read)).kind, "image");
+          assert.equal((yield* subagentInputs.readAttachment(read)).kind, "image");
           assert.equal(inspect.mock.calls[0]?.[0], child);
           const wrongParent = yield* Effect.flip(
-            subagents.readAttachment({ ...read, parentSessionId: "other" }),
+            subagentInputs.readAttachment({ ...read, parentSessionId: "other" }),
           );
           assert.match(wrongParent.message, /does not belong/);
           assert.equal(inspect.mock.calls.length, 1);
           const ungranted = yield* Effect.flip(
-            subagents.readAttachment({
+            subagentInputs.readAttachment({
               ...read,
               reference: "20000000-0000-4000-8000-000000000002",
             }),
@@ -2408,12 +2456,16 @@ describe("Subagents", () => {
           assert.match(ungranted.message, /No input grant/);
           yield* completeChild(fixture, child);
           yield* Queue.take(fixture.reports);
-          yield* subagents.close("parent", receipt.handleId);
-          assert.equal((yield* subagents.readAttachment(read)).kind, "image");
+          yield* subagentLifetime.close("parent", receipt.handleId);
+          assert.equal((yield* subagentInputs.readAttachment(read)).kind, "image");
           assert.equal(inspect.mock.calls.at(-1)?.[0], child);
           assert.equal(yield* Ref.get(fixture.constructions), constructions);
           const released = yield* Effect.flip(
-            subagents.submitUserInput({ ...read, text: "No", renderUserMessageAsMarkdown: false }),
+            subagentInputs.submitUserInput({
+              ...read,
+              text: "No",
+              renderUserMessageAsMarkdown: false,
+            }),
           );
           assert.match(released.message, /released/);
         }).pipe(
@@ -2434,19 +2486,19 @@ describe("Subagents", () => {
         yield* completeChild(fixture, childId);
         while ((yield* Ref.get(fixture.completions)).length === 0) yield* Effect.yieldNow;
 
-        const nextTurn = yield* subagents
+        const nextTurn = yield* subagentInputs
           .prompt("parent", receipt.handleId, "Continue", "prompt")
           .pipe(Effect.forkChild);
         assert.equal(yield* Queue.take(fixture.childStarted), childId);
         const conflict = yield* Effect.flip(
-          subagents.prompt("parent", receipt.handleId, "Overlap", "follow-up"),
+          subagentInputs.prompt("parent", receipt.handleId, "Overlap", "follow-up"),
         );
         assert.match(conflict.message, /already has active work/);
         yield* completeChild(fixture, childId);
         const result = yield* Fiber.join(nextTurn);
         assert.equal(JSON.stringify(result).includes(receipt.handleId), true);
         assert.equal(yield* Ref.get(fixture.constructions), 1);
-        yield* subagents.close("parent", receipt.handleId);
+        yield* subagentLifetime.close("parent", receipt.handleId);
       });
       yield* program.pipe(Effect.provide(fixture.layer));
     }),
@@ -2465,24 +2517,24 @@ describe("Subagents", () => {
         yield* TestClock.adjust("6 hours");
         assert.equal(waiter.pollUnsafe(), undefined);
         yield* completeChild(fixture, childId);
-        const initial = Schema.decodeUnknownSync(subagents.SubagentResult)(
+        const initial = Schema.decodeUnknownSync(subagentData.SubagentResult)(
           yield* Fiber.join(waiter),
         );
         assert.equal(initial.status, "complete");
 
-        const followUp = yield* subagents
+        const followUp = yield* subagentInputs
           .prompt("parent", receipt.handleId, "Keep going", "follow-up")
           .pipe(Effect.forkChild);
         assert.equal(yield* Queue.take(fixture.childStarted), childId);
         yield* TestClock.adjust("6 hours");
         assert.equal(followUp.pollUnsafe(), undefined);
         yield* completeChild(fixture, childId);
-        const result = Schema.decodeUnknownSync(subagents.SubagentResult)(
+        const result = Schema.decodeUnknownSync(subagentData.SubagentResult)(
           yield* Fiber.join(followUp),
         );
         assert.equal(result.status, "complete");
         assert.equal(yield* Ref.get(fixture.constructions), 1);
-        yield* subagents.close("parent", receipt.handleId);
+        yield* subagentLifetime.close("parent", receipt.handleId);
       });
       yield* program.pipe(Effect.provide(fixture.layer));
     }),
@@ -2519,7 +2571,7 @@ describe("Subagents", () => {
         )
           yield* Effect.yieldNow;
 
-        yield* subagents.abort("parent", receipt.handleId);
+        yield* subagentLifetime.abort("parent", receipt.handleId);
         yield* subagents.wait("parent", receipt.handleId);
 
         const handle = (yield* SubscriptionRef.get(coordinator.state)).handles.get(
@@ -2543,13 +2595,13 @@ describe("Subagents", () => {
         const childId = yield* Queue.take(fixture.childStarted);
         yield* completeChild(fixture, childId);
         while ((yield* Ref.get(fixture.completions)).length === 0) yield* Effect.yieldNow;
-        yield* subagents.abortParentChildren("parent");
+        yield* subagentLifetime.abortParentChildren("parent");
         const coordinator = yield* SubagentCoordinator;
         assert.equal(
           (yield* SubscriptionRef.get(coordinator.state)).handles.get(receipt.handleId)?.status,
           "complete",
         );
-        yield* subagents.close("parent", receipt.handleId);
+        yield* subagentLifetime.close("parent", receipt.handleId);
       });
       yield* program.pipe(Effect.provide(fixture.layer));
     }),
@@ -2564,7 +2616,7 @@ describe("Subagents", () => {
           parent(fixture),
         );
         yield* Queue.take(fixture.childStarted);
-        const updates = yield* subagents.observe("parent");
+        const updates = yield* subagentObservation.observe("parent");
         const first = yield* Stream.runHead(updates);
         assert.equal(first._tag, "Some");
         if (first._tag === "Some") {
@@ -2575,7 +2627,7 @@ describe("Subagents", () => {
               [receipt.handleId],
             );
         }
-        yield* subagents.close("parent", receipt.handleId);
+        yield* subagentLifetime.close("parent", receipt.handleId);
       });
       yield* program.pipe(Effect.provide(fixture.layer));
     }),
@@ -2594,7 +2646,7 @@ describe("Subagents", () => {
           const sessionId = yield* Queue.take(fixture.childStarted);
           yield* completeChild(fixture, sessionId);
           yield* Queue.take(fixture.reports);
-          yield* subagents.close("parent-cake-chat", receipt.handleId);
+          yield* subagentLifetime.close("parent-cake-chat", receipt.handleId);
           const coordinator = yield* SubagentCoordinator;
           assert.deepEqual(yield* coordinator.storage.list(), []);
           const records = yield* coordinator.storage.history.list();
@@ -2602,7 +2654,7 @@ describe("Subagents", () => {
           assert.equal(records[0]?.privateSessionId, sessionId);
           assert.equal("pendingInputs" in records[0]!, false);
           const constructions = yield* Ref.get(fixture.constructions);
-          const stream = yield* subagents.observe("parent-cake-chat");
+          const stream = yield* subagentObservation.observe("parent-cake-chat");
           const first = yield* stream.pipe(Stream.runHead);
           assert.equal(first._tag, "Some");
           if (first._tag === "Some" && first.value._tag === "Snapshot") {
@@ -2611,7 +2663,7 @@ describe("Subagents", () => {
             assert.match(JSON.stringify(first.value.activities[0]?.parts), /config.ts:12/);
           } else assert.fail("Missing released history snapshot");
           assert.equal(yield* Ref.get(fixture.constructions), constructions);
-          const denied = yield* subagents
+          const denied = yield* subagentInputs
             .prompt("parent-cake-chat", receipt.handleId, "Cannot resume", "prompt")
             .pipe(Effect.flip);
           assert.match(denied.message, /released.*read-only/);
@@ -2621,7 +2673,7 @@ describe("Subagents", () => {
         yield* Effect.gen(function* () {
           const coordinator = yield* SubagentCoordinator;
           assert.equal((yield* SubscriptionRef.get(coordinator.state)).handles.size, 0);
-          const stream = yield* subagents.observe("parent-cake-chat");
+          const stream = yield* subagentObservation.observe("parent-cake-chat");
           const first = yield* stream.pipe(Stream.runHead);
           assert.equal(first._tag, "Some");
           if (first._tag === "Some" && first.value._tag === "Snapshot")
@@ -2643,13 +2695,13 @@ describe("Subagents", () => {
           const firstId = yield* Queue.take(fixture.childStarted);
           yield* completeChild(fixture, firstId);
           yield* subagents.wait("parent", released.handleId);
-          yield* subagents.close("parent", released.handleId);
+          yield* subagentLifetime.close("parent", released.handleId);
           const coordinator = yield* SubagentCoordinator;
           const ancestor = (yield* coordinator.storage.history.list())[0]!;
           const descendantId = crypto.randomUUID();
           const descendant = {
             ...ancestor,
-            handleId: subagents.SubagentHandleId.make(crypto.randomUUID()),
+            handleId: subagentData.SubagentHandleId.make(crypto.randomUUID()),
             privateSessionId: descendantId,
             parentSessionId: firstId,
           };
@@ -2662,7 +2714,7 @@ describe("Subagents", () => {
             parent(fixture, "parent-other"),
           );
           const otherId = yield* Queue.take(fixture.childStarted);
-          yield* subagents.deleteOwned("parent");
+          yield* subagentLifetime.deleteOwned("parent");
           assert.deepEqual(new Set(deleted), new Set([firstId, descendantId, liveId]));
           assert.equal(fixture.persisted.has(otherId), true);
           assert.equal(
@@ -2678,7 +2730,7 @@ describe("Subagents", () => {
             (yield* coordinator.storage.list()).map((record) => record.handleId),
             [other.handleId],
           );
-          yield* subagents.close("parent-other", other.handleId);
+          yield* subagentLifetime.close("parent-other", other.handleId);
         }).pipe(
           Effect.provide(fixture.layer),
           Effect.provide(
@@ -2704,7 +2756,7 @@ describe("Subagents", () => {
           parent(fixture),
         );
         yield* Queue.take(fixture.childStarted);
-        yield* subagents.releaseParent("parent");
+        yield* subagentLifetime.releaseParent("parent");
         const coordinator = yield* SubagentCoordinator;
         assert.equal(
           (yield* SubscriptionRef.get(coordinator.state)).handles.has(receipt.handleId),
@@ -2726,7 +2778,7 @@ describe("Subagents", () => {
         const error = yield* Effect.flip(subagents.wait("another-parent", receipt.handleId));
         assert.equal(error._tag, "SubagentError");
         assert.match(error.message, /does not belong/);
-        yield* subagents.close("parent", receipt.handleId);
+        yield* subagentLifetime.close("parent", receipt.handleId);
       });
       yield* program.pipe(Effect.provide(fixture.layer));
     }),

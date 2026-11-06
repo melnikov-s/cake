@@ -1,3 +1,5 @@
+import * as families from "../../../src/domain/session-families/sessionFamilies";
+
 import { it } from "@effect/vitest";
 import { describe, expect } from "vitest";
 import {
@@ -16,7 +18,7 @@ import { WorkflowError } from "../../../src/contracts/workflows/workflow-data";
 import { NodePath } from "@effect/platform-node-shared";
 import * as workflows from "../../../src/domain/workflows/workflows";
 import * as lifecycle from "../../../src/domain/workflows/workflow-lifecycle";
-import * as families from "../../../src/domain/session-families/sessionFamilies";
+
 import { WorkflowRunStorage } from "../../../src/services/storage/WorkflowRunStorage";
 import { makeWorkflowRunStorageLive } from "../../../src/services/storage/WorkflowRunStorageLive";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";

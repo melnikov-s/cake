@@ -3,7 +3,8 @@ import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
-import { deliver, initialize } from "../../../src/domain/session-families/sessionFamilies";
+import { initialize } from "../../../src/domain/session-families/sessionFamilies";
+import { deliver } from "../../../src/domain/session-families/sessionFamilyCompletion";
 import {
   encodeCrossSessionMessage,
   parseCrossSessionMessage,

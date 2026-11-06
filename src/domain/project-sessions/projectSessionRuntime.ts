@@ -5,7 +5,7 @@ import type { AutomationRecords } from "../../services/automations/AutomationRec
 import type { AutomationConfiguration } from "../../services/automations/AutomationConfiguration";
 import type { OptMemory } from "../../services/opt-memory/OptMemory";
 import { publishProjectSession as publishProjectAutomationEvent } from "../automations/automationSourceEvents";
-import * as sessionFamilies from "../session-families/sessionFamilies";
+import * as sessionFamilyAdmission from "../session-families/sessionFamilyAdmission";
 import * as backendAgentControl from "../application/agentControl";
 import type { PiSettings } from "../../services/pi/PiSettings";
 import type { McpSettings } from "../../services/pi/McpSettings";
@@ -422,7 +422,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         : accept;
       return coordination.checkStorage().pipe(
         Effect.andThen(
-          sessionFamilies
+          sessionFamilyAdmission
             .admitTurn(
               sessionId,
               {
@@ -726,7 +726,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             throw new Error("Child assignment launch storage is unavailable");
           const result = await run(
             Effect.scoped(
-              sessionFamilies
+              sessionFamilyAdmission
                 .createChild(
                   sessionId,
                   location,

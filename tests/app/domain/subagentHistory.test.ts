@@ -1,10 +1,13 @@
+import * as subagentLifetime from "../../../src/domain/subagents/subagentLifetime";
+import * as subagentObservation from "../../../src/domain/subagents/subagentObservation";
+import * as subagentData from "../../../src/contracts/subagents/subagent-data";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Stream } from "effect";
 import { expect } from "vitest";
-import * as subagents from "../../../src/domain/subagents/subagents";
+
 import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
 import {
   cakeWorkspaceSessionDirectory,
@@ -104,7 +107,7 @@ it.effect(
       );
       for (let reload = 0; reload < 2; reload++) {
         yield* Effect.gen(function* () {
-          const stream = yield* subagents.observe(f.record.parentSessionId);
+          const stream = yield* subagentObservation.observe(f.record.parentSessionId);
           const snapshot = yield* stream.pipe(Stream.runHead);
           expect(snapshot._tag).toBe("Some");
           if (snapshot._tag !== "Some" || snapshot.value._tag !== "Snapshot")
@@ -136,7 +139,7 @@ it.effect(
       );
       yield* f.fs.remove(f.session.getSessionFile()!);
       yield* Effect.gen(function* () {
-        const stream = yield* subagents.observe(f.record.parentSessionId);
+        const stream = yield* subagentObservation.observe(f.record.parentSessionId);
         const snapshot = yield* stream.pipe(Stream.runHead);
         if (snapshot._tag !== "Some" || snapshot.value._tag !== "Snapshot")
           throw new Error("Missing history snapshot");
@@ -156,7 +159,7 @@ it.effect(
       const f = yield* fixture();
       const unrelated = subagentHistoryFixture({
         ...f.record,
-        handleId: subagents.SubagentHandleId.make(crypto.randomUUID()),
+        handleId: subagentData.SubagentHandleId.make(crypto.randomUUID()),
         privateSessionId: crypto.randomUUID(),
         parentSessionId: "other-parent",
       });
@@ -172,7 +175,7 @@ it.effect(
         yield* storage.history.update(f.record);
         yield* storage.history.update(unrelated);
       }).pipe(Effect.provide(f.layer()));
-      yield* subagents.deleteOwned(f.record.parentSessionId).pipe(Effect.provide(f.layer()));
+      yield* subagentLifetime.deleteOwned(f.record.parentSessionId).pipe(Effect.provide(f.layer()));
       expect(yield* f.fs.exists(f.session.getSessionFile()!)).toBe(false);
       expect(yield* f.fs.exists(other.getSessionFile()!)).toBe(true);
       const retained = yield* Effect.flatMap(SubagentStorage, (storage) =>

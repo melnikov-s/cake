@@ -31,7 +31,7 @@ import {
   TurnCanceledError,
   TurnDetachedError,
 } from "../../../../src/services/pi/runtime/RuntimeTurnCompletion";
-import { admitTurn } from "../../../../src/domain/session-families/sessionFamilies";
+import { admitTurn } from "../../../../src/domain/session-families/sessionFamilyAdmission";
 import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
 import { SessionFamilyStorage } from "../../../../src/services/storage/SessionFamilyStorage";
 import { SessionArchiveStorage } from "../../../../src/services/storage/SessionArchiveStorage";

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Queue, Stream } from "effect";
-import { deliver } from "../../../src/domain/session-families/sessionFamilies";
+import { deliver } from "../../../src/domain/session-families/sessionFamilyCompletion";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import {
   encodeCrossSessionMessage,

@@ -11,7 +11,7 @@ import * as managedWorktrees from "../worktrees/managedWorktrees";
 import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";
 import * as reviews from "../reviews/reviews";
-import * as subagents from "../subagents/subagents";
+import * as subagentLifetime from "../subagents/subagentLifetime";
 import * as workflowLifecycle from "../workflows/workflow-lifecycle";
 import {
   forgetProjectSessions,
@@ -128,7 +128,7 @@ const archiveAuthority = Effect.fn("ProjectSessions.archiveAuthority")(function*
     .pipe(asError(operation));
   if (!namespace)
     return yield* rejected(operation, [sessionId], "Activate a Draft before resolving it");
-  yield* subagents.releaseParent(sessionId).pipe(asError(operation));
+  yield* subagentLifetime.releaseParent(sessionId).pipe(asError(operation));
   // Finish the short authority/publication sequence even if the caller leaves.
   // Checkout cleanup remains interruptible and is not part of this commit.
   yield* Effect.gen(function* () {
@@ -228,7 +228,7 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
         if (resolved) {
           for (const { sessionId } of members) {
             if (sessionId === current.parentSessionId) continue;
-            yield* subagents.releaseParent(sessionId).pipe(asError(operation));
+            yield* subagentLifetime.releaseParent(sessionId).pipe(asError(operation));
             yield* setSessionUnread(sessionId, false).pipe(asError(operation));
           }
           // One durable authority change resolves the whole tree. Children stay
@@ -491,11 +491,11 @@ export const deleteResolved = Effect.fn("ProjectSessions.deleteResolved")(functi
   const archive = yield* SessionArchiveStorage;
   const entry = yield* archive.resolvedProjectEntry(sessionId).pipe(asError(operation));
   if (!entry) return yield* error(operation, "Only resolved project sessions can be deleted");
-  yield* subagents.releaseParent(sessionId).pipe(asError(operation));
+  yield* subagentLifetime.releaseParent(sessionId).pipe(asError(operation));
   yield* archive.deleteResolvedProject(sessionId).pipe(asError(operation));
   const garbageCollector = yield* ArtifactGarbageCollector;
   yield* Effect.gen(function* () {
-    yield* subagents.deleteOwned(sessionId).pipe(asError(operation));
+    yield* subagentLifetime.deleteOwned(sessionId).pipe(asError(operation));
     yield* (yield* CakeSessionRuntimes).forgetRecovery(sessionId).pipe(asError(operation));
     yield* artifacts.deleteSession(entry.workingDirectory, sessionId).pipe(asError(operation));
     yield* reviews.deleteSession(entry.workingDirectory, sessionId).pipe(asError(operation));
@@ -545,7 +545,7 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
       .pipe(
         Stream.runForEach((session) =>
           Effect.gen(function* () {
-            yield* subagents.releaseParent(session.id).pipe(asError(operation));
+            yield* subagentLifetime.releaseParent(session.id).pipe(asError(operation));
             yield* archive
               .delete(session.id, {
                 cwd: workingDirectory,
@@ -553,7 +553,7 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
                 resolvedRoot: configuration.resolvedSessionDirectory,
               })
               .pipe(asError(operation));
-            yield* subagents.deleteOwned(session.id).pipe(asError(operation));
+            yield* subagentLifetime.deleteOwned(session.id).pipe(asError(operation));
             yield* deleteRelated(workingDirectory, session.id).pipe(
               Effect.ensuring(garbageCollector.request()),
             );
@@ -565,9 +565,9 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
   yield* archive.resolvedProjects(projectPath).pipe(
     Stream.runForEach((entry) =>
       Effect.gen(function* () {
-        yield* subagents.releaseParent(entry.sessionId).pipe(asError(operation));
+        yield* subagentLifetime.releaseParent(entry.sessionId).pipe(asError(operation));
         yield* archive.deleteResolvedProject(entry.sessionId).pipe(asError(operation));
-        yield* subagents.deleteOwned(entry.sessionId).pipe(asError(operation));
+        yield* subagentLifetime.deleteOwned(entry.sessionId).pipe(asError(operation));
         yield* deleteRelated(entry.workingDirectory, entry.sessionId).pipe(
           Effect.ensuring(garbageCollector.request()),
         );

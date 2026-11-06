@@ -10,7 +10,8 @@ import * as chatLocations from "../../../src/domain/cake-chats/cakeChatLocations
 import { open } from "../../../src/domain/cake-chats/cakeChatOperations";
 import { deliver } from "../../../src/domain/conversations/sessionChats";
 import { initialize } from "../../../src/domain/subagents/subagentRecovery";
-import { close, wait } from "../../../src/domain/subagents/subagents";
+import { wait } from "../../../src/domain/subagents/subagents";
+import { close } from "../../../src/domain/subagents/subagentLifetime";
 import {
   CakeSessionRuntimes,
   makeCakeSessionRuntimesLayer,

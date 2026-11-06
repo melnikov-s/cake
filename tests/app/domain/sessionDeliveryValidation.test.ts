@@ -10,7 +10,7 @@ import { forwardTaskInputControl } from "../../../src/domain/cake-chats/taskInpu
 import * as agentMessaging from "../../../src/domain/application/agentSessionMessaging";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { createSessionFamilyOperations } from "../../../src/domain/session-families/cake-session-family-operations";
-import { routeCoordinatorMessage } from "../../../src/domain/session-families/sessionFamilies";
+import { routeCoordinatorMessage } from "../../../src/domain/session-families/coordinatorMessageRouting";
 import {
   FamilyMessageInput,
   route,
