@@ -7,6 +7,8 @@ process.on("message", () => controller.abort());
 try {
   const code = await runElectronCommand(config.command, config.args, {
     ...config,
+    // JSON cannot carry Infinity; the test passes it as a string.
+    timeoutMs: config.timeoutMs === "Infinity" ? Infinity : config.timeoutMs,
     signal: controller.signal,
     onEvent: (event) => process.send(event),
   });

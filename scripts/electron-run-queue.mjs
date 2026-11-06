@@ -178,17 +178,21 @@ export function isElectronRun() {
   return false;
 }
 
-export async function queueElectronEntrypoint() {
+export async function queueElectronEntrypoint(options = {}) {
   if (isElectronRun()) return;
-  const code = await runElectronCommand(process.execPath, process.argv.slice(1));
+  const code = await runElectronCommand(process.execPath, process.argv.slice(1), options);
   process.exit(code);
 }
 
-/** Run one complete validation workflow. The supervisor survives caller death. */
+/**
+ * Run one complete validation workflow. The supervisor survives caller death.
+ * Interactive apps (dev, start) pass `timeoutMs: Infinity` so they are never
+ * killed by the validation deadline.
+ */
 export function runElectronCommand(command, args, options = {}) {
   const timeoutMs = options.timeoutMs ?? 30 * 60_000;
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0)
-    throw new Error("Electron run timeout must be a positive integer in milliseconds.");
+  if (timeoutMs !== Infinity && (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0))
+    throw new Error("Electron run timeout must be a positive integer in milliseconds or Infinity.");
   const queuePath = options.queuePath ?? electronQueuePath();
   return new Promise((resolve, reject) => {
     const supervisor = fork(modulePath, ["supervise"], {
@@ -224,7 +228,8 @@ export function runElectronCommand(command, args, options = {}) {
       cwd: options.cwd ?? process.cwd(),
       env: options.env ?? process.env,
       path: queuePath,
-      timeoutMs,
+      // IPC is JSON: Infinity would arrive as null, so send null explicitly.
+      timeoutMs: timeoutMs === Infinity ? null : timeoutMs,
     });
     if (options.signal?.aborted) abort();
   });
@@ -397,7 +402,7 @@ async function supervise() {
     });
     db.prepare("UPDATE requests SET group_id = ? WHERE id = ?").run(job.pid, id);
     job.send({ ...request, type: "start" });
-    const deadline = Date.now() + request.timeoutMs;
+    const deadline = request.timeoutMs === null ? Infinity : Date.now() + request.timeoutMs;
     while (done === undefined && !failure && !cancelled && Date.now() < deadline) await delay(50);
     if (failure) throw failure;
     code = cancelled ? 130 : done === undefined ? 124 : done;
@@ -456,8 +461,18 @@ if (process.argv[1] === modulePath) {
   if (mode === "supervise") await supervise();
   else if (mode === "job") await bootstrap();
   else {
-    const [command, ...args] = process.argv.slice(2);
-    if (!command) throw new Error("Usage: node scripts/electron-run-queue.mjs <command> [args...]");
-    process.exitCode = await runElectronCommand(command, args);
+    let argv = process.argv.slice(2);
+    const noTimeout = argv[0] === "--no-timeout";
+    if (noTimeout) argv = argv.slice(1);
+    const [command, ...args] = argv;
+    if (!command)
+      throw new Error(
+        "Usage: node scripts/electron-run-queue.mjs [--no-timeout] <command> [args...]",
+      );
+    process.exitCode = await runElectronCommand(
+      command,
+      args,
+      noTimeout ? { timeoutMs: Infinity } : {},
+    );
   }
 }

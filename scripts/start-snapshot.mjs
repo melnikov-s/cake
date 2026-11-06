@@ -8,7 +8,8 @@ import { fileURLToPath } from "node:url";
 import electron from "electron";
 import { queueElectronEntrypoint } from "./electron-run-queue.mjs";
 
-await queueElectronEntrypoint();
+// Interactive app: never apply the validation run deadline.
+await queueElectronEntrypoint({ timeoutMs: Infinity });
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = join(root, "out");

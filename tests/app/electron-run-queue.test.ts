@@ -45,7 +45,12 @@ afterEach(async () => {
 
 function start(
   name: string,
-  options: { cwd?: string; mode?: string; timeoutMs?: number; command?: string } = {},
+  options: {
+    cwd?: string;
+    mode?: string;
+    timeoutMs?: number | "Infinity";
+    command?: string;
+  } = {},
 ) {
   const child = fork(
     clientPath,
@@ -214,6 +219,14 @@ it("cleans up an aborted running job and a timed-out job before releasing admiss
   const second = await started("timed-out");
   expect(await timedOut.exit).toBe(124);
   expect(alive(second.pid)).toBe(false);
+  await empty();
+}, 20_000);
+
+it("runs interactive jobs without a deadline until they finish", async () => {
+  const interactive = start("interactive", { timeoutMs: "Infinity" });
+  await started("interactive");
+  await release("interactive");
+  expect(await interactive.exit).toBe(0);
   await empty();
 }, 20_000);
 
@@ -438,9 +451,12 @@ it("routes maintained Playwright imports and package launch commands through the
   expect(bypasses).toEqual([]);
   const { scripts } = JSON.parse(readFileSync("package.json", "utf8"));
   for (const name of ["dev", "dev:agent", "dev:manual", "start:direct"])
-    expect(scripts[name]).toContain("scripts/electron-run-queue.mjs");
+    // Interactive apps must never hit the validation deadline (exit 124).
+    expect(scripts[name]).toContain("scripts/electron-run-queue.mjs --no-timeout ");
+  expect(readFileSync("scripts/start-snapshot.mjs", "utf8")).toContain(
+    "await queueElectronEntrypoint({ timeoutMs: Infinity })",
+  );
   for (const path of [
-    "scripts/start-snapshot.mjs",
     "scripts/visual-capture/run.mjs",
     "playwright.config.ts",
     "playwright.performance.config.ts",

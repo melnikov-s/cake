@@ -7,7 +7,7 @@ export interface ElectronQueueState {
 export function electronQueueState(queuePath?: string): ElectronQueueState;
 export function setElectronQueueCapacity(capacity: number, queuePath?: string): ElectronQueueState;
 export function isElectronRun(): boolean;
-export function queueElectronEntrypoint(): Promise<void>;
+export function queueElectronEntrypoint(options?: { timeoutMs?: number }): Promise<void>;
 export interface ElectronQueueEvent {
   type: "queued" | "running" | "result";
   id?: number;
@@ -23,6 +23,7 @@ export function runElectronCommand(
   options?: {
     cwd?: string;
     env?: NodeJS.ProcessEnv;
+    /** Positive milliseconds, or Infinity for interactive apps. Default 30 minutes. */
     timeoutMs?: number;
     signal?: AbortSignal;
     /** Isolated database for process tests only; production uses the machine path. */
