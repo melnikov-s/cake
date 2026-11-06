@@ -14,7 +14,7 @@ import {
   makeInstallSingleFlight,
   makeVsCodeServerLive,
 } from "../../../../src/services/vscode/VsCodeServerLive";
-import type { CompanionManifest } from "../../../../src/services/vscode/VsCodeServerRuntime";
+import type { CompanionManifest } from "../../../../src/services/vscode/vscode-profile";
 
 const native = vi.hoisted(() => ({
   releaseServer: vi.fn(),

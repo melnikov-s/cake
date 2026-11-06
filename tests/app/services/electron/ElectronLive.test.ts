@@ -28,6 +28,11 @@ const native = vi.hoisted(() => ({
   fromId: vi.fn(() => undefined as unknown),
   fromWebContents: vi.fn(() => undefined as unknown),
   popup: vi.fn<(options: PopupOptions) => void>(),
+  closePopup: vi.fn(),
+  openHandler: vi.fn(),
+  replaceMisspelling: vi.fn(),
+  menuIcon: vi.fn(() => ({ setTemplateImage: vi.fn() })),
+  writeText: vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined),
   decodeImage: vi.fn(),
   writeClipboard: vi
     .fn<(items: { data: Record<string, Blob | string> }[]) => Promise<void>>()
@@ -38,7 +43,10 @@ vi.mock("electron", () => ({
     id = 1;
     webContents = Object.assign(new EventEmitter(), {
       id: 42,
-      setWindowOpenHandler: () => {},
+      setWindowOpenHandler: native.openHandler,
+      replaceMisspelling: native.replaceMisspelling,
+      getURL: () => "file:///index.html",
+      isDestroyed: () => native.destroyed,
     });
     constructor(options: { show?: boolean }) {
       super();
@@ -85,12 +93,22 @@ vi.mock("electron", () => ({
   Menu: {
     buildFromTemplate: (template: MenuItemConstructorOptions[]) => {
       native.template = template;
-      return { popup: native.popup };
+      let onClose: PopupOptions["callback"];
+      return {
+        popup: (options: PopupOptions) => {
+          onClose = options.callback;
+          native.popup(options);
+        },
+        closePopup: () => {
+          native.closePopup();
+          onClose?.();
+        },
+      };
     },
     setApplicationMenu: () => {},
   },
-  nativeImage: { createFromDataURL: native.decodeImage },
-  clipboard: { write: native.writeClipboard },
+  nativeImage: { createFromDataURL: native.decodeImage, createFromBuffer: native.menuIcon },
+  clipboard: { write: native.writeClipboard, writeText: native.writeText },
   ClipboardItem: class {
     constructor(readonly data: Record<string, Blob | string>) {}
   },
@@ -103,8 +121,9 @@ vi.mock("electron", () => ({
 const live = makeElectronLive({
   application: Object.assign(Object.create(null), { on: () => {}, removeListener: () => {} }),
   cakeIconPath: "/icon.png",
-  annotationMenuIconPath: "/icon.png",
-  chatMenuIconPath: "/icon.png",
+  annotationMenuIconPath: new URL("../../../../src/assets/menu-annotation.png", import.meta.url)
+    .pathname,
+  chatMenuIconPath: new URL("../../../../src/assets/menu-chat.png", import.meta.url).pathname,
   preloadPath: "/preload.js",
   rendererPath: "/index.html",
 }).pipe(
@@ -116,11 +135,232 @@ afterEach(() => {
   native.fromId.mockReset();
   native.fromWebContents.mockReset();
   native.popup.mockReset();
+  native.closePopup.mockReset();
+  native.openHandler.mockReset();
+  native.replaceMisspelling.mockReset();
+  native.menuIcon.mockClear();
+  native.writeText.mockReset().mockResolvedValue(undefined);
   native.decodeImage.mockReset();
   native.writeClipboard.mockReset().mockResolvedValue(undefined);
 });
 
+const windowLifecycle = {
+  flushWindowState: () => Effect.void,
+  onWindowCloseRequested: () => {},
+  backToAgentForWindow: () => false,
+  onWindowClosed: () => {},
+  allowProjectPath: () => Effect.void,
+  canRewordSelection: () => true,
+};
+
 describe("ElectronLive client state", () => {
+  it.effect.each(
+    (["link", "project", "session"] as const).flatMap((source) =>
+      [false, true].map((rejected) => ({ source, rejected })),
+    ),
+  )(
+    "$source copy handles clipboard rejection=$rejected without returning a Promise",
+    ({ source, rejected }) =>
+      Effect.gen(function* () {
+        native.destroyed = false;
+        const context = yield* Layer.build(live);
+        const electron = Context.get(context, Electron);
+        const events = Context.get(context, ClientEvents);
+        const received = yield* Queue.unbounded<CakeEvent>();
+        yield* events.application(1).pipe(
+          Stream.runForEach((event) => Queue.offer(received, event)),
+          Effect.forkScoped,
+        );
+        yield* Queue.take(received);
+        yield* electron.start(windowLifecycle);
+        Context.get(context, ClientWorkspaces).associateWorkspace(1, "/project");
+        const owner = electron.windowsForWorkspace("/project")[0]![1];
+        native.fromId.mockReturnValue(owner.webContents);
+        native.fromWebContents.mockReturnValue(owner);
+        if (rejected) native.writeText.mockRejectedValueOnce(new Error("Clipboard unavailable"));
+        const label =
+          source === "link"
+            ? "Copy Link"
+            : source === "project"
+              ? "Copy Project Path"
+              : "Copy Session ID";
+        const text =
+          source === "link"
+            ? "https://example.com/link"
+            : source === "project"
+              ? "/project"
+              : "session-id";
+        native.popup.mockImplementation(({ callback }) => {
+          const item = native.template.find((entry) => entry.label === label);
+          if (!item?.click) throw new Error(`Missing ${label}`);
+          expect(Reflect.apply(item.click, undefined, [])).toBeUndefined();
+          callback?.();
+        });
+        if (source === "link") {
+          owner.webContents.emit("context-menu", {}, { linkURL: text });
+        } else if (source === "project") {
+          expect(
+            yield* electron.showProjectContextMenu(1, {
+              path: text,
+              x: 24,
+              y: 48,
+              sessionSort: "date",
+              resolvedWorktreeCount: 0,
+            }),
+          ).toEqual({ action: undefined });
+        } else {
+          expect(
+            yield* electron.showSessionContextMenu(1, {
+              sessionId: text,
+              x: 24,
+              y: 48,
+              resolved: false,
+              draft: false,
+            }),
+          ).toEqual({ action: undefined });
+        }
+        expect(native.writeText).toHaveBeenCalledExactlyOnceWith(text);
+        if (rejected) {
+          expect(yield* Queue.take(received)).toEqual({
+            type: "notification",
+            title: "Could not copy to clipboard",
+            message: "Clipboard unavailable",
+            tone: "error",
+          });
+        } else {
+          yield* Effect.promise(() => native.writeText.mock.results[0]!.value);
+          expect(yield* Queue.size(received)).toBe(0);
+        }
+      }),
+  );
+
+  it.effect(
+    "native edit menus preserve spelling/edit roles while content guards deny foreign navigation",
+    () =>
+      Effect.gen(function* () {
+        native.destroyed = false;
+        const context = yield* Layer.build(live);
+        const electron = Context.get(context, Electron);
+        yield* electron.start(windowLifecycle);
+        Context.get(context, ClientWorkspaces).associateWorkspace(1, "/project");
+        const owner = electron.windowsForWorkspace("/project")[0]![1];
+        const params = {
+          isEditable: true,
+          selectionText: "word",
+          misspelledWord: "wrod",
+          dictionarySuggestions: ["word", "rod", "wood", "road", "row", "sixth"],
+          editFlags: { canCut: true, canCopy: false, canPaste: true },
+        };
+        owner.webContents.emit("context-menu", {}, params);
+        expect(native.template.filter((item) => item.label).map((item) => item.label)).toEqual(
+          params.dictionarySuggestions.slice(0, 5),
+        );
+        const suggestion = native.template[0];
+        if (!suggestion?.click) throw new Error("Missing spelling suggestion");
+        Reflect.apply(suggestion.click, undefined, []);
+        expect(native.replaceMisspelling).toHaveBeenCalledExactlyOnceWith("word");
+        expect(native.template.filter((item) => item.role)).toEqual([
+          { role: "cut", enabled: true },
+          { role: "copy", enabled: false },
+          { role: "paste", enabled: true },
+          { role: "selectAll" },
+        ]);
+        const preventDefault = vi.fn();
+        owner.webContents.emit("will-navigate", { preventDefault }, "https://example.com");
+        expect(preventDefault).toHaveBeenCalledOnce();
+        owner.webContents.emit("will-navigate", { preventDefault }, "file:///index.html");
+        expect(preventDefault).toHaveBeenCalledOnce();
+        expect(native.openHandler.mock.calls[0]?.[0]()).toEqual({ action: "deny" });
+      }),
+  );
+
+  it.effect(
+    "stopping the adapter closes the outstanding session popup and resolves dismissal once",
+    () =>
+      Effect.gen(function* () {
+        native.destroyed = false;
+        const context = yield* Layer.build(live);
+        const electron = Context.get(context, Electron);
+        yield* electron.start(windowLifecycle);
+        Context.get(context, ClientWorkspaces).associateWorkspace(1, "/project");
+        const owner = electron.windowsForWorkspace("/project")[0]![1];
+        native.fromId.mockReturnValue(owner.webContents);
+        native.fromWebContents.mockReturnValue(owner);
+        const opened = yield* Queue.unbounded<void>();
+        native.popup.mockImplementation(() => {
+          Queue.offerUnsafe(opened, undefined);
+        });
+        const showing = yield* electron
+          .showSessionContextMenu(1, {
+            sessionId: "session-id",
+            x: 24,
+            y: 48,
+            resolved: false,
+            draft: false,
+          })
+          .pipe(Effect.forkChild);
+        yield* Queue.take(opened);
+        yield* electron.stop();
+        expect(yield* Fiber.join(showing)).toEqual({ action: undefined });
+        expect(native.closePopup).toHaveBeenCalledOnce();
+        yield* electron.stop();
+        expect(native.closePopup).toHaveBeenCalledOnce();
+      }),
+  );
+
+  it.effect.each(["select", "dismiss"] as const)(
+    "transcript and composer menus %s preserve actions and native role ordering",
+    (choice) =>
+      Effect.gen(function* () {
+        native.destroyed = false;
+        const context = yield* Layer.build(live);
+        const electron = Context.get(context, Electron);
+        const connectionId = Context.get(context, ClientConnections).desktop(42);
+        native.fromId.mockReturnValue({ id: 42, isDestroyed: () => false });
+        native.fromWebContents.mockReturnValue({ id: 1 });
+        native.popup.mockImplementation(({ callback }) => {
+          const item = native.template.find((entry) => entry.label === "Chat about this");
+          if (!item?.click) throw new Error("Missing transcript action");
+          if (choice === "select") Reflect.apply(item.click, undefined, []);
+          callback?.();
+        });
+        expect(
+          yield* electron.showTranscriptSelectionContextMenu(connectionId, {
+            canChat: true,
+            canAnnotate: true,
+          }),
+        ).toEqual({ action: choice === "select" ? "chat-about-selection" : undefined });
+        expect(native.template.map((item) => item.role ?? item.label)).toEqual([
+          "copy",
+          "Add annotation",
+          "Chat about this",
+          "selectAll",
+        ]);
+        expect(native.menuIcon).toHaveBeenCalledWith(expect.any(Buffer), { scaleFactor: 2 });
+        yield* electron.start(windowLifecycle);
+        native.popup.mockImplementation(({ callback }) => {
+          const item = native.template.find((entry) => entry.label === "Insert model reference");
+          if (!item?.click) throw new Error("Missing composer action");
+          if (choice === "select") Reflect.apply(item.click, undefined, []);
+          callback?.();
+        });
+        expect(
+          yield* electron.showComposerContextMenu(connectionId, {
+            selection: "text",
+            canInsertModel: true,
+            canInsertSession: false,
+            canReword: true,
+            x: 24,
+            y: 48,
+          }),
+        ).toEqual({ action: choice === "select" ? "insert-model" : undefined });
+        expect(native.template.find((item) => item.label === "Reword")?.enabled).toBe(true);
+        expect(
+          native.template.find((item) => item.label === "Insert session reference")?.enabled,
+        ).toBe(false);
+      }),
+  );
+
   it.effect.each(["select", "dismiss"] as const)(
     "native Project menu %s returns a validated automation action or dismissal",
     (choice) =>
@@ -155,6 +395,94 @@ describe("ElectronLive client state", () => {
         ).toEqual(result);
       }),
   );
+  it.effect.each([
+    {
+      resolved: false,
+      draft: true,
+      familyChild: false,
+      permanent: false,
+      unread: false,
+      label: "Rename",
+      action: "rename",
+      labels: ["Mark as Unread", "Rename", "Copy Session ID"],
+    },
+    {
+      resolved: false,
+      draft: false,
+      familyChild: false,
+      permanent: false,
+      unread: true,
+      label: "Resolve",
+      action: "resolve",
+      labels: ["Rename", "Copy Session ID", "Resolve"],
+    },
+    {
+      resolved: true,
+      draft: false,
+      familyChild: false,
+      permanent: false,
+      unread: false,
+      label: "Delete",
+      action: "delete",
+      labels: ["Unresolve", "Copy Session ID", "Delete"],
+    },
+    {
+      resolved: true,
+      draft: false,
+      familyChild: true,
+      permanent: false,
+      unread: false,
+      label: "Unresolve",
+      action: "unresolve",
+      labels: ["Unresolve", "Copy Session ID"],
+    },
+    {
+      resolved: false,
+      draft: false,
+      familyChild: false,
+      permanent: true,
+      unread: true,
+      label: "Mark as Read",
+      action: "mark-read",
+      labels: ["Mark as Read", "Mark as Unread", "Copy Session ID"],
+    },
+  ])(
+    "session menu $label preserves state-dependent actions and settles before popup dismissal",
+    (choice) =>
+      Effect.gen(function* () {
+        const context = yield* Layer.build(live);
+        const electron = Context.get(context, Electron);
+        const connectionId = Context.get(context, ClientConnections).desktop(42);
+        native.fromId.mockReturnValue({ id: 42, isDestroyed: () => false });
+        native.fromWebContents.mockReturnValue({ id: 1 });
+        native.popup.mockImplementation(({ callback }) => {
+          expect(native.template.flatMap((entry) => (entry.label ? [entry.label] : []))).toEqual(
+            choice.labels,
+          );
+          const item = native.template.find((entry) => entry.label === choice.label);
+          if (!item?.click) throw new Error(`Missing ${choice.label}`);
+          Reflect.apply(item.click, undefined, []);
+          callback?.();
+        });
+        const result = yield* electron.showSessionContextMenu(connectionId, {
+          sessionId: "session-id",
+          x: 24,
+          y: 48,
+          resolved: choice.resolved,
+          draft: choice.draft,
+          familyChild: choice.familyChild,
+          permanent: choice.permanent,
+          unread: choice.unread,
+        });
+        expect(result).toEqual({ action: choice.action });
+        expect(
+          yield* Schema.decodeUnknownEffect(cakeRpcSuccessSchemas["show-session-context-menu"])(
+            result,
+          ),
+        ).toEqual(result);
+      }),
+  );
+
   it.effect("copies decoded pixels and reports native failures without writing empty images", () =>
     Effect.gen(function* () {
       const context = yield* Layer.build(live);

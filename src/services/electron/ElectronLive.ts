@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { Effect, Layer, Queue, Stream } from "effect";
 import {
   BrowserWindow,
@@ -26,7 +25,7 @@ import { shouldAllowNavigation } from "./navigation-policy";
 import { installRendererDiagnostics } from "./renderer-diagnostics";
 import { CAKE_TITLE_BAR_HEIGHT, Electron, type ElectronWindowLifecycle } from "./Electron";
 import { ElectronError } from "../../contracts/desktop/electron-errors";
-import type { cakeRpcSuccessSchemas } from "../../contracts/application/cake-rpc-contract";
+import { makeElectronContextMenus } from "./ElectronContextMenus";
 import { ClientConnections } from "../clients/ClientConnections";
 import { ClientEvents } from "../clients/ClientEvents";
 import { ClientWorkspaces } from "../clients/ClientWorkspaces";
@@ -52,20 +51,6 @@ const trafficLightPosition = (titleBarHeight: number) => ({
   x: TRAFFIC_LIGHT_X,
   y: Math.round((titleBarHeight - TRAFFIC_LIGHT_DIAMETER) / 2),
 });
-
-type IconMenuEntry = Omit<MenuItemConstructorOptions, "icon" | "label" | "role" | "type"> & {
-  readonly label: string;
-  readonly icon: string;
-};
-
-const iconMenuEntry = ({ icon: iconPath, ...entry }: IconMenuEntry) => {
-  // These catalog icons are rasterized at 2x for a 16-point native menu slot.
-  // Supply the scale explicitly: asset bundling hashes names, so Electron cannot
-  // infer Retina density from an @2x filename or discover sibling representations.
-  const icon = nativeImage.createFromBuffer(readFileSync(iconPath), { scaleFactor: 2 });
-  icon.setTemplateImage(true);
-  return { ...entry, icon } satisfies MenuItemConstructorOptions;
-};
 
 const makeElectronService = (
   options: ElectronLiveOptions,
@@ -235,7 +220,6 @@ const makeElectronService = (
   const fullscreenSurfaceListeners = new Set<
     (state: { readonly connectionId: number; readonly open: boolean }) => void
   >();
-  const openSessionContextMenus = new Set<Menu>();
   let applicationQuitting = false;
   let stopped = false;
   let windowLifecycle: ElectronWindowLifecycle | undefined;
@@ -250,6 +234,23 @@ const makeElectronService = (
     if (!sender || sender.isDestroyed()) throw new Error("Renderer connection is no longer active");
     return sender;
   };
+
+  const contextMenus = makeElectronContextMenus({
+    annotationMenuIconPath: options.annotationMenuIconPath,
+    chatMenuIconPath: options.chatMenuIconPath,
+    requireRendererConnection,
+    canRewordSelection: () => lifecycle().canRewordSelection(),
+    reportClipboardError: (window, error) => {
+      const connectionId = connections.forNative(window.webContents.id);
+      if (connectionId === undefined) return;
+      clientEvents.sendTo(connectionId, {
+        type: "notification",
+        title: "Could not copy to clipboard",
+        message: electronError(error).message,
+        tone: "error",
+      });
+    },
+  });
 
   const centerTrafficLights = (window: BrowserWindow, titleBarHeight: number) => {
     if (process.platform === "darwin")
@@ -300,37 +301,7 @@ const makeElectronService = (
    * and the native edit/spelling context menu. */
   const installContentGuards = (window: BrowserWindow) => {
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-    window.webContents.on("context-menu", (_event, params) => {
-      if (!params.isEditable && !params.selectionText && !params.misspelledWord && !params.linkURL)
-        return;
-      const template: MenuItemConstructorOptions[] = [];
-      if (params.misspelledWord) {
-        for (const suggestion of params.dictionarySuggestions.slice(0, 5))
-          template.push({
-            label: suggestion,
-            click: () => window.webContents.replaceMisspelling(suggestion),
-          });
-        if (!params.dictionarySuggestions.length)
-          template.push({ label: "No Suggestions", enabled: false });
-        template.push({ type: "separator" });
-      }
-      if (params.linkURL)
-        template.push(
-          { label: "Copy Link", click: () => clipboard.writeText(params.linkURL) },
-          { type: "separator" },
-        );
-      if (params.isEditable || params.selectionText)
-        template.push(
-          { role: "cut", enabled: params.isEditable && params.editFlags.canCut },
-          {
-            role: "copy",
-            enabled: params.isEditable ? params.editFlags.canCopy : Boolean(params.selectionText),
-          },
-          { role: "paste", enabled: params.isEditable && params.editFlags.canPaste },
-          { role: "selectAll" },
-        );
-      Menu.buildFromTemplate(template).popup({ window });
-    });
+    contextMenus.installEditMenu(window);
     window.webContents.on("will-navigate", (event, url) => {
       if (
         !shouldAllowNavigation(window.webContents.getURL(), url, process.env.ELECTRON_RENDERER_URL)
@@ -787,225 +758,7 @@ const makeElectronService = (
         catch: electronError,
       });
     }),
-    showTranscriptSelectionContextMenu: Effect.fn("Electron.showTranscriptSelectionContextMenu")(
-      function* (connectionId, request) {
-        const sender = yield* Effect.try({
-          try: () => requireRendererConnection(connectionId),
-          catch: electronError,
-        });
-        const owner = BrowserWindow.fromWebContents(sender);
-        if (!owner) return {};
-        return yield* Effect.tryPromise({
-          try: () =>
-            new Promise<SuccessTranscriptMenu>((resolve) => {
-              let selectedAction: SuccessTranscriptMenu["action"];
-              const template: MenuItemConstructorOptions[] = [{ role: "copy" }];
-              if (request.canAnnotate)
-                template.push(
-                  iconMenuEntry({
-                    label: "Add annotation",
-                    icon: options.annotationMenuIconPath,
-                    click: () => {
-                      selectedAction = "add-annotation";
-                    },
-                  }),
-                );
-              if (request.canChat)
-                template.push(
-                  iconMenuEntry({
-                    label: "Chat about this",
-                    icon: options.chatMenuIconPath,
-                    click: () => {
-                      selectedAction = "chat-about-selection";
-                    },
-                  }),
-                );
-              template.push({ role: "selectAll" });
-              Menu.buildFromTemplate(template).popup({
-                window: owner,
-                callback: () => resolve({ action: selectedAction }),
-              });
-            }),
-          catch: electronError,
-        });
-      },
-    ),
-    showComposerContextMenu: Effect.fn("Electron.showComposerContextMenu")(
-      function* (connectionId, request) {
-        const sender = yield* Effect.try({
-          try: () => requireRendererConnection(connectionId),
-          catch: electronError,
-        });
-        const owner = BrowserWindow.fromWebContents(sender);
-        if (!owner) return {};
-        return yield* Effect.tryPromise({
-          try: () =>
-            new Promise<SuccessComposerMenu>((resolve) => {
-              let completed = false;
-              const finish = (action?: SuccessComposerMenu["action"]) => {
-                if (completed) return;
-                completed = true;
-                resolve({ action });
-              };
-              Menu.buildFromTemplate([
-                { role: "cut" },
-                { role: "copy" },
-                { role: "paste" },
-                { type: "separator" },
-                {
-                  label: "Insert model reference",
-                  enabled: request.canInsertModel,
-                  click: () => finish("insert-model"),
-                },
-                {
-                  label: "Insert session reference",
-                  enabled: request.canInsertSession,
-                  click: () => finish("insert-session"),
-                },
-                {
-                  label: "Reword",
-                  enabled: request.canReword && lifecycle().canRewordSelection(),
-                  click: () => finish("reword"),
-                },
-                {
-                  label: "Reword with Prompt…",
-                  enabled: request.canReword && lifecycle().canRewordSelection(),
-                  click: () => finish("reword-with-prompt"),
-                },
-                { type: "separator" },
-                { role: "selectAll" },
-              ]).popup({ window: owner, x: request.x, y: request.y, callback: () => finish() });
-            }),
-          catch: electronError,
-        });
-      },
-    ),
-    showSessionContextMenu: Effect.fn("Electron.showSessionContextMenu")(
-      function* (connectionId, request) {
-        const sender = yield* Effect.try({
-          try: () => requireRendererConnection(connectionId),
-          catch: electronError,
-        });
-        const owner = BrowserWindow.fromWebContents(sender);
-        if (!owner) return {};
-        return yield* Effect.tryPromise({
-          try: () =>
-            new Promise<SuccessSessionMenu>((resolve) => {
-              let completed = false;
-              const finish = (action?: SuccessSessionMenu["action"]) => {
-                if (completed) return;
-                completed = true;
-                resolve({ action });
-              };
-              const copyId = {
-                label: "Copy Session ID",
-                click: () => clipboard.writeText(request.sessionId),
-              };
-              const activeItems: MenuItemConstructorOptions[] = [
-                ...(request.unread === false
-                  ? [{ label: "Mark as Unread", click: () => finish("mark-unread") }]
-                  : []),
-                { label: "Rename", click: () => finish("rename") },
-                copyId,
-              ];
-              const menu = Menu.buildFromTemplate(
-                request.permanent
-                  ? [
-                      {
-                        label: "Mark as Read",
-                        enabled: request.unread === true,
-                        click: () => finish("mark-read"),
-                      },
-                      {
-                        label: "Mark as Unread",
-                        enabled: request.unread === false,
-                        click: () => finish("mark-unread"),
-                      },
-                      copyId,
-                    ]
-                  : request.resolved
-                    ? [
-                        { label: "Unresolve", click: () => finish("unresolve") },
-                        copyId,
-                        ...(request.familyChild
-                          ? []
-                          : [
-                              { type: "separator" as const },
-                              { label: "Delete", click: () => finish("delete") },
-                            ]),
-                      ]
-                    : request.draft
-                      ? activeItems
-                      : [...activeItems, { label: "Resolve", click: () => finish("resolve") }],
-              );
-              openSessionContextMenus.add(menu);
-              menu.popup({
-                window: owner,
-                x: request.x,
-                y: request.y,
-                callback: () => {
-                  openSessionContextMenus.delete(menu);
-                  finish();
-                },
-              });
-            }),
-          catch: electronError,
-        });
-      },
-    ),
-    showProjectContextMenu: Effect.fn("Electron.showProjectContextMenu")(
-      function* (connectionId, request) {
-        const sender = yield* Effect.try({
-          try: () => requireRendererConnection(connectionId),
-          catch: electronError,
-        });
-        const owner = BrowserWindow.fromWebContents(sender);
-        if (!owner) return {};
-        return yield* Effect.tryPromise({
-          try: () =>
-            new Promise<SuccessProjectMenu>((resolve) => {
-              let completed = false;
-              const finish = (action?: SuccessProjectMenu["action"]) => {
-                if (completed) return;
-                completed = true;
-                resolve({ action });
-              };
-              Menu.buildFromTemplate([
-                { label: "New Automation…", click: () => finish("new-automation") },
-                { label: "Project Settings…", click: () => finish("settings") },
-                {
-                  label: "Sort Sessions",
-                  submenu: [
-                    {
-                      label: "By Date",
-                      type: "radio",
-                      checked: request.sessionSort === "date",
-                      click: () => finish("sort-by-date"),
-                    },
-                    {
-                      label: "By Label",
-                      type: "radio",
-                      checked: request.sessionSort === "label",
-                      click: () => finish("sort-by-label"),
-                    },
-                  ],
-                },
-                { type: "separator" },
-                { label: "Copy Project Path", click: () => clipboard.writeText(request.path) },
-                { type: "separator" },
-                {
-                  label: `Delete Resolved Worktrees${request.resolvedWorktreeCount > 0 ? ` (${request.resolvedWorktreeCount})` : ""}`,
-                  enabled: request.resolvedWorktreeCount > 0,
-                  click: () => finish("delete-resolved-worktrees"),
-                },
-                { type: "separator" },
-                { label: "Remove Project…", click: () => finish("remove-project") },
-              ]).popup({ window: owner, x: request.x, y: request.y, callback: () => finish() });
-            }),
-          catch: electronError,
-        });
-      },
-    ),
+    ...contextMenus.operations,
     setFullscreenSurfaceOpen: Effect.fn("Electron.setFullscreenSurfaceOpen")(
       function* (connectionId, request) {
         yield* Effect.try({
@@ -1098,8 +851,7 @@ const makeElectronService = (
         options.application.removeListener("activate", onActivate);
         options.application.removeListener("browser-window-focus", syncOverlayShortcut);
         options.application.removeListener("browser-window-blur", syncOverlayShortcut);
-        for (const menu of openSessionContextMenus) menu.closePopup();
-        openSessionContextMenus.clear();
+        contextMenus.stop();
         // The initial Electron quit is prevented so Effect can finalize first. Destroy the
         // renderer windows now so RPC transports and native views cannot retain the runtime.
         for (const window of windows.values()) {
@@ -1141,14 +893,3 @@ export const makeElectronLive = (options: ElectronLiveOptions) =>
       return yield* Effect.acquireRelease(Effect.succeed(service), () => service.stop());
     }),
   );
-
-type SuccessTranscriptMenu = {
-  readonly action?: "chat-about-selection" | "add-annotation";
-};
-type SuccessComposerMenu = {
-  readonly action?: "reword" | "reword-with-prompt" | "insert-model" | "insert-session";
-};
-type SuccessSessionMenu = {
-  readonly action?: "rename" | "mark-read" | "mark-unread" | "resolve" | "unresolve" | "delete";
-};
-type SuccessProjectMenu = (typeof cakeRpcSuccessSchemas)["show-project-context-menu"]["Type"];

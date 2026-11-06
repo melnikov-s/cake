@@ -9,7 +9,10 @@ import {
   type ApplicationState as ApplicationValue,
 } from "../../../src/contracts/application/application-data";
 import { AgentSettingsInvocation } from "../../../src/contracts/application/agent-settings-schema";
-import { settingsCatalog } from "../../../src/contracts/application/settings-catalog";
+import {
+  settingsCatalog,
+  settingsCategories,
+} from "../../../src/contracts/application/settings-catalog";
 import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
 import type { JsonObject } from "../../../src/contracts/serialization/json-contract";
 import * as application from "../../../src/domain/application/application";
@@ -176,8 +179,11 @@ describe("settings catalog through the cake tool", () => {
       settings: 7,
       changed: 1,
     });
-    expect(overview.categories.reduce((total, item) => total + item.settings, 0)).toBe(
-      settingsCatalog.length,
+    expect(overview.categories.map(({ category, settings }) => ({ category, settings }))).toEqual(
+      settingsCategories.map((category) => ({
+        category,
+        settings: settingsCatalog.filter((setting) => setting.category === category).length,
+      })),
     );
     expect(overview.elsewhere.map(([area]) => area).join("\n")).toContain("Provider accounts");
     expect(overview.notAgentWritable).toContain("API keys");
@@ -189,14 +195,26 @@ describe("settings catalog through the cake tool", () => {
         { signal: new AbortController().signal, toolCallId: "text", runtime: {} },
       )
     ).text;
-    expect(text).toContain("Cake Chat\t7\t0");
-    expect(text.length).toBeLessThan(1_500);
+    const lines = text.split("\n");
+    expect(lines[0]).toContain(`${settingsCategories.length} categories.`);
+    expect(lines[1]).toBe("category\tsettings\tchanged");
+    expect(lines.slice(2, 2 + overview.categories.length).map((line) => line.split("\t"))).toEqual(
+      overview.categories.map(({ category, settings, changed }) => [
+        category,
+        String(settings),
+        String(changed),
+      ]),
+    );
+    // One row per category/dedicated area, not a dump of keys, descriptions or setting values.
+    expect(lines).toHaveLength(overview.categories.length + overview.elsewhere.length + 4);
+    expect(text).not.toContain("instructions.global");
+    expect(text).not.toContain("Prefer tests.");
 
     const dictation = Schema.decodeUnknownSync(Rows)(
       await h.call("settings.list", { query: "dictation" }),
     );
     expect(dictation.elsewhere).toContainEqual([
-      "Dictation voice submission, phrase, speech-input tuning",
+      "Dictation discard filters, voice submission, phrase, speech-input tuning",
       "settings.dictation.get/update",
     ]);
     const dictationText = (
