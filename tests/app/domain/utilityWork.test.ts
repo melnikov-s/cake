@@ -79,6 +79,24 @@ describe("utility work", () => {
     }),
   );
 
+  it.effect("bounds side-chat titles more tightly than main-session titles", () =>
+    Effect.gen(function* () {
+      const title = yield* run(
+        generateSessionTitle({
+          selection,
+          firstUserMessage: "Explain collisions",
+          style: "side-chat",
+        }),
+        (input) => {
+          assert.equal(input.maximumOutputCharacters, 40);
+          assert.match(input.instructions, /2–4 words/);
+          return Effect.succeed("A".repeat(80));
+        },
+      );
+      assert.equal(title, "A".repeat(40));
+    }),
+  );
+
   it.effect("retries a failed completion once without another user message", () =>
     Effect.gen(function* () {
       const attempts = yield* Ref.make(0);

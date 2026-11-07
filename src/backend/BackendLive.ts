@@ -1,3 +1,5 @@
+import * as discussionTitles from "../domain/discussion-sessions/discussionTitles";
+import { DiscussionTitleRequests } from "../services/discussion-sessions/DiscussionTitleRequests";
 import * as projectTodoUpdates from "../domain/projects/projectTodoUpdates";
 import { ProjectTodoReports } from "../services/projects/ProjectTodoReports";
 import * as projectTodoResolution from "../domain/projects/projectTodoResolution";
@@ -138,6 +140,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
     makeLocalMcpSettingsLive(paths.state),
     LocalMcpServer.layer,
     ProjectTodoReports.layer,
+    DiscussionTitleRequests.layer,
     ApplicationState.layer.pipe(Layer.provide(applicationStorage)),
     scheduledMessageStorage,
     automationStorage,
@@ -352,6 +355,7 @@ export const makeBackendLive = <HostServices, HostError>(
     Layer.effectDiscard(
       startupDiagnostics.measure("todo-updates-initialize", projectTodoUpdates.initialize()),
     ),
+    Layer.effectDiscard(discussionTitles.initialize()),
     Layer.effectDiscard(
       Effect.gen(function* () {
         yield* startupDiagnostics.measure(

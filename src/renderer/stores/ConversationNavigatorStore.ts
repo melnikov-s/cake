@@ -282,11 +282,12 @@ export class ConversationNavigatorStore extends Store<{
           {
             key: conversationNavigationKey(sessionId),
             title:
-              "title" in thread
-                ? thread.title
-                : thread.anchor.selectedText ||
-                  thread.textParts.find((part) => part.role === "user")?.text ||
-                  "Side chat",
+              thread.title ||
+              ("anchor" in thread
+                ? thread.anchor.selectedText ||
+                  thread.textParts.find((part) => part.role === "user")?.text
+                : undefined) ||
+              "Side chat",
             relationship: "side-chat",
             target: {
               kind: "side-chat",

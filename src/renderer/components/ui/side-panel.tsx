@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 export function SidePanel({
   title,
   eyebrow,
+  compact = false,
   className,
   children,
   headerActions,
@@ -13,6 +14,7 @@ export function SidePanel({
 }: {
   title: string;
   eyebrow?: string;
+  compact?: boolean;
   className?: string;
   children: ReactNode;
   headerActions?: ReactNode;
@@ -27,7 +29,12 @@ export function SidePanel({
       )}
       aria-label={title}
     >
-      <header className="box-content flex h-title-bar min-w-0 items-center gap-3 border-b border-border/65 bg-sidebar/30 px-4">
+      <header
+        className={cn(
+          "box-content flex min-w-0 items-center gap-3 border-b border-border/65 bg-sidebar/30",
+          compact ? "h-9 px-3" : "h-title-bar px-4",
+        )}
+      >
         <div className="min-w-0 flex-1">
           <strong className="block truncate text-xs font-semibold text-foreground">{title}</strong>
           {eyebrow && <p className="mt-0.5 truncate text-xs text-muted-foreground">{eyebrow}</p>}

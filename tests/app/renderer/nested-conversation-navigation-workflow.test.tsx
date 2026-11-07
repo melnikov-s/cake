@@ -161,9 +161,8 @@ it("opens actual nested discussion/retained-worker parts, preserving the public 
   expect(within(sidePanel).queryByText("Actual immediate parent body")).toBeNull();
   expect(screen.getByRole("separator", { name: "Resize side chat" })).toBeTruthy();
   const breadcrumb = within(screen.getByRole("navigation", { name: "Conversation breadcrumb" }));
-  expect(breadcrumb.getByRole("button", { name: "Outer discussion" })).toBeTruthy();
   expect(
-    breadcrumb.getByRole("button", { name: "Inner discussion" }).getAttribute("aria-current"),
+    breadcrumb.getByRole("button", { name: "alpha conversation" }).getAttribute("aria-current"),
   ).toBe("page");
   expect(nestedTranscriptBehaviorFor(fixture.root, nested.chatStore)).toMatchObject({
     workspacePath: "/alpha",

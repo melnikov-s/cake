@@ -51,6 +51,7 @@ const reviewSubmissionSchema = Schema.Union([
 ]);
 export const reviewThreadRecordSchema = Schema.Struct({
   id: bounded(1, 256),
+  title: Schema.optionalKey(bounded(1, 40)),
   workspacePath: bounded(1, 4_096),
   sessionId: bounded(1, 256),
   agentSessionId: Schema.optional(bounded(1, 256)),
@@ -66,6 +67,7 @@ export const reviewThreadRecordSchema = Schema.Struct({
 });
 const reviewThreadSchema = Schema.Struct({
   id: bounded(1, 256),
+  title: reviewThreadRecordSchema.fields.title,
   workspacePath: bounded(1, 4_096),
   sessionId: bounded(1, 256),
   agentSessionId: Schema.optional(bounded(1, 256)),
@@ -88,7 +90,7 @@ export function projectReviewThread(
   record: ReviewThreadRecord,
   projection: ReviewSessionProjection = { parts: [] },
 ): ReviewThread {
-  return Schema.decodeUnknownSync(reviewThreadSchema)({
+  const thread = {
     id: record.id,
     workspacePath: record.workspacePath,
     sessionId: record.sessionId,
@@ -110,5 +112,7 @@ export function projectReviewThread(
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     resolvedAt: record.resolvedAt,
-  });
+  };
+  if (record.title !== undefined) Object.assign(thread, { title: record.title });
+  return Schema.decodeUnknownSync(reviewThreadSchema)(thread);
 }

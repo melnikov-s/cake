@@ -34,6 +34,7 @@ const projectRecord = (record: ReviewThreadRecord | undefined): DiscussionSessio
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
+  if (record.title !== undefined) Object.assign(projected, { title: record.title });
   if (record.agentSessionId !== undefined)
     Object.assign(projected, { sidecarSessionId: record.agentSessionId });
   if (record.agentSessionFile !== undefined)

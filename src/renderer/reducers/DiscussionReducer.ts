@@ -43,6 +43,7 @@ export function applyDiscussionCatalogUpdate(
 function discussionSnapshot(thread: DiscussionThread): Snapshot<ReviewThread> {
   return {
     id: thread.id,
+    title: thread.title,
     workingDirectory: thread.workingDirectory,
     parentSessionId: thread.parentSessionId,
     sidecarSessionId: thread.sidecarSessionId,

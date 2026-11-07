@@ -17,6 +17,7 @@ export interface SideChatModel {
 interface SidePanelTarget {
   readonly key: string;
   readonly title: string;
+  readonly currentTitle?: () => string;
   /** Public identity of the actual focused conversation; never a worker's private Pi ID. */
   readonly navigationTarget?: ConversationNavigationTarget;
   readonly eyebrow?: () => string;

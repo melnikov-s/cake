@@ -213,16 +213,14 @@ describe("Sessions navigator workflow", () => {
       }),
     );
     await waitFor(() =>
-      expect(fixture.root.conversationNavigatorStore.selectedKey).toBe(
-        conversationNavigationKey("widths-chat"),
-      ),
+      expect(
+        fixture.root.workspaceSession?.conversationSessionStore.sideChatStore.target?.key,
+      ).toBe("discussion:widths"),
     );
-    expect(fixture.root.workspaceSession?.conversationSessionStore.sideChatStore.target?.key).toBe(
-      "discussion:widths",
-    );
+    expect(rowFor("UI Layout Refactor").dataset.navigationActive).toBe("true");
     expect(
       fixture.root.conversationNavigatorStore.lineageFor("layout").map((node) => node.title),
-    ).toEqual(["Project Chat", "UI Layout Refactor", "Pane widths"]);
+    ).toEqual(["Project Chat", "UI Layout Refactor"]);
   });
 
   it("opens a real child Session and reveals its selected ancestry after an external deep link", async () => {

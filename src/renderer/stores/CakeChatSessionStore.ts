@@ -253,8 +253,8 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         threadId: thread.id,
       },
       title: "Side chat",
+      currentTitle: () => thread.title || "Side chat",
       merge: this.sideChats.discussionSession(threadId)?.mergeStore,
-      eyebrow: () => (thread.anchor.selectedText ? "Selection" : "Message"),
       chatStore,
     });
     return true;
@@ -290,7 +290,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     this.conversationSessionStore.sideChatStore.open({
       key: "message-side-chat-draft",
       title: "Side chat",
-      eyebrow: () => "Message",
       chatStore: this.messageCommentsStore.draftChatStore,
     });
     return true;

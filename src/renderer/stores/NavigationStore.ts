@@ -271,6 +271,17 @@ export class NavigationStore extends Store<{
     ]);
     if (!resolved.ok) throw new Error(resolved.error);
     const { sessionId } = resolved;
+    const discussions = this.props.discussionNavigation();
+    const discussionTarget = discussions.targetForSession(sessionId);
+    if (discussionTarget && !attachmentId) {
+      await this.openConversationTarget(discussionTarget);
+      if (!messageId) return;
+      const chat = discussions.session(sessionId)?.chatStore;
+      const target = chat && linkedMessageTarget(chat.parts, messageId);
+      if (!target) throw new Error("The linked message is unavailable in the side chat");
+      chat.transcriptInteraction.navigateToMessage(target.id);
+      return;
+    }
     if (attachmentId) {
       if (isCakeChatSessionId(sessionId)) await this.openCakeChat(sessionId);
       else if (!(await this.openSession(sessionId)))

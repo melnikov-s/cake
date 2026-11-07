@@ -5,6 +5,7 @@ import { applySnapshot } from "r-state-tree";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import { ReviewThread } from "../../../src/renderer/models/ReviewThread";
+import { applyDiscussionCatalogUpdate } from "../../../src/renderer/reducers/DiscussionReducer";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
 import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
 
@@ -91,6 +92,7 @@ it.each(["alpha", CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
       const thread = ReviewThread.create({
         parentSessionId,
         id: "side-thread",
+        title: "Selected side conversation",
         sidecarSessionId: "selected-sidecar",
         workingDirectory: "/alpha",
         createdAt: timestamp,
@@ -133,14 +135,35 @@ it.each(["alpha", CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
     await fixture.user.click(
       await screen.findByRole("button", { name: "Selected side conversation" }),
     );
+    let paneTitle = "Selected side conversation";
     const assertSplit = async () => {
       const panel = await screen.findByRole("complementary", {
-        name: /^(Side chat|Selected side conversation)$/,
+        name: paneTitle,
       });
       expect(screen.getByRole("separator", { name: "Resize side chat" })).toBeTruthy();
       expect(await within(panel).findByText("Separate side conversation body")).toBeTruthy();
       expect(screen.getByText("Origin conversation body")).toBeTruthy();
       expect(within(panel).queryByText("Origin conversation body")).toBeNull();
+      const breadcrumb = within(
+        screen.getByRole("navigation", { name: "Conversation breadcrumb" }),
+      );
+      const ownerTitle =
+        parentSessionId === "alpha"
+          ? "alpha conversation"
+          : parentSessionId === CAKE_CHAT_SESSION_ID
+            ? "Cake Chat"
+            : "Project Chat";
+      expect(
+        breadcrumb.getByRole("button", { name: ownerTitle }).getAttribute("aria-current"),
+      ).toBe("page");
+      expect(fixture.root.conversationNavigatorStore.selectedKey).toBe(
+        fixture.root.conversationNavigatorStore
+          .lineageForTarget({
+            kind: parentSessionId === "alpha" ? "project-session" : "cake-chat",
+            sessionId: parentSessionId,
+          })
+          .at(-1)?.key,
+      );
       expect(within(panel).getByRole("combobox", { name: "Reply to side chat" })).toBeTruthy();
       return panel;
     };
@@ -176,9 +199,38 @@ it.each(["alpha", CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
     await fixture.pressHistory("back");
     panel = await assertSplit();
     expect(within(panel).getByRole("combobox")).toHaveProperty("value", "Only the side draft");
-    await fixture.user.click(
-      within(panel).getByRole("button", { name: /^Close (Side chat|Selected side conversation)$/ }),
-    );
+    // The utility-model result arrives independently of navigation and updates the open pane.
+    paneTitle = "Collision retry";
+    act(() => {
+      const catalog = fixture.models.discussionCatalog(parentSessionId);
+      const thread = catalog.threads[0]!;
+      applyDiscussionCatalogUpdate(catalog, parentSessionId, {
+        _tag: "Event",
+        revision: 2,
+        parentSessionId,
+        event: {
+          _tag: "Replaced",
+          threads: [
+            {
+              id: thread.id,
+              title: paneTitle,
+              workingDirectory: thread.workingDirectory,
+              parentSessionId,
+              sidecarSessionId: thread.sidecarSessionId,
+              anchor: thread.anchor,
+              parts: [],
+              status: "open",
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          ],
+        },
+      });
+      catalog.metadata[0]!.title = paneTitle;
+    });
+    panel = await assertSplit();
+    expect(within(panel).getByRole("combobox")).toHaveProperty("value", "Only the side draft");
+    await fixture.user.click(within(panel).getByRole("button", { name: `Close ${paneTitle}` }));
     expect(await screen.findByText("Origin conversation body")).toBeTruthy();
 
     // Session links and app open-session requests share this navigation intent.

@@ -265,6 +265,19 @@ export const makeReviewStorageLive = (
 
       return ReviewStorage.of({
         changes: () => SubscriptionRef.changes(revision),
+        setDiscussionTitle: Effect.fn("ReviewStorage.setDiscussionTitle")(
+          (workspacePath, sessionId, threadId, title) =>
+            withSessionLock(
+              workspacePath,
+              sessionId,
+              changed(
+                boundary(
+                  "setDiscussionTitle",
+                  update(workspacePath, sessionId, threadId, (record) => ({ ...record, title })),
+                ),
+              ),
+            ).pipe(Effect.asVoid),
+        ),
         agentSessionDirectory,
         reviewContextPath,
         discussionParentContextPath,

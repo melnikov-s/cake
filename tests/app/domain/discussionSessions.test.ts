@@ -8,6 +8,7 @@ import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Logger, Queue, Scope, Stream } from "effect";
+import { DiscussionTitleRequests } from "../../../src/services/discussion-sessions/DiscussionTitleRequests";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import { describe, expect } from "vitest";
 import * as discussionSessions from "../../../src/domain/discussion-sessions/discussionSessions";
@@ -372,6 +373,7 @@ const makeLayer = (
   return {
     layer: Layer.mergeAll(
       WorkflowTestLive,
+      DiscussionTitleRequests.layer,
       SessionCatalogChanges.layer,
       Layer.succeed(CakeChatConfiguration, {
         location: { workingDirectory: "/home", sessionDirectory: "/cake/cake-chat" },
@@ -1093,6 +1095,17 @@ describe("Discussion Sessions domain", () => {
       });
       yield* Effect.yieldNow;
 
+      const naming = yield* (yield* DiscussionTitleRequests)
+        .requests()
+        .pipe(Stream.take(1), Stream.runCollect);
+      expect([...naming]).toEqual([
+        {
+          workingDirectory: "/project",
+          parentSessionId: "parent-1",
+          threadId: fixture.record().id,
+          firstUserMessage: "Explain this",
+        },
+      ]);
       assert.deepEqual(fixture.prompts.at(-1)?.slice(0, 3), [
         "",
         "prompt",

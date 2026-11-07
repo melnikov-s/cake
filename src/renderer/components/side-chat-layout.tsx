@@ -30,6 +30,8 @@ export const SideChatLayout = observer(function SideChatLayout({
   const focusConversation = useContext(ConversationFocusContext);
   const target = hideArtifact && store.target?.artifact ? undefined : store.target;
   const model = target?.model?.();
+  const title = target?.currentTitle?.() ?? target?.title ?? "";
+  const isSideChat = Boolean(target?.chatStore && !target.key.startsWith("subagent:"));
   // Keep merge near the composer; pane dismissal always belongs in the header.
   const dockMergeAction = Boolean(target?.chatStore?.composerVisible && target.merge);
   const mergeAction = target?.merge && (
@@ -56,7 +58,7 @@ export const SideChatLayout = observer(function SideChatLayout({
       <SideChatContext.Provider value={store}>
         <section
           data-slot="focused-secondary-conversation"
-          aria-label={target.title}
+          aria-label={title}
           className="flex h-full min-h-0 min-w-0 flex-col"
         >
           {target.merge?.error && <Callout variant="error">{target.merge.error}</Callout>}
@@ -80,8 +82,9 @@ export const SideChatLayout = observer(function SideChatLayout({
             <ArtifactMenuSurface paneStore={target.artifact} />
           ) : target ? (
             <SidePanel
-              title={target.title}
-              eyebrow={target.eyebrow?.()}
+              title={title}
+              compact={isSideChat}
+              eyebrow={isSideChat ? undefined : target.eyebrow?.()}
               onClose={() => store.close()}
               headerActions={
                 target.changes ? (

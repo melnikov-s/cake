@@ -12,6 +12,7 @@ import { Message } from "./Message";
  */
 export class ReviewThread extends Model {
   @id id = "";
+  title: string | undefined;
   workingDirectory = "";
   parentSessionId = "";
   sidecarSessionId: string | undefined;

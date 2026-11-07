@@ -24,7 +24,7 @@ interface RetainedDiscussion {
   readonly nested: boolean;
 }
 
-/** Materializes existing public Discussion destinations. Selected identity stays in the displayed SideChat target. */
+/** Materializes existing public Discussion destinations inside their owning primary Session. */
 export class DiscussionNavigationStore extends Store<{
   projection: RootProjection;
   operations: SessionOperationCoordinatorStore;
@@ -196,6 +196,7 @@ export class DiscussionNavigationStore extends Store<{
         key: `discussion:${target.threadId}`,
         navigationTarget: target,
         title,
+        currentTitle: () => session.thread.title || title,
         chatStore: session.chatStore,
         parentChatStore: parent?.chatStore,
       });

@@ -285,7 +285,7 @@ const assistantMarkdownCode: VisualCaptureScenario = {
 const sideChatActions: VisualCaptureScenario = {
   ...assistantMarkdownCode,
   name: "side-chat-actions",
-  description: "Focused Side chat and its existing merge action above the follow-up composer",
+  description: "Named side chat beside its parent, with compact header and composer merge action",
   states: ["default", "draft"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
@@ -341,6 +341,7 @@ const sideChatActions: VisualCaptureScenario = {
         join(recordDirectory, `${sha256("visual-side-chat")}.json`),
         JSON.stringify({
           id: "visual-side-chat",
+          title: "Quick greeting",
           workspacePath: homedir(),
           sessionId: CAKE_CHAT_SESSION_ID,
           agentSessionId: cakeChatSideChatSessionId(fork.id),
@@ -374,7 +375,7 @@ const sideChatActions: VisualCaptureScenario = {
       await composer.fill("/sidechat ");
       await composer.press("Escape");
       await composer.press("Enter");
-      const conversation = page.locator('[data-slot="focused-secondary-conversation"]');
+      const conversation = page.getByRole("complementary", { name: "Side chat", exact: true });
       await expect(
         conversation.getByRole("combobox", { name: "Message side chat", exact: true }),
       ).toBeVisible();
@@ -385,13 +386,13 @@ const sideChatActions: VisualCaptureScenario = {
     await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
     await page.getByRole("button", { name: "Side chats, 1 open" }).click();
     await page.getByRole("dialog", { name: "Open side chats" }).getByRole("button").click();
-    const conversation = page.locator('[data-slot="focused-secondary-conversation"]');
+    const conversation = page.getByRole("complementary", { name: "Quick greeting", exact: true });
     await expect(conversation.getByText("Hi! What’s on your mind?")).toBeVisible();
     await expect(conversation.getByRole("button", { name: "Merge into main chat" })).toBeEnabled();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },
-  region: (page) => page.locator('[data-slot="focused-secondary-conversation"]'),
+  region: (page) => page.locator('[data-slot="side-chat-layout"]'),
 };
 
 const toastNotificationsScenario: VisualCaptureScenario = {

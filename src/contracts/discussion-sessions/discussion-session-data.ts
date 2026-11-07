@@ -43,6 +43,7 @@ export const hasSidecarConversation = (thread: {
 
 export const DiscussionThread = Schema.Struct({
   id: boundedId,
+  title: Schema.optionalKey(boundedText),
   workingDirectory: Schema.String,
   parentSessionId: boundedId,
   sidecarSessionId: Schema.optionalKey(boundedId),
@@ -56,7 +57,7 @@ export const DiscussionThread = Schema.Struct({
 });
 export interface DiscussionThread extends Schema.Schema.Type<typeof DiscussionThread> {}
 
-/** Lightweight navigation catalog; titles come from saved anchors, never transcript reads. */
+/** Lightweight navigation catalog; titles come from saved metadata, never transcript reads. */
 export const DiscussionThreadMetadata = Schema.Struct({
   id: DiscussionThread.fields.id,
   workingDirectory: DiscussionThread.fields.workingDirectory,

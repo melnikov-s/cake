@@ -64,6 +64,24 @@ describe("ReviewStorage Discussion metadata", () => {
     ),
   );
 
+  it.effect("retains a generated title across storage reload and later thread updates", () =>
+    withStorage("cake-discussion-title-", (storage, _fileSystem, path, root) =>
+      Effect.gen(function* () {
+        const thread = yield* storage.createDiscussion("/project", "parent", codeAnchor);
+        yield* storage.setDiscussionTitle("/project", "parent", thread.id, "Filename collisions");
+        yield* storage.resolve("/project", "parent", thread.id, true);
+        const reloaded = yield* Effect.gen(function* () {
+          return yield* (yield* ReviewStorage).listDiscussionRecords("/project", "parent");
+        }).pipe(Effect.provide(makeReviewStorageTestAdapter(root, path.join(root, "pi-sessions"))));
+        expect(reloaded[0]?.title).toBe("Filename collisions");
+        expect(reloaded[0]?.status).toBe("resolved");
+        expect((yield* storage.listSession("/project", "parent"))[0]?.title).toBe(
+          "Filename collisions",
+        );
+      }),
+    ),
+  );
+
   it.effect("atomically reuses a dedicated discussion anchor", () =>
     withStorage("cake-discussion-ensure-", (storage) =>
       Effect.gen(function* () {

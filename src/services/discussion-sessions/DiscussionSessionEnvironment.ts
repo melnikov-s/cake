@@ -4,6 +4,7 @@ import type { DiscussionAnchor } from "../../contracts/discussion-sessions/discu
 
 export interface DiscussionSessionRecord {
   readonly id: string;
+  readonly title?: string;
   readonly workingDirectory: string;
   readonly parentSessionId: string;
   readonly sidecarSessionId?: string;

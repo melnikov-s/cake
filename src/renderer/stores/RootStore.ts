@@ -826,10 +826,9 @@ export class RootStore extends Store<{
       selected: () => {
         const owner = this.appShellStore.activeConversation;
         if (!owner || owner.kind === "automation-session") return undefined;
-        return (
-          this.workspaceSession?.conversationSessionStore.sideChatStore.target?.navigationTarget ??
-          owner
-        );
+        const secondary =
+          this.workspaceSession?.conversationSessionStore.sideChatStore.target?.navigationTarget;
+        return secondary?.kind === "subagent" ? secondary : owner;
       },
       interact: (target) => {
         const owner = this.conversationNavigatorStore
@@ -1184,6 +1183,9 @@ export class RootStore extends Store<{
         sessionLayoutStore: this.sessionLayoutStore,
         workspaceNavigatorStore: this.workspaceNavigatorStore,
         focusedNavigationNode: () => {
+          const secondary =
+            this.workspaceSession?.conversationSessionStore.sideChatStore.target?.navigationTarget;
+          if (secondary) return this.conversationNavigatorStore.lineageForTarget(secondary).at(-1);
           const ownerId = this.appShellStore.activeConversation?.sessionId;
           return ownerId ? this.conversationNavigatorStore.lineageFor(ownerId).at(-1) : undefined;
         },

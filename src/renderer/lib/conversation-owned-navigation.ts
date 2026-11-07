@@ -37,11 +37,12 @@ export function conversationOwnedNavigation(
     nodes.push({
       key: conversationNavigationKey(thread.sidecarSessionId),
       title:
-        "title" in thread
-          ? thread.title
-          : thread.anchor.selectedText ||
-            thread.textParts.find((part) => part.role === "user")?.text ||
-            "Side chat",
+        thread.title ||
+        ("anchor" in thread
+          ? thread.anchor.selectedText ||
+            thread.textParts.find((part) => part.role === "user")?.text
+          : undefined) ||
+        "Side chat",
       preview: full?.textParts.findLast((part) => part.role === "assistant")?.text,
       label: "Side chat",
       relationship: "side-chat",

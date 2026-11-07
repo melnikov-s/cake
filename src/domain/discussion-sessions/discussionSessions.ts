@@ -1,4 +1,5 @@
 import { DateTime } from "effect";
+import { DiscussionTitleRequests } from "../../services/discussion-sessions/DiscussionTitleRequests";
 import { CakeChatDurable } from "../../services/pi-durable/CakeChatDurable";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
@@ -87,6 +88,7 @@ const projectThread = (
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
+  if (record.title !== undefined) Object.assign(thread, { title: record.title });
   if (record.sidecarSessionId !== undefined)
     Object.assign(thread, { sidecarSessionId: record.sidecarSessionId });
   if (record.resolvedAt !== undefined) Object.assign(thread, { resolvedAt: record.resolvedAt });
@@ -171,6 +173,8 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
     newSession: record.sidecarSessionId === undefined,
     sessionId: sidecarSessionId,
     auxiliary: false,
+    // Thread metadata owns naming for both backends, from this chat's first input.
+    generateSessionTitle: undefined,
     allowBlockingUserInput: true,
     requestInterview: (interview: InterviewRecord, signal: AbortSignal) =>
       run(rendererRequests.requestInterview(sidecarSessionId, interview, signal)),
@@ -348,7 +352,7 @@ export const observeMetadata = Effect.fn("DiscussionSessions.observeMetadata")(f
       workingDirectory: record.workingDirectory,
       parentSessionId: record.parentSessionId,
       ...(record.sidecarSessionId ? { sidecarSessionId: record.sidecarSessionId } : null),
-      title: record.anchor.selectedText || "Side chat",
+      title: record.title || record.anchor.selectedText || "Side chat",
       running,
       status: record.status,
       createdAt: record.createdAt,
@@ -496,6 +500,12 @@ const deliverFirstPrompt = Effect.fn("DiscussionSessions.deliverFirstPrompt")(fu
   const turnId = TurnId.make(
     yield* prepared.handle.prompt(input.text.trim(), attachments).pipe(asError("start")),
   );
+  yield* (yield* DiscussionTitleRequests).offer({
+    workingDirectory: record.workingDirectory,
+    parentSessionId: record.parentSessionId,
+    threadId: record.id,
+    firstUserMessage: input.text.trim() || annotations.map((item) => item.comment ?? "").join("\n"),
+  });
   yield* environment.refreshParentIndex(prepared.record).pipe(asError("start"));
   return { turnId, thread: projectThread(prepared.record) };
 });

@@ -68,18 +68,23 @@ export const utilityModelSelection = (model: UtilityModelReference): ModelSelect
 });
 
 export const generateSessionTitle = Effect.fn("UtilityWork.generateSessionTitle")(
-  function* (input: { readonly selection: ModelSelection; readonly firstUserMessage: string }) {
+  function* (input: {
+    readonly selection: ModelSelection;
+    readonly firstUserMessage: string;
+    readonly style?: "side-chat";
+  }) {
     const models = yield* PiModels;
+    const limit = input.style === "side-chat" ? 40 : TITLE_CHARACTER_LIMIT;
     const text = yield* models.complete({
       selection: input.selection,
-      instructions: `Title this coding-agent session from the user's initial request.
+      instructions: `Title this ${input.style === "side-chat" ? "side chat in 2–4 words" : "coding-agent session"} from the user's initial request.
 Return only the title: no quotes, Markdown, explanation or ending punctuation.
-Use the user's language and concrete task/topic. Limit: ${TITLE_CHARACTER_LIMIT} characters.`,
+Use the user's language and concrete task/topic. Limit: ${limit} characters.`,
       context: `<first_user_message>\n${input.firstUserMessage.slice(0, USER_CONTEXT_LIMIT)}\n</first_user_message>`,
-      maximumOutputCharacters: TITLE_CHARACTER_LIMIT,
+      maximumOutputCharacters: limit,
       timeoutMs: 15_000,
     });
-    const title = normalizeSessionTitle(text);
+    const title = normalizeSessionTitle(text).slice(0, limit).trim();
     if (!title)
       return yield* new UtilityWorkOutputError({
         message: "The utility model returned an empty session title",

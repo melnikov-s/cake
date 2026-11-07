@@ -334,12 +334,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         threadId: thread.id,
       },
       title: "Side chat",
-      eyebrow: () =>
-        thread.anchor.view === "artifact"
-          ? "Artifact selection"
-          : thread.anchor.view === "message"
-            ? "Selection"
-            : "Session",
+      currentTitle: () => thread.title || "Side chat",
       chatStore,
     });
     return true;
@@ -352,7 +347,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       this.conversationSessionStore.sideChatStore.open({
         key: "session-side-chat-draft",
         title: "Side chat",
-        eyebrow: () => "Session",
         chatStore: this.messageCommentsStore.draftChatStore,
       });
       return true;
