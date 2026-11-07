@@ -77,7 +77,7 @@ export async function seedSessionChanges(
         id: "name",
         parentId: null,
         timestamp,
-        name: "Worktree commit history",
+        name: "Review changes",
       },
       {
         type: "message",
@@ -151,7 +151,7 @@ export async function seedSessionChanges(
                     {
                       kind: "session",
                       sessionId: changesSessionId,
-                      title: "Worktree commit history",
+                      title: "Review changes",
                     },
                   ],
                 },

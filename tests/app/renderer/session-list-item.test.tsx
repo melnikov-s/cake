@@ -41,9 +41,19 @@ describe("session row metadata", () => {
         onResolve={onResolve}
       />,
     );
-    expect(container.querySelector('[data-slot="commit-change-stats"]')?.textContent).toBe(
-      "3 commits · +120 −35",
-    );
+    const stats = screen.getByRole("img", { name: "3 commits, +120 −35" });
+    expect(stats.querySelector("svg")).not.toBeNull();
+    expect(stats.textContent).not.toContain("commits");
+    const description = container.querySelector('[data-slot="session-description"]')!;
+    expect(
+      Array.from(
+        description.querySelectorAll(
+          'time, [data-slot="commit-change-stats"], [data-slot="session-worktree"]',
+        ),
+      ).map((element) => (element.tagName === "TIME" ? "time" : element.getAttribute("data-slot"))),
+    ).toEqual(["time", "commit-change-stats", "session-worktree"]);
+    expect(description.classList.contains("flex-wrap")).toBe(false);
+    expect(description.classList.contains("whitespace-nowrap")).toBe(true);
     expect(screen.getByRole("img", { name: "Running" })).toBeDefined();
     fireEvent.click(screen.getByText(props.session.title));
     expect(onOpen).toHaveBeenCalledWith(props.session.sessionId);
@@ -60,7 +70,7 @@ describe("session row metadata", () => {
         }}
       />,
     );
-    expect(screen.getByText("1 commit · +0 −0")).toBeDefined();
+    expect(screen.getByRole("img", { name: "1 commit, +0 −0" })).toBeDefined();
   });
 
   it.each([undefined, { commitCount: 0, additions: 0, deletions: 0 }])(
@@ -91,14 +101,14 @@ describe("session row metadata", () => {
       "",
       "feature",
       { kind: "cake-chat", name: "Cake Chat" },
-      "Cake Chat·feature",
+      "feature·Cake Chat",
     ],
     [
       "source, time and branch",
       "1 day ago",
       "feature",
       { kind: "cake-chat", name: "Cake Chat" },
-      "Cake Chat·1 day ago·feature",
+      "1 day ago·feature·Cake Chat",
     ],
   ] as const)(
     "formats %s without dangling separators",

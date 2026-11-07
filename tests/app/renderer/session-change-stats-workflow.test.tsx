@@ -74,9 +74,9 @@ it("shares live stats across session lists and distinct to-do session links, hid
   );
   const row = view.container.querySelector<HTMLElement>('[data-session-id="committed"]')!;
   const todo = view.container.querySelector<HTMLElement>('[data-todo-id="todo"]')!;
-  expect(within(row).getByText("3 commits · +120 −35")).toBeDefined();
-  expect(within(todo).getAllByText("3 commits · +120 −35")).toHaveLength(1);
-  expect(within(todo).getByText("1 commit · +4 −2")).toBeDefined();
+  expect(within(row).getByRole("img", { name: "3 commits, +120 −35" })).toBeDefined();
+  expect(within(todo).getAllByRole("img", { name: "3 commits, +120 −35" })).toHaveLength(1);
+  expect(within(todo).getByRole("img", { name: "1 commit, +4 −2" })).toBeDefined();
   expect(todo.querySelectorAll('[data-slot="commit-change-stats"]')).toHaveLength(2);
   expect(within(todo).getAllByRole("link", { name: "committed" })).toHaveLength(1);
   for (const id of ids) expect(within(todo).getByRole("link", { name: id })).toBeDefined();
@@ -90,8 +90,8 @@ it("shares live stats across session lists and distinct to-do session links, hid
       },
     });
   });
-  expect(within(row).getByText("4 commits · +130 −36")).toBeDefined();
-  expect(within(todo).getByText("4 commits · +130 −36")).toBeDefined();
+  expect(within(row).getByRole("img", { name: "4 commits, +130 −36" })).toBeDefined();
+  expect(within(todo).getByRole("img", { name: "4 commits, +130 −36" })).toBeDefined();
   await act(async () => {
     applyManagedWorktreeCatalogUpdate(fixture.models.worktrees, {
       _tag: "Event",

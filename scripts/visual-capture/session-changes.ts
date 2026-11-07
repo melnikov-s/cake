@@ -23,7 +23,27 @@ export const sessionChangesScenario = {
       await workspace
         .getByRole("button", { name: state === "sessions" ? /^Sessions / : /^To-dos / })
         .click();
-      await expect(workspace.getByText("3 commits · +4 −1", { exact: true })).toBeVisible();
+      await expect(
+        workspace.getByRole("img", { name: "3 commits, +4 −1", exact: true }),
+      ).toBeVisible();
+      await expect(workspace.getByText("Worktree commit history", { exact: true })).toHaveCount(0);
+      if (state === "sessions") {
+        const line = workspace.locator(
+          '[data-session-id="session-changes-review"] [data-slot="session-description"]',
+        );
+        const centers = await line.evaluate((element) =>
+          Array.from(
+            element.querySelectorAll(
+              'time, [data-slot="commit-change-stats"], [data-slot="session-worktree"]',
+            ),
+          ).map((child) => {
+            const rect = child.getBoundingClientRect();
+            return rect.y + rect.height / 2;
+          }),
+        );
+        expect(centers).toHaveLength(3);
+        expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(2);
+      }
       await page.mouse.move(1, 1);
       return;
     }

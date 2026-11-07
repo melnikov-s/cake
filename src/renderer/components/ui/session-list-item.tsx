@@ -279,13 +279,51 @@ export const SessionListItem = observer(function SessionListItem({
               <span
                 data-slot="session-description"
                 className={cn(
-                  "flex w-full min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs font-normal leading-none",
+                  "flex w-full min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap text-xs font-normal leading-none",
                   focusMode && "text-xs leading-tight",
                   selected ? "text-sidebar-selection-foreground/80" : "text-muted-foreground/80",
                 )}
               >
+                {hasActivityTime && (
+                  <SessionActivityTime
+                    modifiedAt={session.modifiedAt}
+                    workingStartedAt={session.workingStartedAt}
+                    activity={activity}
+                    childrenWorking={childrenWorking}
+                    activityTime={activityTime}
+                    focusMode={focusMode}
+                  />
+                )}
+                {hasStats && (
+                  <>
+                    {hasActivityTime && <span aria-hidden="true">·</span>}
+                    <CommitChangeStatsText stats={commitStats} />
+                  </>
+                )}
+                {branch && (
+                  <>
+                    {(hasActivityTime || hasStats) && <span aria-hidden="true">·</span>}
+                    <span
+                      data-slot="session-worktree"
+                      className="inline-flex min-w-0 items-center gap-1"
+                      title={branch}
+                    >
+                      {managedWorktree && (
+                        <WorktreeStatusIcon state={managedWorktree.state} className="shrink-0" />
+                      )}
+                      <span className="min-w-0 truncate">{branch}</span>
+                      {showBaseBranch && (
+                        <>
+                          <span aria-hidden="true">→</span>
+                          <span className="truncate">{baseBranch}</span>
+                        </>
+                      )}
+                    </span>
+                  </>
+                )}
                 {source && (
                   <>
+                    {(hasActivityTime || hasStats || branch) && <span aria-hidden="true">·</span>}
                     <span className="flex min-w-0 items-center gap-1" title={source.name}>
                       {source.kind === "cake-chat" ? (
                         <CakeIcon />
@@ -302,35 +340,6 @@ export const SessionListItem = observer(function SessionListItem({
                     </span>
                   </>
                 )}
-                {hasActivityTime && (
-                  <>
-                    {source && <span aria-hidden="true">·</span>}
-                    <SessionActivityTime
-                      modifiedAt={session.modifiedAt}
-                      workingStartedAt={session.workingStartedAt}
-                      activity={activity}
-                      childrenWorking={childrenWorking}
-                      activityTime={activityTime}
-                      focusMode={focusMode}
-                    />
-                  </>
-                )}
-                {branch && (
-                  <>
-                    {(source || hasActivityTime) && <span aria-hidden="true">·</span>}
-                    {managedWorktree && (
-                      <WorktreeStatusIcon state={managedWorktree.state} className="shrink-0" />
-                    )}
-                    <span className="min-w-0 truncate">{branch}</span>
-                    {showBaseBranch && (
-                      <>
-                        <span aria-hidden="true">→</span>
-                        <span className="truncate">{baseBranch}</span>
-                      </>
-                    )}
-                  </>
-                )}
-                {hasStats && <CommitChangeStatsText stats={commitStats} />}
               </span>
             )
           }
