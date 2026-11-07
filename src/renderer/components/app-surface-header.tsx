@@ -2,7 +2,6 @@ import { observer, useStore } from "r-state-tree/react";
 import { Avatar } from "@/components/ui/avatar";
 import { IconButton } from "@/components/ui/icon-button";
 import { BackIcon, CloseIcon, TerminalIcon } from "@/components/ui/icons";
-import { SidebarNavigationControls } from "./sidebar-navigation-controls";
 import { cn } from "@/lib/utils";
 import { RootStore } from "../stores/RootStore";
 
@@ -21,11 +20,10 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
       data-slot="workspace-header"
       className={cn(
         "relative box-content flex h-title-bar w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-[88px] phone:pl-[88px]",
-        applicationView ? "pl-[100px]" : "pl-[46px]",
+        applicationView ? "pl-[100px]" : "pl-[46px] pr-12",
       )}
     >
       <div className="flex w-0 min-w-0 flex-1 items-center gap-3">
-        {!applicationView && <SidebarNavigationControls header />}
         {applicationView && (
           <IconButton
             className="grid size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]"

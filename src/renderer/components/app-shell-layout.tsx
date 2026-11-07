@@ -6,6 +6,7 @@ import { QuakeTerminal } from "@/components/quake-terminal";
 import { cn } from "@/lib/utils";
 import { RootStore } from "../stores/RootStore";
 import { ProjectRail } from "./project-rail";
+import { SidebarNavigationControls } from "./sidebar-navigation-controls";
 import { WorkspaceNavigator } from "./workspace-navigator";
 import { AppSurfaceHeader } from "./app-surface-header";
 import { ConversationFocusContext } from "../lib/conversation-focus-context";
@@ -108,6 +109,14 @@ export const AppShellLayout = observer(function AppShellLayout({
           onResizeStart={() => setResizingPanel(true)}
           onResizeEnd={() => setResizingPanel(false)}
         />
+      )}
+      {!applicationView && !shell.coveringSurface && (
+        <div
+          data-slot="shell-workspace-controls"
+          className="absolute right-2 top-0 z-40 flex h-title-bar items-center [app-region:no-drag]"
+        >
+          <SidebarNavigationControls />
+        </div>
       )}
       {overlays}
     </main>

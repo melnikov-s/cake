@@ -152,7 +152,7 @@ it.each(["alpha", CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
           ? "alpha conversation"
           : parentSessionId === CAKE_CHAT_SESSION_ID
             ? "Cake Chat"
-            : "Project Chat";
+            : "alpha";
       expect(
         breadcrumb.getByRole("button", { name: ownerTitle }).getAttribute("aria-current"),
       ).toBe("page");

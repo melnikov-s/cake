@@ -29,7 +29,7 @@ it("keeps utilities reachable after closing Workspace and returns from dedicated
   using fixture = renderAppShellNavigation({}, { history: ["beta"] });
   const rail = () =>
     within(screen.getByRole("navigation", { name: "Projects and global utilities" }));
-  await fixture.user.click(rail().getByRole("button", { name: "Close Workspace" }));
+  await fixture.user.click(screen.getByRole("button", { name: "Close Workspace" }));
   expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
   for (const view of ["Settings", "Automations"]) {
     await fixture.user.click(rail().getByRole("button", { name: view }));
@@ -45,10 +45,32 @@ it("keeps utilities reachable after closing Workspace and returns from dedicated
   const breadcrumb = within(screen.getByRole("navigation", { name: "Conversation breadcrumb" }));
   expect(breadcrumb.getAllByRole("button")).toHaveLength(1);
   expect(breadcrumb.getByRole("button", { name: "Cake Chat" })).toBeTruthy();
-  await fixture.user.click(rail().getByRole("button", { name: "Open Workspace" }));
+  await fixture.user.click(screen.getByRole("button", { name: "Open Workspace" }));
   const workspace = within(screen.getByRole("complementary", { name: "Workspace" }));
   await fixture.user.click(workspace.getByRole("button", { name: /^Sessions/ }));
   expect(workspace.getByRole("button", { name: "New Session" })).toBeTruthy();
   await fixture.user.click(workspace.getByRole("button", { name: /^To-dos/ }));
   expect(workspace.getByRole("searchbox", { name: "Search to-dos" })).toBeTruthy();
+});
+
+it("keeps one shell toggle mounted through close and reopen, outside the project rail", async () => {
+  using fixture = renderAppShellNavigation({}, { history: ["beta"] });
+  const rail = within(screen.getByRole("navigation", { name: "Projects and global utilities" }));
+  const toggle = screen.getByRole("button", { name: "Close Workspace" });
+  const host = toggle.closest('[data-slot="shell-workspace-controls"]');
+  expect(host).toBeTruthy();
+  expect(rail.queryByRole("button", { name: /^(Close|Open) Workspace$/ })).toBeNull();
+  expect(screen.getAllByRole("button", { name: /^(Close|Open) Workspace$/ })).toHaveLength(1);
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  await fixture.user.click(toggle);
+  expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Open Workspace" })).toBe(toggle);
+  expect(toggle.closest('[data-slot="shell-workspace-controls"]')).toBe(host);
+  expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  toggle.focus();
+  await fixture.user.keyboard("{Enter}");
+  expect(screen.getByRole("button", { name: "Close Workspace" })).toBe(toggle);
+  expect(screen.getByRole("complementary", { name: "Workspace" }).id).toBe(
+    toggle.getAttribute("aria-controls"),
+  );
 });

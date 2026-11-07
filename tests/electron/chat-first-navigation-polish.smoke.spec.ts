@@ -18,7 +18,7 @@ async function expectTitlebarAlignment(application: ElectronApplication, page: P
     first,
     workspace.getByRole("button", { name: /^To-dos / }),
     workspace.getByRole("button", { name: /^Sessions / }),
-    workspace.getByRole("button", { name: "Close Workspace", exact: true }),
+    page.getByRole("button", { name: "Close Workspace", exact: true }),
   ];
   await expect
     .poll(async () => {
@@ -145,9 +145,7 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
       await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
       await expect(rail).toHaveCount(0);
       expect((await workspace.boundingBox())!.x).toBe(0);
-      await expect(
-        page.locator('[data-slot="workspace-header"] [data-slot="header-workspace-toggle"]'),
-      ).toHaveCount(0);
+      await expect(page.locator('[data-slot="shell-workspace-toggle"]')).toHaveCount(0);
       expect(
         await (await application.browserWindow(page)).evaluate((native) => native.isFullScreen()),
       ).toBe(false);

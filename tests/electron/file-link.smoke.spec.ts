@@ -355,10 +355,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       )
       .toBe(true);
     await expect.poll(() => hasVsCodeTitleAction("Toggle Secondary Side Bar")).toBe(false);
-    await page
-      .getByRole("navigation", { name: "Projects and global utilities" })
-      .getByRole("button", { name: "Close Workspace", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
     await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
     await expect
       .poll(() => areVsCodeTitleActionsOrdered("Toggle Sessions Sidebar", "Back to Agent"))
@@ -370,17 +367,11 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
     await expect(vscodeWorkspace).toBeHidden();
     await expect(page.locator('[data-slot="workspace-navigator"]')).toBeHidden();
-    await page
-      .getByRole("navigation", { name: "Projects and global utilities" })
-      .getByRole("button", { name: "Open Workspace", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
 
     await link.click();
     await expect(vscodeWorkspace).toBeVisible();
-    await page
-      .getByRole("navigation", { name: "Projects and global utilities" })
-      .getByRole("button", { name: "Close Workspace", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
     await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
     expect(await clickVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
     await expect(page.locator('[data-slot="workspace-navigator"]')).toBeVisible();
@@ -483,10 +474,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
           workbenchWidth === bounds.width
         );
       });
-    await page
-      .getByRole("navigation", { name: "Projects and global utilities" })
-      .getByRole("button", { name: "Close Workspace", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
     await expect(page.locator('[data-slot="workspace-navigator"]')).toBeHidden();
     await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
     await expect(vscodeWorkspace).toBeVisible();

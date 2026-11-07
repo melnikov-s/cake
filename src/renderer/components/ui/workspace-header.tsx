@@ -27,7 +27,7 @@ export function WorkspaceHeader({
     >
       {compact && titleLeading}
       <div
-        className={cn("min-w-0", compact ? "flex-1" : "min-h-workspace-title-bar pl-[46px] pr-3")}
+        className={cn("min-w-0", compact ? "flex-1" : "min-h-workspace-title-bar pl-[46px] pr-11")}
       >
         <div className="flex h-title-bar min-w-0 items-center">{title}</div>
       </div>

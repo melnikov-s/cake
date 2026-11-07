@@ -52,12 +52,12 @@ test("global Settings stays usable when Workspace closes and reopens", async () 
     const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
     const settings = rail.getByRole("button", { name: "Settings", exact: true });
     await expect(settings).toBeVisible();
-    await rail.getByRole("button", { name: "Close Workspace", exact: true }).click();
+    await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
     await expect(settings).toBeVisible();
     await settings.click();
     await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
-    await rail.getByRole("button", { name: "Open Workspace", exact: true }).click();
+    await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
     await expect(settings).toBeVisible();
   } finally {
     await application.close();

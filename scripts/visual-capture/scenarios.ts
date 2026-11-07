@@ -2486,10 +2486,7 @@ const browserSharingScenario: VisualCaptureScenario = {
     await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Browser address", exact: true })).toBeVisible();
     if (state.startsWith("workspace-closed"))
-      await page
-        .getByRole("navigation", { name: "Projects and global utilities" })
-        .getByRole("button", { name: "Close Workspace", exact: true })
-        .click();
+      await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     const trigger = page
       .getByRole("button", { name: "Browser sharing: Offline — go online" })
@@ -3514,10 +3511,7 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
       );
     }
     if (state.endsWith("-collapsed"))
-      await page
-        .getByRole("navigation", { name: "Projects and global utilities" })
-        .getByRole("button", { name: "Close Workspace", exact: true })
-        .click();
+      await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(700, 600);
     // Let layout-driven native view bounds and traffic-light positions settle.

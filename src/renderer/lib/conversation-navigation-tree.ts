@@ -54,6 +54,7 @@ export interface ConversationNavigationTree {
 }
 export interface ConversationNavigationInput {
   readonly projectPath: string | undefined;
+  readonly projectName?: string;
   readonly resolved?: boolean;
   readonly sessions: readonly Pick<
     ProjectSessionSummary,
@@ -119,7 +120,10 @@ export function buildConversationNavigationTree(
     const running = ownRunning(homeId) || Boolean(home?.running);
     byKey.set(homeKey!, {
       key: homeKey!,
-      title: input.projectPath === undefined ? "Cake Chat" : "Project Chat",
+      title:
+        input.projectPath === undefined
+          ? "Cake Chat"
+          : (input.projectName ?? home?.title ?? input.projectPath),
       label: input.projectPath === undefined ? "Cake Chat" : "Project Chat",
       relationship: "home",
       target: { kind: "cake-chat", sessionId: homeId },

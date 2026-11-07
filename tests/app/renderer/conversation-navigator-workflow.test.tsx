@@ -170,7 +170,7 @@ describe("Sessions navigator workflow", () => {
         "Nested child implementation",
       );
       expect(screen.getByRole("button", { name: /^Nested child implementation/ })).toBeTruthy();
-      expect(rowFor("Project Chat")).toBeTruthy();
+      expect(rowFor("cake")).toBeTruthy();
       expect(rowFor("UI Layout Refactor")).toBeTruthy();
       expect(rowFor("Keyboard Editing & Navigation")).toBeTruthy();
       expect(rowFor("Nested child implementation")).toBeTruthy();
@@ -220,7 +220,7 @@ describe("Sessions navigator workflow", () => {
     expect(rowFor("UI Layout Refactor").dataset.navigationActive).toBe("true");
     expect(
       fixture.root.conversationNavigatorStore.lineageFor("layout").map((node) => node.title),
-    ).toEqual(["Project Chat", "UI Layout Refactor"]);
+    ).toEqual(["cake", "UI Layout Refactor"]);
   });
 
   it("opens a real child Session and reveals its selected ancestry after an external deep link", async () => {

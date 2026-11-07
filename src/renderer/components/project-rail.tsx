@@ -6,14 +6,7 @@ import { cn } from "../lib/utils";
 import { describeError } from "../lib/error-details";
 import { Avatar } from "./ui/avatar";
 import { IconButton } from "./ui/icon-button";
-import {
-  CakeIcon,
-  FolderPlusIcon,
-  LightningIcon,
-  SearchIcon,
-  SettingsIcon,
-  SidebarIcon,
-} from "./ui/icons";
+import { CakeIcon, FolderPlusIcon, LightningIcon, SearchIcon, SettingsIcon } from "./ui/icons";
 import { ProjectSettingsDialog } from "./project-settings-dialog";
 import { ArtifactCatalogMenu } from "./artifact-catalog-menu";
 import { BrowserSharingMenu } from "./browser-sharing-menu";
@@ -27,7 +20,6 @@ import { SessionSearchDialog } from "./session-search-dialog";
 export const ProjectRail = observer(function ProjectRail() {
   const root = useStore(RootStore);
   const projects = root.projectCatalogStore;
-  const navigator = root.workspaceNavigatorStore;
   const [action, setAction] = useState<{ path: string; kind: ProjectAction }>();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string>();
@@ -88,18 +80,6 @@ export const ProjectRail = observer(function ProjectRail() {
         }
         footer={
           <>
-            <IconButton
-              tooltip={navigator.visible ? "Close Workspace" : "Open Workspace"}
-              label={navigator.visible ? "Close Workspace" : "Open Workspace"}
-              ariaLabel={navigator.visible ? "Close Workspace" : "Open Workspace"}
-              hotkey="toggle-sidebar"
-              aria-pressed={navigator.visible}
-              data-cake-hint-key="s"
-              className="h-9 shrink-0 aria-pressed:bg-sidebar-active aria-pressed:text-foreground aria-pressed:shadow-none aria-pressed:hover:bg-sidebar-hover"
-              onClick={() => navigator.toggle()}
-            >
-              <SidebarIcon />
-            </IconButton>
             <IconButton
               tooltip="Search sessions"
               label="Search sessions"

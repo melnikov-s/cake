@@ -1161,7 +1161,7 @@ for (const scenario of [
 
         // Another session settling rerenders the application shell. Exercise the
         // same parent-render boundary after Virtuoso has restored this transcript.
-        await workspace.getByRole("button", { name: "Close Workspace" }).click();
+        await page.getByRole("button", { name: "Close Workspace" }).click();
         await expect
           .poll(() =>
             transcript.evaluate(

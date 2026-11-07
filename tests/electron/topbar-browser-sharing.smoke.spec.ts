@@ -13,7 +13,7 @@ async function checkResponsiveNavigation(page: Page) {
   const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
   const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
   if (!(await workspace.isVisible()))
-    await rail.getByRole("button", { name: "Open Workspace", exact: true }).click();
+    await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
   for (const expanded of [true, false]) {
     for (const width of [1280, 820, 621, 620, 420, 320]) {
       await page.setViewportSize({ width, height: 700 });
@@ -27,9 +27,9 @@ async function checkResponsiveNavigation(page: Page) {
       }
     }
     await page.setViewportSize({ width: 1280, height: 900 });
-    if (expanded) await rail.getByRole("button", { name: "Close Workspace", exact: true }).click();
+    if (expanded) await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
   }
-  await rail.getByRole("button", { name: "Open Workspace", exact: true }).click();
+  await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
   await expect(workspace).toBeVisible();
 }
 

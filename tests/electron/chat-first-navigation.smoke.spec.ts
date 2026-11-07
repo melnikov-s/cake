@@ -190,10 +190,10 @@ test("project home and native Browser keep conversation drafts, companion identi
       "aria-pressed",
       "true",
     );
-    await workspace.getByRole("button", { name: "Close Workspace", exact: true }).click();
+    await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
     await expect(rail.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
     await expect(rail.getByRole("button", { name: "Automations", exact: true })).toBeVisible();
-    await expect(rail.getByRole("button", { name: "Open Workspace", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open Workspace", exact: true })).toBeVisible();
     const windows = await application.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows().map((window) => ({
         visible: window.isVisible(),

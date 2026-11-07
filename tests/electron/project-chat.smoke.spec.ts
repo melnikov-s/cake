@@ -375,9 +375,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
     for (const theme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme: theme });
       await expect(projectRow).toHaveAttribute("data-navigation-active", "true");
-      await expect(
-        projectRow.getByRole("button", { name: "Project Chat", exact: true }),
-      ).toBeVisible();
+      await expect(projectRow.getByRole("button", { name: "zombies", exact: true })).toBeVisible();
     }
 
     await page.getByRole("button", { name: "Terminal", exact: true }).click();
@@ -597,7 +595,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
     expect(requests).toHaveLength(beforeSide + 1);
     await page
       .getByRole("navigation", { name: "Conversation breadcrumb" })
-      .getByRole("button", { name: "Project Chat", exact: true })
+      .getByRole("button", { name: "zombies", exact: true })
       .click();
     const imported = page.locator('[data-slot="side-chat-import"]');
     await expect(imported).toHaveCount(1);

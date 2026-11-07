@@ -324,7 +324,7 @@ it.each(
     act(() => f.root.projectWorkbenchStore.projectOpenStore.activate("/finance"));
     const link = within(
       screen.getByRole("navigation", { name: "Conversation breadcrumb" }),
-    ).getByRole("button", { name: "Project Chat" });
+    ).getByRole("button", { name: "zombies" });
     await f.user.click(link);
     await waitFor(() =>
       expect(
@@ -434,11 +434,7 @@ it.each(
       expect(screen.getByRole("button", { name: "To-dos" }).getAttribute("aria-pressed")).toBe(
         "true",
       );
-      await f.user.click(
-        within(screen.getByRole("complementary", { name: "Workspace" })).getByRole("button", {
-          name: "Close Workspace",
-        }),
-      );
+      await f.user.click(screen.getByRole("button", { name: "Close Workspace" }));
       // Closing remains respected across later creation, status and lifecycle changes.
       const second = await runtime.runPromise(
         projectTodos.create("/zombies", {
@@ -614,7 +610,7 @@ it("toggles Project Chat to-dos in the existing side pane, focuses/unfocuses, co
         .getByRole("button", { name: item.title })
         .getAttribute("aria-pressed"),
     ).toBe("false");
-    await f.user.click(within(panel).getByRole("button", { name: "Close Workspace" }));
+    await f.user.click(screen.getByRole("button", { name: "Close Workspace" }));
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
     await f.user.click(toggle);
@@ -848,7 +844,7 @@ it("keeps own Project Chat and Session running/error states distinct while switc
     expect(within(row(id)).getByRole("img", { name: "Error" }).classList).toContain(
       "bg-destructive",
     );
-  await f.user.click(within(row(projectId)).getByRole("button", { name: "Project Chat" }));
+  await f.user.click(within(row(projectId)).getByRole("button", { name: "zombies" }));
   expect(await screen.findByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
   for (const id of [projectId, "task"])
     expect(within(row(id)).getByRole("img", { name: "Error" })).toBeTruthy();
@@ -916,4 +912,39 @@ it("keeps the destination selected and accepts a draft while its authority has n
     "value",
     "Keep writing",
   );
+});
+
+it("uses each registered project name for its breadcrumb, action title and home navigation row", async () => {
+  using f = await fixture(undefined, [
+    projectRecord({ path: "/zombies", name: "Orchard" }),
+    projectRecord({ path: "/finance", name: "Ledger" }),
+  ]);
+  for (const name of ["Orchard", "Ledger"]) {
+    await f.user.click(screen.getByRole("button", { name: `Open Project Chat for ${name}` }));
+    const breadcrumb = within(screen.getByRole("navigation", { name: "Conversation breadcrumb" }));
+    expect(breadcrumb.getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "Cake Chat",
+      name,
+    ]);
+    expect(breadcrumb.getByRole("button", { name }).getAttribute("aria-current")).toBe("page");
+    expect(breadcrumb.queryByRole("button", { name: "Project Chat" })).toBeNull();
+    expect(document.querySelector('[data-slot="workspace-actions"] strong')?.textContent).toBe(
+      name,
+    );
+    const open = screen.queryByRole("button", { name: "Open Workspace" });
+    if (open) await f.user.click(open);
+    const workspace = within(screen.getByRole("complementary", { name: "Workspace" }));
+    await f.user.click(workspace.getByRole("button", { name: /^Sessions/ }));
+    expect(workspace.getByRole("button", { name, exact: true })).toBeTruthy();
+    expect(workspace.queryByRole("button", { name: "Project Chat", exact: true })).toBeNull();
+  }
+  await act(async () => {
+    await f.root.navigationStore.openSession("task");
+  });
+  const breadcrumb = within(screen.getByRole("navigation", { name: "Conversation breadcrumb" }));
+  expect(
+    breadcrumb.getByRole("button", { name: "Orchard" }).getAttribute("aria-current"),
+  ).toBeNull();
+  await f.user.click(breadcrumb.getByRole("button", { name: "Orchard" }));
+  expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
 });

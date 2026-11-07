@@ -2,8 +2,6 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { WorkspaceNavigatorContent } from "./workspace-navigator-content";
 import { ActivityCount } from "./ui/activity-count";
-import { IconButton } from "./ui/icon-button";
-import { CloseIcon } from "./ui/icons";
 import { SegmentedControlGroup, SegmentedControlButton } from "./ui/segmented-control";
 
 /** One mutually-exclusive source-list accessory, independent of the focused work surface. */
@@ -14,11 +12,12 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
   const sessions = root.conversationNavigatorStore.tree(navigator.projectPath);
   return (
     <aside
+      id="workspace-navigator"
       data-slot="workspace-navigator"
       aria-label="Workspace"
       className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l border-border/70 bg-sidebar text-sidebar-foreground select-none"
     >
-      <header className="flex h-title-bar shrink-0 items-center gap-1 px-2">
+      <header className="flex h-title-bar shrink-0 items-center gap-1 pl-2 pr-11">
         <SegmentedControlGroup className="min-w-0 flex-1" aria-label="Workspace content" size="sm">
           <SegmentedControlButton
             active={navigator.mode === "todos"}
@@ -42,9 +41,6 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
             Sessions <ActivityCount count={sessions.running} />
           </SegmentedControlButton>
         </SegmentedControlGroup>
-        <IconButton tooltip="Close Workspace" onClick={() => navigator.close()}>
-          <CloseIcon />
-        </IconButton>
       </header>
       <WorkspaceNavigatorContent />
     </aside>

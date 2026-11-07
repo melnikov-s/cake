@@ -21,9 +21,8 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
     .lineageFor(sessionId)
     .filter(
       (node) =>
-        projectPath ||
-        node.target.kind !== "cake-chat" ||
-        node.target.sessionId !== CAKE_CHAT_SESSION_ID,
+        node.relationship !== "home" &&
+        (node.target.kind !== "cake-chat" || node.target.sessionId !== CAKE_CHAT_SESSION_ID),
     );
   return (
     <div className="flex w-full min-w-0 items-start py-[calc((var(--title-bar-height)-24px)/2)]">
@@ -56,6 +55,7 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
               size="sm"
               className="h-6 max-w-full px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
               title={projectPath}
+              aria-current={lineage.length === 0 ? "page" : undefined}
               onClick={() => void root.navigationStore.openProjectChat(projectPath)}
             >
               {root.projectCatalogStore.nameForPath(projectPath)}
@@ -76,17 +76,9 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
               )}
               title={node.title}
               aria-current={index === lineage.length - 1 ? "page" : undefined}
-              onClick={() =>
-                void (node.relationship === "home" && projectPath
-                  ? root.navigationStore.openProjectChat(projectPath)
-                  : navigator.open(node))
-              }
+              onClick={() => void navigator.open(node)}
             >
-              {node.relationship === "home"
-                ? projectPath
-                  ? "Project Chat"
-                  : "Cake Chat"
-                : node.title}
+              {node.title}
             </Button>
           </Fragment>
         ))}

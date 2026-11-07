@@ -624,7 +624,7 @@ export function createChatFirstNavigationScenario(
         return;
       }
       if (state === "closed")
-        await workspace.getByRole("button", { name: "Close Workspace", exact: true }).click();
+        await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
       else if (state === "settings-icon") {
         if (!application) throw new Error("Project settings capture requires Electron");
         // Only the native popup boundary is replaced, as in the maintained menu smoke tests.
@@ -666,7 +666,7 @@ export function createChatFirstNavigationScenario(
               return original(input, init);
             };
           });
-          const expandHome = tree.getByRole("button", { name: "Expand Project Chat", exact: true });
+          const expandHome = tree.getByRole("button", { name: "Expand cake", exact: true });
           if (await expandHome.count()) await expandHome.click();
           await tree
             .locator(`[data-session-id="${sessions[0][0]}"]`)
@@ -694,7 +694,7 @@ export function createChatFirstNavigationScenario(
           }
         }
         for (const title of [
-          "Project Chat",
+          "cake",
           sessions[0][1],
           sessions[1][1],
           sessions[2][1],

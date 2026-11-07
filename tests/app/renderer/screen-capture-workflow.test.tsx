@@ -417,16 +417,12 @@ describe("Screen capture attachment destinations", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
     await showSessions(fixture);
     await fixture.user.click(within(navigator()).getByRole("button", { name: "Collapse Parent" }));
-    await fixture.user.click(
-      within(navigator()).getByRole("button", { name: "Collapse Project Chat" }),
-    );
+    await fixture.user.click(within(navigator()).getByRole("button", { name: "Collapse Project" }));
     let menu = await openMenu(fixture);
     expect(rowIds(popup())).toEqual(["beta", "alpha"]); // never seeded from sidebar disclosures
     await fixture.user.click(menu.getByRole("button", { name: "Collapse children of Parent" }));
     await fixture.user.click(screen.getByRole("button", { name: "Screenshot destination" }));
-    await fixture.user.click(
-      within(navigator()).getByRole("button", { name: "Expand Project Chat" }),
-    );
+    await fixture.user.click(within(navigator()).getByRole("button", { name: "Expand Project" }));
     await fixture.user.click(within(navigator()).getByRole("button", { name: "Expand Parent" }));
     menu = await openMenu(fixture);
     expect(rowIds(popup())).toEqual(["beta"]);

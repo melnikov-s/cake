@@ -198,10 +198,10 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(chatToggle).toHaveAttribute("aria-expanded", "false");
     await chatToggle.click();
     await expect(composer).toBeVisible();
-    await rail.getByRole("button", { name: "Close Workspace", exact: true }).click();
+    await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
     await expect(page.getByRole("complementary", { name: "Workspace", exact: true })).toBeHidden();
     await expect(rail.getByRole("button", { name: /^Browser sharing:/ })).toBeVisible();
-    await rail.getByRole("button", { name: "Open Workspace", exact: true }).click();
+    await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
     await expect(page.locator(`.session-item[data-session-id="${sessionId}"]`)).toBeVisible();
 
     const browserState = (url: string) => () =>

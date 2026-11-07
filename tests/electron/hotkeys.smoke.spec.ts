@@ -199,7 +199,7 @@ test("remaps application hotkeys from Settings", async () => {
     await expect(
       page
         .getByRole("navigation", { name: "Conversation breadcrumb" })
-        .getByRole("button", { name: "Project Chat", exact: true }),
+        .getByRole("button", { name: "project", exact: true }),
     ).toBeVisible();
   } finally {
     await application.close();

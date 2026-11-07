@@ -63,6 +63,7 @@ export class ConversationNavigatorStore extends Store<{
     const model = this.props.projection;
     return buildConversationNavigationTree({
       projectPath,
+      projectName: projectPath ? this.projectName(projectPath) : undefined,
       sessions: projectPath
         ? this.props.sessionList.projectSessions(projectPath, resolved, true)
         : [],
@@ -300,6 +301,14 @@ export class ConversationNavigatorStore extends Store<{
       : [];
   }
 
+  private projectName(projectPath: string) {
+    return (
+      this.props.projection.projects.find(projectPath)?.name ??
+      projectPath.replace(/\/+$/, "").split("/").at(-1) ??
+      projectPath
+    );
+  }
+
   private homeLineage(projectPath: string | undefined): readonly ConversationNavigationEntry[] {
     const homeId =
       projectPath === undefined
@@ -311,7 +320,7 @@ export class ConversationNavigatorStore extends Store<{
       ? [
           {
             key: conversationNavigationKey(homeId),
-            title: projectPath === undefined ? "Cake Chat" : "Project Chat",
+            title: projectPath === undefined ? "Cake Chat" : this.projectName(projectPath),
             relationship: "home",
             target: { kind: "cake-chat", sessionId: homeId },
           },

@@ -49,10 +49,7 @@ export async function showSessions(page: Page) {
   await expect(rail).toBeVisible({ timeout: 20_000 });
   const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
   if (!(await workspace.isVisible())) {
-    await page
-      .getByRole("navigation", { name: "Projects and global utilities" })
-      .getByRole("button", { name: "Open Workspace", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
   }
   await workspace.getByRole("button", { name: /^Sessions / }).click();
   return workspace;

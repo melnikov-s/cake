@@ -103,7 +103,7 @@ describe("Agent session navigation workflow", () => {
     await fixture.user.click(
       within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByRole(
         "button",
-        { name: "Project Chat" },
+        { name: "alpha" },
       ),
     );
     await waitFor(() =>
