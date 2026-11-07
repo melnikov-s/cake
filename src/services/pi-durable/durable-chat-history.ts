@@ -65,6 +65,7 @@ export async function readDurableOriginalPage(
   presentationOverrides: Readonly<Record<string, boolean>> = {},
   activeInterviews: ReadonlyMap<string, InterviewEntry> = new Map(),
   attributions: Readonly<Record<string, { pending: boolean; todoId: string | null }>> = {},
+  originalHistoryThrough?: number,
 ) {
   let next = cursor;
   do {
@@ -182,17 +183,33 @@ export async function readDurableOriginalPage(
         if (interview)
           interviews.set(boundedProjectionKey(`tool-${message.toolCallId}`), interview);
       }
+    const inheritedIds = new Set(
+      page.items
+        .filter(
+          (entry) => originalHistoryThrough !== undefined && entry.id <= originalHistoryThrough,
+        )
+        .flatMap((entry) => [String(entry.id), `internal-${entry.id}`, `presentation-${entry.id}`]),
+    );
     const projected = [];
     let chunk: SessionEntry[] = [];
+    let inherited = false;
+    const mark = (parts: ReturnType<typeof projectSessionEntries>) =>
+      parts.map((part) => (inherited ? { ...part, originalHistory: true } : part));
+    const flush = () => {
+      projected.push(...mark(projectSessionEntries(chunk)));
+      chunk = [];
+    };
     for (const entry of entries) {
+      const nextInherited = inheritedIds.has(entry.id);
+      if (inherited !== nextInherited) flush();
+      inherited = nextInherited;
       if (entry.type === "custom" && entry.customType === DURABLE_SIDE_CHAT_IMPORT) {
-        projected.push(...projectSessionEntries(chunk));
-        chunk = [];
+        flush();
         const original = page.items.find((item) => String(item.id) === entry.id);
-        if (original) projected.push(...projectImportedHistory(original));
+        if (original) projected.push(...mark(projectImportedHistory(original)));
       } else chunk.push(entry);
     }
-    projected.push(...projectSessionEntries(chunk));
+    flush();
     const parts = projected.map((part) => {
       // Settled originals remain authoritative. Do not mark all history live:
       // abandoned unmatched calls must still read as interrupted during a new run.

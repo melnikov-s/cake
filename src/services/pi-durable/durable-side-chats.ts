@@ -93,8 +93,8 @@ export interface DurableSideChatHost {
 }
 
 export interface DurableSideChats {
-  /** Forks Cake Chat after the exchange that contains `entryId`; returns the side chat's session ID. */
-  fork(entryId: string): Promise<string>;
+  /** Forks the main conversation after an anchored exchange, or its latest settled reply when omitted. */
+  fork(entryId?: string): Promise<string>;
   /** Task fork from an explicit or latest settled reply, with an isolated execution binding. */
   forkTask(
     workingDirectory: string,
@@ -114,7 +114,25 @@ export interface DurableSideChats {
  * exchange. Forking there gives the side chat exactly the context Cake Chat's next request
  * would extend, never a dangling tool call.
  */
-async function sideChatForkPoint(root: Conversation, entryId: string): Promise<EntryId> {
+async function sideChatForkPoint(root: Conversation, entryId?: string): Promise<EntryId> {
+  if (entryId === undefined) {
+    let cursor;
+    do {
+      const page = await root.entries({}, 64, cursor, BACKGROUND_CONTEXT);
+      for (const entry of page.items) {
+        const reply = entry.model?.find((message) => message.role === "assistant");
+        if (
+          entry.kind === "pi.assistant" &&
+          reply?.role === "assistant" &&
+          (reply.stopReason === "stop" || reply.stopReason === "length") &&
+          !reply.content.some((block) => block.type === "toolCall")
+        )
+          return entry.id;
+      }
+      cursor = page.next;
+    } while (cursor !== undefined);
+    throw new Error(NO_REPLY);
+  }
   const anchor = Number(entryId);
   if (!Number.isSafeInteger(anchor) || anchor < 0)
     throw new Error("That Cake Chat message is no longer available");
@@ -174,18 +192,16 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       throw new Error("That Cake Chat side chat no longer exists");
     return { conversation, after: record.parent.at };
   };
-  /** The side chat's own entries; the inherited Cake Chat prefix is model context only. */
-  const ownEntries = (
+  /** Fork-aware originals; inherited entries remain Pi-owned history. */
+  const displayEntries = (
     scan: (
       query: Omit<EntryQuery, "conversationId">,
       limit: number,
       cursor: Parameters<Conversation["entries"]>[2],
     ) => ReturnType<Conversation["entries"]>,
-    after: EntryId,
   ): Pick<Conversation, "entries"> => ({
     entries: async (query, limit, cursor) => {
-      // SAFETY: entry IDs are integers; every own entry is newer than the fork point.
-      const page = await scan({ ...query, minEntryId: (after + 1) as EntryId }, limit, cursor);
+      const page = await scan(query, limit, cursor);
       return {
         ...page,
         items: page.items.map((entry) =>
@@ -232,16 +248,15 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       conversation.commit(
         async (tx) =>
           readDurableOriginalPage(
-            ownEntries(
-              (query, limit, next) =>
-                tx.scanEntries({ ...query, conversationId: conversation.id }, limit, next),
-              after,
+            displayEntries((query, limit, next) =>
+              tx.scanEntries({ ...query, conversationId: conversation.id }, limit, next),
             ),
             cursor,
             await readDurableActiveTools(tx, conversation.id),
             (await tx.doc(UserMessagePresentationDoc, conversation.id)).overrides,
             await readDurableActiveInterviews(tx, conversation.id),
             (await tx.doc(TaskAttributionDoc, conversation.id)).inputs,
+            after,
           ),
         BACKGROUND_CONTEXT,
       );
@@ -311,16 +326,15 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         const contextTokens = active ? estimateContextTokens(active.messages).tokens : undefined;
         const snapshot = await conversation.commit(async (tx) => {
           const page = await readDurableOriginalPage(
-            ownEntries(
-              (query, limit, cursor) =>
-                tx.scanEntries({ ...query, conversationId: conversation.id }, limit, cursor),
-              after,
+            displayEntries((query, limit, cursor) =>
+              tx.scanEntries({ ...query, conversationId: conversation.id }, limit, cursor),
             ),
             undefined,
             await readDurableActiveTools(tx, conversation.id),
             (await tx.doc(UserMessagePresentationDoc, conversation.id)).overrides,
             await readDurableActiveInterviews(tx, conversation.id),
             (await tx.doc(TaskAttributionDoc, conversation.id)).inputs,
+            after,
           );
           const live = await tx.doc(LiveDoc, conversation.id);
           const agent = await tx.doc(AgentDoc, conversation.id);
@@ -441,7 +455,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         const first =
           live?.run === undefined &&
           (await inbox()).length === 0 &&
-          (await history()).parts.length === 0;
+          (await history()).parts.every((part) => part.originalHistory);
         assertCurrent();
         const submission = await conversation.submit(
           {
@@ -713,16 +727,15 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       const page = await conversation.commit(
         async (tx) =>
           readDurableOriginalPage(
-            ownEntries(
-              (query, limit, cursor) =>
-                tx.scanEntries({ ...query, conversationId: conversation.id }, limit, cursor),
-              after,
+            displayEntries((query, limit, cursor) =>
+              tx.scanEntries({ ...query, conversationId: conversation.id }, limit, cursor),
             ),
             undefined,
             await readDurableActiveTools(tx, conversation.id),
             (await tx.doc(UserMessagePresentationDoc, conversation.id)).overrides,
             await readDurableActiveInterviews(tx, conversation.id),
             (await tx.doc(TaskAttributionDoc, conversation.id)).inputs,
+            after,
           ),
         BACKGROUND_CONTEXT,
       );

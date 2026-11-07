@@ -4,7 +4,11 @@ import {
   type CakeChatSideChatStartInput,
   type DiscussionAnchor,
 } from "../../contracts/discussion-sessions/discussion-session-data";
-import type { Annotation, ModelPreset } from "../../contracts/conversations/session-contract";
+import type {
+  Attachment,
+  Annotation,
+  ModelPreset,
+} from "../../contracts/conversations/session-contract";
 import type { Conversation } from "../models/Conversation";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import { describeError } from "../lib/error-details";
@@ -26,6 +30,7 @@ export interface CakeChatSideChatsStoreProps {
   /** Cake Chat's own model; a new side chat starts on it. */
   parent(): Conversation;
   parentBusy(): boolean;
+  sendToSideChat(text: string, attachments: Attachment[]): Promise<boolean>;
   configuration(): ChatConfigurationStore;
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
@@ -75,6 +80,7 @@ export class CakeChatSideChatsStore
         openModelPresetSettings: this.props.openModelPresetSettings,
 
         parentBusy: this.props.parentBusy,
+        sendToSideChat: this.props.sendToSideChat,
         setResolved: (resolved) => this.resolveThread(thread.id, resolved),
       }),
     );
@@ -115,6 +121,30 @@ export class CakeChatSideChatsStore
       if (!this.signal.aborted) this.reportError(error);
       return undefined;
     }
+  }
+
+  /** Each composer activation starts a fresh native fork of the main conversation. */
+  async createComposerThread(text: string, attachments: Attachment[]) {
+    const parent = this.props.parent();
+    const accepted = await this.client.cakeChats.startSideChat(
+      {
+        parentSessionId: parent.sessionId,
+        anchor: {
+          path: `session:${parent.sessionId}`,
+          view: "session",
+          start: { diffLine: 0 },
+          end: { diffLine: 0 },
+          selectedText: "",
+          contextBefore: "",
+          contextAfter: "",
+          diff: "",
+        },
+        text,
+        attachments,
+      },
+      { signal: this.signal },
+    );
+    return accepted.thread.id;
   }
 
   async resolveThread(threadId: string, resolved = true) {

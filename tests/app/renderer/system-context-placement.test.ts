@@ -70,6 +70,7 @@ function fixture() {
 
 function visibleParts(model: Conversation): UiPart[] {
   return groupTranscriptParts(model.uiParts).flatMap((item) =>
+    item.kind === "original-history" ||
     item.kind === "context-group" ||
     item.kind === "activity-group" ||
     item.kind === "source-group" ||

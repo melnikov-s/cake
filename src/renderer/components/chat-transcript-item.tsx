@@ -3,6 +3,7 @@ import { TaskSectionRail } from "./task-section-rail";
 import { LoadingState } from "@/components/ui/loading-state";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import { cn } from "../lib/utils";
+import { OriginalHistoryGroup } from "./original-history-group";
 import { SideChatImportGroup } from "./side-chat-import-group";
 import { ActivityGroup } from "./work-log-activity-group";
 import { ReviewRunMessage } from "./chat-transcript-elements";
@@ -32,6 +33,8 @@ function sameParts(left: readonly UiPart[], right: readonly UiPart[]) {
 function sameItem(left: TranscriptItem, right: TranscriptItem) {
   if (left === right) return true;
   if (left.kind !== right.kind || left.id !== right.id) return false;
+  if (left.kind === "original-history" && right.kind === "original-history")
+    return sameParts(left.parts, right.parts);
   if (left.kind === "side-chat-import" && right.kind === "side-chat-import")
     return sameParts(left.parts, right.parts);
   if (left.kind === "activity-group" && right.kind === "activity-group")
@@ -63,6 +66,7 @@ export const ChatTranscriptItem = memo(
         data-transcript-item-index={index}
         data-transcript-item-key={itemKey}
         data-transcript-anchor-id={
+          item.kind === "original-history" ||
           item.kind === "side-chat-import" ||
           item.kind === "activity-group" ||
           item.kind === "source-group" ||
@@ -100,7 +104,9 @@ export const ChatTranscriptItem = memo(
           hidden={taskSection && !taskSection.expanded}
           className="col-start-1 row-start-2 min-w-0"
         >
-          {taskSection && !taskSection.expanded ? null : item.kind === "side-chat-import" ? (
+          {taskSection && !taskSection.expanded ? null : item.kind === "original-history" ? (
+            <OriginalHistoryGroup parts={item.parts} behavior={behavior} />
+          ) : item.kind === "side-chat-import" ? (
             <SideChatImportGroup group={item} behavior={behavior} />
           ) : item.kind === "activity-group" ? (
             <ActivityGroup groupId={item.id} parts={item.parts} behavior={behavior} />

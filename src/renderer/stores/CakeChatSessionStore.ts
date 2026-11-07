@@ -10,7 +10,7 @@ import type { ProjectSessionPresentationMode } from "../../contracts/project-ses
 import { EditorSelectionsStore } from "./EditorSelectionsStore";
 import { SessionPresentationContext } from "./context/SessionPresentationContext";
 import type { Conversation } from "../models/Conversation";
-import type { ModelPreset } from "../../contracts/conversations/session-contract";
+import type { Attachment, ModelPreset } from "../../contracts/conversations/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { ConversationHistoryStore } from "./ConversationHistoryStore";
 import { ConversationSessionStore } from "./ConversationSessionStore";
@@ -193,6 +193,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       catalog: this.props.discussionCatalog,
       discussionSessionModel: this.props.discussionSessionModel,
       parent: () => this.model,
+      sendToSideChat: (text, attachments) => this.sendToSideChat(text, attachments),
       parentBusy: () => {
         const chat = this.conversationSessionStore.chatStore;
         return chat.loading || chat.queuedPrompts.length > 0;
@@ -257,6 +258,13 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       merge: this.sideChats.discussionSession(threadId)?.mergeStore,
       chatStore,
     });
+    return true;
+  }
+
+  private async sendToSideChat(text: string, attachments: Attachment[]) {
+    const threadId = await this.sideChats.createComposerThread(text, attachments);
+    this.pendingSideChatThreadId = threadId;
+    this.openSideChat(threadId);
     return true;
   }
 
@@ -330,6 +338,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       ensureSessionActive: () => true,
       composer: {
         createSideChat: (prompt) => this.createSideChat(prompt),
+        sendToSideChat: (text, attachments) => this.sendToSideChat(text, attachments),
         scheduleMessage: async (sessionId, args) => {
           const scheduled = parseScheduledMessage(args);
           await this.client.scheduledMessages.schedule(

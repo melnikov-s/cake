@@ -250,6 +250,8 @@ export const attachmentSchema = Schema.Union([
 
 const partBase = {
   id: stringRange(1, 256),
+  /** Inherited Pi originals, grouped separately from this fork's own dialogue. */
+  originalHistory: Schema.optionalKey(Schema.Boolean),
   sideChatImport: Schema.optionalKey(
     Schema.Struct({
       groupId: stringRange(1, 256),

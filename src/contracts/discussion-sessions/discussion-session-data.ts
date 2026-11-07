@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { ThinkingLevel } from "../pi/model-data";
+import { attachmentSchema } from "../conversations/session-contract";
 import {
   CakeSessionIdentity,
   ConversationEvent,
@@ -125,6 +126,7 @@ export const DiscussionSessionStartInput = Schema.Struct({
   workingDirectory: Schema.String,
   anchor: DiscussionAnchor,
   text: boundedText,
+  attachments: Schema.optionalKey(Schema.Array(attachmentSchema)),
   annotations: Schema.optionalKey(
     Schema.Array(DiscussionAnnotation).check(Schema.isMaxLength(100)),
   ),
@@ -136,14 +138,15 @@ export interface DiscussionSessionStartInput extends Schema.Schema.Type<
 > {}
 
 /**
- * Branches a side chat from one Cake Chat message. The backend owns the
- * permanent Cake Chat identity and location, so the renderer supplies only the
- * message anchor and first prompt.
+ * Branches a native Durable side chat from a message or the main conversation's
+ * latest settled exchange (a session anchor). Side-chat origins resolve to their
+ * main conversation. The backend owns the permanent chat's location.
  */
 export const CakeChatSideChatStartInput = Schema.Struct({
   parentSessionId: Schema.optionalKey(Schema.String),
   anchor: DiscussionAnchor,
   text: DiscussionSessionStartInput.fields.text,
+  attachments: DiscussionSessionStartInput.fields.attachments,
   annotations: DiscussionSessionStartInput.fields.annotations,
   model: DiscussionSessionStartInput.fields.model,
   thinkingLevel: DiscussionSessionStartInput.fields.thinkingLevel,

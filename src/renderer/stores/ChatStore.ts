@@ -93,6 +93,7 @@ export interface ChatStoreProps {
     draft: string,
     options?: { renderUserMessageAsMarkdown?: boolean },
   ): Promise<boolean | void | { turnId: string }>;
+  sendToSideChat?(): Promise<boolean>;
   userMessagePresentation?: UserMessagePresentationCapabilities;
   activateDraft?(choice?: WorktreeDraftChoice): Promise<boolean>;
   sessionCreationChoice?(): WorktreeDraftChoice;
@@ -404,6 +405,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   get lastEditableUserEntryId() {
     const part = this.parts.findLast(
       (candidate) =>
+        !candidate.originalHistory &&
         ((candidate.kind === "text" && candidate.role === "user" && !candidate.subagentReport) ||
           candidate.kind === "skill") &&
         Boolean(candidate.entryId),
@@ -598,6 +600,21 @@ export class ChatStore extends Store<ChatStoreProps> {
       return undefined;
     } finally {
       this.rewording = false;
+    }
+  }
+
+  get canSendToSideChat() {
+    return Boolean(this.props.sendToSideChat) && !this.isDraftSession && !this.editingMessage;
+  }
+
+  async sendToSideChat() {
+    const send = this.props.sendToSideChat;
+    if (!send || !this.canSendToSideChat || !this.canSubmitValue(this.draft)) return false;
+    this.submittingLocally = true;
+    try {
+      return await send();
+    } finally {
+      this.submittingLocally = false;
     }
   }
 

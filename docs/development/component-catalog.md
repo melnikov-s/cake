@@ -205,6 +205,12 @@ destination tooltip. Use it for identity metadata where the session context is c
 message frame, hover/focus action row below the content, and top-right fullscreen
 control. Ordinary assistant replies and incoming linked responses reuse this chrome.
 
+[`OriginalHistoryGroup`](../../src/renderer/components/original-history-group.tsx) folds
+Pi-owned inherited originals under **Original history**, separately from new side-chat
+dialogue, using the shared disclosure control. The durable composer’s **Send to side chat**
+icon creates a fresh fork of the main conversation, including when invoked from a side chat;
+ordinary Send keeps its existing destination.
+
 [`SessionMessage`](../../src/renderer/components/session-message.tsx) specializes that
 assistant-message frame for every message from another session (replies, requests, notices, worker reports, batch notes
 and exact originals) as one summary row: chevron, the sender's title (shown once, never

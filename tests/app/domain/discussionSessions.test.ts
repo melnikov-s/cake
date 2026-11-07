@@ -86,6 +86,14 @@ const cakeChatAnchor = {
   entryId: "entry-assistant-2",
 };
 
+const attachmentReference = {
+  kind: "input" as const,
+  id: "10000000-0000-4000-8000-000000000001",
+  name: "Notes",
+  mimeType: "text/plain",
+  byteLength: 17,
+};
+
 const makeLayer = (
   options: {
     readonly persistedSidecar?: boolean;
@@ -104,6 +112,7 @@ const makeLayer = (
 ) => {
   const durableFork = options.durableFork;
   const forkedEntries: string[] = [];
+  const isolatedInputs: unknown[] = [];
   const importedHistories: unknown[] = [];
   const grantedInputs: unknown[] = [];
   const mergeOptions = options;
@@ -372,6 +381,7 @@ const makeLayer = (
   };
   return {
     layer: Layer.mergeAll(
+      Layer.mock(CakeChatDurable, {}),
       WorkflowTestLive,
       DiscussionTitleRequests.layer,
       SessionCatalogChanges.layer,
@@ -385,6 +395,16 @@ const makeLayer = (
       ),
       discussions,
       projectRuntime,
+      Layer.mock(TaskInputStorage, {
+        resolve: (_session, attachments) => Effect.succeed(attachments),
+        authorizeForward: () => Effect.succeed([]),
+        isRecipient: () => Effect.succeed(false),
+        isolate: (sessionId, attachments) =>
+          Effect.sync(() => {
+            isolatedInputs.push({ sessionId, attachments });
+            return [attachmentReference];
+          }),
+      }),
       familyStorageHarness().layer,
       ...(options.mergeReferences
         ? [
@@ -463,6 +483,7 @@ const makeLayer = (
     createdRecords,
     linkedSidecars,
     forkedEntries,
+    isolatedInputs,
     importedHistories,
     historyMessages,
     grantedInputs,
@@ -877,6 +898,63 @@ describe("task Side Sessions", () => {
 });
 
 describe("Cake Chat side chats", () => {
+  it.effect(
+    "dispatches side-chat composers through a fresh settled main fork with attachments",
+    () => {
+      const fixture = makeLayer({ cakeChat: true, durableFork: 8 });
+      const forks: string[] = [];
+      const attachments = [{ kind: "text" as const, name: "Notes", text: "Keep this context" }];
+      return Effect.gen(function* () {
+        yield* assembleCakeChat;
+        for (const source of [CAKE_CHAT_SESSION_ID, cakeChatSideChatSessionId(7)]) {
+          const accepted = yield* discussionSessions.startCakeChatSideChat(
+            {
+              parentSessionId: source,
+              anchor: {
+                ...cakeChatAnchor,
+                view: "session",
+                entryId: undefined,
+                messageId: undefined,
+              },
+              text: "Separate question",
+              attachments,
+            },
+            "/home",
+          );
+          assert.equal(accepted.thread.sidecarSessionId, cakeChatSideChatSessionId(8));
+        }
+        assert.deepEqual(forks, [CAKE_CHAT_SESSION_ID, CAKE_CHAT_SESSION_ID]);
+        assert.deepEqual(
+          fixture.createdRecords.map((record) => record.parentSessionId),
+          [CAKE_CHAT_SESSION_ID, CAKE_CHAT_SESSION_ID],
+        );
+        assert.deepEqual(fixture.prompts.at(-1)?.slice(0, 3), [
+          "Separate question",
+          "prompt",
+          [attachmentReference],
+        ]);
+        assert.deepEqual(fixture.isolatedInputs, [
+          { sessionId: cakeChatSideChatSessionId(8), attachments },
+          { sessionId: cakeChatSideChatSessionId(8), attachments },
+        ]);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            fixture.layer,
+            Layer.mock(CakeChatDurable, {
+              forkSideChat: (parent, entryId) =>
+                Effect.sync(() => {
+                  assert.equal(entryId, undefined);
+                  forks.push(parent);
+                  return cakeChatSideChatSessionId(8);
+                }),
+            }),
+          ),
+        ),
+      );
+    },
+  );
+
   it.effect("forks Cake Chat natively instead of copying its conversation", () => {
     const fixture = makeLayer({ cakeChat: true, durableFork: 7 });
     return Effect.gen(function* () {
@@ -1046,16 +1124,19 @@ describe("Cake Chat side chats", () => {
     },
   );
 
-  it.effect("rejects a Cake Chat side chat that is not anchored to a message", () => {
-    const fixture = makeLayer({ cakeChat: true });
-    return Effect.gen(function* () {
-      const error = yield* discussionSessions
-        .startCakeChatSideChat({ anchor: { ...anchor, view: "session" }, text: "Hi" }, "/home")
-        .pipe(Effect.flip);
-      assert.equal(error.message, "A Cake Chat side chat must branch from a message");
-      assert.deepEqual(fixture.createdRecords, []);
-    }).pipe(Effect.provide(fixture.layer));
-  });
+  it.effect(
+    "rejects a Cake Chat side chat anchored to a file instead of conversation history",
+    () => {
+      const fixture = makeLayer({ cakeChat: true });
+      return Effect.gen(function* () {
+        const error = yield* discussionSessions
+          .startCakeChatSideChat({ anchor, text: "Hi" }, "/home")
+          .pipe(Effect.flip);
+        assert.equal(error.message, "A Cake Chat side chat must branch from a message");
+        assert.deepEqual(fixture.createdRecords, []);
+      }).pipe(Effect.provide(fixture.layer));
+    },
+  );
 });
 
 describe("Discussion Sessions domain", () => {

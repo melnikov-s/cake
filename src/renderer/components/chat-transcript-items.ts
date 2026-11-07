@@ -8,6 +8,7 @@ import {
 
 export type TranscriptItem =
   | UiPart
+  | { kind: "original-history"; id: string; parts: UiPart[] }
   | { kind: "activity-group"; id: string; parts: UiPart[] }
   | {
       kind: "side-chat-import";
@@ -61,6 +62,12 @@ function attachmentsBeforeBody(parts: UiPart[]): UiPart[] {
 }
 
 export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
+  const inherited = parts.filter((part) => part.originalHistory);
+  if (inherited.length)
+    return [
+      { kind: "original-history", id: "original-history", parts: inherited },
+      ...groupTranscriptParts(parts.filter((part) => !part.originalHistory)),
+    ];
   const items: TranscriptItem[] = [];
   let imported: Extract<TranscriptItem, { kind: "side-chat-import" }> | undefined;
   const flushImported = () => {

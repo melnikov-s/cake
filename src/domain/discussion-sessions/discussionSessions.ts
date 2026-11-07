@@ -1,16 +1,17 @@
 import { DateTime } from "effect";
 import { DiscussionTitleRequests } from "../../services/discussion-sessions/DiscussionTitleRequests";
-import { CakeChatDurable } from "../../services/pi-durable/CakeChatDurable";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
-import { inheritTaskInputProtection } from "../conversations/taskInputs";
+import { inheritTaskInputProtection, prepareTaskInputs } from "../conversations/taskInputs";
+import { projectAttachments } from "../conversations/conversations";
 import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import type { SideSessionFork } from "../../contracts/cake-chats/side-session-fork";
 import * as cakeChatRuntime from "../cake-chats/cakeChatRuntime";
 import * as cakeChatLocations from "../cake-chats/cakeChatLocations";
+import { CakeChatDurable } from "../../services/pi-durable/CakeChatDurable";
 import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import { cakeChatControlTools } from "../../contracts/application/window-control-definitions";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
@@ -21,6 +22,7 @@ import {
   CAKE_CHAT_SESSION_ID,
   isCakeChatSessionId,
   cakeChatSideChatConversationId,
+  cakeChatSideChatParentId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 import {
@@ -456,11 +458,13 @@ export const observe = Effect.fn("DiscussionSessions.observe")(function* (
 
 type FirstPrompt = Pick<
   DiscussionSessionStartInput,
-  "text" | "annotations" | "model" | "thinkingLevel"
+  "text" | "attachments" | "annotations" | "model" | "thinkingLevel"
 >;
 
 const requirePrompt = (input: FirstPrompt) =>
-  !input.text.trim() && (input.annotations ?? []).length === 0
+  !input.text.trim() &&
+  (input.annotations ?? []).length === 0 &&
+  (input.attachments ?? []).length === 0
     ? Effect.fail(
         new DiscussionSessionError({
           operation: "start",
@@ -496,7 +500,13 @@ const deliverFirstPrompt = Effect.fn("DiscussionSessions.deliverFirstPrompt")(fu
     yield* prepared.handle.setModel(input.model.provider, input.model.id).pipe(asError("start"));
   if (input.thinkingLevel)
     yield* prepared.handle.setThinkingLevel(input.thinkingLevel).pipe(asError("start"));
-  const attachments = annotations.length > 0 ? [{ kind: "annotation" as const, annotations }] : [];
+  const { sessionId } = yield* prepared.handle.snapshot().pipe(asError("start"));
+  const attachments = projectAttachments(
+    yield* prepareTaskInputs(sessionId, cakeChatSideChatConversationId(sessionId) !== undefined, [
+      ...(input.attachments ?? []),
+      ...(annotations.length > 0 ? [{ kind: "annotation" as const, annotations }] : []),
+    ]).pipe(asError("start")),
+  );
   const turnId = TurnId.make(
     yield* prepared.handle.prompt(input.text.trim(), attachments).pipe(asError("start")),
   );
@@ -532,16 +542,18 @@ export const start = Effect.fn("DiscussionSessions.start")(function* (
  */
 export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChatSideChat")(
   function* (input: CakeChatSideChatStartInput, workingDirectory: string, connectionId?: number) {
-    const parentSessionId = input.parentSessionId ?? CAKE_CHAT_SESSION_ID;
+    const sourceSessionId = input.parentSessionId ?? CAKE_CHAT_SESSION_ID;
+    const parentSessionId = cakeChatSideChatParentId(sourceSessionId) ?? sourceSessionId;
     yield* requirePrompt(input);
+    const latest = input.anchor.view === "session";
     const messageId = input.anchor.messageId;
-    if (input.anchor.view !== "message" || !messageId)
+    if (!latest && (input.anchor.view !== "message" || !messageId))
       return yield* new DiscussionSessionError({
         operation: "start",
         message: "A Cake Chat side chat must branch from a message",
       });
     const entryId = input.anchor.entryId;
-    if (!entryId?.trim())
+    if (!latest && !entryId?.trim())
       return yield* new DiscussionSessionError({
         operation: "start",
         message: "That Cake Chat message has no entry to branch from. Choose a completed reply.",
@@ -549,9 +561,13 @@ export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChat
     const sessions = yield* CakeSessionRuntimes;
     const environment = yield* DiscussionSessionEnvironment;
     const forked = yield* Effect.scoped(
-      sessions
-        .acquireSession(parentSessionId)
-        .pipe(Effect.flatMap((handle) => handle.fork(entryId, "Side chat"))),
+      Effect.gen(function* () {
+        // Keep the main runtime leased while its native Durable fork is created.
+        const handle = yield* sessions.acquireSession(parentSessionId);
+        if (!latest && entryId) return yield* handle.fork(entryId, "Side chat");
+        const durable = yield* CakeChatDurable;
+        return { sessionId: yield* durable.forkSideChat(parentSessionId) };
+      }),
     ).pipe(
       Effect.tapError((error) => Effect.logWarning("Could not fork a Cake Chat side chat", error)),
       Effect.mapError(

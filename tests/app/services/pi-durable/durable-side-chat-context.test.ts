@@ -75,7 +75,13 @@ it("projects real fork context, publishes arrivals/model changes, and restores m
     const runtime = await chats.open(options);
     try {
       const initial = await runtime.snapshot();
-      expect(initial.parts).toEqual([]); // Inherited history is context, not side-chat dialogue.
+      expect(initial.parts.map((part) => (part.kind === "text" ? part.text : part.kind))).toEqual([
+        "Inherited first question",
+        "Reply",
+        "Inherited second question",
+        "Reply",
+      ]);
+      expect(initial.parts.every((part) => part.originalHistory)).toBe(true);
       expect(initial.usage?.tokens.total).toBe(0);
       expect(initial.usage?.context).toEqual({
         tokens: 28_200,
@@ -91,6 +97,11 @@ it("projects real fork context, publishes arrivals/model changes, and restores m
       const after = await runtime.snapshot();
       expect(after.usage?.context?.tokens).toBe(32_000);
       expect(after.usage?.tokens.total).toBe(63_000);
+      expect(
+        after.parts
+          .filter((part) => !part.originalHistory && part.kind === "text")
+          .map((part) => (part.kind === "text" ? part.text : part.kind)),
+      ).toEqual(["Side-chat question", "Reply", "Another side-chat question", "Reply"]);
       arrival = Promise.withResolvers<ConversationSnapshot>();
       await runtime.setModel("fixture", "small");
       expect((await arrival.promise).usage?.context).toEqual({
@@ -107,6 +118,9 @@ it("projects real fork context, publishes arrivals/model changes, and restores m
     harness = await Harness.open(storage, { models, registry }, context);
     const reopened = await (await host()).open(options);
     try {
+      expect((await reopened.snapshot()).parts.filter((part) => part.originalHistory)).toHaveLength(
+        4,
+      );
       expect((await reopened.snapshot()).usage?.context).toEqual({
         tokens: 32_000,
         contextWindow: 64_000,

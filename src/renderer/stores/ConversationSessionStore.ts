@@ -273,6 +273,9 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
           ? (entryId) => this.composerStore.beginEditMessage(entryId)
           : undefined,
       isDraftSession: capabilities.isDraftSession,
+      sendToSideChat: this.props.composer.sendToSideChat
+        ? () => this.composerStore.sendToSideChat()
+        : undefined,
       editingMessage: () => this.composerStore.editingMessage,
       abort: () => this.abort(),
       attachments: () => this.composerStore.draftStore.visibleAttachments,

@@ -26,6 +26,7 @@ export class Message extends Model {
   partKey = "";
   kind: UiPart["kind"] = "notice";
   sideChatImport: UiPart["sideChatImport"];
+  originalHistory: boolean | undefined;
   role: TextRole | undefined;
   /** Pi entry identity, when the display part carries one. */
   piId: string | undefined;
@@ -92,6 +93,7 @@ export class Message extends Model {
   update(part: UiPart) {
     if (part.id !== this.partKey || part.kind !== this.kind) return false;
     this.sideChatImport = part.sideChatImport;
+    this.originalHistory = part.originalHistory;
     switch (part.kind) {
       case "context":
         this.title = part.title;
@@ -203,7 +205,11 @@ export class Message extends Model {
   @computed
   get value(): UiPart {
     const part = this.projectedValue;
-    return this.sideChatImport ? { ...part, sideChatImport: this.sideChatImport } : part;
+    return {
+      ...part,
+      ...(this.sideChatImport ? { sideChatImport: this.sideChatImport } : null),
+      ...(this.originalHistory ? { originalHistory: true } : null),
+    };
   }
 
   private get projectedValue(): UiPart {

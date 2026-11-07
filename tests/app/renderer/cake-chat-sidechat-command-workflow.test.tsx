@@ -14,16 +14,21 @@ import {
 import type { DiscussionThread } from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { CakeChatSurface } from "../../../src/renderer/components/cake-chat-surface";
-import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import {
+  applyConversationSnapshot,
+  applyConversationUpdate,
+} from "../../../src/renderer/reducers/ConversationReducer";
 import { applyDiscussionCatalogUpdate } from "../../../src/renderer/reducers/DiscussionReducer";
 import { projectRecord } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 function renderChat(
   sessionId: string,
-  options: { pending?: boolean; empty?: boolean; fail?: boolean } = {},
+  options: { pending?: boolean; empty?: boolean; fail?: boolean; originalHistory?: boolean } = {},
 ) {
-  const prompt = vi.fn<Client["sessionChats"]["prompt"]>();
+  const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+    TurnId.make("10000000-0000-4000-8000-000000000002"),
+  );
   const start = vi.fn<Client["cakeChats"]["start"]>();
   const thread: DiscussionThread = {
     id: "new-thread",
@@ -112,7 +117,7 @@ function renderChat(
     extensionUi: { statuses: [] },
     tree: [],
   };
-  applyConversationSnapshot(chat.model, snapshot);
+  applyConversationUpdate(chat.model, { _tag: "Snapshot", revision: 1, snapshot });
   const view = render(
     <StoreProvider store={fixture.root}>
       <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
@@ -139,10 +144,42 @@ function renderChat(
           ...snapshot,
           sessionId: "sidecar-1",
           streaming: false,
-          parts: [],
+          parts: options.originalHistory
+            ? [
+                {
+                  id: "inherited-question",
+                  entryId: "old-1",
+                  kind: "text",
+                  role: "user",
+                  text: "The main question",
+                  status: "complete",
+                  originalHistory: true,
+                },
+                {
+                  id: "inherited-answer",
+                  entryId: "old-2",
+                  kind: "text",
+                  role: "assistant",
+                  text: "The main answer",
+                  status: "complete",
+                  originalHistory: true,
+                },
+                {
+                  id: "side-question",
+                  entryId: "new-1",
+                  kind: "text",
+                  role: "user",
+                  text: "A separate question",
+                  status: "complete",
+                },
+              ]
+            : [],
           commands: [],
         },
       );
+      chat.sideChats
+        .chatStore(thread.id)
+        ?.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
     },
     [Symbol.dispose]() {
       view.unmount();
@@ -157,6 +194,64 @@ describe.each([
   ["Cake Chat", CAKE_CHAT_SESSION_ID],
   ["Project Chat", `project-chat:${"a".repeat(64)}`],
 ])("%s /sidechat", (_name, sessionId) => {
+  it("keeps ordinary Send in the busy conversation instead of automatically forwarding", async () => {
+    using fixture = renderChat(sessionId);
+    await fixture.user.type(screen.getByRole("combobox"), "Keep this here");
+    expect(screen.getByRole("button", { name: "Send to side chat" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(fixture.prompt).toHaveBeenCalledTimes(1));
+    expect(fixture.prompt.mock.calls[0]![0]).toMatchObject({ sessionId, text: "Keep this here" });
+    expect(fixture.startSideChat).not.toHaveBeenCalled();
+  });
+  it("sends the composed text and attachments into a new main-rooted side chat, including from a side chat", async () => {
+    using fixture = renderChat(sessionId, { originalHistory: true });
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox");
+    await fixture.user.click(input);
+    await fixture.user.paste("attachment line\n".repeat(100));
+    await fixture.user.type(input, "Separate question");
+    await fixture.user.click(screen.getByRole("button", { name: "Send to side chat" }));
+    expect(fixture.startSideChat).toHaveBeenCalledTimes(1);
+    expect(fixture.startSideChat.mock.calls[0]![0]).toMatchObject({
+      parentSessionId: sessionId,
+      anchor: { view: "session" },
+      text: "Separate question",
+      attachments: [{ kind: "text", text: "attachment line\n".repeat(100) }],
+    });
+    expect(input.value).toBe("");
+    act(() => fixture.publish());
+    const panel = await screen.findByRole("complementary", { name: "Side chat" });
+    const history = await within(panel).findByRole("button", { name: "Original history" });
+    expect(within(panel).queryByText("The main question")).toBeNull();
+    expect(within(panel).getByText("A separate question")).toBeDefined();
+    await fixture.user.click(history);
+    expect(within(panel).getByText("The main question")).toBeDefined();
+    expect(within(panel).getByText("The main answer")).toBeDefined();
+    const sideInput = within(panel).getByRole("combobox");
+    await fixture.user.type(sideInput, "Another separate question");
+    await fixture.user.click(within(panel).getByRole("button", { name: "Send to side chat" }));
+    expect(fixture.startSideChat).toHaveBeenCalledTimes(2);
+    expect(fixture.startSideChat.mock.calls[1]![0]).toMatchObject({
+      parentSessionId: sessionId,
+      anchor: { view: "session" },
+      text: "Another separate question",
+    });
+    expect(fixture.prompt).not.toHaveBeenCalled();
+    expect(fixture.start).not.toHaveBeenCalled();
+  });
+
+  it("restores the text and supported attachments after failed side-chat creation, leaving ordinary send available", async () => {
+    using fixture = renderChat(sessionId, { fail: true });
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox");
+    await fixture.user.click(input);
+    await fixture.user.paste("attachment line\n".repeat(100));
+    await fixture.user.type(input, "Keep my draft");
+    await fixture.user.click(screen.getByRole("button", { name: "Send to side chat" }));
+    expect(await screen.findByText("Side chat service unavailable")).toBeDefined();
+    expect(input.value).toBe("Keep my draft");
+    expect(screen.getByRole("button", { name: /Remove.*Pasted text/ })).toBeDefined();
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Send" }).disabled).toBe(false);
+    expect(fixture.prompt).not.toHaveBeenCalled();
+  });
   it("discovers the command and opens the existing draft, anchored to the latest completed reply while streaming", async () => {
     using fixture = renderChat(sessionId);
     const main = screen.getByRole<HTMLTextAreaElement>("combobox");

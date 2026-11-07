@@ -164,7 +164,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const visibleGroupedParts = store.hideThinking
     ? groupedParts.flatMap((item): TranscriptItem[] => {
         if (item.kind === "reasoning") return [];
-        if (item.kind !== "activity-group") return [item];
+        if (item.kind !== "activity-group" && item.kind !== "original-history") return [item];
         const visibleGroupParts = item.parts.filter((part) => part.kind !== "reasoning");
         return visibleGroupParts.length > 0 ? [{ ...item, parts: visibleGroupParts }] : [];
       })
@@ -308,6 +308,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   );
   const selectedItemIndex = selectedMessageId
     ? items.findIndex((item) =>
+        item.kind === "original-history" ||
         item.kind === "side-chat-import" ||
         item.kind === "activity-group" ||
         item.kind === "source-group" ||
@@ -320,6 +321,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const restoredMessageItemIndex =
     restoredScrollPosition?.kind === "message"
       ? items.findIndex((item) =>
+          item.kind === "original-history" ||
           item.kind === "side-chat-import" ||
           item.kind === "activity-group" ||
           item.kind === "source-group" ||
