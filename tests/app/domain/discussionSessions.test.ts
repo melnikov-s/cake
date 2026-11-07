@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import { toJsonValue } from "../../../src/utils/to-json-value";
 import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
@@ -7,7 +8,6 @@ import { DurableChatError } from "../../../src/services/pi-durable/durable-chat-
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Logger, Queue, Scope, Stream } from "effect";
@@ -425,7 +425,7 @@ const makeLayer = (
               )
             : Effect.die("Unexpected message inspection"),
       }),
-      WorkflowTestLive,
+      AgentControlTestLive,
       DiscussionTitleRequests.layer,
       SessionCatalogChanges.layer,
       Layer.succeed(CakeChatConfiguration, {

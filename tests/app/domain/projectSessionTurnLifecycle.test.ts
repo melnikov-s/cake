@@ -13,7 +13,6 @@ import {
   SessionArchiveStorageError,
 } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { WorkflowSupervisorLive } from "../../../src/services/workflows/WorkflowSupervisorLive";
 
 const location = {
   projectPath: "/project",
@@ -49,7 +48,6 @@ const fixture = Effect.fn("ProjectSessionTurnLifecycleTest.fixture")((options: {
     }),
     Layer.mock(SessionCatalogChanges, { publish: (change) => Effect.sync(() => publish(change)) }),
     Layer.mock(SessionCoordination, { settleTurn: coordinate }),
-    WorkflowSupervisorLive,
   );
   return Effect.succeed({ dependencies, publish, settle, coordinate, save });
 });

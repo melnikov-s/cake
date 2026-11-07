@@ -305,7 +305,6 @@ describe("ApplicationStorage", () => {
                 value: { provider: "example", modelId: "classifier" },
               },
               { key: "instructions.global", value: "Global coding guidance." },
-              { key: "experimental.dynamicWorkflows", value: true },
               ...Object.keys(CakePrompts.fields).map((key) => ({
                 key: `prompts.${key}`,
                 value: `Custom ${key} prompt.`,

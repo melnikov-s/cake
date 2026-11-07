@@ -22,7 +22,6 @@ import {
 import { artifactRecordSchema } from "../artifacts/artifact-contract";
 import { ArtifactLineageId } from "../artifacts/artifact-lineage";
 import { InterviewRecord } from "../interviews/interview";
-import { WorkflowProposal } from "../workflows/workflow-data";
 import { ipcProjectionArray, ipcProjectionString } from "../serialization/projection";
 import { editorLocationSchema } from "../editor/editor-location";
 import { editorAnnotationSnapshotSchema } from "../editor/editor-annotation";
@@ -147,16 +146,7 @@ const cakeEventSchemas = {
     requestId: uuid,
     uiRequestId: uuid,
     sessionId: stringMax(256),
-    kind: Schema.Literals([
-      "confirm",
-      "text",
-      "secret",
-      "select",
-      "manual_code",
-      "editor",
-      "workflow-choice",
-    ]),
-    workflow: Schema.optionalKey(WorkflowProposal),
+    kind: Schema.Literals(["confirm", "text", "secret", "select", "manual_code", "editor"]),
     title: ipcProjectionString(512),
     message: ipcProjectionString(4_096),
     placeholder: Schema.optional(ipcProjectionString(512)),
@@ -168,13 +158,7 @@ const cakeEventSchemas = {
         100,
       ),
     ),
-  }).check(
-    Schema.makeFilter((request) =>
-      (request.kind === "workflow-choice") === (request.workflow !== undefined)
-        ? undefined
-        : "Workflow choice requests require a frozen workflow proposal",
-    ),
-  ),
+  }),
   "ui-request-settled": Schema.Struct({
     type: Schema.Literal("ui-request-settled"),
     uiRequestId: uuid,

@@ -20,7 +20,6 @@ import type { SessionPluginControl } from "../application/session-plugin-agent-c
 import type { ParallelSubagentInput, SubagentTaskInput } from "../subagents/subagent-data";
 import type { ProjectSessionAgentPolicy } from "../project-sessions/project-session-agent-policy";
 import type { JsonObject, JsonValue } from "../serialization/json-contract";
-import type { WorkflowControl } from "../workflows/workflow-agent-control";
 import type { WorktreeLandingControl } from "../worktrees/worktree-agent-control";
 import type { GlobalControlTool } from "./cake-operation-control";
 import type { ProjectTodoControl } from "../projects/project-todos";
@@ -172,7 +171,6 @@ export interface CakeOperationOptions extends Partial<CakeArtifactOperationOptio
   auxiliary?: boolean;
   /** Discussion sidecars only; private workers never receive blocking input authority. */
   allowBlockingUserInput?: boolean;
-  workflowControl?: WorkflowControl;
   messageBoardControl?: MessageBoardControl;
   requestInterview?(record: InterviewRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
   sessionPluginControl?: Omit<SessionPluginControl, "generate">;

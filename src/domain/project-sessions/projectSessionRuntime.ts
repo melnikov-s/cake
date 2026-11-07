@@ -33,6 +33,9 @@ import * as projectSessionOperations from "./projectSessionOperations";
 import * as sessionChats from "../conversations/sessionChats";
 import { inheritTaskInputProtection } from "../conversations/taskInputs";
 import { Context, Effect, Option, Schema, type FileSystem, type Path } from "effect";
+import type { HttpClient } from "effect/unstable/http";
+import type { ChildProcessSpawner } from "effect/unstable/process";
+import type { ModelPresetPrompts } from "../../services/storage/ModelPresetPrompts";
 import {
   deleteSessionPlugin,
   setProjectSessionLabelsIfUnlabelled,
@@ -52,7 +55,6 @@ import { messageNavigationTarget } from "../../contracts/conversations/message-r
 import { forwardTaskInputControl } from "../cake-chats/taskInputControls";
 import { makeAttachmentReferenceControl } from "../conversations/attachmentReferences";
 import { makeSubagentControl } from "../subagents/subagentControl";
-import * as workflowControl from "../workflows/workflow-control";
 import {
   generateSessionTitle,
   selectInitialSessionLabels,
@@ -123,6 +125,9 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   | OptMemory
   | FileSystem.FileSystem
   | Path.Path
+  | HttpClient.HttpClient
+  | ChildProcessSpawner.ChildProcessSpawner
+  | ModelPresetPrompts
   | ApplicationState
   | PiModels
   | CakeSessionRuntimes
@@ -141,7 +146,6 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   | McpSettings
   | WidgetPackages
   | SessionCoordination
-  | Effect.Services<ReturnType<typeof workflowControl.invoke>>
   | Effect.Services<ReturnType<typeof invokeGlobalArtifactCommand>>
 > {
   const access = yield* ProjectAccess;
@@ -168,6 +172,9 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     | OptMemory
     | FileSystem.FileSystem
     | Path.Path
+    | HttpClient.HttpClient
+    | ChildProcessSpawner.ChildProcessSpawner
+    | ModelPresetPrompts
     | ApplicationState
     | PiModels
     | CakeSessionRuntimes
@@ -186,7 +193,6 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     | McpSettings
     | WidgetPackages
     | SessionCoordination
-    | Effect.Services<ReturnType<typeof workflowControl.invoke>>
     | Effect.Services<ReturnType<typeof invokeGlobalArtifactCommand>>
   >();
   const chatConfiguration = yield* Effect.serviceOption(CakeChatConfiguration);
@@ -381,14 +387,6 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
               input: messageNavigationTarget(input.ref),
             },
             signal,
-          ),
-      },
-      workflowControl: {
-        isEnabled: () => application.snapshot().experimentalFeatures?.dynamicWorkflows === true,
-        invoke: (command, input, signal) =>
-          run(
-            workflowControl.invoke(command, input, { _tag: "ProjectSession", sessionId }, signal),
-            { signal },
           ),
       },
       cwd: location.workingDirectory,

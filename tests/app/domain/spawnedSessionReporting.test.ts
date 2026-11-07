@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import * as sessionFamilyCompletion from "../../../src/domain/session-families/sessionFamilyCompletion";
 import * as coordinatorMessageRouting from "../../../src/domain/session-families/coordinatorMessageRouting";
 import assert from "node:assert/strict";
@@ -12,7 +13,6 @@ import { SessionCoordination } from "../../../src/services/session-catalogs/Sess
 import { SessionCoordinationStorage } from "../../../src/services/storage/SessionCoordinationStorage";
 import { CakeChatConfiguration } from "../../../src/services/pi-durable/CakeChatConfiguration";
 import { durableAnswer } from "../../fixtures/durable-chat";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect";
 import * as TestClock from "effect/testing/TestClock";
@@ -140,7 +140,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   };
   const harness = familyStorageHarness();
   const environment = Layer.mergeAll(
-    WorkflowTestLive,
+    AgentControlTestLive,
     makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
     Layer.mock(ProjectAccess, {
       rememberSessionLocation: () => Effect.void,

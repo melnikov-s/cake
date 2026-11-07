@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "./agentControlTestLayer";
 import { Effect, Layer, Stream } from "effect";
 import type { AutomationSourceEvent } from "../../../src/contracts/automations/automation-data";
 import { AutomationEvents } from "../../../src/services/automations/AutomationEvents";
@@ -7,7 +8,6 @@ import { SessionArchiveStorage } from "../../../src/services/storage/SessionArch
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "../domain/projectSessionRuntimeTestLayer";
-import { WorkflowTestLive } from "./workflowFixture";
 import { projectTodoLayer } from "./projectTodoHarness";
 import { familyStorageHarness } from "./familyStorageHarness";
 import { fakeRuntime, makeRuntimeRecoveryStorageTestLayer } from "./piRuntimeFixture";
@@ -15,7 +15,7 @@ import { fakeRuntime, makeRuntimeRecoveryStorageTestLayer } from "./piRuntimeFix
 export const automationSourceFixture = Effect.fn("AutomationSourceFixture.make")(function* () {
   const events: AutomationSourceEvent[] = [];
   const dependencies = Layer.mergeAll(
-    WorkflowTestLive,
+    AgentControlTestLive,
     makeHeadlessProjectSessionRuntimeMechanismTestLayer({
       requestUi: async () => undefined,
       requestApplicationControl: async () => ({ ok: true }),

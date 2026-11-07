@@ -1,6 +1,6 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import assert from "node:assert/strict";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
@@ -43,7 +43,7 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
     changelog: () => Effect.succeed(""),
   };
   const dependencies = Layer.mergeAll(
-    WorkflowTestLive,
+    AgentControlTestLive,
     makeHeadlessProjectSessionRuntimeMechanismTestLayer({
       requestUi: async () => undefined,
       requestApplicationControl: async () => {

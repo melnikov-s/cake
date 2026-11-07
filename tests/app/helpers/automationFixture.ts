@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "./agentControlTestLayer";
 import { NodePath } from "@effect/platform-node-shared";
 import { Context, Deferred, Effect, FileSystem, Layer, Queue, Ref, Stream } from "effect";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -32,7 +33,6 @@ import type {
 import type { CakeSessionRuntime } from "../../../src/services/pi/runtime/cake-session-runtime";
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import { makeProjectSessionRuntimeTestLayer } from "../domain/projectSessionRuntimeTestLayer";
-import { WorkflowTestLive } from "./workflowFixture";
 import { familyStorageHarness } from "./familyStorageHarness";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { fakeRuntime, makeRuntimeRecoveryStorageTestLayer, snapshot } from "./piRuntimeFixture";
@@ -196,7 +196,7 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
   };
   let projectAvailable = true;
   const layer = Layer.mergeAll(
-    WorkflowTestLive,
+    AgentControlTestLive,
     makeProjectSessionRuntimeTestLayer(),
     Layer.mock(ManagedWorktrees, {
       records: () => Effect.succeed([]),

@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Context, Deferred, Effect, Layer, Stream } from "effect";
@@ -33,7 +34,6 @@ import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/
 import { withoutPassiveNotices } from "../../../src/contracts/conversations/internal-input";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import {
   fakeRuntime,
@@ -85,7 +85,7 @@ const fixture = Effect.fn("UpdateBatchTest.fixture")(function* (
   let busy = settings.busy ?? false;
   const core = yield* Layer.build(
     Layer.mergeAll(
-      WorkflowTestLive,
+      AgentControlTestLive,
       makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
       family.layer,
       board.layer,

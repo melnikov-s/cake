@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
 import { createHash, randomUUID } from "node:crypto";
@@ -24,7 +25,6 @@ import {
   loadWorkspacePiSessionSummary,
 } from "../../../src/services/pi/runtime/session-discovery";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import {
   fakeRuntime,
   makeRuntimeRecoveryStorageTestLayer,
@@ -186,7 +186,7 @@ it.effect.each([0, 1000, 5000])(
         }),
       ).pipe(Layer.provide(NodeFileSystem.layer));
       const dependencies = Layer.mergeAll(
-        WorkflowTestLive,
+        AgentControlTestLive,
         makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
         SessionCatalogChanges.layer,
         Layer.succeed(ProjectSessionConfiguration, {

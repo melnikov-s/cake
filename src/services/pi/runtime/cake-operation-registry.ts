@@ -153,10 +153,6 @@ const cakeTopics = [
     guide: "delegation.md",
   },
   {
-    name: "workflows",
-    summary: "Script orchestration",
-  },
-  {
     name: "notifications",
     summary: "System notifications",
   },

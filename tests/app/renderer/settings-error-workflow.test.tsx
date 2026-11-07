@@ -57,32 +57,43 @@ async function expectPairedDetails(
 }
 
 describe("Settings error ownership", () => {
+  it("has no experimental navigation or Dynamic workflows toggle", async () => {
+    using f = await renderSettingsErrors({});
+    expect(f.root.settingsStore).toBeDefined();
+    expect(screen.queryByRole("button", { name: /^Experimental/ })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Dynamic workflows" })).toBeNull();
+  });
   it("simultaneous failures keep message/details paired, including a failure completed on a hidden page", async () => {
-    const experimental = failure("Experiment save failed");
+    const utility = failure("Utility save failed");
     const provider = failure("Provider sign-in failed");
     const pending = Promise.withResolvers<never>();
     using f = await renderSettingsErrors({
-      application: { setExperimentalFeatures: () => pending.promise },
+      workspaces: { setUtilityModel: () => pending.promise },
       models: {
         login: async () => {
           throw provider;
         },
       },
     });
-    await f.user.click(screen.getByRole("button", { name: /^Experimental/ }));
-    await f.user.click(screen.getByRole("switch", { name: "Dynamic workflows" }));
+    act(() =>
+      f.root.settingsStore.applyApplicationState(1, {
+        ...defaultApplicationState(),
+        utilityModel: { provider: "openai", modelId: "gpt-5", thinkingLevel: "off" },
+      }),
+    );
+    await f.user.click(screen.getByRole("button", { name: "Utility model" }));
+    await f.user.click(screen.getByRole("button", { name: "Clear selection" }));
     await f.user.click(screen.getByRole("button", { name: /^Providers/ }));
     await f.user.click(screen.getByRole("button", { name: "Add API key" }));
     await screen.findByText(provider.message);
-    await act(async () => pending.reject(experimental));
-
+    await act(async () => pending.reject(utility));
     await expectPairedDetails(f.user, "Providers", provider);
-    expect(screen.queryByText(experimental.message)).toBeNull();
+    expect(screen.queryByText(utility.message)).toBeNull();
     expect(
-      within(screen.getByRole("button", { name: /^Experimental/ })).getByText("Error"),
+      within(screen.getByRole("button", { name: /^Models/ })).getByText("Error"),
     ).toBeDefined();
-    await f.user.click(screen.getByRole("button", { name: /^Experimental/ }));
-    await expectPairedDetails(f.user, "Experimental", experimental);
+    await f.user.click(screen.getByRole("button", { name: /^Models/ }));
+    await expectPairedDetails(f.user, "Models", utility);
     expect(screen.queryByText(provider.message)).toBeNull();
   });
 
@@ -216,27 +227,28 @@ describe("Settings error ownership", () => {
     const second = failure("Retry failure");
     const retry = Promise.withResolvers<never>();
     const save = vi
-      .fn<Client["application"]["setExperimentalFeatures"]>()
+      .fn<Client["models"]["login"]>()
       .mockRejectedValueOnce(first)
       .mockImplementationOnce(() => retry.promise)
-      .mockResolvedValueOnce(defaultApplicationState());
-    using f = await renderSettingsErrors({ application: { setExperimentalFeatures: save } });
-    await f.user.click(screen.getByRole("button", { name: /^Experimental/ }));
-    await f.user.click(screen.getByRole("switch", { name: "Dynamic workflows" }));
+      .mockResolvedValueOnce(undefined);
+    using f = await renderSettingsErrors({ models: { login: save } });
+    await f.user.click(screen.getByRole("button", { name: /^Providers/ }));
+    await f.user.click(screen.getByRole("button", { name: "Add API key" }));
     await screen.findByText(first.message);
-    await expectPairedDetails(f.user, "Experimental", first);
-    await f.user.click(screen.getByRole("switch", { name: "Dynamic workflows" }));
+    await expectPairedDetails(f.user, "Providers", first);
+    await f.user.click(screen.getByRole("button", { name: "Add API key" }));
     expect(screen.queryByRole("alert")).toBeNull();
     expect(
-      within(screen.getByRole("button", { name: /^Experimental/ })).queryByText("Error"),
+      within(screen.getByRole("button", { name: /^Providers/ })).queryByText("Error"),
     ).toBeNull();
     await act(async () => retry.reject(second));
-    await expectPairedDetails(f.user, "Experimental", second);
-    await f.user.click(screen.getByRole("switch", { name: "Dynamic workflows" }));
+    await screen.findByRole("alert", { name: "Providers operation failed" });
+    await expectPairedDetails(f.user, "Providers", second);
+    await f.user.click(screen.getByRole("button", { name: "Add API key" }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(3));
     expect(screen.queryByRole("alert")).toBeNull();
     expect(
-      within(screen.getByRole("button", { name: /^Experimental/ })).queryByText("Error"),
+      within(screen.getByRole("button", { name: /^Providers/ })).queryByText("Error"),
     ).toBeNull();
   });
 

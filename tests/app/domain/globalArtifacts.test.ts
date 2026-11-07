@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +14,6 @@ import { modelPresetPromptsTestLayer } from "../helpers/modelPresetPrompts";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { unusedEndpointServices } from "../ipc/rpc-endpoint-test-backend";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import { afterEach, describe, expect } from "vitest";
 import {
@@ -263,7 +263,7 @@ describe("global artifact domain workflow", () => {
         const context = yield* Layer.build(
           Layer.mergeAll(
             unusedEndpointServices,
-            WorkflowTestLive,
+            AgentControlTestLive,
             makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
             Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
             modelPresetPromptsTestLayer,
@@ -340,7 +340,7 @@ describe("global artifact domain workflow", () => {
         const context = yield* Layer.build(
           Layer.mergeAll(
             unusedEndpointServices,
-            WorkflowTestLive,
+            AgentControlTestLive,
             makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
             Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
             modelPresetPromptsTestLayer,
@@ -399,7 +399,7 @@ describe("global artifact domain workflow", () => {
         const context = yield* Layer.build(
           Layer.mergeAll(
             unusedEndpointServices,
-            WorkflowTestLive,
+            AgentControlTestLive,
             makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
             Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
             modelPresetPromptsTestLayer,

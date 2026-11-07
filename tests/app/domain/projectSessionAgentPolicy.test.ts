@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
@@ -13,7 +14,6 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { makeRuntimeRecoveryStorageTestLayer, fakeRuntime } from "../helpers/piRuntimeFixture";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 
@@ -44,7 +44,7 @@ const addChild = Effect.fn("Test.addChild")(function* (
 
 const environment = (forked: string[] = []) =>
   Layer.mergeAll(
-    WorkflowTestLive,
+    AgentControlTestLive,
     familyStorageHarness().layer,
     makeProjectSessionRuntimeMechanismTestLayer(),
     SessionCatalogChanges.layer,

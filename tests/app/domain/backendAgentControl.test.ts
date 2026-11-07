@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -109,7 +110,6 @@ import {
 } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import {
   makeRuntimeRecoveryStorageTestLayer,
@@ -407,7 +407,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   let storedSchedules: readonly ScheduledMessage[] = [];
   const dependencies = Layer.mergeAll(
     modelPresetPromptsTestLayer,
-    WorkflowTestLive,
+    AgentControlTestLive,
     NodePath.layer,
     Layer.mock(ArtifactRuntime, {}),
     Layer.mock(ArtifactViews, {}),

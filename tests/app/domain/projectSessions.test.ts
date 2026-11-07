@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import {
   makeSubagentStorageTestLayer,
   subagentHistoryFixture,
@@ -6,7 +7,6 @@ import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture
 import assert from "node:assert/strict";
 import { toJsonValue } from "../../../src/utils/to-json-value";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { coordinationStorageHarness } from "../helpers/coordinationStorageHarness";
 import { RuntimeRecoveryStorage } from "../../../src/services/storage/RuntimeRecoveryStorage";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
@@ -460,7 +460,7 @@ const makeLayer = (
       resolve: (_sessionId, attachments) => Effect.succeed(attachments),
       isRecipient: () => Effect.succeed(false),
     }),
-    WorkflowTestLive,
+    AgentControlTestLive,
     hooks.applicationLayer ?? application,
     catalogChanges,
     Layer.succeed(SessionFamilyStorage, {

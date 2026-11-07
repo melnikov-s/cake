@@ -67,7 +67,6 @@ function renderHydration() {
       conversations: { observe: ({ sessionId }) => Stream.fromQueue(queues.get(sessionId)!) },
       discussionSessions: { observeCatalog: () => Stream.never },
       subagents: { observe: () => Stream.never },
-      workflows: { observe: () => Stream.never },
       scheduledMessages: { observe: () => Stream.never },
     }),
   );

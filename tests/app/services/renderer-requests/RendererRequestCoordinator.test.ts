@@ -59,7 +59,7 @@ const createDraft = {
 };
 
 describe("RendererRequestCoordinator", () => {
-  it.effect("publishes and settles ordinary UI requests without a workflow key", () =>
+  it.effect("publishes and settles ordinary UI requests", () =>
     Effect.gen(function* () {
       const { coordinator, events } = yield* makeFixture;
       yield* coordinator.registerProjectSession("session", "/projects/cake");
@@ -79,44 +79,6 @@ describe("RendererRequestCoordinator", () => {
         value: "accepted",
       });
       expect(yield* Fiber.join(pending)).toBe("accepted");
-    }),
-  );
-
-  it.effect("publishes and settles workflow choices with their frozen proposal", () =>
-    Effect.gen(function* () {
-      const { coordinator, events } = yield* makeFixture;
-      yield* coordinator.registerProjectSession("session", "/projects/cake");
-      yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "session" }, 11);
-      const workflow = {
-        ownerSessionId: "session",
-        program: {
-          meta: { name: "focused-workflow", description: "Focused request", phases: ["Verify"] },
-          source: "export default async function () {}",
-          sourcePath: "/projects/cake/verify.ts",
-          args: { verify: true },
-        },
-      };
-      const pending = yield* coordinator
-        .requestUi("session", {
-          kind: "workflow-choice",
-          title: "Run workflow?",
-          message: "Choose execution",
-          workflow,
-        })
-        .pipe(Effect.forkChild);
-      const event = yield* Queue.take(events);
-      assert.equal(event.type, "ui-request");
-      yield* Schema.decodeUnknownEffect(artifactEventSchema)(event);
-      expect(event.kind).toBe("workflow-choice");
-      expect(event.workflow).toEqual(workflow);
-      yield* coordinator.respondUi(11, "session", {
-        sessionId: "session",
-        requestId: event.requestId,
-        uiRequestId: event.uiRequestId,
-        cancelled: false,
-        value: "workflow",
-      });
-      expect(yield* Fiber.join(pending)).toBe("workflow");
     }),
   );
 

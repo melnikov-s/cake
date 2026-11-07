@@ -1,5 +1,5 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import assert from "node:assert/strict";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Context, Deferred, Effect, Exit, Layer, Scope, Stream } from "effect";
 import { expect, vi } from "vitest";
@@ -45,7 +45,7 @@ const adapter = (
   changelog: () => Effect.succeed(""),
 });
 const dependencies = Layer.mergeAll(
-  WorkflowTestLive,
+  AgentControlTestLive,
   makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
   ApplicationState.layer.pipe(
     Layer.provide(Layer.mock(ApplicationStorage, { save: () => Effect.void })),

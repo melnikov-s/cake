@@ -666,7 +666,6 @@ export interface Client {
   readonly cakeChats: CommandGroup<CakeIpcClientService["cakeChats"]>;
   readonly discussionSessions: CommandGroup<CakeIpcClientService["discussionSessions"]>;
   readonly subagents: CommandGroup<CakeIpcClientService["subagents"]>;
-  readonly workflows: CommandGroup<CakeIpcClientService["workflows"]>;
   readonly electron: ElectronCommands;
   readonly desktopSharing: CommandGroup<CakeIpcClientService["desktopSharing"]>;
   readonly filesystem: FilesystemCommands;

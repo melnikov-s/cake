@@ -137,11 +137,6 @@ its input queue. Opening Durable SQLite storage migrates it to schema version 2;
 back up coordinator databases before deployment because Pi 1.3 and earlier cannot
 open the migrated databases.
 
-Cake's standalone workflow sandbox uses Pi's deterministic execution API with a
-fixed clock and seed. Lexical Date/Math helpers preserve the workflow API's clock
-restrictions without attempting to mutate Pi's frozen VM intrinsics. Per-run host
-calls are aborted when the script ends, including unawaited calls.
-
 Use MCP commands in an established conversation. Pi does not persist
 command-only input in a new session, and Cake's staged-chat promotion currently
 releases that transient runtime, so a follow-up command in that draft can fail

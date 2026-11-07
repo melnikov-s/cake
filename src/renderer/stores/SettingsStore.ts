@@ -30,8 +30,6 @@ import { CakeChatOverlaySettingsStore } from "./CakeChatOverlaySettingsStore";
 import { CakePromptSettingsStore } from "./CakePromptSettingsStore";
 import { GlobalInstructionsStore } from "./GlobalInstructionsStore";
 import { NonChatModelSettingsStore } from "./NonChatModelSettingsStore";
-import { ExperimentalSettingsStore } from "./ExperimentalSettingsStore";
-import type { ExperimentalFeatures } from "../models/ExperimentalFeatures";
 import { settingsSectionError, type SettingsError } from "../lib/settings-error";
 
 import type { SettingsPageId } from "../../contracts/application/settings-navigation";
@@ -40,7 +38,6 @@ export interface SettingsStoreProps {
   visible(): boolean;
   browserHost: boolean;
   dictation: DictationStore;
-  experimentalFeatures: ExperimentalFeatures;
   speech: SpeechSettingsStore;
   speechInput: SpeechInputSettingsStore;
   screenCapture: ScreenCaptureAttachmentStore;
@@ -94,9 +91,6 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
   @child get appearance(): AppearanceSettingsStore {
     return createStore(AppearanceSettingsStore);
-  }
-  @child get experimental(): ExperimentalSettingsStore {
-    return createStore(ExperimentalSettingsStore, { model: this.props.experimentalFeatures });
   }
   @child get nonChatModels(): NonChatModelSettingsStore {
     return createStore(NonChatModelSettingsStore);
@@ -172,7 +166,6 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   /** Keep each message attached to its own details and recovery destination. */
   get sectionErrors(): SettingsError[] {
     return [
-      ...settingsSectionError("experimental", this.experimental),
       ...settingsSectionError("cake-chat", this.cakeChat),
       ...settingsSectionError("cake-chat", this.companion),
       ...(this.providers.error ? [this.providers.error] : []),

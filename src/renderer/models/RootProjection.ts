@@ -11,10 +11,8 @@ import { WorktreeCatalog } from "./WorktreeCatalog";
 import { WorktreeOperationCatalog } from "./WorktreeOperationCatalog";
 import { DiscussionCatalog } from "./DiscussionCatalog";
 import { SubagentCatalog } from "./SubagentCatalog";
-import { WorkflowCatalog } from "./WorkflowCatalog";
 import { ScheduledMessageCatalog } from "./ScheduledMessageCatalog";
 import { CakeChatControls } from "./CakeChatControls";
-import { ExperimentalFeatures } from "./ExperimentalFeatures";
 import { CakeChatTodoList } from "./CakeChatTodoList";
 
 /** Owns the authoritative data projections currently loaded in one renderer window. */
@@ -22,7 +20,6 @@ export class RootProjection extends Model {
   @child(LlmModel) llmModels: LlmModel[] = observable([]);
   @child(Resource) resources: Resource[] = observable([]);
   @child(ProjectCatalog) projects = ProjectCatalog.create();
-  @child(ExperimentalFeatures) experimentalFeatures = ExperimentalFeatures.create();
   @child(CakeChatTodoList) cakeChatTodos = CakeChatTodoList.create();
   @child(SessionCatalog) sessionCatalog = SessionCatalog.create();
   @child(AutomationCatalog) automations = AutomationCatalog.create();
@@ -37,7 +34,6 @@ export class RootProjection extends Model {
   @child(Conversation) discussionConversations: Conversation[] = observable([]);
   @child(DiscussionCatalog) discussionCatalogs: DiscussionCatalog[] = observable([]);
   @child(SubagentCatalog) subagentCatalogs: SubagentCatalog[] = observable([]);
-  @child(WorkflowCatalog) workflowCatalogs: WorkflowCatalog[] = observable([]);
   @child(ScheduledMessageCatalog) scheduledMessageCatalogs: ScheduledMessageCatalog[] = observable(
     [],
   );
@@ -77,18 +73,6 @@ export class RootProjection extends Model {
     if (!model) {
       model = SubagentCatalog.create({ sessionId });
       this.subagentCatalogs.push(model);
-    }
-    return model;
-  }
-
-  workflowCatalog(sessionId: string) {
-    let model =
-      this.workflowCatalogs.length === 0
-        ? undefined
-        : findModelById(this, WorkflowCatalog, sessionId);
-    if (!model) {
-      model = WorkflowCatalog.create({ sessionId });
-      this.workflowCatalogs.push(model);
     }
     return model;
   }

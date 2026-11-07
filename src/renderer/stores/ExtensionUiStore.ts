@@ -4,16 +4,13 @@ import type { ResourceDiagnostic } from "../../contracts/conversations/session-c
 import { ClientContext } from "./context/ClientContext";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { Conversation } from "../models/Conversation";
-import type { ExperimentalFeatures } from "../models/ExperimentalFeatures";
 import { describeError } from "../lib/error-details";
-import type { WorkflowProposal } from "../../contracts/workflows/workflow-data";
 
 export interface UiRequestState {
   operationId: string;
   uiRequestId: string;
   sessionId: string;
-  kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor" | "workflow-choice";
-  workflow?: WorkflowProposal;
+  kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
   title: string;
   message: string;
   placeholder?: string;
@@ -29,7 +26,6 @@ export interface ExtensionNotification {
 }
 
 export interface ExtensionUiStoreProps {
-  experimentalFeatures: ExperimentalFeatures;
   activeSessionModel(): Conversation | undefined;
   sessionContext(): { sessionId: string } | undefined;
   setDraft(value: string | ((current: string) => string)): void;
@@ -47,12 +43,6 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
   }
 
   request: UiRequestState | undefined;
-  get visibleRequest() {
-    return this.request?.kind === "workflow-choice" &&
-      !this.props.experimentalFeatures.dynamicWorkflows
-      ? undefined
-      : this.request;
-  }
   readonly notifications: ExtensionNotification[] = observable([]);
   error: string | undefined;
   errorDetails: string | undefined;
@@ -72,10 +62,6 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
   async respond(value?: string, cancelled = false) {
     const request = this.request;
     if (!request) return;
-    if (request.kind === "workflow-choice" && !this.props.experimentalFeatures.dynamicWorkflows) {
-      value = undefined;
-      cancelled = true;
-    }
     this.error = undefined;
     this.errorDetails = undefined;
     this.request = undefined;

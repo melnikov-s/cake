@@ -4,8 +4,6 @@ import { Callout } from "./ui/callout";
 import { Input } from "./ui/input";
 import { Select } from "./ui/select";
 import { Textarea } from "./ui/textarea";
-import { ExecutionChoice } from "./ui/execution-choice";
-import { MarkdownCodeBlock } from "./ai-elements/markdown-code-block";
 import {
   Confirmation,
   ConfirmationAction,
@@ -35,35 +33,6 @@ export function UiDialog({
     event.preventDefault();
     void extensionUi.respond(value);
   };
-  if (request.kind === "workflow-choice" && request.workflow) {
-    const { program, ownerSessionId } = request.workflow;
-    return (
-      <ExecutionChoice
-        title={program.meta.name}
-        description={program.meta.description}
-        ownerLabel={ownerSessionId}
-        phases={program.meta.phases ?? []}
-        script={
-          <div className="space-y-2">
-            <p className="break-all font-mono text-xs text-muted-foreground">
-              {program.sourcePath}
-            </p>
-            <MarkdownCodeBlock code={program.source} language="javascript" isIncomplete={false} />
-            {program.args !== undefined && (
-              <MarkdownCodeBlock
-                code={JSON.stringify(program.args, null, 2)}
-                language="json"
-                isIncomplete={false}
-              />
-            )}
-          </div>
-        }
-        onRun={() => void extensionUi.respond("workflow")}
-        onNormal={() => void extensionUi.respond("normal")}
-        onCancel={() => void extensionUi.respond(undefined, true)}
-      />
-    );
-  }
   return (
     <Confirmation
       state="requested"

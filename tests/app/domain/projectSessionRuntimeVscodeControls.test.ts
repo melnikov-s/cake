@@ -1,5 +1,5 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import assert from "node:assert/strict";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { describe } from "vitest";
@@ -30,7 +30,7 @@ function environment(
   ) => Promise<JsonValue>,
 ) {
   return Layer.mergeAll(
-    WorkflowTestLive,
+    AgentControlTestLive,
     makeProjectSessionRuntimeMechanismTestLayer({
       requestApplicationControl,
       requestUi: async () => undefined,

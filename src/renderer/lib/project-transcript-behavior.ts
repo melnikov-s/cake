@@ -54,7 +54,7 @@ export function projectTranscriptBehaviorFor(
     waitingForUser:
       !resolved &&
       paneSession.sessionId === root.sessionLayoutStore.focusedSessionId &&
-      Boolean(extensionUi.visibleRequest || interviews.waiting),
+      Boolean(extensionUi.request || interviews.waiting),
     interviews: interviews.interviews,
     messageComments: resolved ? undefined : paneSession.messageCommentsStore,
     subagents: paneSession.subagentActivityStore,

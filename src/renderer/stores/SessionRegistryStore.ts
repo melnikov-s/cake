@@ -13,7 +13,6 @@ import type { Conversation } from "../models/Conversation";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
-import type { WorkflowCatalog } from "../models/WorkflowCatalog";
 import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
 import { ProjectPendingSessionsStore, type SavedDraftClient } from "./ProjectPendingSessionsStore";
 import { ProjectSessionStore, type SessionTarget } from "./ProjectSessionStore";
@@ -32,7 +31,6 @@ export interface SessionRegistryStoreProps {
   sessionModel(sessionId: string, workingDirectory: string): Conversation;
   discussionCatalog(sessionId: string): DiscussionCatalog;
   subagentCatalog(sessionId: string): SubagentCatalog;
-  workflowCatalog(sessionId: string): WorkflowCatalog;
   scheduledMessageCatalog(sessionId: string): ScheduledMessageCatalog;
   artifactModel: ArtifactCatalog;
   operations: SessionOperationCoordinatorStore;
@@ -97,7 +95,6 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         isForkPreview: () => this.isForkPreview(target.sessionId),
         discussionCatalog: this.props.discussionCatalog(target.sessionId),
         subagentCatalog: this.props.subagentCatalog(target.sessionId),
-        workflowCatalog: this.props.workflowCatalog(target.sessionId),
         scheduledMessageCatalog: this.props.scheduledMessageCatalog(target.sessionId),
         artifactModel: this.props.artifactModel,
         operations: this.props.operations,

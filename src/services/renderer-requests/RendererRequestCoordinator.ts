@@ -23,7 +23,6 @@ import { ClientEvents } from "../clients/ClientEvents";
 import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 import { type RenderedWidgetCaptureResult } from "../widgets/RenderedWidgetCapture";
 import type { CompiledInlineWidget } from "../../contracts/widgets/inline-widget-contract";
-import type { WorkflowProposal } from "../../contracts/workflows/workflow-data";
 import { coordinatorError, RendererRequestCoordinatorError } from "./RendererRequestError";
 import {
   makeRendererPendingRequests,
@@ -32,15 +31,7 @@ import {
 } from "./RendererPendingRequests";
 
 interface RendererUiRequest {
-  readonly kind:
-    | "confirm"
-    | "text"
-    | "secret"
-    | "select"
-    | "manual_code"
-    | "editor"
-    | "workflow-choice";
-  readonly workflow?: WorkflowProposal;
+  readonly kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
   readonly title: string;
   readonly message: string;
   readonly placeholder?: string;
@@ -549,7 +540,6 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         const entry: PendingRequest = {
           _tag: "Ui",
           targetKind,
-          workflowChoice: request.kind === "workflow-choice",
           title: request.title,
           signal: request.signal,
           sessionId: requestScopeId,
@@ -558,7 +548,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
           completion,
         };
         requests.add(uiRequestId, entry);
-        let event: Extract<CakeEvent, { type: "ui-request" }> = {
+        const event: Extract<CakeEvent, { type: "ui-request" }> = {
           type: "ui-request",
           requestId: operationId,
           uiRequestId,
@@ -571,7 +561,6 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
           multiline: request.multiline,
           options: request.options,
         };
-        if (request.workflow !== undefined) event = { ...event, workflow: request.workflow };
         yield* publishProjectEvent(connectionId, event).pipe(
           Effect.tapError(() => Effect.sync(() => requests.discard(uiRequestId))),
         );
@@ -798,14 +787,6 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       });
       if (request?._tag === "Ui" && request.operationId !== response.requestId)
         return yield* coordinatorError("respondUi", "The response correlation ID does not match");
-      if (
-        request?._tag === "Ui" &&
-        request.workflowChoice &&
-        !response.cancelled &&
-        response.value !== "workflow" &&
-        response.value !== "normal"
-      )
-        return yield* coordinatorError("respondUi", "Invalid workflow execution choice");
       if (request)
         yield* complete(
           response.uiRequestId,

@@ -8,8 +8,6 @@ import type { StoreEvent } from "../events/StoreEvent";
 import type { Conversation } from "../models/Conversation";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
-import type { WorkflowCatalog } from "../models/WorkflowCatalog";
-import { WorkflowRunStore } from "./WorkflowRunStore";
 import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import { ProjectPendingSessionsContext } from "./context/ProjectPendingSessionsContext";
@@ -48,7 +46,6 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   model: Conversation;
   discussionCatalog: DiscussionCatalog;
   subagentCatalog: SubagentCatalog;
-  workflowCatalog: WorkflowCatalog;
   scheduledMessageCatalog: ScheduledMessageCatalog;
   artifactModel: ArtifactCatalog;
   operations: SessionOperationCoordinatorStore;
@@ -312,15 +309,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       model: this.props.subagentCatalog,
       parts: () => this.canonicalParts,
     });
-  }
-
-  @child
-  get workflowRunStore(): WorkflowRunStore {
-    return createStore(WorkflowRunStore, { model: this.props.workflowCatalog });
-  }
-
-  get workflowRunStores() {
-    return [this.workflowRunStore];
   }
 
   openSideChat(threadId: string) {

@@ -14,7 +14,6 @@ import {
   SessionPlugin,
   type UtilityModel,
   type CakeChatPreferences,
-  type ExperimentalFeatures,
 } from "../../contracts/application/application-data";
 import { validateSessionLabelName } from "../../utils/session-label-name";
 import {
@@ -165,12 +164,6 @@ export const updateCakeChatInstructions = Effect.fn("Application.updateCakeChatI
     return { instructions: state.cakeChatPreferences?.instructions ?? "" };
   },
 );
-
-export const setExperimentalFeatures = Effect.fn("Application.setExperimentalFeatures")(function* (
-  features: ExperimentalFeatures,
-) {
-  return yield* update((current) => ({ ...current, experimentalFeatures: features }));
-});
 
 export const setGlobalCustomInstructions = Effect.fn("Application.setGlobalCustomInstructions")(
   function* (instructions: string) {

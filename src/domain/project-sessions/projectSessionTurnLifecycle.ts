@@ -13,11 +13,9 @@ import { ProjectSessionConfiguration } from "../../services/project-sessions/Pro
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
-import { WorkflowSupervisor } from "../../services/workflows/WorkflowSupervisor";
 import { setSessionUnread } from "../application/application";
 import { publishProjectSession as publishProjectAutomationEvent } from "../automations/automationSourceEvents";
 import * as sessionFamilyAdmission from "../session-families/sessionFamilyAdmission";
-import * as workflowLifecycle from "../workflows/workflow-lifecycle";
 import { resolutionNamespace } from "./projectSessionResolution";
 
 type TurnLifecycle = Required<
@@ -38,7 +36,6 @@ export const makeTurnLifecycle = Effect.fn("ProjectSessions.makeTurnLifecycle")(
   const application = yield* ApplicationState;
   const archive = yield* SessionArchiveStorage;
   const families = yield* SessionFamilyStorage;
-  const workflowSupervisor = yield* WorkflowSupervisor;
   const coordination = yield* SessionCoordination;
   const catalogs = yield* SessionCatalogChanges;
   const configuration = yield* ProjectSessionConfiguration;
@@ -177,9 +174,6 @@ export const makeTurnLifecycle = Effect.fn("ProjectSessions.makeTurnLifecycle")(
           yield* families.setBoardDeliveryPaused(sessionId, true);
         yield* coordination.settleTurn(event.turnId, event.outcome);
         if (event.outcome !== "aborted") yield* markFinishedTurnUnread;
-        const workflowOwnsCompletion = yield* workflowLifecycle
-          .holdsTurnCompletion(sessionId, event.turnId)
-          .pipe(Effect.provideService(WorkflowSupervisor, workflowSupervisor));
         const familyTurn = (yield* families.state()).turns.find(
           (turn) => turn.turnId === event.turnId,
         );
@@ -191,7 +185,6 @@ export const makeTurnLifecycle = Effect.fn("ProjectSessions.makeTurnLifecycle")(
             sessionId,
             text: todoReport,
           });
-        if (workflowOwnsCompletion && familyTurn) return;
         // Only an answer to the requester itself may become its implicit result.
         const text = familyTurn
           ? implicitTurnResultFor(event.result, familyTurn.senderSessionId)

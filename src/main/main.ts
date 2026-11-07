@@ -13,8 +13,6 @@ import { createCakeArtifactOperations } from "../domain/artifacts/cake-artifact-
 import { CakeOperationRegistry } from "../services/pi/runtime/cake-operation-registry";
 import { prepareSkillWidgetTemplates } from "../services/pi/runtime/skill-widget-templates";
 import type { ResolveWidgetTemplate } from "../contracts/widgets/widget-template";
-import { WorkflowSandbox } from "../services/pi/WorkflowSandbox";
-import { WorkflowProgram } from "../contracts/workflows/workflow-data";
 import { ClientEvents } from "../services/clients/ClientEvents";
 import { handleInlineWidgetScheme } from "../services/electron/inline-widget-protocol";
 import { registerRichContentSchemes } from "../services/electron/rich-content-protocols";
@@ -218,22 +216,6 @@ function startMain() {
               return { name: skill.name, browser: template.browser };
             });
           }),
-        );
-      },
-      cakeSmokeWorkflowSandbox(program: WorkflowProgram) {
-        return mainRuntime.runPromise(
-          Effect.scoped(
-            Effect.gen(function* () {
-              const decoded = yield* Schema.decodeUnknownEffect(WorkflowProgram)(program);
-              const sandbox = yield* Effect.serviceOption(WorkflowSandbox);
-              if (sandbox._tag === "None") return yield* Effect.die("Local-only smoke hook");
-              return yield* sandbox.value.execute(decoded, {
-                agent: (input) => Effect.succeed(input.prompt),
-                phase: () => Effect.void,
-                log: () => Effect.void,
-              });
-            }),
-          ),
         );
       },
       cakeSmokeAppendBoard(sessionId: string, input: BoardAppendInput) {

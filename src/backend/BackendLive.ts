@@ -13,9 +13,6 @@ import type { CakePaths } from "../config/CakePaths";
 import * as scheduledMessages from "../domain/scheduled-messages/scheduledMessages";
 import * as sessionFamilies from "../domain/session-families/sessionFamilies";
 import * as runtimeRecovery from "../domain/project-sessions/runtimeRecovery";
-import * as workflows from "../domain/workflows/workflows";
-import * as workflowLifecycle from "../domain/workflows/workflow-lifecycle";
-import { WorkflowRunStorage } from "../services/storage/WorkflowRunStorage";
 import * as subagentRecovery from "../domain/subagents/subagentRecovery";
 import { SubagentStorage, makeSubagentStorageLive } from "../services/storage/SubagentStorage";
 import {
@@ -95,11 +92,6 @@ import { initializeBackend } from "./initializeBackend";
 import * as localMcp from "../domain/mcp/localMcp";
 import { LocalMcpServer } from "../services/local-mcp/LocalMcpServer";
 import { makeLocalMcpSettingsLive } from "../services/storage/LocalMcpSettings";
-import { WorkflowSandboxLive } from "../services/pi/live/WorkflowSandboxLive";
-import { makeWorkflowScriptsLive } from "../services/pi/live/WorkflowScriptsLive";
-import { WorkflowWorkersLive } from "../services/pi/live/WorkflowWorkersLive";
-import { makeWorkflowRunStorageLive } from "../services/storage/WorkflowRunStorageLive";
-import { WorkflowSupervisorLive } from "../services/workflows/WorkflowSupervisorLive";
 
 import { CakeChatConfiguration } from "../services/pi-durable/CakeChatConfiguration";
 import * as cakeChatLocations from "../domain/cake-chats/cakeChatLocations";
@@ -163,10 +155,6 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
       Effect.tryPromise(() => loadReviewSessionProjection(record, paths.piReviewSessions)),
     ),
     makeWorktreeStorageLive(paths.worktrees),
-    makeWorkflowRunStorageLive(join(paths.state, "workflows")),
-    makeWorkflowScriptsLive(join(paths.home, "workflows")),
-    WorkflowSandboxLive,
-    WorkflowSupervisorLive,
     SessionCatalogChanges.layer,
     CakeChatComposerPresence.layer,
   ).pipe(Layer.provide(BootstrapLive));
@@ -287,9 +275,6 @@ export const makeBackendLive = <HostServices, HostError>(
       : []),
     makeInlineWidgetsLive({ publish: publishInlineWidget, revoke: revokeInlineWidget }),
     SubagentEnvironmentLive,
-    WorkflowWorkersLive.pipe(
-      Layer.provide(Layer.merge(ApplicationCapabilitiesLive, SubagentEnvironmentLive)),
-    ),
     ArtifactGarbageCollectorLive,
   ).pipe(Layer.provide(ApplicationCapabilitiesLive));
 
@@ -382,7 +367,6 @@ export const makeBackendLive = <HostServices, HostError>(
                 .list()
                 .pipe((effect) => startupDiagnostics.measure("recovery-records-list", effect)),
               workers.list(),
-              (yield* WorkflowRunStorage).list(),
             ]),
           )
           .pipe(Effect.result);
@@ -393,23 +377,16 @@ export const makeBackendLive = <HostServices, HostError>(
           );
           return;
         }
-        yield* startupDiagnostics.measure(
-          "workflows-reconcile",
-          workflows.reconcile().pipe(Effect.orDie),
-        );
         const recoverable = (sessionId: string, turnId?: string) =>
-          recovery.get(sessionId).pipe(
-            Effect.map(
-              (record) =>
-                record?.inputs.some((input) => turnId === undefined || input.turnId === turnId) ??
-                false,
-            ),
-            Effect.flatMap((pending) =>
-              pending
-                ? Effect.succeed(true)
-                : workflowLifecycle.holdsTurnCompletion(sessionId, turnId),
-            ),
-          );
+          recovery
+            .get(sessionId)
+            .pipe(
+              Effect.map(
+                (record) =>
+                  record?.inputs.some((input) => turnId === undefined || input.turnId === turnId) ??
+                  false,
+              ),
+            );
         yield* startupDiagnostics.measure(
           "session-families-initialize",
           sessionFamilies
@@ -425,10 +402,6 @@ export const makeBackendLive = <HostServices, HostError>(
           runtimeRecovery.initialize().pipe(Effect.orDie),
         );
         yield* startupDiagnostics.measure("subagent-resume-workers", resumeWorkers);
-        yield* startupDiagnostics.measure(
-          "workflow-reports-recover",
-          workflows.recoverReports().pipe(Effect.orDie),
-        );
         yield* sessionFamilies.runWorker.pipe(Effect.forkScoped);
       }),
     ),

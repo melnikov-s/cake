@@ -587,7 +587,6 @@ export class RootStore extends Store<{
         this.props.projection.projectConversation(sessionId, workingDirectory),
       discussionCatalog: (sessionId) => this.props.projection.discussionCatalog(sessionId),
       subagentCatalog: (sessionId) => this.props.projection.subagentCatalog(sessionId),
-      workflowCatalog: (sessionId) => this.props.projection.workflowCatalog(sessionId),
       scheduledMessageCatalog: (sessionId) =>
         this.props.projection.scheduledMessageCatalog(sessionId),
       artifactModel: this.props.projection.artifacts,
@@ -1015,7 +1014,6 @@ export class RootStore extends Store<{
       visible: () => this.appShellStore.coveringSurface === "settings",
       browserHost: this.props.browserHost,
       dictation: this.dictationStore,
-      experimentalFeatures: this.props.projection.experimentalFeatures,
       speech: this.speechSettingsStore,
       speechInput: this.speechInputSettingsStore,
       screenCapture: this.screenCaptureStore,
@@ -1037,7 +1035,6 @@ export class RootStore extends Store<{
   @child
   get extensionUiStore(): ExtensionUiStore {
     return createStore(ExtensionUiStore, {
-      experimentalFeatures: this.props.projection.experimentalFeatures,
       activeSessionModel: () => this.projectWorkbenchStore.activeSession?.model,
       sessionContext: () => this.projectWorkbenchStore.sessionContext(),
       setDraft: (value) => {
@@ -1150,7 +1147,6 @@ export class RootStore extends Store<{
       subagentCatalog: (sessionId) => this.props.projection.subagentCatalog(sessionId),
       scheduledMessageCatalog: (sessionId) =>
         this.props.projection.scheduledMessageCatalog(sessionId),
-      workflowCatalog: (sessionId) => this.props.projection.workflowCatalog(sessionId),
       discussionCatalog: (sessionId) => this.props.projection.discussionCatalog(sessionId),
       discussionSessionModel: (sessionId, workingDirectory, parentSessionId) =>
         this.props.projection.discussionConversation(sessionId, workingDirectory, parentSessionId),

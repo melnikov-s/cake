@@ -460,7 +460,6 @@ describe("Client transport and device integration", () => {
       "cakeChats",
       "discussionSessions",
       "subagents",
-      "workflows",
       "electron",
       "filesystem",
       "workspaces",

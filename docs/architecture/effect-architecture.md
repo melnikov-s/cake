@@ -544,8 +544,7 @@ Domain operations depend on those contracts rather than Pi runtime implementatio
 `cake-operation-registry` implements the tool protocol: envelope validation, progressive
 help, result/image limit enforcement, and dispatch. The engine adapter supplies live
 callback capabilities and projects SDK tool callers to Cake-owned scalar context before
-invoking domain operations. Workflow authoring guidance lives in the workflows domain;
-staged artifact text editing remains a Pi Service because it uses Pi's authoritative edit tool.
+invoking domain operations. Staged artifact text editing remains a Pi Service because it uses Pi's authoritative edit tool.
 The boundary lint forbids domain imports from `services/pi/runtime`; domain-used Pi
 capabilities live at the Service's top level. Composition and engine adapters may still
 connect runtime implementations directly.

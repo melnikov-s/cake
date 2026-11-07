@@ -13,7 +13,6 @@ import {
 } from "../../contracts/application/settings-catalog";
 import {
   CakeChatPreferences,
-  ExperimentalFeatures,
   UtilityModel,
   type ApplicationState as ApplicationStateValue,
 } from "../../contracts/application/application-data";
@@ -109,8 +108,6 @@ function applicationValue(state: ApplicationStateValue, key: string) {
       return state.nonChatModelPreferences?.classifier ?? null;
     case "instructions.global":
       return state.globalCustomInstructions;
-    case "experimental.dynamicWorkflows":
-      return state.experimentalFeatures?.dynamicWorkflows ?? false;
   }
   return undefined;
 }
@@ -137,8 +134,6 @@ function defaultValue(key: string, piDefaults: PiSettingsValue | undefined) {
       return defaultAssistantPreferences().memoryViewBytes;
     case "companion.contextLimitTokens":
       return defaultAssistantPreferences().contextLimitTokens;
-    case "experimental.dynamicWorkflows":
-      return false;
   }
   return null;
 }
@@ -358,16 +353,6 @@ const write = Effect.fn("SettingsCatalog.write")(function* (key: string, value: 
     }
     case "instructions.global": {
       yield* application.setGlobalCustomInstructions(yield* typed(Schema.String, key, value));
-      return;
-    }
-    case "experimental.dynamicWorkflows": {
-      const dynamicWorkflows = yield* typed(
-        ExperimentalFeatures.fields.dynamicWorkflows,
-        key,
-        value,
-      );
-      const current = (yield* ApplicationState).snapshot().experimentalFeatures;
-      yield* application.setExperimentalFeatures({ ...current, dynamicWorkflows });
       return;
     }
   }

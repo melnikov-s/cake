@@ -18,8 +18,6 @@ import { applyDiscussionCatalogUpdate } from "../../../src/renderer/reducers/Dis
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { renderTranscriptRendering } from "./transcript-rendering-workflow-fixture";
-import { renderProjectionFinishRun } from "./projection-finish-workflow-fixture";
-import { workflowActivityFixture } from "../../fixtures/dynamic-workflow";
 
 function projectionFinishConversation(sessionId: string): ConversationSnapshot {
   return {
@@ -166,64 +164,6 @@ it("keeps a streamed discussion answer and its stop control through a stale pare
   expect(screen.getByText("Live selection answer")).toBeDefined();
   expect(screen.getByRole("button", { name: "Stop" })).toBeDefined();
 });
-
-it.each(["RunChanged", "Snapshot"] as const)(
-  "keeps old results and activity out of a relaunched execution delivered by %s",
-  async (delivery) => {
-    using fixture = renderProjectionFinishRun(delivery);
-    await fixture.user.click(screen.getByRole("button", { name: "Details" }));
-    fixture.deliverDetails();
-    expect(await screen.findByRole("region", { name: "Workflow result" })).toHaveProperty(
-      "textContent",
-      expect.stringContaining("Authentication audit complete"),
-    );
-    await fixture.user.click(screen.getByRole("button", { name: /Auth routes · complete/ }));
-    expect(screen.getByRole("region", { name: "Worker result" })).toHaveProperty(
-      "textContent",
-      expect.stringContaining("Verified route guard"),
-    );
-    fixture.activity(workflowActivityFixture());
-    expect(await screen.findByText("Verified the route guard against the source.")).toBeDefined();
-
-    await fixture.user.click(screen.getByRole("button", { name: "Relaunch" }));
-    await waitFor(() =>
-      expect(fixture.relaunch).toHaveBeenCalledWith(
-        { sessionId: fixture.run.ownerSessionId, runId: fixture.run.id },
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      ),
-    );
-    expect(screen.queryAllByRole("alert").map((alert) => alert.textContent)).toEqual([]);
-    await waitFor(() =>
-      expect(screen.queryByRole("region", { name: "Workflow result" })).toBeNull(),
-    );
-    expect(screen.queryByRole("region", { name: "Worker result" })).toBeNull();
-    expect(screen.queryByText("Verified the route guard against the source.")).toBeNull();
-
-    // Both a previous execution and the wrong retry of this execution are stale.
-    fixture.activity(workflowActivityFixture());
-    fixture.activity({ ...workflowActivityFixture(), execution: 2, attempt: 2 });
-    expect(screen.queryByText("Verified the route guard against the source.")).toBeNull();
-    fixture.activity({
-      ...workflowActivityFixture(),
-      execution: 2,
-      attempt: 1,
-      parts: [
-        {
-          id: "new-answer",
-          kind: "text",
-          role: "assistant",
-          text: "Current execution findings",
-          status: "complete",
-        },
-      ],
-    });
-    expect(await screen.findByText("Current execution findings")).toBeDefined();
-    fixture.staleRun();
-    expect(screen.getByText("Current execution findings")).toBeDefined();
-    expect(screen.getByRole("button", { name: /Auth routes · running · Attempt 1/ })).toBeDefined();
-    expect(screen.queryByRole("region", { name: "Workflow result" })).toBeNull();
-  },
-);
 
 // The behavior is an authority replacement, not a native editing/focus contract.
 it("replaces a same-ID Markdown user message with literal text when authority omits renderAs", () => {

@@ -343,8 +343,8 @@ receipt IDs to reconcile a crash between user admission and outbox removal. One 
 serializes digest preparation through admission, not through the model response.
 
 These guarantees apply to new admissions under this implementation. Old process-local queues
-cannot be reconstructed after they have already been lost. Queued extension commands,
-workflow-script execution and native subprocess lifetimes retain their
+cannot be reconstructed after they have already been lost. Queued extension commands
+and native subprocess lifetimes retain their
 separate recovery limitations; this journal does not turn them into replay-safe operations.
 
 ### Private-worker restart recovery
@@ -374,7 +374,6 @@ suppress further replay. Pending handoffs retain worker provenance independently
 summaries. Handling drops the temporary payload, retaining only IDs/disposition/evidence;
 no second transcript is kept. See the quiet-worker contract in `session-family-contract.md`.
 Explicit close and idle expiry remove the durable handle; they do not erase Pi history.
-Workflow script workers retain their separately defined supervisor recovery policy.
 
 Startup checks all restart-recovery documents before any automatic continuation or orphan-abort
 reconciliation. Unreadable or unsupported metadata pauses automatic recovery without preventing

@@ -6,20 +6,14 @@ import { RootStore } from "../stores/RootStore";
 export const ExtensionRequestDialog = observer(function ExtensionRequestDialog() {
   const root = useStore(RootStore);
   const extensionUi = root.extensionUiStore;
-  if (!extensionUi.visibleRequest) return null;
+  if (!extensionUi.request) return null;
   return (
-    <DialogBackdrop
-      onClose={
-        extensionUi.visibleRequest.kind === "workflow-choice"
-          ? () => void extensionUi.respond(undefined, true)
-          : undefined
-      }
-    >
+    <DialogBackdrop>
       <UiDialog
-        key={extensionUi.visibleRequest.uiRequestId}
-        request={extensionUi.visibleRequest}
+        key={extensionUi.request.uiRequestId}
+        request={extensionUi.request}
         extensionUi={extensionUi}
-        authNotice={root.settingsStore.providers.authNoticeForRequest(extensionUi.visibleRequest)}
+        authNotice={root.settingsStore.providers.authNoticeForRequest(extensionUi.request)}
         openAuthUrl={(url) => void root.settingsStore.providers.openAuthUrl(url)}
       />
     </DialogBackdrop>

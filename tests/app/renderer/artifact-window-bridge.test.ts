@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import { it } from "@effect/vitest";
 import { Context, Effect, Fiber, Layer, Queue, Schema } from "effect";
 import { describe, expect } from "vitest";
@@ -32,7 +33,6 @@ import {
   RendererRequestCoordinator,
 } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { unusedEndpointServices } from "../ipc/rpc-endpoint-test-backend";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "../domain/projectSessionRuntimeTestLayer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -92,7 +92,7 @@ const fixture = Effect.gen(function* () {
     Layer.mergeAll(
       modelPresetPromptsTestLayer,
       unusedEndpointServices,
-      WorkflowTestLive,
+      AgentControlTestLive,
       makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
       RendererRequestCoordinatorLive.pipe(Layer.provideMerge(transport)),
       storage,

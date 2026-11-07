@@ -12,7 +12,6 @@ import type {
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import * as projectSessionMetadata from "../project-sessions/projectSessionMetadata";
-import * as workflowLifecycle from "../workflows/workflow-lifecycle";
 import { DateTime, Effect, Option } from "effect";
 import { CakeChatComposerPresence } from "../../services/session-catalogs/CakeChatComposerPresence";
 import { CakeSessionRuntimes, type CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
@@ -51,12 +50,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
   const family =
     (yield* storage.familyForMember(turn.sessionId)) ??
     (yield* storage.familyForMember(turn.senderSessionId));
-  if (
-    !turn.outcome ||
-    turn.reported ||
-    (yield* workflowLifecycle.holdsCompletion(turn.sessionId, turn.turnId))
-  )
-    return;
+  if (!turn.outcome || turn.reported) return;
   if (stoppedByRequester(turn)) {
     // The requester stopped this work itself; telling it so would be noise. The obligation
     // is settled, and Cake Chat's launch status still records the neutral stop.

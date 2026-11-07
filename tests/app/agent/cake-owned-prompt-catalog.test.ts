@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { renderPromptTemplate } from "../../../src/services/pi/runtime/prompt-template";
 import { MEMORY_COMPACTOR_PROMPT } from "../../../src/services/pi-durable/durable-memory-policy";
 import { defaultCakePrompts } from "../../../src/contracts/application/cake-prompt-defaults";
-import { workflowAuthoringReference } from "../../../src/domain/workflows/workflow-authoring";
 
 const promptDirectory = new URL("../../../src/services/pi/runtime/prompts/", import.meta.url);
 const budgets = {
@@ -132,23 +131,5 @@ describe("Cake-owned prompt catalog", () => {
     expect(defaults.worktreeSquashConflict).toContain("do not touch the target checkout");
     expect(defaults.worktreeSquashMessage).toContain("worktrees.proposeSquashMessage");
     expect(defaults.worktreeSquashMessage).toContain("Do not modify Git state");
-  });
-
-  it("keeps workflow APIs, limits, consent and replay boundaries", () => {
-    for (const fact of [
-      "export const meta =",
-      "await agent(prompt, { label?, instructions?, model?, schema?, stallMs? })",
-      "600000ms",
-      "4096 items",
-      "1000 workers",
-      "context isolation is not file isolation",
-      "This is not a VM snapshot",
-      "No silent model substitution",
-      "Nothing starts before Run workflow",
-      "choice cancelled starts nothing",
-      "No mid-run human input",
-      "null never proves success",
-    ])
-      expect(workflowAuthoringReference).toContain(fact);
   });
 });

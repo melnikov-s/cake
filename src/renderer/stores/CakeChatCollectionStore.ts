@@ -17,7 +17,6 @@ import type { CakeChatCatalog } from "../models/CakeChatCatalog";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import type { Conversation } from "../models/Conversation";
 import type { CakeChatControls } from "../models/CakeChatControls";
-import type { WorkflowCatalog } from "../models/WorkflowCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import {
@@ -41,7 +40,6 @@ export interface CakeChatCollectionStoreProps {
   controlsModel(sessionId: string): CakeChatControls;
   subagentCatalog(sessionId: string): SubagentCatalog;
   scheduledMessageCatalog(sessionId: string): ScheduledMessageCatalog;
-  workflowCatalog(sessionId: string): WorkflowCatalog;
   discussionCatalog(sessionId: string): DiscussionCatalog;
   discussionSessionModel(
     sessionId: string,
@@ -99,7 +97,6 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       controlsModel: this.props.controlsModel,
       subagentCatalog: this.props.subagentCatalog,
       scheduledMessageCatalog: this.props.scheduledMessageCatalog,
-      workflowCatalog: this.props.workflowCatalog,
       discussionCatalog: this.props.discussionCatalog,
       discussionSessionModel: this.props.discussionSessionModel,
       tools: this.props.tools,

@@ -336,7 +336,7 @@ describe("settings catalog through the cake tool", () => {
     expect(limit.value).toBe("500000");
   });
 
-  it("updates Pi, model-choice, prompt and experimental settings through their own authorities", async () => {
+  it("updates Pi, model-choice, prompt and instruction settings through their own authorities", async () => {
     await using h = await fixture();
     expect(await h.call("settings.update", { key: "pi.autoCompact", value: false })).toEqual({
       key: "pi.autoCompact",
@@ -376,8 +376,6 @@ describe("settings catalog through the cake tool", () => {
     expect(reset).toMatchObject({ previous: "Commit first." });
     expect(h.saved().cakePrompts).not.toHaveProperty("worktreeCommit");
 
-    await h.call("settings.update", { key: "experimental.dynamicWorkflows", value: true });
-    expect(h.saved().experimentalFeatures).toEqual({ dynamicWorkflows: true });
     await h.call("settings.update", { key: "instructions.global", value: "  Be brief.  " });
     expect(await h.call("settings.get", { key: "instructions.global" })).toMatchObject({
       value: "Be brief.",
@@ -393,6 +391,7 @@ describe("settings catalog through the cake tool", () => {
       { key: "cakeChat.contextLimitTokens", value: "500000" },
       { key: "pi.codemodeInlineBudget", value: -1 },
       { key: "pi.transport", value: "carrier-pigeon" },
+      { key: "experimental.dynamicWorkflows", value: true },
       { key: "cakeChat.summarizationModel", value: { source: "telepathy" } },
       { key: "models.defaultPreset", value: "00000000-0000-4000-8000-000000000001" },
       { key: "providers.openai.apiKey", value: "sk-never" },

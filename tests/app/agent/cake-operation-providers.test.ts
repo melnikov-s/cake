@@ -57,7 +57,7 @@ const context = {
 };
 
 describe("Backend-owned Cake operation composition", () => {
-  it("assembles domain operations before the live session API exists", () => {
+  it("assembles domain operations before the live session API exists", async () => {
     const callbacks = bridge();
     const registry = new CakeOperationRegistry(
       projectCakeOperations({ cwd: "/workspace" })(callbacks),
@@ -67,6 +67,14 @@ describe("Backend-owned Cake operation composition", () => {
     expect(registry.operationHelp("interview.open")).toContain("responseSchema");
     expect(registry.operationHelp("artifacts.create")).toContain("durable");
     expect(registry.operationHelp("sessions.create-child")).toBeUndefined();
+    expect(registry.availableTopics().has("workflows")).toBe(false);
+    for (const command of ["workflows.propose", "workflows.start", "workflows.authoring"]) {
+      expect(registry.operationHelp(command)).toBeUndefined();
+      expect((await registry.invoke({ command, input: {} }, context)).text).toContain(
+        "Unknown Cake command",
+      );
+    }
+    expect(callbacks.api).not.toHaveBeenCalled();
   });
 
   it("discovers the same typed global artifact commands in Project Sessions and the permanent coordinator", async () => {

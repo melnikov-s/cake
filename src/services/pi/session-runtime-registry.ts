@@ -92,7 +92,6 @@ const runtimeFingerprint = (options: CakeSessionRuntimeAcquireOptions): string =
     ephemeral: runtime.ephemeral ?? false,
     projectInvestigation: runtime.projectInvestigation ?? false,
     allowMutations: runtime.allowMutations ?? false,
-    auxiliaryProjectResources: runtime.auxiliaryProjectResources ?? false,
     alwaysAutoCompact: runtime.alwaysAutoCompact ?? false,
     isolatedSystemPrompt: runtime.isolatedSystemPrompt,
     slashCommands: runtime.slashCommands,

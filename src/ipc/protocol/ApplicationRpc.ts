@@ -4,7 +4,6 @@ import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import {
   RendererApplicationProjection,
   RendererApplicationState,
-  ExperimentalFeatures,
 } from "../../contracts/application/application-data";
 import { AgentAvailabilitySnapshot } from "../../contracts/pi/agent-availability-data";
 
@@ -22,11 +21,6 @@ export const ApplicationRpc = RpcGroup.make(
   Rpc.make("application.respondWindowControl", {
     payload: { controlRequestId: Schema.String, result: WindowControlResponse },
     success: Schema.Void,
-    error: ApplicationSettingsMutationError,
-  }),
-  Rpc.make("application.setExperimentalFeatures", {
-    payload: { features: ExperimentalFeatures },
-    success: RendererApplicationState,
     error: ApplicationSettingsMutationError,
   }),
   Rpc.make("application.getState", { success: RendererApplicationState }),

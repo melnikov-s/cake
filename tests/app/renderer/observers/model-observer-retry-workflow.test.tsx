@@ -72,7 +72,6 @@ it("offers an actionable retry when a Discussion observation is no longer availa
           }).pipe(Stream.concat(Stream.never)),
       },
       subagents: { observe: () => Stream.never, observeMetadata: () => Stream.never },
-      workflows: { observe: () => Stream.never },
       scheduledMessages: { observe: () => Stream.never },
     }),
   );

@@ -25,7 +25,6 @@ export type PendingRequest =
   | {
       readonly _tag: "Ui";
       readonly targetKind?: SessionTarget["_tag"];
-      readonly workflowChoice: boolean;
       readonly title: string;
       readonly signal?: AbortSignal;
       readonly sessionId: string;

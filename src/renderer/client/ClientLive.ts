@@ -549,7 +549,6 @@ export function makeClient(
     },
     discussionSessions: commands("discussionSessions"),
     subagents: commands("subagents"),
-    workflows: commands("workflows"),
     ...capabilities,
     foundation: commands("foundation"),
   };

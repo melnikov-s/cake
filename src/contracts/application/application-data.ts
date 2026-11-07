@@ -245,9 +245,6 @@ export const ProjectRecord = Schema.Struct({
   todos: Schema.optionalKey(ProjectTodos),
 });
 
-export const ExperimentalFeatures = Schema.Struct({ dynamicWorkflows: Schema.Boolean });
-export interface ExperimentalFeatures extends Schema.Schema.Type<typeof ExperimentalFeatures> {}
-
 const SessionIds = boundedArray(boundedString(256), 10_000).check(Schema.isUnique());
 
 const RendererApplicationFields = {
@@ -265,7 +262,6 @@ const RendererApplicationFields = {
   assistantPreferences: Schema.optionalKey(CakeChatPreferences),
   /** Global Cake Chat's own to-do list, separate from every Project's list. */
   cakeChatTodos: Schema.optionalKey(ProjectTodos),
-  experimentalFeatures: Schema.optionalKey(ExperimentalFeatures),
   globalCustomInstructions: boundedString(16_384).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed("")),
   ),
@@ -334,7 +330,6 @@ export interface UtilityModel extends Schema.Schema.Type<typeof UtilityModel> {}
 export interface ModelPreset extends Schema.Schema.Type<typeof ModelPreset> {}
 
 export const defaultApplicationState = (): ApplicationState => ({
-  experimentalFeatures: { dynamicWorkflows: false },
   projects: [],
   globalSessionLabels: [...defaultGlobalSessionLabels()],
   unreadSessionIds: [],

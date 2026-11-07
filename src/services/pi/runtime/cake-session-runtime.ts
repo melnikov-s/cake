@@ -178,8 +178,6 @@ export interface CakeSessionRuntimeOptions {
   projectInvestigation?: boolean;
   /** Project investigators only: replace the investigation-only policy with scoped mutation mode. */
   allowMutations?: boolean;
-  /** Workflow workers load project context/skills, but not Cake controls or project-chat prompts. */
-  auxiliaryProjectResources?: boolean;
   /**
    * Unattended runtimes compact near their context window even when the user's Pi
    * auto-compact setting is off: nobody can compact them by hand mid-run.

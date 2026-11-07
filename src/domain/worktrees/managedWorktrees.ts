@@ -1,6 +1,5 @@
 import { Effect, Option, Stream } from "effect";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
-import * as workflowLifecycle from "../workflows/workflow-lifecycle";
 import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
@@ -102,11 +101,6 @@ export const discard = Effect.fn("ManagedWorktrees.discard")(function* (
   keepBranch: boolean,
 ) {
   const record = yield* requireRecord(workingDirectory, new Set(["active", "landed"]));
-  if (yield* workflowLifecycle.hasActive({ workingDirectory }))
-    return yield* new ManagedWorktreeError({
-      operation: "discard",
-      message: "Stop active workflows before discarding their Working Directory.",
-    });
   yield* (yield* Terminal)
     .closeWorkingDirectory(workingDirectory)
     .pipe(Effect.mapError((cause) => policyError("ManagedWorktrees.discard", cause)));
@@ -184,7 +178,6 @@ const resolvedEntriesForProject = Effect.fn("ManagedWorktrees.resolvedEntriesFor
 const activeSessionInWorkingDirectory = Effect.fn(
   "ManagedWorktrees.activeSessionInWorkingDirectory",
 )(function* (workingDirectory: string, sessionDirectory: string) {
-  if (yield* workflowLifecycle.hasActive({ workingDirectory })) return true;
   const families = yield* (yield* SessionFamilyStorage)
     .list()
     .pipe(

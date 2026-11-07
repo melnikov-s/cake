@@ -19,7 +19,6 @@ export function requiresDeliveryReview(operation: string): boolean {
     case "automations.zoomMemory":
     case "piSettings.extensions":
     case "models.refresh":
-    case "workflows.saved":
     case "artifacts.stateRead":
     case "artifacts.boardEntries":
     case "artifacts.boardBody":

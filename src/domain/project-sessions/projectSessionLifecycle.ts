@@ -12,7 +12,6 @@ import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";
 import * as reviews from "../reviews/reviews";
 import * as subagentLifetime from "../subagents/subagentLifetime";
-import * as workflowLifecycle from "../workflows/workflow-lifecycle";
 import {
   forgetProjectSessions,
   getState,
@@ -105,7 +104,7 @@ const assertResolvable = Effect.fn("ProjectSessions.assertResolvable")(function*
   const status = yield* (yield* CakeSessionRuntimes)
     .currentStatus({ sessionId, workingDirectory, sessionDirectory })
     .pipe(asError(operation));
-  if ((yield* workflowLifecycle.hasActive({ sessionId })) || status?.streaming || status?.pending)
+  if (status?.streaming || status?.pending)
     return yield* rejected(
       operation,
       [sessionId],

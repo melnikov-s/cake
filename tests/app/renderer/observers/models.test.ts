@@ -112,7 +112,6 @@ function baseClient(overrides: ObserverClientOverrides = {}) {
     conversations: { observe: () => Stream.never },
     discussionSessions: { observeCatalog: () => Stream.never, observe: () => Stream.never },
     subagents: { observe: () => Stream.never },
-    workflows: { observe: () => Stream.never },
     scheduledMessages: { observe: () => Stream.never },
     ...overrides,
   });
@@ -469,8 +468,8 @@ describe("focused projection lifetimes", () => {
         root.sessionRegistry.load("replacement", "/project");
       });
       expect(conversations).toHaveBeenCalledTimes(7);
-      // Conversation, discussions, schedules, subagents and compact workflows.
-      expect(cancellations.filter((cancel) => cancel.mock.calls.length > 0)).toHaveLength(5);
+      // Conversation, discussions, schedules and subagents.
+      expect(cancellations.filter((cancel) => cancel.mock.calls.length > 0)).toHaveLength(4);
       expect(projection.findProjectConversation("idle-1")?.parts).toEqual([]);
       expect(projection.findProjectConversation("idle-4")?.observedSnapshotRevision).toBe(1);
       expect(projection.findProjectConversation("running")?.streaming).toBe(true);

@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Schema, Stream } from "effect";
@@ -26,7 +27,6 @@ import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { coordinationStorageHarness } from "../helpers/coordinationStorageHarness";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 
 const location = {
@@ -129,7 +129,7 @@ const fixture = () => {
       throw new Error(`Unexpected ${operation}`);
     });
   const layer = Layer.mergeAll(
-    WorkflowTestLive,
+    AgentControlTestLive,
     makeProjectSessionRuntimeMechanismTestLayer(),
     storage.layer,
     SessionCoordination.layer.pipe(Layer.provide(coordination.layer)),

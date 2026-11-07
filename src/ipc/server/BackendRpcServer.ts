@@ -4,7 +4,6 @@ import { inlineWidgetHandlers } from "./InlineWidgetHandlers";
 import { widgetCaptureResponseHandlers } from "./WidgetCaptureHandlers";
 import { browserResponseHandlers } from "./BrowserResponseHandlers";
 import { subagentHandlers } from "./SubagentHandlers";
-import { dynamicWorkflowHandlers } from "./DynamicWorkflowHandlers";
 import { discussionHandlers } from "./DiscussionHandlers";
 import { managedWorktreeHandlers } from "./ManagedWorktreeHandlers";
 import { terminalHandlers } from "./TerminalHandlers";
@@ -60,7 +59,6 @@ export const makeBackendRpcHandlersLive = (
     ...attachmentUploadHandlers,
     ...terminalHandlers,
     ...managedWorktreeHandlers,
-    ...dynamicWorkflowHandlers,
     ...applicationStateHandlers,
     ...artifactHandlers,
     ...interviewHandlers,

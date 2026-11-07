@@ -19,12 +19,9 @@ import type { CakeChatPendingSessionsStore } from "./CakeChatPendingSessionsStor
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { CakeChatTarget } from "../../contracts/cake-chats/cake-chat-data";
 import type { CakeChatControls } from "../models/CakeChatControls";
-import type { WorkflowCatalog } from "../models/WorkflowCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
 import { SubagentActivityStore } from "./SubagentActivityStore";
-import { WorkflowRunStore } from "./WorkflowRunStore";
-import { workflowOwnerReferences } from "../../utils/workflow-references";
 import { SessionArtifactsStore } from "./SessionArtifactsStore";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
@@ -43,7 +40,6 @@ export interface CakeChatSessionStoreProps {
   subagentCatalog: SubagentCatalog;
   /** Durable scheduled messages addressed to this chat, including its own check-ins. */
   scheduledMessageCatalog: ScheduledMessageCatalog;
-  workflowCatalog(sessionId: string): WorkflowCatalog;
   /** Side chats branched from this Cake Chat's messages. */
   discussionCatalog: DiscussionCatalog;
   discussionSessionModel(
@@ -136,20 +132,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   get streaming() {
     return this.model.streaming;
   }
-  @child
-  get workflowRunStores(): WorkflowRunStore[] {
-    const toolParts = [
-      ...this.model.earlierParts.filter((part) => part.kind === "tool"),
-      ...this.model.parts.filter((part) => part.kind === "tool").map((part) => part.value),
-    ];
-    return workflowOwnerReferences(toolParts).map((sessionId) =>
-      createStore(WorkflowRunStore, {
-        key: sessionId,
-        model: this.props.workflowCatalog(sessionId),
-      }),
-    );
-  }
-
   @child
   get subagentActivityStore(): SubagentActivityStore {
     return createStore(SubagentActivityStore, {

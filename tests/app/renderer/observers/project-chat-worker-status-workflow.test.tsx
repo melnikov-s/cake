@@ -154,7 +154,6 @@ async function renderWorkerStatus(status: "queued" | "running" = "running") {
               }).pipe(Stream.ensuring(Effect.sync(() => unsubscribed())))
             : Stream.never,
       },
-      workflows: { observe: () => Stream.never },
       scheduledMessages: { observe: () => Stream.never },
     }),
   );

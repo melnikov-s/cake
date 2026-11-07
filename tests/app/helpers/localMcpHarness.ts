@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "./agentControlTestLayer";
 import { Context, Effect, Layer, Stream } from "effect";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
@@ -19,7 +20,6 @@ import { projectTodoLayer } from "./projectTodoHarness";
 import { familyStorageHarness } from "./familyStorageHarness";
 import { fakeRuntime, makeRuntimeRecoveryStorageTestLayer, snapshot } from "./piRuntimeFixture";
 import { makeProjectSessionRuntimeTestLayer } from "../domain/projectSessionRuntimeTestLayer";
-import { WorkflowTestLive } from "./workflowFixture";
 import { makeSubagentStorageTestLayer } from "./subagentStorageFixture";
 import type { JsonObject, JsonValue } from "../../../src/contracts/serialization/json-contract";
 
@@ -119,7 +119,7 @@ export const localMcpFixture = Effect.fn("LocalMcpTest.fixture")(function* (
       projectTodoLayer(),
       runtimes,
       makeProjectSessionRuntimeTestLayer(),
-      WorkflowTestLive,
+      AgentControlTestLive,
       makeSubagentStorageTestLayer(),
       familyStorageHarness().layer,
     ),

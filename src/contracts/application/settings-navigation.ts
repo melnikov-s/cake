@@ -17,7 +17,6 @@ export const SettingsPageId = Schema.Literals([
   "hotkeys",
   "voice",
   "screen-capture",
-  "experimental",
 ]);
 export type SettingsPageId = typeof SettingsPageId.Type;
 

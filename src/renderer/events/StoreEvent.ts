@@ -2,7 +2,6 @@ import type { EditorDiffSelection } from "../../contracts/editor/editor-selectio
 import type { AgentAvailabilityEntry } from "../../contracts/pi/agent-availability-data";
 import type { InterviewRecord } from "../../contracts/interviews/interview";
 import type { CakeEvent } from "../../contracts/application/cake-rpc-contract";
-import type { WorkflowProposal } from "../../contracts/workflows/workflow-data";
 
 type NativePassthroughEvent = Extract<
   CakeEvent,
@@ -42,8 +41,7 @@ export type StoreEvent =
       operationId: string;
       uiRequestId: string;
       sessionId: string;
-      kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor" | "workflow-choice";
-      workflow?: WorkflowProposal;
+      kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
       title: string;
       message: string;
       placeholder?: string;
@@ -125,7 +123,6 @@ export function toStoreEvent(event: CakeEvent): StoreEvent | undefined {
       uiRequestId: event.uiRequestId,
       sessionId: event.sessionId,
       kind: event.kind,
-      workflow: event.workflow,
       title: event.title,
       message: event.message,
       placeholder: event.placeholder,

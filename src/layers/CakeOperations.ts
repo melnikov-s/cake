@@ -8,7 +8,6 @@ import type {
 import { createCakeThemeOperations } from "../domain/application/cake-theme-operations";
 import { createCakeSettingsOperations } from "../domain/application/cake-settings-operations";
 import { createCakeWidgetPackageOperations } from "../domain/application/cake-widget-package-operations";
-import { createCakeWorkflowOperations } from "../domain/workflows/cake-workflow-operations";
 import { createSessionApplicationOperations } from "../domain/application/cake-session-application-operations";
 import { createAgentProjectSettingsOperations } from "../domain/projects/cake-project-settings-operations";
 import { createConversationOperations } from "../domain/conversations/cake-conversation-operations";
@@ -87,7 +86,6 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
       ...(options.attachmentReferenceControl
         ? createAttachmentReferenceOperations(options.attachmentReferenceControl)
         : []),
-      ...(options.workflowControl ? createCakeWorkflowOperations(options.workflowControl) : []),
       ...(!options.auxiliary && options.tools === undefined
         ? createCakeSettingsOperations((command, input, signal) =>
             bridge.api().invokeAppControl(command, input, signal),
@@ -299,7 +297,6 @@ export function configureCakeSessionRuntime(
     attachmentReferenceControl,
     allowedCakeOperations,
     allowBlockingUserInput,
-    workflowControl,
     requestInterview,
     sessionPluginControl,
     modelPresets,
@@ -344,7 +341,6 @@ export function configureCakeSessionRuntime(
     persistArtifact: runtime.persistArtifact,
     messageBoardControl: runtime.messageBoardControl,
     allowedCakeOperations,
-    workflowControl,
     requestInterview,
     sessionPluginControl,
     modelPresets,

@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream, SubscriptionRef } from "effect";
@@ -32,7 +33,6 @@ import {
   makeRuntimeRecoveryStorageTestLayer,
   snapshot,
 } from "../helpers/piRuntimeFixture";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { subagentHistoryFixture } from "../helpers/subagentStorageFixture";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 
@@ -89,7 +89,7 @@ describe("private worker restart recovery", () => {
       const messages: { sessionId: string; text: string }[] = [];
       const recoveryStorage = makeRuntimeRecoveryStorageTestLayer();
       const layer = Layer.mergeAll(
-        WorkflowTestLive,
+        AgentControlTestLive,
         makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
         familyStorageHarness().layer,
         recoveryStorage,

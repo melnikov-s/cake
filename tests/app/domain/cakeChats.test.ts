@@ -1,7 +1,7 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import { cakeChatControlTools } from "../../../src/contracts/application/window-control-definitions";
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import { it } from "@effect/vitest";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { Context, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
 import { describe, expect, vi } from "vitest";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
@@ -84,7 +84,7 @@ function fixture(runtimeOverrides: Partial<CakeSessionRuntimes["Service"]> = {})
     firstMessage: "Hello",
   });
   const layer = Layer.mergeAll(
-    WorkflowTestLive,
+    AgentControlTestLive,
     makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
     Layer.mock(ManagedWorktrees, {}),
     Layer.mock(SessionFamilyStorage, {}),
@@ -1134,8 +1134,9 @@ describe("permanent Cake Chat", () => {
         expect(options.runtime.allowedCakeOperations).toContain("sessions.create");
         expect(options.runtime.allowedCakeOperations).toContain("settings.cake-chat.get");
         expect(options.runtime.allowedCakeOperations).toContain("settings.cake-chat.update");
-        expect(options.runtime.allowedCakeOperations).toContain("workflows.propose");
-        expect(options.runtime.allowedCakeOperations).toContain("workflows.start");
+        expect(
+          options.runtime.allowedCakeOperations?.some((name) => name.startsWith("workflows.")),
+        ).toBe(false);
         expect(options.runtime.allowedCakeOperations).not.toContain("sessions.create-child");
         expect(options.runtime.allowedCakeOperations).toContain("worktrees.merge");
         expect(options.runtime.allowedCakeOperations).not.toContain("worktrees.discard");

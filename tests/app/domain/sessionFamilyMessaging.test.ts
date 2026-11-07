@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import assert from "node:assert/strict";
 import { ProjectTodoReports } from "../../../src/services/projects/ProjectTodoReports";
 import { it } from "@effect/vitest";
@@ -31,7 +32,6 @@ import { SessionArchiveStorage } from "../../../src/services/storage/SessionArch
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import {
   makeRuntimeRecoveryStorageTestLayer,
   fakeRuntime,
@@ -70,7 +70,7 @@ const environment = (
   namespace: "active" | "resolved" = "active",
 ) =>
   Layer.mergeAll(
-    WorkflowTestLive,
+    AgentControlTestLive,
     familyStorageHarness().layer,
     makeProjectSessionRuntimeMechanismTestLayer(),
     Layer.mock(SessionCatalogChanges, {

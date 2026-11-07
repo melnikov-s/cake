@@ -27,7 +27,6 @@ export const settingsCategories = [
   "Network & privacy",
   "Cake Chat",
   "Instructions & prompts",
-  "Experimental",
   "Pi terminal",
 ] as const;
 type SettingsCategory = (typeof settingsCategories)[number];
@@ -341,13 +340,6 @@ export const settingsCatalog: readonly SettingDefinition[] = [
       value: Schema.NullOr(CakePrompts.fields[key]),
     }),
   ),
-  setting({
-    key: "experimental.dynamicWorkflows",
-    category: "Experimental",
-    label: "Dynamic workflows",
-    description: "Opt-in experimental orchestration scripts and background agents.",
-    value: Schema.Boolean,
-  }),
 ];
 
 /** Settings changed through dedicated operations: collections, credentials, window, device. */

@@ -8,7 +8,6 @@ import {
   setSessionPluginSharedState,
   setSessionPluginState,
   setSessionPluginHidden,
-  setExperimentalFeatures,
 } from "../../domain/application/application";
 import { AgentAvailability } from "../../services/pi/AgentAvailability";
 import {
@@ -34,10 +33,6 @@ export const applicationStateHandlers = ApplicationRpc.of({
         result,
       );
     }).pipe(
-      Effect.mapError((cause) => new ApplicationSettingsMutationError({ message: cause.message })),
-    ),
-  "application.setExperimentalFeatures": ({ features }) =>
-    setExperimentalFeatures(features).pipe(
       Effect.mapError((cause) => new ApplicationSettingsMutationError({ message: cause.message })),
     ),
   "application.getState": () => getState(),

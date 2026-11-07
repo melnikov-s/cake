@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "../../app/helpers/agentControlTestLayer";
 import {
   configureCakeSessionRuntime,
   createCoordinatorRuntime,
@@ -6,7 +7,6 @@ import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { projectPiSettings } from "../../../src/services/pi/runtime/settings-translation";
 import { makeCakeChatDurableLive } from "../../../src/services/pi-durable/CakeChatDurable";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
-import { WorkflowTestLive } from "../../app/helpers/workflowFixture";
 import { unusedAutomationEndpointCapabilities } from "../../app/helpers/automationEndpointCapabilities";
 import { DiscussionSessionEnvironment } from "../../../src/services/discussion-sessions/DiscussionSessionEnvironment";
 import { WorktreeLandingAgent } from "../../../src/services/worktrees/WorktreeLandingAgent";
@@ -300,7 +300,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
   const layer = Layer.mergeAll(
     modelPresetPromptsTestLayer,
     unusedAutomationEndpointCapabilities,
-    WorkflowTestLive,
+    AgentControlTestLive,
     Layer.mock(VsCodeServer, {
       leaseFor: () => undefined,
       releaseConnection: () => Effect.void,

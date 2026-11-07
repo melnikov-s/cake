@@ -205,9 +205,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
   };
   const runtimeIdentity: RuntimeIdentity = {};
   const cakeProjectSystemPrompt =
-    options.isolatedSystemPrompt ||
-    options.auxiliaryProjectResources ||
-    options.projectInvestigation
+    options.isolatedSystemPrompt || options.projectInvestigation
       ? undefined
       : renderPromptTemplate(projectPromptTemplate, {
           commonPrompt: renderPromptTemplate(commonPromptTemplate),
@@ -240,7 +238,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
     options.sessionReferences?.project,
   );
   const skillsOverride =
-    !options.auxiliary || options.auxiliaryProjectResources || options.projectInvestigation
+    !options.auxiliary || options.projectInvestigation
       ? await cakeBuiltinSkillsOverride(agentDir)
       : undefined;
   const resourceLoader = await loadCakeSessionRuntimeResourceLoader({
@@ -278,41 +276,37 @@ export async function createCakeSessionRuntimeCapabilities(input: {
         additionalPromptTemplatePaths: [],
         additionalExtensionPaths: [],
         noExtensions: options.auxiliary && !options.projectInvestigation,
-        noSkills:
-          options.auxiliary && !options.auxiliaryProjectResources && !options.projectInvestigation,
+        noSkills: options.auxiliary && !options.projectInvestigation,
         noPromptTemplates: options.auxiliary && !options.projectInvestigation,
         noThemes: options.auxiliary && !options.projectInvestigation,
         noContextFiles: options.isolatedSystemPrompt !== undefined,
-        extensionFactories:
-          options.auxiliaryProjectResources || options.projectInvestigation
-            ? options.projectInvestigation
-              ? [...requestExtensions, gateway]
-              : [...requestExtensions]
-            : [
-                ...requestExtensions,
-                createCakeSystemPromptExtension(),
-                ...(options.sessionReferences
-                  ? [createSessionReferenceExtension(options.sessionReferences)]
-                  : []),
-                gateway,
-                createCakeArtifactExtension({ persistArtifact, compileArtifactBrowser }),
-                ...(options.messageBoardControl
-                  ? [
-                      createMessageBoardExtension(
-                        options.messageBoardControl,
-                        options.sessionReferences,
-                      ),
-                    ]
-                  : []),
-                ...(options.reviewContextPath
-                  ? [
-                      reviewContextExtension(
-                        options.reviewContextPath,
-                        () => runtimeIdentity.sessionId,
-                      ),
-                    ]
-                  : []),
-              ],
+        extensionFactories: options.projectInvestigation
+          ? [...requestExtensions, gateway]
+          : [
+              ...requestExtensions,
+              createCakeSystemPromptExtension(),
+              ...(options.sessionReferences
+                ? [createSessionReferenceExtension(options.sessionReferences)]
+                : []),
+              gateway,
+              createCakeArtifactExtension({ persistArtifact, compileArtifactBrowser }),
+              ...(options.messageBoardControl
+                ? [
+                    createMessageBoardExtension(
+                      options.messageBoardControl,
+                      options.sessionReferences,
+                    ),
+                  ]
+                : []),
+              ...(options.reviewContextPath
+                ? [
+                    reviewContextExtension(
+                      options.reviewContextPath,
+                      () => runtimeIdentity.sessionId,
+                    ),
+                  ]
+                : []),
+            ],
       }),
   });
   resolveWidgetTemplate = await prepareSkillWidgetTemplates(

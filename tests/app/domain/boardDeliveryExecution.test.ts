@@ -1,3 +1,4 @@
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { it } from "@effect/vitest";
@@ -28,7 +29,6 @@ import { PiModels } from "../../../src/services/pi/PiModels";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
-import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import {
   fakeRuntime,
@@ -63,7 +63,7 @@ const fixture = Effect.fn("BoardDeliveryTest.fixture")(function* (
   let failAcquire = settings.failFirstAcquire ?? false;
   const core = yield* Layer.build(
     Layer.mergeAll(
-      WorkflowTestLive,
+      AgentControlTestLive,
       makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
       family.layer,
       board.layer,
