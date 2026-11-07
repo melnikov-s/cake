@@ -113,7 +113,7 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
             avatarSeed={session.sessionId}
             avatarsEnabled={root.settingsStore.appearance.sessionAvatarsEnabled}
             charactersEnabled={root.settingsStore.appearance.sidebarCharactersEnabled}
-            kindLabel={node.label}
+            showIdleStatus
             onOpen={() => void store.open(node)}
             onRename={(id, name) => void root.sidebarStore.renameSession(id, name)}
             onResolve={(id, resolved) => void root.sidebarStore.setSessionResolved(id, resolved)}
@@ -156,11 +156,8 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
           }
           description={
             <span className="flex min-w-0 items-center gap-1.5 text-xs leading-none">
-              <span
-                className="min-w-0 flex-1 truncate"
-                title={`${node.label} · ${time} — ${relationship}`}
-              >
-                {node.label} · {time}
+              <span className="min-w-0 flex-1 truncate" title={`${time} — ${relationship}`}>
+                {time}
               </span>
             </span>
           }

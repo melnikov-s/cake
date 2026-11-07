@@ -193,6 +193,30 @@ describe("Sessions navigator workflow", () => {
     }
   });
 
+  it("shows metadata without type prefixes for home, session, child and grandchild rows", () => {
+    using fixture = renderNavigator();
+    settleFixtureWorkers(fixture);
+    const region = screen.getByRole("region", { name: "Sessions" });
+    for (const label of ["Project Chat", "Session", "Child session"])
+      expect(within(region).queryByText(label, { exact: true })).toBeNull();
+    for (const [title, depth, relationship] of [
+      ["UI Layout Refactor", "1", "grouped"],
+      ["Keyboard Editing & Navigation", "2", "family-child"],
+      ["Nested child implementation", "3", "family-child"],
+    ] as const) {
+      const row = rowFor(title);
+      const description = row.querySelector('[data-slot="session-description"]')!;
+      expect(description.textContent).toBe(row.querySelector("time")!.textContent);
+      expect(description.textContent).not.toBe("");
+      expect(row.dataset.depth).toBe(depth);
+      expect(row.dataset.relationship).toBe(relationship);
+      expect(within(row).getByLabelText("Idle")).toBeTruthy();
+    }
+    expect(rowFor("Project Chat").textContent).not.toContain("·");
+    expect(within(rowFor("Project Chat")).getByLabelText("Idle")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Collapse UI Layout Refactor" })).toBeTruthy();
+  });
+
   it.each([
     ["own", "layout"],
     ["child", "keyboard"],

@@ -23,6 +23,65 @@ const props: SessionListItemProps = {
   onOpen: vi.fn(),
 };
 
+describe("session row metadata", () => {
+  it.each([
+    ["time only", "1 day ago", undefined, undefined, "1 day ago"],
+    ["branch only", "", "feature", undefined, "feature"],
+    ["source only", "", undefined, { kind: "cake-chat", name: "Cake Chat" }, "Cake Chat"],
+    ["time and branch", "1 day ago", "feature", undefined, "1 day ago·feature"],
+    [
+      "source and branch",
+      "",
+      "feature",
+      { kind: "cake-chat", name: "Cake Chat" },
+      "Cake Chat·feature",
+    ],
+    [
+      "source, time and branch",
+      "1 day ago",
+      "feature",
+      { kind: "cake-chat", name: "Cake Chat" },
+      "Cake Chat·1 day ago·feature",
+    ],
+  ] as const)(
+    "formats %s without dangling separators",
+    (_, activityTime, branch, source, expected) => {
+      const { container } = render(
+        <SessionListItem
+          {...props}
+          session={{ ...props.session, worktreeName: branch }}
+          activityTime={activityTime}
+          source={source}
+        />,
+      );
+      expect(container.querySelector('[data-slot="session-description"]')?.textContent).toBe(
+        expected,
+      );
+    },
+  );
+
+  it.each(["", "   "])("omits the subtitle when metadata is empty (%j)", (activityTime) => {
+    const { container } = render(<SessionListItem {...props} activityTime={activityTime} />);
+    expect(container.querySelector('[data-slot="session-description"]')).toBeNull();
+    expect(container.querySelector("time")).toBeNull();
+    expect(screen.getByTitle(props.session.title)).toBeDefined();
+  });
+
+  it("retains working metadata even without a timestamp", () => {
+    const { container } = render(<SessionListItem {...props} activity="running" activityTime="" />);
+    expect(container.querySelector('[data-slot="session-description"]')?.textContent).toBe(
+      "Working",
+    );
+    expect(screen.getByRole("img", { name: "Running" })).toBeDefined();
+  });
+
+  it("retains the navigation idle status without a type label or subtitle", () => {
+    const { container } = render(<SessionListItem {...props} showIdleStatus activityTime="" />);
+    expect(screen.getByLabelText("Idle")).toBeDefined();
+    expect(container.querySelector('[data-slot="session-description"]')).toBeNull();
+  });
+});
+
 describe("session row action track", () => {
   it("uses no trailing track for an idle destination without actions", () => {
     const { container } = render(<SessionListItem {...props} />);

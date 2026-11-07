@@ -2,7 +2,7 @@ import { useEffect, useRef, type MouseEventHandler, type ReactNode } from "react
 import { observer } from "r-state-tree/react";
 import type { ProjectIcon, SessionLabel } from "../../../contracts/application/application-data";
 import type { WorktreeCatalogEntry } from "../../../contracts/worktrees/managed-worktree-data";
-import { type SessionActivity } from "../../lib/session-activity";
+import { isActiveSessionActivity, type SessionActivity } from "../../lib/session-activity";
 import { cn } from "../../lib/utils";
 import { SessionActivityIndicator } from "../session-activity-indicator";
 import { WorktreeStatusIcon } from "../worktree-status-icon";
@@ -44,8 +44,8 @@ export interface SessionListItemProps {
   /** Effective activity comes from descendants, not the parent's own work. */
   childrenWorking?: boolean;
   activityTime: string;
-  /** Semantic conversation kind in recursive navigation; destination pickers can omit it. */
-  kindLabel?: string;
+  /** Recursive navigation keeps an idle status track even without actions. */
+  showIdleStatus?: boolean;
   labels: readonly SessionLabel[];
   avatarSeed: string;
   avatarsEnabled: boolean;
@@ -85,7 +85,7 @@ export const SessionListItem = observer(function SessionListItem({
   activity,
   childrenWorking,
   activityTime,
-  kindLabel,
+  showIdleStatus = false,
   labels,
   avatarSeed,
   avatarsEnabled,
@@ -129,6 +129,8 @@ export const SessionListItem = observer(function SessionListItem({
     (defaultBranch
       ? managedWorktree?.baseBranch !== defaultBranch
       : managedWorktree?.baseBranch !== "main" && managedWorktree?.baseBranch !== "master");
+  const hasActivityTime = isActiveSessionActivity(activity) || Boolean(activityTime.trim());
+  const hasDescription = Boolean(source || hasActivityTime || branch);
   return (
     <div
       ref={rowRef}
@@ -270,66 +272,66 @@ export const SessionListItem = observer(function SessionListItem({
             )
           }
           description={
-            <span
-              data-slot="session-description"
-              className={cn(
-                "flex w-full min-w-0 items-center gap-1.5 text-xs font-normal leading-none",
-                focusMode && "text-xs leading-tight",
-                selected ? "text-sidebar-selection-foreground/80" : "text-muted-foreground/80",
-              )}
-            >
-              {source && (
-                <>
-                  <span className="flex min-w-0 items-center gap-1" title={source.name}>
-                    {source.kind === "cake-chat" ? (
-                      <CakeIcon />
-                    ) : source.showAvatar ? (
-                      <Avatar
-                        kind="project"
-                        seed={source.avatarSeed}
-                        customIcon={source.customIcon}
-                        className="size-3.5"
-                        aria-hidden="true"
-                      />
-                    ) : null}
-                    <span className="truncate">{source.name}</span>
-                  </span>
-                  <span aria-hidden="true">·</span>
-                </>
-              )}
-              {kindLabel && (
-                <>
-                  <span>{kindLabel}</span>
-                  <span aria-hidden="true">·</span>
-                </>
-              )}
-              <SessionActivityTime
-                modifiedAt={session.modifiedAt}
-                workingStartedAt={session.workingStartedAt}
-                activity={activity}
-                childrenWorking={childrenWorking}
-                activityTime={activityTime}
-                focusMode={focusMode}
-              />
-              {branch && (
-                <>
-                  <span aria-hidden="true">·</span>
-                  {managedWorktree && (
-                    <WorktreeStatusIcon state={managedWorktree.state} className="shrink-0" />
-                  )}
-                  <span className="truncate">{branch}</span>
-                  {showBaseBranch && (
-                    <>
-                      <span aria-hidden="true">→</span>
-                      <span className="truncate">{baseBranch}</span>
-                    </>
-                  )}
-                </>
-              )}
-            </span>
+            hasDescription && (
+              <span
+                data-slot="session-description"
+                className={cn(
+                  "flex w-full min-w-0 items-center gap-1.5 text-xs font-normal leading-none",
+                  focusMode && "text-xs leading-tight",
+                  selected ? "text-sidebar-selection-foreground/80" : "text-muted-foreground/80",
+                )}
+              >
+                {source && (
+                  <>
+                    <span className="flex min-w-0 items-center gap-1" title={source.name}>
+                      {source.kind === "cake-chat" ? (
+                        <CakeIcon />
+                      ) : source.showAvatar ? (
+                        <Avatar
+                          kind="project"
+                          seed={source.avatarSeed}
+                          customIcon={source.customIcon}
+                          className="size-3.5"
+                          aria-hidden="true"
+                        />
+                      ) : null}
+                      <span className="truncate">{source.name}</span>
+                    </span>
+                  </>
+                )}
+                {hasActivityTime && (
+                  <>
+                    {source && <span aria-hidden="true">·</span>}
+                    <SessionActivityTime
+                      modifiedAt={session.modifiedAt}
+                      workingStartedAt={session.workingStartedAt}
+                      activity={activity}
+                      childrenWorking={childrenWorking}
+                      activityTime={activityTime}
+                      focusMode={focusMode}
+                    />
+                  </>
+                )}
+                {branch && (
+                  <>
+                    {(source || hasActivityTime) && <span aria-hidden="true">·</span>}
+                    {managedWorktree && (
+                      <WorktreeStatusIcon state={managedWorktree.state} className="shrink-0" />
+                    )}
+                    <span className="truncate">{branch}</span>
+                    {showBaseBranch && (
+                      <>
+                        <span aria-hidden="true">→</span>
+                        <span className="truncate">{baseBranch}</span>
+                      </>
+                    )}
+                  </>
+                )}
+              </span>
+            )
           }
           trailing={
-            (activity || canResolve || kindLabel) && (
+            (activity || canResolve || showIdleStatus) && (
               <div
                 className="session-meta relative grid size-6 shrink-0 place-items-center"
                 data-slot="own-activity"
