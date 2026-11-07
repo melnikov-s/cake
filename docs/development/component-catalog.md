@@ -128,6 +128,18 @@ Its shared [`SessionActivityIndicator`](../../src/renderer/components/session-ac
 is also used by Project Chat entries: blue while running (including when selected), green for
 unread completion, amber while waiting, red for errors, and no dot for idle/read or deliberately
 stopped work. Selection and read acknowledgement do not introduce a neutral/gray dot.
+[`ActivityCount`](../../src/renderer/components/ui/activity-count.tsx) pairs an activity glyph
+with a running count, muted at zero and capped visually at `99+` with the exact accessible
+value. The Workspace Sessions tab uses the existing reactive active navigation tree's
+`running` count: Project Chat and unresolved Project Sessions in the selected project,
+reachable open side chats and unreleased queued/running/streaming subagents. Without a
+project it counts Cake Chat and its reachable side chats/subagents, not all projects.
+Search, collapsed branches and pagination do not narrow this count; resolved history
+is excluded. Each node's own activity counts once; inherited running descendants do not
+make an idle parent count again. The tab tooltip gives exact running and total counts;
+the Sessions list retains its separate total summary. No new observations, polling or
+transcript/history reads are introduced.
+
 [`ToolbarGroup`](../../src/renderer/components/ui/toolbar-group.tsx) frames related workspace header actions with a leading hairline separator.
 
 [`FloatingToolbar`](../../src/renderer/components/ui/floating-toolbar.tsx) provides a

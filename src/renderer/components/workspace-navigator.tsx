@@ -1,6 +1,7 @@
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { WorkspaceNavigatorContent } from "./workspace-navigator-content";
+import { ActivityCount } from "./ui/activity-count";
 import { IconButton } from "./ui/icon-button";
 import { CloseIcon } from "./ui/icons";
 import { SegmentedControlGroup, SegmentedControlButton } from "./ui/segmented-control";
@@ -10,7 +11,7 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
   const root = useStore(RootStore);
   const navigator = root.workspaceNavigatorStore;
   const todos = navigator.todos;
-  const sessions = root.conversationNavigatorStore.countFor(navigator.projectPath);
+  const sessions = root.conversationNavigatorStore.tree(navigator.projectPath);
   return (
     <aside
       data-slot="workspace-navigator"
@@ -33,10 +34,12 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
           <SegmentedControlButton
             active={navigator.mode === "sessions"}
             onClick={() => navigator.show("sessions")}
-            className="flex-1 gap-1.5"
+            aria-label={`Sessions · ${sessions.running} running`}
+            title={`${sessions.running} running · ${sessions.total} total in ${navigator.projectPath ? "this project" : "Cake Chat"} (including side chats and subagents)`}
+            className="min-w-0 flex-1 gap-1.5 whitespace-nowrap"
             size="sm"
           >
-            Sessions <span className="text-muted-foreground tabular-nums">{sessions}</span>
+            Sessions <ActivityCount count={sessions.running} />
           </SegmentedControlButton>
         </SegmentedControlGroup>
         <IconButton tooltip="Close Workspace" onClick={() => navigator.close()}>

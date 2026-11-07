@@ -32,6 +32,12 @@ function Icon({
   );
 }
 
+export const ActivityIcon = () => (
+  <Icon size={12}>
+    <path d="M2 12h5l3-9 4 18 3-9h5" />
+  </Icon>
+);
+
 export const AudioLinesIcon = () => (
   <Icon size={14}>
     <path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4" />
