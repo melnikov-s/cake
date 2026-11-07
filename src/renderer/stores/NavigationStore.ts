@@ -49,6 +49,7 @@ export class NavigationStore extends Store<{
   shell: AppShellStore;
   layout: SessionLayoutStore;
   discussionNavigation(): DiscussionNavigationStore;
+  activeSecondaryTarget(): ConversationNavigationTarget | undefined;
   registry: SessionRegistryStore;
   catalog: SessionCatalogStore;
   metadata(): SessionMetadataStore;
@@ -433,25 +434,45 @@ export class NavigationStore extends Store<{
     });
   }
 
-  async returnToProjectChat() {
+  /** One ownership edge per invocation; never substitute a project home for a missing parent. */
+  async goUpOneLevel(): Promise<boolean> {
     const active = this.props.shell.activeConversation;
-    const projectPath =
-      active?.kind === "cake-chat"
-        ? this.props.cakeChat().summaries.find((chat) => chat.sessionId === active.sessionId)
-            ?.projectPath
-        : active
-          ? (this.props.catalog.find(active.sessionId)?.projectPath ??
-            this.props.catalog.projectPathFor(
-              this.props.registry.findSession(active.sessionId)?.workspacePath ?? "",
-            ))
-          : undefined;
-    if (projectPath) return this.openProjectChat(projectPath);
-    this.props.discussionNavigation().cancelOpening();
-    const home = this.props.cakeChat().registry.find(CAKE_CHAT_SESSION_ID);
-    if (home?.conversationSessionStore.sideChatStore.target)
-      home.conversationSessionStore.sideChatStore.close();
-    home?.showPresentation("normal");
-    await this.openCakeChat(CAKE_CHAT_SESSION_ID);
+    if (!active) return false;
+    const secondary = this.props.activeSecondaryTarget();
+    if (secondary?.kind === "side-chat") return this.openImmediateOwner(secondary.parentSessionId);
+    // A public worker target names its owner, not its private Pi session.
+    if (secondary?.kind === "subagent") return this.openImmediateOwner(secondary.sessionId);
+    if (active.kind === "cake-chat") {
+      // Global Cake Chat is the root. The app-wide companion has no declared parent.
+      if (!isProjectChatSessionId(active.sessionId)) return false;
+      return this.openImmediateOwner(CAKE_CHAT_SESSION_ID);
+    }
+    if (active.kind === "automation-session") {
+      const session = this.props.automationSessions().selectedSession;
+      if (session?.sessionId !== active.sessionId) return false;
+      const context = session.identity.context;
+      return context._tag === "Project"
+        ? this.openProjectChat(context.projectPath)
+        : this.openImmediateOwner(CAKE_CHAT_SESSION_ID);
+    }
+    const session = this.props.catalog.find(active.sessionId);
+    if (!session) return false;
+    const parentId = session.familyParentSessionId;
+    // Family roots explicitly name themselves as parent in the catalog.
+    if (parentId && parentId !== active.sessionId) return this.openImmediateOwner(parentId);
+    return this.openProjectChat(session.projectPath);
+  }
+
+  private async openImmediateOwner(sessionId: string): Promise<boolean> {
+    const discussion = this.props.discussionNavigation().targetForSession(sessionId);
+    if (discussion) {
+      await this.openConversationTarget(discussion);
+      return true;
+    }
+    if (!isCakeChatSessionId(sessionId) && !this.props.catalog.find(sessionId)) return false;
+    // Select header, transcript and composer together, closing any retained secondary target.
+    // Session links reuse the existing normal-chat navigation without resetting drafts/history.
+    await this.openSessionLink(sessionId);
     return true;
   }
 

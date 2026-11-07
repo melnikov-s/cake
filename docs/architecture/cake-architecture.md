@@ -641,8 +641,16 @@ is a refactoring signal, not precedent.
   cover; visible selection derives from that workspace's focused conversation, never
   a separately persisted session identity. `NavigationStore` coordinates workspace
   changes and window visits. Covering/uncovering does not create a visit. Project
-  rail activation and `app.home` open Project Chat in Chat mode without resetting its
-  runtime; the registered Return to Project Chat shortcut uses the same intent.
+  rail activation opens Project Chat in Chat mode without resetting its runtime.
+  The Go up one level shortcut (`Mod+Shift+H`) and `app.home` traverse exactly one
+  ownership edge: child Session → immediate parent, root Project Session → owning
+  Project Chat, Project Chat → global Cake Chat, and global Cake Chat → no-op.
+  Side chats and public Subagents return to their actual conversation owner;
+  Automation Sessions use their explicit Project/global context. Missing immediate
+  owners do not fall back to a higher ancestor. The app-wide companion has no
+  declared parent and is a no-op. Navigation preserves drafts and transcript state. The persisted hotkey action ID remains `return-to-project-chat`
+  so customized bindings retain their assignment; neither it nor `app.home` retains
+  the former direct-home behavior.
   `ConversationNavigatorStore` projects real Project Session grouping and family
   ancestry into the scoped Sessions source list. Independently launched task/worktree
   sessions remain there, including context forks. Each conversation's speech-bubble

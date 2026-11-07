@@ -72,9 +72,9 @@ test("remaps application hotkeys from Settings", async () => {
     await expect(page.getByRole("heading", { name: "Hotkeys" })).toBeVisible();
 
     const terminalShortcut = page.getByRole("button", { name: "Toggle terminal shortcut" });
-    await expect(
-      page.getByRole("button", { name: "Return to Project Chat shortcut" }),
-    ).toContainText(process.platform === "darwin" ? "⌘⇧H" : "Ctrl+Shift+H");
+    await expect(page.getByRole("button", { name: "Go up one level shortcut" })).toContainText(
+      process.platform === "darwin" ? "⌘⇧H" : "Ctrl+Shift+H",
+    );
     await expect(terminalShortcut).toContainText(process.platform === "darwin" ? "⌘J" : "Ctrl+J");
     await page.getByRole("button", { name: "Back to chat" }).click();
     const terminal = page.locator('section[aria-label="Terminal"]');

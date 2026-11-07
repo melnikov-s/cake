@@ -137,6 +137,8 @@ export class RootStore extends Store<{
       metadata: () => this.sessionMetadataStore,
       sidebar: () => this.sidebarStore,
       discussionNavigation: () => this.discussionNavigationStore,
+      activeSecondaryTarget: () =>
+        this.workspaceSession?.conversationSessionStore.sideChatStore.target?.navigationTarget,
       cakeChat: () => this.cakeChatCollectionStore,
       newSession: () => this.newSessionStore,
       settings: () => this.settingsStore,

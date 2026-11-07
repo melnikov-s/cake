@@ -41,7 +41,7 @@ export const applicationControls = [
           command,
           error: "Agent session navigation is disabled in Settings → Agent for this window.",
         };
-      return { ok: true, command, opened: await host.presentation.returnToProjectChat() };
+      return { ok: true, command, opened: await host.presentation.goUpOneLevel() };
     },
   }),
   defineControl({

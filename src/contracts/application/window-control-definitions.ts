@@ -130,7 +130,9 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "app",
-      summary: "Open Project Chat home",
+      summary: "Go up one level",
+      result:
+        "Whether the immediate owner conversation was opened. Child → parent; root session → Project Chat; Project Chat → global Cake Chat. At global Cake Chat or with unavailable ownership, no-op.",
     },
   },
   "notifications.send": {

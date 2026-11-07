@@ -29,11 +29,11 @@ describe("Settings search navigation workflow", () => {
     const search = screen.getByRole("searchbox", { name: "Search settings" });
     const pages = within(screen.getByRole("navigation", { name: "Settings pages" }));
 
-    await fixture.user.type(search, "return project chat");
+    await fixture.user.type(search, "go up one level");
     expect(pages.getByText("Hotkeys", { exact: true })).toBeDefined();
-    await fixture.user.click(pages.getByRole("button", { name: "Return to Project Chat" }));
+    await fixture.user.click(pages.getByRole("button", { name: "Go up one level" }));
     expect(screen.getByRole("heading", { name: "Hotkeys", level: 2 })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Return to Project Chat shortcut" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Go up one level shortcut" })).toBeDefined();
 
     // Neither the setting label nor its page metadata contains both words alone.
     await fixture.user.clear(search);

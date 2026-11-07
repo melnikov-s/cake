@@ -110,7 +110,7 @@ export function createApplicationCommandRegistry(owners: {
     },
     "return-to-project-chat": {
       run: () => {
-        void owners.navigation().returnToProjectChat();
+        void owners.navigation().goUpOneLevel();
       },
     },
     "history-back": { run: () => owners.navigation().navigateBack() },

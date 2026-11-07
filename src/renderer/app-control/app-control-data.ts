@@ -225,7 +225,7 @@ export interface AppControlHost {
     setProjectSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
   };
   presentation: {
-    returnToProjectChat(): Promise<boolean>;
+    goUpOneLevel(): Promise<boolean>;
     workspace(input: { visible?: boolean; mode?: "todos" | "sessions" }): {
       visible: boolean;
       mode: "todos" | "sessions";

@@ -74,10 +74,12 @@ export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
     defaultBinding: "Mod+Shift+E",
   },
   {
+    // Keep the persisted action ID so existing custom bindings still apply.
     id: "return-to-project-chat",
     group: "Navigation",
-    label: "Return to Project Chat",
-    description: "Open the focused conversation's Project Chat home.",
+    label: "Go up one level",
+    description:
+      "Open the immediate parent conversation, then Project Chat, then global Cake Chat. At global Cake Chat, do nothing.",
     defaultBinding: "Mod+Shift+H",
   },
   {

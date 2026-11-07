@@ -1,8 +1,9 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SubagentHandleId } from "../../../src/contracts/subagents/subagent-data";
 import { nestedTranscriptBehaviorFor } from "../../../src/renderer/lib/nested-transcript-behavior";
+import { isMacPlatform } from "../../../src/renderer/lib/platform";
 import { ReviewThread } from "../../../src/renderer/models/ReviewThread";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { applySubagentUpdate } from "../../../src/renderer/reducers/SubagentReducer";
@@ -291,4 +292,67 @@ it("opens actual nested discussion/retained-worker parts, preserving the public 
     fixture.root.discussionNavigationStore.session("inner-sidecar")!.conversationSessionStore
       .composerStore.draftStore.text,
   ).toBe("Retained nested draft");
+
+  const pressUp = () =>
+    act(async () => {
+      fireEvent.keyDown(window, {
+        key: "H",
+        code: "KeyH",
+        shiftKey: true,
+        metaKey: isMacPlatform,
+        ctrlKey: !isMacPlatform,
+      });
+    });
+  const panel =
+    fixture.root.sessionRegistry.findSession("alpha")!.conversationSessionStore.sideChatStore;
+  act(() =>
+    parent.conversationSessionStore.composerStore.draftStore.setText("Immediate parent draft"),
+  );
+  // Worker → its actual Discussion owner, not the primary Session or project home.
+  await pressUp();
+  await waitFor(() =>
+    expect(panel.target?.navigationTarget).toMatchObject({
+      kind: "side-chat",
+      sessionId: "outer-sidecar",
+    }),
+  );
+  expect(screen.getByRole("complementary", { name: "Outer discussion" })).toBeDefined();
+  expect(
+    within(screen.getByRole("complementary", { name: "Outer discussion" })).getByRole("combobox", {
+      name: "Reply to side chat",
+    }),
+  ).toHaveProperty("value", "Immediate parent draft");
+  expect(screen.queryByText("Actual retained nested worker body")).toBeNull();
+  await pressUp();
+  await waitFor(() => expect(panel.target).toBeUndefined());
+  expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
+  expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
+
+  await act(async () =>
+    fixture.root.navigationStore.openConversationTarget({
+      kind: "side-chat",
+      sessionId: "inner-sidecar",
+      parentSessionId: "outer-sidecar",
+      threadId: "inner-thread",
+    }),
+  );
+  // Nested Discussion → immediate Discussion parent, one press at a time.
+  await pressUp();
+  await waitFor(() =>
+    expect(panel.target?.navigationTarget).toMatchObject({
+      kind: "side-chat",
+      sessionId: "outer-sidecar",
+    }),
+  );
+  expect(nested.conversationSessionStore.composerStore.draftStore.text).toBe(
+    "Retained nested draft",
+  );
+  expect(
+    nested.chatStore.parts.some(
+      (part) => part.kind === "text" && part.text === "Actual nested discussion assistant body",
+    ),
+  ).toBe(true);
+  await pressUp();
+  await waitFor(() => expect(panel.target).toBeUndefined());
+  expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
 });

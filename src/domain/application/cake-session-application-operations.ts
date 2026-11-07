@@ -89,10 +89,11 @@ export function createSessionApplicationOperations(
       command: "app.home",
       requires: "invokeAppControl",
       topic: "app",
-      summary: "Open Project Chat home",
+      summary: "Go up one level",
       inputSchema: empty,
       examples: [{}],
-      result: "Whether Project Chat or global Cake Chat was opened.",
+      result:
+        "Whether the immediate owner conversation was opened. Child → parent; root session → Project Chat; Project Chat → global Cake Chat. At global Cake Chat or with unavailable ownership, no-op.",
       execute: invokeAppControl("app.home"),
     },
     {

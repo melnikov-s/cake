@@ -373,7 +373,7 @@ export function createRootApplicationControlHost(
         ),
     },
     presentation: {
-      returnToProjectChat: () => capabilities.navigationStore.returnToProjectChat(),
+      goUpOneLevel: () => capabilities.navigationStore.goUpOneLevel(),
       workspace: (input) => {
         const workspace = capabilities.workspaceNavigatorStore;
         if (input.mode) workspace.show(input.mode);

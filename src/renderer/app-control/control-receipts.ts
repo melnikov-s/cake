@@ -112,7 +112,10 @@ export function agentActionReceipt(
       coalesceKey: "app-workspace",
     };
   if (result.command === "app.home")
-    return { message: "Returned to chat home", coalesceKey: "app-home" };
+    return {
+      message: result.opened ? "Went up one level" : "No parent conversation available",
+      coalesceKey: "app-home",
+    };
   if (result.command === "sessions.open")
     return {
       message: `Opened “${projectTitle(result.opened.sessionId)}”`,
