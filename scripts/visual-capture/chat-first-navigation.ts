@@ -586,6 +586,15 @@ export function createChatFirstNavigationScenario(
         await page.mouse.move(bounds.x + 1, bounds.y + 3);
         await expect.poll(async () => (await rail.boundingBox())!.width).toBe(240);
       };
+      // The restored Project Session exposes the rail before the independent chat
+      // catalog has hydrated. Global home activation waits for that catalog; its
+      // seeded transcript proves readiness without sleeping or retrying a failed click.
+      await rail.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+      await expect(
+        page.getByText("Navigation work is active. Each project keeps its own Project Chat home.", {
+          exact: true,
+        }),
+      ).toBeVisible({ timeout: 20_000 });
       await rail.getByRole("button", { name: "Open Project Chat for cake", exact: true }).click();
       await expect(
         page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
