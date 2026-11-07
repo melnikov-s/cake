@@ -278,6 +278,163 @@ async function openMenu(fixture: ReturnType<typeof renderCapture>) {
   return within(popup());
 }
 describe("Screen capture attachment destinations", () => {
+  it.each(
+    (["normal", "vscode", "browser"] as const).flatMap((mode) =>
+      (["sessions", "todos", "chat"] as const).map((tab) => ({ mode, tab })),
+    ),
+  )("reveals destination Chat from $tab while retaining $mode mode", async ({ mode, tab }) => {
+    const destination = { kind: "project-session" as const, sessionId: "beta" };
+    using fixture = renderCapture(async () => ({
+      annotationColor: "pink",
+      capture: { data: png, annotationText: "", destination },
+    }));
+    const target = fixture.root.sessionRegistry.findSession("beta")!;
+    const draft = target.conversationSessionStore.composerStore.draftStore;
+    const existing = { kind: "file" as const, name: "keep.txt", path: "/keep.txt" };
+    act(() => {
+      target.showPresentation(mode);
+      target.toggleWorkspaceChatSidebar(); // Capture must also reveal a closed companion.
+      draft.setText("Target draft");
+      draft.appendAttachments([existing]);
+      fixture.root.workspaceNavigatorStore.show(tab === "chat" ? "sessions" : tab);
+      if (tab === "chat") fixture.root.workspaceNavigatorStore.showChat();
+    });
+    await act(() => fixture.capture.capture());
+    expect(fixture.root.appShellStore.activeConversation).toEqual(destination);
+    expect(fixture.root.workspaceNavigatorStore.companionTab).toBe("chat");
+    expect(target.presentationMode).toBe(mode);
+    if (mode !== "normal") expect(target.workspaceChatSidebarVisible).toBe(true);
+    expect(draft.text).toBe("Target draft");
+    expect(draft.attachments).toEqual([
+      existing,
+      expect.objectContaining({ kind: "image", data: png }),
+    ]);
+    expect(draft.focusRequestRevision).toBeGreaterThan(0);
+    expect(
+      fixture.root.sessionRegistry.findSession("alpha")!.conversationSessionStore.composerStore
+        .draftStore.text,
+    ).toBe("Existing draft");
+    expect(fixture.prompt).not.toHaveBeenCalled();
+    // Ordinary navigation does not acquire the capture-only Chat selection policy.
+    act(() => {
+      fixture.root.workspaceNavigatorStore.show("sessions");
+      fixture.select("alpha");
+    });
+    expect(fixture.root.workspaceNavigatorStore.companionTab).toBe("sessions");
+  });
+
+  it.each(["normal", "vscode", "browser"] as const)(
+    "reveals Project Chat from Todos while retaining %s mode",
+    async (mode) => {
+      using fixture = renderCapture(async () => ({
+        annotationColor: "pink",
+        capture: {
+          data: png,
+          annotationText: "",
+          destination: { kind: "cake-chat", sessionId: projectChatId },
+        },
+      }));
+      const target = fixture.root.cakeChatCollectionStore.registry.find(projectChatId)!;
+      act(() => {
+        target.showPresentation(mode);
+        fixture.root.workspaceNavigatorStore.show("todos");
+      });
+      await act(() => fixture.capture.capture());
+      expect(fixture.root.appShellStore.activeConversation).toEqual({
+        kind: "cake-chat",
+        sessionId: projectChatId,
+      });
+      expect(fixture.root.workspaceNavigatorStore.companionTab).toBe("chat");
+      expect(target.presentationMode).toBe(mode);
+      expect(target.conversationSessionStore.composerStore.draftStore.attachments).toEqual([
+        expect.objectContaining({ kind: "image", data: png }),
+      ]);
+      expect(fixture.prompt).not.toHaveBeenCalled();
+    },
+  );
+
+  it("selects Chat after delayed destination hydration and keeps it through later snapshots", async () => {
+    using fixture = renderCapture(async () => ({
+      annotationColor: "pink",
+      capture: {
+        data: png,
+        annotationText: "",
+        destination: { kind: "project-session", sessionId: "gamma" },
+      },
+    }));
+    fixture.openSession.mockResolvedValue(undefined);
+    act(() => fixture.root.workspaceNavigatorStore.show("sessions"));
+    let capturing: Promise<void>;
+    act(() => {
+      capturing = fixture.capture.capture();
+    });
+    await waitFor(() => expect(fixture.root.sessionRegistry.findSession("gamma")).toBeDefined());
+    expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
+    expect(fixture.root.workspaceNavigatorStore.companionTab).toBe("sessions");
+    await act(async () => {
+      fixture.root.sessionRegistry.findSession("gamma")!.showPresentation("browser");
+      applyConversationUpdate(fixture.models.projectConversation("gamma", "/other"), {
+        _tag: "Snapshot",
+        revision: 1,
+        snapshot: emptyConversation("gamma"),
+      });
+      await capturing!;
+      applyConversationUpdate(fixture.models.projectConversation("gamma", "/other"), {
+        _tag: "Snapshot",
+        revision: 2,
+        snapshot: emptyConversation("gamma"),
+      });
+    });
+    expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("gamma");
+    expect(fixture.root.workspaceNavigatorStore.companionTab).toBe("chat");
+    expect(fixture.root.sessionRegistry.findSession("gamma")!.presentationMode).toBe("browser");
+    expect(
+      fixture.root.sessionRegistry.findSession("gamma")!.conversationSessionStore.composerStore
+        .draftStore.attachments,
+    ).toEqual([expect.objectContaining({ kind: "image", data: png })]);
+  });
+
+  it.each(
+    (["sessions", "todos", "chat"] as const).flatMap((tab) =>
+      (["cancel", "failure", "unavailable", "full"] as const).map((outcome) => ({ tab, outcome })),
+    ),
+  )("keeps $tab and existing draft/attachments on $outcome", async ({ tab, outcome }) => {
+    using fixture = renderCapture(async () => {
+      if (outcome === "failure") throw new Error("Capture failed");
+      if (outcome === "cancel") return { annotationColor: "pink" };
+      return {
+        annotationColor: "pink",
+        capture: {
+          data: png,
+          annotationText: "",
+          destination: {
+            kind: "project-session",
+            sessionId: outcome === "full" ? "alpha" : "missing",
+          },
+        },
+      };
+    });
+    const draft =
+      fixture.root.sessionRegistry.findSession("alpha")!.conversationSessionStore.composerStore
+        .draftStore;
+    const existing = Array.from({ length: outcome === "full" ? 20 : 1 }, (_, index) => ({
+      kind: "file" as const,
+      name: `keep-${index}.txt`,
+      path: `/keep-${index}.txt`,
+    }));
+    act(() => {
+      draft.appendAttachments(existing);
+      fixture.root.workspaceNavigatorStore.show(tab === "chat" ? "sessions" : tab);
+      if (tab === "chat") fixture.root.workspaceNavigatorStore.showChat();
+    });
+    await act(() => fixture.capture.capture());
+    expect(fixture.root.workspaceNavigatorStore.companionTab).toBe(tab);
+    expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
+    expect(draft.text).toBe("Existing draft");
+    expect(draft.attachments).toEqual(existing);
+    expect(fixture.prompt).not.toHaveBeenCalled();
+  });
+
   it("keeps the last editable interaction when an automation is opened", async () => {
     using fixture = renderCapture();
     const base = automationSession();

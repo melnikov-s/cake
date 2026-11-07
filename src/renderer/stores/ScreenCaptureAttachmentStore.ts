@@ -24,6 +24,7 @@ import type { SessionMetadataStore } from "./SessionMetadataStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SidebarStore } from "./SidebarStore";
 import { ToastContext } from "./context/ToastContext";
+import { WorkspaceNavigatorContext } from "./context/WorkspaceNavigatorContext";
 
 /** Owns native capture preferences and destination routing, not chat or transcript state.
  * Preferences persist in the window snapshot. Captures are single-flight; only destination
@@ -316,6 +317,9 @@ export class ScreenCaptureAttachmentStore extends Store<{
         draft.setText(
           [draft.text, `${name}\n${result.annotationText}`].filter(Boolean).join("\n\n"),
         );
+      // Reveal only after a successful handoff, after destination hydration/selection.
+      // The window-owned companion tab must not hide the destination composer.
+      WorkspaceNavigatorContext.consume(this)!.showChat();
       draft.requestFocus();
     } catch (error) {
       if (!this.signal.aborted)
