@@ -187,7 +187,7 @@ export const ProjectRail = observer(function ProjectRail() {
                   <span className="relative grid size-9 place-items-center">
                     <Avatar
                       kind="project"
-                      className="size-[25px]"
+                      className="size-[32.5px]"
                       seed={projects.nameForPath(path)}
                       customIcon={projects.find(path)?.settings?.icon}
                       title={projects.nameForPath(path)}
