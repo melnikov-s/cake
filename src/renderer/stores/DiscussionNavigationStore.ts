@@ -2,7 +2,7 @@ import { Store, child, createStore, snapshot, effect as reactiveEffect } from "r
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import type {
   ConversationNavigationMetadataTarget,
-  ConversationNavigationNode,
+  ConversationNavigationEntry,
   ConversationNavigationTarget,
 } from "../lib/conversation-navigation-tree";
 import type { RootProjection } from "../models/RootProjection";
@@ -28,7 +28,7 @@ interface RetainedDiscussion {
 export class DiscussionNavigationStore extends Store<{
   projection: RootProjection;
   operations: SessionOperationCoordinatorStore;
-  lineage(target: ConversationNavigationTarget): readonly ConversationNavigationNode[];
+  lineage(target: ConversationNavigationTarget): readonly ConversationNavigationEntry[];
   openPrimary(target: PrimaryTarget): Promise<void>;
   primarySideChat(sessionId: string): SideChatStore | undefined;
   directDiscussion(sessionId: string): DiscussionSessionStore | undefined;
@@ -189,7 +189,7 @@ export class DiscussionNavigationStore extends Store<{
     }
   }
 
-  private retainLineage(lineage: readonly ConversationNavigationNode[]) {
+  private retainLineage(lineage: readonly ConversationNavigationEntry[]) {
     for (let index = 0; index < lineage.length; index += 1) {
       const target = lineage[index]!.target;
       if (

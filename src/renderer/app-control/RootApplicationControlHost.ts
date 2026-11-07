@@ -15,7 +15,7 @@ import type { ProjectSessionCreationStore } from "../stores/ProjectSessionCreati
 import type { SessionCatalogStore } from "../stores/SessionCatalogStore";
 import type { SessionLayoutStore } from "../stores/SessionLayoutStore";
 import type { WorkspaceNavigatorStore } from "../stores/WorkspaceNavigatorStore";
-import type { ConversationNavigationNode } from "../lib/conversation-navigation-tree";
+import type { ConversationNavigationEntry } from "../lib/conversation-navigation-tree";
 import type { SessionRegistryStore } from "../stores/SessionRegistryStore";
 import type { SettingsStore } from "../stores/SettingsStore";
 import type { ToastStore } from "../stores/ToastStore";
@@ -40,7 +40,7 @@ export interface RootApplicationControlCapabilities {
   sessionCatalogStore: SessionCatalogStore;
   sessionLayoutStore: SessionLayoutStore;
   workspaceNavigatorStore: WorkspaceNavigatorStore;
-  focusedNavigationNode(): ConversationNavigationNode | undefined;
+  focusedNavigationNode(): ConversationNavigationEntry | undefined;
   sessionRegistry: SessionRegistryStore;
   settingsStore: SettingsStore;
   sessionMetadataStore: SessionMetadataStore;

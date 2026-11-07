@@ -23,9 +23,15 @@ export interface ConversationNavigationMetadataTarget {
 }
 
 type ConversationRelationship = "home" | "grouped" | "family-child" | "side-chat" | "subagent";
-export interface ConversationNavigationNode {
+/** Identity and ownership labels do not depend on activity, ordering or descendants. */
+export interface ConversationNavigationEntry {
   readonly key: string;
   readonly title: string;
+  /** Grouping beneath Project Chat is not a Session Family edge. */
+  readonly relationship: ConversationRelationship;
+  readonly target: ConversationNavigationTarget;
+}
+export interface ConversationNavigationNode extends ConversationNavigationEntry {
   readonly label:
     | "Project Chat"
     | "Cake Chat"
@@ -33,9 +39,6 @@ export interface ConversationNavigationNode {
     | "Child session"
     | "Side chat"
     | "Subagent";
-  /** Grouping beneath Project Chat is not a Session Family edge. */
-  readonly relationship: ConversationRelationship;
-  readonly target: ConversationNavigationTarget;
   readonly parentKey: string | undefined;
   readonly modifiedAt: string;
   readonly activity: SessionActivity | undefined;
@@ -167,31 +170,30 @@ export function buildConversationNavigationTree(
       order: session.familyChildOrder ?? catalogOrder,
     });
   }
-  // Side chats can themselves own further catalogs. Iterate until every reachable owner is projected.
-  const pending = input.discussions
-    .flatMap((catalog) =>
-      catalog.metadataLoaded
-        ? catalog.metadata
-        : catalog.threads.map((thread) => ({
-            id: thread.id,
-            workingDirectory: thread.workingDirectory,
-            createdAt: thread.createdAt,
-            running: thread.sidecarSessionId ? ownRunning(thread.sidecarSessionId) : false,
-            parentSessionId: thread.parentSessionId,
-            sidecarSessionId: thread.sidecarSessionId,
-            title:
-              thread.anchor.selectedText ||
-              thread.textParts.find((part) => part.role === "user")?.text ||
-              "Side chat",
-            status: thread.status,
-            updatedAt: thread.updatedAt,
-          })),
-    )
-    .filter((thread) => thread.status === "open" && thread.sidecarSessionId);
-  let added = true;
-  while (added) {
-    added = false;
-    for (const thread of pending) {
+  // Map iteration includes appended side chats: read each reachable owner's catalog once.
+  // Unrelated catalogs must not subscribe this scope to their titles, activity or timestamps.
+  const discussions = new Map(input.discussions.map((catalog) => [catalog.sessionId, catalog]));
+  for (const owner of byKey.values()) {
+    const catalog = discussions.get(owner.target.sessionId);
+    if (!catalog) continue;
+    const threads = catalog.metadataLoaded
+      ? catalog.metadata
+      : catalog.threads.map((thread) => ({
+          id: thread.id,
+          workingDirectory: thread.workingDirectory,
+          createdAt: thread.createdAt,
+          running: thread.sidecarSessionId ? ownRunning(thread.sidecarSessionId) : false,
+          parentSessionId: thread.parentSessionId,
+          sidecarSessionId: thread.sidecarSessionId,
+          title:
+            thread.anchor.selectedText ||
+            thread.textParts.find((part) => part.role === "user")?.text ||
+            "Side chat",
+          status: thread.status,
+          updatedAt: thread.updatedAt,
+        }));
+    for (const thread of threads) {
+      if (thread.status !== "open" || !thread.sidecarSessionId) continue;
       const key = conversationNavigationKey(thread.sidecarSessionId!);
       const parentKey = conversationNavigationKey(thread.parentSessionId);
       if (byKey.has(key) || !byKey.has(parentKey)) continue;
@@ -214,10 +216,13 @@ export function buildConversationNavigationTree(
         runningDescendants: 0,
         children: [],
       });
-      added = true;
     }
   }
-  for (const catalog of input.subagents) {
+  const subagents = new Map(input.subagents.map((catalog) => [catalog.sessionId, catalog]));
+  for (const owner of byKey.values()) {
+    if (owner.target.kind === "subagent") continue;
+    const catalog = subagents.get(owner.target.sessionId);
+    if (!catalog) continue;
     const activities = catalog.metadataLoaded ? catalog.metadata : catalog.activities;
     for (const activity of activities) {
       const parentKey = conversationNavigationKey(activity.parentSessionId);

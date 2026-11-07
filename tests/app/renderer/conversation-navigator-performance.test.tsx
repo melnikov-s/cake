@@ -1,0 +1,191 @@
+/** @vitest-environment jsdom */
+import { Profiler } from "react";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { batch, effect } from "r-state-tree";
+import { StoreProvider } from "r-state-tree/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { ConversationBreadcrumb } from "../../../src/renderer/components/conversation-breadcrumb";
+import { conversationNavigationLineage } from "../../../src/renderer/lib/conversation-navigation-tree";
+import { ReviewThread } from "../../../src/renderer/models/ReviewThread";
+import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
+import {
+  navigatorProjectPath,
+  navigatorSessions,
+  populateConversationNavigationFixture,
+} from "./fixtures/conversation-navigation-fixtures";
+
+afterEach(cleanup);
+
+it("renders a title in a large retained catalog without building trees or rerendering for activity", () => {
+  const projects = Array.from({ length: 20 }, (_, i) => projectRecord({ path: `/p${i}` }));
+  const sessions = projects.flatMap((project, i) =>
+    Array.from({ length: 50 }, (_, j) =>
+      sessionSummary({ sessionId: `s${i}-${j}`, projectPath: project.path }),
+    ),
+  );
+  using fixture = createRendererStoreFixture({ projects, sessions });
+  batch(() => {
+    for (const session of sessions)
+      fixture.models.projectConversation(session.sessionId, session.projectPath);
+  });
+  const unrelated = ReviewThread.create({
+    id: "unrelated",
+    parentSessionId: "s0-0",
+    sidecarSessionId: "unrelated-chat",
+    status: "open",
+    workingDirectory: "/p0",
+  });
+  fixture.models.discussionCatalog("s0-0").threads.push(unrelated);
+  const navigator = fixture.root.conversationNavigatorStore;
+  const tree = vi.spyOn(navigator, "tree");
+  let commits = 0;
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <Profiler id="breadcrumb" onRender={() => commits++}>
+        <ConversationBreadcrumb sessionId="s19-49" />
+      </Profiler>
+    </StoreProvider>,
+  );
+  try {
+    expect(screen.getByRole("button", { name: "s19-49" })).toBeTruthy();
+    const before = commits;
+    act(() => {
+      unrelated.updatedAt = "2026-11-06T12:00:00.000Z";
+      fixture.models.projectConversation("s19-49", "/p19").streaming = true;
+      fixture.models.projectConversation("s0-0", "/p0").activeTurnIds.push("turn");
+      fixture.models.sessionCatalog.find("s19-49")!.running = true;
+    });
+    expect(commits).toBe(before);
+    expect(tree).not.toHaveBeenCalled();
+    act(() => {
+      fixture.models.sessionCatalog.find("s19-49")!.title = "Renamed session";
+    });
+    expect(screen.getByRole("button", { name: "Renamed session" })).toBeTruthy();
+    expect(commits).toBeGreaterThan(before);
+    expect(tree).not.toHaveBeenCalled();
+  } finally {
+    view.unmount();
+    tree.mockRestore();
+  }
+});
+
+it("reuses scoped trees and updates their activity without invalidating ownership labels", () => {
+  using fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: navigatorProjectPath }), projectRecord({ path: "/other" })],
+    sessions: navigatorSessions,
+  });
+  populateConversationNavigationFixture(fixture.models);
+  const unrelated = ReviewThread.create({
+    id: "other-discussion",
+    parentSessionId: "elsewhere",
+    sidecarSessionId: "other-chat",
+    status: "open",
+    workingDirectory: "/other",
+  });
+  fixture.models.discussionCatalog("elsewhere").threads.push(unrelated);
+  const navigator = fixture.root.conversationNavigatorStore;
+  const tree = navigator.tree(navigatorProjectPath);
+  expect(navigator.tree(navigatorProjectPath)).toBe(tree);
+  unrelated.updatedAt = "later";
+  fixture.models.subagentCatalog("elsewhere").activities[0]!.status = "complete";
+  expect(navigator.tree(navigatorProjectPath)).toBe(tree);
+
+  let labelUpdates = 0;
+  const stop = effect(() => {
+    navigator.lineageFor("deep-discussion-chat");
+    labelUpdates++;
+  });
+  try {
+    const worker = fixture.models.subagentCatalog("focus-chat").activities[0]!;
+    batch(() => {
+      worker.streaming = false;
+      worker.status = "complete";
+    });
+    const updated = navigator.tree(navigatorProjectPath);
+    expect(updated).not.toBe(tree);
+    expect(updated.running).toBe(tree.running - 1);
+    expect(navigator.tree(navigatorProjectPath)).toBe(updated);
+    expect(labelUpdates).toBe(1);
+    fixture.models.discussionCatalog("focus-chat").threads[0]!.anchor = {
+      ...fixture.models.discussionCatalog("focus-chat").threads[0]!.anchor,
+      selectedText: "Renamed nested discussion",
+    };
+    expect(navigator.lineageFor("deep-discussion-chat").at(-1)?.title).toBe(
+      "Renamed nested discussion",
+    );
+    expect(labelUpdates).toBe(2);
+  } finally {
+    stop();
+  }
+});
+
+// Deterministic ownership parity protects the cheaper lookup across every supported node kind.
+it("preserves home, family, nested discussion and worker ancestry as catalogs change", () => {
+  using fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: navigatorProjectPath }), projectRecord({ path: "/other" })],
+    sessions: navigatorSessions,
+  });
+  populateConversationNavigationFixture(fixture.models);
+  const navigator = fixture.root.conversationNavigatorStore;
+  const assertAncestry = () => {
+    for (const project of [undefined, navigatorProjectPath, "/other"]) {
+      const tree = navigator.tree(project);
+      for (const node of tree.byKey.values())
+        expect(navigator.lineageForTarget(node.target)).toEqual(
+          conversationNavigationLineage(tree, node.key).map(
+            ({ key, title, relationship, target }) => ({ key, title, relationship, target }),
+          ),
+        );
+    }
+  };
+  assertAncestry();
+  const catalog = fixture.models.discussionCatalog("layout");
+  const thread = catalog.threads[0]!;
+  batch(() => {
+    catalog.metadata.push({
+      id: thread.id,
+      parentSessionId: thread.parentSessionId,
+      sidecarSessionId: thread.sidecarSessionId,
+      workingDirectory: thread.workingDirectory,
+      title: "Cold discussion title",
+      running: false,
+      status: "open",
+      createdAt: thread.createdAt,
+      updatedAt: thread.updatedAt,
+    });
+    catalog.metadataLoaded = true;
+    catalog.threads.splice(0, catalog.threads.length);
+    fixture.models
+      .subagentCatalog("layout")
+      .releasedHandleIds.push(fixture.models.subagentCatalog("layout").activities[0]!.handleId);
+  });
+  assertAncestry();
+  const prior = navigator.lineageFor("widths-chat");
+  let labels = 0;
+  const stop = effect(() => {
+    navigator.lineageFor("widths-chat");
+    labels++;
+  });
+  try {
+    catalog.metadata.splice(0, catalog.metadata.length, {
+      ...catalog.metadata[0]!,
+      running: true,
+      updatedAt: "later",
+    });
+    expect(navigator.lineageFor("widths-chat")).toBe(prior);
+    expect(labels).toBe(1);
+    catalog.metadata.splice(0, catalog.metadata.length, {
+      ...catalog.metadata[0]!,
+      title: "Updated cold title",
+    });
+    expect(navigator.lineageFor("widths-chat").at(-1)?.title).toBe("Updated cold title");
+    expect(labels).toBe(2);
+  } finally {
+    stop();
+  }
+  fixture.models.sessionCatalog.find("keyboard")!.familyParentSessionId = "icons";
+  assertAncestry();
+  fixture.models.sessionCatalog.find("icons")!.resolved = true;
+  assertAncestry();
+});

@@ -1,17 +1,20 @@
-import { Store, computed, observable, snapshot } from "r-state-tree";
+import { Store, computed, observable, snapshot, type ReadonlySignal } from "r-state-tree";
 import type { RootProjection } from "../models/RootProjection";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SidebarSessionListStore } from "./SidebarSessionListStore";
+import type { ReviewThread } from "../models/ReviewThread";
+import type { DiscussionThreadMetadata } from "../../contracts/discussion-sessions/discussion-session-data";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import {
   buildConversationNavigationTree,
   conversationNavigationKey,
-  conversationNavigationLineage,
   matchingConversationNavigationKeys,
   conversationNavigationTargetKey,
   type ConversationNavigationNode,
   type ConversationNavigationTarget,
   type ConversationNavigationMetadataTarget,
+  type ConversationNavigationTree,
+  type ConversationNavigationEntry,
 } from "../lib/conversation-navigation-tree";
 
 /** Owns Sessions disclosure/search and selection reveal, not conversation/runtime state. */
@@ -26,6 +29,11 @@ export class ConversationNavigatorStore extends Store<{
   @snapshot private readonly collapsed: Record<string, boolean> = observable({});
   private readonly queries: Record<string, string> = observable({});
   private readonly searchCollapsed: Record<string, boolean> = observable({});
+  private readonly trees = new Map<string, ReadonlySignal<ConversationNavigationTree>>();
+  private readonly lineages = new Map<
+    string,
+    ReadonlySignal<readonly ConversationNavigationEntry[]>
+  >();
   error: string | undefined;
 
   constructor(props: ConversationNavigatorStore["props"]) {
@@ -37,6 +45,16 @@ export class ConversationNavigatorStore extends Store<{
   }
 
   tree(projectPath: string | undefined, resolved = false) {
+    const key = `${resolved ? "resolved" : "active"}:${this.scopeKey(projectPath)}`;
+    let tree = this.trees.get(key);
+    if (!tree) {
+      tree = computed(() => this.buildTree(projectPath, resolved));
+      this.trees.set(key, tree);
+    }
+    return tree.value;
+  }
+
+  private buildTree(projectPath: string | undefined, resolved: boolean) {
     const model = this.props.projection;
     return buildConversationNavigationTree({
       projectPath,
@@ -114,26 +132,141 @@ export class ConversationNavigatorStore extends Store<{
     return target ? conversationNavigationTargetKey(target) : undefined;
   }
 
-  lineageForTarget(target: ConversationNavigationTarget): readonly ConversationNavigationNode[] {
-    return this.lineageForKey(conversationNavigationTargetKey(target));
+  lineageForTarget(target: ConversationNavigationTarget): readonly ConversationNavigationEntry[] {
+    const key = conversationNavigationTargetKey(target);
+    let lineage = this.lineages.get(key);
+    if (!lineage) {
+      let previous: readonly ConversationNavigationEntry[] = [];
+      lineage = computed(() => {
+        const next = this.buildLineage(target);
+        // Metadata arrives as replacement rows even when only activity changed.
+        if (!sameLineage(previous, next)) previous = next;
+        return previous;
+      });
+      this.lineages.set(key, lineage);
+    }
+    return lineage.value;
   }
 
-  lineageFor(sessionId: string): readonly ConversationNavigationNode[] {
+  lineageFor(sessionId: string): readonly ConversationNavigationEntry[] {
     const selected = this.props.selected();
     const lineage = selected ? this.lineageForTarget(selected) : [];
     const key = conversationNavigationKey(sessionId);
-    return lineage.some((node) => node.key === key) ? lineage : this.lineageForKey(key);
+    return lineage.some((node) => node.key === key)
+      ? lineage
+      : this.lineageForTarget({ kind: "project-session", sessionId });
   }
 
-  private lineageForKey(key: string): readonly ConversationNavigationNode[] {
-    for (const projectPath of [
-      undefined,
-      ...this.props.projection.projects.projects.map((project) => project.path),
-    ]) {
-      const tree = this.tree(projectPath);
-      if (tree.byKey.has(key)) return conversationNavigationLineage(tree, key);
+  /** Index ownership only; reading titles must never subscribe to other conversations' activity. */
+  @computed
+  private get discussionsBySidecar() {
+    const records = new Map<string, ReviewThread | DiscussionThreadMetadata>();
+    for (const catalog of this.props.projection.discussionCatalogs)
+      for (const thread of catalog.metadataLoaded ? catalog.metadata : catalog.threads)
+        if (thread.status === "open" && thread.sidecarSessionId)
+          records.set(thread.sidecarSessionId, thread);
+    return records;
+  }
+
+  @computed
+  private get subagentsByOwner() {
+    return new Map(
+      this.props.projection.subagentCatalogs.map((catalog) => [catalog.sessionId, catalog]),
+    );
+  }
+
+  private buildLineage(
+    target: ConversationNavigationTarget,
+  ): readonly ConversationNavigationEntry[] {
+    if (target.kind === "subagent") {
+      const catalog = this.subagentsByOwner.get(target.sessionId);
+      const worker = (catalog?.metadataLoaded ? catalog.metadata : catalog?.activities)?.find(
+        (worker) => worker.handleId === target.handleId,
+      );
+      if (!worker) return [];
+      const parent = this.sessionLineage(target.sessionId);
+      return parent.length
+        ? [
+            ...parent,
+            {
+              key: conversationNavigationTargetKey(target),
+              title: worker.task || "Subagent",
+              relationship: "subagent",
+              target,
+            },
+          ]
+        : [];
     }
-    return [];
+    return this.sessionLineage(target.sessionId);
+  }
+
+  private sessionLineage(sessionId: string): readonly ConversationNavigationEntry[] {
+    const projection = this.props.projection;
+    const session = this.props.catalog.find(sessionId);
+    if (session) {
+      if (session.resolved) return [];
+      const parentId = session.familyParentSessionId;
+      const familyChild = Boolean(parentId && parentId !== sessionId);
+      const parent = familyChild ? this.props.catalog.find(parentId!) : undefined;
+      const ancestors =
+        parent && parent.projectPath === session.projectPath && !parent.resolved
+          ? this.sessionLineage(parent.sessionId)
+          : this.homeLineage(session.projectPath);
+      return [
+        ...ancestors,
+        {
+          key: conversationNavigationKey(sessionId),
+          title: session.title || "Session",
+          relationship: familyChild ? "family-child" : "grouped",
+          target: { kind: "project-session", sessionId },
+        },
+      ];
+    }
+    const home = projection.cakeChatCatalog.sessions.find((chat) => chat.sessionId === sessionId);
+    if (home || sessionId === CAKE_CHAT_SESSION_ID) return this.homeLineage(home?.projectPath);
+    const thread = this.discussionsBySidecar.get(sessionId);
+    if (!thread) return [];
+    const parent = this.sessionLineage(thread.parentSessionId);
+    return parent.length
+      ? [
+          ...parent,
+          {
+            key: conversationNavigationKey(sessionId),
+            title:
+              "title" in thread
+                ? thread.title
+                : thread.anchor.selectedText ||
+                  thread.textParts.find((part) => part.role === "user")?.text ||
+                  "Side chat",
+            relationship: "side-chat",
+            target: {
+              kind: "side-chat",
+              sessionId,
+              parentSessionId: thread.parentSessionId,
+              threadId: thread.id,
+            },
+          },
+        ]
+      : [];
+  }
+
+  private homeLineage(projectPath: string | undefined): readonly ConversationNavigationEntry[] {
+    const homeId =
+      projectPath === undefined
+        ? CAKE_CHAT_SESSION_ID
+        : this.props.projection.cakeChatCatalog.sessions.find(
+            (chat) => chat.projectPath === projectPath,
+          )?.sessionId;
+    return homeId
+      ? [
+          {
+            key: conversationNavigationKey(homeId),
+            title: projectPath === undefined ? "Cake Chat" : "Project Chat",
+            relationship: "home",
+            target: { kind: "cake-chat", sessionId: homeId },
+          },
+        ]
+      : [];
   }
 
   @computed
@@ -204,7 +337,7 @@ export class ConversationNavigatorStore extends Store<{
     return rows;
   }
 
-  async open(node: ConversationNavigationNode) {
+  async open(node: ConversationNavigationEntry) {
     this.error = undefined;
     try {
       this.props.interact(node.target);
@@ -217,4 +350,26 @@ export class ConversationNavigatorStore extends Store<{
   private scopeKey(projectPath: string | undefined) {
     return projectPath ?? "cake-chat";
   }
+}
+
+function sameLineage(
+  left: readonly ConversationNavigationEntry[],
+  right: readonly ConversationNavigationEntry[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((entry, index) => {
+      const next = right[index]!;
+      return (
+        entry.key === next.key &&
+        entry.title === next.title &&
+        entry.relationship === next.relationship &&
+        entry.target.kind === next.target.kind &&
+        (entry.target.kind !== "side-chat" ||
+          (next.target.kind === "side-chat" &&
+            entry.target.parentSessionId === next.target.parentSessionId &&
+            entry.target.threadId === next.target.threadId))
+      );
+    })
+  );
 }
