@@ -69,6 +69,21 @@ describe("subagent contract", () => {
       expect(help.text).toContain('continuation: "resume" (default, reply)');
       expect(help.text).toContain("Choose reply at launch for owed answers/dependent actions");
       expect(help.text).toContain("Reply is asynchronous");
+      if (projectAware) {
+        for (const rule of [
+          "Investigation with an explicitly requested different model uses a private subagent directly with that model",
+          "not sessions.fork or sessions.create as a research workaround",
+          "A private subagent is also authorized when existing context is not helpful",
+          "otherwise use sessions.fork for useful-context investigation",
+          "Implementation/code changes default to sessions.create",
+          "never sessions.fork or family children",
+          "never silently expand research into coding",
+          "continuation: none (notification) by default",
+          "resume only for owed answers/dependencies",
+        ])
+          expect(help.text).toContain(rule);
+        expect(help.text).not.toContain("Prefer sessions.fork for permanent-chat project tasks");
+      }
     },
   );
 
@@ -394,7 +409,7 @@ describe("subagent contract", () => {
       "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
     );
     expect(projectAware[0]?.guidance?.join("\n")).toContain(
-      "Use a project investigator for deeper research, project resources or isolated context",
+      "For authorized private investigation, discover registered roots with projects.list",
     );
     expect(projectAware[0]?.guidance?.join("\n")).toContain("resolve ambiguous identity first");
     // Only Cake Chat (project-aware) subagents follow the Subagent default model setting.

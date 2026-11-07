@@ -58,12 +58,24 @@ describe("Cake Chat bash guards", () => {
         api,
         BACKGROUND_CONTEXT,
       ),
-    ).rejects.toThrow("Delegate longer work to a context-forked Side Session");
+    ).rejects.toThrow("Delegate code changes to a fresh Project Session via sessions.create");
     expect(calls).toEqual([]);
     expect(() => cakeChatBashTimeout(0)).toThrow("Invalid timeout");
   });
 
-  it("allows long verification commands only for task Side Session bindings", async () => {
+  it("advertises task-based delegation rather than blanket context forks", () => {
+    const description = createCakeChatBashTool().description;
+    expect(description).toContain(
+      "code changes to a fresh independent Project Session via sessions.create",
+    );
+    expect(description).toContain("read-only context fork via sessions.fork");
+    expect(description).toContain(
+      "private subagent for an explicitly requested different model or unhelpful context",
+    );
+    expect(description).toContain("does not authorize code changes");
+  });
+
+  it("allows long investigation commands only for managed context-fork bindings", async () => {
     const { api, calls } = fakeApi(true);
     await createCakeChatBashTool().execute(
       { command: "pnpm test", timeout: 600 },

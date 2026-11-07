@@ -21,7 +21,7 @@ import { cakeChatSideChatConversationId } from "../../../../src/contracts/cake-c
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
 
 it.each([undefined, `project-chat:${"a".repeat(64)}`])(
-  "forks real parent reasoning, keeps source unchanged and isolates task execution (%s)",
+  "forks real parent reasoning, keeps source unchanged and scopes investigation read-only (%s)",
   async (parentSessionId) => {
     const { models, requests } = durableModels((_request, index) =>
       durableAnswer(
@@ -125,7 +125,13 @@ it.each([undefined, `project-chat:${"a".repeat(64)}`])(
       });
       try {
         expect((await runtime.snapshot()).workspacePath).toBe("/managed/task");
-        await runtime.prompt("Implement that small fix", "prompt", [], false, "task-turn");
+        await runtime.prompt(
+          "Investigate that small fix read-only",
+          "prompt",
+          [],
+          false,
+          "task-turn",
+        );
         expect(results).toEqual([
           {
             turnId: "task-turn",
@@ -138,6 +144,17 @@ it.each([undefined, `project-chat:${"a".repeat(64)}`])(
         ]);
         expect(JSON.stringify(requests.at(-1)?.messages)).toContain("The large rewrite loses");
         expect(JSON.stringify(requests.at(-1)?.messages)).toContain("because our users need it");
+        const effectiveInput = JSON.stringify(requests.at(-1)?.messages);
+        for (const rule of [
+          "read-only investigation context fork",
+          "not an implementation Project Session",
+          "Never mutate this worktree or the source checkout",
+          "handoff to a fresh independent Project Session via sessions.create",
+          "never silently expand research into coding",
+          "no duplicate completion message",
+        ])
+          expect(effectiveInput).toContain(rule);
+        expect(effectiveInput).not.toContain("Make code changes only there");
         expect(executedIn).toBe("/managed/task");
         expect(await readDurableOriginalPage(root)).toEqual(before);
         expect(await harness.snapshot(AgentDoc, root.id, context)).toEqual(configurationBefore);

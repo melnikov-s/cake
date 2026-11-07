@@ -269,11 +269,13 @@ export const windowControlDefinitions = {
     discovery: {
       topic: "sessions",
       summary:
-        "Delegate a task to a context-forked Side Session from this permanent chat, in a new Cake-managed worktree. Starts asynchronously; leaves the source open and unchanged.",
+        "Investigate read-only in a context-forked Side Session (inline/side context fork) from this permanent chat, in a new Cake-managed worktree. Starts asynchronously; leaves the source open and unchanged.",
       guidance: [
-        "Preferred task delegation from Project Chat and global Cake Chat. Uses Pi Durable's native fork, inheriting conversation context, model and originating tool permissions; never a task-only private subagent or a transcript pasted into a prompt.",
+        "For investigation/research with useful existing context where implementation is not yet clear. Never use sessions.fork for coding delegation: implementation/code changes default to sessions.create, a fresh independent Project Session. If code changes become needed, return findings for handoff to a fresh Project Session; never silently expand research into coding. No family children.",
         "workspacePath must be an authorized registered Project root; a Project Chat can use only its own project. worktreeName is required. entryId optionally selects an exchange; otherwise uses the latest completed reply before this tool call. If no settled reply exists, the operation fails rather than launching a fresh task.",
-        "initialPrompt is the new assignment, not a replacement for inherited history. The current unfinished exchange is outside the settled fork boundary: include any task specifics from it. The Side Session has its own executable identity and coding tools bound to its managed worktree.",
+        "Investigation with an explicitly requested different model uses a private subagent directly with that model, not sessions.fork or sessions.create as a research workaround. A private subagent is also authorized when existing context is not helpful; otherwise use the contextual fork for investigation.",
+        "Uses Pi Durable's native fork, inheriting conversation context, model and originating tool permissions. initialPrompt is the read-only assignment, not a replacement for inherited history. The current unfinished exchange is outside the settled fork boundary: include any task specifics from it. The context fork has its own executable identity and tools bound to its managed worktree; tool availability is not permission to code.",
+        "Launch asynchronously/non-blocking with resultDelivery: notification by default, reply for owed answers/dependencies. Omit model overrides unless requested. Minimize cross-session chatter; completion is automatic.",
         resultDeliveryGuidance,
       ],
     },
@@ -286,6 +288,9 @@ export const windowControlDefinitions = {
       topic: "sessions",
       summary: "Launch independent Project Session",
       guidance: [
+        'Default for implementation/code changes ("do work"): create a fresh independent Project Session with its own scoped task and Cake-managed worktree, never sessions.fork or family children. workspacePath must be an authorized registered Project root; Project Chat targets only its own project. Pass worktreeName and a focused initialPrompt with meaningful context, constraints, relevant findings and acceptance checks; fresh sessions do not inherit conversation history.',
+        "Investigation with useful existing context where implementation is not yet clear uses sessions.fork read-only. If code changes become needed, hand off findings here; do not silently expand research into coding. Investigation with an explicitly requested different model uses a private subagent directly with that model, not sessions.create as a research workaround; unhelpful existing context also permits a private subagent. Otherwise use the contextual fork for investigation.",
+        "Launch asynchronously/non-blocking. Minimize cross-session chatter; completion is automatic.",
         "Omit model unless requested; configured default preset supplies complete settings, falling back to caller only if no default.",
         promptFilesGuidance,
         "Pass exact attachment IDs from input metadata or attachments.list in inputRefs to forward without reading. Use attachments.read only when you want to inspect the content yourself.",
@@ -297,15 +302,21 @@ export const windowControlDefinitions = {
           input: {
             workspacePath: "/path/to/project",
             name: "Authentication follow-up",
-            initialPrompt: "Review the authentication flow and implement the next changes.",
+            initialPrompt:
+              "Implement the scoped authentication changes with focused regression tests.",
+            worktreeName: "authentication-follow-up",
+            resultDelivery: "notification",
           },
           description: "Use the configured default model.",
         },
         {
           input: {
             workspacePath: "/path/to/project",
-            name: "Authentication review",
-            initialPrompt: "Review the authentication flow.",
+            name: "Authentication implementation",
+            initialPrompt:
+              "Implement the scoped authentication changes with focused regression tests.",
+            worktreeName: "authentication-implementation",
+            resultDelivery: "notification",
             model: "Sol",
           },
           description:

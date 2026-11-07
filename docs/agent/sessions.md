@@ -3,17 +3,18 @@
 ## Create
 
 Project Session: session.create {name,initialPrompt,worktreeName?}. Permanent chat: sessions.create with project. Family child: sessions.create-child {title,assignment:{description,body},resultDelivery}.
-Use reply for dependencies/owed answers, notification for background review. Launch asynchronously.
+Use notification by default, reply for dependencies/owed answers. Launch asynchronously/non-blocking.
 Children share directory/index unless worktreeName isolates committed HEAD. Fixed directory; no manual worktree substitute. Independent creation without worktreeName uses the Project root.
-Permanent chats create independent sessions, never family children. Private subagents are bounded workers, not full children; delegate only when warranted/requested.
+Permanent-chat implementation/code changes use sessions.create with a scoped initialPrompt containing meaningful context/constraints and acceptance checks, plus worktreeName for managed isolation. This is a real fresh independent Project Session, not a context fork or family child. Private subagents are bounded workers, not full children; see the investigation exceptions below.
 [Child assignments/retries](family-delegation.md) and [private workers](delegation.md) cover those paths.
 
-## Permanent-chat Side Sessions
+## Permanent-chat context forks
 
-Prefer sessions.fork for project tasks from permanent chats; sessions.create deliberately starts fresh independent context. This is different from singular session.fork below.
-Pass authorized workspacePath (registered project root), worktreeName, name and initialPrompt. Project Chat is restricted to its project. The Side Session has its own executable identity and managed worktree; Pi Durable owns inherited history, model and originating Cake permissions. Inherited user restrictions still apply.
+Use sessions.fork for investigation/research with useful existing context where implementation is not yet clear: a read-only inline/side context fork, not an implementation Project Session. Never use sessions.fork for coding delegation. If code changes become needed, return findings for handoff to a fresh Project Session via sessions.create; do not silently expand research into coding. This is different from singular session.fork below.
+Investigation with an explicitly requested different model uses a private subagent directly with that model, not sessions.fork or sessions.create as a research workaround. A private subagent is also authorized when existing context is not helpful; otherwise use the contextual fork for investigation.
+Pass authorized workspacePath (registered project root), worktreeName, name and initialPrompt. Project Chat is restricted to its project. The context fork has its own executable identity and managed worktree; Pi Durable owns inherited history, model and originating Cake permissions. Tool availability does not authorize code changes; inherited user restrictions still apply.
 The source stays open and unchanged. Omit entryId for the latest completed reply or select an exchange explicitly. The unfinished exchange is outside that settled boundary: include current task specifics in initialPrompt. No completed reply fails explicitly, never falls back to a task-only prompt.
-Choose resultDelivery at launch, asynchronously; use the returned thread for follow-ups. No manual completion message/polling. [Task boundaries](delegation.md) explains fresh sessions versus same-task continuation.
+Choose resultDelivery at launch: notification by default, reply for owed answers/dependencies. Launch asynchronously/non-blocking; use the returned thread for same-task follow-ups with minimal chatter. No manual completion message/polling. [Task boundaries](delegation.md) explains fresh sessions versus same-task continuation.
 
 ## File-backed tasks
 

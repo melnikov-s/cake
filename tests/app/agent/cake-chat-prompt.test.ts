@@ -13,13 +13,14 @@ describe("compact Cake Chat guidance", () => {
       "Pi owns execution/history",
       "Inspect projects read-only",
       "no checkout edits, installs, generated files or Git mutations",
-      "Delegate project tasks with sessions.fork",
-      "Side Sessions inherit Pi Durable context",
+      "Never sessions.fork for coding delegation",
+      "read-only inline/side context fork",
       "exact authorized registered project root",
       "choose resultDelivery at launch",
-      "sessions.create starts fresh independent context",
-      "Private subagents require an explicit request",
-      "never family children",
+      "sessions.create, a fresh independent Project Session",
+      "Never family children",
+      "notification by default",
+      "Keep cross-session chatter minimal",
       "registered project roots",
       "worktrees.merge with the owner's sessionId",
       "never manual Git",
@@ -33,18 +34,54 @@ describe("compact Cake Chat guidance", () => {
       expect(prompt).toContain(rule);
   });
 
+  it.each([
+    {
+      scenario: "pure coding / do work -> create, never fork",
+      rules: [
+        'Implementation/code changes: sessions.create, a fresh independent Project Session; default for "do work"',
+        "Scoped initialPrompt: meaningful context/constraints, acceptance checks; managed worktree",
+        "Never sessions.fork for coding delegation",
+      ],
+    },
+    {
+      scenario: "useful-context investigation -> read-only fork",
+      rules: [
+        "Investigation with useful existing context, implementation not yet clear: sessions.fork, a read-only inline/side context fork",
+        "return findings for handoff to a fresh Project Session",
+        "never silently turn research into coding",
+      ],
+    },
+    {
+      scenario: "explicit different-model investigation -> private subagent, not create or fork",
+      rules: [
+        "Investigation with an explicitly requested different model: private subagent directly with that model, not sessions.fork or sessions.create",
+      ],
+    },
+    {
+      scenario: "unhelpful-context investigation -> private subagent allowed",
+      rules: [
+        "Investigation where existing context is not helpful: private subagent also authorized",
+        "Otherwise use the contextual fork",
+      ],
+    },
+  ])("assembles the model-independent selection rule: $scenario", ({ rules }) => {
+    for (const rule of rules) expect(prompt).toContain(rule);
+    expect(prompt).not.toContain("Delegate project tasks with sessions.fork");
+    expect(prompt).not.toContain("Private subagents require an explicit request");
+  });
+
   it("defaults permanent chats to fresh sessions for distinct tasks, not feature-label reuse", () => {
     for (const rule of [
       "Default to fresh scoped sessions for distinct tasks",
       "even under one broad feature label",
-      "A new Side Session can inherit context without reusing an old task session",
+      "transfer findings, not inherited history",
       "never to conserve session count or preserve a session",
       "Already-authorized work needs no extra permission to create its session",
     ])
       expect(prompt).toContain(rule);
     for (const rule of [
       "Default to a fresh scoped session",
-      "A new Side Session can inherit context without reusing an old task session",
+      "Fresh independent Project Sessions need meaningful task context, not whole transcripts",
       "Sharing a broad feature label such as navigation is not enough reason",
       "panel placement, tree aggregation and a separate Back to project chat control",
       "Choose by task scope first, not context size or cache warmth",

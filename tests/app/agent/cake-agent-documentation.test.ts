@@ -48,6 +48,23 @@ it("publishes the shipped fresh-task delegation default for installed backends",
   expect(published).toContain("Default to a fresh scoped session");
   expect(published).toContain("Reuse only for genuine continuation of the same task");
   expect(published).toContain("authorized worktree/concurrency limits");
+  for (const name of ["cake-chat", "delegation", "sessions"]) {
+    const guidance = await readFile(join(directory, `${name}.md`), "utf8");
+    for (const rule of [
+      "sessions.create",
+      "fresh independent Project Session",
+      "sessions.fork",
+      "read-only",
+      "explicitly requested different model",
+      "private subagent directly with",
+      "not helpful",
+      "otherwise use the contextual fork for investigation",
+      "notification by default",
+    ])
+      expect(guidance.toLowerCase(), `${name}: ${rule}`).toContain(rule.toLowerCase());
+    expect(guidance).not.toContain("Prefer sessions.fork for project");
+    expect(guidance).not.toContain("Private subagents require an explicit user request");
+  }
 });
 
 it("deploys a closed, reachable task-guide graph including section anchors", async () => {

@@ -171,13 +171,21 @@ projections needed by a surface. References do not transfer ownership.
   Scheduled delivery and report outboxes retain their separately defined intents.
 - Sidecar discussions and private subagents have independent Pi transcripts.
   Parent anchors, handles, and projections do not merge transcript ownership.
-  Permanent chats delegate project tasks with `sessions.fork`: native Durable side-chat
-  forks at a completed reply, with their own executable identity and a Cake-managed
-  worktree binding. The source remains open and unchanged; inherited history stays
-  in Durable, not an assignment prompt or another transcript store. These Side Sessions
-  retain originating Cake authority and use the ordinary per-message asynchronous
-  result journal. `sessions.create` deliberately starts fresh context; explicitly
-  requested private subagents remain available. Existing sessions are not migrated.
+  Permanent-chat implementation/code changes default to `sessions.create`: fresh
+  independent Project Sessions with scoped tasks, meaningful context and managed
+  worktrees, never family children. Useful-context investigation with implementation
+  not yet clear uses `sessions.fork`: read-only inline/side context forks, not coding
+  sessions. Needed code changes require findings handed off to a fresh Project Session.
+  Investigation with an explicitly requested different model uses a private subagent
+  directly with that model, not a fork or independent session workaround. Unhelpful
+  existing context also permits a private investigator; otherwise use the context fork.
+  Native Durable context forks branch at a completed reply with their own executable
+  identity and a Cake-managed worktree binding. The source stays open and unchanged;
+  inherited history stays in Durable, not an assignment prompt or another transcript
+  store. They retain originating Cake authority and the per-message asynchronous
+  result journal; tool availability does not authorize code changes. Launch is
+  non-blocking, notification by default, reply for owed answers/dependencies. Existing
+  sessions are not migrated.
   User-created side chats inherit the originating conversation's applicable tools,
   permissions and explicit user restrictions. They are not read-only
   or to-do-only workers. Parent-scoped Cake controls retain originating authority;
@@ -278,7 +286,7 @@ projections needed by a surface. References do not transfer ownership.
   an explicitly selected registered project root. These workers retain normal project
   instructions, skills, extensions and MCP, excluding edit/write tools and adding
   an investigation-only system policy. `allowMutations: true` on a worker's start
-  replaces that policy with scoped mutation mode for bounded operational work
+  replaces that policy with scoped mutation mode for bounded non-code operational work
   (scripts, process cleanup, installs): stay in assignment scope, report every
   change, and avoid shared-branch Git mutations unless instructed. Both policies
   are prompt policy, not an enforced sandbox. General research omits projectPath and uses

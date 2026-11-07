@@ -24,6 +24,12 @@ Exact Luna task settings:
 
 Name the configuration `openai-codex/gpt-5.6-luna /max` with Fast mode. Use `retain: false` for ordinary one-shot work. Set `retain: true` only when intentional follow-up with the same runtime is part of the plan.
 
+## Permanent-chat delegation selection
+
+Model choice does not change task routing. From permanent Cake Chat/Project Chat, implementation/code changes use sessions.create: a fresh independent Project Session with its own scoped task, meaningful context, acceptance checks and Cake-managed worktree, never sessions.fork or family children. Investigation with useful existing context and implementation not yet clear uses sessions.fork as a read-only inline/side context fork. Investigation with an explicitly requested different model uses a private subagent directly with that model, not a fork or independent Project Session as a research workaround. Unhelpful existing context also authorizes a private investigator; otherwise use the contextual fork. If research reveals needed code changes, return findings for handoff to a fresh Project Session; never silently turn research into implementation.
+
+Launch asynchronously/non-blocking: resultDelivery: notification by default (private workers: continuation: none), reply/resume only for owed answers/dependencies. Omit model overrides unless requested; the Luna settings above apply only to a requested Sol/Luna workflow. Use registered project roots and managed worktrees, never direct permanent-chat checkout edits. Keep cross-session chatter minimal. The execution slices below do not override these selection rules.
+
 ## Mandatory decomposition
 
 For any broad, repository-wide, multi-surface, or multi-stage goal, Sol must first decompose the work into an ordered sequence of coherent, independently reviewable slices. Delegate only the next slice, not the umbrella objective.
