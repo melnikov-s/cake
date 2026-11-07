@@ -84,7 +84,7 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center gap-1.5 rounded-full border bg-muted/40 px-2 py-1 font-mono text-xs text-muted-foreground tabular-nums select-none hover:bg-muted/70 hover:text-foreground transition-colors cursor-default",
+        "flex h-7 w-7 shrink-0 items-center justify-center gap-1.5 rounded-full border bg-muted/40 p-0 font-mono text-xs text-muted-foreground tabular-nums select-none hover:bg-muted/70 hover:text-foreground transition-colors cursor-default @min-[28rem]/context-composer:w-auto @min-[28rem]/context-composer:px-2",
         cache?.state === "likely-warm"
           ? "border-success/50"
           : cache?.state === "uncertain"
@@ -131,11 +131,11 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
           strokeDasharray={`${Math.min(100, percent ?? 0)} 100`}
         />
       </svg>
-      <span className="font-semibold text-foreground max-[540px]:hidden">
+      <span className="hidden font-semibold text-foreground @min-[28rem]/context-composer:inline">
         {percent === undefined ? "—" : `${percent}%`}
       </span>
       {context && (
-        <span className="text-muted-foreground max-[640px]:hidden">
+        <span className="hidden whitespace-nowrap text-muted-foreground @min-[40rem]/context-composer:inline">
           ·{" "}
           {`${formatCompactTokenCount(context.tokens)}/${formatCompactTokenCount(context.contextWindow)}`}
         </span>

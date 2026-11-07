@@ -67,7 +67,7 @@ export const ChatComposer = observer(function ChatComposer({
   return (
     <div
       className={cn(
-        "workbench-composer pointer-events-auto mx-auto w-full min-w-0",
+        "workbench-composer @container/context-composer pointer-events-auto mx-auto w-full min-w-0",
         leadingAccessory
           ? "max-w-[51.25rem] @4xl/composer-dock:max-w-[55.25rem] @4xl/composer-dock:pl-16"
           : "max-w-[51.25rem]",

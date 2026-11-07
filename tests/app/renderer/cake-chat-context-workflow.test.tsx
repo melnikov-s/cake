@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Client } from "../../../src/renderer/client/Client";
 import { renderTranscriptContent as render } from "./render-transcript-content";
@@ -154,7 +154,9 @@ it.each(["global", "project-chat"] as const)(
     await screen.findByText("Compaction complete.");
     await waitFor(() => expect(f.inspect).toHaveBeenCalledTimes(2));
     expect(screen.getByText("Manual")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Browse context" }).textContent).toBe("≈8k/300k");
+    expect(screen.getByRole("button", { name: "Browse context" }).textContent).toContain(
+      "≈8k/300k",
+    );
     expect(screen.getByRole("button", { name: "Compact now" }).hasAttribute("disabled")).toBe(
       false,
     );
@@ -205,14 +207,15 @@ it.each(["global", "project-chat"] as const)(
     using f = fixture(status, scope);
     const button = screen.getByRole("button", { name: "Browse context" });
     expect(button.closest("[title]")).toBeNull();
-    expect(button.textContent).toBe("≈45k/300k");
+    expect(button.textContent).toContain("≈45k/300k");
+    expect(within(button).getByText("15%")).toBeDefined();
     expect(button.getAttribute("data-cache-state")).toBe("likely-warm");
     expect(button.getAttribute("aria-description")).toBe(
       "Estimated active context 45,000 of 300,000 tokens. System 5,000; memory 10,000; messages 30,000. Cache: Likely warm\nExpires: ≈5 min\nNext: Continue",
     );
     fireEvent.mouseEnter(button);
     const tooltip = await screen.findByRole("tooltip");
-    expect(tooltip.textContent).toBe("Cache: Likely warm\nExpires: ≈5 min\nNext: Continue");
+    expect(tooltip.textContent).toBe(button.getAttribute("aria-description"));
     expect(screen.getAllByRole("tooltip")).toHaveLength(1);
     fireEvent.mouseLeave(button);
     expect(screen.queryByRole("tooltip")).toBeNull();
@@ -253,7 +256,8 @@ it.each(["global", "project-chat"] as const)(
       messageTokens: 31_000,
       totalTokens: 48_000,
     });
-    expect(button.textContent).toBe("≈48k/300k");
+    expect(button.textContent).toContain("≈48k/300k");
+    expect(within(button).getByText("16%")).toBeDefined();
     for (const [label, tokens] of [
       ["System", "6,000"],
       ["Memory", "11,000"],
@@ -280,9 +284,7 @@ it("changes the next-message forecast at persisted-request expiry without invoki
   );
   fireEvent.mouseEnter(button);
   act(() => vi.advanceTimersByTime(120));
-  expect(screen.getByRole("tooltip").textContent).toBe(
-    "Cache: Likely cold\nExpires: Expired\nNext: Summarize",
-  );
+  expect(screen.getByRole("tooltip").textContent).toBe(button.getAttribute("aria-description"));
   expect(f.compact).not.toHaveBeenCalled();
   f.publish(status);
   expect(button.getAttribute("data-cache-state")).toBe("likely-cold");

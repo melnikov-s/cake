@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { updateStore } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { Chat } from "../../src/renderer/components/chat";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
@@ -10,7 +11,7 @@ import { applyConversationSnapshot } from "../../src/renderer/reducers/Conversat
 import { createRendererStoreFixture } from "../app/renderer/renderer-store-fixture";
 import { projectRecord, sessionSummary } from "../app/renderer/fixtures/catalog-fixtures";
 
-export type ContextTooltipScope = "global" | "project-chat" | "project-session";
+export type ContextTooltipScope = "global" | "project-chat" | "project-session" | "side-chat";
 
 // Real Chat/Models/Stores; only the external Client and snapshot delivery are fake.
 // No model, provider, or live application is involved.
@@ -19,7 +20,7 @@ const fixture = createRendererStoreFixture({
   sessions: [sessionSummary({ sessionId: "tooltip-session", projectPath: "/project" })],
 });
 const scope = new URLSearchParams(location.search).get("scope");
-const isSession = scope === "project-session";
+const isSession = scope === "project-session" || scope === "side-chat";
 const sessionId = isSession
   ? "tooltip-session"
   : scope === "project-chat"
@@ -106,6 +107,10 @@ const snapshot: ConversationSnapshot = {
   },
 };
 applyConversationSnapshot(owner.model, snapshot);
+if (scope === "side-chat") {
+  // The read-only side-chat presentation uses the same runtime context projection.
+  updateStore(owner.conversationSessionStore.chatStore, { estimatedContextUsage: true });
+}
 createRoot(document.getElementById("root")!).render(
   <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
     <Chat store={owner.conversationSessionStore.chatStore} embedded composerFocusEnabled={false} />

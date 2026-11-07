@@ -35,6 +35,7 @@ export function ContextUsageButton({
 }) {
   const { anchor, show, hide } = useTooltip();
   const available = total !== undefined && limit !== undefined;
+  const percent = available && limit > 0 ? Math.round((total / limit) * 100) : undefined;
   const breakdown =
     system !== undefined && memory !== undefined && messages !== undefined
       ? ` System ${system.toLocaleString("en")}; memory ${memory.toLocaleString("en")}; messages ${messages.toLocaleString("en")}.`
@@ -48,7 +49,7 @@ export function ContextUsageButton({
     "data-slot": "context-usage",
     "data-cache-state": cacheState,
     className: cn(
-      "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-sm border border-border/65 bg-transparent px-[0.4375rem] py-0 font-mono text-xs font-normal tabular-nums [&>svg]:size-3.5",
+      "inline-flex h-7 w-7 shrink-0 items-center justify-center gap-1.5 rounded-sm border border-border/65 bg-transparent p-0 font-mono text-xs font-normal tabular-nums [&>svg]:size-3.5 [&>svg]:shrink-0 @min-[28rem]/context-composer:w-auto @min-[28rem]/context-composer:px-[0.4375rem] transition-colors",
       cacheState === "likely-warm" &&
         "shadow-[inset_0_-1px_color-mix(in_srgb,var(--success)_40%,transparent)]",
     ),
@@ -59,16 +60,23 @@ export function ContextUsageButton({
     },
     onBlur: hide,
   };
-  const content = available ? (
+  const content = (
     <>
       <ContextIcon />
-      <span className="font-medium text-foreground">
-        ≈{format(total)}
-        <span className="font-normal text-muted-foreground">/{format(limit)}</span>
-      </span>
+      {available ? (
+        <>
+          <span className="hidden font-medium text-foreground @min-[28rem]/context-composer:inline @min-[40rem]/context-composer:hidden">
+            {percent === undefined ? "—" : `${percent}%`}
+          </span>
+          <span className="hidden font-medium text-foreground @min-[40rem]/context-composer:inline">
+            ≈{format(total)}
+            <span className="font-normal text-muted-foreground">/{format(limit)}</span>
+          </span>
+        </>
+      ) : (
+        <span className="hidden @min-[28rem]/context-composer:inline">Context unavailable</span>
+      )}
     </>
-  ) : (
-    "Context unavailable"
   );
   return (
     <>
@@ -91,7 +99,7 @@ export function ContextUsageButton({
       )}
       {anchor && (
         <TooltipBubble
-          label={detail}
+          label={description}
           anchor={anchor}
           placement="above"
           wrap

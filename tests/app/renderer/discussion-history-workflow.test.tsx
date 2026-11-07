@@ -196,13 +196,15 @@ it.each(scopes)(
     const indicator = () => fixture.panel.getByRole("img", { name: "Context usage" });
     expect(indicator().textContent).toBe("Context unavailable");
     fixture.publish([recent], { usage: usage(28_200, 300_000) });
-    expect(indicator().textContent).toBe("≈28.2k/300k");
+    expect(indicator().textContent).toContain("≈28.2k/300k");
+    expect(within(indicator()).getByText("9%")).toBeDefined();
     expect(indicator().getAttribute("aria-description")).toContain("28,200 of 300,000");
     expect(indicator().querySelector("svg")).toBeTruthy();
     // The parent retains its existing inspectable main-chat control.
     expect(screen.getByRole("button", { name: "Browse context" })).toBeTruthy();
     fixture.publish([recent], { usage: usage(31_000, 64_000) });
-    expect(indicator().textContent).toBe("≈31k/64k");
+    expect(indicator().textContent).toContain("≈31k/64k");
+    expect(within(indicator()).getByText("48%")).toBeDefined();
     fixture.publish([recent], { usage: usage(null, 64_000) });
     expect(indicator().textContent).toBe("Context unavailable");
     fixture.publish([recent], { usage: usage(32_000, 64_000) });
@@ -212,7 +214,8 @@ it.each(scopes)(
     expect(menu.getByText("Working…")).toBeTruthy();
     await user.click(menu.getByRole("button", { name: "Side chat", exact: true }));
     const reopened = within(screen.getByRole("complementary", { name: "Side chat" }));
-    expect(reopened.getByRole("img", { name: "Context usage" }).textContent).toBe("≈32k/64k");
+    expect(reopened.getByRole("img", { name: "Context usage" }).textContent).toContain("≈32k/64k");
+    expect(reopened.getByText("50%")).toBeDefined();
   },
 );
 
