@@ -898,6 +898,7 @@ export class RootStore extends Store<{
   get workspaceNavigatorStore(): WorkspaceNavigatorStore {
     return createStore(WorkspaceNavigatorStore, {
       projectPath: () => this.workspaceProjectPath,
+      activeSessionId: () => this.appShellStore.activeConversation?.sessionId,
       companionSession: () => {
         const session = this.workspaceSession;
         return session && session.presentationMode !== "normal" ? session : undefined;

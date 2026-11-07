@@ -7,6 +7,7 @@ export type WorkspaceNavigatorMode = "todos" | "sessions";
 /** Owns the one right-hand navigation accessory across chat and real tool surfaces. */
 export class WorkspaceNavigatorStore extends Store<{
   projectPath(): string | undefined;
+  activeSessionId(): string | undefined;
   cakeChat(): CakeChatCollectionStore;
   replyContext(name: string, text: string): void;
   companionSession():
@@ -21,6 +22,18 @@ export class WorkspaceNavigatorStore extends Store<{
   @snapshot companionTab: "chat" | WorkspaceNavigatorMode = "chat";
   @snapshot mode: WorkspaceNavigatorMode = "todos";
   @snapshot width = 320;
+
+  constructor(props: WorkspaceNavigatorStore["props"]) {
+    super(props);
+    // Follow navigation identity only: refreshes and manual pane/mode changes
+    // within the current session must not take Chat back from the user.
+    this.reaction(
+      () => this.props.activeSessionId(),
+      (sessionId) => {
+        if (sessionId && this.props.companionSession()) this.showChat();
+      },
+    );
+  }
 
   get inCompanion() {
     return Boolean(this.props.companionSession());

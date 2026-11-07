@@ -61,6 +61,8 @@ function renderWorkspace(kind: Kind, mode: Mode, startInChat = false, fullApp = 
       sessionSummary({ sessionId: projectId, projectPath: "/project", title: "Project task" }),
     ],
     client: {
+      projectSessions: { open: async () => undefined },
+      cakeChats: { open: async () => undefined },
       browser: {
         updateBounds: async ({ sessionId }) => ({
           sessionId,
@@ -258,6 +260,112 @@ it.each<Mode>(["browser", "vscode"])(
 // Real workflow Stores, Models, controls, Chat and side-chat composition.
 // These assertions cover rendered wiring, not pixel layout, native input or focus.
 describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
+  it.each(
+    (["browser", "vscode"] as const).flatMap((mode) =>
+      (["todos", "sessions"] as const).flatMap((tab) =>
+        [false, true].map((hidden) => ({ mode, tab, hidden })),
+      ),
+    ),
+  )(
+    "navigating back to $mode selects visible Chat from $tab (hidden: $hidden)",
+    async ({ mode, tab, hidden }) => {
+      using f = renderWorkspace(kind, mode, false, true);
+      const navigator = f.root.workspaceNavigatorStore;
+      act(() => {
+        navigator.show(tab);
+        if (hidden) navigator.togglePane();
+        f.root.sessionRegistry.load("other", "/project");
+        f.root.navigationStore.showLoadedProjectSession("other");
+      });
+      expect(f.root.appShellStore.activeConversation?.sessionId).toBe("other");
+      expect(navigator.companionTab).toBe(tab);
+      expect(f.session.workspaceChatSidebarVisible).toBe(!hidden);
+
+      await act(async () => {
+        expect(await f.root.navigationStore.openSession(f.session.sessionId)).not.toBe(false);
+      });
+      expect(f.root.appShellStore.activeConversation?.sessionId).toBe(f.session.sessionId);
+      expect(f.session.presentationMode).toBe(mode);
+      expect(navigator.companionTab).toBe("chat");
+      expect(navigator.paneVisible).toBe(true);
+      const companion = screen.getByRole("complementary", {
+        name: "Current conversation companion",
+      });
+      expect(within(companion).getByText("Workspace answer")).toBeDefined();
+      expect(
+        within(companion).getByRole("combobox", {
+          name: kind === "project" ? "Message" : "Message Project Chat",
+        }),
+      ).toBeDefined();
+      expect(
+        screen.getByRole("region", {
+          name: mode === "browser" ? "Browser workspace" : "VS Code workspace",
+        }),
+      ).toBeDefined();
+      if (mode === "vscode")
+        await waitFor(() =>
+          expect(screen.getByTitle("VS Code workspace").getAttribute("src")).toBe(
+            editorLease("a").endpoint,
+          ),
+        );
+
+      // Same-session navigation and incoming projection updates must not undo manual controls.
+      act(() => {
+        navigator.show(tab);
+        navigator.togglePane();
+        applyPartUpdate(
+          f.session.model.parts,
+          {
+            id: "streaming-answer",
+            kind: "text",
+            role: "assistant",
+            text: "Incoming answer",
+            status: "streaming",
+          },
+          f.session.sessionId,
+        );
+        applySnapshot(f.models.projects, {
+          projects: [projectRecord({ path: "/project", name: "Refreshed project" })],
+        });
+      });
+      await act(async () => {
+        await f.root.navigationStore.openSession(f.session.sessionId);
+      });
+      expect(navigator.companionTab).toBe(tab);
+      expect(navigator.paneVisible).toBe(false);
+      act(() => navigator.togglePane());
+      expect(navigator.companionTab).toBe(tab);
+      expect(navigator.paneVisible).toBe(true);
+      expect(f.session.presentationMode).toBe(mode);
+    },
+  );
+
+  it("Main navigation preserves accessory tab and visibility", async () => {
+    using f = renderWorkspace(kind, "browser", false, true);
+    const navigator = f.root.workspaceNavigatorStore;
+    act(() => {
+      f.session.showPresentation("normal");
+      navigator.show("sessions");
+      navigator.togglePane();
+      f.session.toggleWorkspaceChatSidebar();
+      f.root.sessionRegistry.load("other", "/project");
+      f.root.navigationStore.showLoadedProjectSession("other");
+    });
+    await act(async () => {
+      await f.root.navigationStore.openSession(f.session.sessionId);
+    });
+    expect(f.session.presentationMode).toBe("normal");
+    expect(navigator.companionTab).toBe("sessions");
+    expect(navigator.mode).toBe("sessions");
+    expect(navigator.paneVisible).toBe(false);
+    expect(f.session.workspaceChatSidebarVisible).toBe(false);
+    expect(
+      screen.getByRole("combobox", {
+        name: kind === "project" ? "Message" : "Message Project Chat",
+      }),
+    ).toBeDefined();
+  });
+
   it.each(["tool", "toolbar"])(
     "shows the invoking conversation on %s VS Code entry and keeps the requested file",
     async (entry) => {
