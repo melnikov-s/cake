@@ -553,7 +553,7 @@ describe("Backend-owned Cake operation composition", () => {
     expect(registry.definitions().map((operation) => operation.command)).toEqual([
       "worktrees.merge",
     ]);
-    expect(registry.help()).toContain("worktrees — Land (merge) Cake-managed worktrees");
+    expect(registry.help()).toContain("worktrees — Managed landing");
     const help = registry.operationHelp("worktrees.merge");
     expect(help).toContain("identical to the Merge action in the Cake UI");
     expect(help).toContain("prompts the owning session to resolve them inside its own worktree");
@@ -629,13 +629,10 @@ describe("Backend-owned Cake operation composition", () => {
       }),
     );
     expect(registry.definitions().map((operation) => operation.command)).toEqual(commands);
-    expect(registry.help()).toContain(
-      "projects — List, register (add), rename, configure, and remove",
-    );
+    expect(registry.help()).toContain("projects — Registered projects");
     const help = registry.operationHelp("projects.add");
     expect(help).toContain("delegate it to an allowMutations worker first");
     expect(help).toContain("alreadyRegistered");
-    expect(help).toContain("/Users/me/world/trees/agents");
 
     const added = await registry.invoke(
       { command: "projects.add", input: { path: project.path, name: " Agents " } },

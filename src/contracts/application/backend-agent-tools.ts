@@ -53,7 +53,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "session-labels",
-      summary: "List global and project-specific labels that can be assigned to Project Sessions.",
+      summary: "List session labels",
     },
   },
   {
@@ -61,7 +61,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "session-labels",
-      summary: "Add a global or project-specific session label.",
+      summary: "Add session label",
       guidance: ["Omit projectPath to create a global label available in every Project."],
       examples: [
         {
@@ -86,7 +86,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "session-labels",
-      summary: "Rename or recolor an existing session label.",
+      summary: "Rename/recolor label",
     },
   },
   {
@@ -94,7 +94,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "session-labels",
-      summary: "Remove a session label and clear it from every session that uses it.",
+      summary: "Delete label and assignments",
     },
   },
   {
@@ -102,7 +102,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "session-labels",
-      summary: "Move a global or project-specific label to a new zero-based position.",
+      summary: "Reorder label (zero-based)",
     },
   },
   {
@@ -110,8 +110,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "List sessions with context/cache hints, or invoking-chat launches grouped by workflow.",
+      summary: "List sessions/workflow/cache hints",
       guidance: sessionListGuidance,
       result: sessionListResult,
       examples: [
@@ -132,7 +131,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "Inspect one explicitly targeted project session.",
+      summary: "Inspect target metadata",
       guidance: [
         "Metadata only: no transcript, first input, attachment content, or report summary. Use explicit scoped history/messages/attachments operations for content.",
       ],
@@ -145,8 +144,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Discover or invoke any Cake capability registered on the target Project Session, using that session's own authority and scope.",
+      summary: "Call target's scoped Cake capability",
       guidance: [
         "This exposes the parent's full live Cake catalog, including artifacts, browser, models, plugins, worktrees, session configuration, forks and family operations when available.",
         "Use command: help for topics, a topic for operation summaries, or <operation>.help directly for an exact input contract. Invoke with operation arguments in input; <operation>.output-schema opts into the full result schema.",
@@ -167,8 +165,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Read or search authoritative session history. Combine text, entry type, role, tool name, time and branch filters; results are paginated and clipped.",
+      summary: "Search/read session history",
       guidance: [
         "For the session assistant, this session means the attached parent Project Session, not the assistant side chat.",
         "History defaults to the active branch; compactions and tree default to all branches. Use leafId for a particular branch, or branch: all for the full tree.",
@@ -181,8 +178,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Inspect normal and tool compactions, including inactive branches and source-branch references. active distinguishes current-branch compaction from historical compaction.",
+      summary: "Inspect compaction metadata",
       guidance: [
         "For the session assistant, this session means the attached parent Project Session, not the assistant side chat.",
         "History defaults to the active branch; compactions and tree default to all branches. Use leafId for a particular branch, or branch: all for the full tree.",
@@ -195,8 +191,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Inspect session-tree entries and branch relationships, including the active branch. Results are paginated.",
+      summary: "Inspect history branches",
       guidance: [
         "For the session assistant, this session means the attached parent Project Session, not the assistant side chat.",
         "History defaults to the active branch; compactions and tree default to all branches. Use leafId for a particular branch, or branch: all for the full tree.",
@@ -209,7 +204,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "Inspect the target session's context use, limit and remaining capacity.",
+      summary: "Inspect target context usage",
       guidance: [
         "For the session assistant, this session means the attached parent Project Session, not the assistant side chat.",
         "History defaults to the active branch; compactions and tree default to all branches. Use leafId for a particular branch, or branch: all for the full tree.",
@@ -222,7 +217,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "Inspect provider-reported tokens and cost for the target session.",
+      summary: "Read target usage/cost",
       guidance: [
         "For the session assistant, this session means the attached parent Project Session, not the assistant side chat.",
         "History defaults to the active branch; compactions and tree default to all branches. Use leafId for a particular branch, or branch: all for the full tree.",
@@ -235,7 +230,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "List the target session's slash commands and whether each can be queued.",
+      summary: "List queueable commands",
       guidance: [
         "For the session assistant, this session means the attached parent Project Session, not the assistant side chat.",
         "History defaults to the active branch; compactions and tree default to all branches. Use leafId for a particular branch, or branch: all for the full tree.",
@@ -248,7 +243,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "Page pending user-facing report obligations; admission is not communication.",
+      summary: "List pending report obligations",
       guidance: [compactDiscoveryGuidance],
       result:
         "Compact pending report ID/admissions/session/handle/status/task rows; report bodies require sessions.reports.read.",
@@ -259,7 +254,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "Read a bounded pending report slice with provenance; reading does not handle it.",
+      summary: "Read pending report slice",
     },
   },
   {
@@ -267,10 +262,9 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Attest explicit report handling using exact assistant text already emitted to the user.",
+      summary: "Attest visible report handling",
       guidance: [
-        "Emit a concise grouped notice first, then acknowledge its IDs with exact communicatedText. Never acknowledge a future final answer or an unrelated reply. Dismiss only on the user's explicit decision. Visible text evidence is checked, semantic communication is an agent attestation, not automatically inferred.",
+        "Emit visible notice first; acknowledge IDs with exact communicatedText, never planned/unrelated prose. Dismiss only by user decision. Evidence is visible text, not automatic semantic judgment.",
       ],
     },
   },
@@ -279,10 +273,9 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Inspect your quiet completion inbox and outstanding review/merge/resolve/next-step decisions, without waking work.",
+      summary: "List pending completion decisions",
       guidance: [
-        "Returns at most fifty pending/deferred items scoped to this requesting conversation. The application displays notification-mode result links with the next user message or the batched turn that delivers them when the user is idle; delivered notices do not repeat. Reply-mode results start/queue a turn without a second quiet notification. Completion is never permission to mutate or merge.",
+        "Up to 50 pending/deferred items for this caller. Notifications batch passively; reply queues continuation without duplicate notice. Completion is not mutation/merge approval.",
       ],
     },
   },
@@ -291,8 +284,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Record a user's completion decision as deferred, handled or dismissed; this never performs review, merge or resolution.",
+      summary: "Record user decision; no lifecycle action",
       guidance: [
         "Use after the user makes or defers a decision. Do not mark handled merely because a session finished or its notice was shown. This changes only inbox metadata and never rearms a notification.",
       ],
@@ -303,10 +295,9 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Send, queue, or steer a correlated message to one explicitly targeted session. The result is an admission/retention receipt; optional maxMessages bounds the exchange.",
+      summary: "Message target; omission reaches Cake Chat",
       guidance: [
-        "For a registered Project Chat, call projects.list with query and pass its canonical projectChatId as sessionId. Do not read repository files, hash paths, or inspect recipient history to find its address. The receipt confirms admission/deferred retention, not recipient execution or completion.",
+        "projects.list returns projectChatId; send directly. No checkout/hash/history lookup. Receipt proves admission/retention, not execution.",
         "sessionId is required from Cake Chat; Cake Chat cannot message itself. Project Sessions reach global Cake Chat by omitting sessionId.",
         sessionParentGuidance,
         "A resolved self-target (including Cake Chat parent) cannot create a messaging thread; it does not auto-forward.",
@@ -321,8 +312,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Reply to the originating session in the current open coordination thread without supplying a session ID.",
+      summary: "Reply in current exchange",
       guidance: [promptFilesGuidance],
     },
   },
@@ -331,8 +321,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Inspect the current coordination thread, correlated messages, delivery states, participants, and optional message limit.",
+      summary: "Inspect current exchange",
     },
   },
   {
@@ -340,8 +329,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Close the current coordination thread. Further replies are rejected; late arrivals remain attributed to the closed exchange.",
+      summary: "Close current exchange",
     },
   },
   {
@@ -362,8 +350,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "List bounded scheduled-message IDs, destinations, send times, repeat intervals and short labels; filter session/query before offset/limit pagination.",
+      summary: "List scheduled messages",
     },
   },
   {
@@ -371,8 +358,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Read one scheduled message by exact ID in bounded text slices (maxChars up to 20000).",
+      summary: "Read scheduled message",
     },
   },
   {
@@ -380,7 +366,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "Cancel one scheduled or recurring message by its ID.",
+      summary: "Cancel scheduled message",
     },
   },
   {
@@ -388,7 +374,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "Replace the ordered labels on one Project Session. The first label is primary.",
+      summary: "Replace labels; first is primary",
       guidance: [
         "Call session-labels.list to discover label IDs available to the target session.",
         "Pass an empty labelIds array to clear all labels.",

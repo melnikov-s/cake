@@ -53,7 +53,7 @@ export function createAgentControlOperations(
     "Attachments are not inherited. Pass exact IDs in inputRefs on tasks/follow-ups to grant access. Forwarding shares metadata only; attachments.read reads text/native pixels. Never substitute storage paths or describe unseen images.",
     "Pass exact Cake links in messageRefs to share source identities without reading/paraphrasing. Workers can read only selected refs. Forwarding neither reads message bodies nor grants attachment contents.",
     projectAware
-      ? "Omit model unless the user explicitly asks for a specific model. When omitted, a subagent uses the user's Subagent default model setting: by default your current model, thinking level, and Fast mode, or else the configured default preset, the utility model, one chosen preset, or one chosen model. An explicit model always overrides that setting."
+      ? "Omit model unless requested; Cake Chat workers use the user's Subagent default model setting (current model by default). Explicit model overrides it."
       : "Omit model unless the user explicitly asks for a specific model. When omitted, a subagent uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
   ];
   const resolveTask = (input: SubagentTaskInput): DomainSubagentTaskInput => {
@@ -120,8 +120,7 @@ export function createAgentControlOperations(
   return [
     operation({
       command: "subagents.run",
-      summary:
-        "Explicitly block the parent tool call while one isolated subagent runs and return its final result.",
+      summary: "Run worker; block caller",
       schema: subagentTaskSchema,
       example: {
         task: "Inspect the authentication flow",
@@ -131,8 +130,7 @@ export function createAgentControlOperations(
     }),
     operation({
       command: "subagents.start",
-      summary:
-        "Start an asynchronous investigator; select projectPath for registered code or omit it for general research. Cake queues its final report.",
+      summary: "Start asynchronous investigator",
       schema: subagentTaskSchema,
       example: projectAware
         ? {
@@ -145,8 +143,7 @@ export function createAgentControlOperations(
     }),
     operation({
       command: "subagents.parallel",
-      summary:
-        "Explicitly block the parent while up to eight bounded subagent tasks run concurrently.",
+      summary: "Run up to eight workers; block",
       schema: parallelSubagentSchema,
       example: {
         tasks: [
@@ -160,7 +157,7 @@ export function createAgentControlOperations(
     }),
     operation({
       command: "subagents.prompt",
-      summary: "Start an asynchronous prompt on an idle subagent and return after acceptance.",
+      summary: "Prompt idle worker asynchronously",
       schema: promptSchema,
       example: { handleId: "00000000-0000-4000-8000-000000000000", text: "Continue" },
       run: (input, parent, signal) =>
@@ -168,7 +165,7 @@ export function createAgentControlOperations(
     }),
     operation({
       command: "subagents.follow-up",
-      summary: "Queue a follow-up using Pi's normal queue policy.",
+      summary: "Queue worker follow-up",
       schema: promptSchema,
       example: { handleId: "00000000-0000-4000-8000-000000000000", text: "Also inspect callers" },
       run: (input, parent, signal) =>
@@ -176,8 +173,7 @@ export function createAgentControlOperations(
     }),
     operation({
       command: "subagents.wait",
-      summary:
-        "Explicitly block the parent until a background subagent finishes; normally let Cake queue its report instead.",
+      summary: "Wait for worker; block",
       schema: handleSchema,
       example: { handleId: "00000000-0000-4000-8000-000000000000" },
       run: (input, parent, signal, onUpdate) =>
@@ -185,14 +181,14 @@ export function createAgentControlOperations(
     }),
     operation({
       command: "subagents.abort",
-      summary: "Cancel active work in a subagent.",
+      summary: "Stop worker",
       schema: handleSchema,
       example: { handleId: "00000000-0000-4000-8000-000000000000" },
       run: (input, parent) => control.abort(input.handleId, parent),
     }),
     operation({
       command: "subagents.close",
-      summary: "Release a subagent handle and its hidden runtime.",
+      summary: "Release worker",
       schema: handleSchema,
       example: { handleId: "00000000-0000-4000-8000-000000000000" },
       run: (input, parent) => control.close(input.handleId, parent),

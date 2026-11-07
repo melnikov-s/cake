@@ -71,10 +71,7 @@ export function createCakeVscodeSelectionOperations(
     ...(update.warning ? { warning: update.warning } : null),
   });
   const guidance = [
-    "vscode.open only navigates. Use vscode.selections.add to append ranges or vscode.selections.set to replace the calling session’s collection.",
-    "Selections remain until removed/cleared or the session Store/window closes. They are ephemeral, not persisted across Cake restarts.",
-    "List IDs to remove individual selections; use set for the next tour step.",
-    "List/remove/clear work while VS Code is hidden, provided the owning session Store is available. Locations use one-based coordinates.",
+    "add appends; set replaces; open only navigates. One-based coordinates. Selections are ephemeral; list/remove/clear work hidden while the session Store exists.",
   ];
   return [
     ...(["add", "set"] as const).map((operation): CakeOperationDefinition => ({
@@ -88,11 +85,11 @@ export function createCakeVscodeSelectionOperations(
       outputSchema: vscodeSelectionsWriteOutput,
       guidance: [
         ...guidance,
-        "Each selection requires path and one-based line; optional column, endLine and endColumn define the range. Omitted end coordinates extend through the final line. Up to 50 entries per call.",
-        "Use view changes, optional side before/after (default after) and base revision (default HEAD) for native diffs. If no diff is available the file range is used and reveals reports the fallback.",
-        "All entries are validated and resolved before changing the collection. Invalid or unresolvable input leaves existing selections intact. Navigation during resolution is not rolled back.",
-        "Exact resolved duplicates reuse IDs. Empty add is a no-op; empty set clears. Highlights refresh once after the mutation; a projection failure returns a warning without undoing the selection state.",
-        "Adding/replacing requires vscode.enter and the calling session selected. External read-only files cannot provide editor selections.",
+        "path/line required; optional column/endLine/endColumn. Missing end covers final line. Max 50.",
+        "view: changes; side: before/after (default after), base: HEAD by default. reveals reports file fallback.",
+        "Validate/resolve all before changing the collection. Invalid input preserves selections; navigation isn't rolled back.",
+        "Duplicates reuse IDs; empty add no-ops, empty set clears. Projection failure warns without undoing state.",
+        "Call vscode.enter and select caller first. External files cannot be selected.",
       ],
       examples: [
         {
@@ -132,7 +129,7 @@ export function createCakeVscodeSelectionOperations(
     {
       command: "vscode.selections.list",
       topic: "vscode",
-      summary: "List the calling session's code-tour selections.",
+      summary: "List tour selections",
       inputSchema: AgentListInput,
       guidance: [
         ...guidance,
@@ -150,7 +147,7 @@ export function createCakeVscodeSelectionOperations(
     {
       command: "vscode.selections.remove",
       topic: "vscode",
-      summary: "Remove one code-tour selection by ID.",
+      summary: "Remove tour selection",
       inputSchema: vscodeSelectionsRemoveInputSchema,
       guidance,
       examples: [{ input: { id: "selection-id" } }],
@@ -165,7 +162,7 @@ export function createCakeVscodeSelectionOperations(
     {
       command: "vscode.selections.clear",
       topic: "vscode",
-      summary: "Clear all code-tour selections in the calling session.",
+      summary: "Clear tour selections",
       inputSchema: vscodeSelectionsClearInputSchema,
       guidance,
       examples: [{}],

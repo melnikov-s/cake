@@ -56,7 +56,7 @@ describe("result delivery contract", () => {
 
   it("keeps notification as the session default while guiding user-waiting answers to reply", () => {
     const guidance = windowControlDefinitions["sessions.create"].discovery.guidance?.join("\n");
-    expect(guidance).toContain("Default to resultDelivery: notification.");
+    expect(guidance).toContain("Default: notification.");
     expect(guidance).toContain(replyOrNotificationRule);
     expect(guidance).not.toContain("dependent continuation");
   });

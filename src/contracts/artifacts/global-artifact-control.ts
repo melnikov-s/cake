@@ -61,27 +61,25 @@ export interface ArtifactExecutionStatus extends Schema.Schema.Type<
 export const globalArtifactOperationContracts = [
   {
     command: "artifacts.commands",
-    summary:
-      "Discover canonical Cake bridge commands or inspect one command's validated input schema.",
+    summary: "Discover bridge commands/schemas",
     inputSchema: ArtifactCommandDiscoveryInput,
     outputSchema: Schema.Json,
   },
   {
     command: "artifacts.command",
-    summary:
-      "Invoke a canonical Cake command for an artifact, preserving the actual caller when present. Host filesystem/network/shell.run commands also work without a session. shell.run requires explicit absolute backend cwd; discover its schema with artifacts.commands.",
+    summary: "Call artifact bridge command",
     inputSchema: ArtifactCakeCallInput,
     outputSchema: Schema.Json,
   },
   {
     command: "artifacts.globals",
-    summary: "List globally retained artifacts, including documents and executable widgets.",
+    summary: "List global artifacts",
     inputSchema: AgentListInput,
     outputSchema: GlobalArtifactListOutput,
   },
   {
     command: "artifacts.inspect",
-    summary: "Inspect one artifact's current metadata and execution state.",
+    summary: "Inspect artifact",
     inputSchema: ArtifactIdentityInput,
     outputSchema: Schema.Struct({
       artifact: ArtifactLineageSummary,
@@ -90,40 +88,37 @@ export const globalArtifactOperationContracts = [
   },
   {
     command: "artifacts.viewing",
-    summary:
-      "Inspect visible/active artifacts and selected project/session navigation context per connected window; identify the caller's bound window when present.",
+    summary: "Identify viewed artifacts/window",
     inputSchema: Schema.Struct({}),
     outputSchema: ArtifactViewing,
   },
   {
     command: "artifacts.set-global",
-    summary: "Retain an artifact globally, or remove its independent retention root.",
+    summary: "Set global retention",
     inputSchema: ArtifactSetGlobalInput,
     outputSchema: ArtifactLineageSummary,
   },
   {
     command: "artifacts.delete",
-    summary: "Stop and permanently delete an artifact, its schedules and Cake-owned data.",
+    summary: "Delete artifact, schedules and data",
     inputSchema: ArtifactIdentityInput,
     outputSchema: Schema.Struct({ deleted: Schema.Boolean }),
   },
   {
     command: "artifacts.tools",
-    summary:
-      "Discover an artifact's semantic tools and typed input/output JSON schemas without starting it.",
+    summary: "Discover semantic tools/schemas",
     inputSchema: ArtifactIdentityInput,
     outputSchema: ArtifactToolListOutput,
   },
   {
     command: "artifacts.call",
-    summary: "Invoke one semantic artifact tool, even while its view is closed.",
+    summary: "Call semantic tool",
     inputSchema: ArtifactToolCallInput,
     outputSchema: Schema.Json,
   },
   {
     command: "artifacts.runtime.publish",
-    summary:
-      "Publish trusted backend logic and typed semantic tools for an existing widget, retaining its view and private data.",
+    summary: "Publish trusted backend logic",
     inputSchema: ArtifactRuntimePublishInput,
     outputSchema: Schema.Struct({ lineageId: ArtifactLineageId, revision: ArtifactRevisionNumber }),
   },
@@ -135,20 +130,19 @@ export const globalArtifactOperationContracts = [
   })),
   {
     command: "artifacts.schedules.configure",
-    summary:
-      "Configure a durable deterministic schedule invoking an artifact handler without an LLM or Pi session.",
+    summary: "Schedule artifact handler",
     inputSchema: ArtifactScheduleConfigureInput,
     outputSchema: ArtifactSchedule,
   },
   {
     command: "artifacts.schedules.list",
-    summary: "List one artifact's durable schedules and latest execution receipts.",
+    summary: "List schedules/receipts",
     inputSchema: ArtifactIdentityInput,
     outputSchema: Schema.Array(ArtifactSchedule),
   },
   {
     command: "artifacts.schedules.remove",
-    summary: "Remove one named artifact schedule.",
+    summary: "Remove schedule",
     inputSchema: ArtifactScheduleIdentity,
     outputSchema: Schema.Struct({ removed: Schema.Boolean }),
   },

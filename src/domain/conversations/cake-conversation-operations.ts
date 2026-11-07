@@ -52,8 +52,7 @@ export function createConversationOperations(
     {
       command: "session.info",
       topic: "sessions",
-      summary:
-        "Return identity, transcript location, initial request, workspace, resolution, and model information for the calling session.",
+      summary: "Inspect caller metadata",
       guidance: [
         "Singular session.* operations always target the calling session and never accept a sessionId.",
         "sessionFile is the full path to Pi's authoritative JSONL transcript.",
@@ -67,7 +66,7 @@ export function createConversationOperations(
     {
       command: "session.rename",
       topic: "sessions",
-      summary: "Rename the calling session.",
+      summary: "Rename caller",
       guidance: [
         "Singular session.* operations always target the calling session and never accept a sessionId.",
       ],
@@ -85,8 +84,7 @@ export function createConversationOperations(
       command: "sessions.list",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary:
-        "List sessions with context/cache hints, or invoking-chat launches grouped by workflow.",
+      summary: "List sessions/workflow/cache hints",
       guidance: [
         ...sessionListGuidance,
         "Use sessions.list-family when only the calling Project Session's family is needed.",
@@ -107,8 +105,7 @@ export function createConversationOperations(
       command: "sessions.cake",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary:
-        "Discover or invoke any Cake capability registered on a target Project Session, in that session's own scope.",
+      summary: "Call target's scoped Cake capability",
       inputSchema: Schema.Struct({
         sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
         command: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
@@ -160,7 +157,7 @@ export function createConversationOperations(
       command: "sessions.queue-command",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Queue a slash command between responses without interrupting the active response.",
+      summary: "Queue command between responses",
       inputSchema: Schema.Struct({
         sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
         ...QueuedSessionCommand.fields,
@@ -178,7 +175,7 @@ export function createConversationOperations(
       command: "sessions.info",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Inspect one explicitly targeted Project Session.",
+      summary: "Inspect target metadata",
       guidance: [
         "Metadata only: no transcript, first input, attachment content, or report summary. Use explicit scoped history/messages/attachments operations for content.",
       ],
@@ -194,7 +191,7 @@ export function createConversationOperations(
       command: "sessions.pending",
       requires: "pendingMessages",
       topic: "sessions",
-      summary: "List the live pending inputs for an explicitly targeted Project Session.",
+      summary: "List queued input metadata",
       guidance: [
         "Items have stable process-lifetime itemIds and projected partIds for cancel-queued, steer-queued, and send-now. position is one-based within the named lane.",
         "Returns short labels, not full message text. Filter with query, page with offset/limit, and read one item with sessions.pending-info.",
@@ -216,7 +213,7 @@ export function createConversationOperations(
       command: "sessions.pending-info",
       requires: "pendingMessages",
       topic: "sessions",
-      summary: "Read one exact live queued input, in bounded text slices.",
+      summary: "Read queued input",
       inputSchema: AgentPendingReadInput,
       examples: [],
       result:
@@ -233,7 +230,7 @@ export function createConversationOperations(
       command: "sessions.reorder",
       requires: "reorderPendingMessage",
       topic: "sessions",
-      summary: "Move one live pending input to an exact one-based position in its queue lane.",
+      summary: "Reorder within queue lane (one-based)",
       guidance: [
         "Call sessions.pending first and pass its itemId. Positions are one-based and interpreted within the item's existing lane after removing it.",
         "Reordering never changes delivery semantics. Use the separate steering capability when an item should redirect active work.",
@@ -271,9 +268,9 @@ export function createConversationOperations(
       command: "sessions.update-queued",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Edit one queued user message in place without sending or reordering it.",
+      summary: "Edit queued user text; do not send",
       guidance: [
-        "Call sessions.pending and sessions.pending-info first. Pass the current partId and replacement user text. Attachments, reference metadata, delivery lane and queue identity stay unchanged. Agent-generated messages and commands are not editable.",
+        "Read pending inputs first. Edit partId's user text only; preserve attachments/lane/identity. Commands/agent messages cannot be edited.",
       ],
       inputSchema: Schema.Struct({
         sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
@@ -313,7 +310,7 @@ export function createConversationOperations(
       command: "sessions.clear-queue",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Clear all steering and follow-up inputs queued in a targeted Project Session.",
+      summary: "Clear queued inputs",
       inputSchema: Schema.Struct({
         sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
       }),
@@ -325,7 +322,7 @@ export function createConversationOperations(
       command: "sessions.abort",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Stop the active turn in an explicitly targeted Project Session.",
+      summary: "Stop active turn",
       guidance: [
         "Use this to stop a running child or other Project Session without resolving or deleting it; the session remains available for later messages.",
       ],
@@ -340,7 +337,7 @@ export function createConversationOperations(
       command: "sessions.rename",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Rename an explicitly targeted Project Session in any Cake project.",
+      summary: "Rename target",
       guidance: [
         "Use session.rename for the calling session. Use sessions.rename with a sessionId from sessions.list or a child creation result to rename any other Project Session, whether idle or running.",
       ],
@@ -358,7 +355,7 @@ export function createConversationOperations(
       command: "sessions.set-labels",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Replace the ordered labels on one Project Session. The first label is primary.",
+      summary: "Replace labels; first is primary",
       guidance: [
         "Call session-labels.list to discover label IDs available to the target session.",
         "Pass an empty labelIds array to clear all labels.",
@@ -388,7 +385,7 @@ export function createConversationOperations(
     {
       command: "session.usage",
       topic: "sessions",
-      summary: "Return normalized provider-reported token usage and cost for the calling session.",
+      summary: "Read provider usage/cost",
       guidance: ["Usage is advisory and is not a hard spending-limit mechanism."],
       inputSchema: empty,
       examples: [{}],
@@ -398,8 +395,7 @@ export function createConversationOperations(
     {
       command: "session.set-model",
       topic: "sessions",
-      summary:
-        "Set the calling session's model from a configured preset or explicit configuration.",
+      summary: "Set conversation model",
       guidance: [
         "Singular session.* operations always target the calling session and never accept a sessionId.",
       ],
@@ -419,7 +415,7 @@ export function createConversationOperations(
     {
       command: "context.status",
       topic: "context",
-      summary: "Inspect estimated current context use through Pi's public usage facilities.",
+      summary: "Inspect context usage",
       inputSchema: empty,
       examples: [{}],
       result:
@@ -429,7 +425,7 @@ export function createConversationOperations(
     {
       command: "context.compact",
       topic: "context",
-      summary: "Invoke Pi's normal compaction mechanism for the calling session.",
+      summary: "Compact caller",
       inputSchema: Schema.Struct({
         instructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(262_144))),
       }),

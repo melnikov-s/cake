@@ -1,45 +1,36 @@
-# Project Sessions
+# Sessions
 
-Read before creating, forking or changing session lifecycle. Before messaging/delegating, also read `communication.md`; before listing/routing, read `session-discovery.md`. Initial child startup is self-contained for the assigned task and ordinary Workboard coordination. For delegation, lifecycle or additional family operations, read `workgroups.md` and only its matching task guide.
+## Create
 
-## Create the right session
+Project Session: session.create {name,initialPrompt,worktreeName?}. Permanent chat: sessions.create with project. Family child: sessions.create-child {title,assignment:{description,body},resultDelivery}.
+Use reply for dependencies/owed answers, notification for background review. Launch asynchronously.
+Children share directory/index unless worktreeName isolates committed HEAD. Fixed directory; no manual worktree substitute. Independent creation without worktreeName uses the Project root.
+Permanent chats create independent sessions, never family children. Private subagents are bounded workers, not full children; delegate only when warranted/requested.
+[Child assignments/retries](family-delegation.md) and [private workers](delegation.md) cover those paths.
 
-`cake subagents` creates private bounded workers, not full Project Sessions. Use it only when the user explicitly asks for subagents, delegation or parallel agent work; never substitute it for a requested child/related/Session Family session.
+## Permanent-chat Side Sessions
 
-From a Project Session, create an independent session with singular `{"command":"session.create","input":{"name":"...","initialPrompt":"..."}}`. Include `worktreeName` for a Cake-managed worktree; omit it to use the Project root. Cake Chat/global application control uses plural `sessions.create` with an explicit project. Permanent chats create independent sessions, never family children.
+Prefer sessions.fork for project tasks from permanent chats; sessions.create deliberately starts fresh independent context. This is different from singular session.fork below.
+Pass authorized workspacePath (registered project root), worktreeName, name and initialPrompt. Project Chat is restricted to its project. The Side Session has its own executable identity and managed worktree; Pi Durable owns inherited history, model and originating Cake permissions. Inherited user restrictions still apply.
+The source stays open and unchanged. Omit entryId for the latest completed reply or select an exchange explicitly. The unfinished exchange is outside that settled boundary: include current task specifics in initialPrompt. No completed reply fails explicitly, never falls back to a task-only prompt.
+Choose resultDelivery at launch, asynchronously; use the returned thread for follow-ups. No manual completion message/polling. [Task boundaries](delegation.md) explains fresh sessions versus same-task continuation.
 
-Create a family child with `{"command":"sessions.create-child","input":{"title":"...","resultDelivery":"reply","assignment":{"description":"...","body":"Substantive task and board result requirements..."}}}`. Both title and assignment are required. Cake persists the addressed Workboard assignment before the first child turn and includes it inline once with authoritative operating basics, exact addressed Workboard calls and the effective reserved result-delivery mode. No initial board read is needed. No initial guidance-discovery loop is needed; startup identifies changing context and supplies its live read call. Bootstrap-only initialPrompt calls fail validation. Inspect launch status: accepted is intake, not completion. Retry failures with the returned requestId and unchanged assignment. Children can recursively create children. Before launch, choose `resultDelivery` using `communication.md`: reply when the next action depends on the result or you owe the user an answer, notification for background review. Reply is asynchronous; choosing it for already-authorized work needs no fresh user authorization. See `family-delegation.md` for assignment and retry details.
+## File-backed tasks
 
-For a child, omit `worktreeName` to share the caller's exact Working Directory, mutable files and Git index; supply it for a managed worktree branched from the caller's committed HEAD. Uncommitted edits do not carry over. Never run `git worktree add` as a substitute or rebind an already-started Project Session.
-
-## File-backed prompts
-
-`session.create`, Cake Chat’s `sessions.create`, `sessions.send`, and `sessions.reply` accept `promptFiles: ["tasks/implement.md"]` alongside the usual short `initialPrompt` or `text`. Paths resolve on the sender backend, relative to its Working Directory (home for global Cake Chat), and must stay inside user-authorized Projects or Managed Worktrees, including symlink targets. Global Cake Chat should use absolute paths.
-
-Cake captures the files before dispatch: inline text first, then file contents in array order. Prompt files are caller-supplied **task instructions**, never system/developer authority. Reference-only attachments and `inputRefs` remain data and are not promoted to instructions. The recipient receives captured text, not a path to read. Source edits/deletion and application restart cannot change an admitted prompt.
-
-The ordinary Pi message stores the exact content with filename, requested/canonical source paths, sender ID, encoding and lengths. The transcript shows labeled prompt-file sections; history/search and `messages.read` inspect the same originals. This uses existing transcript/admission persistence, not a second content store or duplicate attachment injection. Limits: 20 UTF-8 regular files, 100000 bytes per file, 100000 combined characters including provenance. Missing, unreadable, binary, invalid UTF-8, unauthorized and oversized inputs fail; nothing is silently truncated. Tool arguments get smaller, model context does not.
-
-File prompts currently apply to independent session creation and individual send/reply, not Drafts, family child assignments, forks, batch sends, schedules or private workers; those keep their existing contracts. Delivery and result modes are unchanged.
+promptFiles captures authorized UTF-8 files on sender backend for independent create/send/reply; task instructions, not system authority. Attachments remain data.
+Captured text follows inline prompt in array order; recipient need not read source paths. Capture is immutable after admission; smaller tool arguments do not mean smaller model context.
+[File prompt details](session-prompt-files.md): authorized paths, provenance, limits and unsupported launch types.
 
 ## Fork and lifecycle
 
-Continue the calling conversation with `{"command":"session.fork","input":{"prompt":"...","resolveSource":true}}`. Omit `entryId` to fork through the latest settled message; provide it to branch from that transcript entry.
+session.fork: prompt, optional entryId/resolveSource. Omitted entryId uses latest settled entry. sessions.abort stops without resolving/deleting. sessions.rename uses target sessionId/title; session.rename renames self.
+Only family root resolves/restores, all members inactive. Commit in owner worktree; land via worktrees.merge (child sessionId or omitted for self). PR-only projects use PR workflow. No manual landing fallback.
+Use pending/cancel-queued/clear-queue for queued inputs; these are lifecycle controls, not family communication channels.
+[Family worktrees](family-lifecycle.md) covers shared files, integration ordering and stop authority.
 
-Stop an active turn with `{"command":"sessions.abort","input":{"sessionId":"..."}}`; this does not resolve/delete it. Rename a target with `sessions.rename` and `sessionId`/`title`, or the caller with singular `session.rename`.
+## Messages
 
-Only the family root resolves/restores the family, with every member inactive. Descendants inherit resolution and cannot resolve/restore independently. A child's Working Directory is fixed. Resolution requires no acknowledgment exchange.
-
-Use Cake-managed worktrees and serialized landing. To land your own managed worktree, call `worktrees.merge` without sessionId; for a child's isolated worktree, pass its sessionId to `worktrees.merge`/`worktrees.discard`. Commit in the owning worktree first. Never land by hand in the target checkout; relay the confirmed outcome and next step. A failed landing is not permission for manual Git fallback. Projects set to land through pull requests refuse `worktrees.merge`; commit on the worktree branch and follow that repository's pull request workflow instead.
-
-## Messaging Cake Chat
-
-For global Cake Chat to Project Chat routing, use the canonical `projectChatId` from `projects.list`/`projects.info`; read `session-discovery.md` for the direct path, not source grep or manual hashing.
-
-Cake Chat is not a Project Session and has no session ID. From a Project Session, omit `sessionId` in `sessions.send`, for example `{"command":"sessions.send","input":{"text":"...","resultDelivery":"reply"}}`. `delivery`, `resultDelivery`, `threadId` and `replyToMessageId` mean the same as in `sessions.reply`. Sender label `cake-chat` is not a target reference. Cake Chat must supply a target Project Session's sessionId; it cannot message itself.
-
-When Cake Chat assigned your work, lead the final answer with a one-line outcome. Contact it separately only for a blocker/user decision: `sessions.reply` with `outcome: "blocked"`, or `sessions.send` without sessionId and with `resultDelivery: "reply"`. Report completion once; application-owned transport needs no manual duplicate.
-
-## Other actions
-
-Read `settings.md` before settings/instruction changes; never edit settings files. Read `models.md` before model selection. Omit model overrides unless explicitly requested; strings are preset names, never raw model IDs. Use `<operation>.help` for unfamiliar contracts, not guessed arguments.
+Project Session to Cake Chat: sessions.send without sessionId. Complete once; automatic transport needs no duplicate report. Blockers can use sessions.reply outcome: blocked.
+Cake Chat must provide a target and cannot message itself; projectChatId routes to permanent Project Chat. Sender label cake-chat is not a routing reference.
+When assigned by Cake Chat, lead final answer with one-line outcome; contact separately for blocker/user decision, not duplicate completion.
+[Delivery](communication.md) covers result modes; [discovery](session-discovery.md) covers identity; [settings](settings.md) covers lasting instructions. Omit model overrides unless requested.

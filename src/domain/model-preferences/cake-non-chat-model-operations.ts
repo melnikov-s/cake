@@ -36,8 +36,7 @@ export function createCakeNonChatModelOperations(
     {
       command: "models.select-non-chat",
       topic: "models",
-      summary:
-        "Resolve a requested image/classifier model or the backend's advisory preference for native codemode.",
+      summary: "Select image/classifier model",
       inputSchema: selectionInput,
       outputSchema: selectionOutput,
       examples: [
@@ -49,7 +48,7 @@ export function createCakeNonChatModelOperations(
       result:
         "Structured {type, source, model}; model is {provider,id}, or null when no preference lets the agent choose. Unavailable references fail explicitly.",
       guidance: [
-        "In codemode, use const {result: selected} = await tools.cake({command: 'models.select-non-chat', input: {type: 'image'}}), then pass selected.model to models.generateImages(model, {input}). Use type 'classifier' and models.classify for typed questions.",
+        "Codemode: use result.model from models.select-non-chat with generateImages or classify. Inspect errors before substitution.",
         "Pass requested {provider,modelId} when the user explicitly asks for a model; it overrides the preference. A preference is not a restriction.",
         "When model is null, choose from native models.getAvailableOfType(type). If selection fails, report unavailable credentials/model and ask the user before substituting another billed model.",
       ],

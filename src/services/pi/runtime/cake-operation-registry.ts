@@ -47,96 +47,122 @@ const cakeOperationImageSchema = Schema.Struct({
 interface CakeTopicDefinition {
   name: string;
   summary: string;
-  guidance?: readonly string[];
+  guide?: string;
 }
 
 const cakeTopics = [
   {
     name: "app",
-    summary:
-      "Inspect the focused conversation, navigate home, control the To-dos/Sessions Workspace and read the user's highlighted text.",
+    summary: "Window and navigation",
+    guide: "application.md",
   },
   {
     name: "automations",
-    summary:
-      "Manage saved automations, schedule/event rules, runs, queues, history and shared memory.",
+    summary: "Saved background tasks",
   },
   {
     name: "memory",
-    summary: "Read, expand and deliberately write this automation's shared OptMem.",
+    summary: "Shared automation notes",
   },
   {
     name: "projects",
-    summary: "List, register (add), rename, configure, and remove Projects in Cake.",
+    summary: "Registered projects",
+    guide: "application.md",
   },
   {
     name: "sessions",
-    summary:
-      "Create, fork, inspect, message, steer, stop, schedule (one-off or recurring messages, reminders and check-ins), and manage sessions.",
-    guidance: [
-      "Target sessions by canonical ID or bare trailing hex (at least 8 characters). General results retain canonical IDs; scoped rosters may emit unique suffixes. Unknown or ambiguous references fail before routing. Titles are labels, not routing identities.",
-    ],
+    summary: "Sessions, messages and lifecycle",
+    guide: "sessions.md",
   },
   {
     name: "attachments",
-    summary:
-      "Discover, forward without reading, or explicitly inspect exact attachment references.",
+    summary: "Shared inputs",
+    guide: "session-history.md",
   },
-  { name: "messages", summary: "Discover, read and navigate exact Pi message references." },
+  {
+    name: "messages",
+    summary: "Exact transcript messages",
+    guide: "session-history.md",
+  },
   {
     name: "todos",
-    summary:
-      "Track ongoing work (not one-shot lookups) in this chat's to-do list (Project Chat or global Cake Chat), snooze/unsnooze its visibility, join lifecycle metadata, and commit revision-checked edits.",
+    summary: "Ongoing work",
+    guide: "chat-todos.md",
   },
-  { name: "context", summary: "Inspect context use or compact the current session." },
+  {
+    name: "context",
+    summary: "Context and compaction",
+    guide: "session-history.md",
+  },
   {
     name: "models",
-    summary:
-      "Discover configured model presets and pick image/classifier models; switch this session's model with session.set-model.",
+    summary: "Models and presets",
+    guide: "models.md",
   },
-  { name: "session-labels", summary: "Discover and manage session labels." },
+  {
+    name: "session-labels",
+    summary: "Session labels",
+  },
   {
     name: "settings",
-    summary:
-      "Inspect and configure Cake/Pi Settings, including model presets, provider logins, MCP servers, appearance, hotkeys, voice and dictation.",
-    guidance: ["Start with settings.list (categories), then settings.list {category}."],
+    summary: "Settings and instructions",
+    guide: "settings.md",
   },
-  { name: "themes", summary: "List/read, create/import, and apply saved Cake color themes." },
-  { name: "interview", summary: "Gather requirements through structured user interviews." },
+  {
+    name: "themes",
+    summary: "Color themes",
+    guide: "settings-themes.md",
+  },
+  {
+    name: "interview",
+    summary: "Structured questions",
+    guide: "interactions.md",
+  },
   {
     name: "artifacts",
-    summary: "List, search, resolve, create, revise, restore, link, and unlink artifacts.",
+    summary: "Documents and executable widgets",
+    guide: "artifacts.md",
   },
   {
     name: "boards",
-    summary:
-      "Coordinate through targeted Workboard entries, current decisions and selective reads.",
+    summary: "Family Workboard",
+    guide: "family-coordination.md",
   },
-  { name: "widgets", summary: "Create interactive or highly visual presentations." },
+  {
+    name: "widgets",
+    summary: "Interactive output",
+    guide: "interactions.md",
+  },
   {
     name: "plugins",
-    summary: "Create and manage durable UI controls attached to the current session.",
+    summary: "Session controls",
+    guide: "widget-authoring.md",
   },
   {
     name: "vscode",
-    summary:
-      "Give code tours and walkthroughs, navigate and review source, or debug in embedded VS Code.",
+    summary: "Code tours and debugging",
   },
   {
     name: "browser",
-    summary: "Open the embedded browser and control it through unrestricted raw CDP.",
+    summary: "Browser and CDP",
   },
-  { name: "subagents", summary: "Delegate explicitly requested work." },
+  {
+    name: "subagents",
+    summary: "Private workers",
+    guide: "delegation.md",
+  },
   {
     name: "workflows",
-    summary:
-      "Offer an interactive execution choice, or run explicitly requested Project-owned script orchestration.",
+    summary: "Script orchestration",
   },
-  { name: "notifications", summary: "Notify the user." },
+  {
+    name: "notifications",
+    summary: "System notifications",
+  },
   {
     name: "worktrees",
-    summary:
-      "Land (merge) Cake-managed worktrees through Cake's native landing flow, complete an active landing, or discard a worktree.",
+    summary: "Managed landing",
+    guide: "family-lifecycle.md",
   },
 ] as const satisfies readonly CakeTopicDefinition[];
 
@@ -158,15 +184,8 @@ function topicIndex(availableTopics: ReadonlySet<string>) {
     .join("\n");
 }
 
-interface CakeOperationEnvelopeExample {
-  command: string;
-  input?: JsonObject;
-}
-
-function exampleEnvelope(command: string, example: CakeOperationExample) {
-  const envelope: CakeOperationEnvelopeExample = { command };
-  if (example.input) envelope.input = example.input;
-  return envelope;
+function formatExample(command: string, example: CakeOperationExample) {
+  return `Example:\n${JSON.stringify({ command, input: example.input })}`;
 }
 
 function levenshtein(left: string, right: string) {
@@ -235,13 +254,9 @@ export class CakeOperationRegistry {
       `Input schema:\n${JSON.stringify(inputJson(operation))}`,
       ...aliasHelp(operation),
       `Result: ${operation.result}`,
+      ...operation.examples.slice(0, 1).map((example) => formatExample(operation.command, example)),
       ...(operation.outputSchema ? [`Result schema: ${operation.command}.output-schema`] : []),
       ...(operation.limitations ?? []).map((line) => `Limitation: ${line}`),
-      ...operation.examples
-        .slice(0, 1)
-        .map(
-          (example) => `Example:\n${JSON.stringify(exampleEnvelope(operation.command, example))}`,
-        ),
     ].join("\n");
   }
 
@@ -253,9 +268,11 @@ export class CakeOperationRegistry {
     );
     return [
       `${topic} — ${topicDefinition?.summary ?? "Cake operations."}`,
-      ...(topicDefinition?.guidance ?? []).map((line) => `- ${line}`),
       ...operations.map((operation) => `${operation.command} — ${operation.summary}`),
-      "Request <operation>.help for its exact contract before invoking an unfamiliar operation.",
+      ...(topicDefinition?.guide
+        ? [`Guide: ${topicDefinition.guide} (Cake task-guide directory; relevant sections only).`]
+        : []),
+      "<operation>.help: contract and example; .output-schema: full result schema.",
     ].join("\n");
   }
 

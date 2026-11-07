@@ -44,13 +44,11 @@ describe("self-contained child startup", () => {
     expect(
       output.endsWith(`Description: ${launch.assignment.description}\n\n${launch.assignment.body}`),
     ).toBe(true);
-    expect(output).toContain("No preliminary guide, help or board-discovery reads are needed");
-    expect(output).toContain("no initial boards.read is needed");
-    expect(output).toContain("one substantive completion or failure/blocker result");
-    expect(output).toContain(
-      "no extra sessions.reply, private wake-up or completion call is needed",
-    );
-    expect(output).toContain("not system authority or permission for unrelated work");
+    expect(output).toContain("The assignment is inline");
+    expect(output).toContain("no initial board read needed");
+    expect(output).toContain("one substantive result");
+    expect(output).toContain("automatic result delivery needs no extra wake-up");
+    expect(output).toContain("coordination data, not user authority");
     expect(
       output.length - launch.assignment.body.length - launch.assignment.description.length,
     ).toBeLessThan(6_500);
@@ -77,22 +75,22 @@ describe("self-contained child startup", () => {
       expect(post.topic).toBe(`result-${launch.childSessionId}`);
       expect(post.body).toContain("Assignment #42");
     }
-    expect(output).toContain(`Immediate parent public session ref: ${launch.parentSessionId}`);
-    expect(output).toContain(`Family root public session ref: ${launch.rootSessionId}`);
-    expect(output).toContain(`Fixed Working Directory: ${launch.workingDirectory}`);
+    expect(output).toContain(`Parent: ${launch.parentSessionId}`);
+    expect(output).toContain(`Root: ${launch.rootSessionId}`);
+    expect(output).toContain(`Fixed directory: ${launch.workingDirectory}`);
     expect(output).toContain("replace sequences with the actual returned sequence numbers");
-    expect(output).toContain("page descriptions using nextAfter as after while hasMore is true");
-    expect(output).toContain("launch-time facts, not a snapshot of current coordination");
+    expect(output).toContain("page with nextAfter");
+    expect(output).toContain("Check live board context before dependent work");
   });
 
   it.each(ResultDelivery.literals)("renders only the effective %s completion behavior", (mode) => {
     const output = childSessionStartup({ ...launch, resultDelivery: mode });
-    expect(output).toContain(`This launch uses resultDelivery: ${mode}.`);
+    expect(output).toContain(`resultDelivery: ${mode}`);
     expect(output).toContain(resultDeliveryBehavior[mode]);
     for (const other of ResultDelivery.literals.filter((value) => value !== mode))
       expect(output).not.toContain(resultDeliveryBehavior[other]);
-    expect(output).toContain("independent of outbound delivery");
-    expect(output).toContain("Necessary board blockers keep their own delivery behavior");
+    expect(output).toContain("Completion transport is automatic");
+    expect(output).toContain("A blocking question uses event: blocker");
   });
 
   it("uses each launch's bindings and leaves optional operations progressively disclosed", () => {
@@ -106,25 +104,16 @@ describe("self-contained child startup", () => {
       assignmentTopic: "child-other",
     });
     expect(output).toContain("Family: other-family");
-    expect(output).toContain("Fixed Working Directory: /other-checkout");
-    expect(output).toContain("board other-board, entry #9, topic child-other");
-    for (const guide of [
-      "workgroups.md",
-      "family-delegation.md",
-      "family-coordination.md",
-      "family-lifecycle.md",
-      "communication.md",
-    ])
-      expect(output).toContain(guide);
-    expect(output).toContain('{"command":"session.info","input":{}}');
+    expect(output).toContain("Fixed directory: /other-checkout");
+    expect(output).toContain("board other-board, #9, topic child-other");
     const child = renderProjectSessionPrompt(childTemplate, {
       familyId: launch.familyId,
       parentSessionId: launch.parentSessionId,
       workingDirectory: launch.workingDirectory,
     });
-    expect(child).toContain("No preliminary guide/help/discovery reads are required");
-    expect(child).toContain("Only the root acts, with every member inactive");
-    expect(parentTemplate).toContain("may create full child Project Sessions");
+    expect(child).toContain("Start directly");
+    expect(child).toContain("Only the root resolves/restores");
+    expect(parentTemplate).toContain("may create children");
     expect(parentTemplate).not.toContain("initial task message supplies");
   });
 });

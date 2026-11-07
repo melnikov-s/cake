@@ -19,7 +19,7 @@ export function createProjectChatInstructionOperations(
     {
       command: "settings.project-chat.get",
       topic: "settings",
-      summary: "Read one registered project's permanent Project Chat instructions.",
+      summary: "Read project chat instructions",
       guidance,
       inputSchema: ProjectChatInstructionsGet,
       outputSchema: ProjectChatInstructions,
@@ -36,7 +36,7 @@ export function createProjectChatInstructionOperations(
     {
       command: "settings.project-chat.update",
       topic: "settings",
-      summary: "Save only one registered project's permanent Project Chat instructions.",
+      summary: "Save project chat instructions",
       guidance: [
         ...guidance,
         "First read settings.project-chat.get; pass its exact text as expectedInstructions and complete merged text as instructions. Preserve unrelated user guidance. A stale read fails; read and merge again.",

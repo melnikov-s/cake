@@ -23,7 +23,7 @@ export const SessionMessageDeliveryOptions = Schema.Struct({
 }).check(sessionMessageDeliveryCheck);
 
 export const sessionMessageDeliveryGuidance =
-  'Minimize cross-session messages. Authorized passive FYIs use delivery: "fyi": batched with the next user message or one turn within 5 minutes, sooner before estimated prompt-cache expiry. Opening the recipient does not drain the batch. Once admitted, FYIs appear as readable Markdown messages attributed to their sender, not user-authored messages or internal batch instructions. Busy recipients wait until current work settles; explicitly stopped recipients wait for the next user message. They never steer/run beside active work and owe no execution/result. ok:true/status:deferred confirms retention only; accepted confirms input admission, not transcript visibility or execution. Verify the recipient transcript separately; never claim delivery from ok:true alone. For necessary immediate corrections omit delivery: steer active work or start an idle session. Use "prompt" for immediate assignments/questions; "queue" only for deliberately ordered future work. Return resultDelivery is separate and defaults to notification. Never send acknowledgments, receipt replies or resolution confirmations.';
+  "delivery: fyi is passive context, batched at user input/within 5 minutes; opening does not drain it. Busy waits for idle; stopped waits for user input. Receipts prove retention/admission, not visibility/execution. prompt assigns now; queue orders future work; omission steers active work or starts idle work. resultDelivery is separate. No acknowledgments.";
 
 export function immediateDelivery(
   streaming: boolean | undefined,

@@ -21,8 +21,7 @@ export function createCakeModelOperations(
     {
       command: "models.reference",
       topic: "models",
-      summary:
-        "Create an inline model reference for message text, without changing a session or launching an agent.",
+      summary: "Create model reference; no launch",
       inputSchema: referenceInput,
       examples: [{ input: { model: "Sol" } }],
       result:
@@ -46,7 +45,7 @@ export function createCakeModelOperations(
     {
       command: "models.list",
       topic: "models",
-      summary: "List configured preset names and the current default, in bounded pages.",
+      summary: "List model presets",
       guidance: [
         "Filter names with query; use models.info for one preset's execution settings.",
         compactDiscoveryGuidance,
@@ -71,7 +70,7 @@ export function createCakeModelOperations(
     {
       command: "models.info",
       topic: "models",
-      summary: "Inspect one configured model preset by its exact name.",
+      summary: "Inspect model preset",
       inputSchema: infoInput,
       examples: [{ input: { name: "Sol" } }],
       result:

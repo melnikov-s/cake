@@ -60,7 +60,7 @@ describe("passive reference notifications", () => {
       `[Full agent response](${ref})`,
     );
     expect(addReferenceNotifications("Next question", [report])).toContain(
-      "never this internal reminder's entry",
+      "not this reminder/private Pi IDs",
     );
     const source = { ...report.source! };
     delete source.messageId;

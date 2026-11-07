@@ -85,7 +85,7 @@ export const themeOperationDefinitions = {
         "Create/add/import a named custom theme from validated palette or VS Code color-theme data, without applying it.",
       guidance: [
         ...commonGuidance,
-        "Supply name and theme:{type,colors,tokenColors?,semanticTokenColors?,semanticHighlighting?}. Palette keys are VS Code color roles (editor.background, editor.foreground, button.background, etc.); values must be hex colors. Missing roles use Cake defaults. Type may be light/dark or inferred from editor.background.",
+        "Supply name and theme palette/syntax. Keys use VS Code roles; colors are hex. Missing roles use defaults; type is light/dark or inferred.",
         "Alternatively supply name, entry, and files:{relativePath:JSON/JSONC text}. Includes resolve only within those supplied files. No filesystem reads, downloads, or extension code execution. A package manifest is not a color theme.",
         "Add only saves. For 'create and apply', use the returned theme.choice with themes.apply application:now, then verify its returned effective state.",
       ],
@@ -123,7 +123,7 @@ export const themeOperationDefinitions = {
         "Select a saved theme for its Light/Dark slot, explicitly applying now or only when that mode is active.",
       guidance: [
         ...commonGuidance,
-        "application is required: now makes the theme visible immediately. It preserves appearance if its mode is already visible (including System); otherwise switches appearance to the theme's Light/Dark mode, leaving System. The opposite slot is never changed.",
+        "application: now shows the theme, switching Light/Dark only if needed; when-active selects its slot only. Opposite slot stays unchanged.",
         "when-active saves the theme's own slot without changing Light/Dark/System appearance. It is visible now only if that mode is active. Check visible and state.effective; never claim an inactive-slot selection is visible.",
         "Use settings.window.update section:appearance changes:{theme:system|light|dark} to change appearance independently of selected themes.",
       ],

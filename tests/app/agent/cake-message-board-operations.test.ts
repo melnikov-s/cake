@@ -67,8 +67,8 @@ describe("Workboard agent protocol", () => {
     expect(appendHelp).toContain(
       "Application-owned completion needs no duplicate private wake-up/report",
     );
-    expect(appendHelp).toContain("Routine findings/completions are passive");
-    expect(appendHelp).toContain("Declare event: assignment for necessary dependent work");
+    expect(appendHelp).toContain("Routine/completion posts batch passively");
+    expect(appendHelp).toContain("assignment/blocker delivers dependent work");
   });
   it("returns bounded typed current descriptions and relations without fetching bodies or recording reads", async () => {
     const { registry, current, read, recordIntake } = fixture();

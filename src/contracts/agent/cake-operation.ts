@@ -5,7 +5,7 @@ import type { CakeOperationOptions } from "./cake-operation-options";
 import type { JsonObject, JsonValue } from "../serialization/json-contract";
 
 export const cakeToolDescription =
-  '{} lists enabled topics; {"command":"<topic>"} lists operations; <operation>.help gives contracts, <operation>.output-schema full results. Known operations need no prior discovery. Call {"command":"<operation>","input":{...}}. Codemode: typed operations resolve to {command,result}; others to text. Artifact content is not preloaded: discover, resolve, read. Static HTML/CSS: html.present {id,title,html,height?}, inline, no files/specialist. Loaded skill templates: use the complete widgets.instantiate call (template,initialState) directly; no artifact/editor lookup, docs or generation. Other interactive UI: widgets.present. Existing artifacts: artifacts.present.';
+  "Cake controls: {command,input}. Known commands need no discovery; {} lists topics, <topic> lists commands, <operation>.help gives inputs, .output-schema gives results. Codemode returns {command,result} for typed operations, text otherwise. Static HTML: html.present; interactive: widgets.present; prepared skill: widgets.instantiate directly; existing: artifacts.present.";
 
 const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
   description: "Exact topic or operation command. Omit for the help index.",

@@ -67,8 +67,8 @@ describe("subagent contract", () => {
       }
       const help = await registry.invoke({ command: "subagents.start.help" }, context);
       expect(help.text).toContain('continuation: "resume" (default, reply)');
-      expect(help.text).toContain("Reply when the user awaits an answer");
-      expect(help.text).toContain("A promised answer means reply.");
+      expect(help.text).toContain("Choose reply at launch for owed answers/dependent actions");
+      expect(help.text).toContain("Reply is asynchronous");
     },
   );
 

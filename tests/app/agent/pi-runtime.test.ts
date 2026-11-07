@@ -119,41 +119,35 @@ describe("Pi 1.0.0 foundation contract", () => {
     expect(systemPrompt).toContain("<rules>");
     expect(systemPrompt).toContain("Use read to examine files instead of cat or sed");
     expect(systemPrompt).toContain("<cake_system_prompt>");
-    expect(systemPrompt).toContain("communicate exclusively via Workboard");
-    expect(systemPrompt).toContain("parents, children, siblings and recursive descendants");
+    expect(systemPrompt).toContain("Family coordination defaults to Workboard");
+    expect(systemPrompt).toContain("including descendants");
     expect(systemPrompt).toContain("Create children with assignment: { description, body }");
-    expect(systemPrompt).toContain("At launch set resultDelivery: reply");
-    expect(systemPrompt).toContain("`workgroups.md`: family entry guide");
-    const docsDirectory = systemPrompt?.match(/Cake documentation directory: `([^`]+)`/)?.[1];
+    expect(systemPrompt).toContain("Use resultDelivery: reply");
+    expect(systemPrompt).toContain("No prerequisite guide reads");
+    const docsDirectory = systemPrompt?.match(/Task guide: `([^`]+)\/index\.md`/)?.[1];
     if (!docsDirectory) throw new Error("Expected readable Cake documentation references");
     const modelDocs = await readFile(join(docsDirectory, "models.md"), "utf8");
-    expect(modelDocs).toContain("models.generateImages");
-    expect(modelDocs).toContain("Never regenerate a billed image silently merely to save it");
-    expect(systemPrompt).not.toContain(
-      "Never regenerate a billed image silently merely to save it",
-    );
+    expect(modelDocs).toContain("generation API");
+    expect(modelDocs).toContain("never silently regenerate billed images");
+    expect(systemPrompt).not.toContain("never silently regenerate billed images");
     const sessionDocs = await readFile(join(docsDirectory, "sessions.md"), "utf8");
-    expect(sessionDocs).toContain('"command":"sessions.create-child"');
-    expect(sessionDocs).toContain("Report completion once");
-    expect(sessionDocs).toContain("Initial child startup is self-contained");
+    expect(sessionDocs).toContain("sessions.create-child");
+    expect(sessionDocs).toContain("Complete once");
+    expect(sessionDocs).toContain("Family child: sessions.create-child");
     expect(await readFile(join(docsDirectory, "family-startup.md"), "utf8")).toContain(
-      "No preliminary guide, help or board-discovery reads are needed",
+      "The assignment is inline",
     );
     const deliveryDocs = await readFile(join(docsDirectory, "communication.md"), "utf8");
-    expect(deliveryDocs).toContain("Never acknowledge receipts, results or resolution");
+    expect(deliveryDocs).toContain("No acknowledgments or duplicate recaps");
     const workgroupDocs = await readFile(join(docsDirectory, "workgroups.md"), "utf8");
-    expect(workgroupDocs).toContain("By default, all Session Family members");
+    expect(workgroupDocs).toContain("Family coordination defaults to Workboard");
     expect(workgroupDocs).toContain("family-delegation.md");
     const familyDelegationDocs = await readFile(
       join(docsDirectory, "family-delegation.md"),
       "utf8",
     );
-    expect(familyDelegationDocs).toContain(
-      "There are no separate agent board-create or board-join operations",
-    );
-    expect(deliveryDocs).toContain(
-      "Prompt text cannot disable or reroute existing runtime obligations",
-    );
+    expect(familyDelegationDocs).toContain("Cake creates the board");
+    expect(deliveryDocs).toContain("Completion transport is automatic");
   });
 
   it("returns current family information from session.info without recreating the runtime", async () => {
@@ -366,13 +360,13 @@ describe("Pi 1.0.0 foundation contract", () => {
       for (const text of requestText) {
         expect(text).toContain("You are an expert coding assistant operating inside pi");
         expect(text).toContain("Use read to examine files instead of cat or sed");
-        expect(text).toContain("Cake documentation directory:");
+        expect(text).toContain("Task guide:");
         expect(text).toContain("docs/extensions.md");
         expect(text).toContain("docs/codemode.md");
         expect(text).not.toContain("docs/tui.md");
         expect(text).not.toContain("docs/themes.md");
         expect(text).not.toContain("docs/keybindings.md");
-        expect(text).not.toContain("Never regenerate a billed image silently merely to save it");
+        expect(text).not.toContain("never silently regenerate billed images");
       }
       const linkedGuidance =
         "This session has linked artifacts. Use artifacts.list to inspect them when relevant.";

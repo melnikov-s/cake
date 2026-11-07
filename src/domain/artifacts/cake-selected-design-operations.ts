@@ -60,7 +60,7 @@ export function createSelectedDesignOperations(
     {
       command: "artifacts.selection.capture",
       topic: "artifacts",
-      summary: "Capture a bounded selected-design reference, without source or images.",
+      summary: "Pin selected-design reference",
       inputSchema: SelectedDesignCaptureInput,
       outputSchema: SelectedDesignReference,
       examples: [
@@ -69,7 +69,7 @@ export function createSelectedDesignOperations(
       result: "Exact revision/digest, stable option ID, and observed saved selection/version only.",
       guidance: [
         "Read artifacts.state.read first. Supply the exact current @rN and observed nonzero state version. Null/unsaved choices and legacy widgets without a validated module manifest fail explicitly.",
-        "Forward this small JSON reference in an ordinary user/session message (or Workboard for family members). It grants no read access and attaches no source, screenshots, other options, or generation history. The receiver explicitly links exactRef with artifacts.link, then requests artifacts.source.",
+        "Forward selection reference only; it grants no access/source/pixels/history. Receiver links exactRef, then reads artifacts.source. Family uses Workboard by default.",
         "Saved selection is not the current visible view or visual verification. Screenshots are optional, separate visual evidence; never attach them automatically for a source handoff.",
       ],
       async execute(input) {
@@ -80,8 +80,7 @@ export function createSelectedDesignOperations(
     {
       command: "artifacts.source",
       topic: "artifacts",
-      summary:
-        "Lazily read only a captured selected option and its required shared source modules.",
+      summary: "Read selected option/dependencies",
       inputSchema: SelectedDesignSourceInput,
       outputSchema: SelectedDesignSourceOutput,
       examples: [
@@ -94,7 +93,7 @@ export function createSelectedDesignOperations(
         "Selected module/dependency metadata; optionally one requested module's paged source.",
       guidance: [
         "Pass a captured cake.selected-design/v1 reference. Omit moduleId to discover just the chosen option's dependency closure; request each module by ID with character offset/limit (maximum 48000). External package imports are listed, not copied.",
-        "Link exactRef first. Unknown options, unauthorized modules, missing manifests/dependencies/source, mismatched digests, changed revisions and changed saved state fail explicitly. Never substitute latest, all five options, chooser source, a screenshot, or private generation history.",
+        "Link exactRef first. Missing/unauthorized/drifted selection source fails; never substitute latest, all options, chooser, screenshot or private history.",
         "Source is implementation material, not evidence of the visible design. Request a screenshot separately only when visual checks are needed; confirm its artifact revision and selected state.",
       ],
       async execute(input) {

@@ -419,13 +419,27 @@ describe("Cake VS Code navigation and selection operations", () => {
   it("discloses session-local retention, non-persistence, and next-tour-step cleanup guidance", () => {
     const { operations } = registry();
     const help = operations.operationHelp("vscode.selections.list");
-    expect(help).toContain("calling session");
-    expect(help).toMatch(/not persisted/i);
-    expect(help).toMatch(/use set for the next tour step/i);
-    expect(help).toContain("vscode.selections.list");
+    expect(help).toContain("Selections are ephemeral");
+    expect(help).toContain("set replaces");
+    expect(help).toContain("session Store exists");
     expect(operations.topicHelp("vscode")).toContain("vscode.selections.remove");
     expect(operations.topicHelp("vscode")).toContain("vscode.selections.clear");
-    expect(help).toMatch(/until removed\/cleared/i);
+  });
+
+  it("walks straight from enter to source and highlighted paragraph without discovery", async () => {
+    const { operations, enter, open, setSelections } = registry();
+    const calls = [
+      { command: "vscode.enter", input: {} },
+      { command: "vscode.open", input: { path: "src/main.ts", line: 55 } },
+      {
+        command: "vscode.selections.set",
+        input: { selections: [{ path: "src/main.ts", line: 55, endLine: 64 }] },
+      },
+    ];
+    for (const call of calls) await operations.invoke(call, context());
+    expect(enter).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledWith({ path: "src/main.ts", line: 55 }, expect.any(AbortSignal));
+    expect(setSelections).toHaveBeenCalledWith(calls[2]!.input, expect.any(AbortSignal));
   });
 
   it("enters VS Code mode explicitly", async () => {

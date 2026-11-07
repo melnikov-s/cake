@@ -295,12 +295,12 @@ export function createCakeArtifactOperations(
     {
       command: "html.present",
       topic: "html",
-      summary: "Write and show static HTML/CSS inline in one call, without specialist generation.",
+      summary: "Show static HTML/CSS inline",
       guidance: [
         "For simple mockups, headers, layouts, and static visual explanations, author HTML/CSS directly here. No React, specialist or workspace file is needed.",
-        "Supply an HTML fragment with inline CSS or a style element. This isolated iframe receives no host theme tokens, app CSS or fonts: supply self-contained colors and typography with no unresolved required variables. Scripts, network access, forms, and parent access are disabled. Use widgets.present for JavaScript, durable state, or complex interaction; HTML/React widgets receive live host theme tokens.",
-        "Keep prototype screens readable at a realistic viewport. Stack alternatives with scrolling or use separate artifacts, not miniature final previews. Set height in CSS pixels (120–1600); otherwise the frame is 240px tall. Avoid unrelated hero sections.",
-        "The successful call already displays the result inline. Do not add duplicate embeds. Use artifacts.present to show it again. Before recommending designs or claiming visual readiness, inspect every alternative’s rendered pixels through a supported capture workflow or supplied screenshot. Static HTML has no retained artifacts.preview. If visual checks are unavailable, say published, visually unverified and name the missing check; publication alone is not visual verification.",
+        "Self-contained HTML/CSS; supply colors/fonts, no host styles. Scripts/network/forms/parent access disabled. Use widgets.present for interaction/state and live theme.",
+        "Use readable viewport/scrolling, not tiny screens. height: 120–1600px (default 240).",
+        "Already shown inline; artifacts.present shows it again. Inspect every alternative's rendered pixels before visual claims. Static HTML has no retained preview; disclose missing checks as published, visually unverified.",
       ],
       inputSchema: htmlPresentSchema,
       outputSchema: ArtifactProjectionMetadata,
@@ -349,7 +349,7 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.list",
       topic: "artifacts",
-      summary: "List bounded metadata for artifacts effectively linked to this session.",
+      summary: "List linked artifacts",
       guidance: [
         "Lists return metadata, not payloads. Resolve exact-revision files and read only what you need. Widget publication and artifacts.preview supply a native image to the agent; the user's live inline rendering alone is not model-visible evidence.",
         "Stable cake://artifact/<id> references follow latest; exact @rN references are reproducible.",
@@ -370,7 +370,7 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.search",
       topic: "artifacts",
-      summary: "Search linked artifact titles, kinds, IDs, and references.",
+      summary: "Search linked metadata",
       inputSchema: artifactSearchSchema,
       outputSchema: artifactListOutputSchema,
       examples: [{ input: { query: "design", limit: 20 } }],
@@ -386,7 +386,7 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.history",
       topic: "artifacts",
-      summary: "List bounded immutable revision metadata for one linked lineage.",
+      summary: "List immutable revisions",
       inputSchema: artifactHistorySchema,
       examples: [{ input: { lineageId: "design-plan", limit: 50 } }],
       result:
@@ -404,10 +404,10 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.resolve-reference",
       topic: "artifacts",
-      summary: "Resolve a linked stable or exact artifact reference to an exact read-only path.",
+      summary: "Resolve exact read-only files",
       guidance: [
         "An unlinked pasted URI is not readable. Explicitly link it first; temporary read leases are deferred until Cake has a durable lease owner.",
-        "For approved initial-state widget designs, read preview.png or call artifacts.preview with the approved exact @rN reference before implementation. For user-selected variants, request a screenshot and confirm its artifact revision and selected state; an initial-state preview at the same revision is not matching evidence. The brief describes intent, not the approved rendering. Read source.tsx.txt/source.html.txt selectively for ambiguous layout or behavior; do not import private generation history. Compare a real implementation screenshot against that same approved revision.",
+        "Inspect approved exact @rN preview pixels; selected variants need a screenshot with revision/state confirmed. Read projected source only as needed, not private history. Compare implementation pixels to that evidence.",
       ],
       inputSchema: artifactResolveSchema,
       outputSchema: ArtifactProjectionMetadata,
@@ -422,13 +422,13 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.present",
       topic: "artifacts",
-      summary: "Show an existing artifact inline in this conversation without recreating it.",
+      summary: "Show existing artifact",
       guidance: [
-        "Use this when the user wants to see an existing artifact again, including after data/content edits through artifacts.state.read + artifacts.state.update. Do not regenerate it with widgets.present, replace it, or repeat a Markdown embed. For an independent document using the same implementation, use widgets.instantiate.",
+        "Show existing content without regeneration/replacement. Independent documents use widgets.instantiate.",
         "Stable references resolve the current source; exact @rN references select that immutable source revision. Widgets hydrate current lineage state in either case.",
-        "Each successful call adds a fresh inline surface in the requesting conversation, even for a non-owned artifact or a closed producing session. No source revision, ownership, provenance, or mutable state is changed. All artifact kinds use their existing renderer and sandbox.",
-        "Permanent Project Chat and global Cake Chat explicitly link an accessible unlinked reference as part of presentation, preserving existing links. Project Sessions require an effective link first (artifacts.link). Missing or inaccessible references fail explicitly.",
-        "This presents to the user, not a new model-visible screenshot. Use artifacts.preview for the retained initial-state image—not the current interactive view. Request a screenshot for live pixels and confirm its artifact revision and selected state.",
+        "Adds inline surface only; no revision/ownership/state change. Existing sandbox/renderer applies.",
+        "Permanent chats link accessible refs during presentation. Project Sessions must artifacts.link first. Missing/inaccessible fails.",
+        "User display is not agent inspection. preview is initial state; live pixels need screenshot with revision/state.",
       ],
       inputSchema: artifactResolveSchema,
       outputSchema: ArtifactProjectionMetadata,
@@ -449,11 +449,10 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.preview",
       topic: "artifacts",
-      summary:
-        "Inspect an exact widget revision’s initial-state preview—not its current interactive view.",
+      summary: "Inspect initial-state preview",
       guidance: [
         "Use the user-approved exact @rN reference, never latest. Link an unlinked reference first. This returns the accepted review capture, not a new render or the private generation conversation.",
-        "Initial state—not current interactive view. This immutable preview does not track the user’s selected variant, even at the same revision. For an approved interactive selection, request a screenshot and confirm its artifact revision and selected state. Inspect pixels matching both revision and selected state before implementation; source alone is never visual verification.",
+        "Initial state—not current interactive view. For selected variants, inspect screenshot matching revision AND state. Source is not visual proof.",
       ],
       inputSchema: Schema.Struct({
         reference: artifactReferenceSchema.check(Schema.isPattern(/@r[1-9][0-9]*$/)),
@@ -486,10 +485,9 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.create",
       topic: "artifacts",
-      summary:
-        "Create a durable Markdown document or imported file artifact in the current session.",
+      summary: "Create Markdown/file artifact",
       guidance: [
-        "Keep investigations, explanations, ordinary implementation details, progress, and reports in chat by default. Create text/Markdown artifacts only when the user explicitly requests them, except for a spec serving as a shared, durable reference that this session can read after compaction or child sessions can read for coordinated implementation. Shared-reference usefulness, not length or formatting, is the purpose; merely being an investigation does not qualify.",
+        "Keep ordinary work/reports in chat. Text artifacts need a user request or shared durable spec; length/format alone does not qualify.",
         "Markdown is the readable content itself and does not need a separate fallback argument. This text/Markdown policy does not restrict non-text visual artifacts or explicitly requested file deliverables.",
         "Import a workspace file when the file itself is the reusable deliverable. Cake snapshots it; later workspace changes do not mutate the artifact.",
         "Choose a stable descriptive ID. Use artifacts.update for targeted Markdown edits or artifacts.replace for full replacements, file snapshots, and widget revision instructions, rather than creating a second ID.",
@@ -546,10 +544,10 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.update",
       topic: "artifacts",
-      summary: "Apply targeted text replacements to an existing Markdown artifact.",
+      summary: "Edit Markdown text",
       guidance: [
         "Read the current exact revision before editing. Send only changed blocks, not the complete document.",
-        "Uses Pi's edit tool with artifact-backed in-memory read/write operations: the same matching, uniqueness, overlap, BOM/line-ending preservation, limited whitespace/typography normalization, and no-op rejection as file edits. All edits are matched against the original revision, not incrementally. Supply exact oldText with enough context to be unique; merge overlapping or nested edits.",
+        "Pi edit semantics: unique non-overlapping oldText against original revision, not incremental. Merge overlapping edits; no-op edits fail.",
         "Use an empty newText to delete a block. Keep oldText as small as possible while still unique. Cake publishes one new immutable revision and preserves the stable ID.",
         "Use artifacts.replace for full Markdown rewrites, replacement file snapshots, or widget revision instructions. Never edit read-only artifact projection files directly.",
       ],
@@ -606,10 +604,10 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.replace",
       topic: "artifacts",
-      summary: "Replace an existing artifact or revise a widget from instructions.",
+      summary: "Replace content or revise widget source",
       guidance: [
-        "Use this operation for source or behavior changes, or to change content hardcoded in an old widget. Cake preserves its stable ID and publishes the next immutable revision. For existing widget data/content, use artifacts.state.read then artifacts.state.update instead; show it again with artifacts.present. For an independent document using the same implementation, use widgets.instantiate.",
-        "Markdown replacements require the complete document; prefer artifacts.update for targeted text edits. File replacements snapshot a replacement workspace-relative path. Widget replacements accept revision instructions and run isolated generation, rendering, and visual review before publication, returning the new revision's accepted PNG as a native image. Widget revisions retain the stored source language; there is no language-switch input.",
+        "Use for source/behavior changes, publishing a new revision. Live data: state.read/update; display: present; independent copy: widgets.instantiate.",
+        "Markdown: complete replacement, or update for targeted edits. File: workspace-relative snapshot. Widget: revision instructions; rendered/reviewed before publication, returns PNG. Language stays fixed.",
       ],
       inputSchema: artifactReplaceSchema,
       examples: [
@@ -755,7 +753,7 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.restore",
       topic: "artifacts",
-      summary: "Publish a historical snapshot as the next immutable revision.",
+      summary: "Publish historical snapshot",
       inputSchema: artifactRestoreSchema,
       examples: [{ input: { lineageId: "design-plan", sourceRevision: 1, expectedRevision: 3 } }],
       result:
@@ -781,7 +779,7 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.link",
       topic: "artifacts",
-      summary: "Explicitly link a global stable or exact artifact reference to this session scope.",
+      summary: "Link artifact reference",
       inputSchema: artifactLinkSchema,
       examples: [{ input: { reference: "cake://artifact/design-plan" } }],
       result: "The selected linked revision metadata. Linking appends no Pi pointer.",
@@ -795,7 +793,7 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.unlink",
       topic: "artifacts",
-      summary: "Remove this session's effective direct or family artifact link.",
+      summary: "Remove effective artifact link",
       inputSchema: artifactUnlinkSchema,
       examples: [{ input: { lineageId: "design-plan" } }],
       result: "Confirmation only. Unlinking appends no Pi pointer and does not delete history.",
@@ -814,12 +812,11 @@ export function createCakeArtifactOperations(
     operations.push({
       command: "widgets.instantiate",
       topic: "widgets",
-      summary:
-        "Create an independent widget from a prepared skill template or exact linked implementation.",
+      summary: "Instantiate prepared widget",
       inputSchema: widgetInstantiateSchema,
       guidance: [
-        "Supply template: <loaded skill name> when the skill provides widget.json, or reference: <exact linked widget @rN>. Supply a new global ID and explicit initialState matching the renderer's contract. Skill templates are prepared internally at session startup using the authorized widget package environment; creation does not generate code, compile, discover packages, or require a prior artifact/editor link.",
-        "For a skill template, load its SKILL.md and call this operation directly using its documented scene format. No codemode, searches, help/schema discovery, or additional template reads are needed. Cake knows only generic widget templates, never library-specific scene types.",
+        "Supply template (loaded skill) or exact linked reference, new ID and matching initialState. Prepared templates need no generation, compilation or discovery.",
+        "Use the loaded skill's complete call directly; no further reads, discovery or generation.",
         "Template mutable state and hardcoded seed data are not copied as authoritative data. Supply the complete independent document in initialState. Read the template source/state contract first if needed.",
         "For existing data/content use artifacts.state.read then artifacts.state.update. To show the same document again use artifacts.present. Only source/behavior changes or old hardcoded content need artifacts.replace.",
         "A fresh rendered initial-state capture is returned, not the template's preview. This is not a new model review and does not verify every interaction. Publication is inline; do not add a redundant embed.",
@@ -927,17 +924,17 @@ export function createCakeArtifactOperations(
     operations.push({
       command: "widgets.present",
       topic: "widgets",
-      summary: "Delegate and present one self-contained interactive or highly visual widget.",
+      summary: "Generate interactive widget",
       guidance: [
         "Prefer ordinary inline Markdown—including Mermaid and small tables—whenever it communicates the result clearly. Create a widget only for a substantial, reusable, or genuinely interactive/visual deliverable, especially when requested.",
-        "For static HTML/CSS mockups use html.present instead. For this delegated interactive workflow, supply the explanation goal, audience, verified facts/source references, bounded data, and a readable Markdown fallback. Do not write the generated source yourself.",
-        "Reuse existing implementation: change existing data/content with artifacts.state.read then artifacts.state.update; display it again with artifacts.present; create an independent document from an exact linked widget with widgets.instantiate. Reserve artifacts.replace for source/behavior changes or content hardcoded in an old widget.",
-        "Publication supplies the accepted rendered preview to the agent as a native image, with an immutable exact reference. The user sees a live interactive widget. The retained PNG is Initial state—not current interactive view. Revision alone does not identify a selected variant. Before implementing an approved design, inspect matching revision AND state pixels: use the exact preview for the initial state, or request a screenshot of their interactive selection and confirm its artifact revision and selected state. Never claim visual verification from source or textual image descriptions. Read projected source selectively when needed and compare the implementation's real screenshot against the approved revision.",
-        'Choose language: "html" for simple self-contained experiences using inline CSS and browser JavaScript without JSX, npm packages or bundling. Omit language (or choose "react") for React components, installed libraries, and prototype-ui module manifests. HTML remains an interactive widget, not a static HTML artifact. Replacements and repairs preserve the source language.',
-        "HTML durable state uses globalThis.cakeArtifact.read(), getSnapshot(), subscribe(listener), and replace(value, expectedVersion); React uses @cake/artifact-sdk hooks. Both are scoped to this artifact. Wait for hydration, save only JSON, and handle version conflicts.",
-        'Widgets can read text aloud with the user\'s configured Cake voice (globalThis.cakeSpeech in HTML, useSpeech() from @cake/artifact-sdk in React): speak(text) of any length, pause, resume, stop, and progress by sentence chunk with character offsets for highlighting. Ask for it in the brief, for example "an article reader with Play, Pause/Resume and Stop that highlights the sentence being read". One widget speaks at a time; it stops when the widget closes.',
-        "The specialist can read domain skills and combine React, installed widget libraries, editable canvases, filters and details. Supply initialState for artifact-scoped JSON data; the widget owns its format and save timing. Describe intended relationships and useful interactions, not pixel coordinates or a mandatory graph DSL.",
-        "The published visualization is shown inline, expanded by default with a collapse control. Do not add a redundant embed or Open artifact link after publication. To show an existing artifact again on demand, use artifacts.present with its stable or exact reference, not widgets.present regeneration or duplicate Markdown embeds. Ordinary [Title](cake://artifact/<id>) links stay compact. Use exact revisions for historical explanations.",
+        "Static HTML: html.present. Interactive generation: supply goal, audience, verified facts, bounded data and Markdown fallback; specialist writes source.",
+        "Data: state.read/update. Show: artifacts.present. Independent copy: widgets.instantiate exact reference. Source/behavior: artifacts.replace.",
+        "Accepted PNG is initial state, not live selection. Before implementation inspect matching revision AND selected-state pixels; request a screenshot for live state. Compare real implementation pixels; source/descriptions are not visual proof.",
+        "language: html for inline CSS/JS without packages/JSX; react (default) for components/libraries/prototype manifests. Repairs preserve language.",
+        "HTML: cakeArtifact read/getSnapshot/subscribe/replace(value,expectedVersion). React: @cake/artifact-sdk. Await hydration; JSON only; handle conflicts.",
+        "Speech: globalThis.cakeSpeech (HTML) or useSpeech (React); speak/pause/resume/stop, sentence progress. Request in brief. One speaker; closes stop it.",
+        "Specialist uses domain skills/installed libraries. initialState is artifact JSON. Describe relationships/interactions, not pixel coordinates.",
+        "Already shown inline. Show again with artifacts.present, not regeneration/duplicate embeds. Exact refs preserve historical content.",
       ],
       inputSchema: Schema.Struct({ widget: widgetSchema }),
       examples: [

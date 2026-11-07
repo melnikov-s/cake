@@ -1,20 +1,18 @@
-# Workgroups and Session Families
+# Families
 
-Initial child startup supplies the persisted assignment, authoritative `family-startup.md` basics, concrete Workboard calls and effective result delivery; no preliminary guide/help/discovery reads are required for that workflow. Use this entry guide for delegation or additional family operations. Read only the matching task guides below, not the whole family manual.
+Family coordination defaults to Workboard, including descendants. No private messages, outsider relays or duplicate wake-ups. Explicit user exceptions apply; security/tool boundaries remain. User-facing replies, Cake Chat and independent sessions are outside the family-channel default.
+sessions.create-child takes title and assignment: {description, body}; Cake persists it before launch. Check launch status, not just the board receipt.
+Boards are automatic; report missing capability, never invent a board or substitute an unrelated artifact board.
+Children keep fixed directories. Use managed worktrees/landing. Only the root resolves/restores, with every member inactive. Honor stops.
 
-## Essential family rules
+## Choose a task
 
-By default, all Session Family members—parents, children, siblings and recursive descendants—communicate exclusively through the shared Workboard. No private `sessions.send`/`sessions.reply`/`sessions.send-batch`, subagents, file drops, duplicate wake-ups or relaying via outsiders, even for urgent coordination. User-facing replies, Cake Chat and unrelated independent sessions are outside this rule.
+Startup contains the task and calls; start directly. Read only what the task needs:
 
-Current explicit user instructions override Cake-owned family/channel/process defaults, not genuine provider/platform/system constraints or actual tool capabilities. No AGENTS.md edit or repeated confirmation is needed. Disclose concrete capability limits; never invent a board or fall back to private family coordination.
+- [Delegate/retry](family-delegation.md): assignments, result mode, launch evidence.
+- [Coordinate](family-coordination.md): audiences, decisions, supersession, receipts.
+- [Worktrees/lifecycle](family-lifecycle.md): shared files, landing, stop, resolution.
+- [Child basics](family-startup.md): supplied inline at startup, not an extra prerequisite.
+- [Delivery/check-ins](communication.md): correlated results and user-requested scheduling.
 
-Create full children with `sessions.create-child` and a substantive `assignment: { description, body }`; Cake persists the addressed Workboard assignment before launch and supplies its full contents inline; no initial board read is needed. Publish substantive results/blockers on that board. Application-owned correlated completion is separate, not a prohibited private agent message; do not duplicate it manually.
-
-A child's Working Directory is fixed. Use Cake-managed worktrees and serialized landing, never manual landing. Only the family root resolves/restores the family, with every member inactive. Honor stops and cancellation.
-
-## Read for the task
-
-- **Delegating or retrying a child:** `family-delegation.md`, `communication.md` and `sessions.create-child.help`. Choose result delivery at launch: reply for a dependent next action or an answer owed to the user; notification for background review. Reply does not block.
-- **Additional coordination operations:** `family-coordination.md` for supersession, broader audiences, receipts and delivery evidence. Keep substantive startup assignments and durable board originals; neither substitutes for verification.
-- **Worktrees, landing, stop or resolution:** `family-lifecycle.md` and the matching `sessions.md` operation help.
-- **User-requested periodic check-ins:** Read `communication.md` before user-requested periodic check-ins; otherwise do not poll or schedule timers.
+Application-owned completion needs no private wake-up. A board result does not replace a dependent launch's reply obligation.

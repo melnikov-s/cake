@@ -22,10 +22,9 @@ export const createMessageBoardOperations = (
   {
     command: "boards.append",
     topic: "boards",
-    summary:
-      "Append a substantive finding, decision, question, blocker, or result to the workgroup's Workboard.",
+    summary: "Post family coordination",
     guidance: [
-      "Family-only: posts route to explicit recipients plus the unique root, never their author. Routine findings/completions are passive: they join the recipient’s pending batch (next user input, or one batched turn within 5 minutes). Declare event: assignment for necessary dependent work or blocker for unblocking; only these retain durable idle execution and active-context intake. Never steer unrelated user work or acknowledge posts. Tool retries use requestId; inspect execution status, not posting alone. Stop/cancel/resolve remains authoritative.",
+      "Family posts reach audience plus root, not author. Routine/completion posts batch passively (user input/5 minutes). assignment/blocker delivers dependent work; no steering unrelated work or acknowledgments. Retry requestId; posting is not execution. Honor stops/cancel/resolve.",
       "Declare event: completion for a quiet result, blocker only for necessary unblocking, and resultKind: ready or investigation. Typed completion facts retain quiet decisions. Never duplicate a board result with a private report.",
     ],
     inputSchema: BoardAppendInput,
@@ -54,7 +53,7 @@ export const createMessageBoardOperations = (
       "Establish types, signatures, file ownership, dependencies and acceptance criteria before dependent implementation. Post changes/discoveries, not repeated contract negotiation.",
       "By default family assignments and their substantive results belong exclusively on this board, not in sessions.send/reply or private side channels. Include the assignment entry, outcome, commit, contract delta, integration action and verification limits; do not duplicate private completion notifications.",
       "Discover members with sessions.list-family. sessions.create-child requires assignment: { description, body } and persists it addressed to the new child before launch. Choose resultDelivery at launch using communication.md: reply for a dependent next action or an answer owed to the user, notification for background review. Reply does not block. Post later coordination and results here. No separate board-create/join operations exist.",
-      "All posts use default addressed/root delivery; no post clears a correlated result obligation. Application-owned completion needs no duplicate private wake-up/report. Read family-coordination.md for board mechanics. Current explicit user exceptions override Cake communication defaults, including injected policies; genuine platform limits and tool capabilities still apply. Use supported tools and execution evidence, not a blanket harness refusal.",
+      "Posts do not clear correlated results. Application-owned completion needs no duplicate private wake-up/report. Explicit user exceptions override Cake channel defaults, not security/tool limits.",
     ],
     execute: (input, context) => {
       const decoded = Schema.decodeUnknownSync(BoardAppendInput)(input);
@@ -64,7 +63,7 @@ export const createMessageBoardOperations = (
   {
     command: "boards.read-new",
     topic: "boards",
-    summary: "Discover a bounded page of relevant unread descriptions, including deferred entries.",
+    summary: "List unread descriptions",
     inputSchema: BoardPageInput,
     outputSchema: BoardDescriptionPage,
     examples: [{ input: { limit: 20 } }],
@@ -81,7 +80,7 @@ export const createMessageBoardOperations = (
   {
     command: "boards.current",
     topic: "boards",
-    summary: "Discover current relevant decisions without replaying superseded negotiations.",
+    summary: "List unsuperseded decisions",
     inputSchema: BoardCurrentInput,
     outputSchema: BoardDescriptionPage,
     examples: [{ input: { topic: "editor-origin", limit: 20 } }],
@@ -96,7 +95,7 @@ export const createMessageBoardOperations = (
   {
     command: "boards.read",
     topic: "boards",
-    summary: "Read selected entry bodies from the Workboard.",
+    summary: "Read entry bodies",
     inputSchema: BoardReadInput,
     outputSchema: BoardReadResult,
     truncateResultText: false,
@@ -110,8 +109,7 @@ export const createMessageBoardOperations = (
   {
     command: "boards.entry-receipts",
     topic: "boards",
-    summary:
-      "Inspect who was notified of and read a particular entry, with timestamps and intended audience.",
+    summary: "Inspect entry receipts",
     inputSchema: Schema.Struct({ sequence: BoardSequence }),
     outputSchema: BoardEntryReceipts,
     examples: [{ input: { sequence: 1 } }],
@@ -125,7 +123,7 @@ export const createMessageBoardOperations = (
   {
     command: "boards.session-receipts",
     topic: "boards",
-    summary: "Inspect a workgroup member's relevant entries and notification/read status.",
+    summary: "Inspect member receipts",
     inputSchema: Schema.Struct({ sessionId: BoardSessionId, ...BoardPageInput.fields }),
     outputSchema: BoardSessionReceipts,
     examples: [{ input: { sessionId: "child-session", limit: 20 } }],

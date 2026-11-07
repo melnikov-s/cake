@@ -31,12 +31,8 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
     {
       command: "vscode.enter",
       topic: "vscode",
-      summary: "Enter embedded VS Code mode for the calling project.",
-      guidance: [
-        "Use embedded VS Code proactively for code tours, walkthroughs, visual source navigation, review, and debugging; users do not need to ask for VS Code explicitly.",
-        "Enter VS Code mode when the user's request benefits from a visible editor, then invoke the desired VS Code operation.",
-        "VS Code actions do not navigate Cake automatically; when they report VSCODE_MODE_REQUIRED, decide whether entering VS Code matches the user's intent.",
-      ],
+      summary: "Enter VS Code",
+      guidance: ["Use for code tours/review/debugging. Select the calling project first."],
       inputSchema: vscodeEnterInputSchema,
       examples: [{}],
       result: "Confirmation that Cake entered VS Code mode.",
@@ -49,14 +45,9 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
     {
       command: "vscode.open",
       topic: "vscode",
-      summary:
-        "Open a file, optionally scrolled to a one-based line. Never selects or highlights code.",
+      summary: "Open file at line (no selections)",
       guidance: [
-        "Use vscode.open for file navigation only. It creates no selections, highlights or selection pills.",
-        "Use vscode.selections.add to accumulate source ranges or vscode.selections.set to replace the current tour step, including diff context.",
-        "Paths may be Working Directory-relative or absolute local paths. External files use the authorized read-only viewer.",
-        "Call vscode.enter first; the calling session must be selected.",
-        "Explain code in the conversation, not inside the editor.",
+        "Call vscode.enter first. path is relative or absolute; line is one-based. Navigation only, no selections. Highlights: vscode.selections.set/add. External files are read-only. Explain in chat.",
       ],
       inputSchema: VscodeOpenInput,
       examples: [{ input: { path: "src/main.ts", line: 55 } }],
@@ -72,11 +63,9 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
     {
       command: "vscode.script.run",
       topic: "vscode",
-      summary: "Run one arbitrary JavaScript action inside VS Code's extension host.",
+      summary: "Run trusted VS Code JavaScript",
       guidance: [
-        "The script body runs as an async function with vscode, input, and require arguments available; return a JSON-compatible value.",
-        "Use vscode APIs for editor layout, navigation, commands, terminals, prompts, decorations, and installed-extension workflows.",
-        "This is trusted unrestricted extension-host code. Prefer a focused one-shot action and avoid leaving commands, providers, listeners, or timers registered.",
+        "Async body receives vscode, input, require; return JSON. Trusted unrestricted code; avoid leftover listeners/timers.",
       ],
       inputSchema: vscodeScriptInputSchema,
       examples: [

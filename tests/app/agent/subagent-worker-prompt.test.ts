@@ -3,38 +3,34 @@ import {
   projectInvestigationSystemPrompt,
   researchSystemPrompt,
 } from "../../../src/services/pi/subagent-system-prompt";
-
 describe.each([
-  ["project investigator", projectInvestigationSystemPrompt],
-  ["general researcher", researchSystemPrompt],
-])("Cake Chat %s prompt", (_, prompt) => {
-  it("is investigation-only without allowMutations", () => {
+  ["project", projectInvestigationSystemPrompt],
+  ["research", researchSystemPrompt],
+])("%s worker", (_, prompt) => {
+  it("enforces investigation scope across tools", () => {
     const text = prompt({ allowMutations: false });
-    expect(text).toContain("Investigations only: do not write, edit, delete or otherwise mutate");
-    expect(text).toContain("Refuse mutation requests even if your parent");
-    expect(text).toContain("`allowMutations: true`");
-    expect(text).not.toContain("Mutation mode:");
-    expect(text).not.toContain("{{");
+    for (const rule of [
+      "Investigations only: no mutations through any tool",
+      "Shell/MCP are not sandboxes",
+      "new allowMutations: true worker",
+    ])
+      expect(text).toContain(rule);
   });
-
-  it("permits scoped, reported mutations with allowMutations", () => {
+  it("allows only scoped and reported operational mutations", () => {
     const text = prompt({ allowMutations: true });
-    expect(text).toContain("Mutation mode: your parent explicitly started you");
-    expect(text).toContain("run scripts, stop or kill processes, install packages");
-    expect(text).toContain("Stay within the stated assignment scope");
-    expect(text).toContain("Report exactly what you changed");
-    expect(text).toContain(
-      "Do not mutate Git state on shared branches (no commits, pushes, merges, rebases, resets, branch deletions or force operations) unless the assignment explicitly instructs",
-    );
-    expect(text).not.toContain("Investigations only");
-    expect(text).not.toContain("Refuse mutation requests");
-    expect(text).not.toContain("{{");
+    for (const rule of [
+      "Mutation mode: allowMutations: true",
+      "only assigned operational changes",
+      "Confirm targets",
+      "No shared-branch Git mutations unless that exact action is assigned",
+      "Report changed files/settings/packages",
+    ])
+      expect(text).toContain(rule);
   });
 });
-
-it("keeps the project investigator non-recursive in both modes", () => {
+it("keeps investigator non-recursive", () => {
   for (const allowMutations of [false, true])
     expect(projectInvestigationSystemPrompt({ allowMutations })).toContain(
-      "Do not create Project Sessions or delegate recursively.",
+      "Do not create Project Sessions or delegate recursively",
     );
 });

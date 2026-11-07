@@ -6,7 +6,7 @@ export type ResultDelivery = typeof ResultDelivery.Type;
 
 /** Shared reply-vs-notification choice for Project Session results and private subagents. */
 export const replyOrNotificationRule =
-  "Reply when the user awaits an answer (questions, checks, investigations, diagnoses) or you need the result for your next action. A promised answer means reply. Choose reply at launch for already-authorized dependent work; no fresh user authorization is needed merely to select it. Use notification for background work reviewed later, including background implementation. Reply does not mean blocking or waiting.";
+  "Choose reply at launch for owed answers/dependent actions; notification for background review. Reply is asynchronous, needs no fresh approval and never means waiting.";
 
 export const resultDeliveryBehavior = {
   reply:
@@ -17,7 +17,7 @@ export const resultDeliveryBehavior = {
     "No correlated result, result notification or completion-triggered parent continuation is owed. This does not suppress separately addressed Workboard posts or necessary blockers.",
 } satisfies Record<ResultDelivery, string>;
 
-export const resultDeliveryGuidance = `Default to resultDelivery: notification. ${replyOrNotificationRule} resultDelivery controls the completion return, independently of outbound delivery. Modes: "reply" (Expect reply): ${resultDeliveryBehavior.reply} "notification" (Expect notification): ${resultDeliveryBehavior.notification} "ignore": ${resultDeliveryBehavior.ignore} Completion transport is application-owned; workers need not call sessions.reply. A Workboard completion post does not clear a correlated reply obligation; do not add a duplicate private wake-up or report. Artifact/link-only results keep the same choice. Immediate questions/explicit blockers are separate actionable messages, not final notifications. Transport is deduplicated, not exactly-once model prose.`;
+export const resultDeliveryGuidance = `Default: notification. ${replyOrNotificationRule} Completion return is separate from outbound delivery. reply queues a non-interrupting continuation; notification batches at user input/within 5 minutes; ignore owes no result. Completion is automatic: no duplicate sessions.reply/wake-up. Board completion does not clear reply obligations; questions/blockers remain immediate.`;
 
 /** Storage/transcript migration only. New callers supply just resultDelivery. */
 export function migrateResultDelivery(input: {

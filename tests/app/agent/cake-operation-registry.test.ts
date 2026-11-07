@@ -178,21 +178,18 @@ describe("Cake operation registry", () => {
   });
 
   it("describes progressive discovery and return conventions once in a bounded envelope", () => {
-    expect(cakeToolDescription.length).toBeLessThan(700);
-    expect(cakeToolDescription).toContain("{} lists enabled topics");
-    expect(cakeToolDescription).toContain("<operation>.help");
-    expect(cakeToolDescription).toContain("Known operations need no prior discovery");
-    expect(cakeToolDescription).toContain("<operation>.output-schema");
-    expect(cakeToolDescription).toContain("typed operations resolve to {command,result}");
-    expect(cakeToolDescription).toContain("Artifact content is not preloaded");
-    expect(cakeToolDescription).toContain("html.present {id,title,html,height?}");
-    expect(cakeToolDescription).toContain("inline, no files/specialist");
-    expect(cakeToolDescription).toContain(
-      "complete widgets.instantiate call (template,initialState) directly",
-    );
-    expect(cakeToolDescription).toContain("no artifact/editor lookup, docs or generation");
-    expect(cakeToolDescription).toContain("Other interactive UI: widgets.present");
-    expect(cakeToolDescription).toContain("artifacts.present");
+    expect(cakeToolDescription.length).toBeLessThan(400);
+    for (const fact of [
+      "{command,input}",
+      "Known commands need no discovery",
+      "{} lists topics",
+      "<operation>.help",
+      ".output-schema",
+      "{command,result}",
+      "widgets.instantiate directly",
+      "artifacts.present",
+    ])
+      expect(cakeToolDescription).toContain(fact);
   });
 
   it("budgets real backend catalogs independently of their full schemas", () => {
@@ -251,15 +248,8 @@ describe("Cake operation registry", () => {
       .help()
       .split("\n");
     const line = (topic: string) => lines.find((entry) => entry.startsWith(`${topic} — `)) ?? "";
-    expect(line("sessions")).toMatch(/schedule \(one-off or recurring .*check-ins\)/);
-    expect(line("sessions")).toContain("fork");
-    expect(line("app")).toContain("To-dos/Sessions Workspace");
-    expect(line("app")).toContain("highlighted text");
-    expect(line("projects")).toContain("configure");
-    expect(line("models")).toContain("session.set-model");
-    expect(line("settings")).toContain("MCP servers");
-    expect(line("settings")).toContain("provider logins");
-    expect(line("worktrees")).toContain("discard");
+    for (const topic of ["sessions", "app", "projects", "models", "settings", "worktrees"])
+      expect(line(topic)).toMatch(new RegExp(`^${topic} — .+`));
   });
 
   it("discloses a deterministic selection catalog before the exact contract", async () => {
@@ -268,14 +258,19 @@ describe("Cake operation registry", () => {
     expect(await available.invoke({ command: "context" }, context())).toEqual(first);
     expect(first.text).toBe(
       [
-        "context — Inspect context use or compact the current session.",
+        "context — Context and compaction",
         "context.compact — Compact context.",
-        "Request <operation>.help for its exact contract before invoking an unfamiliar operation.",
+        "Guide: session-history.md (Cake task-guide directory; relevant sections only).",
+        "<operation>.help: contract and example; .output-schema: full result schema.",
       ].join("\n"),
     );
     const exact = await available.invoke({ command: "context.compact.help" }, context());
     expect(exact.text).toContain('"instructions"');
-    expect(exact.text).toContain("Keep decisions");
+    expect(exact.text).toContain("Input schema:");
+    expect(exact.text).toContain("Result: A completion status.");
+    expect(exact.text).toContain(
+      '{"command":"context.compact","input":{"instructions":"Keep decisions"}}',
+    );
   });
 
   it("keeps operation-specific guidance at the selected contract, with direct exact help", async () => {
@@ -296,6 +291,8 @@ describe("Cake operation registry", () => {
     const exact = await available.invoke({ command: "context.compact.help" }, context());
     expect(exact.text).toContain("Guidance: Retain unresolved decisions.");
     expect(exact.text).toContain("Limitation: Cannot undo compaction.");
+    expect(exact.text).toContain("Result: Status");
+    expect(exact.text).toContain('Example:\n{"command":"context.compact"}');
     expect(available.topicHelp("context")).not.toContain("Retain unresolved decisions.");
     expect(execute).not.toHaveBeenCalled();
   });

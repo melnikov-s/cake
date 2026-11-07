@@ -54,8 +54,7 @@ export function createScheduledMessageOperations(
       command: "sessions.scheduled",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary:
-        "List durable scheduled messages, optionally for one target (cake-chat, project-chat:<hash> or a Project Session).",
+      summary: "List scheduled messages",
       inputSchema: AgentScheduledListInput,
       examples: [{}],
       result:
@@ -66,7 +65,7 @@ export function createScheduledMessageOperations(
       command: "sessions.scheduled-info",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Read one exact scheduled message in bounded text slices.",
+      summary: "Read scheduled message",
       inputSchema: AgentScheduledReadInput,
       examples: [],
       result:
@@ -77,7 +76,7 @@ export function createScheduledMessageOperations(
       command: "sessions.cancel-scheduled",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Cancel one scheduled or recurring message by ID.",
+      summary: "Cancel scheduled message",
       inputSchema: Schema.Struct({
         id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
       }),

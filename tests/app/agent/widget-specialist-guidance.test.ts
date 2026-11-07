@@ -47,26 +47,24 @@ const turn = (
   });
 
 function expectUnifiedWidgetGuidance(prompt: string) {
-  expect(prompt).toContain("user-installed widget packages");
+  expect(prompt).toContain("installed widget packages");
   expect(prompt).toContain("@cake/artifact-sdk");
   expectLiveThemeGuidance(prompt);
-  expect(prompt).toContain("ordinary React, SVG/D3, or a composition of them");
-  expect(prompt).toContain("there is no separate diagram artifact to create");
-  expect(prompt).toContain("Outside a diagram canvas");
-  expect(prompt).toContain("must not request remote resources");
-  expect(prompt).toContain(
-    "For another app, reproduce its supplied design tokens inside its prototype frames",
-  );
+  expect(prompt).toContain("accessible React/SVG");
+  expect(prompt).toContain("no separate diagram artifact");
+  expect(prompt).toContain("absolute geometry only inside canvases");
+  expect(prompt).toContain("no remote requests");
+  expect(prompt).toContain("other apps keep supplied brand/data palettes");
 }
 
 function expectLiveThemeGuidance(prompt: string) {
-  expect(prompt).toContain("current effective theme before first paint");
-  expect(prompt).toContain("including OS changes while Cake is set to System");
+  expect(prompt).toContain("live theme before first paint");
+  expect(prompt).toContain("including System changes");
   expect(prompt).toContain("html[data-theme=light|dark]");
   expect(prompt).toContain("never prefers-color-scheme");
-  expect(prompt).toContain("use live Cake tokens throughout the prototype frames");
-  expect(prompt).toContain("scoped aliases must reference var(--token)");
-  expect(prompt).toContain("Preserve intentional design/data/brand colors");
+  expect(prompt).toContain("Cake prototypes use live tokens inside frames");
+  expect(prompt).toContain("Use semantic CSS variables");
+  expect(prompt).toContain("keep supplied brand/data palettes");
 }
 
 describe("widget side chat turns", () => {
@@ -146,7 +144,7 @@ describe("widget side chat turns", () => {
     const [generation, repair, review] = run.mock.calls.map(([options]) => options);
     expect(generation!.prompt).toContain("widget/widget.html");
     expectLiveThemeGuidance(generation!.prompt);
-    expect(generation!.prompt).toContain("No React, JSX, imports, npm packages, build step");
+    expect(generation!.prompt).toContain("no JSX/imports/packages/remote resources");
     expect(generation!.prompt).toContain("globalThis.cakeArtifact");
     expect(generation!.prompt).not.toContain("useArtifactState");
     expect(repair!.prompt).toContain("widget/widget.html");
@@ -200,7 +198,7 @@ describe("widget side chat turns", () => {
       const payload = JSON.parse(options.prompt.slice(options.prompt.lastIndexOf("\n") + 1));
       expect(payload.initialState).toEqual(initialState);
       expect(payload.data).toEqual({ notes: "Separate reference data" });
-      expect(options.prompt).toContain("Render named scalar fields");
+      expect(options.prompt).toContain("render named scalar fields");
       expect(options.prompt).not.toContain("widget/state.json");
       expect(options.widgetBranch?.allowState).toBe(false);
       expectLiveThemeGuidance(options.prompt);

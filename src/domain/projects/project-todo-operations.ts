@@ -90,7 +90,7 @@ export function createProjectTodoOperations(
     {
       command: "todos.select",
       topic: "todos",
-      summary: "Focus a to-do in the transcript view, or clear focus with selectedId=null.",
+      summary: "Focus/clear transcript to-do",
       guidance: [
         "Pass an active to-do ID in this chat's list, or null to deselect without choosing a replacement. Selecting the same ID is idempotent, not a toggle. Only explicit selection chooses an item; completion and snoozing clear it without replacement.",
         "Focus only changes the transcript view while the panel is open. It never attaches context to a message, changes transcript attribution or needs attention, or starts/resolves work. Reply to a to-do from the UI to attach it to the next message.",
@@ -111,7 +111,7 @@ export function createProjectTodoOperations(
     {
       command: "todos.list",
       topic: "todos",
-      summary: "List compact to-dos; opt into a joined lifecycle reconciliation view.",
+      summary: "List to-dos/lifecycle",
       guidance: [guidance[2], guidance[3]],
       inputSchema: ProjectTodoListInput,
       outputSchema: ProjectTodoList,
@@ -127,7 +127,7 @@ export function createProjectTodoOperations(
     {
       command: "todos.read",
       topic: "todos",
-      summary: "Read exact to-do content and associated work lifecycle by ID.",
+      summary: "Read to-do details",
       guidance: [
         "Exact details by ID; use todos.list for cheap discovery and reconciliation.",
         guidance[6],
@@ -147,7 +147,7 @@ export function createProjectTodoOperations(
     {
       command: "todos.create",
       topic: "todos",
-      summary: "Track ongoing work with a short latest-update description.",
+      summary: "Track ongoing work",
       guidance: [
         guidance[1],
         PROJECT_TODO_ATTENTION_GUIDANCE,
@@ -183,7 +183,7 @@ export function createProjectTodoOperations(
     {
       command: "todos.update",
       topic: "todos",
-      summary: "Revision-checked to-do edit or explicit done/reopen.",
+      summary: "Edit to-do with revision check",
       guidance: [
         guidance[0],
         guidance[4],
@@ -216,10 +216,10 @@ export function createProjectTodoOperations(
     {
       command: "todos.snooze",
       topic: "todos",
-      summary: "Hide an open to-do until a future UTC timestamp, or change its deadline.",
+      summary: "Hide until future UTC time",
       guidance: [
         "Pass id, expectedRevision and until as a valid future UTC ISO timestamp (YYYY-MM-DDTHH:mm:ss.sssZ). Read the current revision first. Calling again replaces the deadline. Only open items can be snoozed; this never reopens done items.",
-        "Snoozed items leave Needs attention/Active and appear only in Snoozed, retaining attention data. Backend expiry returns them to Needs attention if flagged, otherwise Active across renderer reload/app restart/downtime, without reminder messages or session wakeups. Resolving linked sessions still completes them. This only controls to-do visibility: it never pauses execution, snoozes sessions or schedules model work.",
+        "Snooze changes visibility only, retains attention and expires across restart. No paused execution/reminder/wake. Linked session resolution still completes items.",
       ],
       inputSchema: ProjectTodoSnooze,
       outputSchema: ProjectTodoReceipt,
@@ -247,7 +247,7 @@ export function createProjectTodoOperations(
     {
       command: "todos.unsnooze",
       topic: "todos",
-      summary: "Unsnooze early, returning to Needs attention if flagged, otherwise Active.",
+      summary: "End snooze",
       guidance: [
         "Pass id and current expectedRevision. Clears the deadline, including before it expires. Done items remain done; this never reopens them or starts any work. No reminder or session wakeup is sent.",
       ],
@@ -264,14 +264,14 @@ export function createProjectTodoOperations(
     {
       command: "todos.update-many",
       topic: "todos",
-      summary: "Atomically commit up to 50 revision-checked edits; any conflict writes nothing.",
+      summary: "Edit up to 50 atomically",
       guidance: [
         "Use one todos.list view=reconciliation read, then this call. Every update requires expectedRevision. All-or-none; stale errors identify the conflict/current revision. Receipts follow input order without echoing IDs.",
         guidance[0],
         PROJECT_TODO_ATTENTION_GUIDANCE,
         PROJECT_TODO_DESCRIPTION_GUIDANCE,
         PROJECT_TODO_LINK_GUIDANCE,
-        "All actual session associations resolved automatically completes linked Open items, including legacy and late associations. state=done on an already-done item follows the same no-op rules as todos.update. Restore never reopens items; marking a to-do done never resolves sessions.",
+        "All linked sessions resolved closes items. Already-done state is a no-op; restore never reopens; to-do done never resolves sessions.",
       ],
       inputSchema: Schema.Struct({ updates: ProjectTodoUpdates }),
       outputSchema: Schema.Struct({ receipts: Schema.Array(ProjectTodoReceipt) }),

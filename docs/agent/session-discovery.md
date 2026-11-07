@@ -1,27 +1,20 @@
-# Session discovery and context estimates
+# Discovery
 
-Read before listing/routing sessions, interpreting context/cache estimates, or inspecting a launch roster. Listings are metadata, not transcript reads.
+## Route directly
 
-Discovery text is compact, not JSON: projects.list, sessions.list-family, sessions.reports, models.list, attachments.list and messages.list use tab-separated metadata rows with one header. next=N continues with offset; attachments use after=ID with after and count only the visible page. Boolean cells use 1/0; - means absent. Cells containing tabs, newlines, quotes or backslashes are JSON-quoted, preserving exact paths, names and references. Message input rows belong to the preceding message. Listing never reads report/message/attachment bodies or acknowledges reports. Details, bounded reads, errors and declared typed results retain their existing formats.
+projects.list/info returns canonical projectChatId; use it directly for sends/open, even before first visit. A known address needs no source grep, hashing, AGENTS/history inspection or discovery round trip.
+Canonical IDs or discovered unique hex suffixes route; titles do not. Unknown/ambiguous refs fail. Suffixes are at least eight trailing hex characters (UUID hyphens removed); rediscover/extend rather than guess.
+Navigation needs user permission. Send/open receipts do not prove execution or visible pixels; opening does not drain passive FYIs. Offer a titled sessions.info deepLink when navigation is unavailable.
 
-## Direct Project Chat routing
+## List selectively
 
-To contact a registered project's Project Chat from global Cake Chat, discover once with `projects.list {"query":"<project name or path>"}`, then pass the returned canonical `projectChatId` directly as `sessions.send.sessionId`. `projects.info` also returns it, even before first open. If the canonical address is already supplied, send directly: no repository inspection, AGENTS discovery, source grep, manual hashing or history inspection is needed merely to route a message. Known operations need no topic/help round trip.
+sessions.list: scoped metadata; projection:"workflow" adds launch/result/lifecycle groups. includeResolved requires workflow projection. Page with nextOffset/offset.
+Project callers see their project; global Cake Chat can span registered projects. projectPath narrows, never expands scope. Workflow projection describes the invoking chat's launches, not every session.
+Listings do not read bodies or acknowledge reports. sessions.info provides metadata/deepLink, not transcript/context inspection.
+Compact listings use tab-separated rows: 1/0 booleans, - absent, JSON-quoted special cells. next=N means offset=N; attachments use after=ID. Child input rows belong to the preceding message.
 
-Use `delivery: "fyi"` for passive notifications; prompt/steer only for authorized immediate work. A send receipt confirms admission or deferred retention, never recipient execution/completion; no recipient answer is awaited. Never replace passive batching with an immediate wake to make delivery look faster. Send receipts and report-read provenance retain canonical identities; do not scan unrelated sessions to shorten them. Read `communication.md` for delivery choices.
+## Interpret estimates
 
-Use the same canonical `projectChatId` with `sessions.open` to select its permanent chat, including before first manual open. This honors the invoking window's user-owned agent-navigation permission. If disabled, offer the `sessions.info` deepLink for the user to open; do not change the permission. Opening does not drain passive FYIs (see `communication.md`).
-
-## Other session references
-
-Session targets accept a canonical identity or a discovered bare hexadecimal suffix (at least eight trailing characters, with UUID hyphens removed; Project Chat hashes shorten the same way). General operation results retain canonical IDs; use them directly in subsequent calls. Scoped rosters such as Workboards may emit short references. Cake extends suffixes on collisions within those rosters and rejects unknown or ambiguous references before routing; rediscover the roster or use a longer suffix rather than guessing. Titles are labels, not routing identities.
-
-## Scope and workflow projection
-
-sessions.list returns compact text, scoped to the calling project except in global Cake Chat; projectPath only narrows discovery. Rows use one header, K/M token estimates, brief cache/age/ttl hints and no repeated project names within one project. next=N appears only when more rows remain; pass it as offset. sessions.info supplies full details on demand. For the invoking Cake Chat’s launch roster use `sessions.list({projection: "workflow"})`: grouped working (including idle/unknown), waiting-for-input, ready-for-review/merge, blocked/stopped, and resolved. It joins retained launch titles/linked to-dos, latest result metadata, recorded resolution and worktree facts without loading transcripts, accessing attachments, acknowledging reports or waking sessions. `includeResolved: true` adds history; supplying `includeResolved` (even `false`) requires `projection: "workflow"`. Omit it for normal session discovery. Filters query/status/attentionOnly and offset/limit (20 default, 50 maximum) apply before paging. Canonical session/result links remain exact. Execution completion, resolution and result-decision state are independent; explicit ready reports permit review, never prove merge readiness. Git head/dirty state is unverified; landing checkpoints are recorded facts, not a fresh Git check. Old launches without retained labels use a worktree label or explicitly unknown task name. Only the invoking chat’s launches are included, still narrowed by its project scope.
-
-## Context estimates
-
-Listings are compact text, not JSON: `id status lifecycle outcome tokens cache age ttl | title`. Global Cake Chat lists across projects and adds a project column; Project Chat and ordinary Project Sessions can only list their own project, even with an explicit projectPath. IDs are canonical routing identities (or the fixed `cake-chat` alias), so follow-up calls do not enumerate unrelated session directories just to expand display suffixes. Manually supplied unscoped suffixes still require global identity discovery; use the returned IDs directly. `tokens` uses K/M notation and estimates the active model-visible context, including summaries but not originals hidden behind them—not lifetime history or billing. `age` is time since recorded model activity, not file modification. `cache` is advisory: `warm`, `expired?` (an evidenced estimated window elapsed), or `?` (unknown). `ttl` is estimated time remaining when creation-token evidence supports it; negative means elapsed and `?` means unknown. None of these hints proves a hit/miss; only a prefix may be reusable. Size and live activity may lag. Lifecycle is active/draft/resolved, independently of the execution outcome (completed/stopped/failed/etc.; `-` means unknown). `sessions.info` is compact identity/deepLink/workspace/lifecycle metadata; it never reads transcript content or inspects context. Explicit scoped history/message/attachment operations own content access, including protected task inputs. Do not wake a session just to ask its size.
-
-Regular sessions are estimated from Pi's persisted active projection after pagination, without starting a runtime. Permanent chats use advisory metadata of Pi Durable's committed active head; older/unstarted chats can remain unknown until activity records it. That head is not the whole stored history, and the next independent chat run rebuilds its bounded memory. A running session's estimate can lag its live response.
+Context/cache estimates are advisory, not billing or hit/miss proof; never wake a session just for size. Tokens estimate active visible context, not lifetime history. age is model activity, not mtime; ttl can be unknown/elapsed.
+Lifecycle, execution outcome and user review decisions are independent. Workflow labels/landing checkpoints are retained facts; Git dirty/head/readiness is not freshly verified.
+[Discovery details](session-discovery-details.md) explains pagination, workflow groups and estimate sources. [Delivery](communication.md) explains receipt semantics.

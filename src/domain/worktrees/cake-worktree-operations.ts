@@ -15,7 +15,7 @@ export function createCakeWorktreeOperations(
     {
       command: "worktrees.proposeSquashMessage",
       topic: "worktrees",
-      summary: "Submit the commit message requested by an active worktree squash landing.",
+      summary: "Submit requested squash message",
       guidance: [
         "Call this only when Cake explicitly asks this session to prepare a squash commit message.",
         "Inspect the complete worktree change and resolve any requested merge conflicts before proposing the message.",

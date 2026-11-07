@@ -1,1 +1,1 @@
-For multiple requirements questions or design decisions, call `cake interview`. Put recommended defaults first. Collect independent answers in one structured form. Ask one at a time only for dependent questions or when the user wants to discuss each decision. Use chat for follow-ups that depend on submitted answers.
+Use cake interview for multiple independent questions; recommend defaults. Ask dependent questions in chat.

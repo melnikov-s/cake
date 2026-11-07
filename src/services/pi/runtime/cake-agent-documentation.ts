@@ -21,7 +21,38 @@ import settings from "../../../../docs/agent/settings.md?raw";
 import sessionDiscovery from "../../../../docs/agent/session-discovery.md?raw";
 import sessionHistory from "../../../../docs/agent/session-history.md?raw";
 
+import taskIndex from "../../../../docs/agent/index.md?raw";
+import artifactDesigns from "../../../../docs/agent/artifact-designs.md?raw";
+import artifactRuntime from "../../../../docs/agent/artifact-runtime.md?raw";
+import widgetAuthoring from "../../../../docs/agent/widget-authoring.md?raw";
+import widgetTheme from "../../../../docs/agent/widget-theme.md?raw";
+import deliveryDetails from "../../../../docs/agent/delivery-details.md?raw";
+import familyDetails from "../../../../docs/agent/family-details.md?raw";
+import settingsVoice from "../../../../docs/agent/settings-voice.md?raw";
+import settingsThemes from "../../../../docs/agent/settings-themes.md?raw";
+import historyMemory from "../../../../docs/agent/history-memory.md?raw";
+import sessionCompaction from "../../../../docs/agent/session-compaction.md?raw";
+import sessionPromptFiles from "../../../../docs/agent/session-prompt-files.md?raw";
+import sessionDiscoveryDetails from "../../../../docs/agent/session-discovery-details.md?raw";
+import modelGeneration from "../../../../docs/agent/model-generation.md?raw";
+import todoDetails from "../../../../docs/agent/todo-details.md?raw";
+
 const documents = {
+  index: taskIndex,
+  "artifact-designs": artifactDesigns,
+  "artifact-runtime": artifactRuntime,
+  "widget-authoring": widgetAuthoring,
+  "widget-theme": widgetTheme,
+  "delivery-details": deliveryDetails,
+  "family-details": familyDetails,
+  "settings-voice": settingsVoice,
+  "settings-themes": settingsThemes,
+  "history-memory": historyMemory,
+  "session-compaction": sessionCompaction,
+  "session-prompt-files": sessionPromptFiles,
+  "session-discovery-details": sessionDiscoveryDetails,
+  "model-generation": modelGeneration,
+  "todo-details": todoDetails,
   sessions,
   workgroups,
   "family-startup": familyStartup,

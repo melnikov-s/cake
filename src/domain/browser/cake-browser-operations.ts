@@ -45,7 +45,7 @@ export function createCakeBrowserOperations(control: BrowserControl): CakeOperat
     {
       command: "browser.enter",
       topic: "browser",
-      summary: "Enter Browser Mode for the calling Project Session.",
+      summary: "Enter browser",
       guidance: [
         "Use Browser Mode to run, inspect, and interact with web applications while the user watches. The Chromium view is on the desktop even when this session runs on a remote backend.",
         "Desktop localhost is desktop-local. For a backend-loopback development service, the desktop user enters backend://localhost:<port>/ in the Browser address; the resulting isolated preview URL can then be inspected with CDP.",
@@ -62,7 +62,7 @@ export function createCakeBrowserOperations(control: BrowserControl): CakeOperat
     {
       command: "browser.events",
       topic: "browser",
-      summary: "Read buffered Chrome DevTools Protocol events from the embedded browser.",
+      summary: "Read CDP events",
       guidance: [
         "Enable the relevant CDP domain with browser.cdp before collecting its events.",
         "Omit methods to read all buffered events, or filter by exact event names such as Network.responseReceived.",
@@ -89,7 +89,7 @@ export function createCakeBrowserOperations(control: BrowserControl): CakeOperat
     {
       command: "browser.cdp",
       topic: "browser",
-      summary: "Send any Chrome DevTools Protocol command to the Project Session's browser.",
+      summary: "Send CDP command",
       guidance: [
         "This is unrestricted raw CDP. Use any domain and method supported by the embedded Chromium version.",
         "Enable a CDP domain before relying on its events or domain-specific state.",

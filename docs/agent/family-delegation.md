@@ -1,19 +1,15 @@
-# Delegating to family children
+# Delegate a child
 
-Read when creating or retrying a full child Project Session. Start with `workgroups.md`; read `communication.md` to choose the result mode before launch and `sessions.create-child.help` for the exact contract.
+sessions.create-child: title, assignment: {description, body}, resultDelivery.
+Use reply for dependencies/owed answers; notification for background review. Launch asynchronously. Choosing reply for authorized work needs no new approval.
+worktreeName creates isolation from committed HEAD; omission shares the caller's directory/index. Uncommitted edits stay behind when isolated.
+Cake creates the board and persists the addressed assignment before launch. Startup includes the task and calls; no boilerplate or discovery task needed.
 
-## Choose the result at launch
+## Assignment and evidence
 
-For an already-authorized task, set `resultDelivery: "reply"` when you need the result for your next action or owe the user an answer; no fresh authorization is needed merely to select reply. Use `"notification"` for background implementation reviewed later. Reply is asynchronous, not a blocking wait. The complete delivery rule and distinction from outbound `delivery` live in `communication.md`.
+Name substantive ownership, dependencies, acceptance checks and the expected board result. Use stable types/signatures and named tests when implementation depends on a shared contract.
+Both title and assignment are required; initialPrompt/bootstrap-first creation is unsupported. Do not append the initial assignment a second time.
+Check launch: accepted is intake; already-admitted does not restart work; failed retains a reservation. Retry with returned requestId and unchanged assignment. A fresh request ID creates another child.
+Request substantive board results. Board completion is passive and does not replace correlated result delivery.
 
-## Assign and launch
-
-Call `{"command":"sessions.list-family"}` for the family identity, root and a bounded member roster; follow nextOffset to discover more members. Request `{"command":"boards"}` for operation summaries and `<operation>.help` for an exact contract. Board operations automatically select the caller's family board; they do not accept a board ID. `boards.current` and `boards.read-new` return `boardId` with bounded descriptions.
-
-There are no separate agent board-create or board-join operations. `sessions.create-child` establishes or extends the caller's family, creates its Workboard automatically, and gives every recursive descendant access to that same board. Do not create an unrelated artifact board or invent join commands. An independent session cannot join an existing family through these tools. If no family exists, create a child only when delegation is actually warranted; if a member's board is unavailable, report the limitation to the user rather than falling back to private family messages.
-
-For a new child, use `{"command":"sessions.create-child","input":{"title":"Storage implementation","resultDelivery":"reply","assignment":{"description":"Implement the storage slice","body":"Own the storage files and tests. Post your commit, verification and blockers on the Workboard addressed to the parent."}}}`. Both `title` and substantive `assignment: { description, body }` are required. Cake reserves the child identity, creates/joins the board and persists the assignment addressed to that identity before admitting the first child turn. Cake includes the full persisted assignment once in the initial task message, together with authoritative operating basics, exact addressed Workboard calls and the reserved result-delivery mode. No initial board read is needed. Keep the assignment substantive; parents need not supply operating boilerplate. The persisted board entry remains the durable original, and later changing context is read through the supplied live call. Optional capabilities stay behind task guides. Do not append the initial assignment after creation; the former `initialPrompt`/bootstrap-first contract is unsupported and fails validation. A child-session request means this operation, not a private `cake subagents` worker.
-
-Inspect the returned `launch` outcome, not just the identity or assignment receipt. `accepted` means durable turn intake, not successful work or completion. `already-admitted` includes the durable journal state (active, blocked, complete, failed or stopped); it never starts that work again. `failed` includes the failure stage and keeps a retryable reservation. Retry with the returned `requestId` and unchanged assignment; a fresh request ID creates a different child. Assignment topics (`child-<canonical-id>`) are application-owned initial handoff identities; use a separate topic for subsequent coordination. Before admission, failure or a crash can leave a reservation waiting for a create-child retry; startup retains it but does not silently activate it. After admission, normal durable input recovery applies, including blocked/stop/cancellation authority. Do not claim completion from intake, board read receipts or session creation.
-
-Request the substantive result on the Workboard in the assignment. Board completion posts are passive coordination; they do not replace the launch's correlated result obligation or guarantee a dependent parent continuation. Select the needed result mode up front rather than adding a private wake-up, polling or a timer. See `communication.md` for application-owned completion and capability limits.
+[Launch/retry details](family-details.md#launch-and-retry) explains reservations, journal states and application-owned assignment topics. [Lifecycle](family-lifecycle.md) covers isolation/landing; operation help supplies the exact schema.

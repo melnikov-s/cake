@@ -1,11 +1,21 @@
-# Application actions
+# Application
 
-Read before project inspection, registration/removal, navigation or landing.
+## Identify and route
 
-For a simple Project Chat message, use `projects.list` once and pass its returned `projectChatId` directly to `sessions.send.sessionId`; an already-supplied canonical address needs no discovery. No source grep, manual hashing or AGENTS discovery is needed just to send. This is routing, not checkout inspection; see `session-discovery.md` for scope and receipts.\n\nIdentify registered roots with projects.list; use app.state for the invoking window's selection. An active worktree or session selection is not the project root. Refresh authoritative facts rather than inferring live state from memory.
+projects.list: registered roots and projectChatId. app.state: viewed context. Selection/worktree is not project-root identity; refresh live facts rather than trusting memory.
+sessions.send: use projectChatId directly; no checkout inspection, hashing or AGENTS discovery. `projects.info` also supplies it before the first chat visit.
+sessions.open: navigation requires the user's permission. If unavailable, offer the titled `sessions.info` deepLink; do not change that permission. [Routing and receipts](session-discovery.md).
 
-projects.add registers an existing directory; it does not create a checkout. For a new clone/worktree/directory, start a scoped mutation worker, then register its confirmed path. Project removal never authorizes deleting its sessions. Global Cake Chat reads and patches any registered Project's settings (worktree create/setup/remove commands, timeout, landing mode, instructions, browser URL, icon) with projects.settings.get/update and its exact path; a Project Chat uses the same operations for its own registered Project only. Set an icon with iconPath, an absolute or ~/ path to a local PNG, JPEG, GIF or WebP file; Cake reads and stores the image, so never send image bytes; results show the icon as { mimeType, sizeBytes }. Read first, change only the requested fields, read back before reporting success. Session titles are labels; route with discovered references. Use the full-UUID deepLink from sessions.info for user links, with a title rather than an ID as the label.
+## Register and configure
 
-For landing, relay the confirmed worktrees.merge outcome, commit and next step. Awaiting-agent/stalled means the owner must finish the requested step in its own worktree; retry through Cake afterward. Do not turn a landing failure into manual Git instructions for the target checkout.
+projects.add: register an existing directory, not create it. Permanent chats use a scoped mutation worker to create/clone a checkout first, then register its confirmed path. Project removal does not authorize session deletion.
+projects.settings.get/update: requested project settings; iconPath names a local image (absolute or ~/ PNG/JPEG/GIF/WebP), never image bytes.
+Global Cake Chat can target registered projects; Project Chat only its own. Coding sessions use singular `project.settings.*` for their project. Read first, patch requested fields, verify effective values. [Instruction-field boundaries](settings.md#dedicated-instructions).
 
-Read the chosen operation's .help contract before an unfamiliar action. subagents.start takes task, sessions.create takes initialPrompt, sessions.send takes text, and session.fork takes prompt. A topic returns summaries, not argument schemas. Use exact .help directly when the operation is known; request .output-schema only for programmatic result details.
+## Land
+
+worktrees.merge: managed landing only; report its actual outcome/next step. No manual Git fallback.
+Commit in the owner worktree first. Awaiting-agent/stalled requires the owner to complete the requested step there, then retry Cake landing. PR-only projects use their PR workflow.
+[Session/worktree lifecycle](sessions.md#fork-and-lifecycle).
+
+Known commands run directly. For unfamiliar inputs use exact help: workers take `task`, create takes `initialPrompt`, send takes `text`, fork takes `prompt`.

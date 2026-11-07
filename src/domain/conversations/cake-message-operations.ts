@@ -20,8 +20,7 @@ export function createMessageOperations(
     {
       command: "messages.list",
       topic: "messages",
-      summary:
-        "List bounded message identities and attachment input metadata without reading message bodies.",
+      summary: "List message/input metadata",
       guidance: [
         "Use a discovered Project Session ID or the permanent Cake Chat ID. Defaults to the active branch, chronological order, 25 messages; nextOffset continues the page.",
         "Each ref is an exact Pi entry reference and a clickable link. Forward it unchanged through messageRefs without reading it first.",
@@ -41,7 +40,7 @@ export function createMessageOperations(
     {
       command: "messages.read",
       topic: "messages",
-      summary: "Explicitly read a bounded text slice from one exact Pi message reference.",
+      summary: "Read exact message slice",
       guidance: [
         "Reading is optional. Forwarding or opening a reference never requires a body read.",
         "Defaults to 4,000 characters; maxChars is at most 20,000. Pass nextOffset as offset to continue. No inline image bytes are returned.",
@@ -59,9 +58,9 @@ export function createMessageOperations(
     {
       command: "messages.present",
       topic: "messages",
-      summary: "Show an exact full agent response in a lazy expandable source surface here.",
+      summary: "Show exact source inline",
       guidance: [
-        "Use for explicit standalone source presentation, not to relay an incoming report already shown in a sender-attributed card. Recap links stay clickable without creating another copy of that card. Label source links Full agent response, not a vague topic title.",
+        "Standalone source display, not duplicate incoming report cards. Link originals as Full agent response.",
         "The persisted tool result retains exact Pi message metadata only, not a copy or generated summary. Expansion reads bounded original text lazily; it does not inject the report into future model context.",
         "Missing or inaccessible sources fail explicitly. No branch fallback, history changes, ownership transfer or artifact copy. Attachments remain metadata, not inspected bytes.",
         "Presentation does not send another completion notice or change reply/notification/ignore delivery.",
@@ -85,8 +84,7 @@ export function createMessageOperations(
     {
       command: "messages.open",
       topic: "messages",
-      summary:
-        "Reveal an exact message in the invoking Cake window using ordinary session navigation.",
+      summary: "Navigate to exact message",
       guidance: [
         "Uses the same user-owned Settings → Agent navigation permission and focused-pane policy as sessions.open.",
         "This does not read the source into the agent context. If navigation is disabled, offer the ref as a Markdown link for the user to open manually.",

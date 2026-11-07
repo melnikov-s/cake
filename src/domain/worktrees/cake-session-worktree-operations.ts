@@ -26,8 +26,7 @@ export function createSessionWorktreeOperations(
       command: "worktrees.merge",
       requires: "mergeSession",
       topic: "worktrees",
-      summary:
-        "Land (merge) this session's Cake-managed worktree, or an immediate child's, into the branch it was created from.",
+      summary: "Land managed worktree",
       guidance: [
         ...worktreeMergeGuidance,
         "Omit sessionId to merge the calling session's own Managed Worktree. Commit your intended changes first so the landing can complete within this call; otherwise Cake queues a commit turn for you after this one.",
@@ -52,8 +51,7 @@ export function createSessionWorktreeOperations(
       command: "worktrees.discard",
       requires: "discardSession",
       topic: "worktrees",
-      summary:
-        "Discard this session's isolated Cake-managed worktree, or an immediate child's, without resolving the session.",
+      summary: "Discard managed worktree; keep session",
       inputSchema: Schema.Struct({
         sessionId: Schema.optionalKey(sessionIdSchema),
         keepBranch: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
@@ -84,8 +82,7 @@ export function createCakeChatWorktreeOperations(
     {
       command: "worktrees.merge",
       topic: "worktrees",
-      summary:
-        "Land (merge) one Project Session's Cake-managed worktree into the branch it was created from.",
+      summary: "Land managed worktree",
       guidance: [
         ...worktreeMergeGuidance,
         "Use this when the user asks to land, merge or ship a session's work. Do not ask sessions to hand-merge into the project root.",

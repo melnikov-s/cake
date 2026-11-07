@@ -9,7 +9,7 @@ export const coordinatorSystemPrompt = (
   companion = false,
 ) => {
   const base = companion
-    ? `${renderPromptTemplate(commonPromptTemplate)}\n\nCake documentation directory: ${cakeDocsDirectory}. Read the matching guide before launches, sends, settings changes or scheduling. Use cake {} to discover topics and <operation>.help for exact contracts; never guess arguments. Prefer direct Cake navigation and short answers, not delegation for quick lookups.`
+    ? `${renderPromptTemplate(commonPromptTemplate)}\n\nTask guide: ${cakeDocsDirectory}/index.md; follow relevant links only. Use known commands directly; <operation>.help for unfamiliar contracts. Answer/navigate directly.`
     : renderPromptTemplate(cakeChatPromptTemplate, {
         commonPrompt: renderPromptTemplate(commonPromptTemplate),
         cakeDocsDirectory,

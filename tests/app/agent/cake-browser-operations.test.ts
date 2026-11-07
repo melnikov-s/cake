@@ -80,7 +80,7 @@ describe("Cake browser operations", () => {
   it("exposes Browser Mode and buffered CDP events through progressive help", async () => {
     const { events, registry } = harness();
     expect(registry.help()).toContain("browser —");
-    expect(registry.topicHelp("browser")).toContain("unrestricted raw CDP");
+    expect(registry.topicHelp("browser")).toContain("Browser and CDP");
 
     await registry.invoke(
       {

@@ -11,25 +11,25 @@ export function createCoordinatorOperations(
       {
         command: "session.info",
         topic: "sessions",
-        summary: "Inspect this permanent chat.",
+        summary: "Inspect caller metadata",
         execute: bridge.info,
       },
       {
         command: "session.usage",
         topic: "sessions",
-        summary: "Inspect coordinator usage.",
+        summary: "Read provider usage/cost",
         execute: bridge.usage,
       },
       {
         command: "context.status",
         topic: "context",
-        summary: "Inspect the active bounded context.",
+        summary: "Inspect context usage",
         execute: bridge.contextStatus,
       },
       {
         command: "context.compact",
         topic: "context",
-        summary: "Compact the active run.",
+        summary: "Compact caller",
         execute: bridge.compact,
       },
     ].map((operation) => ({
@@ -41,7 +41,7 @@ export function createCoordinatorOperations(
     {
       command: "session.set-model",
       topic: "sessions",
-      summary: "Select a configured coordinator model.",
+      summary: "Set conversation model",
       inputSchema: Schema.Struct({ model: CakeModelSelection }),
       examples: [{ input: { model: "Sol" } }],
       result: "The selected model.",

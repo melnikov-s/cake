@@ -42,7 +42,7 @@ export function createSessionFamilyOperations(
       command: "sessions.reports",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Page outstanding user-facing report obligations; listing is not handling.",
+      summary: "List pending report obligations",
       guidance: [compactDiscoveryGuidance],
       inputSchema: AgentListInput,
       examples: [{ input: {} }],
@@ -55,7 +55,7 @@ export function createSessionFamilyOperations(
       canonicalSessionIds: true,
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Read a bounded slice of one pending handoff report with worker provenance.",
+      summary: "Read pending report slice",
       inputSchema: PendingReportRead,
       examples: [{ input: { id: "report-id" } }],
       result: "One pending handoff text slice with nextOffset; reading never acknowledges it.",
@@ -65,10 +65,9 @@ export function createSessionFamilyOperations(
       command: "sessions.reports.acknowledge",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary:
-        "Explicitly attest a report was communicated or user-dismissed, using already-emitted assistant text.",
+      summary: "Attest visible report handling",
       guidance: [
-        "First emit one concise grouped notice as assistant text, then supply its exact communicatedText and report IDs. Never acknowledge a planned final answer, intake or unrelated reply. The backend verifies visible text exists after the latest user input, not its semantic adequacy. Dismiss only when the user explicitly chose dismissal. An omitted or interrupted notice remains pending; no wakeup or mutation is authorized.",
+        "Emit grouped notice first, then acknowledge IDs with exact visible communicatedText. Never planned prose/intake/unrelated replies. Dismiss only by user decision; interruption retains obligations. No wake/mutation authorization.",
       ],
       inputSchema: PendingReportAcknowledge,
       examples: [
@@ -89,8 +88,7 @@ export function createSessionFamilyOperations(
       command: "sessions.completions",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary:
-        "Page pending/deferred completion decisions in your quiet inbox; nextOffset retrieves older pages.",
+      summary: "List pending completion decisions",
       inputSchema: AgentListInput,
       examples: [{ input: {} }],
       result:
@@ -101,8 +99,7 @@ export function createSessionFamilyOperations(
       command: "sessions.completions.update",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary:
-        "Record a user decision as deferred, handled or dismissed; never performs review/merge/resolve.",
+      summary: "Record user decision; no lifecycle action",
       inputSchema: CompletionInboxUpdate,
       examples: [{ input: { id: "completion-id", state: "deferred" } }],
       result:
@@ -113,19 +110,18 @@ export function createSessionFamilyOperations(
       command: "sessions.create-child",
       requires: "createChildSession",
       topic: "sessions",
-      summary:
-        "Persist an addressed Workboard assignment, then start a full child Project Session.",
+      summary: "Persist assignment and launch child",
       guidance: [
         "Use this operation—not cake subagents—when the user asks for a child session, full child Project Session, related session, or Session Family member.",
         "Required title and assignment: { description, body }. Cake reserves the child identity and persists its addressed Workboard assignment before its first turn can run. initialPrompt/bootstrap-first calls are unsupported and fail validation.",
         "The calling session becomes the child's immediate parent. Children may recursively create their own children.",
         "Omit worktreeName to share the caller's exact Working Directory. Supply worktreeName to create a Cake-managed worktree branched from the caller's current checkout.",
-        "Returns accepted, already-admitted (with durable state), or failed launch status—not proof of work or completion. On failure retry with the returned requestId and unchanged assignment; the same ID never starts canceled or previously admitted work again. Do not wait or poll.",
+        "Inspect accepted/already-admitted/failed launch; intake is not completion. Retry returned requestId with unchanged assignment; canceled/admitted work never restarts. Do not wait/poll.",
         resultDeliveryGuidance,
-        "Read workgroups.md and family-delegation.md before launch. Substantive family coordination belongs on the Workboard unless the user explicitly overrides that default. Supply a substantive assignment, not merely a board-discovery instruction. Cake includes it inline once with authoritative operating basics, exact addressed Workboard calls and effective result-delivery behavior; parents need not repeat boilerplate. Later changing coordination uses the supplied live-context call, while additional operations remain in task guides.",
-        "Later board posts route to explicit recipients and the family root, excluding the author. Completion posts are passive and do not replace correlated result delivery. Read family-coordination.md for events, batching and delivery evidence.",
+        "Family coordination defaults to Workboard; explicit user exceptions apply. Supply substantive assignment, not discovery instructions. Startup includes it and addressed calls; no prerequisite guide reads.",
+        "Board posts reach audience/root, not author. Passive completion does not replace correlated result delivery; no extra guide reads.",
         "Children start in the background by default. Set open to true to focus the child conversation in the invoking window.",
-        "Omit model unless the user explicitly asks for a specific model. When omitted, the child uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
+        "Omit model unless requested; configured default preset supplies complete settings, falling back to caller only if no default.",
       ],
       inputSchema: Schema.Struct({
         title: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
@@ -181,7 +177,7 @@ export function createSessionFamilyOperations(
       command: "sessions.list-family",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "List only the Project Sessions in the calling session's family.",
+      summary: "List family members",
       guidance: [
         "The family is derived from the calling Project Session; this operation never accepts a sessionId.",
         "Use sessions.list when sessions outside the calling session's family are needed.",
@@ -203,13 +199,12 @@ export function createSessionFamilyOperations(
       canonicalSessionIds: true,
       requires: "invokeAppControl",
       topic: "sessions",
-      summary:
-        "Send to a Project Session or registered Project Chat; omit sessionId to message global Cake Chat from a Project Session.",
+      summary: "Message target; omission reaches Cake Chat",
       guidance: [
         promptFilesGuidance,
-        "For a Project Chat, call projects.list with query and pass its canonical projectChatId as sessionId. No repository reads, path hashing, sessions.info or recipient turn wait is needed. Receipt means admission/deferred retention, not execution or completion.",
-        'Omit sessionId to reach Cake Chat. Cake Chat has no session ID; never pass the sender ID shown on Cake Chat\'s messages (it is labelled "cake-chat"). delivery, resultDelivery, threadId, and replyToMessageId mean the same as in sessions.reply to Cake Chat. To ask the user a question through Cake Chat, set resultDelivery: "reply"; to report a blocker on assigned work, prefer sessions.reply with outcome: "blocked".',
-        "By default do not use sessions.send (including send-batch or steering) for intra-family communication. Current explicit user exceptions override this Cake policy; supported tool capabilities and genuine platform limits still apply. Parents, children, siblings and recursive descendants communicate exclusively through their shared Workboard. This does not restrict user-facing replies, Cake Chat or unrelated independent sessions.",
+        "Send to projectChatId from projects.list directly; no repository/hash/history lookup. Receipt is intake/retention, not execution.",
+        "Omit sessionId to reach Cake Chat from a Project Session. Questions need resultDelivery: reply; blocking decisions use sessions.reply outcome: blocked. Delivery/thread fields keep ordinary meaning.",
+        "Family messaging defaults to Workboard, including descendants; explicit user exceptions apply. User replies, Cake Chat and independent sessions are unaffected.",
         "Outside the family, necessary immediate corrections steer active work by default; idle sessions start normally. Use delivery: fyi for passive batched updates, queue only for deliberately ordered future work.",
         resultDeliveryGuidance,
         sessionMessageDeliveryGuidance,
@@ -275,16 +270,15 @@ export function createSessionFamilyOperations(
       command: "sessions.reply",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary:
-        "Reply to the originating session in the current open exchange without carrying its session ID.",
+      summary: "Reply in current exchange",
       guidance: [
         promptFilesGuidance,
-        "By default do not use sessions.reply for intra-family communication; current explicit user exceptions override this Cake policy; publish results, questions and blockers exclusively on the shared Workboard. User-facing replies, Cake Chat and unrelated independent sessions retain their ordinary reporting rules.",
+        "Family replies default to Workboard; explicit user exceptions apply. User-facing/Cake Chat/independent-session replies are unaffected.",
         resultDeliveryGuidance,
         "The originating request's resultDelivery governs how its result reaches its parent; this reply's resultDelivery controls any subsequent return to the replier. Do not request an acknowledgment merely for reporting completion.",
         "Provide replyToMessageId when more than one request may be pending. Cake otherwise selects the latest matching request in the thread.",
-        "A Project Session answering Cake Chat (including one Cake Chat launched) replies to its originating Cake Chat or Project Chat without needing to repeat its address. Optional outcome declares completed, blocked, or failed; a terminal report is delivered after the executing turn settles.",
-        'Notification-mode results join the passive batch; reply-mode results queue a non-interrupting parent continuation. outcome: "blocked" reaches Cake Chat after the worker turn settles; use it only when you cannot continue without a user decision.',
+        "Replies to originating Cake/Project Chat need no address. outcome: completed/blocked/failed; terminal delivery waits for the turn to settle.",
+        "Notification batches passively; reply queues non-interrupting continuation. outcome: blocked escalates after settling, only for a decision preventing progress.",
         "Do not reply merely to acknowledge a result, notice, confirmation, lifecycle event, or delivery receipt.",
       ],
       inputSchema: Schema.Struct({
@@ -306,7 +300,7 @@ export function createSessionFamilyOperations(
       command: "sessions.thread",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Inspect participants, message count, limit, closure, and delivery states.",
+      summary: "Inspect current exchange",
       inputSchema: Schema.Struct({
         threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
       }),
@@ -318,8 +312,7 @@ export function createSessionFamilyOperations(
       command: "sessions.close-thread",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary:
-        "Close the current exchange so queued or late arrivals cannot cause an automatic reply.",
+      summary: "Close current exchange",
       inputSchema: Schema.Struct({
         threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
       }),

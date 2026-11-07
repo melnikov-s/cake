@@ -15,8 +15,7 @@ export function createAttachmentReferenceOperations(
       command: "attachments.list",
       topic: "attachments",
       truncateResultText: false,
-      summary:
-        "Discover stable attachment references shared with this agent, including earlier inputs.",
+      summary: "List shared attachment refs",
       guidance: [
         "Returns only metadata, never previews, extracted text, pixels or local paths. References survive history compaction and backend restarts.",
         "You may pass the returned reference IDs in sessions.create/send or subagents.start inputRefs without reading or paraphrasing the attachments.",
@@ -34,8 +33,7 @@ export function createAttachmentReferenceOperations(
       command: "attachments.read",
       topic: "attachments",
       truncateResultText: false,
-      summary:
-        "Explicitly inspect one exact authorized attachment; images are returned as native image pixels.",
+      summary: "Read authorized attachment/pixels",
       guidance: [
         "Use a stable reference from attachments.list or input metadata, not a filesystem path. You do not need to read before forwarding.",
         "UTF-8 text and JSON are returned as bounded text with offset/nextOffset for pagination. Image reads return pixels, not a path or base64 text.",

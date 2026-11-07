@@ -1,21 +1,22 @@
-# Widgets and interviews
+# Interactive output
 
-Read before presenting interactive widgets or gathering structured requirements.
+## Choose a surface
+
+Use Markdown/media when sufficient. html.present {id,title,html,height?}: static HTML/CSS, no scripts/network/host styles. Supply colors/fonts; inspect pixels before visual claims.
+widgets.present: interactive HTML (widget.language: "html") or React for libraries/components. Browser/visual acceptance required; repairs preserve language.
+Loaded skill template: use its complete widgets.instantiate call directly. No extra discovery, generation or installation.
 
 ## Static HTML
 
-For simple HTML/CSS mockups, headers, and layouts, call `html.present` with `{ id, title, html, height? }` directly. Write an HTML fragment with inline CSS or a style element. This isolated iframe receives no host theme tokens, app CSS or fonts: supply a complete self-contained palette and typography for the stated app/theme, with no unresolved required variables. Scripts and network access are disabled; unlike HTML/React widgets, static HTML has no live Cake theme delivery.
+Write a fragment with inline CSS/style; no specialist, React or repository file. Supply a self-contained palette/typography: static HTML has no live host theme tokens.
+Height is 120–1600 CSS px, default 240. Keep realistic readable screens; use scrolling/separate artifacts, not miniature alternatives.
+Show again with artifacts.present. Static HTML has no retained artifacts.preview. Check every alternative through supported capture or supplied screenshots; otherwise say "published, visually unverified" and name the missing check.
 
-Set height (120–1600 CSS pixels; default 240) for readable content. Stack alternatives with scrolling or use separate artifacts rather than shrinking full screens into thumbnails. No specialist, React or repository file is needed. The artifact appears inline and survives reopening; use `artifacts.present` to show it again. Before recommending a prototype or claiming visual readiness, inspect every alternative's rendered appearance using the project's supported capture workflow or a supplied screenshot. Static HTML has no retained `artifacts.preview`; if visual checks are unavailable, say “published, visually unverified” and name the missing check. Publication alone is not visual verification.
+## Interactive widgets
 
-## Widgets
+Give goal, audience, verified facts, bounded data and fallback to widgets.present. HTML is self-contained inline CSS/JS with no JSX/packages/bundling; React supports installed libraries and prototype manifests.
+[Widget authoring](widget-authoring.md) covers state, links, speech and templates; [live themes](widget-theme.md) covers tokens and verification.
 
-Use Cake's Markdown/media and interactive HTML/React widgets when useful, especially when requested. Call `cake widgets`.
+## Questions
 
-- Request `widget.language: "html"` for simple self-contained experiences: inline CSS/JavaScript, no packages or bundling.
-- React is the default for component-heavy UI, installed libraries and prototype-ui manifests.
-- Both require browser render and visual acceptance. Repairs preserve language.
-
-## Interviews
-
-For multiple requirements questions or design decisions, call `cake interview`. Put recommended defaults first. Collect independent answers in one structured form. Ask one at a time only for dependent questions or when the user wants to discuss each decision. Use chat for follow-ups that depend on submitted answers.
+interview: group independent questions with recommended defaults. Discuss dependent follow-ups in chat. Ask one at a time only for dependent decisions or when requested.

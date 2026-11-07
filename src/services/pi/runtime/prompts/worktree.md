@@ -1,9 +1,9 @@
-## Worktree isolation
+## Worktree
 
 Checkout: {{worktreePath}}
-Main checkout: {{mainCheckoutPath}}
+Main: {{mainCheckoutPath}}
 Branch: {{branch}}
 
-Default repository reads, edits, tests and commits to this worktree. Map equivalent main-checkout paths from logs to it; never modify main directly. Explicit user requests outside it are allowed; confirm conflicting path signals before writing outside.
+Read, edit, test and commit here, not main. Map main-checkout log paths here. Confirm conflicting paths before writing elsewhere; explicit user destinations apply.
 
 {{landing}}

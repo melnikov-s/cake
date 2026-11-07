@@ -94,80 +94,75 @@ export const AutomationSessionInvocation = Schema.Union([
 export const automationToolDescriptions = [
   {
     command: "automations.list",
-    summary: "List bounded automation metadata, optionally by context, state or running activity.",
+    summary: "List automations",
     result: "Summaries, total, offset and nextOffset; no task bodies or transcripts.",
   },
   {
     command: "automations.inspect",
-    summary: "Inspect one automation's settings, state and activity without reading its task body.",
+    summary: "Inspect automation metadata",
     result:
       "Configuration, prompt character count and attachment metadata. Use automations.read-task for task text.",
   },
   {
     command: "automations.read-task",
-    summary: "Read one saved automation prompt in bounded text slices.",
+    summary: "Read saved task",
     result: "Text, totalChars and nextOffset; default 4000, maximum 20000 characters.",
   },
   {
     command: "automations.create",
-    summary:
-      "Create a global or explicitly project-scoped automation with a schedule or scoped event trigger.",
+    summary: "Create automation",
     result: "Saved identity and configuration metadata; no execution starts until a trigger fires.",
   },
   {
     command: "automations.update",
-    summary:
-      "Change selected saved fields without resending task attachments; running and queued work retain their accepted settings.",
+    summary: "Edit saved fields; accepted work unchanged",
     result: "Updated configuration metadata.",
   },
   {
     command: "automations.activate",
-    summary: "Activate, resume or restore an automation after validating its context and schedule.",
+    summary: "Activate automation",
     result: "Active state and current activity; accepted queued work may start.",
   },
   {
     command: "automations.pause",
-    summary:
-      "Pause automatic triggering while letting current sessions finish and holding the accepted queue.",
+    summary: "Pause triggers; keep running work/queue",
     result: "Paused state; this does not stop running sessions.",
   },
   {
     command: "automations.archive",
-    summary:
-      "Retire an automation and cancel queued occurrences; explicitly let running sessions finish or stop them.",
+    summary: "Retire automation; cancel queued work",
     result: "Archived state; memory and history remain.",
   },
   {
     command: "automations.trigger",
-    summary: "Run an automation now, respecting overlap; a paused automation stays paused.",
+    summary: "Run now; preserve paused state",
     result:
       "Started with run/session IDs, queued, skipped or blocked with the occurrence ID and reason.",
   },
   {
     command: "automations.history",
-    summary:
-      "List globally ordered trigger outcomes and run/session links, optionally filtered by automationId; query matches captured automation names.",
+    summary: "List trigger outcomes/run links",
     result:
       "A bounded page of occurrence metadata and run links, total and nextOffset; no task bodies or transcripts.",
   },
   {
     command: "automations.cancel-run",
-    summary: "Stop one running automation session without pausing its definition.",
+    summary: "Stop running automation session",
     result: "Run identity after requesting cancellation.",
   },
   {
     command: "automations.cancel-queued",
-    summary: "Cancel one queued occurrence without creating a session.",
+    summary: "Cancel queued occurrence",
     result: "Canceled occurrence identity.",
   },
   {
     command: "automations.memory",
-    summary: "Read an automation's compact shared OptMem view.",
+    summary: "Read shared memory",
     result: "Budgeted summary lines with id+n ranges for Zoom.",
   },
   {
     command: "automations.zoom-memory",
-    summary: "Expand a shared memory range repeatedly to branches or exact paged originals.",
+    summary: "Expand shared memory",
     result: "Children or original text; offset/maxChars apply only to leaf originals.",
   },
 ] as const;
@@ -175,18 +170,17 @@ export const automationToolDescriptions = [
 export const automationSessionToolDescriptions = [
   {
     command: "projects.list",
-    summary:
-      "List registered Projects with exact paths for explicit launches or automation contexts.",
+    summary: "List projects and Project Chat addresses",
     result: "A bounded metadata page of registered Project paths, names, and Project Chat IDs.",
   },
   {
     command: "projects.info",
-    summary: "Inspect a registered Project by exact path.",
+    summary: "Inspect registered project",
     result: "The registered Project's metadata, without opening it or reading conversations.",
   },
   {
     command: "sessions.create",
-    summary: "Launch an independent Project Session in an explicitly selected registered project.",
+    summary: "Launch independent Project Session",
     result:
       "Started Project Session identity and link. This creates no Session Family and does not automatically relay its result to the automation.",
   },
@@ -195,18 +189,18 @@ export const automationSessionToolDescriptions = [
 export const automationMemoryToolDescriptions = [
   {
     command: "memory.read",
-    summary: "Read this automation session's shared memory.",
+    summary: "Read shared automation notes",
     result: "The compact shared OptMem view, not previous session transcripts.",
   },
   {
     command: "memory.zoom",
-    summary: "Zoom a range from this automation's memory view down to exact original notes.",
+    summary: "Expand note originals",
     result:
       "Children or paged original text; no other automation's memory is accessible through this tool.",
   },
   {
     command: "memory.write",
-    summary: "Write a durable note for future and concurrent sessions of this automation.",
+    summary: "Save shared automation note",
     result:
       "Saved note sourceId; ownership and author session are bound by Cake, never supplied by the model.",
   },

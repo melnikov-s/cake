@@ -15,14 +15,14 @@ export function createCakeArtifactStateOperations(
     {
       command: "artifacts.state.read",
       topic: "artifacts",
-      summary: "Read the current mutable JSON state of a linked widget artifact.",
+      summary: "Read live widget state",
       inputSchema: Schema.Struct({ lineageId: ArtifactLineageId }),
       outputSchema: ArtifactState,
       examples: [{ input: { lineageId: "editable-diagram" } }],
       result: "Current JSON value and stale-write version (not artifact revision/history).",
       guidance: [
         "State belongs to the artifact lineage, not a session or revision. Every linked view observes the same current value. State writes do not append transcript pointers or artifact revisions.",
-        "For existing widget data/content, read then use artifacts.state.update rather than regenerating source. Show the result with artifacts.present. For an independent document using the same implementation, use widgets.instantiate with a new ID and explicit initialState.",
+        "Read/update live state, then artifacts.present. Independent documents use widgets.instantiate with new ID/state.",
       ],
       async execute(input) {
         if (!options.readArtifactState) throw new Error("Artifact state is unavailable");
@@ -35,9 +35,9 @@ export function createCakeArtifactStateOperations(
     {
       command: "artifacts.state.replace",
       topic: "artifacts",
-      summary: "Replace linked widget JSON state without adding history.",
+      summary: "Replace live state; no revision",
       guidance: [
-        "Use state.read first and supply expectedVersion. Prefer state.update for targeted content changes; artifacts.replace is for source/behavior changes or old hardcoded content. Display with artifacts.present; create independent documents with widgets.instantiate.",
+        "Read first; pass expectedVersion. update edits data; replace changes source. present shows; instantiate copies.",
       ],
       inputSchema: ArtifactStateReplacement,
       outputSchema: ArtifactState,
@@ -55,7 +55,7 @@ export function createCakeArtifactStateOperations(
     {
       command: "artifacts.state.update",
       topic: "artifacts",
-      summary: "Surgically set/remove JSON-pointer paths in linked widget state.",
+      summary: "Edit JSON-pointer state paths",
       inputSchema: ArtifactStateUpdate,
       outputSchema: ArtifactState,
       examples: [
@@ -70,7 +70,7 @@ export function createCakeArtifactStateOperations(
       result: "One saved current value/version. All edits succeed together or nothing changes.",
       guidance: [
         "Edit existing data/content here without generation or compilation. Display with artifacts.present; use widgets.instantiate for an independent document, artifacts.replace for source/behavior changes or old hardcoded content.",
-        "Read first and supply expectedVersion. Paths use JSON pointer escaping (~0 for ~, ~1 for /). Set replaces a field/index or appends with /-; remove deletes a field or array item. Parents must exist. Edits run in order. Empty path sets the root.",
+        "Read first; expectedVersion required. JSON pointers: ~0/~1, /- appends, empty sets root. Parents must exist; edits run in order.",
       ],
       async execute(input) {
         if (!options.updateArtifactState) throw new Error("Artifact state is unavailable");

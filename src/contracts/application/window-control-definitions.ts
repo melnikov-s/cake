@@ -98,8 +98,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "app",
-      summary:
-        "Inspect Cake's current selection, focused conversation, current workspace, counts and visible embedded browser location or VS Code editor paths/groups. URLs omit credentials, query and fragment; unavailable/hidden views are explicit. Uses canonical session IDs without global discovery.",
+      summary: "Inspect window/view metadata",
     },
   },
   "app.user-selection": {
@@ -108,7 +107,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "app",
-      summary: "Read the text currently highlighted by the user in the Cake window.",
+      summary: "Read highlighted Cake text",
       result: "The currently selected text, or no text if nothing is highlighted in Cake.",
     },
   },
@@ -121,8 +120,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "app",
-      summary:
-        "Read or change the invoking window's Workspace accessory. Mode selects To-dos or Sessions; visible closes/reopens it. Omit both to inspect.",
+      summary: "Inspect/change Workspace pane",
     },
   },
   "app.home": {
@@ -131,8 +129,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "app",
-      summary:
-        "Return the invoking window to Project Chat in chat mode for its focused Project, or Cake Chat when no Project is selected.",
+      summary: "Open Project Chat home",
     },
   },
   "notifications.send": {
@@ -147,7 +144,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "notifications",
-      summary: "Send a bounded native system notification without adding user input.",
+      summary: "Send system notification",
     },
   },
   "sessions.queue-command": {
@@ -159,8 +156,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Queue a slash command to execute between responses without interrupting the active response.",
+      summary: "Queue command between responses",
       guidance: [
         "Inspect sessions.commands for queueable commands. /compact accepts instructions; /toolcompact takes no arguments and uses the latest completed assistant response when executed.",
         "Commands share the follow-up queue with messages and preserve its order. Use sessions.pending, sessions.reorder, or sessions.cancel-queued to inspect, reorder or cancel pending work.",
@@ -186,7 +182,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "Move a queued command or message to a one-based position within its existing lane.",
+      summary: "Reorder within queue lane (one-based)",
     },
   },
   "sessions.pending": {
@@ -195,8 +191,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "List bounded queue identities, short labels, lanes and positions; offset/limit page results, pending-info reads exact text.",
+      summary: "List queued input metadata",
     },
   },
   "sessions.pending-info": {
@@ -205,7 +200,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "Read one exact live queued input in bounded text slices (maxChars up to 20000).",
+      summary: "Read queued input",
     },
   },
 
@@ -219,8 +214,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Edit the text of one queued user message in place; preserve its position, attachments and delivery lane. Never sends it.",
+      summary: "Edit queued user text; do not send",
     },
   },
   "sessions.cancel-queued": {
@@ -232,8 +226,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Cancel one queued message in an explicitly targeted Project Session by its projected partId.",
+      summary: "Cancel queued input",
     },
   },
   "sessions.steer-queued": {
@@ -245,8 +238,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Move one queued follow-up message to the steering lane of an explicitly targeted Project Session by its projected partId.",
+      summary: "Move queued input to steering",
     },
   },
   "sessions.send-now": {
@@ -258,8 +250,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Stop the active turn and send one queued message now in an explicitly targeted Project Session by its projected partId. Other queued messages remain queued.",
+      summary: "Stop and send queued input",
     },
   },
   "sessions.clear-queue": {
@@ -268,8 +259,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Clear queued steering/follow-up inputs and return cleared counts, never message contents. Read selected items before clearing if needed.",
+      summary: "Clear queued inputs",
     },
   },
   "sessions.fork": {
@@ -294,10 +284,9 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Create, configure, name, and start a project session in the background, optionally from a model preset or in a new managed worktree.",
+      summary: "Launch independent Project Session",
       guidance: [
-        "Omit model unless the user explicitly asks for a specific model. When omitted, the new session uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling Cake Chat's current model. Only when no default preset is configured does it use the calling Cake Chat's current settings.",
+        "Omit model unless requested; configured default preset supplies complete settings, falling back to caller only if no default.",
         promptFilesGuidance,
         "Pass exact attachment IDs from input metadata or attachments.list in inputRefs to forward without reading. Use attachments.read only when you want to inspect the content yourself.",
         resultDeliveryGuidance,
@@ -335,8 +324,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Create, configure, name, and save an initial prompt as a background Cake-owned draft without starting a Pi session.",
+      summary: "Save unstarted session draft",
       guidance: [
         "Omit model unless the user explicitly asks for a specific model. When omitted, the draft uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling Cake Chat's current model. Only when no default preset is configured does it use the calling Cake Chat's current settings.",
       ],
@@ -375,9 +363,9 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "Stop one explicitly targeted running session.",
+      summary: "Stop active turn",
       guidance: [
-        "A deliberate stop is not a failure: the session shows as stopped, never as needing attention, and a result you were owed from it is settled silently. Pass a short reason (for example, “the user asked to stop”) so the stop is attributed in the transcript.",
+        "Stop is stopped, not failed/needs-attention; owed result settles silently. Include a short reason.",
       ],
     },
   },
@@ -390,7 +378,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "Rename one explicitly targeted Project Session to a new title.",
+      summary: "Rename target",
     },
   },
   "sessions.resolve": {
@@ -407,7 +395,7 @@ export const windowControlDefinitions = {
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "Idempotently resolve or restore explicit Project Session targets.",
+      summary: "Resolve/restore explicit targets",
       guidance: [
         `${PROJECT_TODO_AUTO_COMPLETION_RULE} Resolving all actual session associations completes linked to-dos in Project Chat and global Cake Chat lists. Source/report links do not block completion; source-only items stay open. Restore never reopens to-dos, and marking a to-do done never resolves sessions.`,
       ],

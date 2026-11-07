@@ -23,7 +23,7 @@ export function createAgentProjectSettingsOperations(
       command: "project.settings.get",
       requires: "invokeAppControl",
       topic: "project",
-      summary: "Read every setting for the calling Project Session's Cake Project.",
+      summary: "Read this project's settings",
       guidance: [
         "This singular project.* operation always targets the calling Project and never accepts a project path.",
       ],
@@ -36,11 +36,10 @@ export function createAgentProjectSettingsOperations(
       command: "project.settings.update",
       requires: "invokeAppControl",
       topic: "project",
-      summary:
-        "Patch any setting for the calling Project Session's Cake Project and return all committed settings.",
+      summary: "Patch this project's settings",
       guidance: [
         "Call project.settings.get before updating the Project. Unspecified settings remain unchanged.",
-        "customInstructions applies only to coding Project Sessions. projectChatInstructions applies only to the permanent Project Chat and appears in Project settings → Project Chat instructions. Never move text between these fields without user authorization. Read back before claiming success.",
+        "customInstructions: coding sessions. projectChatInstructions: permanent chat. Never move text without authorization; verify afterward.",
         projectIconPathGuidance,
         "For Project Chat guidance prefer settings.project-chat.get/update: explicit registered project identity, exact expectedInstructions, and conflict-safe persistence. Never fall back silently to shared settings.cake-chat.update.",
         "This singular project.* operation always targets the calling Project and never accepts a project path.",

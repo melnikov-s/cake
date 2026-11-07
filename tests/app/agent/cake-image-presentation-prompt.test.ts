@@ -1,24 +1,10 @@
 import { expect, it } from "vitest";
 import { coordinatorSystemPrompt } from "../../../src/services/pi-durable/coordinator-system-prompt";
-import modelDocumentation from "../../../docs/agent/models.md?raw";
-import presentationDocumentation from "../../../docs/agent/presentation.md?raw";
-
-it("shared presentation guidance requires inline images rather than clickable links", () => {
-  const prompt = presentationDocumentation;
-  expect(prompt).toContain("Always present images, screenshots, and visual previews inline");
-  expect(prompt).toContain("never as plain clickable links");
-  expect(prompt).toContain("![Description](path)");
-  expect(prompt).toContain("absolute (for example `/tmp/shot.png`)");
-  expect(prompt).toContain("native inline image output");
-});
-
-it("Cake Chat keeps inline images in its kernel and gates detailed presentation guidance", () => {
-  const prompt = coordinatorSystemPrompt("", "/cake/docs");
-  expect(prompt).toContain("Show images inline");
-  expect(prompt).toContain("Read before acting");
-  expect(prompt).toContain("`presentation.md` for rich output/images/files/links/selected text");
-});
-
-it("Project Session saved-image documentation also requires inline presentation", () => {
-  expect(modelDocumentation).toContain("display the saved image inline with Markdown image syntax");
+import models from "../../../docs/agent/models.md?raw";
+import presentation from "../../../docs/agent/presentation.md?raw";
+it("shows local and generated images inline without extra reads", () => {
+  expect(coordinatorSystemPrompt("", "/docs")).toContain("Show images inline");
+  expect(presentation).toContain("![description](path), inline, including absolute/~/ paths");
+  expect(models).toContain("show native image blocks inline");
+  expect(models).toContain("Save only when requested");
 });

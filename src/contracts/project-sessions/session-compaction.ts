@@ -50,13 +50,12 @@ export const sessionCompactionDefinitions = [
   {
     command: "sessions.tool-compact",
     topic: "sessions",
-    summary:
-      "Create a dialogue-only continuation of an authorized idle Project Session, preserving original history.",
+    summary: "Make dialogue-only continuation; keep history",
     guidance: [
       "Only on a user request. Supply an explicit Project Session identity or discovered suffix, not a title. Targets the latest completed assistant text response on the active branch; no completed response is a failure.",
-      "Distinct from sessions.compact: reuses existing tool compaction, without a model summary. Replays user-authored input and assistant text, removing tool calls/results, reasoning, injected reminders and coordination. The Session ID stays stable and the original branch remains inspectable through sessions.history/tree/compactions.",
-      "Project Chat and Project Session callers stay within their project; global Cake Chat may target authorized projects. Resolved history requires an available checkout. Drafts and retired/missing worktrees are unavailable; nothing is restored or resolved.",
-      "Busy targets return busy, never aborted or queued. compacted means the dialogue branch was persisted, Pi navigation completed and the snapshot was published, not merely admitted. Failures return failed. Once started, the runtime is retained until completion even if the caller disconnects. No automatic retries; repeated calls create another branch.",
+      "No model summary: replay user input/assistant text, omit tools/reasoning/reminders. ID and original history remain inspectable.",
+      "Project callers stay in-project; global Cake Chat uses authorized projects. Resolved needs available checkout; drafts/missing worktrees unavailable. No restore/resolve.",
+      "Busy skips, never interrupts/queues. compacted means persisted branch/navigation/snapshot; failed is failure. Runtime stays until settled; no auto retry. Repeated calls create branches.",
     ],
     inputSchema: SessionToolCompactInput,
     examples: [{ input: { sessionId: "target-session-id" } }],
@@ -65,8 +64,7 @@ export const sessionCompactionDefinitions = [
   {
     command: "sessions.compact",
     topic: "sessions",
-    summary:
-      "Compact one authorized idle Project Session through its Pi runtime and return completion evidence.",
+    summary: "Compact an idle session",
     guidance: sessionCompactionGuidance,
     inputSchema: SessionCompactInput,
     examples: [{ input: { sessionId: "target-session-id" } }],
@@ -75,8 +73,7 @@ export const sessionCompactionDefinitions = [
   {
     command: "sessions.compact-batch",
     topic: "sessions",
-    summary:
-      "Compact up to 100 targeted Project Sessions, deduplicating identities and reporting partial failures.",
+    summary: "Compact up to 100 sessions",
     guidance: sessionCompactionGuidance,
     inputSchema: SessionCompactBatchInput,
     examples: [{ input: { sessionIds: ["first-session-id", "second-session-id"] } }],

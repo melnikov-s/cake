@@ -125,12 +125,11 @@ describe("Cake artifact management operations", () => {
     const { registry } = makeHarness();
     const help = await registry.invoke({ command: "html.present.help" }, context());
     for (const fact of [
-      "no host theme tokens, app CSS or fonts",
-      "no unresolved required variables",
-      "HTML/React widgets receive live host theme tokens",
-      "readable at a realistic viewport",
-      "inspect every alternative’s rendered pixels",
-      "Static HTML has no retained artifacts.preview",
+      "supply colors/fonts, no host styles",
+      "live theme",
+      "readable viewport",
+      "Inspect every alternative's rendered pixels",
+      "Static HTML has no retained preview",
       "published, visually unverified",
     ])
       expect(help.text).toContain(fact);
@@ -337,22 +336,13 @@ describe("Cake artifact management operations", () => {
   it("keeps create help aligned with the chat-first text artifact policy", async () => {
     const { registry } = makeHarness();
     const help = await registry.invoke({ command: "artifacts.create.help" }, context());
-    expect(help.text).toContain(
-      "Keep investigations, explanations, ordinary implementation details, progress, and reports in chat by default",
-    );
-    expect(help.text).toContain(
-      "Create text/Markdown artifacts only when the user explicitly requests them, except for a spec serving as a shared, durable reference",
-    );
-    expect(help.text).toContain("this session can read after compaction");
-    expect(help.text).toContain("child sessions can read for coordinated implementation");
-    expect(help.text).toContain("Shared-reference usefulness, not length or formatting");
-    expect(help.text).toContain("merely being an investigation does not qualify");
-    expect(help.text).toContain(
-      "This text/Markdown policy does not restrict non-text visual artifacts or explicitly requested file deliverables",
-    );
-    expect(help.text).toContain(
-      "Import a workspace file when the file itself is the reusable deliverable",
-    );
+    for (const fact of [
+      "ordinary work/reports in chat",
+      "user request or shared durable spec",
+      "length/format alone does not qualify",
+      "Import a workspace file",
+    ])
+      expect(help.text).toContain(fact);
   });
 
   it("exposes bounded metadata operations without a payload-returning read command", async () => {
@@ -762,7 +752,7 @@ describe("Cake artifact management operations", () => {
   it("advertises targeted updates separately from full replacements", async () => {
     const { registry } = makeHarness();
     const updateHelp = await registry.invoke({ command: "artifacts.update.help" }, context());
-    expect(updateHelp.text).toContain("not incrementally");
+    expect(updateHelp.text).toContain("not incremental");
     expect(updateHelp.text).toContain('"edits"');
     expect(updateHelp.text).toContain("artifacts.replace");
     const replaceHelp = await registry.invoke({ command: "artifacts.replace.help" }, context());

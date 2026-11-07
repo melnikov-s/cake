@@ -38,14 +38,13 @@ export function createCakeSessionPluginOperations(
     {
       command: "plugins.present",
       topic: "plugins",
-      summary:
-        "Mount prebuilt session controls, or generate custom UI, above this session's composer.",
+      summary: "Mount session controls",
       guidance: [
         "Use Session Plugins for task-specific controls that should remain attached to this session, such as Previous/Next guided-tour navigation.",
-        "Prefer preset: action-bar with initialState: { label, actions: [{ id, label, message, primary?, disabled? }], progress?: { current, total } }. No generation is needed. Use Previous/Next/Done actions for guided navigation, or Continue/Explain this/Done for explanations.",
-        "Actions send their exact message visibly to the owning session. They do not advance progress, revise an artifact, or remove the plugin automatically. Update state after completing a step; a Done message can request plugins.delete while preserving the artifact.",
+        "Prefer action-bar with label, actions and optional progress. No generation; actions support guided Previous/Next/Done.",
+        "Actions send visible messages to owner; no automatic progress/artifact change/deletion. Update after work; Done may request plugins.delete.",
         "For genuinely custom UI, supply brief instead of preset. A private builder writes React using useCake, usePluginState, useSharedState, useSpeech and Cake semantic theme tokens.",
-        'Custom plugins can read text aloud with the user\'s configured Cake voice through useSpeech(): speak(text) of any length, pause, resume, stop, and sentence-chunk progress. Ask for it in the brief, for example "Read aloud the current step with Play/Pause and Stop". One widget speaks at a time.',
+        "useSpeech provides speak/pause/resume/stop and sentence progress. Request it in the brief; one speaker.",
         "Presenting the same ID replaces the implementation while preserving creation time and the user's hidden preference. Users can Hide/Show controls without messaging the agent. Ordinary chat remains available.",
       ],
       inputSchema: Schema.Struct({ plugin: pluginBrief }),
@@ -178,8 +177,7 @@ export function createCakeSessionPluginOperations(
     {
       command: "plugins.patch",
       topic: "plugins",
-      summary:
-        "Atomically patch top-level plugin state fields, preserving omitted fields and user visibility.",
+      summary: "Patch plugin state fields",
       inputSchema: Schema.Struct({ id: pluginId, patch: jsonObjectSchema }),
       examples: [
         {
@@ -203,10 +201,9 @@ export function createCakeSessionPluginOperations(
     {
       command: "plugins.update",
       topic: "plugins",
-      summary:
-        "Replace durable plugin state without regeneration or changing the user's hidden preference.",
+      summary: "Replace plugin state",
       guidance: [
-        "For action-bar, update requires the complete { label, actions, progress? } configuration. Prefer plugins.patch for label/progress changes without resending actions. Keep message intent explicit; progress changes only when updated, never optimistically on click.",
+        "update replaces full action-bar config. patch changes fields without resending actions. Update progress only after actual work.",
       ],
       inputSchema: Schema.Struct({ id: pluginId, state: Schema.Json }),
       examples: [{ input: { id: "change-tour", state: { current: 2, total: 5 } } }],
@@ -221,7 +218,7 @@ export function createCakeSessionPluginOperations(
     {
       command: "plugins.delete",
       topic: "plugins",
-      summary: "Permanently remove a Session Plugin from the calling session.",
+      summary: "Delete session plugin",
       inputSchema: Schema.Struct({ id: pluginId }),
       examples: [{ input: { id: "change-tour" } }],
       result: "The deleted Session Plugin identity.",

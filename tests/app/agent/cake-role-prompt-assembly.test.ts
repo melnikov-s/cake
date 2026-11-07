@@ -54,7 +54,7 @@ describe("role-specific prompt assembly", () => {
       expect(prompt).toContain("hidden, temporary project investigator reporting to Cake Chat");
       expect(prompt).toContain(allowMutations ? "Mutation mode:" : "Investigations only:");
       expect(prompt).toContain("Do not create Project Sessions or delegate recursively");
-      expect(prompt).toContain("Cake delivers that final report to the parent automatically");
+      expect(prompt).toContain("Cake delivers the final report automatically");
       expect(prompt).not.toContain("<cake_system_prompt>");
       expect(prompt).not.toContain("Workboard");
       expect(capabilities.resourceLoader.getAgentsFiles().agentsFiles).toEqual(
@@ -78,15 +78,11 @@ describe("role-specific prompt assembly", () => {
         expect(names, `${name} -> ${reference}`).toContain(reference);
       }
     }
-    expect(await readFile(join(docs, "cake-chat.md"), "utf8")).toContain("Read the matching guide");
-    expect(await readFile(join(docs, "reports.md"), "utf8")).toContain(
-      "## Project Session decisions",
-    );
+    expect(await readFile(join(docs, "cake-chat.md"), "utf8")).toContain("no prerequisite reads");
+    expect(await readFile(join(docs, "reports.md"), "utf8")).toContain("sessions.completions");
     expect(await readFile(join(docs, "artifacts.md"), "utf8")).toContain(
-      "approved exact @rN preview",
+      "exact @rN preview pixels",
     );
-    expect(await readFile(join(docs, "presentation.md"), "utf8")).toContain(
-      "Always present images",
-    );
+    expect(await readFile(join(docs, "presentation.md"), "utf8")).toContain("Images:");
   });
 });

@@ -1,28 +1,8 @@
-# Cake Chat operational reference
+# Cake Chat
 
-Read the matching guide **before** its action. Files are on demand, not preloaded; do not read every guide for every task.
+Answer directly; use known commands without discovery. Guides live here; no prerequisite reads. [Task index](index.md) routes to the relevant guide and deeper detail.
 
-## Task index
-
-- Project inspection, navigation, registration/removal or landing: `application.md`.
-- Worker/Project Session launches and follow-ups: `delegation.md`, `communication.md`; `sessions.md` for full sessions.
-- Tracked work, findings review, to-do edits/reconciliation: `chat-todos.md`.
-- Sends/replies, delivery, batches or check-ins: `communication.md`.
-- Reports, summaries or review/merge/resolve decisions: `reports.md`.
-- Listings, routing, launch rosters or context/cache estimates: `session-discovery.md`.
-- History, messages, attachments or compaction: `session-history.md`.
-- Settings or lasting instructions: `settings.md`.
-- Session creation, forks, stop, rename, resolve/restore: `sessions.md`.
-- Child assignments, family coordination, boards or family/worktree lifecycle: `workgroups.md` and `sessions.md`.
-- Artifact publication/sharing or design implementation: `artifacts.md`.
-- Rich output, images, file deliverables, links or selected text: `presentation.md`.
-- Interactive widgets: `interactions.md`.
-- Models, images or classifiers: `models.md`; Pi's codemode docs for generation.
-
-## Guardrails
-
-Project selection is not root identity: discover registered roots with `projects.list`. Permanent chats may inspect projects read-only, never mutate checkouts. Delegate project tasks through `sessions.fork` into context-forked Side Sessions with Cake-managed worktrees. Use `sessions.create` for intentionally fresh context and private subagents only when explicitly requested. Side Sessions inherit context through Pi Durable, not a task-only prompt. Land only through `worktrees.merge`.
-
-Track building work, multi-step investigations, open discussions and pending user decisions with to-dos, reusing automatically created session-linked items; one-shot lookups and quick operations get none, even when delegated. Reports are not resolution or authorization. Read the task guide before acting, even when an old report suggests the next step.
-
-Discover gateway contracts progressively: `{}` lists topics, `<topic>` summarizes operations, `<operation>.help` gives exact inputs/behavior. Known operations need no topic discovery. Use `<operation>.output-schema` only when the full result schema is needed.
+Inspect projects read-only. Delegate project tasks through sessions.fork into context-forked Side Sessions with Cake-managed worktrees; sessions.create is for intentionally fresh context. Side Sessions inherit Pi Durable context, not a task-only prompt. Private subagents require an explicit request; never substitute family children for project tasks.
+Use registered roots, not the viewed worktree. Remove projects/delete sessions only when asked. Land only through worktrees.merge. Report delivery is not authorization to mutate, land or resolve.
+Track ongoing work, not quick lookups; reuse session-created to-dos. [Delegation](delegation.md), [to-dos](chat-todos.md), [reports](reports.md) cover those workflows.
+Use <operation>.help for unknown arguments, .output-schema for result details. No source/history inspection is needed merely to send to a known Project Chat address.

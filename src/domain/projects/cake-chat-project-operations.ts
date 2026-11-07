@@ -30,8 +30,7 @@ export function createCakeChatProjectOperations(
     {
       command: "projects.list",
       topic: "projects",
-      summary:
-        "List registered Projects with exact paths and canonical Project Chat messaging addresses.",
+      summary: "List projects and Project Chat addresses",
       guidance: [
         'Filter names/paths with query; use projects.info for timestamps. Send directly with sessions.send { sessionId: projectChatId, text, delivery: "fyi" } for a passive update; no filesystem lookup or hashing is needed.',
         compactDiscoveryGuidance,
@@ -46,7 +45,7 @@ export function createCakeChatProjectOperations(
     {
       command: "projects.info",
       topic: "projects",
-      summary: "Inspect one registered Project by its exact path.",
+      summary: "Inspect registered project",
       inputSchema: AgentProjectInfoInput,
       examples: [{ input: { path: "/Users/me/src/project" } }],
       result: projectResult,
@@ -56,8 +55,7 @@ export function createCakeChatProjectOperations(
     {
       command: "projects.add",
       topic: "projects",
-      summary:
-        "Register an existing local directory as a Cake Project, like Open Project in the sidebar.",
+      summary: "Register existing directory",
       guidance: [
         "The directory must already exist. Getting the checkout there (clone, worktree, zone tree) is operational work: delegate it to an allowMutations worker first, then register the path it reports.",
         "Pass an absolute path; the name defaults to the directory's base name. Adding a path that is already registered returns that Project unchanged with alreadyRegistered: true; use projects.rename to change its name.",
@@ -87,7 +85,7 @@ export function createCakeChatProjectOperations(
     {
       command: "projects.rename",
       topic: "projects",
-      summary: "Change a registered Project's display name. Its path does not change.",
+      summary: "Rename project label",
       inputSchema: AgentProjectRenameInput,
       examples: [{ input: { path: "/Users/me/world/trees/agents", name: "Agents zone" } }],
       result: projectResult,
@@ -102,8 +100,7 @@ export function createCakeChatProjectOperations(
     {
       command: "projects.remove",
       topic: "projects",
-      summary:
-        "Remove a Project from Cake, like Remove Project in the sidebar. Files on disk are never touched.",
+      summary: "Unregister project; keep files",
       guidance: [
         "Only remove a Project when the user explicitly asks. Cake stops its sessions' runtimes and terminals and forgets the Project; the directory and its Git state stay on disk.",
         "deleteSessions defaults to false, which keeps the Project's sessions on disk so re-adding the Project restores them. Set it to true only when the user explicitly asks to delete the sessions too; that is permanent.",
@@ -128,7 +125,7 @@ export function createCakeChatProjectOperations(
     {
       command: "projects.settings.get",
       topic: "projects",
-      summary: "Read every setting for one registered Project by its exact path.",
+      summary: "Read project settings",
       guidance: [
         "Use the exact registered path from projects.list, never a Cake-managed worktree path.",
         projectSettingsScope,
@@ -147,12 +144,11 @@ export function createCakeChatProjectOperations(
     {
       command: "projects.settings.update",
       topic: "projects",
-      summary:
-        "Patch settings for one registered Project by its exact path and return every committed setting.",
+      summary: "Patch requested project settings",
       guidance: [
         "Call projects.settings.get first. Only the fields in changes are written; unspecified settings stay unchanged. Read back with projects.settings.get before claiming success.",
-        "Worktree fields: worktreeCreateCommand checks out {branchName} (empty runs git worktree add); worktreeSetupCommands run in each new worktree; worktreeRemoveCommand removes a checkout (empty runs git worktree remove); worktreeCommandTimeoutSeconds limits each of those commands (0 waits indefinitely); worktreeLanding is merge (Cake lands locally) or pull-request (landing happens outside Cake).",
-        "customInstructions guide only coding Project Sessions; projectChatInstructions guide only that Project's permanent Project Chat. Never move or swap text between them without user authorization. For Project Chat guidance prefer settings.project-chat.get/update, which check expectedInstructions for conflicts.",
+        "worktreeCreateCommand checks out {branchName}; setup commands run afterward. Empty create/remove uses git worktree. Timeout 0 waits indefinitely. worktreeLanding: merge or pull-request.",
+        "customInstructions is for coding sessions; projectChatInstructions for permanent Project Chat. Never move or swap text without authorization. Use settings.project-chat.get/update for expectedInstructions checks.",
         projectIconPathGuidance,
         projectSettingsScope,
       ],

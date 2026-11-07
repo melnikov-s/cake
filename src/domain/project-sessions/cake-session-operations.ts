@@ -19,15 +19,14 @@ export function createProjectSessionOperations(
       command: "session.create",
       requires: "createSession",
       topic: "sessions",
-      summary:
-        "Create, name, and start an independent Project Session in the calling session's project.",
+      summary: "Create independent session",
       guidance: [
         promptFilesGuidance,
         resultDeliveryGuidance,
         "This singular Project Session-local operation derives the project from the caller and never accepts a workspacePath or sessionId. Cake Chat uses the separate plural sessions.create application control.",
         "Set worktreeName to create and register a new Cake-managed worktree before the Pi-backed session starts. Do not run git worktree add or try to rebind an already-started session.",
         "When worktreeName is omitted, the independent session starts in the Project root, preserving the existing behavior.",
-        "Omit model unless the user explicitly asks for a specific model. When omitted, the new session uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
+        "Omit model unless requested; configured default preset supplies complete settings, falling back to caller only if no default.",
         "Use sessions.create-child for recursive Session Family delegation, whether the child shares the caller's checkout or branches into a child Managed Worktree.",
       ],
       inputSchema: projectSessionCreateInputSchema,
@@ -72,8 +71,7 @@ export function createProjectSessionOperations(
       command: "session.fork",
       requires: "forkSession",
       topic: "sessions",
-      summary:
-        "Fork the calling session at a specific transcript entry or, when omitted, at the latest settled entry.",
+      summary: "Fork at entry/latest settled message",
       guidance: [
         "Singular session.* operations always target the calling session and never accept a sessionId.",
         "Omit entryId to fork the whole active conversation through its latest settled message.",
@@ -126,8 +124,7 @@ export function createProjectSessionOperations(
       command: "session.create-draft",
       requires: "createDraftSession",
       topic: "sessions",
-      summary:
-        "Create a saved draft in the calling Project Session's project without starting a Pi session.",
+      summary: "Save unstarted draft",
       guidance: [
         "This operation derives the project from the calling session and never accepts a workspacePath or sessionId.",
         "Omit model unless the user explicitly asks for a specific model. When omitted, the draft uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
@@ -170,8 +167,7 @@ export function createProjectSessionOperations(
       command: "session.resolve",
       requires: "setResolved",
       topic: "sessions",
-      summary:
-        "Resolve or restore the calling session, or its entire Session Family through the root.",
+      summary: "Resolve/restore self or root family",
       guidance: [
         "Singular session.* operations use the calling session identity and never accept a sessionId.",
         "Family members inherit resolution from the root. A family lifecycle request requires every member to be inactive and is never deferred.",

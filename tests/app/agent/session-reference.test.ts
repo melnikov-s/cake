@@ -240,7 +240,7 @@ describe("session references", () => {
       ],
       async (value) => projectSessionReferences(value, ids),
     );
-    expect(registry.topicHelp("sessions")).toContain("bare trailing hex (at least 8 characters)");
+    expect(registry.topicHelp("sessions")).toContain("sessions.list");
     const result = await registry.invoke({ command: "sessions.list" }, context);
     expect(result.text).toContain("112345678");
     expect(result.text).toContain("Worker 0");

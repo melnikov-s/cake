@@ -32,7 +32,7 @@ export function createSessionApplicationOperations(
       command: "app.user-selection",
       requires: "invokeAppControl",
       topic: "app",
-      summary: "Read the text currently highlighted by the user in the Cake window.",
+      summary: "Read highlighted Cake text",
       inputSchema: empty,
       examples: [{}],
       result: "The currently selected text, or no text if nothing is highlighted in Cake.",
@@ -43,8 +43,7 @@ export function createSessionApplicationOperations(
       command: "app.state",
       requires: "invokeAppControl",
       topic: "app",
-      summary:
-        "Inspect the invoking Cake window's selection, focused conversation, current workspace, counts and visible browser/editor metadata.",
+      summary: "Inspect window/view metadata",
       inputSchema: empty,
       examples: [{}],
       result:
@@ -55,8 +54,7 @@ export function createSessionApplicationOperations(
       command: "projects.list",
       requires: "invokeAppControl",
       topic: "projects",
-      summary:
-        "List registered Project names, exact paths and canonical projectChatId messaging targets.",
+      summary: "List projects and Project Chat addresses",
       guidance: [compactDiscoveryGuidance],
       inputSchema: AgentListInput,
       examples: [{}],
@@ -68,7 +66,7 @@ export function createSessionApplicationOperations(
       command: "projects.info",
       requires: "invokeAppControl",
       topic: "projects",
-      summary: "Inspect one registered Project by its exact path.",
+      summary: "Inspect registered project",
       inputSchema: AgentProjectInfoInput,
       examples: [{ input: { path: "/path/to/project" } }],
       result: "Project path, full name and timestamps.",
@@ -78,7 +76,7 @@ export function createSessionApplicationOperations(
       command: "app.workspace",
       requires: "invokeAppControl",
       topic: "app",
-      summary: "Read or change the invoking window's To-dos/Sessions Workspace accessory.",
+      summary: "Inspect/change Workspace pane",
       inputSchema: Schema.Struct({
         visible: Schema.optionalKey(Schema.Boolean),
         mode: Schema.optionalKey(Schema.Literals(["todos", "sessions"])),
@@ -91,7 +89,7 @@ export function createSessionApplicationOperations(
       command: "app.home",
       requires: "invokeAppControl",
       topic: "app",
-      summary: "Return to the focused Project's Project Chat home in chat mode.",
+      summary: "Open Project Chat home",
       inputSchema: empty,
       examples: [{}],
       result: "Whether Project Chat or global Cake Chat was opened.",
@@ -123,7 +121,7 @@ export function createSessionApplicationOperations(
       command: "session-labels.list",
       requires: "invokeAppControl",
       topic: "session-labels",
-      summary: "List a bounded page of global and project-specific session labels.",
+      summary: "List session labels",
       guidance: [
         "Filter by name with query. projectPath selects its labels plus global labels; offset/limit page results.",
       ],
@@ -136,7 +134,7 @@ export function createSessionApplicationOperations(
       command: "session-labels.add",
       requires: "invokeAppControl",
       topic: "session-labels",
-      summary: "Add a global or project-specific session label.",
+      summary: "Add session label",
       guidance: ["Omit projectPath to create a global label available in every Project."],
       inputSchema: Schema.Struct({
         name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(40))),
@@ -162,7 +160,7 @@ export function createSessionApplicationOperations(
       command: "session-labels.update",
       requires: "invokeAppControl",
       topic: "session-labels",
-      summary: "Rename or recolor an existing session label.",
+      summary: "Rename/recolor label",
       inputSchema: Schema.Struct({
         labelId: Schema.String.check(Schema.isUUID(4)),
         name: Schema.optionalKey(
@@ -186,7 +184,7 @@ export function createSessionApplicationOperations(
       command: "session-labels.remove",
       requires: "invokeAppControl",
       topic: "session-labels",
-      summary: "Remove a session label and clear it from every session that uses it.",
+      summary: "Delete label and assignments",
       inputSchema: Schema.Struct({ labelId: Schema.String.check(Schema.isUUID(4)) }),
       examples: [{ input: { labelId: "00000000-0000-4000-8000-000000000001" } }],
       result: "The removed session label and its former scope.",
@@ -196,7 +194,7 @@ export function createSessionApplicationOperations(
       command: "session-labels.reorder",
       requires: "invokeAppControl",
       topic: "session-labels",
-      summary: "Move a global or project-specific label to a new zero-based position.",
+      summary: "Reorder label (zero-based)",
       inputSchema: Schema.Struct({
         labelId: Schema.String.check(Schema.isUUID(4)),
         index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(99)),
@@ -209,7 +207,7 @@ export function createSessionApplicationOperations(
       command: "notifications.send",
       requires: "invokeAppControl",
       topic: "notifications",
-      summary: "Send a bounded native system notification through the operating system.",
+      summary: "Send system notification",
       inputSchema: Schema.Struct({
         title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
         body: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_000)),

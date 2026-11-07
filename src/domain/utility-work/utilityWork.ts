@@ -45,7 +45,7 @@ const WORKTREE_NAME_CHARACTER_LIMIT = 63;
 export const REWORD_CHARACTER_LIMIT = 32_000;
 
 /** Shared dictation-awareness guidance for every rewording completion. */
-export const dictationRewordingGuidance = `The selection is likely a speech-to-text request to a coding assistant. Recover mistranscribed technical terms using coding context, meaning and phonetic similarity. Check "Git", "skills", "agents" and similar-sounding identifiers, tools, commands, libraries and programming concepts. Correct likely phonetic substitutions only when technical context supports them. Do not invent requirements or details the selection does not imply. Preserve coherent code, identifiers, paths and commands as written.`;
+export const dictationRewordingGuidance = `Speech-to-text: fix likely technical mishearings only with contextual/phonetic evidence. Preserve coherent code/identifiers/paths/commands. Never invent requirements.`;
 
 class UtilityWorkOutputError extends Schema.TaggedError<UtilityWorkOutputError>()(
   "UtilityWorkOutputError",
