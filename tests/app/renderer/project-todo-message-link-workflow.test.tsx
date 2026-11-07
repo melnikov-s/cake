@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
@@ -7,37 +7,18 @@ import { expect, it, vi } from "vitest";
 import { messageReference } from "../../../src/contracts/conversations/message-reference";
 import { emptyProjectTodos, type ProjectTodo } from "../../../src/contracts/projects/project-todos";
 import { MarkdownLinkProvider } from "../../../src/renderer/components/ai-elements/markdown";
-import { MessageReferencePreview } from "../../../src/renderer/components/message-reference-preview";
 import { ProjectTodosPanel } from "../../../src/renderer/components/project-todos-panel";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import type { Client } from "../../../src/renderer/client/Client";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
-it("opens the original findings from a to-do after another topic and a newer response, even outside the active branch", async () => {
+it("jumps to the original findings in the conversation from a to-do after another topic and a newer response", async () => {
   const sessionId = "investigation";
   const entryId = "findings/1";
   const ref = messageReference(sessionId, entryId);
   const text = "Investigation findings: startup waits for the index.";
-  const inspect = vi.fn<Client["sessionChats"]["inspect"]>(async () => ({
-    message: {
-      ref,
-      link: ref,
-      sessionId,
-      entryId,
-      parentId: null,
-      timestamp: new Date(0).toISOString(),
-      role: "assistant",
-      active: false,
-      inputRefs: [],
-      hasImages: false,
-    },
-    text,
-    totalChars: text.length,
-    offset: 0,
-    nextOffset: null,
-    truncated: false,
-  }));
+  const inspect = vi.fn<Client["sessionChats"]["inspect"]>();
   const item: ProjectTodo = {
     id: "00000000-0000-4000-8000-000000000011",
     title: "Investigate startup",
@@ -71,6 +52,14 @@ it("opens the original findings from a to-do after another topic and a newer res
       sessionId,
       sessionFile: "/sessions/investigation.jsonl",
       parts: [
+        {
+          id: "entry-findings-text-0",
+          entryId,
+          kind: "text",
+          role: "assistant",
+          text,
+          status: "complete",
+        },
         {
           id: "entry-newer-text-0",
           entryId: "newer",
@@ -109,7 +98,6 @@ it("opens the original findings from a to-do after another topic and a newer res
           }}
         >
           <ProjectTodosPanel store={store} />
-          <MessageReferencePreview store={root.navigationStore.messageReferencePreview} />
         </MarkdownLinkProvider>
       </StoreProvider>
     </StoreProvider>,
@@ -137,13 +125,13 @@ it("opens the original findings from a to-do after another topic and a newer res
     const link = screen.getByRole("link", { name: "Investigation findings" });
     expect(link.getAttribute("href")).toBe(ref);
     await userEvent.setup().click(link);
-    const reader = await screen.findByRole("dialog", { name: `assistant · ${entryId}` });
-    expect(within(reader).getByText(text)).toBeDefined();
-    expect(reader.textContent).not.toContain("Later unrelated response");
-    expect(inspect).toHaveBeenCalledExactlyOnceWith(
-      { sessionId, kind: "messages-read", entryId, offset: 0, maxChars: 20_000 },
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    await waitFor(() => expect(root.appShellStore.activeConversation?.sessionId).toBe(sessionId));
+    await waitFor(() =>
+      expect(
+        session.conversationSessionStore.chatStore.transcriptInteraction.selectedMessageId,
+      ).toBe("entry-findings-text-0"),
     );
+    expect(inspect).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Mark done: Investigate startup" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Startup investigation" }).getAttribute("href")).toBe(
       "cake://session/investigation",

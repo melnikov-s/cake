@@ -3,7 +3,6 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
-import { messageReference } from "../../../src/contracts/conversations/message-reference";
 import {
   fencedCode,
   isStandaloneDiagram,
@@ -389,26 +388,7 @@ describe("Markdown rendering integration", () => {
   it("routes titled exact-message and attachment links through real session navigation", async () => {
     const sessionId = "session-123";
     const attachmentId = "00000000-0000-4000-8000-000000000001";
-    const ref = messageReference(sessionId, "entry-42");
-    const inspect = vi.fn<Client["sessionChats"]["inspect"]>(async () => ({
-      message: {
-        ref,
-        link: ref,
-        sessionId,
-        entryId: "entry-42",
-        parentId: null,
-        timestamp: new Date(0).toISOString(),
-        role: "user",
-        active: false,
-        inputRefs: [],
-        hasImages: false,
-      },
-      text: "Exact original evidence",
-      totalChars: 23,
-      offset: 0,
-      nextOffset: null,
-      truncated: false,
-    }));
+    const inspect = vi.fn<Client["sessionChats"]["inspect"]>();
     const readAttachment = vi.fn<Client["sessionChats"]["readAttachment"]>(async () => ({
       kind: "text",
       reference: {
@@ -430,6 +410,16 @@ describe("Markdown rendering integration", () => {
       `[Exact message](${messageTarget} "Authored title") · [Exact attachment](${attachmentTarget} "Authored title")`,
       {
         sessionLinkTarget: sessionId,
+        sessionLinkParts: [
+          {
+            id: "answer",
+            entryId: "entry-42",
+            kind: "text",
+            role: "assistant",
+            text: "Exact answer",
+            status: "complete",
+          },
+        ],
         client: { projectSessions: { open }, sessionChats: { inspect, readAttachment } },
       },
     );
@@ -437,11 +427,12 @@ describe("Markdown rendering integration", () => {
     expect(messageLink.getAttribute("href")).toBe(messageTarget);
     await fixture.user.click(messageLink);
     await waitFor(() =>
-      expect(inspect).toHaveBeenCalledExactlyOnceWith(
-        { sessionId, kind: "messages-read", entryId: "entry-42", offset: 0, maxChars: 20_000 },
-        { signal: expect.any(AbortSignal) },
-      ),
+      expect(
+        fixture.root.sessionRegistry.findSession(sessionId)?.conversationSessionStore.chatStore
+          .transcriptInteraction.selectedMessageId,
+      ).toBe("answer"),
     );
+    expect(inspect).not.toHaveBeenCalled();
     const attachmentLink = screen.getByRole("link", { name: "Exact attachment" });
     expect(attachmentLink.getAttribute("href")).toBe(attachmentTarget);
     await fixture.user.click(attachmentLink);

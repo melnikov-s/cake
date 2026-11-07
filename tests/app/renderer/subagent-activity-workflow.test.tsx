@@ -23,6 +23,51 @@ async function openWorkerChat(user: ReturnType<typeof renderSubagentActivity>["u
 }
 
 describe("Subagent activity workflow", () => {
+  it("opens a public exact-message link in the retained worker chat and selects that message", async () => {
+    using fixture = renderSubagentActivity({
+      client: { projectSessions: { open: async () => undefined } },
+      activity: workerActivity({
+        parts: [
+          {
+            id: "original",
+            entryId: "exact:entry/1",
+            kind: "text",
+            role: "assistant",
+            text: "Original worker answer",
+            status: "complete",
+          },
+          {
+            id: "latest",
+            kind: "text",
+            role: "assistant",
+            text: "Newer worker answer",
+            status: "complete",
+          },
+        ],
+      }),
+      parts: [
+        ...workerTranscript(),
+        {
+          id: "link",
+          kind: "text",
+          role: "assistant",
+          text: `[Worker answer](cake://subagent/${parentSessionId}/${handleId}?message=exact%3Aentry%2F1)`,
+          status: "complete",
+        },
+      ],
+    });
+    await fixture.user.click(await screen.findByRole("link", { name: "Worker answer" }));
+    const panel = await screen.findByRole("complementary", { name: "Inspect the boundary" });
+    expect(await within(panel).findByText("Original worker answer")).toBeDefined();
+    await waitFor(() =>
+      expect(
+        panel
+          .querySelector('[data-slot="transcript-item"][aria-current="true"] [data-part-id]')
+          ?.getAttribute("data-part-id"),
+      ).toBe("original"),
+    );
+    expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(parentSessionId);
+  });
   it("shows the worker's resolved model and its live context usage in the subagent chat", async () => {
     const usage = (tokens: number) => ({
       tokens: {

@@ -1,5 +1,9 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  Markdown,
+  MarkdownLinkProvider,
+} from "../../../src/renderer/components/ai-elements/markdown";
 import { applySnapshot, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { messageReference } from "../../../src/contracts/conversations/message-reference";
@@ -495,6 +499,92 @@ describe("Agent session navigation workflow", () => {
       expect(interaction.selectedMessageId).toBe("entry-linked-reasoning-0");
     },
   );
+
+  it.each(["beta", CAKE_CHAT_SESSION_ID])(
+    "Cake links reveal the exact message in normal chat and session-only links return to %s",
+    async (sessionId) => {
+      const inspect = vi.fn<Client["sessionChats"]["inspect"]>();
+      using fixture = renderAppShellNavigation(
+        { sessionChats: { inspect } },
+        { transcriptViewport: true },
+      );
+      const session =
+        sessionId === CAKE_CHAT_SESSION_ID
+          ? fixture.root.cakeChatCollectionStore.registry.find(sessionId)!
+          : fixture.root.sessionRegistry.findSession(sessionId)!;
+      const entryId = "exact:entry/1";
+      act(() => {
+        for (const [id, text] of [
+          ["older", "Exact linked answer"],
+          ["newer", "Newer answer"],
+        ] as const)
+          applyConversationUpdate(session.model, {
+            _tag: "Event",
+            revision: 2,
+            event: {
+              _tag: "PartUpdated",
+              sessionId,
+              part: {
+                id,
+                entryId: id === "older" ? entryId : id,
+                kind: "text",
+                role: "assistant",
+                text,
+                status: "complete",
+              },
+            },
+          });
+        session.showPresentation("browser");
+        // jsdom cannot settle Virtuoso's native bottom alignment; Electron owns pixel scrolling.
+        session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition(
+          { kind: "top" },
+        );
+      });
+      render(
+        <MarkdownLinkProvider
+          actions={{
+            openExternalUrl: vi.fn(),
+            openSession: (id, messageId) => {
+              void fixture.root.navigationStore.openSessionLink(id, messageId);
+            },
+          }}
+        >
+          <Markdown>{`[Exact answer](${messageReference(sessionId, entryId)}) · [Dedicated fix](cake://session/${sessionId})`}</Markdown>
+        </MarkdownLinkProvider>,
+      );
+      await fixture.user.click(screen.getByRole("link", { name: "Exact answer" }));
+      await screen.findByText("Exact linked answer");
+      expect(session.presentationMode).toBe("normal");
+      expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(sessionId);
+      const interaction = session.conversationSessionStore.chatStore.transcriptInteraction;
+      await waitFor(() => expect(interaction.selectedMessageId).toBe("older"));
+      expect(interaction.messageSelection?.origin).toBe("navigation");
+      expect(
+        document
+          .querySelector('[data-slot="transcript-item"][aria-current="true"] [data-part-id]')
+          ?.getAttribute("data-part-id"),
+      ).toBe("older");
+      expect(inspect).not.toHaveBeenCalled();
+
+      act(() => session.showPresentation("browser"));
+      await fixture.user.click(screen.getByRole("link", { name: "Dedicated fix" }));
+      await waitFor(() => expect(session.presentationMode).toBe("normal"));
+      await screen.findByText("Exact linked answer");
+      expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(sessionId);
+    },
+  );
+
+  it("keeps a missing message link in normal chat and reports unavailability instead of inspecting an original", async () => {
+    const inspect = vi.fn<Client["sessionChats"]["inspect"]>();
+    using fixture = renderAppShellNavigation({ sessionChats: { inspect } });
+    await act(async () => {
+      await expect(
+        fixture.root.navigationStore.openSessionLink("beta", "outside-branch"),
+      ).rejects.toThrow("The linked message is unavailable in the current conversation");
+    });
+    await expectChat("beta");
+    expect(inspect).not.toHaveBeenCalled();
+  });
 
   it.each(["text", "image"] as const)(
     "opens an exact %s attachment from its authorized session without an agent read",

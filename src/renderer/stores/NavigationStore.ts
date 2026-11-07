@@ -268,19 +268,26 @@ export class NavigationStore extends Store<{
         );
       return;
     }
-    if (this.props.cakeChat().summaries.some((session) => session.sessionId === sessionId)) {
-      if (messageId) {
-        if (!(await this.openSession(sessionId, messageId)))
-          throw new Error("Cake could not find the linked message");
-      } else await this.openCakeChat(sessionId);
-      return;
-    }
-    if (!(await this.openSession(sessionId, messageId)))
-      throw new Error(
-        messageId
-          ? "Cake could not find the linked message"
-          : "Cake could not open the linked session",
-      );
+    // Links select the conversation, not the standalone original-message reader.
+    // Keep openSession's explicit inspection fallback separate from link navigation.
+    // Reset retained presentation before opening so restore cannot reopen its browser/editor.
+    const retained =
+      this.props.cakeChat().registry.find(sessionId) ?? this.props.registry.findSession(sessionId);
+    retained?.showPresentation("normal");
+    if (!(await this.openSession(sessionId)))
+      throw new Error("Cake could not open the linked session");
+    const session =
+      this.props.cakeChat().registry.find(sessionId) ?? this.props.registry.findSession(sessionId);
+    session?.showPresentation("normal");
+    const conversation =
+      session?.conversationSessionStore ??
+      this.props.automationSessions().selectedSession?.conversationSessionStore;
+    if (conversation?.sideChatStore.target) conversation.sideChatStore.close();
+    if (!messageId) return;
+    const chat = conversation?.chatStore;
+    const target = chat && linkedMessageTarget(chat.parts, messageId);
+    if (!target) throw new Error("The linked message is unavailable in the current conversation");
+    chat.transcriptInteraction.navigateToMessage(target.id);
   }
 
   /** Inspect the public worker in its parent; never navigate to its private Pi session. */
@@ -294,6 +301,8 @@ export class NavigationStore extends Store<{
     const parentSessionId = resolved.sessionId;
     const discussions = this.props.discussionNavigation();
     if (discussions.sessionIds.includes(parentSessionId)) {
+      this.messageReferencePreview.close();
+      this.attachmentReferencePreview.close();
       await discussions.open({ kind: "subagent", sessionId: parentSessionId, handleId });
       if (messageId) {
         const chat = discussions.subagents

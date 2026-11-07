@@ -19,6 +19,7 @@ import { applyConversationUpdate } from "../../../src/renderer/reducers/Conversa
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 
 type MarkdownActions = ComponentProps<typeof MarkdownLinkProvider>["actions"];
 
@@ -75,6 +76,7 @@ export function renderMarkdown(
     actions?: Partial<MarkdownActions>;
     client?: TestClientOverrides;
     sessionLinkTarget?: string;
+    sessionLinkParts?: UiPart[];
   } = {},
 ) {
   const sessionId = options.sessionLinkTarget;
@@ -94,7 +96,7 @@ export function renderMarkdown(
       snapshot: {
         sessionId,
         sessionFile: `/sessions/${sessionId}.jsonl`,
-        parts: [],
+        parts: options.sessionLinkParts ?? [],
         models: [],
         thinkingLevel: "off",
         availableThinkingLevels: ["off"],
@@ -126,6 +128,7 @@ export function renderMarkdown(
   const view = render(content(source));
   return {
     ...view,
+    root: fixture.root,
     user: userEvent.setup(),
     async update(text: string, props = options.props) {
       await act(async () => view.rerender(content(text, props)));
