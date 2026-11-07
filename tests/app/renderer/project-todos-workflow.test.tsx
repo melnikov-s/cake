@@ -383,7 +383,7 @@ it("places Focus above the other four sections without duplicating focused rows"
   ).toBeDefined();
 });
 
-it("restores every underlying section on explicit unfocus and keeps attachment and attention independent", async () => {
+it("restores underlying sections on row toggle or explicit unfocus and preserves attachments and item state", async () => {
   const items: ProjectTodo[] = [
     { ...todo(100), needsAttention: true, attentionReason: "Review this" },
     todo(101),
@@ -392,11 +392,15 @@ it("restores every underlying section on explicit unfocus and keeps attachment a
   ];
   using fixture = renderTodos(false, { todos: { ...emptyProjectTodos(), items }, sessions: [] });
   await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
-  for (const item of items)
-    await fixture.user.click(screen.getByRole("button", { name: item.title }));
   const focus = () => within(screen.getByRole("list", { name: "Focus to-dos" }));
-  expect(focus().getAllByRole("button", { name: /^Unfocus to-do:/ })).toHaveLength(4);
-  expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual(["Focus"]);
+  await fixture.user.click(screen.getByRole("button", { name: items[0]!.title }));
+  expect(focus().getAllByRole("button", { name: /^Unfocus to-do:/ })).toHaveLength(1);
+  expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual([
+    "Focus",
+    "Active",
+    "Snoozed",
+    "Done",
+  ]);
   const draft =
     fixture.root.cakeChatCollectionStore.registry.load(projectChat).conversationSessionStore
       .composerStore.draftStore;
@@ -405,12 +409,17 @@ it("restores every underlying section on explicit unfocus and keeps attachment a
     focus().getByRole("button", { name: `Attach to-do as context: ${items[0]!.title}` }),
   );
   expect(draft.attachments).toHaveLength(1);
-  expect(fixture.store.focusedItems).toHaveLength(4);
+  expect(fixture.store.focusedItems).toHaveLength(1);
   expect(fixture.todos().items).toEqual(items);
   // Attach an unfocused task without focusing it; removing view focus never removes context.
   for (const [index, section] of ["Needs attention", "Active", "Snoozed", "Done"].entries()) {
     const item = items[index]!;
-    await fixture.user.click(screen.getByRole("button", { name: `Unfocus to-do: ${item.title}` }));
+    if (index > 0) await fixture.user.click(screen.getByRole("button", { name: item.title }));
+    await fixture.user.click(
+      screen.getByRole("button", {
+        name: index === 0 ? `Unfocus to-do: ${item.title}` : item.title,
+      }),
+    );
     expect(
       within(screen.getByRole("list", { name: `${section} to-dos` }))
         .getByRole("button", { name: item.title })
@@ -714,17 +723,18 @@ it("keeps matching done items grouped and preserves disclosure and done/reopen a
   expect(screen.getByRole("list", { name: "Active to-dos" })).toBeDefined();
 });
 
-it("focuses multiple descriptions idempotently, with independent done/reopen and explicit unfocus", async () => {
+it("switches and toggles description focus, with independent done/reopen and explicit unfocus", async () => {
   using fixture = renderTodos();
   const title = () => screen.getByRole("button", { name: "Investigate startup" });
   const followUp = () => screen.getByRole("button", { name: "Follow up" });
   await fixture.user.click(screen.getByText("Find the startup bottleneck."));
   expect(title().getAttribute("aria-pressed")).toBe("true");
   await fixture.user.click(screen.getByText("Plan the next step."));
-  expect(title().getAttribute("aria-pressed")).toBe("true");
+  expect(title().getAttribute("aria-pressed")).toBe("false");
   expect(followUp().getAttribute("aria-pressed")).toBe("true");
   await fixture.user.click(screen.getByText("Plan the next step."));
-  expect(followUp().getAttribute("aria-pressed")).toBe("true");
+  expect(followUp().getAttribute("aria-pressed")).toBe("false");
+  expect(fixture.store.focusedItems).toEqual([]);
   await fixture.user.click(screen.getByText("Find the startup bottleneck."));
   expect(title().getAttribute("aria-pressed")).toBe("true");
   await fixture.user.click(screen.getByRole("button", { name: "Mark done: Investigate startup" }));
@@ -785,8 +795,10 @@ it("preserves focused to-dos while switching the exclusive accessory to linked s
     screen.getByRole("button", { name: "Investigate startup" }).getAttribute("aria-pressed"),
   ).toBe("true");
   await fixture.user.click(screen.getByRole("button", { name: "Follow up" }));
-  expect(await fixture.associated()).toEqual(["first", "second", "third"]);
+  expect(await fixture.associated()).toEqual(["third"]);
   await fixture.user.click(screen.getByRole("button", { name: "Unfocus to-do: Follow up" }));
+  expect(await fixture.associated()).toEqual([]);
+  await fixture.user.click(screen.getByRole("button", { name: "Investigate startup" }));
   expect(await fixture.associated()).toEqual(["first", "second"]);
   await fixture.user.click(screen.getByRole("button", { name: "Mark done: Investigate startup" }));
   expect(await fixture.associated()).toEqual(["first", "second"]);

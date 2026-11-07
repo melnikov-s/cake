@@ -11,6 +11,8 @@ import { editorLease } from "./embedded-editor-workflow-fixture";
 import { CakeChatWorkspaceSurface } from "../../../src/renderer/components/cake-chat-workspace-surface";
 import { ProjectWorkspaceSurface } from "../../../src/renderer/components/project-workspace-surface";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import { applyPartUpdate } from "../../../src/renderer/reducers/SessionPartReducer";
+import { emptyProjectTodos } from "../../../src/contracts/projects/project-todos";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -158,6 +160,7 @@ function renderWorkspace(kind: Kind, mode: Mode, startInChat = false) {
   );
   return {
     root,
+    models,
     session,
     reveal,
     view,
@@ -168,6 +171,85 @@ function renderWorkspace(kind: Kind, mode: Mode, startInChat = false) {
     },
   };
 }
+
+it.each<Mode>(["browser", "vscode"])(
+  "%s companion toggles and switches transcript to-do focus like the header clear action",
+  async (mode) => {
+    using f = renderWorkspace("cake-chat", mode);
+    const session = f.root.cakeChatCollectionStore.registry.find(cakeChatId)!;
+    const items = ["A", "B"].map((title, index) => ({
+      id: `00000000-0000-4000-8000-00000000001${index}`,
+      title: `Task ${title}`,
+      description: "",
+      status: "",
+      state: "open" as const,
+      revision: 0,
+      associations: [],
+    }));
+    act(() => {
+      applySnapshot(f.models.projects, {
+        projects: [
+          {
+            ...projectRecord({ path: "/project", name: "Project" }),
+            todos: { ...emptyProjectTodos(), items },
+          },
+        ],
+      });
+      for (const item of items) {
+        applyPartUpdate(
+          session.model.parts,
+          {
+            id: `${item.id}-prompt`,
+            kind: "text",
+            role: "user",
+            text: `${item.title} prompt`,
+            status: "complete",
+            taskTodoId: item.id,
+          },
+          session.sessionId,
+        );
+        applyPartUpdate(
+          session.model.parts,
+          {
+            id: `${item.id}-answer`,
+            kind: "text",
+            role: "assistant",
+            text: `${item.title} answer`,
+            status: "complete",
+          },
+          session.sessionId,
+        );
+      }
+    });
+    const companion = within(
+      screen.getByRole("complementary", {
+        name: "Current conversation companion",
+      }),
+    );
+    const focus = (title: string) =>
+      companion.getByRole("button", { name: `Focus to-do: ${title}` });
+    const expanded = () =>
+      ["Task A", "Task B"].map((title) =>
+        companion.getByRole("button", { name: title }).getAttribute("aria-expanded"),
+      );
+    await f.user.click(focus("Task A"));
+    expect(expanded()).toEqual(["true", "false"]);
+    await f.user.click(focus("Task B"));
+    expect(expanded()).toEqual(["false", "true"]);
+    expect(session.todos.focusedItemIds).toEqual([items[1]!.id]);
+    await f.user.click(focus("Task B"));
+    expect(expanded()).toEqual(["true", "true"]);
+    expect(session.todos.focusedItems).toEqual([]);
+    expect(session.todos.transcriptFocusRequest).toBeUndefined();
+    expect(companion.getByText("Task A answer")).toBeDefined();
+    expect(companion.getByText("Task B answer")).toBeDefined();
+    await f.user.click(focus("Task A"));
+    await f.user.click(companion.getByRole("button", { name: "Clear to-do focus" }));
+    expect(expanded()).toEqual(["true", "true"]);
+    expect(session.todos.focusedItems).toEqual([]);
+    expect(f.models.projects.projects[0]!.todos.items).toEqual(items);
+  },
+);
 
 // Real workflow Stores, Models, controls, Chat and side-chat composition.
 // These assertions cover rendered wiring, not pixel layout, native input or focus.

@@ -595,10 +595,8 @@ it("toggles Project Chat to-dos in the existing side pane, focuses/unfocuses, co
     expect(within(focusList()).getByRole("button", { name: item.title })).toBeTruthy();
     expect(row().getAttribute("aria-pressed")).toBe("true");
     expect(f.models.cakeChatConversation(projectId).parts).toHaveLength(0);
-    // Focus is idempotent; only the explicit unfocus action removes it.
+    // Clicking the focused row again returns to the unfiltered transcript.
     await f.user.click(row());
-    expect(row().getAttribute("aria-pressed")).toBe("true");
-    await f.user.click(within(panel).getByRole("button", { name: `Unfocus to-do: ${item.title}` }));
     expect(row().getAttribute("aria-pressed")).toBe("false");
     expect(f.models.cakeChatConversation(projectId).parts).toHaveLength(0);
     await f.user.click(row());

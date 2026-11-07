@@ -25,7 +25,7 @@ export const TaskSectionRail = observer(function TaskSectionRail({
       onOpen={() => todos.reveal(item)}
       onFocus={() => {
         todos.open();
-        todos.focus(item);
+        todos.toggleFocus(item);
       }}
       focused={todos.isFocused(item.id)}
       expanded={expanded}

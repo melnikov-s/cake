@@ -135,15 +135,18 @@ for (const global of [false, true])
       await headingB.press("Space");
       await expect(headingB).toHaveAttribute("aria-expanded", "true");
       await selectB.click();
-      // View focus is additive. Clicking an already focused row is a no-op;
-      // explicit unfocus/clear controls own removal.
+      // A different row switches focus; clicking it again clears like the header.
+      await expect(selectA).toHaveAttribute("aria-pressed", "false");
+      await expect(headingsA.nth(0)).toHaveAttribute("aria-expanded", "false");
+      await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "false");
+      await expect(headingB).toHaveAttribute("aria-expanded", "true");
+      await selectB.click();
+      await expect(selectB).toHaveAttribute("aria-pressed", "false");
+      await expect(bar).toHaveCount(0);
       await expect(headingsA.nth(0)).toHaveAttribute("aria-expanded", "true");
       await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "true");
       await expect(headingB).toHaveAttribute("aria-expanded", "true");
-      await selectB.click();
-      await expect(bar).toBeVisible();
-      await panel.getByRole("button", { name: `Unfocus to-do: ${titleB}`, exact: true }).click();
-      await expect(selectA).toHaveAttribute("aria-pressed", "true");
+      await selectA.click();
       await clear.press("Enter");
       await expect(selectA).toHaveAttribute("aria-pressed", "false");
       await expect(bar).toHaveCount(0);

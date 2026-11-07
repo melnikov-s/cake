@@ -48,7 +48,7 @@ const answer = (id: string): UiPart => ({
 });
 
 for (const global of [false, true]) {
-  it(`folds around all focused tasks without changing messages or context (${global ? "Cake Chat" : "Project Chat"})`, async () => {
+  it(`switches and clears task focus without changing messages or context (${global ? "Cake Chat" : "Project Chat"})`, async () => {
     const sessionId = global ? CAKE_CHAT_SESSION_ID : "project-chat:" + "a".repeat(64);
     let todos: ProjectTodos = {
       ...emptyProjectTodos(),
@@ -125,11 +125,14 @@ for (const global of [false, true]) {
       expect(expanded()).toEqual(["false", "false", "true"]);
       expect(transcript.getByText("casual-answer")).toBeDefined();
       await u.click(panel.getByRole("button", { name: "Task A" }));
-      expect(expanded()).toEqual(["true", "true", "true"]);
-      expect(screen.getByText("Focused to-dos:")).toBeDefined();
+      expect(expanded()).toEqual(["true", "true", "false"]);
+      expect(store.focusedItems.map((item) => item.id)).toEqual([a]);
+      expect(screen.getByText("Focused to-do:")).toBeDefined();
       await u.click(panel.getByRole("button", { name: "Task A" }));
       expect(expanded()).toEqual(["true", "true", "true"]);
-      await u.click(panel.getByRole("button", { name: "Unfocus to-do: Task B" }));
+      expect(store.focusedItems).toEqual([]);
+      expect(store.transcriptFocusRequest).toBeUndefined();
+      await u.click(panel.getByRole("button", { name: "Task A" }));
       expect(expanded()).toEqual(["true", "true", "false"]);
       // Explicit manual expansion and message navigation still work outside the focused set.
       await u.click(headingB());
@@ -199,7 +202,7 @@ for (const global of [false, true]) {
 }
 
 for (const entry of ["pane", "message"] as const) {
-  it(`reveals the latest task message once from ${entry} focus and safely ignores missing messages`, async () => {
+  it(`toggles ${entry} focus, reveals the latest task message once and safely ignores missing messages`, async () => {
     using fixture = createRendererStoreFixture();
     applySnapshot(fixture.models.cakeChatTodos, {
       todos: { ...emptyProjectTodos(), items: [todo(a, "Task A"), todo(b, "Task B")] },
@@ -241,6 +244,24 @@ for (const entry of ["pane", "message"] as const) {
       expect(panel.getByRole("button", { name: "Task A" }).getAttribute("aria-pressed")).toBe(
         "true",
       );
+      await u.click(
+        entry === "pane"
+          ? panel.getByRole("button", { name: "Task A" })
+          : transcript.getByRole("button", { name: "Focus to-do: Task A" }),
+      );
+      expect(session.todos.focusedItems).toEqual([]);
+      expect(session.todos.transcriptFocusRequest).toBeUndefined();
+      expect(panel.getByRole("button", { name: "Task A" }).getAttribute("aria-pressed")).toBe(
+        "false",
+      );
+      expect(transcript.getByText("casual-tail")).toBeDefined();
+      // A click in the other surface uses the same toggle, not a separate focus state.
+      await u.click(
+        entry === "pane"
+          ? transcript.getByRole("button", { name: "Focus to-do: Task A" })
+          : panel.getByRole("button", { name: "Task A" }),
+      );
+      expect(session.todos.focusedItemIds).toEqual([a]);
       // Attribution/streaming updates must not turn view focus into a live follower.
       act(() => {
         applyPartUpdate(session.model.parts, user("a-new", a), session.sessionId);

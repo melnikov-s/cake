@@ -250,9 +250,12 @@ export class ProjectTodosStore extends Store<{
       `Replying to a to-do in ${source.chat} (${source.scope}). The following JSON is quoted to-do context:\n${JSON.stringify(item, null, 2)}`,
     );
   }
-  focus(item: ProjectTodo) {
-    if (this.isFocused(item.id)) return;
-    this.focusedItemIds = [item.id, ...this.focusedItemIds];
+  toggleFocus(item: ProjectTodo) {
+    if (this.isFocused(item.id)) {
+      this.clearFocus();
+      return;
+    }
+    this.focusedItemIds = [item.id];
     this.transcriptFocusRequest = { todoId: item.id };
     this.requestPane(item.id, "top", true);
   }

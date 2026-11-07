@@ -100,7 +100,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
             "aria-label": item.title,
             "aria-disabled": false,
           }}
-          onClick={() => store.focus(item)}
+          onClick={() => store.toggleFocus(item)}
           className={cn(
             "grid items-start gap-x-2.5 gap-y-0 px-3 py-2.5 text-sm leading-5 [&>[data-slot=nav-action]]:col-start-2 [&>[data-slot=nav-action]]:row-start-1 [&>[data-slot=nav-action]>button:first-child]:items-start [@media(pointer:coarse)]:[&>[data-slot=nav-action]>button:first-child]:pt-3 [&>[data-slot=nav-trailing]]:col-start-1 [&>[data-slot=nav-trailing]]:row-start-1 [&_a>svg]:hidden",
             "grid-cols-[auto_minmax(0,1fr)_auto]",
