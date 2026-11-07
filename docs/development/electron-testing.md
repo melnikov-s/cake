@@ -6,7 +6,7 @@ Cake's renderer runs inside Electron. Browser-only previews and jsdom tests are 
 
 The Electron Playwright fixtures launch Cake from `out/`. Source edits are not present there until the application is rebuilt. Run `pnpm build:slim` after the final source change and before diagnosing an ordinary Electron smoke-test result. Slim builds omit local Swift speech/dictation helpers and never invoke Swift or download native speech assets, even when a full build previously populated `out/`. The app reports those local engines as unavailable; it does not compile them at runtime. Use `pnpm build` only when the test genuinely verifies bundled native engines or native packaging. A passing or failing smoke test against stale output is not evidence about the current source tree.
 
-Remote-backend smoke tests also spawn `out/server/main.mjs`; build it with `node scripts/build-server.mjs` (or `pnpm build:server`) before running them directly. `pnpm test:electron` builds slim output and the server before running Playwright; `pnpm test:electron:full` is the explicit full-build alternative. For normal agent work, build slim once and run only the affected cases with `pnpm exec playwright test ...`. Launch a slim snapshot with `pnpm build:start:slim`. If unsure whether native compilation is needed, use slim.
+Remote-backend smoke tests also spawn `out/server/main.mjs`; build it with `pnpm build:server` before running them directly. `pnpm test:electron` builds slim output and the server before running Playwright; `pnpm test:electron:full` is the explicit full-build alternative. For normal agent work, build slim once and run only the affected cases with `pnpm test:electron:run ...`. Launch a slim snapshot with `pnpm build:start:slim`. If unsure whether native compilation is needed, use slim.
 
 ## Interaction coverage
 
@@ -39,7 +39,7 @@ both the separate `playwright.foreground.config.ts` and the environment flag. As
 before running them on their active desktop, or run them on a dedicated CI/test desktop:
 
 ```sh
-CAKE_ELECTRON_FOREGROUND_TESTS=1 pnpm exec playwright test --config playwright.foreground.config.ts
+CAKE_ELECTRON_FOREGROUND_TESTS=1 pnpm test:electron:run --config playwright.foreground.config.ts
 ```
 
 This opt-in preserves native window-blur coverage without opening/focusing a window for every
@@ -52,7 +52,10 @@ Supported project workflows share a **host-wide concurrency limit across process
 sessions, and worktrees on the same desktop user account**, defaulting to **three automated
 Electron runs**. Additional runs wait FIFO. This is resource control in the launch tooling,
 not an instruction for agents to coordinate themselves. The installed Cake application is
-neither queued nor stopped. Builds alone do not take admission.
+neither queued nor stopped. This Electron guard is separate from the repository's
+[shared validation lane](agent-verification.md#shared-local-validation-lane), which defaults
+to one workflow across Cake worktrees and also covers builds, tests, lint and typecheck.
+Use canonical pnpm validation scripts to acquire validation before Electron admission.
 
 - Default, foreground, and performance Playwright configs acquire admission before tests
   and their time budgets start, including direct `pnpm exec playwright test ...` commands.

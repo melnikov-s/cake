@@ -4,8 +4,12 @@ export interface ElectronQueueState {
   running: number;
   queued: number;
 }
-export function electronQueueState(queuePath?: string): ElectronQueueState;
-export function setElectronQueueCapacity(capacity: number, queuePath?: string): ElectronQueueState;
+export function electronQueueState(queuePath?: string, validation?: boolean): ElectronQueueState;
+export function setElectronQueueCapacity(
+  capacity: number,
+  queuePath?: string,
+  validation?: boolean,
+): ElectronQueueState;
 export function isElectronRun(): boolean;
 export function queueElectronEntrypoint(options?: { timeoutMs?: number }): Promise<void>;
 export interface ElectronQueueEvent {
@@ -29,5 +33,7 @@ export function runElectronCommand(
     /** Isolated database for process tests only; production uses the machine path. */
     queuePath?: string;
     onEvent?: (event: ElectronQueueEvent) => void;
+    /** Internal Cake validation policy; shares supervision, not Electron capacity. */
+    validation?: { priority: number; label: string };
   },
 ): Promise<number>;

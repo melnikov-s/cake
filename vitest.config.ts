@@ -9,6 +9,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Keep each admitted workflow small even on high-core developer machines.
+    maxWorkers: 1,
     coverage: { reporter: ["text", "html"] },
     include: ["tests/app/**/*.test.{ts,tsx}"],
     setupFiles: ["./tests/setup.ts"],

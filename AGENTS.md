@@ -17,6 +17,7 @@ Current explicit user direction overrides Cake workflow defaults, including fami
 
 Choose acceptance checks up front by behavior/risk. New scope needs explicit cost discussion. Defer validation (tests, typechecks, lint, builds) until implementation is complete; run required checks together at the end, not after each edit.
 
+- Use canonical `pnpm` validation scripts: they share one local lane across Cake worktrees. `pnpm validation:queue status|capacity <n>` inspects/tunes admission. Wrap raw tools with `pnpm validation:run -- <command> ...` (including focused Oxfmt); use `pnpm test:electron:run ...` for built E2E. Never acquire `electron:run` before a gated validator. See `docs/development/agent-verification.md#shared-local-validation-lane`.
 - Oxfmt changed files; `pnpm format:check`. Source: `pnpm lint:oxlint`, focused tests; prefer final `pnpm lint`.
 - Behavior/state/contract/config changes: final `pnpm typecheck && pnpm test`. Batch broad checks once; rerun only if invalidated.
 - Copy/layout-only: focused checks, no full suite. Search tests for changed text and run matches. UI proof uses repository visual/Electron harnesses; focus/selection requires isolated Electron. Docs-only: formatting/links.

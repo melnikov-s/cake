@@ -15,7 +15,7 @@ component count. Make the scope and cost of new requests explicit; do not silent
 extend nearly finished work.
 
 Format changed supported files with Oxfmt before final verification, using
-`pnpm exec oxfmt <paths>` to preserve unrelated worktree changes. Run
+`pnpm validation:run -- oxfmt <paths>` to preserve unrelated worktree changes. Run
 `pnpm format:check` to verify that no formatting changes remain.
 
 Run Oxlint for every source-code change with `pnpm lint:oxlint`. Run `pnpm lint`
@@ -26,6 +26,86 @@ behavior. `pnpm typecheck` uses stable TypeScript 7's native Go compiler (the
 command is still named `tsc`), not the legacy Node compiler or a preview package.
 Docs-only changes need only applicable documentation formatting/link checks, not
 tests, builds or Electron checks.
+
+### Shared local validation lane
+
+Cake's repository tooling admits **one validation workflow total by default**
+across this checkout and all linked worktrees on the same user account. This is
+not a scheduler in the Cake application. Canonical `pnpm` scripts wait before
+starting validators, stream output normally, and return the child's status.
+Queue messages show ticket, position, and running/capacity; Ctrl-C cancels.
+Waiting consumes no test worker and checks admission every 750 ms. Process
+liveness probes are shared across waiters at most once every five seconds.
+
+```sh
+pnpm validation:queue status
+pnpm validation:queue capacity 2  # allow two concurrent workflows
+pnpm validation:queue capacity 1  # conservative default
+pnpm test tests/app/example.test.ts
+pnpm test:electron:run tests/electron/example.smoke.spec.ts  # reuse built output
+pnpm validation:run -- oxfmt path/to/changed-file.ts
+```
+
+Capacity is a positive integer stored in SQLite under
+`/tmp/cake-validation-<uid>/<hash-of-real-git-common-directory>.sqlite`, outside
+all worktrees. First use creates the registry with capacity one; later commands
+never reset it. Changing capacity affects all waiting callers within one admission
+tick. Lowering it never interrupts running work. Do not delete a live registry:
+removing it can split admission between old and new database handles. OS temp
+cleanup resets capacity on next use. A shared filesystem across different hosts
+is not supported.
+
+Coverage: focused/full Vitest, integration/native/packaged tests, TypeScript's
+native Go compiler, lint/audit/formatting, all build/package variants, Electron
+E2E, visual capture, performance collection/checking and measurement scripts.
+`build:start[:slim]` gates its build, then releases validation admission before
+starting the long-lived application. Development servers, interactive
+`dev/start/electron:run`, installation hooks, theme-independent metadata
+acceptance (`perf:accept`), and queue-control commands are not validation jobs.
+`theme:build` is gated. Vitest defaults to one worker in both configs;
+Playwright remains one worker. Explicit Vitest worker overrides are allowed;
+compiler/bundler internal threading is not globally bounded.
+
+Fast formatting/Oxlint and focused unit tests have priority zero, ordinary
+typecheck/Knip/custom commands and focused integration tests priority one, and
+full tests/builds/E2E/performance work priority two. Priority is a 30-second
+arrival-time credit per tier: a heavy ticket older by 60 seconds outranks a new
+fast ticket. Equal scores use FIFO. This only reorders waiting work, never
+preempts a running job, and eventually admits older work even under a stream of
+fast arrivals. Focused test filters are recognized conservatively (a leading
+positional filter, test/spec filename, or test-name option); other invocations
+retain full-test priority.
+
+Nested `pnpm` workflows reuse their ancestor's admission, checked against the
+registry path, active admission and process ancestry, not just an environment
+boolean. Exported baselines without Git metadata (used by session-switching
+measurements) may reuse a verified ancestor's lane; standalone exports fail
+rather than silently running unqueued. Steps within maintained composite
+workflows are sequential. Increasing capacity changes the
+number of workflows, not the default worker count inside each test run.
+Parallel custom children within one admitted workflow are not separately limited.
+
+The existing Electron host queue remains a separate guard for application
+launches, including detached Electron cleanup and interactive development runs.
+Canonical validation acquires the validation lane **before** the Electron gate.
+Nested detached Electron groups register with the enclosing validation admission
+before starting, so its lane is retained until their cleanup finishes. Arbitrary
+custom tools that daemonize outside the owned process group are not supervised.
+Do not wrap a gated validator inside an independently acquired `electron:run`;
+that reverses lock order. Use `pnpm test:electron:run` or
+`pnpm validation:run -- <command> [args...]` for additional validators.
+
+Raw `pnpm exec vitest/playwright/tsc`, direct binaries, direct script execution,
+and old worktrees without these entrypoint changes bypass validation admission.
+Raw Playwright still has its existing Electron guard, but that is not this lane.
+Prefer the canonical scripts; wrap unavoidable raw tools with
+`pnpm validation:run -- ...`. Git-linked worktrees share identity even through
+symlinked paths and isolated Cake profiles. Independent clones have different
+Git common directories and are not coordinated. This queue does not intercept
+arbitrary processes or stop already-running validations.
+
+`pnpm test:validation` uses serial Node tests and fake jobs to verify the real
+cross-process boundary without compiling Cake or launching Electron.
 
 ### Verification scope and cadence
 
@@ -136,7 +216,7 @@ pass.
 - **Use `pnpm build:slim` for ordinary agent work**: renderer/backend changes unrelated to native speech, hidden Electron tests, screenshots, and development previews. Use `pnpm build:start:slim` when launching that build. If unsure whether Swift is required, use slim.
 - Slim builds do not invoke Swift, probe its toolchain, download speech assets, or retain native helpers from a previous full build. Local Swift speech/dictation engines are unavailable in that output; there is no automatic fallback compilation.
 - **Do not run a full/native build unless it is required** by changes to Swift/native speech, native packaging/cache behavior, a real native speech integration test, or an explicitly requested full/distribution build. Normal `pnpm build` remains the full-feature build; `pnpm build:dictation`, `pnpm build:speech`, and Swift tests are explicit native work.
-- `pnpm test:electron` and Electron visual captures default to slim builds. Prefer targeted `pnpm exec playwright test ...` after `pnpm build:slim`; do not run the whole Electron suite just to obtain a build. For a capture that genuinely needs bundled native engines, explicitly use `CAKE_BUILD_MODE=full pnpm visual:capture ...`.
+- `pnpm test:electron` and Electron visual captures default to slim builds. Prefer targeted `pnpm test:electron:run ...` after `pnpm build:slim`; do not run the whole Electron suite just to obtain a build. For a capture that genuinely needs bundled native engines, explicitly use `CAKE_BUILD_MODE=full pnpm visual:capture ...`.
 - Full builds share content-addressed native bundles and Swift scratch under Cake's `cache/native-builds/v1`, not in each worktree. Do not symlink mutable Swift `.build` trees between different source revisions. `CAKE_NATIVE_REBUILD=1` is an explicit bypass for native verification, not a routine step.
 
 ### Electron UI verification
