@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { QueuedPromptPopover } from "./queued-prompt-popover";
+import { QueuedAttachmentIndicator } from "./queued-attachment-indicator";
 import {
   modelReferenceLabel,
   splitModelReferences,
@@ -84,6 +85,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                       className="flex min-w-0 items-center gap-1 rounded-md bg-muted/40 px-2 py-1.5 text-xs motion-safe:animate-arrive"
                       role="listitem"
                     >
+                      <QueuedAttachmentIndicator attachments={entry.attachments} />
                       <PopoverTrigger
                         variant="ghost"
                         className="h-7 min-w-0 flex-1 justify-start gap-1.5 rounded-sm p-0 text-left text-sm font-normal text-foreground hover:bg-transparent"
