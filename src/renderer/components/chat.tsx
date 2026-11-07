@@ -462,6 +462,7 @@ export const Chat = observer(function Chat({
       >
         <ChatTranscript
           store={store}
+          annotationSubmitFocusRef={composerFocusEnabled ? composerInputRef : undefined}
           behavior={
             transcriptBehavior?.canReplyToMessage && composerVisible
               ? {

@@ -301,6 +301,7 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
     await expect(annotationDialog.getByRole("button", { name: "Add annotation" })).toBeEnabled();
     await annotationInput.press("Enter");
     await expect(annotationDialog).toHaveCount(0);
+    await expect(composer).toBeFocused();
 
     if (highlightsOnly) {
       const highlightedText = (inFullscreen: boolean) =>

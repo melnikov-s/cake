@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { untracked } from "r-state-tree";
 import { observer } from "r-state-tree/react";
@@ -89,6 +90,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   footer,
   error: errorOverride,
   virtualized = true,
+  annotationSubmitFocusRef,
 }: {
   store: ChatStore;
   behavior?: ChatTranscriptBehavior;
@@ -96,6 +98,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   footer?: ReactNode;
   error?: { message: string; details?: string; title?: string };
   virtualized?: boolean;
+  annotationSubmitFocusRef?: RefObject<HTMLElement | null>;
 }) {
   useEffect(
     () => behavior.inlineArtifactPreviews?.observeConversation(store.id, () => store.parts),
@@ -478,6 +481,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         <AnnotationDraftPopover
           anchor={annotationDraft.rect}
           selection={annotationDraft.selection}
+          submitFocusRef={annotationSubmitFocusRef}
           onAdd={(annotation) => store.addAnnotation(annotation)}
           onClose={() => setAnnotationDraft(undefined)}
         />

@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
 import { ChatComposer } from "@/components/chat-composer";
@@ -25,11 +26,14 @@ export function AnnotationDraftPopover({
   onSave,
   onClose,
   onCancel = onClose,
+  submitFocusRef,
   draft,
 }: {
   anchor: HTMLElement | MessageCommentAnchorRect;
   onClose(): void;
   onCancel?(): void;
+  /** Successful submission returns to this surface's composer, not the selection's focus. */
+  submitFocusRef?: RefObject<HTMLElement | null>;
   draft?: { value: string; onChange(value: string): void };
 } & (
   | {
@@ -44,6 +48,7 @@ export function AnnotationDraftPopover({
   const setComment = draft?.onChange ?? setLocalComment;
   const surfaceRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const submittedFocus = useRef<HTMLElement | null>(null);
   const [position, setPosition] = useState<CSSProperties>({ visibility: "hidden" });
 
   const update = useCallback(() => {
@@ -100,15 +105,19 @@ export function AnnotationDraftPopover({
       cancelAnimationFrame(focusFrame);
       document.removeEventListener("pointerdown", dismiss);
       document.removeEventListener("keydown", keydown);
-      if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true });
+      const target = submittedFocus.current ?? previouslyFocused;
+      if (target?.isConnected) target.focus({ preventScroll: true });
     };
   }, [onClose, onCancel]);
 
   const handleSubmit = useCallback(() => {
     if (selection) onAdd({ ...selection, comment: comment.trim() || undefined });
     else onSave(comment.trim());
+    // Set only after the annotation callback returns successfully. Cleanup must
+    // perform the handoff so ordinary dismissal focus cannot overwrite it.
+    submittedFocus.current = submitFocusRef?.current ?? null;
     onClose();
-  }, [comment, onAdd, onSave, onClose, selection]);
+  }, [comment, onAdd, onSave, onClose, selection, submitFocusRef]);
 
   return createPortal(
     <div
