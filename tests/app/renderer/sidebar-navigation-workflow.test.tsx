@@ -200,6 +200,127 @@ describe("Workspace Sessions navigation workflow", () => {
     expect(screen.queryByRole("button", { name: "Open Project Chat for cake" })).toBeNull();
   });
 
+  it("closes Remove only confirmation without waiting for fallback navigation and retires removed observations", async () => {
+    const fallback = deferred<void>();
+    const open = vi
+      .fn<Client["projectSessions"]["open"]>()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(() => fallback.promise);
+    const other = projectRecord({ path: "/other" });
+    const removeProject = vi.fn<Client["workspaces"]["removeProject"]>(async () => ({
+      ...defaultApplicationState(),
+      projects: [other],
+    }));
+    using fixture = renderSidebarNavigation({
+      projects: [project, other],
+      sessions: [
+        sidebarSummary("removed", 1, { running: true }),
+        sidebarSummary("retained", 2, { projectPath: "/other", workingDirectory: "/other" }),
+      ],
+      loadedIds: ["removed", "retained"],
+      client: {
+        electron: { showProjectContextMenu: async () => "remove-project" },
+        projectSessions: { open },
+        workspaces: { removeProject },
+      },
+    });
+    await fixture.selectSession("retained");
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+    await fixture.selectSession("removed");
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
+    await fixture.user.pointer({
+      target: screen.getByRole("button", { name: "Open Project Chat for cake" }),
+      keys: "[MouseRight]",
+    });
+    const dialog = await screen.findByRole("alertdialog", { name: "Remove cake?" });
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Remove only" }));
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(3));
+    expect(removeProject).toHaveBeenCalledWith(
+      "/cake",
+      false,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    // The authority still owns the saved session; only window identity/demand is retired.
+    expect(fixture.models.sessionCatalog.find("removed")).toBeDefined();
+    expect(fixture.root.sessionRegistry.findSession("removed")).toBeUndefined();
+    expect(
+      fixture.root.sessionRegistry.observationRetention.sessions.map((s) => s.sessionId),
+    ).not.toContain("removed");
+    expect(fixture.root.sessionLayoutStore.focusedSessionHistory).not.toContain("removed");
+    await fixture.publishProjects([other]);
+    await fixture.publishSessions([
+      sidebarSummary("retained", 2, { projectPath: "/other", workingDirectory: "/other" }),
+    ]);
+    await act(async () => fallback.resolve());
+    await fixture.user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeDefined();
+  });
+
+  it("retires an active Project Chat from the shared project layout on Remove only", async () => {
+    const sessionId = `project-chat:${"a".repeat(64)}`;
+    using fixture = renderSidebarNavigation({
+      projects: [project],
+      client: {
+        electron: { showProjectContextMenu: async () => "remove-project" },
+        workspaces: { removeProject: async () => defaultApplicationState() },
+      },
+    });
+    await fixture.publishProjectChats([
+      {
+        sessionId,
+        projectPath: "/cake",
+        title: "Project Chat",
+        createdAt: project.addedAt,
+        modifiedAt: project.lastOpenedAt,
+        messageCount: 0,
+        resolved: false,
+        unread: false,
+      },
+    ]);
+    const projectButton = screen.getByRole("button", { name: "Open Project Chat for cake" });
+    await fixture.user.click(projectButton);
+    expect(document.querySelector(`[data-session-id="${sessionId}"]`)).not.toBeNull();
+    await fixture.user.pointer({ target: projectButton, keys: "[MouseRight]" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Remove cake?" });
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Remove only" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(screen.getByRole("heading", { name: "What should we build?" })).toBeDefined();
+    expect(fixture.root.sessionLayoutStore.focusedSessionHistory).not.toContain(sessionId);
+    expect(fixture.root.cakeChatCollectionStore.registry.find(sessionId)).toBeUndefined();
+  });
+
+  it("shows a removal failure inside the confirmation and allows retry", async () => {
+    const removeProject = vi
+      .fn<Client["workspaces"]["removeProject"]>()
+      .mockRejectedValueOnce(new Error("Project could not be removed"))
+      .mockResolvedValueOnce(defaultApplicationState());
+    using fixture = renderSidebarNavigation({
+      projects: [project],
+      sessions: [sidebarSummary("kept")],
+      client: {
+        electron: { showProjectContextMenu: async () => "remove-project" },
+        workspaces: { removeProject },
+      },
+    });
+    await fixture.user.pointer({
+      target: screen.getByRole("button", { name: "Open Project Chat for cake" }),
+      keys: "[MouseRight]",
+    });
+    const dialog = await screen.findByRole("alertdialog", { name: "Remove cake?" });
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Remove only" }));
+    expect(await within(dialog).findByText("Project could not be removed")).toBeDefined();
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveProperty(
+      "disabled",
+      false,
+    );
+    expect(screen.getByRole("button", { name: "Open Project Chat for cake" })).toBeDefined();
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Remove only" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(removeProject).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps cleanup confirmation blocking while main deletes resolved worktrees", async () => {
     const pending =
       deferred<Awaited<ReturnType<Client["managedWorktrees"]["discardResolvedForProject"]>>>();

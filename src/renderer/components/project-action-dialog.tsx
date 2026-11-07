@@ -1,3 +1,4 @@
+import { Callout } from "./ui/callout";
 import { Button } from "./ui/button";
 import {
   DialogBackdrop,
@@ -17,6 +18,7 @@ export function ProjectActionDialog({
   sessionCount,
   resolvedWorktreeCount,
   busy,
+  error,
   onCancel,
   onRemove,
   onDeleteResolvedWorktrees,
@@ -26,6 +28,7 @@ export function ProjectActionDialog({
   sessionCount: number;
   resolvedWorktreeCount: number;
   busy: boolean;
+  error?: string;
   onCancel(): void;
   onRemove(deleteSessions: boolean): void;
   onDeleteResolvedWorktrees(): void;
@@ -55,6 +58,7 @@ export function ProjectActionDialog({
               : `${resolvedWorktreeCount} landed worktree${resolvedWorktreeCount === 1 ? "" : "s"} with only resolved sessions will be deleted. Their sessions will remain in project history.`}
           </DialogDescription>
         </DialogHeader>
+        {error && <Callout variant="error">{error}</Callout>}
         <DialogFooter className="flex-wrap">
           {busy && <LoadingState label={progressLabel} variant="Dots" />}
           <Button variant="outline" size="sm" disabled={busy} onClick={onCancel}>

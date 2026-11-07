@@ -64,6 +64,7 @@ export function renderRootAppWorkflow(client: TestClientOverrides) {
     </StoreProvider>,
   );
   return {
+    root: fixture.root,
     user: userEvent.setup(),
     publishSessions(sessions: SessionSummaryFixture[]) {
       act(() =>

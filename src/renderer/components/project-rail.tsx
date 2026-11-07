@@ -3,6 +3,7 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { cn } from "../lib/utils";
+import { describeError } from "../lib/error-details";
 import { Avatar } from "./ui/avatar";
 import { IconButton } from "./ui/icon-button";
 import {
@@ -29,11 +30,14 @@ export const ProjectRail = observer(function ProjectRail() {
   const navigator = root.workspaceNavigatorStore;
   const [action, setAction] = useState<{ path: string; kind: ProjectAction }>();
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string>();
   const projectMenu = async (path: string, x: number, y: number) => {
     const selected = await root.sidebarStore.showProjectContextMenu(path, x, y);
     if (selected === "settings") root.projectSettingsStore.open(path);
-    else if (selected === "remove-project" || selected === "delete-resolved-worktrees")
+    else if (selected === "remove-project" || selected === "delete-resolved-worktrees") {
+      setActionError(undefined);
       setAction({ path, kind: selected });
+    }
   };
   const activeProject = root.workspaceProjectPath;
   const runningProjects = new Set(
@@ -224,14 +228,17 @@ export const ProjectRail = observer(function ProjectRail() {
           sessionCount={root.sidebarStore.projectSessionCount(action.path)}
           resolvedWorktreeCount={root.sidebarStore.resolvedWorktreeCount(action.path)}
           busy={busy}
+          error={actionError}
           onCancel={() => setAction(undefined)}
           onRemove={(deleteSessions) => {
+            setActionError(undefined);
             setBusy(true);
             void root.projectRemovalStore
               .remove(action.path, deleteSessions)
               .then((removed) => {
                 if (removed) setAction(undefined);
               })
+              .catch((error: unknown) => setActionError(describeError(error).message))
               .finally(() => setBusy(false));
           }}
           onDeleteResolvedWorktrees={() => {

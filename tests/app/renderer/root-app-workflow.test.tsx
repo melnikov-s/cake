@@ -97,44 +97,53 @@ describe("Root App workflow", () => {
     expect(screen.queryByRole("button", { name: "Resolve Current conversation" })).toBeNull();
   });
 
-  it("removes the active project's sessions only after delete-on-remove succeeds and returns to the empty workbench", async () => {
-    const removed = deferred<ReturnType<typeof defaultApplicationState>>();
-    const removeProject = vi.fn<Client["workspaces"]["removeProject"]>(() => removed.promise);
-    const showProjectContextMenu = vi.fn<Client["electron"]["showProjectContextMenu"]>(
-      async () => "remove-project",
-    );
-    using fixture = renderRootAppWorkflow({
-      electron: { showProjectContextMenu },
-      workspaces: { removeProject },
-    });
-    await fixture.user.pointer({
-      target: screen.getByRole("button", { name: /Open Project Chat for Alpha/i }),
-      keys: "[MouseRight]",
-    });
-    const dialog = await screen.findByRole("alertdialog", { name: "Remove Alpha?" });
-    await fixture.user.click(
-      within(dialog).getByRole("button", { name: "Remove and delete sessions" }),
-    );
-    await waitFor(() =>
-      expect(removeProject).toHaveBeenCalledWith(
-        "/alpha",
-        true,
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      ),
-    );
-    expect(input()).toBeDefined();
-    const authority = {
-      ...defaultApplicationState(),
-      projects: rootAppProjects.filter((project) => project.path !== "/alpha"),
-    };
-    await act(async () => {
-      removed.resolve(authority);
-      await removed.promise;
-    });
-    fixture.publishProjects(authority.projects);
-    fixture.publishSessions([]);
-    expect(await screen.findByRole("heading", { name: "What should we build?" })).toBeDefined();
-    expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Open Project Chat for Alpha/i })).toBeNull();
-  });
+  it.each([false, true])(
+    "removes the active project only after success and returns to the empty workbench (deleteSessions: %s)",
+    async (deleteSessions) => {
+      const removed = deferred<ReturnType<typeof defaultApplicationState>>();
+      const removeProject = vi.fn<Client["workspaces"]["removeProject"]>(() => removed.promise);
+      const showProjectContextMenu = vi.fn<Client["electron"]["showProjectContextMenu"]>(
+        async () => "remove-project",
+      );
+      using fixture = renderRootAppWorkflow({
+        electron: { showProjectContextMenu },
+        workspaces: { removeProject },
+      });
+      await fixture.user.pointer({
+        target: screen.getByRole("button", { name: /Open Project Chat for Alpha/i }),
+        keys: "[MouseRight]",
+      });
+      const dialog = await screen.findByRole("alertdialog", { name: "Remove Alpha?" });
+      await fixture.user.click(
+        within(dialog).getByRole("button", {
+          name: deleteSessions ? "Remove and delete sessions" : "Remove only",
+        }),
+      );
+      await waitFor(() =>
+        expect(removeProject).toHaveBeenCalledWith(
+          "/alpha",
+          deleteSessions,
+          expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        ),
+      );
+      expect(input()).toBeDefined();
+      const authority = {
+        ...defaultApplicationState(),
+        projects: rootAppProjects.filter((project) => project.path !== "/alpha"),
+      };
+      await act(async () => {
+        removed.resolve(authority);
+        await removed.promise;
+      });
+      fixture.publishProjects(authority.projects);
+      fixture.publishSessions([]);
+      expect(await screen.findByRole("heading", { name: "What should we build?" })).toBeDefined();
+      expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Open Project Chat for Alpha/i })).toBeNull();
+      expect(fixture.root.sessionRegistry.findSession(rootAppSession.sessionId)).toBeUndefined();
+      expect(fixture.root.sessionLayoutStore.focusedSessionHistory).not.toContain(
+        rootAppSession.sessionId,
+      );
+    },
+  );
 });

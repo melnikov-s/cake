@@ -1,9 +1,10 @@
-import { Store } from "r-state-tree";
+import { Store, batch } from "r-state-tree";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import type { AppShellStore, SessionHistoryEntry } from "./AppShellStore";
 import { ClientContext } from "./context/ClientContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
+import type { SessionLayoutStore } from "./SessionLayoutStore";
 import { ProjectSessionNavigationContext } from "./context/ProjectSessionNavigationContext";
 import { ProjectOpenContext } from "./context/ProjectOpenContext";
 
@@ -11,6 +12,7 @@ export interface ProjectRemovalStoreProps {
   catalog: SessionCatalogStore;
   cakeChat(): CakeChatCollectionStore;
   registry: SessionRegistryStore;
+  layout: SessionLayoutStore;
   shell: AppShellStore;
   navigate(target: SessionHistoryEntry): Promise<void>;
   showEmptyWorkbench(): void;
@@ -39,24 +41,37 @@ export class ProjectRemovalStore extends Store<ProjectRemovalStoreProps> {
       await this.client.workspaces.removeProject(path, deleteSessions, { signal: this.signal });
       if (this.signal.aborted) return false;
     } catch (error) {
-      if (!this.signal.aborted) ProjectSessionNavigationContext.consume(this)!.setError(error);
-      return false;
+      if (this.signal.aborted) return false;
+      ProjectSessionNavigationContext.consume(this)!.setError(error);
+      throw error;
     }
 
-    ProjectOpenContext.consume(this)!.clear(path);
-    const target = this.props.shell.removeSessionsFromHistory(sessionIds);
-    chat.sessionLayoutStore.removeSessions(chatIds);
-    for (const sessionId of chatIds) chat.registry.remove(sessionId);
-    if (deleteSessions)
+    const target = batch(() => {
+      const selection = this.props.shell.selection;
+      const selectedRemoved =
+        (selection.kind === "project-session" || selection.kind === "cake-chat") &&
+        selection.sessionId !== undefined &&
+        sessionIds.includes(selection.sessionId);
+      ProjectOpenContext.consume(this)!.clear(path);
+      const fallback = this.props.shell.removeSessionsFromHistory(sessionIds);
+      this.props.layout.removeSessions(sessionIds);
+      chat.sessionLayoutStore.removeSessions(chatIds);
+      for (const sessionId of chatIds) chat.registry.remove(sessionId);
+      // Removing a renderer identity releases observation, not the saved Pi session.
       for (const sessionId of sessionIds) this.props.registry.removeSession(sessionId);
-    if (target) await this.props.navigate(target);
-    else if (
-      (this.props.shell.selection.kind === "project-session" ||
-        this.props.shell.selection.kind === "cake-chat") &&
-      this.props.shell.selection.sessionId !== undefined &&
-      sessionIds.includes(this.props.shell.selection.sessionId)
-    )
-      this.props.showEmptyWorkbench();
+      if (selectedRemoved) this.props.showEmptyWorkbench();
+      return fallback;
+    });
+    // The confirmation belongs to removal, not acquisition of another conversation.
+    if (target) void this.navigateAfterRemoval(target);
     return true;
+  }
+
+  private async navigateAfterRemoval(target: SessionHistoryEntry) {
+    try {
+      await this.props.navigate(target);
+    } catch (error) {
+      if (!this.signal.aborted) ProjectSessionNavigationContext.consume(this)!.setError(error);
+    }
   }
 }

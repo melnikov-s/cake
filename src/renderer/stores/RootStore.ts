@@ -550,6 +550,7 @@ export class RootStore extends Store<{
       cakeChat: () => this.cakeChatCollectionStore,
       catalog: this.sessionCatalogStore,
       registry: this.sessionRegistry,
+      layout: this.sessionLayoutStore,
       shell: this.appShellStore,
       navigate: (target) => this.navigationStore.navigateToHistoryEntry(target),
       showEmptyWorkbench: () => this.navigationStore.showEmptyWorkbench(),
