@@ -173,7 +173,9 @@
    rule sits outside it (box-content), so the rule never shifts that center line. Embedded
    VS Code fixes its own title bar, so Cake matches it while that view is shown. */
 :root {
-  --title-bar-height: 52px;
+  /* Keep the workspace action row fixed while native VS Code chrome contracts. */
+  --workspace-title-bar-height: 52px;
+  --title-bar-height: var(--workspace-title-bar-height);
 }
 
 :root[data-title-bar="vscode"] {
@@ -182,6 +184,7 @@
 
 @theme inline {
   --spacing-title-bar: var(--title-bar-height);
+  --spacing-workspace-title-bar: var(--workspace-title-bar-height);
   /* Small UI text shares a readable, root-relative floor, including third-party
      components using Tailwind's text-xs. Keep the root size user-controlled. */
   --text-xs: 0.875rem;

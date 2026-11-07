@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { LoadingState } from "@/components/ui/loading-state";
-import { cn } from "@/lib/utils";
+import { WorkspaceHeader } from "./ui/workspace-header";
 import type { SessionLayoutStore } from "../stores/SessionLayoutStore";
 import {
   FocusedConversationPane,
@@ -52,50 +52,22 @@ export const FocusedConversationLayout = observer(function FocusedConversationLa
       onKeyDownCapture={() => onInteract?.(sessionId)}
       onPointerDownCapture={() => onInteract?.(sessionId)}
     >
-      <header
-        data-slot="workspace-header"
-        className={cn(
-          "relative min-w-0 border-b border-border/65 [app-region:drag]",
-          compactHeader
-            ? "box-content flex h-title-bar items-center gap-3 overflow-hidden px-5"
-            : "flex min-h-title-bar flex-col",
-        )}
-      >
-        {compactHeader && titleLeading?.(sessionId)}
-        <div
-          className={cn(
-            "flex min-w-0 items-center",
-            compactHeader ? "flex-1" : "min-h-title-bar pl-[46px] pr-3",
-          )}
-        >
-          {renderTitle ? (
+      <WorkspaceHeader
+        compact={compactHeader}
+        titleLeading={compactHeader ? titleLeading?.(sessionId) : undefined}
+        title={
+          renderTitle ? (
             renderTitle(sessionId)
           ) : (
             <strong className="min-w-0 flex-1 truncate text-sm font-semibold">
               {title(sessionId)}
             </strong>
-          )}
-        </div>
-        <div
-          data-slot="workspace-actions"
-          className={cn(
-            "flex min-w-0 items-center gap-1 overflow-x-auto [app-region:no-drag]",
-            compactHeader
-              ? "-my-1 max-w-[70%] shrink-0 py-1"
-              : "justify-end border-t border-border/40 px-3 py-1",
-          )}
-        >
-          {!compactHeader && renderTitle && (
-            <strong
-              className="min-w-0 flex-1 truncate text-sm font-semibold"
-              title={title(sessionId)}
-            >
-              {title(sessionId)}
-            </strong>
-          )}
-          {session && renderHeader(session)}
-        </div>
-      </header>
+          )
+        }
+        actionTitle={renderTitle ? title(sessionId) : undefined}
+      >
+        {session && renderHeader(session)}
+      </WorkspaceHeader>
       <div className="h-full min-h-0 min-w-0 overflow-hidden">
         {session ? (
           <FocusedConversationPane

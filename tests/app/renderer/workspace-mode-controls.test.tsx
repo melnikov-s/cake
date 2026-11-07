@@ -282,6 +282,48 @@ describe("app.state visible workspace metadata", () => {
 });
 
 describe("Workspace mode navigation", () => {
+  it("keeps the same header rows and control slots through Chat, Browser and VS Code", async () => {
+    using fixture = renderEmbeddedEditor({
+      vscode: { open: async () => editorLease("a") },
+      browser: {
+        open: async () => currentBrowserState,
+        updateBounds: async () => currentBrowserState,
+      },
+    });
+    // jsdom checks shared layout wiring, not pixel geometry (covered by Electron).
+    const layout = () => {
+      const tools = screen.getByRole("group", { name: "Workspace tools" });
+      const header = tools.closest("header")!;
+      const actions = header.querySelector('[data-slot="workspace-actions"]')!;
+      const terminal = within(tools).getByRole("button", { name: "Terminal" });
+      const chatSlot = terminal.previousElementSibling!;
+      expect(chatSlot.classList.contains("size-7")).toBe(true);
+      expect(chatSlot.classList.contains("[@media(pointer:coarse)]:size-11")).toBe(true);
+      expect(actions.classList.contains("overflow-x-auto")).toBe(true);
+      expect(actions.classList.contains("justify-end")).toBe(true);
+      expect(header.firstElementChild!.classList.contains("min-h-workspace-title-bar")).toBe(true);
+      return {
+        header: header.className,
+        titleRow: header.firstElementChild!.className,
+        actions: actions.className,
+        tools: tools.className,
+        slots: [...tools.children].map((child) => child.className),
+      };
+    };
+    const chatLayout = layout();
+    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    expect(await screen.findByRole("textbox", { name: "Browser address" })).toBeDefined();
+    expect(layout()).toEqual(chatLayout);
+    await fixture.user.click(screen.getByRole("button", { name: "Close chat" }));
+    expect(layout()).toEqual(chatLayout);
+    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await screen.findByTitle("VS Code workspace");
+    fixture.measureWorkspace();
+    await waitFor(() => expect(document.documentElement.dataset.titleBar).toBe("vscode"));
+    expect(layout()).toEqual(chatLayout);
+    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    expect(layout()).toEqual(chatLayout);
+  });
   it("opens the worker CWD while retaining its owning project and draft across tool companions", async () => {
     const open = vi.fn<Client["vscode"]["open"]>(async () => editorLease("a"));
     using fixture = renderEmbeddedEditor(

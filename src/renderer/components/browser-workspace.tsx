@@ -8,6 +8,7 @@ import { Chat } from "./chat";
 import { SideChatLayout } from "./side-chat-layout";
 import { NestedChat } from "./nested-chat";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
+import { WorkspaceHeader } from "./ui/workspace-header";
 import { IconButton } from "./ui/icon-button";
 import { Input } from "./ui/input";
 import { BrowserSharingMenu } from "./browser-sharing-menu";
@@ -148,14 +149,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   return (
     <WorkspaceChatLayout
       workspace={workspace}
-      workspaceHeader={
-        <header className="flex min-h-title-bar shrink-0 flex-col gap-1 border-b border-border/65 bg-background px-3 pb-1 [-webkit-app-region:drag]">
-          <div className="min-w-0 pl-[34px]">{headerLeading}</div>
-          <div className="flex flex-wrap items-center gap-1 [-webkit-app-region:no-drag]">
-            {headerActions}
-          </div>
-        </header>
-      }
+      workspaceHeader={<WorkspaceHeader title={headerLeading}>{headerActions}</WorkspaceHeader>}
       workspaceLabel="Browser workspace"
       chatSidebarVisible={browser.chatSidebarVisible}
       chatSidebarWidth={browser.chatSidebarWidth}

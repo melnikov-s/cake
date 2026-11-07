@@ -64,13 +64,15 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
           </SegmentedControlButton>
         )}
       </SegmentedControlGroup>
-      {mode !== "normal" && onToggleChatSidebar && (
-        <WorkspacePanelToggle
-          panel="chat"
-          visible={chatSidebarVisible === true}
-          onToggle={onToggleChatSidebar}
-        />
-      )}
+      <span className="grid size-7 shrink-0 place-items-center [@media(pointer:coarse)]:size-11">
+        {mode !== "normal" && onToggleChatSidebar && (
+          <WorkspacePanelToggle
+            panel="chat"
+            visible={chatSidebarVisible === true}
+            onToggle={onToggleChatSidebar}
+          />
+        )}
+      </span>
       <IconButton
         data-cake-hint-key="t"
         className="phone:hidden"

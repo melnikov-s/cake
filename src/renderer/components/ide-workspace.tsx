@@ -14,6 +14,7 @@ import { EmbeddedEditorPane } from "./embedded-editor";
 import { SideChatLayout } from "./side-chat-layout";
 import { NestedChat } from "./nested-chat";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
+import { WorkspaceHeader } from "./ui/workspace-header";
 
 function anchorTitle(anchor: NonNullable<ReviewsStore["draftAnchor"]>) {
   const start = anchor.start.newLine ?? anchor.start.oldLine;
@@ -157,14 +158,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
           </div>
         </div>
       }
-      workspaceHeader={
-        <header className="flex min-h-title-bar shrink-0 flex-col gap-1 border-b border-border/65 bg-background px-3 pb-1 [-webkit-app-region:drag]">
-          <div className="min-w-0 pl-[34px]">{headerLeading}</div>
-          <div className="flex flex-wrap items-center gap-1 [-webkit-app-region:no-drag]">
-            {headerActions}
-          </div>
-        </header>
-      }
+      workspaceHeader={<WorkspaceHeader title={headerLeading}>{headerActions}</WorkspaceHeader>}
       workspaceLabel="VS Code workspace"
       chatSidebarVisible={editor.chatSidebarVisible}
       chatSidebarWidth={editor.chatSidebarWidth}

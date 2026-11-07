@@ -85,6 +85,20 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
     await page.mouse.move(500, 220);
     await expect.poll(async () => (await rail.boundingBox())!.width).toBe(54);
     await expectTitlebarAlignment(application, page);
+    const workspaceControlBounds = async () => {
+      const tools = page.getByRole("group", { name: "Workspace tools", exact: true });
+      return Promise.all(
+        [
+          tools,
+          tools.getByRole("button", { name: /^(Chat|Back to agent)$/ }),
+          tools.getByRole("button", { name: "Open VS Code", exact: true }),
+          tools.getByRole("button", { name: "Open Browser Mode", exact: true }),
+          tools.getByRole("button", { name: "Terminal", exact: true }),
+        ].map((control) => control.boundingBox()),
+      );
+    };
+    const chatControlBounds = await workspaceControlBounds();
+    expect(chatControlBounds.every(Boolean)).toBe(true);
     const workspace = page.locator('[data-slot="workspace"]');
     const before = (await workspace.boundingBox())!;
     const projects = rail.getByRole("region", { name: "Projects", exact: true });
@@ -151,6 +165,7 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
       .click();
     await scenario.prepare(page, "browser", application);
     await expectTitlebarAlignment(application, page);
+    expect(await workspaceControlBounds()).toEqual(chatControlBounds);
     const splitter = (await page
       .getByRole("separator", { name: "Resize current session sidebar", exact: true })
       .boundingBox())!;
@@ -230,6 +245,7 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
     await cdp.detach();
     await scenario.prepare(page, "vscode", application);
     await expectTitlebarAlignment(application, page);
+    expect(await workspaceControlBounds()).toEqual(chatControlBounds);
     const windows = await application.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows().map((native) => ({
         visible: native.isVisible(),

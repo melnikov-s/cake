@@ -5,6 +5,8 @@ Compose these before creating a new control. Props, styling, interaction details
 examples belong in their source, callers and focused tests—not a second API specification.
 See `AGENTS.md` for renderer implementation rules.
 
+[`WorkspaceHeader`](../../src/renderer/components/ui/workspace-header.tsx) keeps conversation, Browser and VS Code breadcrumbs and right-aligned workspace actions on shared rows. Its title row stays stable independently of the embedded editor's native title bar; narrow action rows scroll rather than wrap. The drop-down chat uses its compact variant.
+
 ## Controls and disclosure
 
 [`ModelReferenceInput`](../../src/renderer/components/ui/model-reference-input.tsx) edits ordinary message text with atomic inline model references; it exposes the composer's text/selection API and reuses `ModelPicker` through its caller. [`ModelReferenceChip`](../../src/renderer/components/ui/model-reference-chip.tsx) is the noninteractive transcript equivalent. Both share compact chip styling; canonical text lives in `contracts/model-presets/model-reference.ts`, never separate draft metadata.
