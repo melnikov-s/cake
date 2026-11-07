@@ -9,25 +9,69 @@ Use the repository-owned visual harness when a Cake UI change benefits from a sc
 
 ## Verification
 
-Format changed supported files with Oxfmt before final verification. Use
-`pnpm format` to format the repository and `pnpm format:check` to verify that no
-formatting changes remain.
+Agree acceptance criteria and verification scope up front, including for
+coordinated tasks. Choose verification by affected behavior and risk, not file or
+component count. Make the scope and cost of new requests explicit; do not silently
+extend nearly finished work.
+
+Format changed supported files with Oxfmt before final verification, using
+`pnpm exec oxfmt <paths>` to preserve unrelated worktree changes. Run
+`pnpm format:check` to verify that no formatting changes remain.
 
 Run Oxlint for every source-code change with `pnpm lint:oxlint`; do not rely on
 ESLint alone. Run `pnpm lint` for final lint verification when the task's scope
 permits, since it runs Oxlint first and then ESLint. Run focused tests and the
-relevant typecheck or build for the files changed. Preserve unrelated worktree
-changes.
+typecheck or build warranted by the affected behavior. Docs-only changes need
+only applicable documentation formatting/link checks, not tests, builds or
+Electron checks.
 
-Before committing a behavior change, run the full `pnpm typecheck && pnpm test`
-(about 1 minute and 2-5 minutes locally). Focused tests alone do not catch tests
-elsewhere that encode the behavior you changed. A small presentation-only tweak
-(styling, layout or copy in one component, with no state, prop or logic change) or a
-docs-only change can rely on focused tests. For copy or accessible-name changes,
-first search `tests/` for the old string. `AGENTS.md` has the exact rule. Claim a failure as pre-existing only after reproducing
-the same test failing on the base commit, and name each one in the report. CI runs
-`format:check`, `lint`, `typecheck` and the sharded `test` suite on every PR and
-push to main.
+### Verification scope and cadence
+
+- Actual behavior changes require final full `pnpm typecheck && pnpm test`
+  verification (about 1 minute and 2-5 minutes locally). This includes changes to
+  feature behavior, state or logic in stores/domain/services/shared components,
+  contracts or export signatures, and config/dependency/test-infrastructure
+  behavior. Focused tests alone do not catch tests elsewhere that encode the old
+  behavior.
+- Presentation-only styling, layout, spacing, icon or copy changes may span files
+  and components without triggering the full suite, provided they do not change
+  behavior, state or contracts. Keep format/lint, affected focused tests and
+  appropriate visual proof. For visible-copy or accessible-name changes, search
+  `tests/` for the old string and run every matching test file.
+- During iteration, run focused checks. Batch warranted broad verification once
+  at the end. Rerun a broad check only if subsequent changes could invalidate its
+  evidence; unchanged code or equivalent checks do not need reruns. Choose checks
+  for uncertain scope by identifying affected behavior and risk, not by
+  automatically running the full suite.
+
+`AGENTS.md` defines the repository baseline. CI runs `format:check`, `lint`,
+`typecheck` and the sharded `test` suite on every PR and push to main as a backstop,
+not a substitute for required final local verification.
+
+### Failures, checkpoints and readiness
+
+A failed check is not permission to expand scope. Fix attributable regressions
+within the authorized scope. Other failures may be reported as
+unresolved/unclassified blockers without automatically investigating or fixing
+them. Identify the failing check/test and available evidence; do not dismiss
+failures by count or presume that unclassified failures are pre-existing.
+
+Call a failure pre-existing only after reproducing the same test failure on the
+base commit, and report the test file, test name and base commit checked. That
+reproduction is necessary for the claim, not a mandatory detour for every
+unclassified failure. Never weaken tests or claim readiness with known failures.
+
+After two unsuccessful repair/verification cycles on the same blocker, stop
+expanding work. Report the evidence, exact blocker and smallest next experiment
+or decision; do not automatically widen into architectural work. See the
+two-failed-hypothesis rule under Debugging discipline below. These are bounded
+investigation rules, not a global wall-clock timeout.
+
+Distinguish implementation complete, focused verification passed, broad
+verification blocked and ready to land in the final report, as applicable. A
+clearly labeled checkpoint commit may preserve useful work despite unresolved
+broader failures, but is not a ready/green claim. Ready to land requires all
+required checks to pass; never merge with unresolved required checks.
 
 ### Workflow and feature test depth
 
@@ -97,7 +141,7 @@ pass.
 
 - Cake is an Electron application. Do not use a localhost browser page to verify Cake UI unless the task explicitly targets a separately identified web surface.
 - Renderer behavior that depends on focus, text selection, portals, keyboard input, or native DOM events must be verified through an isolated Playwright Electron test.
-- Electron smoke tests run the compiled `out/` application. Run `pnpm build:slim` after the final source change and before interpreting smoke-test results; use the full `pnpm build` only when native speech verification requires it.
+- Electron smoke tests run the compiled `out/` application. Run `pnpm build:slim` before interpreting smoke-test results when source changes invalidate the compiled output; reuse valid build evidence for unchanged code. Use the full `pnpm build` only when native speech verification requires it.
 - Ordinary Electron tests must keep windows hidden and must not steal OS focus. DOM input focus and fake-device microphone tests do not require showing/focusing a native window. Keep native OS focus/blur checks separate and opt-in (`CAKE_ELECTRON_FOREGROUND_TESTS=1`, `@foreground`); ask the user before running them on their active desktop. Never show/focus windows in shared test setup. See `docs/development/electron-testing.md`.
 - Do not treat jsdom or a browser-only render as proof of focus, controlled-input, text-selection, or portal behavior.
 - A chat-composer test must verify focus, actual typing, retained value, and enabled submission, not merely that a textarea rendered.
@@ -231,7 +275,7 @@ To profile instead:
 ### Debugging discipline
 
 - Reproduce a reported UI defect in the smallest real Electron fixture before refactoring shared abstractions.
-- After two failed implementation hypotheses, stop changing architecture. Summarize the evidence, identify the unresolved boundary, and choose one narrow experiment.
+- After two failed implementation hypotheses, stop changing architecture. After two unsuccessful repair/verification cycles on the same blocker, stop expanding work even if no architecture changed. In either case, report the evidence, exact blocker or unresolved boundary, and smallest next experiment or decision; do not automatically begin more repairs or architectural work.
 - Remove temporary diagnostics before broader verification.
 - Do not broaden a surface-specific fix into `Chat`, `ChatStore`, or another shared primitive unless the behavior belongs to every consumer.
 - When a shared chat primitive changes, run Electron smoke tests for the affected secondary chat, normal project chat input, and slash-command keyboard handling.
