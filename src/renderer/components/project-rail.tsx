@@ -6,7 +6,14 @@ import { cn } from "../lib/utils";
 import { describeError } from "../lib/error-details";
 import { Avatar } from "./ui/avatar";
 import { IconButton } from "./ui/icon-button";
-import { CakeIcon, FolderPlusIcon, LightningIcon, SearchIcon, SettingsIcon } from "./ui/icons";
+import {
+  CakeIcon,
+  FolderPlusIcon,
+  LightningIcon,
+  PlusIcon,
+  SearchIcon,
+  SettingsIcon,
+} from "./ui/icons";
 import { ProjectSettingsDialog } from "./project-settings-dialog";
 import { ArtifactCatalogMenu } from "./artifact-catalog-menu";
 import { BrowserSharingMenu } from "./browser-sharing-menu";
@@ -80,6 +87,15 @@ export const ProjectRail = observer(function ProjectRail() {
         }
         footer={
           <>
+            <IconButton
+              tooltip="New session in any project"
+              label="New session in any project"
+              hotkey="new-session"
+              className="h-9 shrink-0"
+              onClick={() => root.newSessionStore.show()}
+            >
+              <PlusIcon />
+            </IconButton>
             <IconButton
               tooltip="Search sessions"
               label="Search sessions"

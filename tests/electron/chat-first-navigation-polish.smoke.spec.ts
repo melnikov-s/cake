@@ -161,7 +161,10 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
     }
     const accessory = page.getByRole("complementary", { name: "Workspace", exact: true });
     await accessory.getByRole("button", { name: /^Sessions / }).click();
-    await accessory.getByRole("button", { name: "New Session", exact: true }).click();
+    await expect(
+      accessory.getByRole("button", { name: "New session in this project", exact: true }),
+    ).toBeVisible();
+    await rail.getByRole("button", { name: "New session in any project", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "New session", exact: true })).toBeVisible();
     await page
       .getByRole("dialog", { name: "New session", exact: true })

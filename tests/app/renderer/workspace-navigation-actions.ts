@@ -20,7 +20,7 @@ export async function openSessionFromSearch(user: User, name: RegExp) {
 
 export async function createSessionInProject(user: User, name: RegExp) {
   await showSessions(user);
-  await user.click(screen.getByRole("button", { name: "New Session" }));
+  await user.click(screen.getByRole("button", { name: "New session in any project" }));
   await user.click(
     within(screen.getByRole("dialog", { name: "New session" })).getByRole("option", { name }),
   );

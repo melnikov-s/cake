@@ -28,12 +28,12 @@ export async function openProjectSettings(
   await expect(page.getByRole("dialog", { name: /settings/i })).toBeVisible();
 }
 
-/** Creates an unsent Session through the Sessions accessory destination picker. */
+/** Creates an unsent Session through the global rail destination picker. */
 export async function createSessionInProject(page: Page, name: RegExp) {
   await showSessions(page);
   await page
-    .getByRole("region", { name: "Sessions", exact: true })
-    .getByRole("button", { name: "New Session", exact: true })
+    .getByRole("navigation", { name: "Projects and global utilities" })
+    .getByRole("button", { name: "New session in any project", exact: true })
     .click();
   await page
     .getByRole("dialog", { name: "New session", exact: true })

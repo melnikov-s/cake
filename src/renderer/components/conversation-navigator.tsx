@@ -40,9 +40,13 @@ export const ConversationNavigator = observer(function ConversationNavigator({
           onValueChange={(query) => store.setQuery(projectPath, query)}
         />
         <IconButton
-          tooltip="New Session"
-          hotkey="new-session"
-          onClick={() => root.newSessionStore.show()}
+          tooltip={
+            projectPath ? "New session in this project" : "Choose destination for new session"
+          }
+          onClick={() => {
+            if (projectPath) void root.navigationStore.createSession(projectPath);
+            else root.newSessionStore.show();
+          }}
         >
           <PlusIcon />
         </IconButton>
