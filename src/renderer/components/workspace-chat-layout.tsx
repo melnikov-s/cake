@@ -11,6 +11,7 @@ export function WorkspaceChatLayout({
   workspaceLabel,
   chatSidebar,
   chatSidebarVisible,
+  chatSidebarReplacement,
   chatSidebarWidth,
   onChatSidebarWidthChange,
   terminalDock,
@@ -21,6 +22,8 @@ export function WorkspaceChatLayout({
   workspaceLabel: string;
   chatSidebar: ReactNode;
   chatSidebarVisible: boolean;
+  /** Temporarily occupies the companion's layout space without changing its saved visibility. */
+  chatSidebarReplacement?: ReactNode;
   chatSidebarWidth: number;
   onChatSidebarWidthChange(width: number): void;
   terminalDock?: ReactNode;
@@ -61,7 +64,7 @@ export function WorkspaceChatLayout({
           <section className="min-w-0 flex-1" aria-label={workspaceLabel}>
             {workspace}
           </section>
-          {chatSidebarVisible ? (
+          {chatSidebarVisible || chatSidebarReplacement ? (
             <>
               <ResizeHandle
                 className="right-[calc(var(--workspace-chat-sidebar-width)-5px)]"
@@ -86,7 +89,7 @@ export function WorkspaceChatLayout({
                 aria-label="Current conversation companion"
                 className="@container/session-pane flex w-[var(--workspace-chat-sidebar-width)] min-w-0 shrink-0 flex-col border-l border-border/65 bg-background"
               >
-                <WorkspaceCompanion>{chatSidebar}</WorkspaceCompanion>
+                {chatSidebarReplacement ?? <WorkspaceCompanion>{chatSidebar}</WorkspaceCompanion>}
               </aside>
             </>
           ) : null}

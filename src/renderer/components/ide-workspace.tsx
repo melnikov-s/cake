@@ -15,6 +15,10 @@ import { SideChatLayout } from "./side-chat-layout";
 import { NestedChat } from "./nested-chat";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
 import { WorkspaceHeader } from "./ui/workspace-header";
+import { SidePanel } from "./ui/side-panel";
+import { IconButton } from "./ui/icon-button";
+import { ReloadIcon } from "./ui/icons";
+import { SessionChangesPanel } from "./session-changes-panel";
 
 function anchorTitle(anchor: NonNullable<ReviewsStore["draftAnchor"]>) {
   const start = anchor.start.newLine ?? anchor.start.oldLine;
@@ -65,6 +69,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
       delete document.documentElement.dataset.titleBar;
     };
   }, [vsCodeTitleBar]);
+  const changes = sideChat.target?.changes;
   const draftAnchor = reviews.draftAnchor;
   const activeThread = reviews.activeThreadId
     ? reviews.threads.find(
@@ -161,6 +166,25 @@ export const IdeWorkspace = observer(function IdeWorkspace({
       workspaceHeader={<WorkspaceHeader title={headerLeading}>{headerActions}</WorkspaceHeader>}
       workspaceLabel="VS Code workspace"
       chatSidebarVisible={editor.chatSidebarVisible}
+      chatSidebarReplacement={
+        changes ? (
+          <SidePanel
+            title="Changes"
+            onClose={() => changes.close()}
+            headerActions={
+              <IconButton
+                tooltip="Refresh changes"
+                disabled={changes.loading}
+                onClick={() => void changes.refresh()}
+              >
+                <ReloadIcon />
+              </IconButton>
+            }
+          >
+            <SessionChangesPanel store={changes} />
+          </SidePanel>
+        ) : undefined
+      }
       chatSidebarWidth={editor.chatSidebarWidth}
       onChatSidebarWidthChange={(width) => editor.setChatSidebarWidth(width)}
       terminalDock={terminalDock}

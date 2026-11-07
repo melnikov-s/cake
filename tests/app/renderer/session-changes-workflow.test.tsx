@@ -149,6 +149,57 @@ async function openChanges(fixture: ReturnType<typeof renderChanges>, commits = 
 }
 
 describe("Session Changes review", () => {
+  it.each(
+    (["chat", "todos", "sessions"] as const).flatMap((tab) =>
+      [true, false].map((shown) => ({ tab, shown })),
+    ),
+  )(
+    "VS Code Changes replaces $tab (shown=$shown) and restores its exact visibility",
+    async ({ tab, shown }) => {
+      using fixture = renderChanges();
+      await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+      const navigator = fixture.root.workspaceNavigatorStore;
+      act(() => (tab === "chat" ? navigator.showChat() : navigator.show(tab)));
+      const companion = () =>
+        screen.queryByRole("complementary", { name: "Current conversation companion" });
+      if (!shown) await fixture.user.click(screen.getByRole("button", { name: "Close Workspace" }));
+      const editor = fixture.root.projectWorkbenchStore.presentationStore.embeddedEditorStore;
+      const workspace = screen.getByRole("region", { name: "VS Code workspace" });
+      const frame = await screen.findByTitle("VS Code workspace");
+      const width = editor.chatSidebarWidth;
+      expect(editor.chatSidebarVisible).toBe(shown);
+      expect(Boolean(companion())).toBe(shown);
+
+      const pane = await openChanges(fixture);
+      expect(companion()?.contains(pane)).toBe(true);
+      expect(screen.queryByRole("group", { name: "Companion content" })).toBeNull();
+      expect(within(pane).getByText("agent/review")).toBeDefined();
+      await fixture.user.click(within(pane).getByRole("button", { name: /Add review pane/ }));
+      await fixture.user.click(within(pane).getByRole("button", { name: /committed.ts/ }));
+      expect(fixture.reveal).toHaveBeenLastCalledWith(
+        editorWorkingDirectory,
+        { kind: "working-directory", path: "committed.ts" },
+        expect.anything(),
+      );
+      expect(workspace.isConnected).toBe(true);
+      expect(screen.getByTitle("VS Code workspace")).toBe(frame);
+      expect(editor.chatSidebarVisible).toBe(shown);
+      expect(editor.chatSidebarWidth).toBe(width);
+      await fixture.user.click(within(pane).getByRole("button", { name: "Close Changes" }));
+      expect(screen.queryByRole("complementary", { name: "Changes" })).toBeNull();
+      expect(Boolean(companion())).toBe(shown);
+      expect(navigator.companionTab).toBe(tab);
+      expect(editor.chatSidebarVisible).toBe(shown);
+      expect(screen.getByTitle("VS Code workspace")).toBe(frame);
+
+      // Repeated opens must not turn a temporary replacement into a saved preference.
+      await openChanges(fixture);
+      await fixture.user.click(screen.getByRole("button", { name: "Review changes · 2 commits" }));
+      expect(Boolean(companion())).toBe(shown);
+      expect(navigator.companionTab).toBe(tab);
+    },
+  );
+
   it("counts commits, expands real file deltas, and separates staged and unstaged changes", async () => {
     using fixture = renderChanges();
     const pane = await openChanges(fixture);
