@@ -220,7 +220,7 @@ describe("Prompt queue workflow", () => {
       // Even an identical newly typed draft is not owned by the earlier admission.
       await fixture.user.type(composer, text);
       const queue = within(screen.getByRole("list", { name: "Queued prompts" }));
-      expect(queue.getByRole("status").textContent).toBe("Sending…");
+      expect(queue.getByRole("status").textContent).toBe("Queueing…");
       fixture.publish([queued], true);
       await act(async () => {
         release();
@@ -597,7 +597,7 @@ describe("Prompt queue workflow", () => {
     const pendingRow = screen
       .getByRole("button", { name: "View queued message: Pending" })
       .closest<HTMLElement>('[role="listitem"]')!;
-    expect(within(pendingRow).getByRole("status").textContent).toBe("Sending…");
+    expect(within(pendingRow).getByRole("status").textContent).toBe("Queueing…");
     for (const button of within(pendingRow).getAllByRole<HTMLButtonElement>("button")) {
       if (button.getAttribute("aria-label") !== "View queued message: Pending") {
         expect(button.disabled).toBe(true);

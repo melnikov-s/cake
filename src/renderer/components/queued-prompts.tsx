@@ -119,7 +119,11 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                               <ClockIcon />
                             </span>
                             <span className="sr-only @min-[30rem]/queue:not-sr-only">
-                              {entry.pending ? "Sending…" : "Waiting for agent"}
+                              {entry.pending
+                                ? entry.state === "queued"
+                                  ? "Queueing…"
+                                  : "Sending…"
+                                : "Waiting for agent"}
                             </span>
                           </span>
                         )}

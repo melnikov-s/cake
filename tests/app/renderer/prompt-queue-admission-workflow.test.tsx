@@ -30,6 +30,62 @@ afterEach(cleanup);
 describe.each(["project", "cake-chat", "project-chat"] as const)(
   "%s queue admission",
   (profile) => {
+    it("labels a lone pending follow-up as queueing until canonical projection arrives", async () => {
+      const acknowledgement = Promise.withResolvers<void>();
+      const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => {
+        await acknowledgement.promise;
+        return turnId;
+      });
+      const steer = vi.fn<Client["sessionChats"]["steer"]>();
+      const steerQueuedMessage = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>();
+      using fixture = renderConversationSession(
+        profile,
+        { sessionChats: { prompt, steer, steerQueuedMessage } },
+        [],
+      );
+      await fixture.user.type(screen.getByRole("combobox"), "Follow up");
+      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+
+      const queue = within(screen.getByRole("list", { name: "Queued prompts" }));
+      expect(queue.getAllByRole("listitem")).toHaveLength(1);
+      expect(queue.getAllByRole("group").map((group) => group.ariaLabel)).toEqual(["Queued"]);
+      expect(queue.queryByText("Queued", { exact: true })).toBeNull();
+      expect(queue.getByRole("status").textContent).toBe("Queueing…");
+      expect(queue.getByRole("button", { name: "Send now as steering: Follow up" })).toHaveProperty(
+        "disabled",
+        true,
+      );
+      expect(prompt).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ sessionId: fixture.sessionId, text: "Follow up" }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(steer).not.toHaveBeenCalled();
+      expect(steerQueuedMessage).not.toHaveBeenCalled();
+
+      await act(async () => {
+        acknowledgement.resolve();
+        await acknowledgement.promise;
+      });
+      // RPC acknowledgement does not clear an optimistic card; projection does.
+      expect(queue.getByRole("status").textContent).toBe("Queueing…");
+      const canonical =
+        profile === "project"
+          ? queuePart(1, "Follow up")
+          : durableQueuedParts(
+              { id: 1 as SubmissionId, mode: "followUp", content: "Follow up" },
+              "20000000-0000-4000-8000-000000000001",
+            )[0]!;
+      fixture.publish({ parts: [canonical] });
+      expect(labels()).toEqual(["Follow up"]);
+      expect(queue.queryByRole("status")).toBeNull();
+      expect(queue.getByRole("button", { name: "Send now as steering: Follow up" })).toHaveProperty(
+        "disabled",
+        false,
+      );
+      expect(steer).not.toHaveBeenCalled();
+      expect(steerQueuedMessage).not.toHaveBeenCalled();
+    });
+
     it("does not steer B or submit C while a pasted image is still being read", async () => {
       const reads: Array<() => void> = [];
       const read = FileReader.prototype.readAsDataURL;
@@ -131,7 +187,7 @@ describe.each(["project", "cake-chat", "project-chat"] as const)(
         expect(labels()).toEqual(["B", label]);
         expect(
           within(screen.getByRole("group", { name: "Queued" })).getByRole("status").textContent,
-        ).toBe("Sending…");
+        ).toBe("Queueing…");
         expect(screen.queryByRole("group", { name: "Steering" })).toBeNull();
         expect(
           within(screen.getByLabelText("Conversation")).queryByText(reference.name),
