@@ -253,6 +253,7 @@ afterEach(() => {
   cleanup();
   Reflect.deleteProperty(SVGElement.prototype, "getBBox");
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const projectChatId = `project-chat:${"a".repeat(64)}`;
@@ -320,7 +321,7 @@ describe("Screen capture attachment destinations", () => {
     expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
     await fixture.user.click(menu.getByRole("button", { name: "Open Project Chat for Project" }));
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
-    await screen.findByRole("button", { name: /^View Screenshot-/ });
+    await screen.findByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ });
     expect(fixture.root.appShellStore.activeConversation).toEqual({
       kind: "cake-chat",
       sessionId: projectChatId,
@@ -339,7 +340,9 @@ describe("Screen capture attachment destinations", () => {
     );
     expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
-    expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
+    expect(
+      await screen.findByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ }),
+    ).toBeDefined();
     expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("beta");
     expect(fixture.prompt).not.toHaveBeenCalled();
     act(() => fixture.select("alpha"));
@@ -365,7 +368,7 @@ describe("Screen capture attachment destinations", () => {
     const menu = await openMenu(fixture);
     await fixture.user.click(menu.getByRole("button", { name: /^Session C / }));
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
-    await screen.findByRole("button", { name: /^View Screenshot-/ });
+    await screen.findByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ });
     await fixture.user.click(screen.getByRole("button", { name: "Settings" }));
     await begin(fixture);
     expect(screen.getByRole("button", { name: "Screenshot destination" }).textContent).toContain(
@@ -445,7 +448,7 @@ describe("Screen capture attachment destinations", () => {
     using fixture = renderCapture(undefined, true);
     await begin(fixture);
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
-    await screen.findByRole("button", { name: /^View Screenshot-/ });
+    await screen.findByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ });
     expectExistingDraft();
     expect(fixture.openSession).not.toHaveBeenCalled();
   });
@@ -495,15 +498,79 @@ describe("Screen capture attachment destinations", () => {
       },
     }));
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
-    await screen.findByRole("button", { name: /^View Screenshot-/ });
+    await screen.findByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ });
     const input = screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement;
-    expect(input.value).toMatch(/Existing draft\n\nScreenshot-[^\n]+\n1\. Arrow note/);
+    expect(input.value).toMatch(/Existing draft\n\n[a-z0-9]{3}\.png\n1\. Arrow note/);
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(fixture.prompt).toHaveBeenCalledOnce());
     expect(fixture.prompt.mock.calls[0]![0].attachments).toEqual([
       expect.objectContaining({ kind: "image", data: png }),
     ]);
   });
+
+  it.each(["project-session", "cake-chat"] as const)(
+    "retries occupied attachment names in the %s destination and uses the chosen name in annotations",
+    async (kind) => {
+      const destination = {
+        kind,
+        sessionId: kind === "project-session" ? "alpha" : projectChatId,
+      };
+      using fixture = renderCapture(async () => ({
+        annotationColor: "pink",
+        capture: { data: png, annotationText: "1. New capture", destination },
+      }));
+      const draft =
+        kind === "project-session"
+          ? fixture.root.sessionRegistry.findSession("alpha")!.conversationSessionStore
+              .composerStore.draftStore
+          : fixture.root.cakeChatCollectionStore.registry.find(projectChatId)!
+              .conversationSessionStore.composerStore.draftStore;
+      const existing = [
+        { kind: "image" as const, name: "k7m.png", mimeType: "image/png", data: "original" },
+        { kind: "file" as const, name: "n8p.png", path: "/existing/n8p.png" },
+      ];
+      act(() => {
+        draft.setText("Existing draft");
+        draft.appendAttachments(existing);
+      });
+      const random = vi
+        .spyOn(Math, "random")
+        .mockReturnValueOnce((parseInt("k7m", 36) + 0.5) / 36 ** 3)
+        .mockReturnValueOnce((parseInt("k7m", 36) + 0.5) / 36 ** 3)
+        .mockReturnValueOnce((parseInt("n8p", 36) + 0.5) / 36 ** 3)
+        .mockReturnValue(0);
+      await act(() => fixture.capture.capture());
+      expect(random).toHaveBeenCalledTimes(4);
+      expect(draft.attachments).toEqual([
+        ...existing,
+        { kind: "image", name: "000.png", mimeType: "image/png", data: png },
+      ]);
+      expect(draft.text).toBe("Existing draft\n\n000.png\n1. New capture");
+      expect(fixture.root.appShellStore.activeConversation).toEqual(destination);
+    },
+  );
+
+  it.each([
+    { random: 0, name: "000.png" },
+    { random: 1 - Number.EPSILON, name: "zzz.png" },
+  ])(
+    "keeps exactly three alphanumeric characters at random boundary $name",
+    async ({ random, name }) => {
+      using fixture = renderCapture(async (routing) => ({
+        annotationColor: "pink",
+        capture: { data: png, annotationText: "", destination: routing.defaultDestination! },
+      }));
+      vi.spyOn(Math, "random").mockReturnValue(random);
+      await act(() => fixture.capture.capture());
+      const draft =
+        fixture.root.sessionRegistry.findSession("alpha")!.conversationSessionStore.composerStore
+          .draftStore;
+      expect(draft.attachments).toEqual([
+        { kind: "image", name, mimeType: "image/png", data: png },
+      ]);
+      expect(draft.text).toBe("Existing draft");
+    },
+  );
 
   it("leaves the draft unchanged on cancellation and reports native failure with retry", async () => {
     const start = vi

@@ -287,8 +287,12 @@ readline.createInterface({input:process.stdin}).on('line', line => {
       await expect(capture.getByRole("toolbar", { name: "Screen capture tools" })).toBeVisible();
       // Enter closes the capture on keydown; there is no surviving target for keyup.
       await Promise.all([capture.waitForEvent("close"), capture.keyboard.down("Enter")]);
-      await expect(overlay.getByRole("button", { name: /^View Screenshot-/ })).toBeVisible();
-      await expect(main.getByRole("button", { name: /^View Screenshot-/ })).toHaveCount(0);
+      await expect(
+        overlay.getByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ }),
+      ).toBeVisible();
+      await expect(
+        main.getByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ }),
+      ).toHaveCount(0);
 
       // Reopen at the display bounds after the existing reading-column width checks.
       await clickMenuItem(app, "Drop-down Cake Chat");

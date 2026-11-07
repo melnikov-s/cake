@@ -124,13 +124,17 @@ test("@foreground screenshot capture preserves macOS foreground process mode", a
       await expect.poll(() => application.windows().length).toBe(1);
       expect(await regularAppMode()).toBe(true);
       if (outcome === "attach") {
-        await expect(page.getByRole("button", { name: /^View Screenshot-/ })).toHaveCount(1);
+        await expect(
+          page.getByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ }),
+        ).toHaveCount(1);
         await settings.click();
         await page.getByRole("button", { name: /^Screen Capture/ }).click();
       }
     }
     await page.getByRole("button", { name: "Back to chat" }).click();
-    await expect(page.getByRole("button", { name: /^View Screenshot-/ })).toHaveCount(1);
+    await expect(
+      page.getByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ }),
+    ).toHaveCount(1);
     await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.focus());
     await composer.click();
     await page.keyboard.type(" after capture");

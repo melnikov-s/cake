@@ -255,7 +255,9 @@ test("captures and annotates through the hidden native overlay into the existing
     await expect(page.getByRole("button", { name: "Back to chat" })).toBeVisible();
     await page.getByRole("button", { name: "Back to chat" }).click();
     await expect(composer).toHaveValue("Keep this draft");
-    await expect(page.getByRole("button", { name: /^View Screenshot-/ })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ }),
+    ).toHaveCount(0);
 
     // Invoke the registered global callback with Cake on its Settings surface: last chat wins.
     await settings.click();
@@ -440,7 +442,7 @@ test("captures and annotates through the hidden native overlay into the existing
     await expect(overlay.getByRole("button", { name: "Undo drawing" })).toBeEnabled();
     await overlay.getByRole("button", { name: "Attach full display" }).click();
     await expect.poll(() => application.windows().length).toBe(1);
-    const preview = page.getByRole("button", { name: /^View Screenshot-/ });
+    const preview = page.getByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ });
     await expect(preview).toHaveCount(1);
     const source = await preview.locator("img").getAttribute("src");
     expect(source).not.toBe(`data:image/png;base64,${original}`);
@@ -481,7 +483,7 @@ test("captures and annotates through the hidden native overlay into the existing
     expect(pixels.black).toBeGreaterThan(100);
     expect(pixels.white).toBeGreaterThan(100);
     await expect(composer).toHaveValue(
-      /Keep this draft\n\nScreenshot-[^\n]+\n1\. Look here\n {3}Second line\n2\. Freehand note/,
+      /Keep this draft\n\n[a-z0-9]{3}\.png\n1\. Look here\n {3}Second line\n2\. Freehand note/,
     );
     await composer.click();
     await expect(composer).toBeFocused();

@@ -294,7 +294,16 @@ export class ScreenCaptureAttachmentStore extends Store<{
       if (!draft) throw new Error("The destination chat is no longer editable.");
       if (draft.attachments.length >= 20)
         throw new Error("The destination draft already has 20 attachments.");
-      const name = `Screenshot-${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+      // Names identify annotations within this draft; durable storage keeps its UUID keys.
+      const occupiedNames = new Set(
+        draft.attachments.flatMap((attachment) => ("name" in attachment ? [attachment.name] : [])),
+      );
+      let name: string;
+      do {
+        name = `${Math.floor(Math.random() * 36 ** 3)
+          .toString(36)
+          .padStart(3, "0")}.png`;
+      } while (occupiedNames.has(name));
       draft.appendAttachments([
         {
           kind: "image",

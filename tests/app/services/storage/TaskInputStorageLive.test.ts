@@ -50,6 +50,40 @@ const fixture = <A, E>(work: (root: string) => Effect.Effect<A, E, TaskInputStor
   );
 
 describe("task-input isolation", () => {
+  it.effect(
+    "keeps captures with the same short name in separate durable identities without overwriting pixels",
+    () =>
+      fixture((root) =>
+        Effect.gen(function* () {
+          const storage = yield* TaskInputStorage;
+          const captures = ["FIRST_CAPTURE", "SECOND_CAPTURE"].map((pixels) => ({
+            kind: "image" as const,
+            name: "k7m.png",
+            mimeType: "image/png",
+            data: Buffer.from(pixels).toString("base64"),
+          }));
+          const references = [];
+          for (const capture of captures) {
+            const [reference] = yield* storage.isolate(owner, [capture]);
+            if (!reference) throw new Error("Missing reference");
+            references.push(reference);
+          }
+          expect(new Set(references.map((reference) => reference.id)).size).toBe(2);
+          for (const [index, reference] of references.entries()) {
+            expect(reference.name).toBe("k7m.png");
+            expect(yield* storage.inspect(owner, { reference: reference.id })).toMatchObject({
+              kind: "image",
+              data: captures[index]?.data,
+            });
+            const bytes = yield* Effect.promise(() =>
+              readFile(join(root, "task-inputs", "inputs", reference.id, "original-image.png")),
+            );
+            expect(bytes.toString("base64")).toBe(captures[index]?.data);
+          }
+        }),
+      ),
+  );
+
   it.effect.each([
     { source: projectChatSessionId("/project"), recipient: target },
     { source: owner, recipient: projectChatSessionId("/project") },

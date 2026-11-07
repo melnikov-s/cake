@@ -100,7 +100,7 @@ test("holds Enter to adjust automatic capture bounds and exports only the final 
         BrowserWindow.getAllWindows().every((window) => !window.isVisible() && !window.isFocused()),
       ),
     ).toBe(true);
-    const preview = page.getByRole("button", { name: /^View Screenshot-/ });
+    const preview = page.getByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ });
     // Hold/release uses screenshot pixels even on a smaller, offset display.
     const selection = overlay.getByRole("group", { name: "Capture bounds" });
     await overlay.keyboard.down("Enter");
