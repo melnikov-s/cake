@@ -346,6 +346,9 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           const agent = await tx.doc(AgentDoc, conversation.id);
           const usage = await tx.doc(UsageDoc, conversation.id);
           const preset = (await tx.doc(PresetContextDoc, conversation.id)).preset;
+          // tx.doc values are revocable drafts, even in read-only commits. Detach
+          // the preset before the transaction settles and the snapshot reaches RPC.
+          const presetSnapshot = preset === undefined ? undefined : copyJson(preset);
           const items = (await tx.doc(InboxDoc, conversation.id)).items;
           streaming = live?.run !== undefined;
           activeTurnIds = await Promise.all(
@@ -409,7 +412,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
             availableThinkingLevels: selected ? getSupportedThinkingLevels(selected) : ["off"],
             streaming,
             // Durable shares one request pipeline; fast mode follows Cake Chat.
-            preset,
+            preset: presetSnapshot,
             fastMode: host.fastMode() && selected !== undefined && supportsFastMode(selected),
             fastModeAvailable: false,
             piSettings: projectPiSettings(host.settings),

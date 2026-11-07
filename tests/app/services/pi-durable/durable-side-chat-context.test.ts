@@ -10,12 +10,13 @@ import { expect, it, vi } from "vitest";
 import type { ConversationSnapshot } from "../../../../src/contracts/conversations/session-contract";
 import { createDurableSideChats } from "../../../../src/services/pi-durable/durable-side-chats";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
+import { PresetContextDoc } from "../../../../src/services/pi-durable/durable-preset-context";
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
 
 const context = BACKGROUND_CONTEXT;
 const smallModel = { ...durableModel, id: "small", contextWindow: 64_000 };
 
-it("projects real fork context, publishes arrivals/model changes, and restores metrics on reopening", async () => {
+it("publishes serializable inherited presets and fork context through updates and reopening", async () => {
   const { models } = durableModels((_request, index) => {
     const message = durableAnswer("Reply");
     const totalTokens = [18_000, 28_200, 31_000, 32_000][index - 1];
@@ -48,6 +49,18 @@ it("projects real fork context, publishes arrivals/model changes, and restores m
     const root = await harness.root(context, {
       agent: { model: { provider: "fixture", modelId: "fixture" } },
     });
+    const inheritedPreset = {
+      id: "11111111-1111-4111-8111-111111111111",
+      promptFile: "/prompts/inherited.md",
+      prompt: "Keep the inherited constraint.",
+    };
+    const updatedPreset = {
+      id: "22222222-2222-4222-8222-222222222222",
+      prompt: "Use the updated constraint.",
+    };
+    await root.commit(async (tx) => {
+      (await tx.doc(PresetContextDoc, root.id)).preset = inheritedPreset;
+    }, context);
     for (const text of ["Inherited first question", "Inherited second question"])
       await (await root.submit({ type: "input", content: text }, context)).wait(context);
     const parentBefore = await readDurableOriginalPage(root);
@@ -75,6 +88,9 @@ it("projects real fork context, publishes arrivals/model changes, and restores m
     const runtime = await chats.open(options);
     try {
       const initial = await runtime.snapshot();
+      // A tx.doc preset used to escape as a revoked Chord overlay here.
+      expect(() => JSON.stringify(initial)).not.toThrow();
+      expect(initial.preset).toEqual(inheritedPreset);
       expect(initial.parts.map((part) => (part.kind === "text" ? part.text : part.kind))).toEqual([
         "Inherited first question",
         "Reply",
@@ -89,11 +105,15 @@ it("projects real fork context, publishes arrivals/model changes, and restores m
         percent: (28_200 / 200_000) * 100,
       });
       await runtime.prompt("Side-chat question", "prompt", []);
-      expect((await arrival.promise).usage?.context?.tokens).toBe(31_000);
+      const firstArrival = await arrival.promise;
+      expect(() => JSON.stringify(firstArrival)).not.toThrow();
+      expect(firstArrival.usage?.context?.tokens).toBe(31_000);
       expectedArrival = 32_000;
       arrival = Promise.withResolvers<ConversationSnapshot>();
       await runtime.prompt("Another side-chat question", "prompt", []);
-      expect((await arrival.promise).usage?.context?.tokens).toBe(32_000);
+      const nextArrival = await arrival.promise;
+      expect(() => JSON.stringify(nextArrival)).not.toThrow();
+      expect(nextArrival.usage?.context?.tokens).toBe(32_000);
       const after = await runtime.snapshot();
       expect(after.usage?.context?.tokens).toBe(32_000);
       expect(after.usage?.tokens.total).toBe(63_000);
@@ -103,8 +123,18 @@ it("projects real fork context, publishes arrivals/model changes, and restores m
           .map((part) => (part.kind === "text" ? part.text : part.kind)),
       ).toEqual(["Side-chat question", "Reply", "Another side-chat question", "Reply"]);
       arrival = Promise.withResolvers<ConversationSnapshot>();
-      await runtime.setModel("fixture", "small");
-      expect((await arrival.promise).usage?.context).toEqual({
+      await runtime.applyConfiguration({
+        provider: "fixture",
+        modelId: "small",
+        thinkingLevel: "off",
+        fastMode: false,
+        preset: updatedPreset,
+      });
+      const updated = await arrival.promise;
+      expect(() => JSON.stringify(updated)).not.toThrow();
+      expect(updated.preset).toEqual(updatedPreset);
+      expect(initial.preset).toEqual(inheritedPreset);
+      expect(updated.usage?.context).toEqual({
         tokens: 32_000,
         contextWindow: 64_000,
         percent: (32_000 / 64_000) * 100,
@@ -118,14 +148,21 @@ it("projects real fork context, publishes arrivals/model changes, and restores m
     harness = await Harness.open(storage, { models, registry }, context);
     const reopened = await (await host()).open(options);
     try {
-      expect((await reopened.snapshot()).parts.filter((part) => part.originalHistory)).toHaveLength(
-        4,
-      );
+      const restored = await reopened.snapshot();
+      expect(() => JSON.stringify(restored)).not.toThrow();
+      expect(restored.preset).toEqual(updatedPreset);
+      expect(restored.parts.filter((part) => part.originalHistory)).toHaveLength(4);
       expect((await reopened.snapshot()).usage?.context).toEqual({
         tokens: 32_000,
         contextWindow: 64_000,
         percent: (32_000 / 64_000) * 100,
       });
+      // A fresh model selection clears the preset without invalidating old snapshots.
+      await reopened.setModel("fixture", "small");
+      const cleared = await reopened.snapshot();
+      expect(() => JSON.stringify(cleared)).not.toThrow();
+      expect(cleared.preset).toBeUndefined();
+      expect(restored.preset).toEqual(updatedPreset);
     } finally {
       await reopened.dispose();
     }
