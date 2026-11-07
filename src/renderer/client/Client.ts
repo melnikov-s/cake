@@ -169,10 +169,13 @@ interface ElectronCommands {
       y: number;
       canInsertModel: boolean;
       canInsertSession: boolean;
+      canMoveDraft: boolean;
       canReword: boolean;
     },
     options?: ClientCommandOptions,
-  ): Promise<"reword" | "reword-with-prompt" | "insert-model" | "insert-session" | undefined>;
+  ): Promise<
+    "reword" | "reword-with-prompt" | "insert-model" | "insert-session" | "move-draft" | undefined
+  >;
   showSessionContextMenu(
     input: {
       sessionId: string;

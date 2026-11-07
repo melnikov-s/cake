@@ -128,6 +128,11 @@ export const makeElectronContextMenus = (options: ElectronContextMenuOptions) =>
                   click: () => finish("insert-session"),
                 },
                 {
+                  label: "Move draft to session…",
+                  enabled: request.canMoveDraft,
+                  click: () => finish("move-draft"),
+                },
+                {
                   label: "Reword",
                   enabled: request.canReword && options.canRewordSelection(),
                   click: () => finish("reword"),
@@ -323,7 +328,12 @@ type SuccessTranscriptMenu = {
   readonly action?: "chat-about-selection" | "add-annotation";
 };
 type SuccessComposerMenu = {
-  readonly action?: "reword" | "reword-with-prompt" | "insert-model" | "insert-session";
+  readonly action?:
+    | "reword"
+    | "reword-with-prompt"
+    | "insert-model"
+    | "insert-session"
+    | "move-draft";
 };
 type SuccessSessionMenu = {
   readonly action?: "rename" | "mark-read" | "mark-unread" | "resolve" | "unresolve" | "delete";

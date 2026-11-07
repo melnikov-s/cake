@@ -243,6 +243,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
           : this.composerStore.parts,
       attachmentImages: () => this.composerStore.deliveryStore.attachmentImages,
       streaming: () => this.streaming,
+      composerDraft: () => this.composerStore.draftStore,
       draft: () => this.composerStore.draftStore.text,
       setDraft: (value) => this.composerStore.draftStore.setText(value),
       submitting: () =>

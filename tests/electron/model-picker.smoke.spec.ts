@@ -105,6 +105,27 @@ test("shared model and session reference pickers preserve composer input and foc
       .join("\n") + "\n",
   );
 
+  const moveDestination = "move-draft-destination";
+  await writeFile(
+    join(sessionDirectory, `1970-01-01T00-00-00-000Z_${moveDestination}.jsonl`),
+    [
+      { type: "session", version: 3, id: moveDestination, timestamp, cwd: project },
+      {
+        type: "message",
+        id: "destination-prompt",
+        parentId: null,
+        timestamp,
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Draft destination fixture" }],
+          timestamp: 0,
+        },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+  );
+
   const application = await electron.launch({
     args: [repositoryRoot],
     cwd: repositoryRoot,
@@ -327,6 +348,45 @@ test("shared model and session reference pickers preserve composer input and foc
     await expect(sentChips).toHaveCount(2);
     await page.reload();
     await expect(sentChips).toHaveCount(2);
+
+    // Move the whole composer (not just its selection) through native RPC and
+    // the shared destination popover. This must navigate without submitting.
+    const movingInput = page.getByRole("combobox", { name: "Message", exact: true });
+    await movingInput.click();
+    await movingInput.pressSequentially("A draft to move, not send");
+    await application.evaluate(({ Menu }) =>
+      Reflect.set(Menu, "referenceAction", "Move draft to session…"),
+    );
+    await movingInput.click({ button: "right" });
+    const destinations = page.getByRole("dialog", { name: "Move draft to session" });
+    await expect(destinations).toBeVisible();
+    await expect(destinations.locator(`[data-session-id="${sessionId}"]`)).toHaveCount(0);
+    await destinations
+      .locator(`[data-session-id="${moveDestination}"]`)
+      .getByRole("button")
+      .click();
+    await expect(destinations).toBeHidden();
+    await expect(page.getByText("Draft moved", { exact: true })).toBeVisible();
+    await expect(movingInput).toHaveValue("A draft to move, not send");
+    await expect(movingInput).toBeFocused();
+    await movingInput.pressSequentially(" and review");
+    await expect(movingInput).toHaveValue("A draft to move, not send and review");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await expect(
+      page.locator(".transcript").getByText("Draft destination fixture", { exact: true }),
+    ).toBeVisible();
+    // Later edits must not be erased by Undo.
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect(
+      page.getByText("Cannot undo because a draft changed. Both drafts were left untouched."),
+    ).toBeVisible();
+    await page.reload();
+    await expect(movingInput).toHaveValue("A draft to move, not send and review");
+    await expect(
+      page
+        .locator(".transcript")
+        .getByText("A draft to move, not send and review", { exact: true }),
+    ).toHaveCount(0);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

@@ -46,7 +46,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
   onSubmit(value: string): Promise<void>;
 }) {
   const [reference, setReference] = useState<
-    ComposerSelection & { kind?: "session"; model?: ModelReferenceSelection }
+    ComposerSelection & { kind?: "session" | "move"; model?: ModelReferenceSelection }
   >();
   const referenceAnchor = useRef<HTMLElement | null>(null);
   const dictation = useOptionalStore(DictationStore);
@@ -115,7 +115,28 @@ export const ChatComposerInput = observer(function ChatComposerInput({
           />
         </StoreProvider>
       )}
-      {reference && reference.kind !== "session" && configuration && (
+      {reference?.kind === "move" && store.draftMovePicker && (
+        <StoreProvider store={store.draftMovePicker}>
+          <CaptureDestinationPicker
+            disabled={false}
+            ariaLabel="Move draft to session"
+            anchorRef={referenceAnchor}
+            open
+            onOpenChange={(open) => {
+              if (!open) {
+                setReference(undefined);
+                setReferenceInteraction(false);
+              }
+            }}
+            onSelect={(destination) => {
+              setReference(undefined);
+              setReferenceInteraction(false);
+              void store.moveDraft(destination);
+            }}
+          />
+        </StoreProvider>
+      )}
+      {reference && !reference.kind && configuration && (
         <ModelPicker
           anchorRef={referenceAnchor}
           open
@@ -221,9 +242,9 @@ export const ChatComposerInput = observer(function ChatComposerInput({
             .showComposerContextMenu(selection.text, event.clientX, event.clientY)
             .then((action) => {
               if (action === "insert-model") openReference(selection, input);
-              else if (action === "insert-session") {
+              else if (action === "insert-session" || action === "move-draft") {
                 referenceAnchor.current = input;
-                setReference({ ...selection, kind: "session" });
+                setReference({ ...selection, kind: action === "move-draft" ? "move" : "session" });
               } else {
                 setReferenceInteraction(false);
                 if (action === "reword") onReword(selection);

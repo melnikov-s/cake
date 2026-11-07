@@ -102,6 +102,7 @@ export function browserMenus(
           action: "insert-session",
           disabled: !input.canInsertSession,
         },
+        { label: "Move draft to session…", action: "move-draft", disabled: !input.canMoveDraft },
         { label: "Reword", action: "reword", disabled: !input.canReword },
         { label: "Reword with Prompt…", action: "reword-with-prompt", disabled: !input.canReword },
         {
@@ -115,7 +116,8 @@ export function browserMenus(
       return action === "reword" ||
         action === "reword-with-prompt" ||
         action === "insert-model" ||
-        action === "insert-session"
+        action === "insert-session" ||
+        action === "move-draft"
         ? action
         : undefined;
     },

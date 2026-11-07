@@ -349,11 +349,15 @@ describe("ElectronLive client state", () => {
             selection: "text",
             canInsertModel: true,
             canInsertSession: false,
+            canMoveDraft: true,
             canReword: true,
             x: 24,
             y: 48,
           }),
         ).toEqual({ action: choice === "select" ? "insert-model" : undefined });
+        expect(
+          native.template.find((item) => item.label === "Move draft to session…")?.enabled,
+        ).toBe(true);
         expect(native.template.find((item) => item.label === "Reword")?.enabled).toBe(true);
         expect(
           native.template.find((item) => item.label === "Insert session reference")?.enabled,

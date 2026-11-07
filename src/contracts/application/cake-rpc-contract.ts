@@ -497,6 +497,7 @@ export const cakeRpcPayloadSchemas = {
     selection: bounded(0, 32_000),
     canInsertModel: Schema.Boolean,
     canInsertSession: Schema.Boolean,
+    canMoveDraft: Schema.Boolean,
     canReword: Schema.Boolean,
     x: coordinate,
     y: coordinate,
@@ -816,7 +817,13 @@ const cakeRpcResultSchemas = {
   }),
   "composer-context-menu-closed": Schema.Struct({
     action: Schema.optional(
-      Schema.Literals(["reword", "reword-with-prompt", "insert-model", "insert-session"]),
+      Schema.Literals([
+        "reword",
+        "reword-with-prompt",
+        "insert-model",
+        "insert-session",
+        "move-draft",
+      ]),
     ),
   }),
   "composer-selection-reworded": Schema.Struct({

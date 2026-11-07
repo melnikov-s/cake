@@ -22,6 +22,7 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
   @snapshot editorContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
   focusRequestRevision = 0;
   focusRequestIsExplicit = false;
+  pendingImageImports = 0;
   error: string | undefined;
   errorDetails: string | undefined;
 
@@ -132,11 +133,14 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
 
   async addPastedImages(files: readonly File[]) {
     this.clearError();
+    this.pendingImageImports += 1;
     try {
       const attachments = await pastedImageAttachments(files, 20 - this.attachments.length);
       if (!this.signal.aborted) this.attachments.push(...attachments);
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
+    } finally {
+      this.pendingImageImports -= 1;
     }
   }
 

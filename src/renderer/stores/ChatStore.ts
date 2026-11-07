@@ -1,3 +1,6 @@
+import { DraftMoveContext } from "./context/DraftMoveContext";
+import type { ComposerDraftStore } from "./ComposerDraftStore";
+import type { CaptureDestination } from "../../contracts/desktop/screen-capture-data";
 import { CaptureDestinationPickerStore } from "./CaptureDestinationPickerStore";
 import { SessionReferenceContext } from "./context/SessionReferenceContext";
 import { ClientContext } from "./context/ClientContext";
@@ -82,6 +85,7 @@ export interface ChatStoreProps {
   commands(): ConversationSnapshot["commands"];
   placeholder(): string;
   inputLabel(): string;
+  composerDraft?(): ComposerDraftStore;
   draft?(): string;
   setDraft?(value: string): void;
   canSubmit(draft: string): boolean;
@@ -540,6 +544,34 @@ export class ChatStore extends Store<ChatStoreProps> {
       : undefined;
   }
 
+  get canMoveDraft() {
+    return Boolean(
+      this.props.composerDraft?.().hasContent &&
+      !this.props.composerDraft?.().pendingImageImports &&
+      !this.editingMessage &&
+      !DraftMoveContext.consume(this)?.busy &&
+      this.draftMovePicker,
+    );
+  }
+
+  @child get draftMovePicker(): CaptureDestinationPickerStore | undefined {
+    const moves = DraftMoveContext.consume(this);
+    const sourceId = this.id;
+    return moves && this.props.composerDraft
+      ? createStore(CaptureDestinationPickerStore, {
+          get routing() {
+            return moves.destinations(sourceId);
+          },
+        })
+      : undefined;
+  }
+
+  moveDraft(destination: CaptureDestination) {
+    const source = this.props.composerDraft?.();
+    if (source && !this.editingMessage)
+      return DraftMoveContext.consume(this)?.move(this.id, source, destination);
+  }
+
   showComposerContextMenu(selection: string, x: number, y: number) {
     return ClientContext.consume(this)!.electron.showComposerContextMenu(
       {
@@ -548,6 +580,7 @@ export class ChatStore extends Store<ChatStoreProps> {
         y,
         canInsertModel: Boolean(this.configuration),
         canInsertSession: Boolean(this.sessionReferencePicker),
+        canMoveDraft: this.canMoveDraft,
         canReword: Boolean(selection && this.canRewordComposerSelection && !this.rewording),
       },
       { signal: this.signal },

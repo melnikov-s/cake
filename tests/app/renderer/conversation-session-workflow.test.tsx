@@ -52,6 +52,7 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
         y: 0,
         canInsertModel: true,
         canInsertSession: true,
+        canMoveDraft: true,
         canReword: true,
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),

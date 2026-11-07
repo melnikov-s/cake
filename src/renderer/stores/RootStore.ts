@@ -1,3 +1,5 @@
+import { DraftMoveStore } from "./DraftMoveStore";
+import { DraftMoveContext } from "./context/DraftMoveContext";
 import { SessionAssistantStore } from "./SessionAssistantStore";
 import { AutomationsStore } from "./AutomationsStore";
 import { AutomationSessionsStore } from "./AutomationSessionsStore";
@@ -160,6 +162,21 @@ export class RootStore extends Store<{
       cakeChat: () => this.cakeChatCollectionStore,
       cakeChatCatalog: this.cakeChatCatalogModel,
       navigation: () => this.navigationStore,
+    });
+  }
+
+  [DraftMoveContext.provide]() {
+    return this.draftMoveStore;
+  }
+
+  @child
+  get draftMoveStore(): DraftMoveStore {
+    return createStore(DraftMoveStore, {
+      registry: this.sessionRegistry,
+      cakeChats: () => this.cakeChatCollectionStore,
+      navigation: () => this.navigationStore,
+      routing: () => this.screenCaptureStore.destinations,
+      persist: () => this.props.flushWindowState(),
     });
   }
 
