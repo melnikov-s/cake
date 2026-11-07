@@ -48,6 +48,43 @@ describe("Cake Chat core and task-triggered references", () => {
     );
   });
 
+  it("defaults permanent chats to fresh sessions for distinct tasks, not feature-label reuse", () => {
+    for (const rule of [
+      "Default to fresh scoped sessions for distinct tasks",
+      "even under one broad feature label",
+      "a new Side Session can inherit context without reusing an old task session",
+      "never to conserve session count or preserve a session",
+      "Already-authorized work needs no extra permission to create its session",
+    ])
+      expect(prompt).toContain(rule);
+    for (const rule of [
+      "Default to a fresh scoped session",
+      "A new Side Session can inherit context without reusing an old task session",
+      "Sharing a broad feature label such as navigation is not enough reason",
+      "panel placement, tree aggregation and a separate Back to project chat control",
+      "Choose by task scope first, not context size or cache warmth",
+      "rather than reviving an old coordinator for a distinct task",
+      "already-authorized work needs no extra user permission",
+    ])
+      expect(delegation).toContain(rule);
+  });
+
+  it("keeps useful same-task continuation coherent without expanding authority or lifecycle", () => {
+    expect(prompt).toContain("same-task continuation with materially useful context");
+    expect(prompt).toContain("Keep one task coherent");
+    for (const rule of [
+      "Reuse only for genuine continuation of the same task",
+      "accumulated context is materially useful",
+      "do not fragment a single task gratuitously",
+      "Keep project scoping, safety boundaries and authorized worktree/concurrency limits",
+      "do not authorize uncontrolled recursive spawning, redundant inter-agent communication",
+      "does not implicitly merge worktrees, delete sessions or resolve old work",
+      "Bundle same-task follow-ups",
+      "never wake a session just to ask its size",
+    ])
+      expect(delegation).toContain(rule);
+  });
+
   it.each([
     ["launches/follow-ups", "delegation.md"],
     ["sends/delivery/check-ins", "communication.md"],
@@ -178,7 +215,7 @@ describe("Cake Chat core and task-triggered references", () => {
       commonPrompt: "",
       cakeDocsDirectory: "/cake/docs",
     });
-    expect(role.length).toBeLessThan(3_600);
+    expect(role.length).toBeLessThan(4_000);
     expect(commonPrompt.length).toBeLessThan(2_500);
     expect(chatGuide.length).toBeLessThan(2_500);
     expect(MEMORY_COMPACTOR_PROMPT.length).toBeLessThanOrEqual(2_500);

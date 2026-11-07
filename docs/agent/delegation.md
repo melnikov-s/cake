@@ -10,6 +10,10 @@ The source stays open and unchanged. Omit `entryId` to fork at its latest comple
 
 Launch asynchronously with `resultDelivery: "reply"` for an answer owed or dependent next action, `"notification"` for background review. The application correlates completion with that assignment; no manual completion message or polling is needed. Use the returned Side Session thread to continue the conversation. Use `sessions.create` only when a fresh independent context is wanted.
 
+Default to a fresh scoped session for each distinct implementation task. A new Side Session can inherit context without reusing an old task session; use `sessions.create` when fresh independent Project Session context is wanted. Sessions are cheap: do not conserve session count or preserve a session by growing or reviving it for a new task. Sharing a broad feature label such as navigation is not enough reason to reuse a coordinator: panel placement, tree aggregation and a separate Back to project chat control can be distinct tasks. Reuse only for genuine continuation of the same task when its accumulated context is materially useful. Keep same-task follow-ups coherent; do not fragment a single task gratuitously. Creating the appropriate fresh session for already-authorized work needs no extra user permission.
+
+Keep project scoping, safety boundaries and authorized worktree/concurrency limits. Cheap sessions do not authorize uncontrolled recursive spawning, redundant inter-agent communication or unrelated work. Creating a fresh session does not implicitly merge worktrees, delete sessions or resolve old work.
+
 ## Explicit private workers
 
 Private subagents remain available when the user specifically asks for them; do not substitute them for context-forked Side Sessions.
@@ -22,12 +26,12 @@ Both worker kinds are investigation-only unless launched with `allowMutations: t
 
 For explicitly requested private workers, use `subagents.start` asynchronously; run/parallel/wait block and require an explicit user request. Workers cannot delegate recursively. Omit model overrides unless explicitly requested; read `models.md` for defaults.
 
-Keep handles for related follow-ups until closed or expired after 30 idle minutes; active turns never expire. Handles, exact capability grants and Pi-owned history survive backend restart. Safe unfinished work resumes automatically; uncertain tool effects require review instead of replay. Follow-ups are asynchronous. Recheck evidence if the checkout may have changed.
+Keep worker handles for same-task follow-ups when their context is materially useful, until closed or expired after 30 idle minutes; active turns never expire. Handles, exact capability grants and Pi-owned history survive backend restart. Safe unfinished work resumes automatically; uncertain tool effects require review instead of replay. Follow-ups are asynchronous. Recheck evidence if the checkout may have changed.
 
 Subagents default to `continuation: "resume"` (reply); `"none"` means notification. Follow-ups inherit unless overridden. Choose using `communication.md`; do not poll unless explicitly requested.
 
 Workers auto-compact near their context window. A worker that still runs out of room, or whose final response fails, reports `error` with the reason (for example "Context exhausted: …"), never `complete`; its last text is unfinished work, not a report.
 
-## Reuse context wisely
+## Use context within the task boundary
 
-Before waking, following up with or delegating to a session, weigh its `sessions.list` context estimate/cache freshness against its accumulated knowledge. Reuse reports; avoid trivial or redundant wakes. Bundle related follow-ups. Consider a fresh scoped delegation when reviving old large context costs more than transferring findings. These are guidelines, not prohibitions: large contexts can be valuable, cache expiry does not prove a miss, and useful follow-ups remain allowed. Read `session-discovery.md` before interpreting estimates; never wake a session just to ask its size.
+Choose by task scope first, not context size or cache warmth. For genuine same-task continuation, weigh the session's accumulated knowledge and `sessions.list` context estimate/cache freshness. Large context can be useful; cache expiry does not prove a miss. Reuse relevant reports or transfer concise findings to a fresh session rather than reviving an old coordinator for a distinct task. Bundle same-task follow-ups and avoid trivial or redundant wakes. Read `session-discovery.md` before interpreting estimates; never wake a session just to ask its size.

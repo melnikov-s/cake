@@ -11,6 +11,7 @@ import lifecycle from "../../../docs/agent/family-lifecycle.md?raw";
 import communication from "../../../docs/agent/communication.md?raw";
 import interactions from "../../../docs/agent/interactions.md?raw";
 import presentation from "../../../docs/agent/presentation.md?raw";
+import chatDelegation from "../../../docs/agent/delegation.md?raw";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -41,6 +42,17 @@ it("publishes the family entry guide and every linked task guide from repository
   ])
     expect(workgroups).toContain(`\`${name}.md\``);
   expect(await cakeAgentDocumentationDirectory(agentDirectory)).toBe(directory);
+});
+
+it("publishes the shipped fresh-task delegation default for installed backends", async () => {
+  const agentDirectory = await mkdtemp(join(tmpdir(), "cake-delegation-docs-"));
+  directories.push(agentDirectory);
+  const directory = await cakeAgentDocumentationDirectory(agentDirectory);
+  const published = await readFile(join(directory, "delegation.md"), "utf8");
+  expect(published).toBe(chatDelegation);
+  expect(published).toContain("Default to a fresh scoped session");
+  expect(published).toContain("Reuse only for genuine continuation of the same task");
+  expect(published).toContain("authorized worktree/concurrency limits");
 });
 
 it("publishes static HTML styling and visual-verification guidance without losing source content", async () => {
