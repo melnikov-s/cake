@@ -10,6 +10,42 @@ function tool(id: string, origin?: "compacted"): UiPart {
 }
 
 describe("groupTranscriptParts", () => {
+  it("presents attached content before the user body in attachment order without mutating history", () => {
+    const user: UiPart = {
+      id: "user",
+      kind: "text",
+      role: "user",
+      text: "Read these attachments",
+      status: "complete",
+    };
+    const attachments: UiPart[] = [
+      ...(["file", "image", "source", "browser"] as const).map((attachmentKind) => ({
+        id: attachmentKind,
+        kind: "attachment" as const,
+        attachmentKind,
+        name: attachmentKind,
+        mediaType: "text/plain",
+      })),
+      { id: "annotation", kind: "annotation", annotations: [] },
+    ];
+    const assistant: UiPart = { ...user, id: "assistant", role: "assistant", text: "Answer" };
+    const assistantImage: UiPart = { ...attachments[1]!, id: "assistant-image" };
+    const input = [user, ...attachments, assistant, assistantImage];
+    const result = groupTranscriptParts(input);
+    expect(result).toEqual([...attachments, user, assistant, assistantImage]);
+    expect(input).toEqual([user, ...attachments, assistant, assistantImage]);
+    for (const part of result) expect(part).toBe(input.find((original) => original.id === part.id));
+  });
+
+  it("keeps attachment-free messages in their original order", () => {
+    const parts: UiPart[] = [
+      { id: "first", kind: "text", role: "user", text: "Question", status: "complete" },
+      { id: "second", kind: "text", role: "assistant", text: "Answer", status: "complete" },
+      { id: "third", kind: "text", role: "user", text: "Follow-up", status: "complete" },
+    ];
+    expect(groupTranscriptParts(parts)).toEqual(parts);
+  });
+
   it("keeps incremental historical groups at their append positions rather than sorting by original time", () => {
     const source = {
       groupId: "first-merge",
@@ -58,7 +94,7 @@ describe("groupTranscriptParts", () => {
       groupTranscriptParts([tool("before"), imported, attachment, between, incremental]),
     ).toMatchObject([
       { kind: "activity-group", parts: [{ id: "before" }] },
-      { kind: "side-chat-import", parts: [imported, attachment] },
+      { kind: "side-chat-import", parts: [attachment, imported] },
       between,
       { kind: "side-chat-import", parts: [incremental] },
     ]);

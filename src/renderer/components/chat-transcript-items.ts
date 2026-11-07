@@ -44,6 +44,22 @@ export function transcriptItemKeys(items: readonly TranscriptItem[]): string[] {
   });
 }
 
+/** Present a user turn's attached content before its body without changing history. */
+function attachmentsBeforeBody(parts: UiPart[]): UiPart[] {
+  const ordered: UiPart[] = [];
+  for (const part of parts) {
+    const previous = ordered.at(-1);
+    if (
+      (part.kind === "attachment" || part.kind === "annotation") &&
+      previous?.kind === "text" &&
+      previous.role === "user"
+    )
+      ordered.splice(ordered.length - 1, 0, part);
+    else ordered.push(part);
+  }
+  return ordered;
+}
+
 export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   let imported: Extract<TranscriptItem, { kind: "side-chat-import" }> | undefined;
@@ -78,7 +94,7 @@ export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   };
   // History paging and restored projections can prepend dialogue to a current baseline.
   // Keep the same invariant for every shared Chat consumer, not just live reduction.
-  for (const part of systemPromptBaselineFirst(parts)) {
+  for (const part of attachmentsBeforeBody(systemPromptBaselineFirst(parts))) {
     if (part.sideChatImport) {
       flushActivity();
       flushSources();

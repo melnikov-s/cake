@@ -158,6 +158,53 @@ describe("Projected transcript rendering workflows", () => {
     expect(screen.getByText("Extract text from PDFs.")).toBeDefined();
   });
 
+  it("renders attachments above their user body in order and keeps the following attachment-free message intact", () => {
+    using fixture = renderTranscriptRendering([
+      user,
+      {
+        id: "file",
+        kind: "attachment",
+        name: "notes.txt",
+        mediaType: "text/plain",
+        attachmentKind: "file",
+      },
+      {
+        id: "image",
+        kind: "attachment",
+        name: "Screenshot",
+        mediaType: "image/png",
+        attachmentKind: "image",
+        data: "aW1hZ2U=",
+      },
+      {
+        id: "browser",
+        kind: "attachment",
+        name: "button#save",
+        mediaType: "text/html",
+        attachmentKind: "browser",
+        selector: "button#save",
+      },
+      answer,
+      { ...user, id: "plain-user", entryId: "plain-entry", text: "No attachments" },
+    ]);
+    expect(
+      Array.from(fixture.container.querySelectorAll("[data-part-id]"), (part) =>
+        part.getAttribute("data-part-id"),
+      ),
+    ).toEqual(["file", "image", "browser", "user", "answer", "plain-user"]);
+    expect(screen.getByText("notes.txt")).toBeDefined();
+    expect(screen.getByRole("img", { name: "Screenshot" }).getAttribute("src")).toBe(
+      "data:image/png;base64,aW1hZ2U=",
+    );
+    expect(screen.getByText("button#save")).toBeDefined();
+    expect(
+      Array.from(
+        fixture.container.querySelectorAll('[data-slot="message-content"]'),
+        (message) => message.textContent,
+      ),
+    ).toEqual([user.text, answer.text, "No attachments"]);
+  });
+
   it("renders persisted image and browser attachments and an annotation-only user turn without an empty text bubble", () => {
     using fixture = renderTranscriptRendering([
       answer,
