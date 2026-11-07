@@ -4,7 +4,11 @@ import {
   immediateDelivery,
   SessionMessageDeliveryOptions,
 } from "../../contracts/conversations/session-message-delivery";
-import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import { acquireBySessionId } from "../discussion-sessions/discussionSessions";
+import {
+  isCakeChatSessionId,
+  cakeChatSideChatConversationId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import * as cakeChatTargets from "../cake-chats/cakeChatTargets";
 import type { AgentControlCaller } from "./agentControl";
 import type { BackendAgentInvocation } from "../../contracts/application/backend-agent-control";
@@ -204,14 +208,19 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
     return fail("That session thread reached its message limit.");
   }
   const sessions = yield* CakeSessionRuntimes;
-  const sideChat = yield* sessions.acquireSession(targetSessionId).pipe(
-    Effect.flatMap((handle) =>
-      handle.profile === "DiscussionSession" ? handle.snapshot() : Effect.succeed(undefined),
-    ),
-    Effect.catchTag("PiSessionError", (error) =>
-      error.operation === "acquireSession" ? Effect.succeed(undefined) : Effect.fail(error),
-    ),
-  );
+  const sideChat =
+    cakeChatSideChatConversationId(targetSessionId) !== undefined
+      ? yield* acquireBySessionId(targetSessionId).pipe(
+          Effect.flatMap((handle) => handle.snapshot()),
+        )
+      : yield* sessions.acquireSession(targetSessionId).pipe(
+          Effect.flatMap((handle) =>
+            handle.profile === "DiscussionSession" ? handle.snapshot() : Effect.succeed(undefined),
+          ),
+          Effect.catchTag("PiSessionError", (error) =>
+            error.operation === "acquireSession" ? Effect.succeed(undefined) : Effect.fail(error),
+          ),
+        );
   const chatTarget =
     sideChat ??
     (isCakeChatSessionId(targetSessionId)

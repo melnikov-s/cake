@@ -62,6 +62,11 @@ export const SessionLabelListInput = Schema.Struct({
   projectPath: Schema.optionalKey(bounded(1, 4096)),
 });
 
+export const AgentSessionAbortInput = Schema.Struct({
+  ...target,
+  reason: Schema.optionalKey(trimmed(1, 500)),
+});
+
 /** Shared decoding for backend-owned application controls. Window selection/layout is deliberately absent. */
 export const BackendAgentInvocation = Schema.Union([
   ...AutomationAgentInvocation.members,
@@ -98,6 +103,7 @@ export const BackendAgentInvocation = Schema.Union([
   ),
   operation("sessions.list", AgentSessionListInput),
   operation("sessions.info", Schema.Struct(target)),
+  operation("sessions.abort", AgentSessionAbortInput),
   operation("sessions.compact", SessionCompactInput),
   operation("sessions.tool-compact", SessionToolCompactInput),
   operation("sessions.compact-batch", SessionCompactBatchInput),
@@ -168,6 +174,7 @@ export const backendAgentCommands: ReadonlySet<string> = new Set([
   "sessions.list-family",
   "sessions.set-labels",
   "sessions.info",
+  "sessions.abort",
   "sessions.compact",
   "sessions.tool-compact",
   "sessions.compact-batch",

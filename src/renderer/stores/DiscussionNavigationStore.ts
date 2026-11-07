@@ -151,6 +151,19 @@ export class DiscussionNavigationStore extends Store<{
     return undefined;
   }
 
+  /** A deep link may precede this window's disposable Discussion catalog. */
+  async openBySessionId(sessionId: string): Promise<void> {
+    const revision = ++this.openingRevision;
+    const reference = await ClientContext.consume(this)!.discussionSessions.lookup(
+      { sessionId },
+      { signal: this.signal },
+    );
+    if (revision !== this.openingRevision) return;
+    await this.props.openPrimary({ kind: "cake-chat", sessionId: reference.parentSessionId });
+    const target = await this.waitFor(() => this.targetForSession(sessionId), revision);
+    if (target && revision === this.openingRevision) await this.open(target);
+  }
+
   session(sessionId: string) {
     return (
       this.props.directDiscussion(sessionId) ??

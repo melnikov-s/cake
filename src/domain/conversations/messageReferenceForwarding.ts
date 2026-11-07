@@ -4,7 +4,11 @@ import {
   messageNavigationTarget,
   messageRefsSchema,
 } from "../../contracts/conversations/message-reference";
-import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import * as discussionSessionReferences from "../discussion-sessions/discussionSessionReferences";
+import {
+  isCakeChatSessionId,
+  cakeChatSideChatConversationId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
 import { acquireTarget } from "../project-sessions/projectSessionOperations";
@@ -17,20 +21,30 @@ export const describeMessageReferences = Effect.fn("MessageReferences.describeFo
     return yield* Effect.forEach(refs, (ref) =>
       Effect.gen(function* () {
         const target = messageNavigationTarget(ref);
-        const handle = isCakeChatSessionId(target.sessionId)
-          ? yield* (yield* CakeSessionRuntimes).acquireSession(target.sessionId)
-          : yield* acquireTarget(
-              yield* findLocation({ sessionId: target.sessionId }),
-              target.sessionId,
-              false,
-            );
+        const handle =
+          cakeChatSideChatConversationId(target.sessionId) !== undefined
+            ? undefined
+            : isCakeChatSessionId(target.sessionId)
+              ? yield* (yield* CakeSessionRuntimes).acquireSession(target.sessionId)
+              : yield* acquireTarget(
+                  yield* findLocation({ sessionId: target.sessionId }),
+                  target.sessionId,
+                  false,
+                );
         const page = yield* Schema.decodeUnknownEffect(MessageListResult)(
-          yield* handle.inspectSession({
-            kind: "messages-list",
-            branch: "all",
-            entryId: target.messageId,
-            limit: 1,
-          }),
+          handle === undefined
+            ? yield* discussionSessionReferences.inspectMessages(target.sessionId, {
+                kind: "messages-list",
+                branch: "all",
+                entryId: target.messageId,
+                limit: 1,
+              })
+            : yield* handle.inspectSession({
+                kind: "messages-list",
+                branch: "all",
+                entryId: target.messageId,
+                limit: 1,
+              }),
         );
         const metadata = page.messages.find((message) => message.entryId === target.messageId);
         if (!metadata)

@@ -1,5 +1,8 @@
 import { windowControlDefinitions } from "../../contracts/application/window-control-definitions";
-import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  isCakeChatSessionId,
+  cakeChatSideChatConversationId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { resolveSessionReference } from "../../contracts/project-sessions/session-reference";
 import type { AppControlResult } from "./app-control-data";
 import { knownSession } from "./control-projections";
@@ -18,6 +21,39 @@ export const sessionInspectionControls = [
         ...automations.map((session) => session.identity.sessionId),
       ]);
       if (!resolved.ok) return { ok: false, command, error: resolved.error };
+      if (cakeChatSideChatConversationId(resolved.sessionId) !== undefined) {
+        if (!host.sessions.navigationEnabled())
+          return {
+            ok: false,
+            command,
+            error:
+              "Agent session navigation is disabled in Settings → Agent for this window. Offer a session link for the user to open instead.",
+          };
+        let opened: boolean | void;
+        try {
+          opened = await host.sessions.open(resolved.sessionId, input.messageId);
+        } catch (error) {
+          return {
+            ok: false,
+            command,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+        if (opened === false)
+          return {
+            ok: false,
+            command,
+            error: "Cake could not open the linked Side Chat or message.",
+          };
+        return {
+          ok: true,
+          command,
+          opened: {
+            sessionId: resolved.sessionId,
+            ...(input.messageId ? { messageId: input.messageId } : null),
+          },
+        };
+      }
       const automation = automations.find(
         (session) => session.identity.sessionId === resolved.sessionId,
       );

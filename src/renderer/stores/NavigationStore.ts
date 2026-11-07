@@ -9,6 +9,7 @@ import {
   CAKE_CHAT_SESSION_ID,
   isCakeChatSessionId,
   isProjectChatSessionId,
+  cakeChatSideChatConversationId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { resolveSessionLinkReference } from "../../contracts/project-sessions/session-reference";
 import {
@@ -88,8 +89,9 @@ export class NavigationStore extends Store<{
     this.attachmentReferencePreview.close();
     const discussions = this.props.discussionNavigation();
     const discussionTarget = discussions.targetForSession(sessionId);
-    if (discussionTarget) {
-      await this.openConversationTarget(discussionTarget);
+    if (discussionTarget || cakeChatSideChatConversationId(sessionId) !== undefined) {
+      if (!discussionTarget) await discussions.openBySessionId(sessionId);
+      else await this.openConversationTarget(discussionTarget);
       const chat = discussions.session(sessionId)?.chatStore;
       if (!chat) return false;
       if (!messageId) return true;

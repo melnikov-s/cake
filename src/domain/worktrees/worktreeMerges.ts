@@ -5,6 +5,8 @@ import {
 } from "../../contracts/worktrees/worktree-landing-data";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { familyMember } from "../../contracts/session-families/session-family-document";
+import { cakeChatSideChatConversationId } from "../../contracts/cake-chats/cake-chat-identity";
+import * as discussionSessionReferences from "../discussion-sessions/discussionSessionReferences";
 import { findLocation } from "../project-sessions/projectSessionMetadata";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
@@ -218,6 +220,18 @@ const targetError = (message: string) =>
 export const resolveSessionWorktree = Effect.fn("WorktreeMerges.resolveSessionWorktree")(function* (
   sessionId: string,
 ) {
+  if (cakeChatSideChatConversationId(sessionId) !== undefined) {
+    const { reference } = yield* discussionSessionReferences
+      .lookup(sessionId)
+      .pipe(Effect.mapError((cause) => targetError(cause.message)));
+    const worktree = (yield* (yield* ManagedWorktrees).records()).find(
+      (record) =>
+        record.worktreePath === reference.executionDirectory &&
+        record.projectPath === reference.projectPath,
+    );
+    if (!worktree) return yield* targetError("That Side Chat owns no Cake-managed worktree.");
+    return { sessionId, workspacePath: worktree.worktreePath };
+  }
   const location = yield* findLocation({ sessionId }).pipe(
     Effect.mapError((cause) => targetError(cause.message)),
   );

@@ -1,5 +1,8 @@
 import type { AssistantContext } from "../../contracts/cake-chats/assistant-context";
 import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import type { SessionInspectionQuery } from "../../contracts/conversations/session-query-data";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
+import { readDurableSideChatMessages } from "./durable-side-chat-messages";
 import { Context, Deferred, Effect, Layer } from "effect";
 import type { CakeSessionRuntimeSetup } from "../pi/CakeSessionRuntimes";
 import type {
@@ -56,6 +59,11 @@ export class CakeChatDurable extends Context.Service<
       parentSessionId: string,
       entryId?: string,
     ) => Effect.Effect<string, DurableChatError>;
+    readonly inspectSideChatMessages: (
+      directory: string,
+      sessionId: string,
+      query: SessionInspectionQuery,
+    ) => Effect.Effect<JsonValue, DurableChatError>;
     readonly inspectSideChat: (
       sessionId: string,
     ) => Effect.Effect<PiSessionPreview | undefined, DurableChatError>;
@@ -198,6 +206,15 @@ export const makeCakeChatDurableLive = (
           const runtime = live.get(parentSessionId);
           if (!runtime) throw new Error("Open the main conversation before starting a side chat");
           return runtime.sideChats.fork(entryId);
+        }),
+      inspectSideChatMessages: (directory, sessionId, query) =>
+        operation("inspectSideChatMessages", async () => {
+          const parent = cakeChatSideChatParentId(sessionId);
+          if (!parent) throw new Error("Invalid Side Chat ID");
+          const runtime = live.get(parent);
+          return runtime?.sessionFile === durableChatDatabase(directory)
+            ? runtime.sideChats.inspectMessages(sessionId, query)
+            : readDurableSideChatMessages(directory, sessionId, query);
         }),
       inspectSideChat: (sessionId) =>
         operation("inspectSideChat", async () => {

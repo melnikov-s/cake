@@ -185,7 +185,12 @@ projections needed by a surface. References do not transfer ownership.
   store. They retain originating Cake authority and the per-message asynchronous
   result journal; tool availability does not authorize code changes. Launch is
   non-blocking, notification by default, reply for owed answers/dependencies. Existing
-  sessions are not migrated.
+  sessions are not migrated. Native Side Chat IDs resolve through their saved Discussion
+  owner, not the Project Session catalog: exact messages, stop, metadata and navigation
+  use the Discussion profile, including cold acquisition after restart. Session-linked
+  to-dos follow Discussion resolution. Legacy task forks retain their managed-worktree
+  ownership for landing committed work; read-only forks cannot be prompted to commit
+  or resolve conflicts, so those repairs require recovery into a Project Session.
   User-created side chats inherit the originating conversation's applicable tools,
   permissions and explicit user restrictions. They are not read-only
   or to-do-only workers. Parent-scoped Cake controls retain originating authority;

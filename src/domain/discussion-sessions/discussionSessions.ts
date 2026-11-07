@@ -11,12 +11,16 @@ import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-s
 import type { SideSessionFork } from "../../contracts/cake-chats/side-session-fork";
 import * as cakeChatRuntime from "../cake-chats/cakeChatRuntime";
 import * as cakeChatLocations from "../cake-chats/cakeChatLocations";
+import * as cakeChatTargets from "../cake-chats/cakeChatTargets";
+import * as discussionSessionReferences from "./discussionSessionReferences";
 import { CakeChatDurable } from "../../services/pi-durable/CakeChatDurable";
 import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import { cakeChatControlTools } from "../../contracts/application/window-control-definitions";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
+import { CAKE_CHAT_TODO_SCOPE } from "../../contracts/projects/project-todos";
+import { completeLinked } from "../projects/projectTodoResolution";
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
-import { Effect, Schema, Stream } from "effect";
+import { Effect, Option, Schema, Stream } from "effect";
 import type { DiscussionCatalogUpdate } from "../../contracts/application/catalog-data";
 import {
   CAKE_CHAT_SESSION_ID,
@@ -291,6 +295,39 @@ const prepare = Effect.fn("DiscussionSessions.prepare")(function* (
   const sidecarSessionId = record.sidecarSessionId ?? crypto.randomUUID();
   const configuration = yield* sideChatConfiguration({ ...record, sidecarSessionId });
   return yield* acquireRecord(record, configuration, sidecarSessionId);
+});
+
+/** Assemble the actual Discussion profile, including after a backend restart. */
+export const acquireBySessionId = Effect.fn("DiscussionSessions.acquireBySessionId")(function* (
+  sessionId: string,
+) {
+  const current = yield* (yield* CakeSessionRuntimes).acquireSession(sessionId).pipe(
+    Effect.catchTag("PiSessionError", (error) =>
+      error.operation === "acquireSession" && error.message.includes("has not been assembled")
+        ? Effect.succeed(undefined)
+        : Effect.fail(error),
+    ),
+    asError("acquire"),
+  );
+  if (current) {
+    if (current.profile !== "DiscussionSession")
+      return yield* new DiscussionSessionError({
+        operation: "acquire",
+        message: "That address is not a Discussion Session",
+      });
+    return current;
+  }
+  const { record } = yield* discussionSessionReferences.lookup(sessionId);
+  yield* cakeChatTargets.acquireAvailable(record.parentSessionId).pipe(asError("acquire"));
+  const environment = yield* Effect.serviceOption(DiscussionSessionEnvironment);
+  if (Option.isNone(environment))
+    return yield* new DiscussionSessionError({
+      operation: "acquire",
+      message: "Side Chat metadata is unavailable in this runtime",
+    });
+  return (yield* prepare(record).pipe(
+    Effect.provideService(DiscussionSessionEnvironment, environment.value),
+  )).handle;
 });
 
 export const list = Effect.fn("DiscussionSessions.list")(function* (input: {
@@ -731,5 +768,26 @@ export const setResolved = Effect.fn("DiscussionSessions.setResolved")(function*
   const thread = projectThread(
     yield* environment.setResolved(record, resolved).pipe(asError("setResolved")),
   );
+  if (resolved && cakeChatSideChatConversationId(record.sidecarSessionId) !== undefined) {
+    const state = (yield* ApplicationState).snapshot();
+    const scopes = [
+      { scope: CAKE_CHAT_TODO_SCOPE, items: state.cakeChatTodos?.items ?? [] },
+      ...state.projects.map((project) => ({
+        scope: project.path,
+        items: project.todos?.items ?? [],
+      })),
+    ];
+    for (const { scope, items } of scopes)
+      if (
+        items.some(
+          (item) =>
+            item.state === "open" &&
+            item.associations.some(
+              (link) => link.kind === "session" && link.sessionId === record.sidecarSessionId,
+            ),
+        )
+      )
+        yield* completeLinked(scope).pipe(asError("setResolved"));
+  }
   return thread;
 });

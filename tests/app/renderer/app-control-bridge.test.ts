@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
+import { cakeChatSideChatSessionId } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { CakeChatTarget } from "../../../src/contracts/cake-chats/cake-chat-data";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import {
@@ -20,6 +21,31 @@ import { ReviewThread } from "../../../src/renderer/models/ReviewThread";
 import { SubagentActivity } from "../../../src/renderer/models/SubagentActivity";
 
 describe("AppControlRegistry", () => {
+  it("opens exact native Side Chat links without requiring a Project Session catalog entry", async () => {
+    using fixture = createCommandClientFinishFixture();
+    const host = fixture.root.applicationControlStore.props.host;
+    const open = vi.spyOn(host.sessions, "open").mockResolvedValue(true);
+    const lookup = vi.spyOn(host.sessions, "lookup");
+    const navigation = vi.spyOn(host.sessions, "navigationEnabled").mockReturnValue(true);
+    const sessionId = cakeChatSideChatSessionId(7);
+    expect(await fixture.invoke("sessions.open", { sessionId, messageId: "42" })).toMatchObject({
+      ok: true,
+      opened: { sessionId, messageId: "42" },
+    });
+    expect(open).toHaveBeenCalledExactlyOnceWith(sessionId, "42");
+    expect(lookup).not.toHaveBeenCalled();
+    navigation.mockReturnValue(false);
+    expect(await fixture.invoke("sessions.open", { sessionId })).toMatchObject({ ok: false });
+    expect(open).toHaveBeenCalledTimes(1);
+    navigation.mockReturnValue(true);
+    open.mockRejectedValueOnce(new Error("Cake could not find Side Chat"));
+    expect(await fixture.invoke("sessions.open", { sessionId })).toMatchObject({
+      ok: false,
+      error: "Cake could not find Side Chat",
+    });
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
   it("reuses immutable discovery schemas across repeated global and assistant queries", () => {
     const global = listAppControlTools();
     const assistant = listSessionAssistantControlTools();

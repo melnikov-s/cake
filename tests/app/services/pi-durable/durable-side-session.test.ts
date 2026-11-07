@@ -11,6 +11,12 @@ import {
 import { Type } from "@earendil-works/pi-durable-ai";
 import { createEditTool, createWriteTool } from "@earendil-works/pi-durable/tools";
 import { expect, it } from "vitest";
+import { Schema } from "effect";
+import {
+  MessageListResult,
+  MessageReadResult,
+} from "../../../../src/contracts/conversations/message-reference";
+import { inspectDurableSideChatMessages } from "../../../../src/services/pi-durable/durable-side-chat-messages";
 import { createDurableSideChats } from "../../../../src/services/pi-durable/durable-side-chats";
 import {
   SideSessionDoc,
@@ -156,6 +162,26 @@ it.each([undefined, `project-chat:${"a".repeat(64)}`])(
           expect(effectiveInput).toContain(rule);
         expect(effectiveInput).not.toContain("Make code changes only there");
         expect(executedIn).toBe("/managed/task");
+        const originals = Schema.decodeUnknownSync(MessageListResult)(
+          await chats.inspectMessages(fork.sessionId, { kind: "messages-list" }),
+        );
+        const answer = originals.messages.findLast((message) => message.role === "assistant");
+        expect(answer).toBeDefined();
+        // The cold-reader path needs only persisted SDK storage, never an executable runtime.
+        const original = Schema.decodeUnknownSync(MessageReadResult)(
+          await inspectDurableSideChatMessages(storage, fork.sessionId, {
+            kind: "messages-read",
+            entryId: answer?.entryId,
+          }),
+        );
+        expect(original.text).toBe("Task done");
+        expect(original.message.ref).toBe(answer?.ref);
+        await expect(
+          inspectDurableSideChatMessages(storage, fork.sessionId, {
+            kind: "messages-read",
+            entryId: "999999",
+          }),
+        ).rejects.toThrow("does not exist");
         expect(await readDurableOriginalPage(root)).toEqual(before);
         expect(await harness.snapshot(AgentDoc, root.id, context)).toEqual(configurationBefore);
       } finally {

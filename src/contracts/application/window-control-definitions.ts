@@ -4,6 +4,7 @@ import { PresetContext } from "../model-presets/preset-context";
 import { ResultDelivery, resultDeliveryGuidance } from "../conversations/result-delivery";
 import { Effect, Schema } from "effect";
 import { CakeControlTool } from "../cake-chats/cake-chat-data";
+import { AgentSessionAbortInput } from "./backend-agent-control";
 import { backendAgentTools } from "./backend-agent-tools";
 import {
   agentSettingsTool,
@@ -367,10 +368,7 @@ export const windowControlDefinitions = {
   },
   "sessions.abort": {
     command: "sessions.abort",
-    args: Schema.Struct({
-      ...sessionIdTargetSchema.fields,
-      reason: Schema.optionalKey(trimmed(1, 500)),
-    }),
+    args: AgentSessionAbortInput,
     scope: "global",
     discovery: {
       topic: "sessions",

@@ -83,6 +83,18 @@ export interface DiscussionSessionTarget extends Schema.Schema.Type<
   typeof DiscussionSessionTarget
 > {}
 
+/** Saved owner route; a task fork's execution directory can differ from its parent's. */
+export const DiscussionSessionReference = Schema.Struct({
+  ...DiscussionSessionTarget.fields,
+  sessionId: boundedId,
+  executionDirectory: Schema.String,
+  projectPath: Schema.optionalKey(Schema.String),
+  resolved: Schema.Boolean,
+});
+export interface DiscussionSessionReference extends Schema.Schema.Type<
+  typeof DiscussionSessionReference
+> {}
+
 /** Live sidecar conversation; the parent's Discussion catalog owns thread metadata. */
 export const DiscussionSessionProjection = Schema.Struct({
   identity: CakeSessionIdentity,

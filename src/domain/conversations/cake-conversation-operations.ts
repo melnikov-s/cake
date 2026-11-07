@@ -324,7 +324,7 @@ export function createConversationOperations(
       topic: "sessions",
       summary: "Stop active turn",
       guidance: [
-        "Use this to stop a running child or other Project Session without resolving or deleting it; the session remains available for later messages.",
+        "Use this to stop a running child, Project Session or native Side Chat without resolving or deleting it; the conversation remains available for later messages.",
       ],
       inputSchema: Schema.Struct({
         sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),

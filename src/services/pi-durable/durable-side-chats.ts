@@ -72,6 +72,8 @@ import {
 
 import { exportDurableSideChatHistory } from "./durable-side-chat-history";
 
+import { inspectDurableSideChatMessages } from "./durable-side-chat-messages";
+import type { SessionInspectionQuery } from "../../contracts/conversations/session-query-data";
 import { SideSessionDoc } from "./durable-side-session";
 import { createEditTool, createWriteTool } from "@earendil-works/pi-durable/tools";
 
@@ -103,6 +105,10 @@ export interface DurableSideChats {
   /** The Cake conversation runtime of one existing side-chat fork. */
   open(options: CakeSessionRuntimeOptions): Promise<CakeSessionRuntime>;
   preview(sessionId: string): Promise<PiSessionPreview | undefined>;
+  inspectMessages(
+    sessionId: string,
+    query: SessionInspectionQuery,
+  ): Promise<ReturnType<typeof toJsonValue>>;
   /** The inherited tool may dispatch only to an exactly opened fork's interview capability. */
   executeInterview: ReturnType<typeof createDurableSideChatInterview>;
   /** Dispatch with the originating authority and the opened fork's own identity. */
@@ -641,6 +647,10 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
   };
 
   return {
+    async inspectMessages(sessionId, query) {
+      await resolve(sessionId);
+      return inspectDurableSideChatMessages(storage, sessionId, query);
+    },
     async executeCake(input, api, context) {
       const registry = operations.get(api.conversationId);
       if (!registry)

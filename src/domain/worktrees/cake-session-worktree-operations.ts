@@ -92,7 +92,7 @@ export function createCakeChatWorktreeOperations(
       examples: [{ input: { sessionId: "1a2b3c4d" } }],
       result: mergeResult,
       limitations: [
-        "The target must be a Project Session with its own isolated Managed Worktree; family children that share their parent's Working Directory are merged through that parent.",
+        "The target must own an isolated Managed Worktree: a Project Session or an existing task Side Chat. Side Chats remain read-only; recover uncommitted work or conflict resolution into an independent Project Session. Family children sharing a directory are merged through their parent.",
       ],
       execute: (input, context) =>
         // SAFETY: CakeOperationRegistry parsed input with this operation's schema.

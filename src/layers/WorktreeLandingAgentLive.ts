@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Scope } from "effect";
+import { cakeChatSideChatConversationId } from "../contracts/cake-chats/cake-chat-identity";
 import * as projectSessionOperations from "../domain/project-sessions/projectSessionOperations";
 import type { PiModels } from "../services/pi/PiModels";
 import type { CakeSessionRuntimes } from "../services/pi/CakeSessionRuntimes";
@@ -52,6 +53,12 @@ export const WorktreeLandingAgentLive = Layer.effect(
     const dependencies = Context.omit(Scope.Scope)(context);
     return WorktreeLandingAgent.of({
       promptAndWait: Effect.fn("WorktreeLandingAgent.promptAndWait")(function* (input) {
+        if (cakeChatSideChatConversationId(input.sessionId) !== undefined)
+          return yield* new WorktreeLandingAgentError({
+            operation: "prompt",
+            message:
+              "This Side Chat is read-only. Recover its work in an independent Project Session before requesting commits or conflict resolution; the worktree has been preserved.",
+          });
         yield* Effect.gen(function* () {
           const turnId = yield* projectSessionOperations
             .sendAutomatically({

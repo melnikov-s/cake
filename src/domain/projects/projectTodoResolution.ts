@@ -1,4 +1,6 @@
 import { Effect, Stream } from "effect";
+import { cakeChatSideChatConversationId } from "../../contracts/cake-chats/cake-chat-identity";
+import * as discussionSessionReferences from "../discussion-sessions/discussionSessionReferences";
 import { resolveSessionReference } from "../../contracts/project-sessions/session-reference";
 import {
   CAKE_CHAT_TODO_SCOPE,
@@ -20,6 +22,7 @@ import * as todos from "./projectTodos";
 /** Source/message/report links are context, not required work; only session associations count.
  *
  * Metadata only: one resolution-index snapshot and filename-only identity enumeration.
+ * Native Side Chats join their saved Discussion status, never Project Session resolution.
  * Include all projects in suffix ambiguity checks, plus retained resolved identities whose
  * checkout has been retired. Never acquire a runtime or inspect a transcript/catalog.
  * Children inherit their root's resolution, not their own transcript namespace.
@@ -43,6 +46,20 @@ export const join = Effect.fn("ProjectTodos.joinResolution")(
         }),
       ),
     );
+    const sideChats = new Map(
+      yield* Effect.forEach(
+        [...new Set(items.flatMap(workReferences))].filter(
+          (id) => cakeChatSideChatConversationId(id) !== undefined,
+        ),
+        (sessionId) =>
+          discussionSessionReferences.lookup(sessionId).pipe(
+            Effect.map(({ reference }) => [sessionId, reference] as const),
+            Effect.catchTag("DiscussionSessionError", () =>
+              Effect.succeed([sessionId, undefined] as const),
+            ),
+          ),
+      ),
+    );
     const roster = [
       ...new Set([...resolvedIds, ...present.flat(), ...families.flatMap(familyMemberIds)]),
     ];
@@ -50,6 +67,16 @@ export const join = Effect.fn("ProjectTodos.joinResolution")(
       item,
       sessions: workReferences(item)
         .map((reference) => {
+          if (sideChats.has(reference)) {
+            const discussion = sideChats.get(reference);
+            return discussion && (isCakeChatTodoScope(scope) || discussion.projectPath === scope)
+              ? { sessionId: reference, resolved: discussion.resolved }
+              : {
+                  sessionId: reference,
+                  resolved: null,
+                  reason: "Unknown or out-of-project Side Chat",
+                };
+          }
           const identity = resolveSessionReference(reference, roster);
           if (!identity.ok || !roster.includes(identity.sessionId))
             return { sessionId: reference, resolved: null, reason: "Unknown or ambiguous session" };

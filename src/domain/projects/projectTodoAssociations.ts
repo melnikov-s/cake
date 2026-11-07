@@ -14,7 +14,11 @@ import {
 } from "../../contracts/projects/project-todos";
 import { ProjectError } from "../../contracts/projects/project-error";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
-import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  isCakeChatSessionId,
+  cakeChatSideChatConversationId,
+} from "../../contracts/cake-chats/cake-chat-identity";
+import * as discussionSessionReferences from "../discussion-sessions/discussionSessionReferences";
 import { lookup } from "../project-sessions/projectSessionMetadata";
 import * as sessionReferences from "../project-sessions/sessionReferences";
 import * as messageReferences from "../conversations/messageReferences";
@@ -84,7 +88,10 @@ const validate = Effect.fn("ProjectTodos.validateAssociations")(function* (
       ? isCakeChatSessionId(sessionId)
       : sessionId === projectChatSessionId(scope);
     if (!ownChat) {
-      const session = yield* lookup({ sessionId }).pipe(asError);
+      const session =
+        cakeChatSideChatConversationId(sessionId) !== undefined
+          ? (yield* discussionSessionReferences.lookup(sessionId).pipe(asError)).reference
+          : yield* lookup({ sessionId }).pipe(asError);
       if (!global && session.projectPath !== scope)
         return yield* new ProjectError({
           operation: "projectTodoAssociations",

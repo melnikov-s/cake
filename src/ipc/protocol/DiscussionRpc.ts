@@ -7,6 +7,7 @@ import {
   DiscussionSessionMergeResult,
   DiscussionSessionStartInput,
   DiscussionSessionTarget,
+  DiscussionSessionReference,
   DiscussionSessionUpdate,
   DiscussionThread,
   DiscussionThreadMetadata,
@@ -23,6 +24,11 @@ const catalogTarget = {
  * group addressed by the sidecar's Pi Session ID.
  */
 export const DiscussionRpc = RpcGroup.make(
+  Rpc.make("discussionSessions.lookup", {
+    payload: { sessionId: DiscussionSessionReference.fields.sessionId },
+    success: DiscussionSessionReference,
+    error: DiscussionSessionError,
+  }),
   Rpc.make("discussionSessions.observeMetadata", {
     payload: catalogTarget,
     success: Schema.Array(DiscussionThreadMetadata),

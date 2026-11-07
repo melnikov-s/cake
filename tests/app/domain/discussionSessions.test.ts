@@ -1,3 +1,4 @@
+import { toJsonValue } from "../../../src/utils/to-json-value";
 import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import assert from "node:assert/strict";
@@ -13,6 +14,10 @@ import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import { describe, expect } from "vitest";
 import * as discussionSessions from "../../../src/domain/discussion-sessions/discussionSessions";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
+import * as messageReferences from "../../../src/domain/conversations/messageReferences";
+import { describeMessageReferences } from "../../../src/domain/conversations/messageReferenceForwarding";
+import { messageReference } from "../../../src/contracts/conversations/message-reference";
+import * as agentControl from "../../../src/domain/application/agentControl";
 import {
   makeDiscussionSessionEnvironmentLayer,
   type DiscussionSessionRecord,
@@ -96,6 +101,7 @@ const attachmentReference = {
 
 const makeLayer = (
   options: {
+    readonly inspectSession?: CakeSessionRuntime["inspectSession"];
     readonly persistedSidecar?: boolean;
     readonly cakeChat?: boolean;
     /** Cake Chat forks natively into this Durable conversation instead of refusing. */
@@ -266,11 +272,15 @@ const makeLayer = (
       queueCommand: async () => {
         throw new Error("Unexpected queueCommand");
       },
-      inspectSession: async () => {
-        throw new Error("Unexpected inspectSession");
-      },
+      inspectSession:
+        mergeOptions.inspectSession ??
+        (async () => {
+          throw new Error("Unexpected inspectSession");
+        }),
       compact: async () => undefined,
-      abort: async () => undefined,
+      abort: async () => {
+        queueOperations.push(`${sessionId}:abort`);
+      },
       setModel: async (provider, modelId) => {
         modelSelections.push({ provider, modelId });
       },
@@ -381,7 +391,16 @@ const makeLayer = (
   };
   return {
     layer: Layer.mergeAll(
-      Layer.mock(CakeChatDurable, {}),
+      Layer.mock(CakeChatDurable, {
+        inspectSideChatMessages: (_directory, _sessionId, query) =>
+          mergeOptions.inspectSession
+            ? Effect.promise(() =>
+                mergeOptions.inspectSession
+                  ? mergeOptions.inspectSession(query)
+                  : Promise.reject(new Error("Unexpected message inspection")),
+              )
+            : Effect.die("Unexpected message inspection"),
+      }),
       WorkflowTestLive,
       DiscussionTitleRequests.layer,
       SessionCatalogChanges.layer,
@@ -624,6 +643,81 @@ describe("Cake Chat side-chat merge", () => {
       const unstarted = yield* discussionSessions.merge(target).pipe(Effect.flip);
       assert.match(unstarted.message, /no conversation/);
       assert.deepEqual(fixture.importedHistories, []);
+    }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+  });
+});
+
+describe("native Side Chat control routing", () => {
+  it.effect(
+    "reads saved Side Chat originals and forwarding metadata without assembling or resuming a runtime",
+    () => {
+      const sessionId = cakeChatSideChatSessionId(7);
+      const ref = messageReference(sessionId, "42");
+      const message = {
+        ref,
+        link: ref,
+        sessionId,
+        entryId: "42",
+        parentId: null,
+        timestamp: "2026-01-01",
+        role: "assistant",
+        active: true,
+        inputRefs: [],
+        hasImages: false,
+      };
+      const queries: string[] = [];
+      const fixture = makeLayer({
+        cakeChat: true,
+        persistedSidecar: true,
+        inspectSession: async (query) => {
+          queries.push(query.kind);
+          return toJsonValue(
+            query.kind === "messages-list"
+              ? {
+                  sessionId,
+                  branch: "all",
+                  messages: [message],
+                  total: 1,
+                  offset: 0,
+                  nextOffset: null,
+                }
+              : {
+                  message,
+                  text: "Exact original report",
+                  totalChars: 21,
+                  offset: 0,
+                  nextOffset: null,
+                  truncated: false,
+                },
+          );
+        },
+      });
+      return Effect.gen(function* () {
+        // No sidecar or permanent-chat runtime has been assembled in this process yet.
+        const original = yield* messageReferences.read({ ref });
+        expect(original.text).toBe("Exact original report");
+        const forwarded = yield* describeMessageReferences([ref]);
+        expect(forwarded).toEqual([message]);
+        expect(queries).toEqual(["messages-read", "messages-list"]);
+        expect(fixture.options).toEqual([]);
+        expect(fixture.createdRecords).toEqual([]);
+      }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+    },
+  );
+
+  it.effect("stops a running native fork without Project Session lookup or a renderer", () => {
+    const fixture = makeLayer({ cakeChat: true, persistedSidecar: true, mergeBusy: "source" });
+    const sessionId = cakeChatSideChatSessionId(7);
+    return Effect.gen(function* () {
+      const result = yield* agentControl.invoke(
+        "sessions.abort",
+        { sessionId, reason: "Preserve recovered work" },
+        { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+      );
+      expect(result).toMatchObject({ ok: true, status: "stopping", target: { sessionId } });
+      expect(fixture.queueOperations).toContain(`${sessionId}:abort`);
+      expect(fixture.record().status).toBe("open");
+      expect(fixture.createdRecords).toEqual([]);
     }).pipe(Effect.provide(fixture.layer), Effect.scoped);
   });
 });

@@ -18,6 +18,7 @@ import {
 import {
   CAKE_CHAT_SESSION_ID,
   isCakeChatSessionId,
+  cakeChatSideChatConversationId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { projectChatSessionId, projectLocation } from "../cake-chats/cakeChatLocations";
 import { sessionRoster } from "./sessionRoster";
@@ -26,6 +27,8 @@ import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import * as chatMetadata from "../cake-chats/cakeChatMetadata";
 import * as chatTargets from "../cake-chats/cakeChatTargets";
+import * as discussionSessions from "../discussion-sessions/discussionSessions";
+import * as discussionSessionReferences from "../discussion-sessions/discussionSessionReferences";
 import { isBackendAgentSetting } from "../../contracts/application/agent-settings-tools";
 import { AgentSettingsInvocation } from "../../contracts/application/agent-settings-schema";
 import {
@@ -666,6 +669,37 @@ export const invoke: (
           return yield* (yield* SessionCoordination).withAdmission(
             agentSessionMessaging.invoke(invocation, caller),
           );
+        case "sessions.abort": {
+          const sessionId = yield* sessionReferences.resolve(
+            invocation.arguments.sessionId,
+            caller?.sessionId,
+          );
+          const handle =
+            cakeChatSideChatConversationId(sessionId) !== undefined
+              ? yield* discussionSessions.acquireBySessionId(sessionId)
+              : isCakeChatSessionId(sessionId)
+                ? yield* chatTargets.acquireAvailable(sessionId)
+                : yield* projectSessions.acquireTarget(
+                    yield* metadata.findLocation({ sessionId }),
+                    sessionId,
+                    false,
+                  );
+          const snapshot = yield* handle.snapshot();
+          if (!snapshot.streaming) return fail("That session is not currently running.");
+          const reason = invocation.arguments.reason ? { reason: invocation.arguments.reason } : {};
+          yield* sessionChats.abort({
+            sessionId,
+            stop: caller
+              ? { by: "session", sessionId: caller.sessionId, title: caller.title, ...reason }
+              : { by: "user", ...reason },
+          });
+          return toJsonValue({
+            ok: true,
+            command,
+            target: { sessionId, workspacePath: snapshot.workspacePath },
+            status: "stopping",
+          });
+        }
         case "sessions.schedule":
         case "sessions.scheduled":
         case "sessions.scheduled-info":
@@ -677,6 +711,47 @@ export const invoke: (
             invocation.arguments.sessionId,
             caller?.sessionId,
           );
+          if (cakeChatSideChatConversationId(sessionId) !== undefined) {
+            const { reference } = yield* discussionSessionReferences.lookup(sessionId);
+            if (invocation.name === "sessions.info")
+              return toJsonValue({
+                ok: true,
+                command,
+                session: {
+                  ...reference,
+                  kind: "discussion-session",
+                  deepLink: sessionLink(sessionId),
+                  workspacePath: reference.executionDirectory,
+                  lifecycle: reference.resolved ? "resolved" : "active",
+                },
+              });
+            const handle = yield* discussionSessions.acquireBySessionId(sessionId);
+            const result =
+              invocation.name === "sessions.cake"
+                ? yield* handle.callCakeOperation(
+                    invocation.arguments.command,
+                    invocation.arguments.input ?? {},
+                  )
+                : yield* handle.inspectSession({
+                    ...invocation.arguments,
+                    kind: yield* Schema.decodeUnknownEffect(
+                      Schema.Literals([
+                        "history",
+                        "compactions",
+                        "tree",
+                        "context",
+                        "usage",
+                        "commands",
+                      ]),
+                    )(invocation.name.slice("sessions.".length)),
+                  });
+            return toJsonValue({
+              ok: true,
+              command,
+              target: { sessionId, workspacePath: reference.executionDirectory },
+              result,
+            });
+          }
           if (isCakeChatSessionId(sessionId)) {
             if (invocation.name === "sessions.info") {
               const configuration = yield* Effect.serviceOption(CakeChatConfiguration);
