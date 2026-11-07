@@ -453,7 +453,11 @@ is a refactoring signal, not precedent.
   the existing Project catalog into `Project.todos`; `ProjectTodosStore` owns only
   local edits, disclosure and focus/context interaction. `WorkspaceNavigatorStore`
   owns the right-hand accessory's visibility, width and exclusive To-dos/Sessions
-  mode across the focused chat and its real editor/browser surfaces. Each owning
+  mode. In Browser and VS Code modes, that content shares the existing companion
+  pane with Chat through Chat/Todos/Sessions tabs instead of a second accessory.
+  Companion selection is window-local; switching tabs does not replace the tool
+  workspace. Existing Workspace operations select Todos/Sessions there, and closing
+  that content returns to Chat. Each owning
   Project's permanent `ProjectTodosStore` remains stable while workers or secondary
   conversations are focused. Explicit reply context attaches to the actually focused
   ChatStore through its existing composer; view focus never attaches context. Actual new Project Sessions get one linked item at

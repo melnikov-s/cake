@@ -1,10 +1,8 @@
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
-import { ConversationNavigator } from "./conversation-navigator";
-import { ProjectTodosPanel } from "./project-todos-panel";
+import { WorkspaceNavigatorContent } from "./workspace-navigator-content";
 import { IconButton } from "./ui/icon-button";
 import { CloseIcon } from "./ui/icons";
-import { SearchInput } from "./ui/search-input";
 import { SegmentedControlGroup, SegmentedControlButton } from "./ui/segmented-control";
 
 /** One mutually-exclusive source-list accessory, independent of the focused work surface. */
@@ -45,24 +43,7 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
           <CloseIcon />
         </IconButton>
       </header>
-      {navigator.mode === "sessions" ? (
-        <ConversationNavigator projectPath={navigator.projectPath} />
-      ) : todos ? (
-        <>
-          <div className="px-3 pb-2">
-            <SearchInput
-              label="Search to-dos"
-              value={todos.query}
-              onValueChange={(query) => todos.setQuery(query)}
-            />
-          </div>
-          <div className="min-h-0 flex-1">
-            <ProjectTodosPanel store={todos} />
-          </div>
-        </>
-      ) : (
-        <div className="p-4 text-sm text-muted-foreground">No to-dos.</div>
-      )}
+      <WorkspaceNavigatorContent />
     </aside>
   );
 });

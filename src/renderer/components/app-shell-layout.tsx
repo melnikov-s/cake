@@ -27,7 +27,7 @@ export const AppShellLayout = observer(function AppShellLayout({
   const navigator = root.workspaceNavigatorStore;
   const terminal = root.terminalStore;
   const conversationPaneVisible = Boolean(root.workspaceSession) && !shell.coveringSurface;
-  const navigatorVisible = navigator.visible && !shell.coveringSurface;
+  const navigatorVisible = navigator.visible && !navigator.inCompanion && !shell.coveringSurface;
   const applicationView = shell.surface === "settings" || shell.surface === "automations";
   const shellRef = useRef<HTMLElement>(null);
   const [resizingPanel, setResizingPanel] = useState(false);

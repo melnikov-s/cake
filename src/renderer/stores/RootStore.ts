@@ -882,6 +882,10 @@ export class RootStore extends Store<{
   get workspaceNavigatorStore(): WorkspaceNavigatorStore {
     return createStore(WorkspaceNavigatorStore, {
       projectPath: () => this.workspaceProjectPath,
+      companionSession: () => {
+        const session = this.workspaceSession;
+        return session && session.presentationMode !== "normal" ? session : undefined;
+      },
       cakeChat: () => this.cakeChatCollectionStore,
       replyContext: (name, text) => {
         const conversation = this.workspaceSession?.conversationSessionStore;

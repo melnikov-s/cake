@@ -9,10 +9,33 @@ export class WorkspaceNavigatorStore extends Store<{
   projectPath(): string | undefined;
   cakeChat(): CakeChatCollectionStore;
   replyContext(name: string, text: string): void;
+  companionSession():
+    | {
+        workspaceChatSidebarVisible: boolean;
+        showWorkspaceChatSidebar(): void;
+      }
+    | undefined;
 }> {
-  @snapshot visible = true;
+  @snapshot accessoryVisible = true;
+  @snapshot companionTab: "chat" | WorkspaceNavigatorMode = "chat";
   @snapshot mode: WorkspaceNavigatorMode = "todos";
   @snapshot width = 320;
+
+  get inCompanion() {
+    return Boolean(this.props.companionSession());
+  }
+
+  get visible() {
+    const session = this.props.companionSession();
+    return session
+      ? session.workspaceChatSidebarVisible && this.companionTab !== "chat"
+      : this.accessoryVisible;
+  }
+
+  showChat() {
+    this.companionTab = "chat";
+    this.props.companionSession()?.showWorkspaceChatSidebar();
+  }
 
   get projectPath() {
     return this.props.projectPath();
@@ -31,16 +54,20 @@ export class WorkspaceNavigatorStore extends Store<{
 
   show(mode: WorkspaceNavigatorMode) {
     this.mode = mode;
-    this.visible = true;
+    this.accessoryVisible = true;
+    this.companionTab = mode;
+    this.props.companionSession()?.showWorkspaceChatSidebar();
   }
 
   toggle(mode?: WorkspaceNavigatorMode) {
     if (mode && (this.mode !== mode || !this.visible)) this.show(mode);
-    else this.visible = !this.visible;
+    else if (this.visible) this.close();
+    else this.show(mode ?? this.mode);
   }
 
   close() {
-    this.visible = false;
+    if (this.inCompanion) this.companionTab = "chat";
+    else this.accessoryVisible = false;
   }
 
   setWidth(width: number) {

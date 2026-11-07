@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { cn } from "../lib/utils";
 import { ResizeHandle } from "./ui/resize-handle";
+import { WorkspaceCompanion } from "./workspace-companion";
 
 /** Primary tool surface and its authoritative same-conversation companion. */
 export function WorkspaceChatLayout({
@@ -84,7 +85,7 @@ export function WorkspaceChatLayout({
                 aria-label="Current conversation companion"
                 className="@container/session-pane flex w-[var(--workspace-chat-sidebar-width)] min-w-0 shrink-0 flex-col border-l border-border/65 bg-background"
               >
-                {chatSidebar}
+                <WorkspaceCompanion>{chatSidebar}</WorkspaceCompanion>
               </aside>
             </>
           ) : null}

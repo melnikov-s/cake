@@ -179,6 +179,8 @@ export function renderEmbeddedEditor(
       })
     : Promise.resolve();
   return {
+    root: fixture.root,
+    models: fixture.models,
     user: userEvent.setup(),
     appState: () =>
       fixture.root.applicationControlStore.invoke({ name: "app.state", arguments: {} }),
