@@ -921,12 +921,14 @@ describe("CakeSessionRuntimes", () => {
       yield* Deferred.await(started);
       yield* Queue.take(activity);
       assert.equal((yield* sessions.currentStatus(target))?.streaming, false);
+      assert.deepEqual(yield* sessions.activeWorkingDirectories(), []);
       assert.equal((yield* sessions.currentStatus(target))?.workingStartedAt, undefined);
       executingIds = [turnId];
       const startedAt = yield* Clock.currentTimeMillis;
       emitStreaming(true);
       yield* Queue.take(activity);
       assert.equal((yield* sessions.currentStatus(target))?.streaming, true);
+      assert.deepEqual(yield* sessions.activeWorkingDirectories(), ["/project"]);
       assert.equal((yield* sessions.currentStatus(target))?.workingStartedAt, startedAt);
       yield* TestClock.adjust("5 seconds");
       emitStreaming(true);
@@ -935,6 +937,7 @@ describe("CakeSessionRuntimes", () => {
       emitStreaming(false);
       yield* Queue.take(activity);
       assert.equal((yield* sessions.currentStatus(target))?.streaming, false);
+      assert.deepEqual(yield* sessions.activeWorkingDirectories(), []);
       assert.equal((yield* sessions.currentStatus(target))?.workingStartedAt, undefined);
       // The correlation still exists, but the actual Pi run has ended.
       assert.deepEqual(yield* handle.currentTurnIds(), [turnId]);

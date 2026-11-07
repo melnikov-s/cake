@@ -1,111 +1,86 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, it } from "vitest";
-import { applySnapshot } from "r-state-tree";
+import { afterEach, expect, it, vi } from "vitest";
+import { applyProjectCatalogUpdate } from "../../../src/renderer/reducers/CatalogReducer";
+import { Profiler } from "react";
 import { StoreProvider } from "r-state-tree/react";
 import { ProjectRail } from "../../../src/renderer/components/project-rail";
 import { SubagentHandleId } from "../../../src/contracts/subagents/subagent-data";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
-import { fixtureTimestamp, projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
+import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 
 afterEach(cleanup);
 
-it.each(["project-chat", "session", "side-chat", "subagent", "nested-subagent"] as const)(
-  "shows unselected-project %s activity from lightweight facts and clears on idle",
-  (source) => {
-    using fixture = createRendererStoreFixture({
-      projects: [
-        projectRecord({ path: "/cake", name: "Cake" }),
-        projectRecord({ path: "/other", name: "Other" }),
-      ],
-      sessions: [sessionSummary({ sessionId: "other-session", projectPath: "/other" })],
-    });
-    const homeId = `project-chat:${"b".repeat(64)}`;
-    applySnapshot(fixture.models.cakeChatCatalog, {
-      loaded: true,
-      sessions: [
-        {
-          sessionId: homeId,
-          projectPath: "/other",
-          title: "Other",
-          createdAt: fixtureTimestamp,
-          modifiedAt: fixtureTimestamp,
-          messageCount: 1,
-          running: false,
-        },
-      ],
-    });
-    const discussion = fixture.models.discussionCatalog("other-session");
-    const side = {
-      id: "thread",
-      parentSessionId: "other-session",
-      sidecarSessionId: "sidecar",
-      workingDirectory: "/other",
-      title: "Side",
-      status: "open" as const,
-      running: false,
-      createdAt: fixtureTimestamp,
-      updatedAt: fixtureTimestamp,
-    };
-    discussion.metadataLoaded = true;
-    discussion.metadata.push(side);
-    const nested = fixture.models.discussionCatalog("sidecar");
-    nested.metadataLoaded = true;
-    nested.metadata.push({
-      ...side,
-      id: "nested",
-      parentSessionId: "sidecar",
-      sidecarSessionId: "nested-sidecar",
-      status: "resolved",
-    });
-    const workers = fixture.models.subagentCatalog(
-      source === "nested-subagent" ? "nested-sidecar" : "other-session",
-    );
-    workers.metadataLoaded = true;
-    workers.metadata.push({
-      parentSessionId: workers.sessionId,
-      handleId: SubagentHandleId.make("10000000-0000-4000-8000-000000000001"),
-      anchorPartId: "spawn",
-      task: "Background work",
-      status: "complete",
-      streaming: false,
-      released: false,
-    });
-    const view = render(
-      <StoreProvider store={fixture.root}>
+it("shows unselected-project activity from the project catalog without discovering descendants", () => {
+  using fixture = createRendererStoreFixture({
+    projects: [
+      projectRecord({ path: "/cake", name: "Cake" }),
+      projectRecord({ path: "/other", name: "Other" }),
+    ],
+    sessions: [sessionSummary({ sessionId: "other-session", projectPath: "/other" })],
+  });
+  render(
+    <StoreProvider store={fixture.root}>
+      <ProjectRail />
+    </StoreProvider>,
+  );
+  expect(screen.queryByRole("img", { name: "Work running in Other" })).toBeNull();
+  act(() =>
+    applyProjectCatalogUpdate(fixture.models.projects, {
+      _tag: "Event",
+      revision: 1,
+      event: { _tag: "ActivityChanged", runningProjectPaths: ["/other"] },
+    }),
+  );
+  expect(screen.getByRole("img", { name: "Work running in Other" })).toBeTruthy();
+  expect(fixture.models.discussionCatalogs).toHaveLength(0);
+  expect(fixture.models.subagentCatalogs).toHaveLength(0);
+  act(() =>
+    applyProjectCatalogUpdate(fixture.models.projects, {
+      _tag: "Event",
+      revision: 2,
+      event: { _tag: "ActivityChanged", runningProjectPaths: [] },
+    }),
+  );
+  expect(screen.queryByRole("img", { name: "Work running in Other" })).toBeNull();
+});
+
+it("keeps the project rail idle when worker snapshots change without changing project activity", () => {
+  using fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: "/cake", name: "Cake" })],
+    sessions: [sessionSummary({ sessionId: "owner", projectPath: "/cake" })],
+  });
+  const workers = fixture.models.subagentCatalog("owner");
+  workers.metadataLoaded = true;
+  const worker = {
+    parentSessionId: "owner",
+    handleId: SubagentHandleId.make("10000000-0000-4000-8000-000000000001"),
+    anchorPartId: "spawn",
+    task: "Running worker",
+    status: "running" as const,
+    streaming: true,
+    released: false,
+  };
+  workers.metadata.push(worker);
+  fixture.models.projects.runningProjectPaths.push("/cake");
+  const committed = vi.fn();
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <Profiler id="project-rail" onRender={committed}>
         <ProjectRail />
-      </StoreProvider>,
-    );
-    expect(fixture.root.workspaceProjectPath).toBeUndefined();
-    expect(screen.queryByRole("img", { name: "Work running in Other" })).toBeNull();
-    const setRunning = (running: boolean) => {
-      if (source === "project-chat") fixture.models.cakeChatCatalog.sessions[0]!.running = running;
-      else if (source === "session")
-        fixture.models.sessionCatalog.find("other-session")!.running = running;
-      else if (source === "side-chat")
-        discussion.metadata.splice(0, 1, { ...discussion.metadata[0]!, running });
-      else {
-        workers.metadata.splice(0, 1, {
-          ...workers.metadata[0]!,
-          status: running ? "running" : "complete",
-          streaming: running,
-        });
-      }
-    };
-    act(() => setRunning(true));
-    expect(screen.getByRole("img", { name: "Work running in Other" })).toBeTruthy();
-    expect(screen.queryByRole("img", { name: "Work running in Cake" })).toBeNull();
-    const targets = fixture.root.conversationNavigatorStore.metadataTargetsForProjects([
-      "/cake",
-      "/other",
-    ]);
-    expect(targets.map((target) => target.sessionId)).toEqual(
-      expect.arrayContaining([homeId, "other-session", "sidecar", "nested-sidecar"]),
-    );
-    expect(fixture.models.discussionConversations).toHaveLength(0);
-    expect(fixture.models.projectConversations).toHaveLength(0);
-    act(() => setRunning(false));
-    expect(screen.queryByRole("img", { name: "Work running in Other" })).toBeNull();
-    view.unmount();
-  },
-);
+      </Profiler>
+    </StoreProvider>,
+  );
+  expect(screen.getByRole("img", { name: "Work running in Cake" })).toBeTruthy();
+  committed.mockClear();
+  for (let revision = 0; revision < 5; revision += 1) {
+    act(() => workers.metadata.splice(0, 1, { ...worker }));
+  }
+  expect(committed).not.toHaveBeenCalled();
+  act(() => {
+    workers.metadata.splice(0, 1, { ...worker, streaming: false, status: "complete" });
+    fixture.models.projects.runningProjectPaths.splice(0);
+  });
+  expect(screen.queryByRole("img", { name: "Work running in Cake" })).toBeNull();
+  view.unmount();
+});

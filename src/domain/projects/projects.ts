@@ -1,3 +1,4 @@
+import { observeProjectActivity } from "./projectActivity";
 import { stat } from "node:fs/promises";
 import { basename, isAbsolute, resolve } from "node:path";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
@@ -658,7 +659,7 @@ export const inspect = Effect.fn("Projects.inspect")(function* (
 /** Observes main-owned Project registration facts as a current-first renderer projection. */
 export const observeCatalog = Effect.fn("Projects.observeCatalog")(function* () {
   const changes = yield* observeState();
-  return changes.pipe(
+  const registration = changes.pipe(
     Stream.mapAccum(
       (): ProjectCatalogObservation => ({
         revision: 0,
@@ -676,6 +677,14 @@ export const observeCatalog = Effect.fn("Projects.observeCatalog")(function* () 
       },
     ),
   );
+  const activity = (yield* observeProjectActivity()).pipe(
+    Stream.map((runningProjectPaths): ProjectCatalogUpdate => ({
+      _tag: "Event",
+      revision: 0,
+      event: { _tag: "ActivityChanged", runningProjectPaths },
+    })),
+  );
+  return Stream.merge(registration, activity);
 });
 
 const sameProjects = (left: ReadonlyArray<ProjectRecord>, right: ReadonlyArray<ProjectRecord>) =>

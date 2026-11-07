@@ -359,6 +359,8 @@ export class CakeSessionRuntimes extends Context.Service<
     readonly currentStatus: (
       target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
     ) => Effect.Effect<CakeSessionRuntimeStatus | undefined>;
+    /** Live activity only; does not read history/recovery or acquire runtimes. */
+    readonly activeWorkingDirectories: () => Effect.Effect<ReadonlyArray<string>>;
     /** Last transcript write of an already-acquired runtime: one stat, never a transcript parse. */
     readonly currentModifiedAt: (
       target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
@@ -696,6 +698,22 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           ),
       );
 
+      const activeWorkingDirectories = Effect.fn("CakeSessionRuntimes.activeWorkingDirectories")(
+        function* () {
+          const directories = new Set<string>();
+          for (const shared of activeRuntimes) {
+            if (
+              shared.runtime.streaming ||
+              [...(yield* Ref.get(shared.activeTurns))].some(
+                ([id, delivery]) => delivery !== "follow-up" && !shared.settledInputIds.has(id),
+              )
+            )
+              directories.add(shared.workingDirectory);
+          }
+          return [...directories];
+        },
+      );
+
       const currentStatus = Effect.fn("CakeSessionRuntimes.currentStatus")(function* (
         target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
       ) {
@@ -784,6 +802,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         acquireSession,
         hasCurrent,
         currentStatus,
+        activeWorkingDirectories,
         currentModifiedAt,
         currentTurnIds,
         executingTurnIds,

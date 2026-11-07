@@ -1,4 +1,6 @@
 import { Store, child, createStore } from "r-state-tree";
+import { ToastContext } from "./context/ToastContext";
+import { describeError } from "../lib/error-details";
 import { linkedMessageTarget } from "../lib/message-navigation";
 import type { ConversationNavigationTarget } from "../lib/conversation-navigation-tree";
 import { MessageReferencePreviewStore } from "./MessageReferencePreviewStore";
@@ -343,17 +345,45 @@ export class NavigationStore extends Store<{
 
   /** Explicit project home intent; does not reset the conversation or its runtime. */
   async openProjectChat(projectPath: string) {
-    this.props.discussionNavigation().cancelOpening();
-    const collection = this.props.cakeChat();
-    if (!collection.hydrated) await collection.initialize();
-    const chat = collection.projectChat(projectPath);
-    if (!chat) return false;
-    const home = collection.registry.load(chat.sessionId);
-    if (home.conversationSessionStore.sideChatStore.target)
-      home.conversationSessionStore.sideChatStore.close();
-    home.showPresentation("normal");
-    if ((await this.openCakeChat(chat.sessionId)) === false) return false;
-    return true;
+    try {
+      this.props.discussionNavigation().cancelOpening();
+      const collection = this.props.cakeChat();
+      const chat = collection.projectChat(projectPath);
+      if (!chat)
+        throw new Error(
+          "Project Chat is unavailable in the current catalog. Retry after the project list has loaded.",
+        );
+      const home = collection.registry.load(chat.sessionId);
+      if (home.conversationSessionStore.sideChatStore.target)
+        home.conversationSessionStore.sideChatStore.close();
+      home.showPresentation("normal");
+      if ((await this.openCakeChat(chat.sessionId)) === false) return false;
+      return true;
+    } catch (error) {
+      this.reportChatOpenError(error, "Could not open Project Chat", () =>
+        this.openProjectChat(projectPath),
+      );
+      return false;
+    }
+  }
+
+  private reportChatOpenError(error: unknown, title: string, retry: () => Promise<boolean | void>) {
+    if (this.signal.aborted) return;
+    const described = describeError(error);
+    ToastContext.consume(this)?.show({
+      tone: "error",
+      title,
+      message: described.message,
+      details: described.details,
+      autoDismiss: false,
+      coalesceKey: "chat-open",
+      action: {
+        label: "Retry",
+        run: async () => {
+          await retry();
+        },
+      },
+    });
   }
 
   async returnToProjectChat() {
@@ -494,36 +524,36 @@ export class NavigationStore extends Store<{
   }
 
   async openCakeChat(sessionId?: string) {
-    if (!sessionId) return this.startCakeChat();
-    this.workbench.dismissSecondarySurfaces();
-    const projectChat = isProjectChatSessionId(sessionId);
-    if (!projectChat) this.props.shell.selectWorkspace("cake-chat");
-    const collection = this.props.cakeChat();
-    if (!collection.hydrated) await collection.initialize();
-    const source = this.props.shell.activeConversation;
-    const sourceSurface = this.props.shell.surface;
-    const opening = collection.openSession(
-      sessionId,
-      () =>
-        this.props.shell.surface === sourceSurface &&
-        this.props.shell.activeConversation?.sessionId === source?.sessionId,
-    );
-    // Keep the current conversation until Project Chat's history is available,
-    // rather than mounting an empty destination or waiting for its full runtime.
-    if (projectChat && (await opening) === false) return false;
-    this.commitCakeChatSelection(sessionId);
-    this.presentation.restore();
-    // Sidebar activation runs on mousedown. Restore input focus after the native
-    // button default, not in the microtask that it can overwrite.
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    if (
-      this.props.shell.activeConversation?.sessionId === sessionId &&
-      !this.props.shell.coveringSurface
-    )
-      collection.registry
-        .find(sessionId)
-        ?.conversationSessionStore.composerStore.draftStore.requestFocus();
-    await opening;
+    try {
+      if (!sessionId) return this.startCakeChat();
+      this.workbench.dismissSecondarySurfaces();
+      const projectChat = isProjectChatSessionId(sessionId);
+      if (!projectChat) this.props.shell.selectWorkspace("cake-chat");
+      const collection = this.props.cakeChat();
+      const opening = collection.openSession(sessionId);
+      this.commitCakeChatSelection(sessionId);
+      this.presentation.restore();
+      // Sidebar activation runs on mousedown. Restore input focus after the native
+      // button default, not in the microtask that it can overwrite.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      if (
+        this.props.shell.activeConversation?.sessionId === sessionId &&
+        !this.props.shell.coveringSurface
+      )
+        collection.registry
+          .find(sessionId)
+          ?.conversationSessionStore.composerStore.draftStore.requestFocus();
+      await opening;
+    } catch (error) {
+      this.reportChatOpenError(
+        error,
+        sessionId && isProjectChatSessionId(sessionId)
+          ? "Could not open Project Chat"
+          : "Could not open Cake Chat",
+        () => this.openCakeChat(sessionId),
+      );
+      return false;
+    }
   }
 
   async startCakeChat(prompt?: string) {

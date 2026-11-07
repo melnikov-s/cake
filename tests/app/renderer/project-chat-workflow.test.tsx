@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { applySnapshot } from "r-state-tree";
@@ -22,10 +22,7 @@ import type { UiPart } from "../../../src/contracts/conversations/session-contra
 import { App } from "../../../src/renderer/components/app";
 import { MarkdownLinkProvider } from "../../../src/renderer/components/ai-elements/markdown";
 import { isMacPlatform } from "../../../src/renderer/lib/platform";
-import {
-  applyConversationUpdate,
-  unloadConversationProjection,
-} from "../../../src/renderer/reducers/ConversationReducer";
+import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import type { Client } from "../../../src/renderer/client/Client";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -208,7 +205,7 @@ async function fixture(
   };
 }
 
-it("mounts each Project Chat with its first history projection, without waiting for the live runtime", async () => {
+it("selects each Project Chat synchronously before history or runtime startup completes", async () => {
   using f = await fixture(undefined, undefined, undefined, false);
   f.chatOpen.mockClear();
   const history = (text: string): UiPart[] => [
@@ -229,11 +226,10 @@ it("mounts each Project Chat with its first history projection, without waiting 
     [otherId, "finance", "Finance history", projectId],
     [projectId, "zombies", "Zombies history reloaded", otherId],
   ]) {
-    await f.user.click(screen.getByRole("button", { name: `Open Project Chat for ${name}` }));
-    // The destination is observed before it is selected; the current chat stays
-    // intact, without an empty destination, timer, fade or loading placeholder.
-    expect(pane(id!)).toBeNull();
-    expect(pane(previous!)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: `Open Project Chat for ${name}` }));
+    expect(f.root.appShellStore.activeConversation?.sessionId).toBe(id);
+    expect(pane(id!)).toBeTruthy();
+    expect(pane(previous!)).toBeNull();
     expect(f.root.cakeChatCollectionStore.registry.observationTargets).toContainEqual(
       expect.objectContaining({ sessionId: id }),
     );
@@ -248,7 +244,6 @@ it("mounts each Project Chat with its first history projection, without waiting 
     // Native virtualized row layout is covered by project-chat-first-render.smoke.spec.ts.
     expect(screen.queryByText("Let’s talk about this project")).toBeNull();
     expect(f.models.cakeChatConversation(id!).historyOnly).toBe(true);
-    act(() => unloadConversationProjection(f.models.cakeChatConversation(previous!)));
   }
   // Observation owns runtime acquisition; navigation no longer starts a second
   // acquire that could force the history path to wait for runtime startup.
@@ -271,7 +266,7 @@ it("distinguishes a restored Project Chat's missing snapshot from a genuinely em
     f.root.cakeChatCollectionStore.registry.load(projectId);
     f.root.navigationStore.selectCakeChat(projectId);
   });
-  expect(screen.getByRole("status", { name: "Opening chat in progress" })).toBeTruthy();
+  expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
   expect(screen.queryByText("Let’s talk about this project")).toBeNull();
   f.publish(projectId, [], false);
   expect(screen.getByRole("heading", { name: "Let’s talk about this project" })).toBeTruthy();
@@ -282,7 +277,7 @@ it("selects the latest requested Project Chat when snapshots arrive out of order
   await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
   await f.user.click(screen.getByRole("button", { name: "Open Project Chat for finance" }));
   f.publish(projectId, [], false);
-  expect(f.root.appShellStore.activeConversation?.sessionId).toBe(CAKE_CHAT_SESSION_ID);
+  expect(f.root.appShellStore.activeConversation?.sessionId).toBe(otherId);
   f.publish(otherId, [], false);
   await waitFor(() => expect(f.root.appShellStore.activeConversation?.sessionId).toBe(otherId));
 });
@@ -880,4 +875,47 @@ it("gives global and project chats their own Browser destinations and returns to
     expect(f.browserOpen).toHaveBeenLastCalledWith(projectId, undefined, expect.anything()),
   );
   expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
+});
+
+it("shows a visible error when a registered project's chat is missing from the catalog", async () => {
+  using f = await fixture();
+  act(() => {
+    const sessions = f.models.cakeChatCatalog.sessions;
+    sessions.splice(
+      sessions.findIndex((chat) => chat.sessionId === projectId),
+      1,
+    );
+  });
+  await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+  expect(await screen.findByText("Could not open Project Chat")).toBeTruthy();
+  expect(screen.getByRole("alert").textContent).toContain("unavailable");
+});
+
+it("shows a destination history error in the selected chat without blocking navigation", async () => {
+  using f = await fixture(undefined, undefined, undefined, false);
+  fireEvent.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+  expect(f.root.appShellStore.activeConversation?.sessionId).toBe(projectId);
+  act(() => {
+    f.models.cakeChatConversation(projectId).observationError = "Project directory is unavailable";
+  });
+  expect(await screen.findByText("Could not open chat")).toBeTruthy();
+  expect(screen.getByText("Project directory is unavailable")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Open Project Chat for finance" }));
+  expect(f.root.appShellStore.activeConversation?.sessionId).toBe(otherId);
+});
+
+it("keeps the destination selected and accepts a draft while its authority has not responded", async () => {
+  using f = await fixture(undefined, undefined, undefined, false);
+  fireEvent.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+  expect(f.root.appShellStore.activeConversation?.sessionId).toBe(projectId);
+  await f.user.type(screen.getByRole("combobox", { name: "Message Project Chat" }), "Keep writing");
+  fireEvent.click(screen.getByRole("button", { name: "Open Project Chat for finance" }));
+  expect(f.root.appShellStore.activeConversation?.sessionId).toBe(otherId);
+  f.publish(projectId, [], false);
+  expect(f.root.appShellStore.activeConversation?.sessionId).toBe(otherId);
+  fireEvent.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+  expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toHaveProperty(
+    "value",
+    "Keep writing",
+  );
 });

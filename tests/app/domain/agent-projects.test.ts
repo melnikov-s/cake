@@ -2,9 +2,14 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "@effect/vitest";
-import { Effect, Fiber, Layer, Stream } from "effect";
+import type { ProjectCatalogUpdate } from "../../../src/contracts/application/catalog-data";
+import { Effect, Fiber, Layer, Queue, Stream } from "effect";
 import { afterEach, beforeEach, describe, expect } from "vitest";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
+import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
+import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
+import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
+import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import * as projects from "../../../src/domain/projects/projects";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
@@ -55,6 +60,9 @@ function testLayer(records: () => ReadonlyArray<WorktreeRecord> = () => []) {
   );
   return Layer.mergeAll(
     foundation,
+    SessionCatalogChanges.layer,
+    Layer.mock(CakeSessionRuntimes, { activeWorkingDirectories: () => Effect.succeed([]) }),
+    SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
     makeProjectAccessLive({
       projectSessionDirectory: "/sessions",
       resolvedProjectSessionDirectory: "/resolved",
@@ -72,8 +80,16 @@ describe("agent Project registration", () => {
       yield* initialize;
       const path = join(root, "agents");
       const catalog = yield* projects.observeCatalog();
-      const updates = yield* catalog.pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
+      const received = yield* Queue.unbounded<ProjectCatalogUpdate>();
+      const updates = yield* catalog.pipe(
+        Stream.filter(
+          (update) => update._tag !== "Event" || update.event._tag !== "ActivityChanged",
+        ),
+        Stream.runForEach((update) => Queue.offer(received, update)),
+        Effect.forkChild,
+      );
 
+      yield* Queue.take(received);
       const result = yield* projects.addForAgent({ path: `${path}/` });
 
       expect(result).toMatchObject({
@@ -85,7 +101,8 @@ describe("agent Project registration", () => {
         path,
         join(root, "existing"),
       ]);
-      const [, replaced] = yield* Fiber.join(updates);
+      const replaced = yield* Queue.take(received);
+      yield* Fiber.interrupt(updates);
       expect(replaced).toMatchObject({
         _tag: "Event",
         event: { _tag: "Replaced", projects: [{ path, name: "agents" }, { name: "Existing" }] },

@@ -32,6 +32,14 @@ export function applyProjectCatalogUpdate(model: ProjectCatalog, update: Project
     return;
   }
   const event = change;
+  if (event._tag === "ActivityChanged") {
+    model.runningProjectPaths.splice(
+      0,
+      model.runningProjectPaths.length,
+      ...event.runningProjectPaths,
+    );
+    return;
+  }
   batch(() => {
     if (event._tag === "Upserted") {
       const existing = model.find(event.project.path);

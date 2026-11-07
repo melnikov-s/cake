@@ -1,8 +1,8 @@
-import { Cache, Effect, Stream, SubscriptionRef } from "effect";
+import { Cache, Effect, Schema, Stream, SubscriptionRef } from "effect";
 import type { SubagentHandleId } from "../../contracts/subagents/subagent-data";
 import {
   type SubagentActivity,
-  type SubagentMetadata,
+  SubagentMetadata,
   type SubagentUpdate,
 } from "../../contracts/subagents/subagent-data";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
@@ -60,6 +60,8 @@ const parentActivities = (state: SubagentCoordinatorState, parentSessionId: stri
 const backgroundActive = (activities: ReadonlyArray<SubagentActivity>) =>
   activities.some((activity) => activity.status === "queued" || activity.status === "running");
 
+const sameMetadata = Schema.toEquivalence(Schema.Array(SubagentMetadata));
+
 /** Ownership/activity catalog only: no Pi hydration or historical transcript inspection. */
 export const observeMetadata = Effect.fn("Subagents.observeMetadata")(function* (
   parentSessionId: string,
@@ -99,6 +101,7 @@ export const observeMetadata = Effect.fn("Subagents.observeMetadata")(function* 
         ]),
       ),
     ),
+    Stream.changesWith(sameMetadata),
   );
 });
 

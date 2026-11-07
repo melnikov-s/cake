@@ -8,6 +8,7 @@ const ProjectCatalogEvent = Schema.TaggedUnion({
   Replaced: { projects: Schema.Array(ProjectRecord) },
   Upserted: { project: ProjectRecord },
   Removed: { path: ProjectRecord.fields.path },
+  ActivityChanged: { runningProjectPaths: Schema.Array(Schema.String) },
 });
 
 export const ProjectCatalogUpdate = Schema.TaggedUnion({

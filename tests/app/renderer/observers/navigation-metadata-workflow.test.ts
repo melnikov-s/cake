@@ -1,5 +1,5 @@
 import { Effect, Stream } from "effect";
-import { observable } from "r-state-tree";
+import { effect, observable } from "r-state-tree";
 import { expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import type { DiscussionThreadMetadata } from "../../../../src/contracts/discussion-sessions/discussion-session-data";
@@ -157,90 +157,36 @@ it("discovers cold scoped owners and nested metadata without opening conversatio
   }
 });
 
-it("observes an unselected project's activity and descendants without demanding hidden transcripts", async () => {
+it("keeps metadata demand stable across activity snapshots and updates it when nested ownership changes", () => {
   using fixture = createRendererStoreFixture({
-    projects: [projectRecord({ path: "/cake" }), projectRecord({ path: "/other" })],
-    sessions: [
-      sessionSummary({ sessionId: "selected", projectPath: "/cake" }),
-      sessionSummary({ sessionId: "background", projectPath: "/other" }),
-    ],
+    projects: [projectRecord({ path: "/cake" })],
+    sessions: [sessionSummary({ sessionId: "owner", projectPath: "/cake" })],
   });
-  const fullConversation = vi.fn(() => Stream.never);
-  const fullWorkers = vi.fn(() => Stream.never);
-  const fullDiscussions = vi.fn(() => Stream.never);
-  const metadata = vi.fn(({ parentSessionId }: { parentSessionId: string }) =>
-    Stream.succeed(
-      parentSessionId === "background"
-        ? [{ ...thread("background", "background-sidecar"), workingDirectory: "/other" }]
-        : [],
-    ).pipe(Stream.concat(Stream.never)),
+  const catalog = fixture.models.discussionCatalog("owner");
+  catalog.metadataLoaded = true;
+  catalog.metadata.push(thread("owner", "sidecar"));
+  const demanded = vi.fn();
+  const stop = effect(() =>
+    demanded(fixture.root.conversationNavigatorStore.metadataTargets("/cake")),
   );
-  const observer = createModelObserver(
-    observerRuntime(
-      observerClient({
-        projects: { observeCatalog: () => Stream.never },
-        managedWorktrees: {
-          observeCatalog: () => Stream.never,
-          observeOperations: () => Stream.never,
-        },
-        automations: { observe: () => Stream.never },
-        cakeChats: {
-          observeCatalog: () => Stream.never,
-          observeSideChatMetadata: () => Stream.succeed([]).pipe(Stream.concat(Stream.never)),
-        },
-        conversations: { observe: fullConversation },
-        subagents: {
-          observe: fullWorkers,
-          observeMetadata: ({ parentSessionId }) =>
-            Stream.succeed(
-              parentSessionId === "background-sidecar"
-                ? [
-                    {
-                      parentSessionId,
-                      handleId,
-                      anchorPartId: "spawn",
-                      task: "Background worker",
-                      status: "running" as const,
-                      streaming: true,
-                      released: false,
-                    },
-                  ]
-                : [],
-            ).pipe(Stream.concat(Stream.never)),
-        },
-        discussionSessions: {
-          observeMetadata: metadata,
-          observeCatalog: fullDiscussions,
-          observe: fullConversation,
-        },
-      }),
-    ),
-  );
-  observer.observe({
-    projection: fixture.models,
-    navigationTargets: () =>
-      fixture.root.conversationNavigatorStore.metadataTargetsForProjects(["/cake", "/other"]),
-    loadedProjectSessions: () => [],
-    loadedCakeChatIds: () => [],
-    projectSessionCatalogQueries: () => [],
-    cakeChatCatalogQueries: () => [],
-    projectSessionTargets: () => [],
-    cakeChatTargets: () => [],
-  });
   try {
-    await vi.waitFor(() =>
-      expect(fixture.root.conversationNavigatorStore.projectRunning("/other")).toBe(true),
-    );
-    expect(fixture.root.conversationNavigatorStore.projectRunning("/cake")).toBe(false);
-    expect(metadata.mock.calls.map(([input]) => input.parentSessionId)).toEqual(
-      expect.arrayContaining(["selected", "background", "background-sidecar"]),
-    );
-    expect(fullConversation).not.toHaveBeenCalled();
-    expect(fullWorkers).not.toHaveBeenCalled();
-    expect(fullDiscussions).not.toHaveBeenCalled();
-    expect(fixture.models.projectConversations).toHaveLength(0);
-    expect(fixture.models.discussionConversations).toHaveLength(0);
+    expect(demanded).toHaveBeenCalledTimes(1);
+    catalog.metadata.splice(0, 1, { ...thread("owner", "sidecar"), running: true });
+    expect(demanded).toHaveBeenCalledTimes(1);
+    const nested = fixture.models.discussionCatalog("sidecar");
+    nested.metadataLoaded = true;
+    nested.metadata.push(thread("sidecar", "nested"));
+    expect(
+      demanded.mock.lastCall?.[0].map((target: { sessionId: string }) => target.sessionId),
+    ).toContain("nested");
+    const count = demanded.mock.calls.length;
+    nested.metadata.splice(0, 1, { ...thread("sidecar", "nested"), title: "Updated title" });
+    expect(demanded).toHaveBeenCalledTimes(count);
+    catalog.metadata.splice(0, 1);
+    expect(
+      demanded.mock.lastCall?.[0].map((target: { sessionId: string }) => target.sessionId),
+    ).not.toContain("nested");
   } finally {
-    observer.stop();
+    stop();
   }
 });

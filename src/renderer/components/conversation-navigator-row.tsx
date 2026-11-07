@@ -41,12 +41,7 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
         : node.label;
   const session =
     node.target.kind === "project-session"
-      ? (root.sidebarStore.sessionListStore
-          .projectSessions(projectPath!, false, true)
-          .find((session) => session.sessionId === node.target.sessionId) ??
-        root.sidebarStore.sessionListStore
-          .projectSessions(projectPath!, true, true)
-          .find((session) => session.sessionId === node.target.sessionId))
+      ? root.sessionCatalogStore.find(node.target.sessionId)
       : undefined;
   const ownActivity =
     node.target.kind === "cake-chat"

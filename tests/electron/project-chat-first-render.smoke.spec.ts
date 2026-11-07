@@ -43,6 +43,7 @@ test("Project Chat's first transcript has its own history, including cross-proje
         },
       }),
     );
+    const launchStarted = Date.now();
     app = await electron.launch({
       args: [repository],
       cwd: repository,
@@ -57,13 +58,27 @@ test("Project Chat's first transcript has its own history, including cross-proje
     });
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1400, height: 900 });
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Open Cake Chat", exact: true })).toBeVisible();
+    const startupMs = Date.now() - launchStarted;
+    await test.info().attach("startup-timing", {
+      body: JSON.stringify({ startupMs }),
+      contentType: "application/json",
+    });
+    expect(startupMs).toBeLessThan(4_000);
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
     await expect(page.getByText("GLOBAL_ONLY_HISTORY", { exact: true })).toBeVisible();
     for (const project of [projects[0]!, projects[1]!, projects[0]!]) {
       // Observe actual DOM commits, not just Playwright's eventual visible state.
       await page.evaluate((id) => {
         const samples: { text: string; elapsedMs: number }[] = [];
-        const started = performance.now();
+        let started = performance.now();
+        document.addEventListener(
+          "click",
+          () => {
+            started = performance.now();
+          },
+          { once: true, capture: true },
+        );
         const observer = new MutationObserver(() => {
           const pane = document.querySelector(
             `[data-slot="session-pane"][data-session-id="${id}"]`,
@@ -98,6 +113,7 @@ test("Project Chat's first transcript has its own history, including cross-proje
         contentType: "application/json",
       });
       expect(trace.length).toBeGreaterThan(0);
+      expect(trace[0]!.elapsedMs).toBeLessThan(100);
       // Virtuoso mounts its measuring tree before its rows; the first actual
       // transcript content must be history, never a guessed empty state.
       expect(trace.find(({ text }) => text.length > 0)?.text).toContain(project.text);
@@ -109,6 +125,11 @@ test("Project Chat's first transcript has its own history, including cross-proje
         ),
       ).toBe(true);
     }
+    const input = page.getByRole("combobox", { name: "Message Project Chat" });
+    await expect(input).toBeFocused();
+    await input.pressSequentially("Keep this draft");
+    await expect(input).toHaveValue("Keep this draft");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
   } finally {
     await app?.close();
     await rm(directory, { recursive: true, force: true });

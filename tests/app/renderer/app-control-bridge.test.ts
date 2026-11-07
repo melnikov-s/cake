@@ -20,6 +20,16 @@ import { ReviewThread } from "../../../src/renderer/models/ReviewThread";
 import { SubagentActivity } from "../../../src/renderer/models/SubagentActivity";
 
 describe("AppControlRegistry", () => {
+  it("reuses immutable discovery schemas across repeated global and assistant queries", () => {
+    const global = listAppControlTools();
+    const assistant = listSessionAssistantControlTools();
+    expect(global.length).toBeGreaterThan(0);
+    expect(assistant.length).toBeGreaterThan(0);
+    for (let query = 0; query < 10; query += 1) {
+      expect(listAppControlTools()).toBe(global);
+      expect(listSessionAssistantControlTools()).toBe(assistant);
+    }
+  });
   it("derives help from the input schema and decodes defaults before calling the typed handler", async () => {
     const args = Schema.Struct({
       text: Schema.Trim.check(Schema.isMinLength(1)),

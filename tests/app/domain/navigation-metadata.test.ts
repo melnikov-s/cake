@@ -1,5 +1,5 @@
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Layer, Scope, Stream, SubscriptionRef } from "effect";
+import { Deferred, Effect, Layer, Queue, Scope, Stream, SubscriptionRef } from "effect";
 import { expect } from "vitest";
 import {
   CakeSessionRuntimes,
@@ -281,4 +281,77 @@ it.effect(
       ),
     );
   },
+);
+
+it.effect("does not republish unchanged worker metadata for unrelated coordinator revisions", () =>
+  Effect.gen(function* () {
+    const coordinator = yield* SubagentCoordinator;
+    const record = subagentHistoryFixture();
+    const processed = yield* Queue.unbounded<void>();
+    const output = yield* Queue.unbounded<readonly { task: string }[]>();
+    const stream = yield* subagentObservation.observeMetadata(record.parentSessionId).pipe(
+      Effect.provideService(SubagentCoordinator, {
+        ...coordinator,
+        storage: {
+          ...coordinator.storage,
+          history: {
+            ...coordinator.storage.history,
+            list: () =>
+              coordinator.storage.history
+                .list()
+                .pipe(Effect.tap(() => Queue.offer(processed, undefined))),
+          },
+        },
+      }),
+    );
+    yield* stream.pipe(
+      Stream.runForEach((value) => Queue.offer(output, value)),
+      Effect.forkScoped,
+    );
+    expect((yield* Queue.take(output))[0]?.task).toBe(record.task);
+    yield* Queue.take(processed);
+    for (let revision = 1; revision <= 3; revision += 1) {
+      yield* SubscriptionRef.update(coordinator.state, (state) => ({ ...state, revision }));
+      yield* Queue.take(processed);
+    }
+    yield* coordinator.storage.history.update({ ...record, task: "Updated worker task" });
+    yield* SubscriptionRef.update(coordinator.state, (state) => ({ ...state, revision: 4 }));
+    expect((yield* Queue.take(output))[0]?.task).toBe("Updated worker task");
+  }).pipe(
+    Effect.provide(
+      SubagentCoordinatorLive.pipe(
+        Layer.provide(makeSubagentStorageTestLayer([], [subagentHistoryFixture()])),
+      ),
+    ),
+  ),
+);
+
+it.effect("does not republish empty discussion metadata for unrelated storage changes", () =>
+  Effect.gen(function* () {
+    const stream = yield* discussions.observeMetadata({
+      workingDirectory: "/project",
+      parentSessionId: "owner",
+    });
+    expect(yield* stream.pipe(Stream.runCollect)).toEqual([[]]);
+  }).pipe(
+    Effect.provide(
+      Layer.mergeAll(
+        Layer.mock(DiscussionSessionEnvironment, { list: () => Effect.succeed([]) }),
+        Layer.mock(ReviewStorage, {
+          changes: () => Stream.make(1, 2, 3, 4),
+          agentSessionDirectory: () => {
+            throw new Error("Metadata must not request session paths");
+          },
+          reviewContextPath: () => {
+            throw new Error("Metadata must not request review context");
+          },
+          discussionParentContextPath: () => {
+            throw new Error("Metadata must not request parent context");
+          },
+        }),
+        Layer.mock(CakeSessionRuntimes, {}),
+        Layer.mock(SessionCatalogChanges, { initialThenChanges: () => Stream.empty }),
+      ),
+    ),
+  ),
 );

@@ -2,7 +2,7 @@ import { listSessionAssistantControlTools } from "../app-control/AppControlBridg
 import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { Project } from "../models/Project";
 import type { CakeChatTodoList } from "../models/CakeChatTodoList";
-import { Store, child, createStore, observable, snapshot } from "r-state-tree";
+import { Store, child, computed, createStore, observable, snapshot } from "r-state-tree";
 import type { CakeChatTarget } from "../../contracts/cake-chats/cake-chat-data";
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import type { Conversation } from "../models/Conversation";
@@ -70,6 +70,7 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
   }
 
   /** Visible or running Cake Chats, including owned workers, stay synchronized until settlement. */
+  @computed
   get observationTargets(): ReadonlyArray<CakeChatTarget> {
     return this.sessions
       .filter((session) => {

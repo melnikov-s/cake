@@ -1,3 +1,4 @@
+import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { ProjectCatalogUpdate } from "../../contracts/application/catalog-data";
@@ -16,6 +17,7 @@ export const FoundationRpc = RpcGroup.make(
   Rpc.make("application.getHomeDirectory", { success: Schema.String }),
   Rpc.make("projects.observeCatalog", {
     success: ProjectCatalogUpdate,
+    error: ManagedWorktreeError,
     stream: true,
   }),
   Rpc.make("foundation.typedFailure", { error: FoundationFailure }),

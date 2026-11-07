@@ -37,7 +37,7 @@ import {
   type DiscussionSessionTarget,
   type DiscussionSessionUpdate,
   type DiscussionThread,
-  type DiscussionThreadMetadata,
+  DiscussionThreadMetadata,
 } from "../../contracts/discussion-sessions/discussion-session-data";
 import { ReviewStorage } from "../../services/storage/ReviewStorage";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
@@ -305,6 +305,8 @@ export const list = Effect.fn("DiscussionSessions.list")(function* (input: {
   );
 });
 
+const sameMetadata = Schema.toEquivalence(Schema.Array(DiscussionThreadMetadata));
+
 /** Cold navigation observes ownership/status without inspecting or acquiring any Pi sidecar. */
 export const observeMetadata = Effect.fn("DiscussionSessions.observeMetadata")(function* (input: {
   readonly workingDirectory: string;
@@ -357,6 +359,7 @@ export const observeMetadata = Effect.fn("DiscussionSessions.observeMetadata")(f
         Effect.flatMap((records) => Effect.forEach(records, project, { concurrency: 8 })),
       ),
     ),
+    Stream.changesWith(sameMetadata),
   );
 });
 

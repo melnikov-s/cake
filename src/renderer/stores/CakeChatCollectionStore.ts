@@ -1,7 +1,7 @@
 import type { Project } from "../models/Project";
 import { applyCakeChatCatalogGroupUpdate } from "../reducers/CatalogReducer";
 import type { CakeChatTodoList } from "../models/CakeChatTodoList";
-import { Store, child, createStore, observable, effect as reactiveEffect } from "r-state-tree";
+import { Store, child, createStore, observable } from "r-state-tree";
 import { settledSessionActivity, type SessionActivity } from "../lib/session-activity";
 import {
   CAKE_CHAT_SESSION_ID,
@@ -67,7 +67,6 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   private resolveInitialization: (() => void) | undefined;
   private initializing = false;
   private selectionRevision = 0;
-  private openingSession: { sessionId: string; revision: number } | undefined;
   /** Same window-local completion acknowledgement as Project Sessions, not transcript storage. */
   private readonly readSettledTurnRevisions: Map<string, number> = observable(new Map());
   /** Read/reminder writes are serialized; authoritative catalog updates supply their projection. */
@@ -106,9 +105,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       tools: this.props.tools,
       pendingSessions: () => this.pendingSessions,
       operations: this.operations,
-      isVisible: (sessionId) =>
-        this.openingSession?.sessionId === sessionId ||
-        this.layoutFor(sessionId).focusedSessionId === sessionId,
+      isVisible: (sessionId) => this.layoutFor(sessionId).focusedSessionId === sessionId,
       modelPresets: this.props.modelPresets,
       openModelPresetSettings: this.props.openModelPresetSettings,
     });
@@ -301,25 +298,14 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     return session;
   }
 
-  async open(sessionId?: string, isCurrent = () => true) {
+  async open(sessionId?: string) {
     if (!sessionId) return;
     const session = this.registry.load(sessionId);
     if (isProjectChatSessionId(sessionId)) {
-      const revision = ++this.selectionRevision;
-      this.openingSession = { sessionId, revision };
-      try {
-        // Demand the destination before selecting it. History can arrive before
-        // runtime startup; the first mounted chat must already have that history.
-        const ready = await this.waitForProjectChat(session, revision, isCurrent);
-        if (!ready || revision !== this.selectionRevision || !isCurrent()) return false;
-        this.selectSession(sessionId);
-        this.markRead(sessionId);
-      } catch (error) {
-        if (!this.signal.aborted && revision === this.selectionRevision) this.reportError(error);
-        return false;
-      } finally {
-        if (this.openingSession?.revision === revision) this.openingSession = undefined;
-      }
+      session.model.observationError = undefined;
+      this.selectSession(sessionId);
+      this.markRead(sessionId);
+      // Selection demands observation; runtime acquisition must never gate navigation.
       return;
     }
     this.selectSession(sessionId);
@@ -332,43 +318,15 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     }
   }
 
-  async openSession(sessionId: string, isCurrent = () => true) {
+  async openSession(sessionId: string) {
+    if (isProjectChatSessionId(sessionId)) return this.open(sessionId);
     if (!this.hydrated) await this.initialize();
     this.markRead(sessionId);
     if (this.pendingSessions.isPending(sessionId) || sessionId === this.sessionId) {
       this.selectSession(sessionId);
       return;
     }
-    return this.open(sessionId, isCurrent);
-  }
-
-  private waitForProjectChat(
-    session: ReturnType<CakeChatRegistryStore["load"]>,
-    revision: number,
-    isCurrent: () => boolean,
-  ): Promise<boolean> {
-    if (session.model.sessionFile) return Promise.resolve(true);
-    if (this.signal.aborted) return Promise.resolve(false);
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const finish = (ready: boolean, error?: string) => {
-        if (settled) return;
-        settled = true;
-        this.signal.removeEventListener("abort", abort);
-        dispose();
-        if (error) reject(new Error(error));
-        else resolve(ready);
-      };
-      const abort = () => finish(false);
-      this.signal.addEventListener("abort", abort, { once: true });
-      const dispose = reactiveEffect(() => {
-        if (revision !== this.selectionRevision || !isCurrent())
-          queueMicrotask(() => finish(false));
-        else if (session.model.sessionFile) queueMicrotask(() => finish(true));
-        else if (session.model.observationError)
-          queueMicrotask(() => finish(false, session.model.observationError));
-      });
-    });
+    return this.open(sessionId);
   }
 
   async activate(prompt?: string) {

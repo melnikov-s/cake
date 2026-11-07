@@ -1,5 +1,6 @@
 import { backendAgentSettingsTools } from "../../contracts/application/agent-settings-tools";
 import { backendAgentTools } from "../../contracts/application/backend-agent-tools";
+import type { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
 import type { AgentControlSource, AppControlHost } from "./app-control-data";
 import { appControlRegistry } from "./app-control-registry";
@@ -7,20 +8,24 @@ import type { ControlContext } from "./control-definition";
 import { agentActionReceipt } from "./control-receipts";
 import { toJsonValue } from "./control-json";
 
+// Discovery definitions are immutable for this renderer process. Compile their schemas once.
+let globalTools: CakeControlTool[] | undefined;
+let assistantTools: CakeControlTool[] | undefined;
+
 export function listAppControlTools() {
-  return [
+  return (globalTools ??= [
     ...backendAgentTools(),
     ...backendAgentSettingsTools(),
     ...appControlRegistry.listTools("global"),
-  ];
+  ]);
 }
 
 export function listSessionAssistantControlTools() {
-  return [
+  return (assistantTools ??= [
     ...backendAgentTools(),
     ...backendAgentSettingsTools(),
     ...appControlRegistry.listTools("session-assistant"),
-  ];
+  ]);
 }
 
 export class AppControlBridge {

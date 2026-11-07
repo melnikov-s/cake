@@ -1,4 +1,7 @@
 import { it } from "@effect/vitest";
+import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
+import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
+import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { expect } from "vitest";
 import { Deferred, Effect, Fiber, Layer, Stream } from "effect";
 import { createStore, mount } from "r-state-tree";
@@ -44,6 +47,8 @@ function fixture() {
   );
   const identities = [a, b];
   const metadata = Layer.mergeAll(
+    SessionCatalogChanges.layer,
+    SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
     Layer.mock(SessionArchiveStorage, {
       resolutionSnapshot: () =>
         Effect.sync(() => {
@@ -55,6 +60,7 @@ function fixture() {
       state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
     }),
     Layer.mock(CakeSessionRuntimes, {
+      activeWorkingDirectories: () => Effect.succeed([]),
       sessionIds: () =>
         Stream.fromEffect(
           Effect.sync(() => {

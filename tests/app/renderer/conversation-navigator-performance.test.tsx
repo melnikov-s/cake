@@ -4,6 +4,8 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { batch, effect } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { ConversationNavigatorRow } from "../../../src/renderer/components/conversation-navigator-row";
+import { conversationNavigationKey } from "../../../src/renderer/lib/conversation-navigation-tree";
 import { ConversationBreadcrumb } from "../../../src/renderer/components/conversation-breadcrumb";
 import { conversationNavigationLineage } from "../../../src/renderer/lib/conversation-navigation-tree";
 import { ReviewThread } from "../../../src/renderer/models/ReviewThread";
@@ -188,4 +190,36 @@ it("preserves home, family, nested discussion and worker ancestry as catalogs ch
   assertAncestry();
   fixture.models.sessionCatalog.find("icons")!.resolved = true;
   assertAncestry();
+});
+
+it("renders and updates a session row without flattening its project's session roster", () => {
+  using fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: "/project" })],
+    sessions: Array.from({ length: 30 }, (_, index) =>
+      sessionSummary({
+        sessionId: `session-${index}`,
+        projectPath: "/project",
+      }),
+    ),
+  });
+  const node = fixture.root.conversationNavigatorStore
+    .tree("/project")
+    .byKey.get(conversationNavigationKey("session-29"))!;
+  const traverse = vi.spyOn(fixture.root.sidebarStore.sessionListStore, "projectSessions");
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <ConversationNavigatorRow node={node} depth={1} projectPath="/project" />
+    </StoreProvider>,
+  );
+  try {
+    expect(screen.getByText("session-29", { exact: true })).toBeTruthy();
+    expect(traverse).not.toHaveBeenCalled();
+    act(() => {
+      fixture.models.sessionCatalog.find("session-29")!.title = "Renamed row";
+    });
+    expect(screen.getByText("Renamed row", { exact: true })).toBeTruthy();
+    expect(traverse).not.toHaveBeenCalled();
+  } finally {
+    view.unmount();
+  }
 });

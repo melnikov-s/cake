@@ -536,7 +536,8 @@ export const createModelObserver = (
         (client) => client.conversations.observe({ _tag: "CakeChatSession", ...target }),
         (update) => applyConversationUpdate(conversation, update),
         {
-          clear: () => unloadConversationProjection(conversation),
+          // Loaded chats retain their last history projection when hidden. The registry
+          // owns its lifetime; closing an observation must not make a warm switch cold.
           failed: (error) => {
             conversation.observationError = error instanceof Error ? error.message : String(error);
           },
@@ -806,9 +807,9 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
   observer.observe({
     projection,
     navigationTargets: () =>
-      root.conversationNavigatorStore.metadataTargetsForProjects(
-        root.projectCatalogStore.orderedProjectPaths,
-      ),
+      root.workspaceNavigatorStore.visible && root.workspaceNavigatorStore.mode === "sessions"
+        ? root.conversationNavigatorStore.metadataTargets(root.workspaceProjectPath)
+        : [],
     focusedDiscussionOwners: () => root.discussionNavigationStore.ownerTargets,
     focusedDiscussionTargets: () => root.discussionNavigationStore.discussionTargets,
     projectSessionCatalogQueries: () =>

@@ -119,6 +119,107 @@ function baseClient(overrides: ObserverClientOverrides = {}) {
 }
 
 describe("Project Session composition observer", () => {
+  it("keeps startup independent of dormant-session metadata while project activity still arrives", async () => {
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project" }), projectRecord({ path: "/other" })],
+      sessions: Array.from({ length: 30 }, (_, index) =>
+        sessionSummary({
+          sessionId: `cold-${index}`,
+          projectPath: index % 2 ? "/project" : "/other",
+        }),
+      ),
+    });
+    fixture.root.workspaceNavigatorStore.close();
+    const metadata = vi.fn<
+      (input: { sessionId?: string; parentSessionId?: string }) => Stream.Stream<readonly never[]>
+    >(() => Stream.succeed([]).pipe(Stream.concat(Stream.never)));
+    const client = baseClient({
+      projects: {
+        observeCatalog: () =>
+          Stream.succeed({
+            _tag: "Event",
+            revision: 1,
+            event: { _tag: "ActivityChanged", runningProjectPaths: ["/other"] },
+          } as const).pipe(Stream.concat(Stream.never)),
+      },
+      managedWorktrees: {
+        observeCatalog: () => Stream.never,
+        observeOperations: () => Stream.never,
+      },
+      projectSessions: { observeCatalog: () => Stream.never },
+      cakeChats: { observeCatalog: () => Stream.never, observeSideChatMetadata: metadata },
+      discussionSessions: { observeMetadata: metadata },
+      subagents: { observe: () => Stream.never, observeMetadata: metadata },
+    });
+    const stop = observeModels(runtimeFor(client), fixture.models, fixture.root);
+    try {
+      await vi.waitFor(() =>
+        expect(fixture.models.projects.runningProjectPaths).toEqual(["/other"]),
+      );
+      expect(metadata).not.toHaveBeenCalled();
+      expect(fixture.models.discussionCatalogs).toHaveLength(0);
+      expect(fixture.models.subagentCatalogs).toHaveLength(0);
+      fixture.root.workspaceNavigatorStore.show("sessions");
+      await vi.waitFor(() => expect(metadata).toHaveBeenCalled());
+      expect(
+        metadata.mock.calls.every(
+          ([input]) =>
+            input.sessionId === "ca4ec4a7-0000-4000-8000-000000000001" ||
+            input.parentSessionId === "ca4ec4a7-0000-4000-8000-000000000001",
+        ),
+      ).toBe(true);
+    } finally {
+      stop();
+    }
+  });
+
+  it("retains a hidden Project Chat's history until its loaded identity is removed", async () => {
+    using projection = RootProjection.create();
+    const first = `project-chat:${"a".repeat(64)}`;
+    const second = `project-chat:${"b".repeat(64)}`;
+    const loaded = observable([first, second]);
+    const selected = observable({ id: first });
+    const client = baseClient({
+      managedWorktrees: {
+        observeCatalog: () => Stream.never,
+        observeOperations: () => Stream.never,
+      },
+      conversations: {
+        observe: (target) =>
+          Stream.succeed(conversationSnapshot(target.sessionId)).pipe(Stream.concat(Stream.never)),
+      },
+      cakeChats: {
+        observeCatalog: () => Stream.never,
+        observeSideChats: () => Stream.never,
+        observeControls: () => Stream.never,
+      },
+    });
+    const observer = createModelObserver(runtimeFor(client));
+    observer.observe({
+      projection,
+      loadedCakeChatIds: () => loaded,
+      projectSessionCatalogQueries: () => [],
+      projectSessionTargets: () => [],
+      cakeChatTargets: () => [{ sessionId: selected.id, tools: [] }],
+    });
+    try {
+      await vi.waitFor(() =>
+        expect(projection.cakeChatConversation(first).sessionFile).not.toBe(""),
+      );
+      const history = projection.cakeChatConversation(first).uiParts;
+      selected.id = second;
+      await vi.waitFor(() =>
+        expect(projection.cakeChatConversation(second).sessionFile).not.toBe(""),
+      );
+      expect(projection.cakeChatConversation(first).sessionFile).toBe(`/sessions/${first}.jsonl`);
+      expect(projection.cakeChatConversation(first).uiParts).toEqual(history);
+      loaded.splice(0, 1);
+      expect(projection.cakeChatConversations.map((model) => model.sessionId)).toEqual([second]);
+    } finally {
+      observer.stop();
+    }
+  });
+
   it("delivers a title event to the pending projection before a file-backed catalog entry exists", async () => {
     const updates = await Effect.runPromise(Queue.unbounded<SessionCatalogUpdate>());
     using fixture = createRendererStoreFixture({

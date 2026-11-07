@@ -138,7 +138,11 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   }
   @child
   get workflowRunStores(): WorkflowRunStore[] {
-    return workflowOwnerReferences(this.model.uiParts).map((sessionId) =>
+    const toolParts = [
+      ...this.model.earlierParts.filter((part) => part.kind === "tool"),
+      ...this.model.parts.filter((part) => part.kind === "tool").map((part) => part.value),
+    ];
+    return workflowOwnerReferences(toolParts).map((sessionId) =>
       createStore(WorkflowRunStore, {
         key: sessionId,
         model: this.props.workflowCatalog(sessionId),
