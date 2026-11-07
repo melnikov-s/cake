@@ -124,6 +124,24 @@ export class DiscussionNavigationStore extends Store<{
     ];
   }
 
+  targetForSession(
+    sessionId: string,
+  ): Extract<ConversationNavigationTarget, { kind: "side-chat" }> | undefined {
+    for (const catalog of this.props.projection.discussionCatalogs) {
+      const thread = [...catalog.threads, ...catalog.metadata].find(
+        (thread) => thread.sidecarSessionId === sessionId,
+      );
+      if (thread)
+        return {
+          kind: "side-chat",
+          sessionId,
+          parentSessionId: thread.parentSessionId,
+          threadId: thread.id,
+        };
+    }
+    return undefined;
+  }
+
   session(sessionId: string) {
     return (
       this.props.directDiscussion(sessionId) ??
@@ -160,11 +178,17 @@ export class DiscussionNavigationStore extends Store<{
     if (target.kind === "side-chat") {
       const session = await this.waitFor(() => this.session(target.sessionId), revision);
       if (!session || !current()) return;
+      const parent =
+        target.parentSessionId === primary.target.sessionId
+          ? undefined
+          : await this.waitFor(() => this.session(target.parentSessionId), revision);
+      if (!current()) return;
       panel.open({
         key: `discussion:${target.threadId}`,
         navigationTarget: target,
         title,
         chatStore: session.chatStore,
+        parentChatStore: parent?.chatStore,
       });
       return;
     }

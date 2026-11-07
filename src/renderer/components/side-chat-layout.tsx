@@ -49,9 +49,8 @@ export const SideChatLayout = observer(function SideChatLayout({
       {mergeAction}
     </div>
   );
-  // A selected Side chat/Subagent is the focused conversation, not an independent split.
-  // Preserve its existing ChatStore and Pi transcript; only presentation changes.
-  if (focusConversation && target?.chatStore)
+  // Subagents retain their focused presentation; user side chats always keep their origin visible.
+  if (focusConversation && target?.chatStore && target.key.startsWith("subagent:"))
     return (
       <SideChatContext.Provider value={store}>
         <section
@@ -69,6 +68,7 @@ export const SideChatLayout = observer(function SideChatLayout({
       <AccessoryPanelLayout
         dataSlot="side-chat-layout"
         open={Boolean(target)}
+        keepParentVisible={Boolean(target?.chatStore && !target.key.startsWith("subagent:"))}
         width={target?.changes?.width ?? store.width}
         resizeLabel={target?.changes ? "Resize changes" : "Resize side chat"}
         onWidthChange={(width) =>
@@ -113,7 +113,9 @@ export const SideChatLayout = observer(function SideChatLayout({
           ) : null
         }
       >
-        {children}
+        {target?.chatStore && target.parentChatStore
+          ? renderChat(target.parentChatStore, null)
+          : children}
       </AccessoryPanelLayout>
     </SideChatContext.Provider>
   );

@@ -196,8 +196,10 @@ test("Project Chat isolates history and restores its root workspace, while globa
       ).toBeVisible();
       await input.press("Enter");
       await expect(input).toHaveValue("");
-      const sideChat = page.locator('[data-slot="focused-secondary-conversation"]');
+      const sideChat = page.getByRole("complementary", { name: "Side chat", exact: true });
       await expect(sideChat).toBeVisible();
+      await expect(input).toBeVisible();
+      await expect(page.getByRole("separator", { name: "Resize side chat" })).toBeVisible();
       const sideChatInput = sideChat.getByRole("combobox");
       await expect(sideChatInput).toBeFocused();
       await sideChatInput.pressSequentially("Draft a follow-up");
@@ -575,7 +577,8 @@ test("Project Chat isolates history and restores its root workspace, while globa
     // A real Durable fork imports full dialogue without another provider request.
     await input.fill("/side");
     await input.press("Enter");
-    const sideChat = page.locator('[data-slot="focused-secondary-conversation"]');
+    const sideChat = page.getByRole("complementary", { name: "Side chat", exact: true });
+    await expect(input).toBeVisible();
     const sideInput = sideChat.getByRole("combobox");
     await expect(sideInput).toBeFocused();
     const sidePrompt = "SIDE_MERGE_EXACT: keep this original dialogue";

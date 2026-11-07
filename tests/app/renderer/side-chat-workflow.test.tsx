@@ -16,6 +16,7 @@ import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SideChatLayout } from "../../../src/renderer/components/side-chat-layout";
 import { SideChatsMenu } from "../../../src/renderer/components/side-chats-menu";
+import { ConversationFocusContext } from "../../../src/renderer/lib/conversation-focus-context";
 import {
   applyConversationSnapshot,
   applyDiscussionSessionUpdate,
@@ -139,19 +140,26 @@ function renderSideChats(
     });
   }
   const view = render(
-    <SideChatLayout
-      store={session.conversationSessionStore.sideChatStore}
-      renderChat={(chat, composerHeader) => (
-        <Chat store={chat} composerHeader={composerHeader} embedded composerFocusEnabled={false} />
-      )}
-    >
-      <SideChatsMenu store={session} />
-      <Chat
-        store={session.conversationSessionStore.chatStore}
-        embedded
-        composerFocusEnabled={false}
-      />
-    </SideChatLayout>,
+    <ConversationFocusContext.Provider value>
+      <SideChatLayout
+        store={session.conversationSessionStore.sideChatStore}
+        renderChat={(chat, composerHeader) => (
+          <Chat
+            store={chat}
+            composerHeader={composerHeader}
+            embedded
+            composerFocusEnabled={false}
+          />
+        )}
+      >
+        <SideChatsMenu store={session} />
+        <Chat
+          store={session.conversationSessionStore.chatStore}
+          embedded
+          composerFocusEnabled={false}
+        />
+      </SideChatLayout>
+    </ConversationFocusContext.Provider>,
   );
   return {
     user: userEvent.setup(),
@@ -210,6 +218,8 @@ describe("Secondary conversation workflows", () => {
       expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
       fixture.publish([created]);
       const panel = await screen.findByRole("complementary", { name: "Side chat" });
+      expect(screen.getByRole("combobox", { name: "Message" })).toBe(input);
+      expect(screen.getByRole("separator", { name: "Resize side chat" })).toBeDefined();
       expect(within(panel).getByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
       await fixture.user.click(within(panel).getByRole("button", { name: "Close Side chat" }));
       expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();

@@ -82,6 +82,9 @@ it("opens actual nested discussion/retained-worker parts, preserving the public 
     fixture.models.discussionCatalog("alpha").threads.push(outer);
     fixture.models.discussionCatalog("outer-sidecar").threads.push(inner);
     fixture.root.discussionNavigationStore
+      .session("outer-sidecar")!
+      .chatStore.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
+    fixture.root.discussionNavigationStore
       .session("inner-sidecar")!
       .chatStore.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
     await opening;
@@ -120,12 +123,43 @@ it("opens actual nested discussion/retained-worker parts, preserving the public 
       (part) => part.kind === "text" && part.text === "Actual nested discussion assistant body",
     ),
   ).toBe(true);
-  expect(document.querySelector('[data-slot="focused-secondary-conversation"]')).not.toBeNull();
-  await waitFor(() =>
-    expect(
-      document.querySelector('[data-slot="focused-secondary-conversation"]')?.textContent,
-    ).toContain("Actual nested discussion assistant body"),
-  );
+  const sidePanel = screen.getByRole("complementary", { name: "Inner discussion" });
+  expect(
+    await within(sidePanel).findByText("Actual nested discussion assistant body"),
+  ).toBeTruthy();
+  const parent = fixture.root.discussionNavigationStore.session("outer-sidecar")!;
+  act(() => {
+    applyConversationUpdate(parent.model, {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: {
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+        sessionId: "outer-sidecar",
+        sessionFile: "/reviews/outer-sidecar.jsonl",
+        parts: [
+          {
+            id: "outer-answer",
+            kind: "text",
+            role: "assistant",
+            text: "Actual immediate parent body",
+            status: "complete",
+          },
+        ],
+      },
+    });
+    parent.chatStore.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
+  });
+  expect(await screen.findByText("Actual immediate parent body")).toBeTruthy();
+  expect(within(sidePanel).queryByText("Actual immediate parent body")).toBeNull();
+  expect(screen.getByRole("separator", { name: "Resize side chat" })).toBeTruthy();
   const breadcrumb = within(screen.getByRole("navigation", { name: "Conversation breadcrumb" }));
   expect(breadcrumb.getByRole("button", { name: "Outer discussion" })).toBeTruthy();
   expect(
@@ -135,7 +169,7 @@ it("opens actual nested discussion/retained-worker parts, preserving the public 
     workspacePath: "/alpha",
     messageReferenceSessionId: "inner-sidecar",
   });
-  const composer = screen.getByRole("combobox", { name: "Reply to side chat" });
+  const composer = within(sidePanel).getByRole("combobox", { name: "Reply to side chat" });
   await fixture.user.type(composer, "Retained nested draft");
   const state = () =>
     fixture.root.applicationControlStore.invoke({ name: "app.state", arguments: {} });
@@ -162,10 +196,12 @@ it("opens actual nested discussion/retained-worker parts, preserving the public 
     });
   });
   expect(fixture.root.discussionNavigationStore.session("inner-sidecar")).toBe(nested);
-  expect(await screen.findByRole("combobox", { name: "Reply to side chat" })).toHaveProperty(
-    "value",
-    "Retained nested draft",
-  );
+  expect(
+    await within(screen.getByRole("complementary", { name: "Inner discussion" })).findByRole(
+      "combobox",
+      { name: "Reply to side chat" },
+    ),
+  ).toHaveProperty("value", "Retained nested draft");
   expect(await screen.findByText("Actual nested discussion assistant body")).toBeTruthy();
 
   const handleId = SubagentHandleId.make("10000000-0000-4000-8000-000000000001");

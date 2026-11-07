@@ -86,6 +86,20 @@ export class NavigationStore extends Store<{
   async openSession(sessionId: string, messageId?: string) {
     this.messageReferencePreview.close();
     this.attachmentReferencePreview.close();
+    const discussions = this.props.discussionNavigation();
+    const discussionTarget = discussions.targetForSession(sessionId);
+    if (discussionTarget) {
+      await this.openConversationTarget(discussionTarget);
+      const chat = discussions.session(sessionId)?.chatStore;
+      if (!chat) return false;
+      if (!messageId) return true;
+      const part = linkedMessageTarget(chat.parts, messageId);
+      if (part) {
+        chat.transcriptInteraction.navigateToMessage(part.id);
+        return true;
+      }
+      return this.messageReferencePreview.open(sessionId, messageId);
+    }
     if (this.props.automationSessions().hasSession(sessionId)) {
       if (!this.openAutomationSession(sessionId)) return false;
       if (!messageId) return true;
@@ -249,6 +263,7 @@ export class NavigationStore extends Store<{
     const resolved = resolveSessionLinkReference(reference, [
       ...this.props.catalog.sessions.map((session) => session.sessionId),
       ...this.props.cakeChat().summaries.map((session) => session.sessionId),
+      ...this.props.discussionNavigation().sessionIds,
       ...this.props
         .automationSessions()
         .catalog.unresolvedSessions.map((session) => session.sessionId),

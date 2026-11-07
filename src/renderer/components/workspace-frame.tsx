@@ -30,9 +30,7 @@ export const WorkspaceFrame = observer(function WorkspaceFrame({
   const presentation = root.projectWorkbenchStore.presentationStore;
   const commonProps = {
     ...slots,
-    projectChat:
-      session.conversationSessionStore.sideChatStore.target?.chatStore ??
-      session.conversationSessionStore.chatStore,
+    projectChat: session.conversationSessionStore.chatStore,
     sideChat: session.conversationSessionStore.sideChatStore,
   };
 

@@ -28,6 +28,8 @@ export type SideChatTarget = SidePanelTarget &
   (
     | {
         readonly chatStore: ChatStore;
+        /** Nested discussions show their immediate origin instead of the workspace's primary chat. */
+        readonly parentChatStore?: ChatStore;
         readonly artifact?: never;
         readonly changes?: never;
       }

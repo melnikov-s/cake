@@ -85,7 +85,8 @@ describe("IDE conversation workflows", () => {
     expect(screen.queryByLabelText("Open side chats")).toBeNull();
     expect(await screen.findByText("Because it preserves state.")).toBeDefined();
     expect(screen.getByRole("combobox", { name: "Reply to selection side chat" })).toBeDefined();
-    expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
+    expect(screen.getByRole("separator", { name: "Resize side chat" })).toBeDefined();
     await fixture.user.click(
       within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByRole(
         "button",

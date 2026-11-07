@@ -203,7 +203,7 @@ describe("child-scoped nested interaction routing", () => {
       interviewRequestId: "sidecar-request",
       record: interview("sidecar"),
     });
-    const panel = within(screen.getByRole("region", { name: "Side chat" }));
+    const panel = within(screen.getByRole("complementary", { name: "Side chat" }));
     await fixture.user.type(
       await panel.findByRole("textbox", { name: "Answer" }),
       "Use the child context",
