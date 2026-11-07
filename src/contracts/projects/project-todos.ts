@@ -77,7 +77,7 @@ const Associations = Schema.Array(ProjectTodoAssociation).check(
 
 /** The canonical agent-facing rule; reuse it wherever agents read to-do guidance. */
 export const PROJECT_TODO_AUTO_COMPLETION_RULE =
-  "Session-linked to-dos close only when all required sessions resolve; don't mark them done by hand.";
+  "Session-linked to-dos close through session resolution, only when all required sessions resolve; don't mark them done by hand.";
 
 /** When a to-do must exist; shared by the injected baseline, operation help and chat-todos.md. */
 export const PROJECT_TODO_CREATION_RULE =
