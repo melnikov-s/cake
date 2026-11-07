@@ -7,12 +7,14 @@ export const coordinatorSystemPrompt = (
   instructions: string,
   cakeDocsDirectory: string,
   companion = false,
+  coreOperations = "",
 ) => {
   const base = companion
     ? `${renderPromptTemplate(commonPromptTemplate)}\n\nTask guide: ${cakeDocsDirectory}/index.md; follow relevant links only. Use known commands directly; <operation>.help for unfamiliar contracts. Answer/navigate directly.`
     : renderPromptTemplate(cakeChatPromptTemplate, {
         commonPrompt: renderPromptTemplate(commonPromptTemplate),
         cakeDocsDirectory,
+        coreOperations,
       });
   return `${base}\n\n${MEMORY_COMPACTOR_PROMPT}\n\n<cake-chat-instructions>\n${instructions}\n</cake-chat-instructions>`;
 };

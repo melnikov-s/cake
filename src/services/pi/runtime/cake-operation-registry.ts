@@ -18,6 +18,7 @@ import {
   type JsonObject,
   type JsonValue,
 } from "../../../contracts/serialization/json-contract";
+import { compactOperationInput } from "./cake-operation-reference";
 import {
   cakeOperationAliasHelp,
   cakeOperationExpectedFields,
@@ -258,6 +259,17 @@ export class CakeOperationRegistry {
       ...(operation.outputSchema ? [`Result schema: ${operation.command}.output-schema`] : []),
       ...(operation.limitations ?? []).map((line) => `Limitation: ${line}`),
     ].join("\n");
+  }
+
+  /** Common arguments only, projected from the same contract as help and invocation. */
+  operationReference(
+    command: string,
+    commonFields: readonly string[] = [],
+    expand: readonly string[] = [],
+  ) {
+    const operation = this.operations.get(command);
+    if (!operation || operation.available?.() === false) return undefined;
+    return `${command} ${compactOperationInput(inputJson(operation), commonFields, expand)}`;
   }
 
   topicHelp(topic: string) {

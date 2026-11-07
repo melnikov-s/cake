@@ -15,15 +15,15 @@ describe("compact Cake Chat guidance", () => {
       "no checkout edits, installs, generated files or Git mutations",
       "Never sessions.fork for coding delegation",
       "read-only inline/side context fork",
+      "Code changes: sessions.create",
+      "Context-dependent investigations: sessions.fork inherits settled context",
       "exact authorized registered project root",
-      "choose resultDelivery at launch",
+      "Choose resultDelivery at launch",
       "sessions.create, a fresh independent Project Session",
       "Never family children",
       "notification by default",
       "Keep cross-session chatter minimal",
-      "registered project roots",
-      "worktrees.merge with the owner's sessionId",
-      "never manual Git",
+      "Private subagents require an explicit request",
       "only when asked",
       "Omit model overrides unless requested",
       "Never edit settings files",
@@ -38,36 +38,41 @@ describe("compact Cake Chat guidance", () => {
     {
       scenario: "pure coding / do work -> create, never fork",
       rules: [
-        'Implementation/code changes: sessions.create, a fresh independent Project Session; default for "do work"',
-        "Scoped initialPrompt: meaningful context/constraints, acceptance checks; managed worktree",
+        "Code changes: sessions.create, a fresh independent Project Session",
+        "initialPrompt: context/constraints and acceptance checks",
+        "supply a new worktreeName",
         "Never sessions.fork for coding delegation",
       ],
     },
     {
       scenario: "useful-context investigation -> read-only fork",
       rules: [
-        "Investigation with useful existing context, implementation not yet clear: sessions.fork, a read-only inline/side context fork",
+        "Context-dependent investigations: sessions.fork inherits settled context",
+        "read-only inline/side context fork",
         "return findings for handoff to a fresh Project Session",
         "never silently turn research into coding",
       ],
     },
     {
-      scenario: "explicit different-model investigation -> private subagent, not create or fork",
+      scenario: "authorized different-model investigation -> private subagent with that model",
       rules: [
-        "Investigation with an explicitly requested different model: private subagent directly with that model, not sessions.fork or sessions.create",
+        "Private subagents require an explicit request",
+        "Only when authorized: requested different-model investigations use that model directly",
       ],
     },
     {
-      scenario: "unhelpful-context investigation -> private subagent allowed",
+      scenario: "unhelpful-context investigation -> private subagent only when authorized",
       rules: [
-        "Investigation where existing context is not helpful: private subagent also authorized",
+        "Private subagents require an explicit request",
+        "Only when authorized:",
+        "investigations without useful context may use a private subagent",
         "Otherwise use the contextual fork",
       ],
     },
   ])("assembles the model-independent selection rule: $scenario", ({ rules }) => {
     for (const rule of rules) expect(prompt).toContain(rule);
     expect(prompt).not.toContain("Delegate project tasks with sessions.fork");
-    expect(prompt).not.toContain("Private subagents require an explicit request");
+    expect(prompt).not.toContain("private subagent also authorized");
   });
 
   it("defaults permanent chats to fresh sessions for distinct tasks, not feature-label reuse", () => {

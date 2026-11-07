@@ -72,6 +72,7 @@ import {
 import { durableChatDatabase } from "./durable-chat-location";
 import { createDurableChatCatalog } from "./durable-chat-catalog";
 import { coordinatorSystemPrompt } from "./coordinator-system-prompt";
+import { coreChatOperations } from "./core-chat-operations";
 import { ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
 import { PresetContextDoc, presetContextSection, PresetState } from "./durable-preset-context";
 import { resolvePresetContext } from "../storage/load-preset-context";
@@ -155,7 +156,12 @@ export async function createDurableCakeChatRuntime(
   const cakeDocsDirectory = await cakeAgentDocumentationDirectory(options.agentDir);
   const instructions = () =>
     [
-      coordinatorSystemPrompt(preferences.preferences().instructions, cakeDocsDirectory, companion),
+      coordinatorSystemPrompt(
+        preferences.preferences().instructions,
+        cakeDocsDirectory,
+        companion,
+        companion ? "" : coreChatOperations(operations),
+      ),
       durableArchiveRecallInstructions(sessionId),
       options.additionalSystemPrompt,
       options.cakeChatSystemPrompt?.(),
