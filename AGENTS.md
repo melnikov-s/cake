@@ -8,6 +8,7 @@ Current explicit user direction overrides Cake workflow defaults, including fami
 
 - Keep conversation primary. Cut helper copy; fix confusing layouts.
 - Consult only relevant docs as needed: `docs/development/agent-architecture.md`, `renderer-implementation.md`, `agent-verification.md`. No prerequisite reading chain. UI changes use `DESIGN.md` and existing tokens/components. Effect work uses the local effect-ts skill and pinned Effect API.
+- System-prompt authoring/review: use the [style standard and golden example](docs/development/agent-architecture.md#system-prompt-style).
 - Settings need discoverable tool read/write parity through the UI's validation, authority, persistence and live updates. Test coverage against omissions. Credentials, user permissions and OS-only actions stay user-owned; document gaps.
 - Greenfield: remove replaced APIs outright; update callers/tests/docs. No compatibility facades unless requested. Persisted-data migrations remain separate.
 - Preserve unrelated changes. Don't add hypothetical race/security machinery: explain concrete risk and complexity simply, then wait for approval. Prefer the smallest observed fix.

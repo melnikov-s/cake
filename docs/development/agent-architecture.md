@@ -44,6 +44,55 @@ code change.
 - When guides do not answer a particular Effect API question, inspect the pinned
   implementation in `node_modules/effect/src`.
 
+## System-prompt style
+
+Use the [approved core-workflow preview](cake://session/project-chat%3Ab8b476e4e1a070acad3fc4d543ea5c22e0098187c34347f866cefbf715743f2b?message=41127)
+as the golden style example when authoring or reviewing system prompts. It is a
+preview, not evidence that its operations or behavior have shipped; current
+registered contracts remain authoritative. Apply the style, not a frozen copy of
+its APIs.
+
+Review criteria:
+
+- Put the role, essential rules, and everyday controls first. Routine work should
+  not require discovery calls to learn basic calling contracts.
+- Make instructions obvious, terse, and directly actionable: say what to do, when,
+  and with which operation. Prefer short, task-named sections to explanatory prose.
+- Show concrete common calls: exact operation names, required arguments, common
+  optional arguments, and consequential defaults. Derive signatures from registered
+  tool contracts rather than maintaining independent schemas; keep full schemas
+  behind help.
+- Retain critical semantics and security boundaries even when shortening: authority,
+  permissions, identifier/revision handling, lifecycle distinctions, and verification
+  of outcomes. Accepted delivery, reported completion, and verified success are
+  different facts.
+- Treat tokens as a cost. Remove fluff, repetition, redundant examples, and helper
+  copy that does not change an action or decision. Brevity must not erase a necessary
+  contract or safety rule.
+- Progressively disclose specialist capabilities, advanced options, and uncertain
+  contracts through focused help. Do not hide ordinary coordination behind repeated
+  discovery or make exhaustive documentation reading a prerequisite.
+
+Minimal verbatim excerpt from the approved preview:
+
+```text
+REPORTS
+messages.read {ref, offset?, maxChars?}
+Known report reference: read it directly.
+Continue with nextOffset when necessary.
+Link the exact original as "Full agent response".
+Verify evidence before claiming success.
+
+DISCOVERY
+Use <operation>.help only for unfamiliar operations, omitted advanced
+options, or contract errors. Keep specialist tools progressively disclosed.
+```
+
+For each review, check that an author can identify the next common action and
+construct its call from the prompt alone, while still knowing what requires help,
+authorization, or outcome verification. Use the full preview for the broader
+workflow example; do not copy its entire reference into unrelated prompts.
+
 ## Core ownership rules
 
 - Pi owns agent sessions, transcript history, model/provider state, and execution.
