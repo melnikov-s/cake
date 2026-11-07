@@ -39,8 +39,11 @@ import { CakeChatDurable } from "../../../src/services/pi-durable/CakeChatDurabl
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { acquireOptions as acquireChatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
-import { cakeChatControlTools } from "../../../src/contracts/application/window-control-definitions";
 import { CakeChatConfiguration } from "../../../src/services/pi-durable/CakeChatConfiguration";
+import { listAppControlTools } from "../../../src/renderer/app-control/AppControlBridge";
+import { createGlobalControlOperations } from "../../../src/domain/application/cake-global-control-operations";
+import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
+import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 
 const makeSnapshot = (sessionId: string, sessionFile: string): ConversationSnapshot => ({
   workspacePath: "/project",
@@ -603,6 +606,59 @@ describe("Cake Chat side-chat merge", () => {
 });
 
 describe("task Side Sessions", () => {
+  for (const sessionId of [CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")]) {
+    it.effect(`exposes native fork help without renderer registration (${sessionId})`, () => {
+      const fixture = makeLayer({ cakeChat: true });
+      return Effect.gen(function* () {
+        const options = yield* acquireChatOptions({
+          configuration: {
+            location: {
+              workingDirectory: sessionId === CAKE_CHAT_SESSION_ID ? "/home" : "/project",
+              sessionDirectory: "/cake/chat",
+            },
+            agentDirectory: "/cake",
+          },
+          target: { sessionId, tools: listAppControlTools() },
+          newSession: false,
+        });
+        const control = options.runtime.globalControl!;
+        const registry = new CakeOperationRegistry(
+          createGlobalControlOperations(control, () => {
+            throw new Error("A context fork must not select a fresh model");
+          }),
+        );
+        const context = { signal: new AbortController().signal, toolCallId: "help", runtime: {} };
+        const help = yield* Effect.promise(() =>
+          registry.invoke({ command: "sessions.fork.help" }, context),
+        );
+        expect(help.text).toContain("Pi Durable's native fork");
+        expect(control.tools.filter((tool) => tool.command === "sessions.fork")).toHaveLength(1);
+        const unavailable = yield* Effect.promise(() =>
+          registry.invoke(
+            {
+              command: "sessions.fork",
+              input: {
+                workspacePath: "/project",
+                worktreeName: "fix",
+                name: "Fix",
+                initialPrompt: "Fix it",
+              },
+            },
+            context,
+          ),
+        );
+        expect(unavailable.details).toMatchObject({
+          result: {
+            ok: false,
+            error: "Native task Side Sessions are unavailable in this runtime",
+          },
+        });
+        expect(fixture.createdRecords).toEqual([]);
+        expect(fixture.prompts).toEqual([]);
+      }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+    });
+  }
+
   it.effect(
     "routes discoverable permanent-chat task forks through managed isolation and correlates async results",
     () =>
@@ -632,19 +688,44 @@ describe("task Side Sessions", () => {
                 location: { workingDirectory: "/home", sessionDirectory: "/cake/cake-chat" },
                 agentDirectory: "/cake",
               },
-              target: { sessionId: CAKE_CHAT_SESSION_ID, tools: cakeChatControlTools() },
+              target: { sessionId: CAKE_CHAT_SESSION_ID, tools: listAppControlTools() },
               newSession: false,
             });
             expect(
               options.runtime.globalControl?.tools.find((tool) => tool.command === "sessions.fork")
                 ?.summary,
             ).toContain("context-forked Side Session");
-            const invoke = options.runtime.globalControl!.invoke;
+            const registry = new CakeOperationRegistry(
+              createGlobalControlOperations(options.runtime.globalControl!, () => {
+                throw new Error("Forks must inherit the native model, not resolve a fresh one");
+              }),
+            );
+            const context = {
+              signal: new AbortController().signal,
+              toolCallId: "fork-call",
+              runtime: {},
+            };
+            const topic = yield* Effect.promise(() =>
+              registry.invoke({ command: "sessions" }, context),
+            );
+            expect(topic.text).toContain("sessions.fork");
+            const help = yield* Effect.promise(() =>
+              registry.invoke({ command: "sessions.fork.help" }, context),
+            );
+            for (const field of [
+              "workspacePath",
+              "worktreeName",
+              "name",
+              "initialPrompt",
+              "resultDelivery",
+            ])
+              expect(help.text).toContain(`"${field}"`);
+            expect(help.text).toContain("current unfinished exchange");
             const result = yield* Effect.promise(() =>
-              invoke(
+              registry.invoke(
                 {
-                  name: "sessions.fork",
-                  arguments: {
+                  command: "sessions.fork",
+                  input: {
                     workspacePath: "/project",
                     name: "Small fix",
                     worktreeName: "small-fix",
@@ -652,18 +733,20 @@ describe("task Side Sessions", () => {
                     resultDelivery: "reply",
                   },
                 },
-                new AbortController().signal,
+                context,
               ),
             );
-            expect(result).toMatchObject({
-              ok: true,
-              status: "started",
-              sessionId: cakeChatSideChatSessionId(7),
-              workspacePath: "/managed/task",
-              managedWorktree: {
-                projectPath: "/project",
-                worktreePath: "/managed/task",
-                branch: "agent/task",
+            expect(result.details).toMatchObject({
+              result: {
+                ok: true,
+                status: "started",
+                sessionId: cakeChatSideChatSessionId(7),
+                workspacePath: "/managed/task",
+                managedWorktree: {
+                  projectPath: "/project",
+                  worktreePath: "/managed/task",
+                  branch: "agent/task",
+                },
               },
             });
             yield* Deferred.await(entered);
@@ -742,44 +825,53 @@ describe("task Side Sessions", () => {
       }),
   );
 
-  it.effect(
-    "rejects task forks outside the originating Project Chat scope before creating work",
-    () => {
-      const fixture = makeLayer({ cakeChat: true });
-      return Effect.gen(function* () {
-        const error = yield* discussionSessions
-          .startTaskSideSession(
-            {
-              workspacePath: "/other",
-              name: "Wrong project",
-              worktreeName: "wrong",
-              initialPrompt: "Change it",
-            },
-            {
-              sessionId: CAKE_CHAT_SESSION_ID,
-              title: "Project Chat",
-              workingDirectory: "/project",
-              projectPath: "/project",
-            },
-          )
-          .pipe(Effect.flip);
-        expect(error.message).toContain("not authorized");
-        expect(fixture.createdRecords).toEqual([]);
-      }).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            fixture.layer,
-            Layer.mock(CakeChatDurable, {}),
-            Layer.mock(ReviewStorage, {
-              agentSessionDirectory: () => "/cake/reviews/thread-1",
-              reviewContextPath: () => "/cake/reviews/context.md",
-              discussionParentContextPath: () => "/cake/reviews/context/parent.md",
-            }),
+  for (const { workspacePath, projectPath, allowed } of [
+    { workspacePath: "/other", projectPath: "/project", allowed: true },
+    { workspacePath: "/unregistered", projectPath: undefined, allowed: true },
+    { workspacePath: "/project", projectPath: undefined, allowed: false },
+    { workspacePath: "/project", projectPath: "/project", allowed: false },
+  ]) {
+    it.effect(
+      `rejects unauthorized task forks before creating work (${workspacePath}, ${projectPath}, ${allowed})`,
+      () => {
+        const fixture = makeLayer({ cakeChat: true });
+        return Effect.gen(function* () {
+          const error = yield* discussionSessions
+            .startTaskSideSession(
+              {
+                workspacePath,
+                name: "Wrong project",
+                worktreeName: "wrong",
+                initialPrompt: "Change it",
+              },
+              {
+                sessionId: projectPath ? projectChatSessionId(projectPath) : CAKE_CHAT_SESSION_ID,
+                title: "Permanent Chat",
+                workingDirectory: projectPath ?? "/home",
+                projectPath,
+              },
+            )
+            .pipe(Effect.flip);
+          expect(error.message).toContain("not authorized");
+          expect(fixture.createdRecords).toEqual([]);
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              fixture.layer,
+              Layer.mock(CakeChatDurable, {}),
+              Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(allowed) }),
+              Layer.mock(ManagedWorktrees, {}),
+              Layer.mock(ReviewStorage, {
+                agentSessionDirectory: () => "/cake/reviews/thread-1",
+                reviewContextPath: () => "/cake/reviews/context.md",
+                discussionParentContextPath: () => "/cake/reviews/context/parent.md",
+              }),
+            ),
           ),
-        ),
-      );
-    },
-  );
+        );
+      },
+    );
+  }
 });
 
 describe("Cake Chat side chats", () => {

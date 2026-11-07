@@ -1,4 +1,5 @@
 import { SideSessionFork } from "../../contracts/cake-chats/side-session-fork";
+import { cakeChatControlTools } from "../../contracts/application/window-control-definitions";
 import { startTaskSideSession } from "../discussion-sessions/discussionSessions";
 import { DiscussionSessionEnvironment } from "../../services/discussion-sessions/DiscussionSessionEnvironment";
 import { ReviewStorage } from "../../services/storage/ReviewStorage";
@@ -893,8 +894,13 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           ),
       },
       globalControl: {
+        // Native forks execute here, not in the renderer's application-control registry.
+        // Always register their canonical contract, including for UI-opened chats.
         // Shared VS Code definitions replace renderer-advertised Companion controls.
-        tools: target.tools
+        tools: [
+          ...cakeChatControlTools().filter((tool) => tool.command === "sessions.fork"),
+          ...target.tools.filter((tool) => tool.command !== "sessions.fork"),
+        ]
           .filter(
             (tool) =>
               !(project || companion) ||
