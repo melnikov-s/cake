@@ -165,15 +165,13 @@ test("to-do text selection and copying do not activate rows or their controls", 
       await unchanged();
       await clearSelection();
     }
-    // Repeated activation is idempotent; only the explicit control clears view focus.
+    // Repeated activation clears view focus without changing persisted selection.
     const savedSelection = async () =>
       JSON.parse(await readFile(join(cakeHome, "state", "application.json"), "utf8")).data
         .projects[0].todos.selectedId;
     await action.click();
     await expect(action).toHaveAttribute("aria-pressed", "true");
     await action.click();
-    await expect(action).toHaveAttribute("aria-pressed", "true");
-    await row.getByRole("button", { name: `Unfocus to-do: ${title}` }).click();
     await expect(action).toHaveAttribute("aria-pressed", "false");
     await expect.poll(savedSelection).toBeNull();
     await page.setViewportSize({ width: 1400, height: 900 });
@@ -187,14 +185,10 @@ test("to-do text selection and copying do not activate rows or their controls", 
     await expect(action).toBeFocused();
     await expect(action).toHaveAttribute("aria-pressed", "true");
     await action.press("Space");
-    await expect(action).toHaveAttribute("aria-pressed", "true");
-    await row.getByRole("button", { name: `Unfocus to-do: ${title}` }).click();
     await expect(action).toHaveAttribute("aria-pressed", "false");
     await row.click({ position: { x: 8, y: 8 } });
     await expect(action).toHaveAttribute("aria-pressed", "true");
     await action.press("Enter");
-    await expect(action).toHaveAttribute("aria-pressed", "true");
-    await row.getByRole("button", { name: `Unfocus to-do: ${title}` }).click();
     await expect(action).toHaveAttribute("aria-pressed", "false");
     await expect(done).toBeEnabled();
     const reply = row.getByRole("button", { name: `Attach to-do as context: ${title}` });

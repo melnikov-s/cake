@@ -9,7 +9,7 @@ import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
 const repository = resolve(import.meta.dirname, "../..");
 
 for (const reducedMotion of [false, true]) {
-  test(`multi-focus moves, scrolls and restores rows without changing their state (${reducedMotion ? "reduced motion" : "motion"})`, async () => {
+  test(`focus toggling moves, scrolls and restores rows without changing their state (${reducedMotion ? "reduced motion" : "motion"})`, async () => {
     const directory = await mkdtemp(join(tmpdir(), "cake-todo-focus-"));
     const project = join(directory, "project");
     const cakeHome = join(directory, "cake");
@@ -144,19 +144,23 @@ for (const reducedMotion of [false, true]) {
           ]),
         );
       await action(31).click();
-      await expect(category("Focus").locator("[data-todo-id]")).toHaveCount(2);
-      await expect(action(0)).toHaveAttribute("aria-pressed", "true");
+      await expect(category("Focus").locator("[data-todo-id]")).toHaveCount(1);
+      await expect(action(0)).toHaveAttribute("aria-pressed", "false");
       await action(31).click();
-      await expect(category("Focus").locator("[data-todo-id]")).toHaveCount(2);
+      await expect(category("Focus")).toHaveCount(0);
+      await expect(action(31)).toHaveAttribute("aria-pressed", "false");
       expect(await scrolls()).toHaveLength(2);
       // Focus is a view operation: attention and item revisions have not changed on disk.
       const saved = JSON.parse(await readFile(file, "utf8")).data.projects[0].todos;
       expect(saved.items).toEqual(items);
+      await action(31).click();
       await panel.getByRole("button", { name: "Unfocus to-do: Task 31" }).click();
       await expect(
         category("Needs attention").getByRole("button", { name: "Task 31", exact: true }),
       ).toBeFocused();
       await expect(action(31)).toHaveText("Review these findings");
+      // Keep a different row focused while updating attention and filtering.
+      await action(0).click();
       // Unrelated attention updates preserve scroll and the active composer, not the last focused row.
       await composer.fill("Keep this draft");
       await pane.evaluate((element) => {
@@ -172,7 +176,7 @@ for (const reducedMotion of [false, true]) {
       await expect(composer).toBeFocused();
       await expect(composer).toHaveValue("Keep this draft");
       expect(await pane.evaluate((element) => element.scrollTop)).toBe(top);
-      expect(await scrolls()).toHaveLength(2);
+      expect(await scrolls()).toHaveLength(4);
       // Filtering exercises actual removal/arrival animation while preserving typing focus.
       const search = panel.getByRole("searchbox", { name: "Search to-dos" });
       await search.fill("Task 0");
