@@ -4,7 +4,7 @@ import { ConversationNavigatorRow } from "./conversation-navigator-row";
 import { Button } from "./ui/button";
 import { ChevronIcon, PlusIcon } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
-import { SearchInput } from "./ui/search-input";
+import { ConversationNavigatorSearch } from "./conversation-navigator-search";
 
 /** Scoped recursive Sessions source-list. Project utilities remain in the persistent rail. */
 export const ConversationNavigator = observer(function ConversationNavigator({
@@ -32,13 +32,7 @@ export const ConversationNavigator = observer(function ConversationNavigator({
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Sessions">
       <div className="mx-2 mb-2 flex min-w-0 items-center gap-1">
-        <SearchInput
-          className="min-w-0 flex-1"
-          label="Search sessions"
-          placeholder="Search sessions…"
-          value={query}
-          onValueChange={(query) => store.setQuery(projectPath, query)}
-        />
+        <ConversationNavigatorSearch key={scope} projectPath={projectPath} />
         <IconButton
           tooltip={
             projectPath ? "New session in this project" : "Choose destination for new session"

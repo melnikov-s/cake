@@ -1,10 +1,12 @@
 /** @vitest-environment jsdom */
-import { Profiler } from "react";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { Profiler, StrictMode } from "react";
+import { flushSync } from "react-dom";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { batch, effect } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ConversationNavigatorRow } from "../../../src/renderer/components/conversation-navigator-row";
+import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
 import { conversationNavigationKey } from "../../../src/renderer/lib/conversation-navigation-tree";
 import { ConversationBreadcrumb } from "../../../src/renderer/components/conversation-breadcrumb";
 import { conversationNavigationLineage } from "../../../src/renderer/lib/conversation-navigation-tree";
@@ -17,7 +19,87 @@ import {
   populateConversationNavigationFixture,
 } from "./fixtures/conversation-navigation-fixtures";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+it("echoes Sessions search input before recursive filtering and only publishes the latest draft", () => {
+  using fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: "/project" })],
+    sessions: Array.from({ length: 1000 }, (_, index) =>
+      sessionSummary({ sessionId: `session-${index}`, projectPath: "/project" }),
+    ),
+  });
+  const store = fixture.root.conversationNavigatorStore;
+  const rows = vi.spyOn(store, "rows");
+  const publish = vi.spyOn(store, "setQuery");
+  render(
+    <StrictMode>
+      <StoreProvider store={fixture.root}>
+        <ConversationNavigator projectPath="/project" />
+      </StoreProvider>
+    </StrictMode>,
+  );
+  const input = screen.getByRole<HTMLInputElement>("searchbox", { name: "Search sessions" });
+  const initialRows = store.rows("/project").map(({ node }) => node.key);
+  rows.mockClear();
+
+  act(() => {
+    for (const query of ["session-1", "no match", "session-999"]) {
+      flushSync(() => fireEvent.change(input, { target: { value: query } }));
+      expect(input.value).toBe(query);
+      expect(store.query("/project")).toBe("");
+      expect(rows).not.toHaveBeenCalled();
+      expect(publish).not.toHaveBeenCalled();
+    }
+  });
+  expect(publish.mock.calls).toEqual([["/project", "session-999"]]);
+  expect(screen.getByRole("button", { name: /^session-999/ })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^session-998/ })).toBeNull();
+
+  rows.mockClear();
+  publish.mockClear();
+  act(() => {
+    flushSync(() => fireEvent.change(input, { target: { value: "obsolete" } }));
+    flushSync(() => fireEvent.click(screen.getByRole("button", { name: "Clear search sessions" })));
+    expect(input.value).toBe("");
+    expect(document.activeElement).toBe(input);
+    expect(rows).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+  expect(publish.mock.calls).toEqual([["/project", ""]]);
+  expect(store.query("/project")).toBe("");
+  expect(store.rows("/project").map(({ node }) => node.key)).toEqual(initialRows);
+});
+
+it("cancels an uncommitted search draft on scope change and restores each scope's applied query", () => {
+  using fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: "/project" }), projectRecord({ path: "/other" })],
+  });
+  const store = fixture.root.conversationNavigatorStore;
+  store.setQuery("/project", "remembered");
+  store.setQuery("/other", "other query");
+  const publish = vi.spyOn(store, "setQuery");
+  const view = (projectPath: string | undefined) => (
+    <StoreProvider store={fixture.root}>
+      <ConversationNavigator projectPath={projectPath} />
+    </StoreProvider>
+  );
+  const { rerender } = render(view("/project"));
+  const input = () => screen.getByRole<HTMLInputElement>("searchbox", { name: "Search sessions" });
+  expect(input().value).toBe("remembered");
+  act(() => {
+    flushSync(() => fireEvent.change(input(), { target: { value: "uncommitted" } }));
+    flushSync(() => rerender(view("/other")));
+  });
+  expect(input().value).toBe("other query");
+  expect(publish).not.toHaveBeenCalled();
+  rerender(view("/project"));
+  expect(input().value).toBe("remembered");
+  rerender(view(undefined));
+  expect(input().value).toBe("");
+});
 
 it("renders a title in a large retained catalog without building trees or rerendering for activity", () => {
   const projects = Array.from({ length: 20 }, (_, i) => projectRecord({ path: `/p${i}` }));
