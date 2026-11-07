@@ -88,6 +88,7 @@ describe("Model Preset Effect RPC contract", () => {
     expect(Object.keys(client.modelPresets).sort()).toEqual([
       "create",
       "list",
+      "readPrompt",
       "remove",
       "reorder",
       "resolve",

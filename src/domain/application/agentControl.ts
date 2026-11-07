@@ -41,6 +41,7 @@ import type {
 } from "../../contracts/project-sessions/project-session-data";
 import { sessionLink } from "../../contracts/conversations/message-reference";
 import { ApplicationState } from "../../services/storage/ApplicationState";
+import type { ModelPresetPrompts } from "../../services/storage/ModelPresetPrompts";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import {
   familyMember,
@@ -96,6 +97,7 @@ export const handles = (command: string) =>
   handlesGlobalArtifactCommand(command);
 
 export type AgentControlServices =
+  | ModelPresetPrompts
   | Effect.Services<ReturnType<typeof acquireOptions>>
   | Effect.Services<ReturnType<typeof invokeGlobalArtifactCommand>>
   | FileSystem.FileSystem

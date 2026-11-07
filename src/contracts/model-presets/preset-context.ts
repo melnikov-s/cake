@@ -3,6 +3,8 @@ import { Schema } from "effect";
 /** Snapshot of the preset actually selected, never inferred from a model ID. */
 export const PresetContext = Schema.Struct({
   id: Schema.String.check(Schema.isUUID(4)),
+  promptFile: Schema.optionalKey(Schema.NonEmptyString),
+  // Inline snapshots remain valid in Pi history and explicit completion inputs.
   prompt: Schema.optionalKey(Schema.String),
 });
 export interface PresetContext extends Schema.Schema.Type<typeof PresetContext> {}

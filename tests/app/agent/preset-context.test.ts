@@ -31,7 +31,7 @@ describe("preset context", () => {
   it("decodes older presets/configurations and retains context through RPC and saved drafts", () => {
     const model = { provider: "openai", modelId: "gpt-5", thinkingLevel: "off", fastMode: false };
     expect(
-      Schema.decodeUnknownSync(ModelPreset)({ ...model, id: first.id, name: "Old" }).prompt,
+      Schema.decodeUnknownSync(ModelPreset)({ ...model, id: first.id, name: "Old" }).promptFile,
     ).toBeUndefined();
     for (const schema of [
       SessionChatConfiguration,
@@ -43,42 +43,42 @@ describe("preset context", () => {
     }
   });
 
-  it("composes one replaceable section without changing shared/project instructions", () => {
+  it("composes one replaceable section without changing shared/project instructions", async () => {
     const manager = SessionManager.inMemory("/project");
     const state = createCakeSessionRuntimeConfigurationState(undefined);
     state.attachSession(manager);
     type Event = { systemPromptOptions: { sections: Record<string, string> } };
-    let prepare: ((event: Event) => void) | undefined;
+    let prepare: ((event: Event) => Promise<void>) | undefined;
     const pi = {
-      on: (name: string, handler: (event: Event) => void) => {
+      on: (name: string, handler: (event: Event) => Promise<void>) => {
         if (name === "before_agent_start") prepare = handler;
       },
     };
     void (state.fastModeExtension as ExtensionFactory)(pi as unknown as ExtensionAPI);
-    const prompt = () => {
+    const prompt = async () => {
       const sections = { shared: "Shared instructions.", project: "Project instructions." };
-      prepare!({ systemPromptOptions: { sections } });
+      await prepare!({ systemPromptOptions: { sections } });
       return Object.values(sections).filter(Boolean).join("\n\n");
     };
-    const baseline = prompt();
+    const baseline = await prompt();
     state.setPreset(first);
-    expect(prompt()).toContain("Be concise.");
-    expect(prompt()).toContain("Shared instructions.");
-    expect(prompt()).toContain("Project instructions.");
-    expect(prompt()).toContain("shared/project instructions take precedence");
+    expect(await prompt()).toContain("Be concise.");
+    expect(await prompt()).toContain("Shared instructions.");
+    expect(await prompt()).toContain("Project instructions.");
+    expect(await prompt()).toContain("shared/project instructions take precedence");
     state.setPreset(second);
-    expect(prompt()).toContain("Explain deeply.");
-    expect(prompt()).not.toContain("Be concise.");
-    expect(prompt().match(/Preset guidance/g)).toHaveLength(1);
+    expect(await prompt()).toContain("Explain deeply.");
+    expect(await prompt()).not.toContain("Be concise.");
+    expect((await prompt()).match(/Preset guidance/g)).toHaveLength(1);
     const restored = createCakeSessionRuntimeConfigurationState(undefined);
     restored.attachSession(manager);
     expect(restored.preset()).toEqual(second);
     state.setPreset({ ...second, prompt: "" });
-    expect(prompt()).toBe(baseline);
+    expect(await prompt()).toBe(baseline);
     state.setPreset({ ...first, prompt: "   " });
-    expect(prompt()).toBe(baseline);
+    expect(await prompt()).toBe(baseline);
     state.setPreset(undefined);
-    expect(prompt()).toBe(baseline);
+    expect(await prompt()).toBe(baseline);
     expect(restored.preset()).toBeUndefined();
   });
 });

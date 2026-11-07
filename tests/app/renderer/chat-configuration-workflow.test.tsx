@@ -58,12 +58,12 @@ afterEach(cleanup);
 
 describe("Chat configuration workflow", () => {
   it("selects distinct same-model preset prompts and clears identity on a raw model selection", async () => {
-    const concise = { ...preset, name: "Concise", prompt: "Be concise." };
+    const concise = { ...preset, name: "Concise", promptFile: "/cake/prompts/concise.md" };
     const detailed = {
       ...concise,
       id: "00000000-0000-4000-8000-000000000002",
       name: "Detailed",
-      prompt: "Explain deeply.",
+      promptFile: "/cake/prompts/detailed.md",
     };
     const catalog = [opus];
     const applyConfiguration = vi.fn<Client["sessionChats"]["applyConfiguration"]>(
@@ -92,7 +92,7 @@ describe("Chat configuration workflow", () => {
         {
           sessionId: "first",
           configuration: expect.objectContaining({
-            preset: { id: selected.id, prompt: selected.prompt },
+            preset: { id: selected.id, promptFile: selected.promptFile },
           }),
         },
         expect.anything(),

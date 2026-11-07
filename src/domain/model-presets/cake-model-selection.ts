@@ -14,7 +14,10 @@ const presetConfiguration = (preset: ModelPreset): ExplicitCakeModelSelection =>
   modelId: preset.modelId,
   thinkingLevel: preset.thinkingLevel,
   fastMode: preset.fastMode,
-  preset: { id: preset.id, ...(preset.prompt === undefined ? null : { prompt: preset.prompt }) },
+  preset: {
+    id: preset.id,
+    ...(preset.promptFile === undefined ? null : { promptFile: preset.promptFile }),
+  },
 });
 
 /** Snapshots the application's model configuration for execution-time resolution. */

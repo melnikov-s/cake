@@ -31,6 +31,7 @@ import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { WidgetPackages } from "../../../src/services/widgets/WidgetPackages";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
+import { modelPresetPromptsTestLayer } from "../helpers/modelPresetPrompts";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 afterEach(cleanup);
@@ -57,6 +58,7 @@ async function fixture() {
   let onEvent: (event: CakeEvent) => void = () => undefined;
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(
+      modelPresetPromptsTestLayer,
       ApplicationState.layer.pipe(
         Layer.provide(
           Layer.succeed(

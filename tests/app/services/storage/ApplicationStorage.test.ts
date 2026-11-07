@@ -26,6 +26,10 @@ import {
 } from "../../../../src/services/storage/ApplicationStorage";
 import { ApplicationWriteError } from "../../../../src/contracts/storage/application-storage-errors";
 import {
+  type ModelPresetPrompts,
+  makeModelPresetPromptsLive,
+} from "../../../../src/services/storage/ModelPresetPrompts";
+import {
   defaultApplicationState,
   defaultProjectSettings,
 } from "../../../../src/contracts/application/application-data";
@@ -145,11 +149,14 @@ const withStorage = <A, E>(
   use: (
     storage: ApplicationStorage["Service"],
     controls: FakeFileSystemControls,
-  ) => Effect.Effect<A, E>,
+  ) => Effect.Effect<A, E, ModelPresetPrompts>,
 ) =>
   Effect.gen(function* () {
     const fake = yield* makeFakeFileSystem(initial);
-    const layer = makeApplicationStorageLive("data").pipe(
+    const layer = Layer.merge(
+      makeApplicationStorageLive("data", "/cake/prompts"),
+      makeModelPresetPromptsLive("/cake/prompts"),
+    ).pipe(
       Layer.provide(Layer.succeed(FileSystem.FileSystem)(fake.fileSystem)),
       Layer.provide(Path.layer),
     );
@@ -394,7 +401,7 @@ describe("ApplicationStorage", () => {
   );
 
   it.effect("loads a current version envelope", () =>
-    withStorage({ [documentPath]: JSON.stringify({ version: 10, data: current }) }, (storage) =>
+    withStorage({ [documentPath]: JSON.stringify({ version: 11, data: current }) }, (storage) =>
       Effect.gen(function* () {
         const loaded = yield* storage.load();
         assert.strictEqual(loaded.source, "current");
@@ -407,7 +414,7 @@ describe("ApplicationStorage", () => {
     withStorage(
       {
         [documentPath]: JSON.stringify({
-          version: 10,
+          version: 11,
           data: { ...current, trustedProjectPaths: ["/work/cake"] },
         }),
       },
@@ -424,7 +431,7 @@ describe("ApplicationStorage", () => {
     withStorage(
       {
         [documentPath]: JSON.stringify({
-          version: 10,
+          version: 11,
           data: {
             ...current,
             globalCustomInstructions: undefined,
@@ -663,7 +670,7 @@ describe("ApplicationStorage", () => {
                 );
                 const persisted = controls.files.get(documentPath);
                 assert.ok(persisted);
-                assert.deepEqual(JSON.parse(persisted), { version: 10, data: expected });
+                assert.deepEqual(JSON.parse(persisted), { version: 11, data: expected });
                 assert.deepEqual(yield* storage.load(), { source: "current", state: expected });
 
                 // An explicit choice after the one-time transition must not be remapped.
@@ -713,7 +720,7 @@ describe("ApplicationStorage", () => {
               );
               const persistedText = controls.files.get(documentPath);
               assert.ok(persistedText);
-              assert.equal(JSON.parse(persistedText).version, 10);
+              assert.equal(JSON.parse(persistedText).version, 11);
               assert.equal((yield* storage.load()).source, "current");
             }),
         );
@@ -725,7 +732,7 @@ describe("ApplicationStorage", () => {
     withStorage(
       {
         [documentPath]: JSON.stringify({
-          version: 10,
+          version: 11,
           data: {
             ...current,
             cakePrompts: {
@@ -866,7 +873,7 @@ describe("ApplicationStorage", () => {
         controls.files.set(
           documentPath,
           JSON.stringify({
-            version: 10,
+            version: 11,
             data: {
               ...current,
               projects: [
@@ -960,7 +967,7 @@ describe("ApplicationStorage", () => {
             assert.equal(recovered?.sequence, 2);
             assert.equal(recovered?.deliveryToken, null);
             assert.deepEqual(recovered?.pending, []);
-            assert.equal(JSON.parse(controls.files.get(documentPath) ?? "{}").version, 10);
+            assert.equal(JSON.parse(controls.files.get(documentPath) ?? "{}").version, 11);
             assert.deepEqual((yield* storage.load()).state.projects[0]?.todos, recovered);
           }),
       );
@@ -978,7 +985,7 @@ describe("ApplicationStorage", () => {
             const persistedText = controls.files.get(documentPath);
             assert.ok(persistedText);
             const persisted = JSON.parse(persistedText);
-            assert.strictEqual(persisted.version, 10);
+            assert.strictEqual(persisted.version, 11);
             assert.ok(!("schemaVersion" in persisted.data));
           }),
         );
@@ -1032,16 +1039,89 @@ describe("ApplicationStorage", () => {
     );
   });
 
+  it.effect(
+    "migrates inline preset prompts exactly and rereads no inline copy after restart",
+    () => {
+      const contents = ["  # Review\r\n\r\nUnicode: café 🎂\n  ", "", " \t\r\n"];
+      const modelPresets = [...contents, undefined].map((prompt, index) => ({
+        id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        name: `Preset ${index}`,
+        provider: "example",
+        modelId: "same-model",
+        thinkingLevel: "off",
+        fastMode: false,
+        ...(prompt === undefined ? null : { prompt }),
+      }));
+      return withStorage(
+        { [documentPath]: JSON.stringify({ version: 10, data: { ...current, modelPresets } }) },
+        (storage, controls) =>
+          Effect.gen(function* () {
+            const loaded = yield* storage.load();
+            assert.equal(loaded.source, "migrated");
+            const references = loaded.state.modelPresets.map((preset) => preset.promptFile);
+            assert.equal(new Set(references).size, 4);
+            for (const [index, prompt] of contents.entries()) {
+              const reference = references[index];
+              assert.ok(reference);
+              assert.ok(reference.startsWith("/cake/prompts/"));
+              assert.equal(controls.files.get(reference), prompt);
+            }
+            assert.equal(references[3], undefined);
+            const persisted = JSON.parse(controls.files.get(documentPath) ?? "{}");
+            assert.equal(persisted.version, 11);
+            assert.deepEqual(persisted.data.modelPresets, loaded.state.modelPresets);
+            const firstReference = references[0];
+            assert.ok(firstReference);
+            controls.files.set(firstReference, "Edited externally.");
+            const restarted = yield* storage.load();
+            assert.equal(restarted.source, "current");
+            assert.deepEqual(restarted.state.modelPresets, loaded.state.modelPresets);
+            assert.equal(controls.files.get(firstReference), "Edited externally.");
+          }),
+      );
+    },
+  );
+
+  it.effect("keeps inline originals when a preset prompt migration write fails", () => {
+    const original = JSON.stringify({
+      version: 10,
+      data: {
+        ...current,
+        modelPresets: [
+          {
+            id: "00000000-0000-4000-8000-000000000001",
+            name: "Review",
+            provider: "example",
+            modelId: "model",
+            thinkingLevel: "off",
+            fastMode: false,
+            prompt: "Exact original.\r\n",
+          },
+        ],
+      },
+    });
+    return withStorage({ [documentPath]: original }, (storage, controls) =>
+      Effect.gen(function* () {
+        controls.failWrite = true;
+        const error = yield* Effect.flip(storage.load());
+        assert.ok(Schema.is(ApplicationMigrationError)(error));
+        assert.match(error.message, /Could not write preset prompt \/cake\/prompts\//);
+        assert.equal(controls.files.get(documentPath), original);
+        assert.deepEqual(controls.temporaryFiles(), []);
+      }),
+    );
+  });
+
   it.effect("returns typed failures for malformed, future, and invalid documents", () =>
     Effect.gen(function* () {
       const cases = [
         ["{", ApplicationMalformedDocumentError],
         [JSON.stringify({ nope: true }), ApplicationMalformedDocumentError],
         [
-          JSON.stringify({ version: 10, data: { ...current, projects: "invalid" } }),
+          JSON.stringify({ version: 11, data: { ...current, projects: "invalid" } }),
           ApplicationDecodeError,
         ],
-        [JSON.stringify({ version: 11, data: current }), ApplicationUnsupportedVersionError],
+        [JSON.stringify({ version: 12, data: current }), ApplicationUnsupportedVersionError],
         [
           JSON.stringify({ version: 0, data: { schemaVersion: 1, projects: "invalid" } }),
           ApplicationMigrationError,

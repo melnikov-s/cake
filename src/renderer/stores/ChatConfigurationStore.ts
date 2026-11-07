@@ -157,7 +157,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
       ...preset,
       preset: {
         id: preset.id,
-        ...(preset.prompt === undefined ? null : { prompt: preset.prompt }),
+        ...(preset.promptFile === undefined ? null : { promptFile: preset.promptFile }),
       },
     });
   }

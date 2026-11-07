@@ -22,6 +22,7 @@ import {
 } from "../../contracts/workflows/workflow-data";
 import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
 import type { ApplicationState } from "../../services/storage/ApplicationState";
+import type { ModelPresetPrompts } from "../../services/storage/ModelPresetPrompts";
 import type { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import type { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import type { TaskInputStorage } from "../../services/storage/TaskInputStorage";
@@ -58,6 +59,7 @@ type WorkflowControlServices =
   | FileSystem.FileSystem
   | Path.Path
   | ApplicationState
+  | ModelPresetPrompts
   | PiSettings
   | McpSettings
   | WidgetPackages

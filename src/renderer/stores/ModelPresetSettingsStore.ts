@@ -4,6 +4,10 @@ import type {
   ChatConfiguration,
   ModelPreset,
 } from "../../contracts/conversations/session-contract";
+import type {
+  ModelPresetCreateInput,
+  ModelPresetUpdateInput,
+} from "../../contracts/model-presets/model-preset-data";
 import { ClientContext } from "./context/ClientContext";
 import { ModelCatalogContext } from "./context/ModelCatalogContext";
 import { describeError } from "../lib/error-details";
@@ -26,7 +30,7 @@ const samePresetProjection = (left: ModelPresetProjection, right: ModelPresetPro
       preset.modelId === candidate.modelId &&
       preset.thinkingLevel === candidate.thinkingLevel &&
       preset.fastMode === candidate.fastMode &&
-      preset.prompt === candidate.prompt
+      preset.promptFile === candidate.promptFile
     );
   });
 
@@ -109,7 +113,7 @@ export class ModelPresetSettingsStore extends Store {
         fastMode: preset.fastMode,
         preset: {
           id: preset.id,
-          ...(preset.prompt === undefined ? null : { prompt: preset.prompt }),
+          ...(preset.promptFile === undefined ? null : { promptFile: preset.promptFile }),
         },
       } satisfies ChatConfiguration;
     return this.lastUsedConfiguration ? { ...this.lastUsedConfiguration } : undefined;
@@ -125,7 +129,7 @@ export class ModelPresetSettingsStore extends Store {
       current.thinkingLevel === configuration.thinkingLevel &&
       current.fastMode === configuration.fastMode &&
       current.preset?.id === configuration.preset?.id &&
-      current.preset?.prompt === configuration.preset?.prompt
+      current.preset?.promptFile === configuration.preset?.promptFile
     )
       return;
     this.lastUsedConfiguration = { ...configuration };
@@ -135,10 +139,23 @@ export class ModelPresetSettingsStore extends Store {
     this.sectionRequestRevision += 1;
   }
 
-  createPreset(preset: Omit<ModelPreset, "id">) {
+  async readPrompt(id: string) {
+    this.error = undefined;
+    this.errorDetails = undefined;
+    try {
+      return await this.client.modelPresets.readPrompt({ id }, { signal: this.signal });
+    } catch (error) {
+      this.setError(error);
+      return undefined;
+    }
+  }
+
+  createPreset(preset: ModelPresetCreateInput) {
+    const configuration = { ...preset };
+    delete configuration.prompt;
     const optimisticId = crypto.randomUUID();
     const revision = this.beginOptimistic(
-      [...this.presets, { ...preset, id: optimisticId }],
+      [...this.presets, { ...configuration, id: optimisticId }],
       this.defaultPresetId,
     );
     return this.enqueue(revision, async () => {
@@ -155,9 +172,11 @@ export class ModelPresetSettingsStore extends Store {
     });
   }
 
-  updatePreset(preset: ModelPreset) {
+  updatePreset(preset: ModelPresetUpdateInput) {
+    const configuration = { ...preset };
+    delete configuration.prompt;
     const revision = this.beginOptimistic(
-      this.presets.map((current) => (current.id === preset.id ? { ...preset } : current)),
+      this.presets.map((current) => (current.id === preset.id ? configuration : current)),
       this.defaultPresetId,
     );
     return this.enqueue(revision, () =>
@@ -171,10 +190,19 @@ export class ModelPresetSettingsStore extends Store {
     );
   }
 
-  duplicatePreset(id: string) {
+  async duplicatePreset(id: string) {
     const source = this.presets.find((preset) => preset.id === id);
-    if (!source) return Promise.resolve();
-    return this.createPreset({ ...source, name: `${source.name} copy` });
+    if (!source) return;
+    const contents = source.promptFile ? await this.readPrompt(id) : { prompt: "" };
+    if (!contents) return;
+    return this.createPreset({
+      name: `${source.name} copy`,
+      provider: source.provider,
+      modelId: source.modelId,
+      thinkingLevel: source.thinkingLevel,
+      fastMode: source.fastMode,
+      ...(source.promptFile ? { prompt: contents.prompt } : null),
+    });
   }
 
   reorderPreset(id: string, targetId: string) {

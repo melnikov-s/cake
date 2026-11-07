@@ -31,6 +31,7 @@ filtering for shared custom directories. Tests must explicitly isolate both home
 │   │   └── resolution.json
 │   ├── artifacts/
 │   └── reviews/
+├── prompts/                       # Model preset Markdown prompt files
 ├── pi/
 │   ├── review-sessions/
 │   ├── widget-sessions/
@@ -62,6 +63,34 @@ contains only window/renderer presentation state and machine-local Electron or
 embedded-editor data. `CakePaths` resolves durable Cake locations and disposable
 cache roots in main;
 renderer code never constructs storage paths.
+
+## Model preset prompts
+
+Application state stores model preset configuration and an optional absolute
+`promptFile` reference. `ModelPresetPrompts` owns exact UTF-8 Markdown reads and
+atomic writes under `CakePaths.prompts` (`$CAKE_HOME/prompts`, default
+`~/.cake/prompts`). Prompt text is never saved in `application.json`.
+
+Settings reads a file when opening the preset editor; saves and
+`settings.presets.create` / `settings.presets.update` use the same domain operations
+and files. `settings.presets.prompt` reads the current exact contents. Omit `prompt`
+on update to preserve the file, or provide any string (including empty) to write
+it. `promptFile` can select an existing Markdown file beneath the prompts root.
+Each new prompt and duplicated preset gets its own file, independently of model
+identity. Removing a preset leaves its file intact.
+
+Regular Pi, Durable Cake Chat and bounded completions reread referenced files
+when composing guidance; externally edited contents therefore apply to the next
+prompt. Existing sessions resolve their selected preset identity against current
+configuration, so old inline context in Pi history does not override a configured
+file. Deleted presets retain their session context.
+
+Application document migration 10 → 11 writes existing inline strings exactly,
+including empty text, whitespace and line endings, before saving references. A
+file-write failure leaves the inline application document intact and reports the
+path. If migration stops after some files were written, those unreferenced files
+may remain; retrying is safe and never overwrites them. References are absolute;
+moving Cake home does not rewrite existing references.
 
 ## Pi configuration
 

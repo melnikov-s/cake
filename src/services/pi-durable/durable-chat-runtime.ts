@@ -74,6 +74,7 @@ import { createDurableChatCatalog } from "./durable-chat-catalog";
 import { coordinatorSystemPrompt } from "./coordinator-system-prompt";
 import { ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
 import { PresetContextDoc, presetContextSection, PresetState } from "./durable-preset-context";
+import { resolvePresetContext } from "../storage/load-preset-context";
 import { cakeAgentDocumentationDirectory } from "../pi/runtime/cake-agent-documentation";
 import { createDurableChatCommands } from "./durable-chat-commands";
 import { abortDurableActiveTurn, createDurableConversationQueue } from "./durable-chat-queue";
@@ -418,7 +419,7 @@ export async function createDurableCakeChatRuntime(
             () => tool.execute(args, api, context),
           ),
       })),
-      sections: [presetContextSection],
+      sections: [presetContextSection(options.modelPresets)],
     }),
   );
   let publishing: Promise<void> | undefined;
@@ -1008,9 +1009,15 @@ export async function createDurableCakeChatRuntime(
     BACKGROUND_CONTEXT,
   );
   activePreset = savedPreset
-    ? Schema.decodeUnknownSync(PresetState)(savedPreset).preset
+    ? resolvePresetContext(
+        Schema.decodeUnknownSync(PresetState)(savedPreset).preset,
+        options.modelPresets?.().presets,
+      )
     : newCoordinator && preset
-      ? { id: preset.id, ...(preset.prompt === undefined ? null : { prompt: preset.prompt }) }
+      ? {
+          id: preset.id,
+          ...(preset.promptFile === undefined ? null : { promptFile: preset.promptFile }),
+        }
       : undefined;
   await configureAgent();
   if (companion) await transitionAssistantContext(engine.root, null);

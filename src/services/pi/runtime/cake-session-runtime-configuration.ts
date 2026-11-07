@@ -8,6 +8,7 @@ import {
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import { Option, Schema } from "effect";
 import { PresetContext, presetGuidance } from "../../../contracts/model-presets/preset-context";
+import { loadPresetContext, resolvePresetContext } from "../../storage/load-preset-context";
 import {
   type CakeModelSelection,
   type ExplicitCakeModelSelection,
@@ -44,6 +45,7 @@ export interface CakeSessionRuntimeConfigurationState {
 
 export function createCakeSessionRuntimeConfigurationState(
   fastModeControl: CakeSessionRuntimeOptions["fastMode"],
+  modelPresets?: CakeSessionRuntimeOptions["modelPresets"],
 ): CakeSessionRuntimeConfigurationState {
   let fastMode = fastModeControl?.get() ?? false;
   let currentModel: FastModeModel | undefined;
@@ -57,7 +59,10 @@ export function createCakeSessionRuntimeConfigurationState(
     const parsed = Schema.decodeUnknownOption(
       Schema.Struct({ preset: Schema.optionalKey(PresetContext) }),
     )(entry.data);
-    return Option.isSome(parsed) ? parsed.value.preset : undefined;
+    return resolvePresetContext(
+      Option.isSome(parsed) ? parsed.value.preset : undefined,
+      modelPresets?.().presets,
+    );
   };
 
   return {
@@ -69,8 +74,9 @@ export function createCakeSessionRuntimeConfigurationState(
       manager?.appendCustomEntry("cake.model-preset", value ? { preset: value } : {});
     },
     fastModeExtension: (pi) => {
-      pi.on("before_agent_start", (event) => {
-        event.systemPromptOptions.sections.model_preset = presetGuidance(preset()) ?? "";
+      pi.on("before_agent_start", async (event) => {
+        event.systemPromptOptions.sections.model_preset =
+          presetGuidance(await loadPresetContext(preset())) ?? "";
       });
       // Requests in one session are sequential; track only the latest Fast request.
       let observeResponse: ReturnType<typeof observeFastModeResponse> | undefined;

@@ -54,6 +54,8 @@ export const invoke = Effect.fn("AgentSettings.invoke")(function* (
           nonChatPreferences: state.nonChatModelPreferences ?? {},
         };
       }
+      case "settings.presets.prompt":
+        return yield* modelPresets.readPrompt(invocation.arguments.id);
       case "settings.presets.create":
         return yield* modelPresets.create(invocation.arguments);
       case "settings.presets.update":

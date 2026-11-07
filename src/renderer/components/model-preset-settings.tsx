@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { observer } from "r-state-tree/react";
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
+import type { ModelPresetCreateInput } from "../../contracts/model-presets/model-preset-data";
 import { modelPresetDragType } from "../lib/model-preset-drag";
 import { cn } from "../lib/utils";
 import { ModelPicker, reasoningLabel } from "./model-picker";
@@ -16,7 +17,7 @@ import type {
   ModelPresetSettingsStore,
 } from "../stores/ModelPresetSettingsStore";
 
-const emptyDraft = (): Omit<ModelPreset, "id"> => ({
+const emptyDraft = (): ModelPresetCreateInput => ({
   name: "",
   provider: "",
   modelId: "",
@@ -51,9 +52,13 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
     );
   }, [settings.sectionRequestRevision]);
 
-  const begin = (preset?: ModelPreset) => {
+  const begin = async (preset?: ModelPreset) => {
+    if (preset) {
+      const contents = preset.promptFile ? await settings.readPrompt(preset.id) : { prompt: "" };
+      if (!contents) return;
+      setDraft({ ...preset, ...(preset.promptFile ? { prompt: contents.prompt } : null) });
+    } else setDraft(emptyDraft());
     setEditingId(preset?.id ?? "new");
-    setDraft(preset ? { ...preset } : emptyDraft());
   };
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -258,6 +263,11 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
             />
           </div>
           <div className="grid gap-1.5 px-3.5 py-2.5">
+            {draft.promptFile && (
+              <p className="break-all font-mono text-xs text-muted-foreground">
+                {draft.promptFile}
+              </p>
+            )}
             <label htmlFor="model-preset-prompt" className="text-xs font-medium">
               Prompt (optional; shared/project instructions take precedence)
             </label>

@@ -18,6 +18,7 @@ import {
 import { WorkflowScripts } from "../../../src/services/pi/WorkflowScripts";
 import { WorkflowSandbox } from "../../../src/services/pi/WorkflowSandbox";
 import { WorkflowWorkers } from "../../../src/services/pi/WorkflowWorkers";
+import { modelPresetPromptsTestLayer } from "./modelPresetPrompts";
 import { WorkflowSupervisorLive } from "../../../src/services/workflows/WorkflowSupervisorLive";
 import { workflowSummary } from "../../../src/contracts/workflows/workflow-projection";
 
@@ -96,6 +97,7 @@ export const makeMemoryWorkflowStorage = Effect.fn("WorkflowFixture.storage")(fu
 });
 
 export const AgentControlTestLive = Layer.mergeAll(
+  modelPresetPromptsTestLayer,
   globalArtifactTestLayer,
   unusedAutomationEndpointCapabilities,
   SessionCoordination.layer.pipe(

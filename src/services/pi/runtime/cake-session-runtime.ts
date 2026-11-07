@@ -137,6 +137,7 @@ export interface CakeSessionRuntimeOptions {
   tools?: string[];
   auxiliary?: boolean;
   operations?: ProjectCakeOperations;
+  modelPresets?(): CakeModelPresetCatalog;
   coordinator?: {
     operations: CoordinatorCakeOperations;
     modelPresets?(): CakeModelPresetCatalog;
@@ -342,7 +343,10 @@ export async function createCakeSessionRuntime(
     modelsPath: `${agentDir}/models.json`,
     modelsStorePath: `${agentDir}/models-cache.json`,
   });
-  const configurationState = createCakeSessionRuntimeConfigurationState(options.fastMode);
+  const configurationState = createCakeSessionRuntimeConfigurationState(
+    options.fastMode,
+    options.modelPresets,
+  );
   const promptCacheLineage = createPromptCacheLineage();
   const capabilities = await createCakeSessionRuntimeCapabilities({
     options,

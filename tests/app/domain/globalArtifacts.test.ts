@@ -9,6 +9,7 @@ import { TestClock } from "effect/testing";
 import { runSchedulePass } from "../../../src/domain/automations/automationWorker";
 import { ArtifactRuntimeHostLive } from "../../../src/layers/ArtifactRuntimeHostLive";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { modelPresetPromptsTestLayer } from "../helpers/modelPresetPrompts";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { unusedEndpointServices } from "../ipc/rpc-endpoint-test-backend";
@@ -265,6 +266,7 @@ describe("global artifact domain workflow", () => {
             WorkflowTestLive,
             makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
             Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
+            modelPresetPromptsTestLayer,
             f.layer,
             NodeChildProcessSpawner.layer.pipe(
               Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
@@ -341,6 +343,7 @@ describe("global artifact domain workflow", () => {
             WorkflowTestLive,
             makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
             Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
+            modelPresetPromptsTestLayer,
             f.layer,
             Layer.succeed(
               HttpClient.HttpClient,
@@ -399,6 +402,7 @@ describe("global artifact domain workflow", () => {
             WorkflowTestLive,
             makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
             Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
+            modelPresetPromptsTestLayer,
             f.layer,
           ),
         );

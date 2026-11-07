@@ -36,6 +36,8 @@ import {
 } from "../../../src/contracts/pi/mcp-settings-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
+import { modelPresetPromptsTestLayer } from "../helpers/modelPresetPrompts";
+import type { ModelPresetPrompts } from "../../../src/services/storage/ModelPresetPrompts";
 import { makeMcpSettingsLayer } from "../../../src/services/pi/McpSettings";
 import { PiSettings, makePiSettingsLayer } from "../../../src/services/pi/PiSettings";
 import { mergePiExecutionSetting } from "../../../src/services/pi/live/PiSettingsLive";
@@ -97,6 +99,7 @@ async function fixture(
   );
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(
+      modelPresetPromptsTestLayer,
       Layer.mock(ClientEvents, {
         sendTo: () => false,
         broadcast: (event) => {
@@ -151,7 +154,7 @@ async function fixture(
     return state;
   };
   const execute = <A, E>(
-    effect: Effect.Effect<A, E, ApplicationState>,
+    effect: Effect.Effect<A, E, ApplicationState | ModelPresetPrompts>,
     options?: { signal?: AbortSignal },
   ) => runtime.runPromise(effect, options);
   const packageSnapshot = {
@@ -220,6 +223,7 @@ async function fixture(
       sessionChats: { prompt: nativePrompt },
       modelPresets: {
         list: (options) => execute(presets.list(), options),
+        readPrompt: ({ id }, options) => execute(presets.readPrompt(id), options),
         create: async (input, options) => {
           const value = await execute(presets.create(input), options);
           await publish(saved);
@@ -660,6 +664,7 @@ describe("Agent Settings through the real application-control/Client/domain boun
             name: "Fixture",
             provider: "fixture",
             modelId: "chat",
+            prompt: "  Exact tool guidance.\r\n\n",
             thinkingLevel: "off",
             fastMode: false,
           }),
@@ -671,12 +676,30 @@ describe("Agent Settings through the real application-control/Client/domain boun
       });
       await h.call("settings.presets.reorder", { ids: [created.presets[0]!.id] });
       expect(h.saved().defaultModelPresetId).toBe(created.presets[0]!.id);
+      expect(
+        value(await h.call("settings.presets.prompt", { id: created.presets[0]!.id })),
+      ).toMatchObject({ prompt: "  Exact tool guidance.\r\n\n" });
+      expect(h.saved().modelPresets[0]?.promptFile).toMatch(/\.md$/);
+      expect(
+        await h.root.root.settingsStore.modelPresets.readPrompt(created.presets[0]!.id),
+      ).toMatchObject({ prompt: "  Exact tool guidance.\r\n\n" });
+      await h.root.root.settingsStore.modelPresets.updatePreset({
+        ...h.saved().modelPresets[0]!,
+        prompt: "Written through Settings.",
+      });
+      expect(
+        value(await h.call("settings.presets.prompt", { id: created.presets[0]!.id })),
+      ).toMatchObject({ prompt: "Written through Settings." });
       await h.call("settings.presets.update", {
         ...h.saved().modelPresets[0]!,
+        prompt: "",
         name: "Updated fixture",
         fastMode: true,
       });
       expect(h.saved().modelPresets[0]).toMatchObject({ name: "Updated fixture", fastMode: true });
+      expect(
+        value(await h.call("settings.presets.prompt", { id: created.presets[0]!.id })),
+      ).toMatchObject({ prompt: "" });
       await h.call("settings.presets.remove", { id: created.presets[0]!.id });
       expect(h.saved().modelPresets).toEqual([]);
       expect(h.saved().defaultModelPresetId).toBeUndefined();

@@ -85,6 +85,7 @@ import {
 import * as agentControl from "../../../src/domain/application/agentControl";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
+import { modelPresetPromptsTestLayer } from "../helpers/modelPresetPrompts";
 import { ApplicationWriteError } from "../../../src/contracts/storage/application-storage-errors";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import {
@@ -405,6 +406,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   let companionContextSessionId: string | undefined;
   let storedSchedules: readonly ScheduledMessage[] = [];
   const dependencies = Layer.mergeAll(
+    modelPresetPromptsTestLayer,
     WorkflowTestLive,
     NodePath.layer,
     Layer.mock(ArtifactRuntime, {}),

@@ -34,21 +34,21 @@ const catalog: CakeModelPresetCatalog = {
 const preset = (index: number) => ({ id: catalog.presets[index]!.id });
 describe("Cake model selection", () => {
   it("keeps different prompts on presets of the exact same model configuration", () => {
-    const first = { ...catalog.presets[0]!, prompt: "Be concise." };
+    const first = { ...catalog.presets[0]!, promptFile: "/cake/prompts/concise.md" };
     const second = {
       ...first,
       id: catalog.presets[1]!.id,
       name: "Detailed",
-      prompt: "Explain deeply.",
+      promptFile: "/cake/prompts/detailed.md",
     };
     const choices = { presets: [first, second] };
     assert.deepEqual(resolveCakeModelSelection(first.name, choices).preset, {
       id: first.id,
-      prompt: first.prompt,
+      promptFile: first.promptFile,
     });
     assert.deepEqual(resolveCakeModelSelection(second.name, choices).preset, {
       id: second.id,
-      prompt: second.prompt,
+      promptFile: second.promptFile,
     });
     const raw = {
       provider: first.provider,

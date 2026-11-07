@@ -5,12 +5,21 @@ export const ModelPresetCreateInput = Schema.Struct({
   name: Schema.String.check(Schema.isMaxLength(80)),
   provider: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
   modelId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
-  prompt: ModelPreset.fields.prompt,
+  promptFile: ModelPreset.fields.promptFile,
+  prompt: Schema.optionalKey(Schema.String),
   thinkingLevel: ModelPreset.fields.thinkingLevel,
   fastMode: Schema.Boolean,
 });
 
-export const ModelPresetUpdateInput = ModelPreset;
+export const ModelPresetUpdateInput = Schema.Struct({
+  ...ModelPreset.fields,
+  prompt: Schema.optionalKey(Schema.String),
+});
+
+export const ModelPresetPrompt = Schema.Struct({
+  promptFile: ModelPreset.fields.promptFile,
+  prompt: Schema.String,
+});
 
 export const ModelPresetOrderInput = Schema.Struct({
   ids: Schema.Array(Schema.String.check(Schema.isUUID(4))).check(Schema.isMaxLength(100)),

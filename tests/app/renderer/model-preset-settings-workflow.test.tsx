@@ -37,7 +37,11 @@ type Projection = Awaited<ReturnType<Client["modelPresets"]["create"]>>;
 
 async function renderSettings(client: TestClientOverrides = {}, presets: ModelPreset[] = [preset]) {
   const fixture = createRendererStoreFixture({
-    client: { ...client, models: { list: async () => [model], ...client.models } },
+    client: {
+      ...client,
+      models: { list: async () => [model], ...client.models },
+      modelPresets: { readPrompt: async () => ({ prompt: "" }), ...client.modelPresets },
+    },
   });
   fixture.root.settingsStore.applyApplicationState(0, {
     ...defaultApplicationState(),
@@ -78,27 +82,50 @@ afterEach(cleanup);
 
 describe("Model preset settings workflow", () => {
   it("edits, copies, preserves on rename, and clears a preset prompt", async () => {
-    const original = { ...preset, prompt: "Be concise." };
-    const update = vi.fn<Client["modelPresets"]["update"]>(async (value) => ({ presets: [value] }));
-    const create = vi.fn<Client["modelPresets"]["create"]>(async (value) => ({
-      presets: [original, { ...value, id: "00000000-0000-4000-8000-000000000002" }],
+    const original = { ...preset, promptFile: "/cake/prompts/review.md" };
+    let prompt = "Be concise.";
+    const readPrompt = vi.fn<Client["modelPresets"]["readPrompt"]>(async () => ({
+      promptFile: original.promptFile,
+      prompt,
     }));
-    using fixture = await renderSettings({ modelPresets: { update, create } }, [original]);
+    const update = vi.fn<Client["modelPresets"]["update"]>(async ({ prompt: next, ...value }) => {
+      if (next !== undefined) prompt = next;
+      return { presets: [value] };
+    });
+    const create = vi.fn<Client["modelPresets"]["create"]>(async (input) => {
+      const value = { ...input };
+      delete value.prompt;
+      return {
+        presets: [
+          original,
+          {
+            ...value,
+            promptFile: "/cake/prompts/copy.md",
+            id: "00000000-0000-4000-8000-000000000002",
+          },
+        ],
+      };
+    });
+    using fixture = await renderSettings({ modelPresets: { update, create, readPrompt } }, [
+      original,
+    ]);
     await fixture.user.click(row(original.name).getByRole("button", { name: "Duplicate" }));
     await waitFor(() =>
       expect(create).toHaveBeenCalledWith(
-        expect.objectContaining({ prompt: original.prompt }),
+        expect.objectContaining({ prompt: "Be concise." }),
         expect.anything(),
       ),
     );
     await rename(fixture.user, original.name, "Renamed");
     expect(update).toHaveBeenLastCalledWith(
-      expect.objectContaining({ prompt: original.prompt }),
+      expect.objectContaining({ prompt: "Be concise." }),
       expect.anything(),
     );
     await fixture.user.click(row("Renamed").getByRole("button", { name: "Edit" }));
     const field = screen.getByRole("textbox", { name: /Prompt \(optional/ });
-    expect(field).toHaveProperty("value", original.prompt);
+    expect(field).toHaveProperty("value", "Be concise.");
+    expect(screen.getByText(original.promptFile)).toBeDefined();
+    expect(readPrompt).toHaveBeenCalledWith({ id: original.id }, expect.anything());
     await fixture.user.clear(field);
     await fixture.user.type(field, "Explain deeply.");
     await fixture.user.click(screen.getByRole("button", { name: "Save preset" }));
@@ -118,6 +145,18 @@ describe("Model preset settings workflow", () => {
       ),
     );
   });
+  it("reports a missing prompt file rather than opening an empty editor", async () => {
+    const readPrompt = vi.fn<Client["modelPresets"]["readPrompt"]>(async () => {
+      throw new Error("Could not read preset prompt /cake/prompts/missing.md");
+    });
+    using fixture = await renderSettings({ modelPresets: { readPrompt } }, [
+      { ...preset, promptFile: "/cake/prompts/missing.md" },
+    ]);
+    await fixture.user.click(row(preset.name).getByRole("button", { name: "Edit" }));
+    await screen.findByText("Could not read preset prompt /cake/prompts/missing.md");
+    expect(screen.queryByRole("textbox", { name: /Prompt \(optional/ })).toBeNull();
+  });
+
   it("creates a named model configuration and edits its authoritative identity", async () => {
     const created = {
       ...preset,

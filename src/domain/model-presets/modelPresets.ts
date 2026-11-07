@@ -5,6 +5,7 @@ import {
   type ModelPreset as ModelPresetValue,
 } from "../../contracts/application/application-data";
 import { PiModels } from "../../services/pi/PiModels";
+import { ModelPresetPrompts } from "../../services/storage/ModelPresetPrompts";
 import type { ModelSelection } from "../../contracts/pi/model-data";
 import { ApplicationState as ApplicationStateOwner } from "../../services/storage/ApplicationState";
 import type {
@@ -74,37 +75,51 @@ export const list = Effect.fn("ModelPresets.list")(function* () {
 });
 
 export const create = Effect.fn("ModelPresets.create")(function* (input: ModelPresetCreateInput) {
-  return yield* transact((current) => {
-    if (current.modelPresets.length >= 100)
-      return Effect.fail(new ModelPresetLimitError({ limit: 100 }));
-    let id = crypto.randomUUID();
-    while (current.modelPresets.some((preset) => preset.id === id)) id = crypto.randomUUID();
-    return decodePreset({ ...input, id, name: input.name.trim() }).pipe(
-      Effect.map((preset) => ({
-        ...current,
-        modelPresets: [...current.modelPresets, preset],
-      })),
-    );
-  });
+  const prompts = yield* ModelPresetPrompts;
+  return yield* transact(
+    Effect.fn("ModelPresets.createTransition")(function* (current: ApplicationState) {
+      if (current.modelPresets.length >= 100)
+        return yield* new ModelPresetLimitError({ limit: 100 });
+      let id = crypto.randomUUID();
+      while (current.modelPresets.some((preset) => preset.id === id)) id = crypto.randomUUID();
+      let preset = yield* decodePreset({ ...input, id, name: input.name.trim() });
+      if (input.prompt !== undefined) {
+        const promptFile = yield* prompts.write(input.prompt, input.promptFile);
+        preset = { ...preset, promptFile };
+      } else if (preset.promptFile) yield* prompts.read(preset.promptFile);
+      return { ...current, modelPresets: [...current.modelPresets, preset] };
+    }),
+  );
 });
 
 export const update = Effect.fn("ModelPresets.update")(function* (input: ModelPresetUpdateInput) {
-  return yield* transact((current) => {
-    if (!current.modelPresets.some((preset) => preset.id === input.id))
-      return Effect.fail(new ModelPresetNotFoundError({ id: input.id }));
-    return decodePreset({
-      ...current.modelPresets.find((preset) => preset.id === input.id),
-      ...input,
-      name: input.name.trim(),
-    }).pipe(
-      Effect.map((preset) => ({
+  const prompts = yield* ModelPresetPrompts;
+  return yield* transact(
+    Effect.fn("ModelPresets.updateTransition")(function* (current: ApplicationState) {
+      const previous = current.modelPresets.find((preset) => preset.id === input.id);
+      if (!previous) return yield* new ModelPresetNotFoundError({ id: input.id });
+      let preset = yield* decodePreset({ ...previous, ...input, name: input.name.trim() });
+      if (input.prompt !== undefined) {
+        const promptFile = yield* prompts.write(input.prompt, preset.promptFile);
+        preset = { ...preset, promptFile };
+      } else if (preset.promptFile) yield* prompts.read(preset.promptFile);
+      return {
         ...current,
         modelPresets: current.modelPresets.map((candidate) =>
           candidate.id === preset.id ? preset : candidate,
         ),
-      })),
-    );
-  });
+      };
+    }),
+  );
+});
+
+export const readPrompt = Effect.fn("ModelPresets.readPrompt")(function* (id: string) {
+  const state = yield* list();
+  const preset = state.presets.find((candidate) => candidate.id === id);
+  if (!preset) return yield* new ModelPresetNotFoundError({ id });
+  const prompts = yield* ModelPresetPrompts;
+  const prompt = preset.promptFile ? yield* prompts.read(preset.promptFile) : "";
+  return { ...(preset.promptFile ? { promptFile: preset.promptFile } : null), prompt };
 });
 
 export const reorder = Effect.fn("ModelPresets.reorder")(function* (input: ModelPresetOrderInput) {
@@ -170,6 +185,9 @@ export const resolve = Effect.fn("ModelPresets.resolve")(function* (id: string) 
     modelId: preset.modelId,
     thinkingLevel: preset.thinkingLevel,
     fastMode: preset.fastMode,
-    preset: { id: preset.id, ...(preset.prompt === undefined ? null : { prompt: preset.prompt }) },
+    preset: {
+      id: preset.id,
+      ...(preset.promptFile === undefined ? null : { promptFile: preset.promptFile }),
+    },
   } satisfies ModelSelection);
 });

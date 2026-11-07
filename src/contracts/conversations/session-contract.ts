@@ -724,7 +724,7 @@ export type ThinkingLevel = typeof thinkingLevelSchema.Type;
 export type UtilityModel = typeof utilityModelSchema.Type;
 export type SessionUsage = typeof sessionUsageSchema.Type;
 export interface ModelPreset extends ChatConfiguration {
-  readonly prompt?: string;
+  readonly promptFile?: string;
   readonly id: string;
   readonly name: string;
 }

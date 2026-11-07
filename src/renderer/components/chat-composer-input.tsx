@@ -151,7 +151,10 @@ export const ChatComposerInput = observer(function ChatComposerInput({
                 modelId: preset.modelId,
                 thinkingLevel: preset.thinkingLevel,
                 fastMode: preset.fastMode,
-                preset: { id: preset.id, ...(preset.prompt ? { prompt: preset.prompt } : null) },
+                preset: {
+                  id: preset.id,
+                  ...(preset.promptFile ? { promptFile: preset.promptFile } : null),
+                },
                 presetName: preset.name,
               }),
             )

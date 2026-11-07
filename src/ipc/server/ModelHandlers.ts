@@ -10,6 +10,7 @@ export const modelHandlers = ModelRpc.of({
   "models.list": () => Effect.flatMap(PiModels, (models) => models.list()),
   "models.refresh": () => Effect.flatMap(PiModels, (models) => models.refreshCatalog()),
   "modelPresets.list": () => modelPresets.list(),
+  "modelPresets.readPrompt": ({ id }) => modelPresets.readPrompt(id),
   "modelPresets.create": (input) => modelPresets.create(input),
   "modelPresets.update": (input) => modelPresets.update(input),
   "modelPresets.reorder": (input) => modelPresets.reorder(input),

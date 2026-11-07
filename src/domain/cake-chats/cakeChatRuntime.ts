@@ -91,6 +91,7 @@ import { SubagentCoordinator } from "../../services/subagents/SubagentCoordinato
 import type { SubagentEnvironment } from "../../services/subagents/SubagentEnvironment";
 import { ProjectTodoReports } from "../../services/projects/ProjectTodoReports";
 import { ApplicationState } from "../../services/storage/ApplicationState";
+import type { ModelPresetPrompts } from "../../services/storage/ModelPresetPrompts";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import type { CakeSessionRuntimeAcquireOptions } from "../../services/pi/CakeSessionRuntimes";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
@@ -241,6 +242,7 @@ const CAKE_CHAT_OPERATIONS = [
 export type CakeChatRuntimeServices =
   | Effect.Services<ReturnType<typeof invokeGlobalArtifactCommand>>
   | ApplicationState
+  | ModelPresetPrompts
   | ProjectSessionRuntimeHost
   | PiModels
   | CakeSessionRuntimes

@@ -17,6 +17,7 @@ import { ArtifactRuntime } from "../../../src/services/artifact-runtime/Artifact
 import { ArtifactRuntimeLive } from "../../../src/services/artifact-runtime/ArtifactRuntimeLive";
 import { ArtifactRuntimeHostLive } from "../../../src/layers/ArtifactRuntimeHostLive";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { modelPresetPromptsTestLayer } from "../helpers/modelPresetPrompts";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
@@ -89,6 +90,7 @@ const fixture = Effect.gen(function* () {
   const runtime = ArtifactRuntimeLive.pipe(Layer.provide(Layer.merge(storage, clients)));
   const context = yield* Layer.build(
     Layer.mergeAll(
+      modelPresetPromptsTestLayer,
       unusedEndpointServices,
       WorkflowTestLive,
       makeHeadlessProjectSessionRuntimeMechanismTestLayer(),

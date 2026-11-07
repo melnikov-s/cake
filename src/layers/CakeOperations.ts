@@ -377,6 +377,7 @@ export function configureCakeSessionRuntime(
   };
   return {
     ...runtime,
+    modelPresets,
     interviewOperations:
       allowBlockingUserInput && requestInterview
         ? (bridge) =>

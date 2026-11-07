@@ -36,7 +36,7 @@ export const CakeChatPreferences = Schema.Struct({
 export interface CakeChatPreferences extends Schema.Schema.Type<typeof CakeChatPreferences> {}
 
 export const ModelPreset = Schema.Struct({
-  prompt: Schema.optionalKey(Schema.String),
+  promptFile: Schema.optionalKey(Schema.NonEmptyString),
   id: Schema.String.check(Schema.isUUID(4)),
   name: Schema.String.check(Schema.isTrimmed(), Schema.isMinLength(1), Schema.isMaxLength(80)),
   provider: nonEmptyBoundedString(256),

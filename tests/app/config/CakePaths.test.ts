@@ -24,6 +24,7 @@ describe("resolveCakePaths", () => {
       piSubagentSessions: "/Users/fixture/.cake/pi/subagent-sessions",
       cakeChat: "/Users/fixture/.cake/pi/global-chat",
       state: "/Users/fixture/.cake/state",
+      prompts: "/Users/fixture/.cake/prompts",
       sessionFamilies: "/Users/fixture/.cake/state/session-families.json",
       resolvedProjectMetadata: "/Users/fixture/.cake/state/resolved-project-metadata",
       artifacts: "/Users/fixture/.cake/state/artifacts",
@@ -43,6 +44,7 @@ describe("resolveCakePaths", () => {
       piAgentDirectory: piAgentDirectory(),
     });
     expect(paths.home).toBe("/opt/cake-data");
+    expect(paths.prompts).toBe("/opt/cake-data/prompts");
     expect(paths.piAgent).toBe("/opt/pi-agent");
     expect(paths.piSessions).toBe("/opt/pi-agent/sessions");
     expect(paths.piWidgetSessions).toBe("/opt/cake-data/pi/widget-sessions");

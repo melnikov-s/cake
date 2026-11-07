@@ -62,6 +62,7 @@ import * as globalArtifacts from "../domain/artifacts/globalArtifacts";
 import { ArtifactGarbageCollectorLive } from "../layers/ArtifactGarbageCollectorLive";
 import { makeArtifactProjectionLive } from "../services/artifacts/ArtifactProjectionLive";
 import { makeApplicationStorageLive } from "../services/storage/ApplicationStorage";
+import { makeModelPresetPromptsLive } from "../services/storage/ModelPresetPrompts";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { makeReviewStorageLive } from "../services/storage/ReviewStorageLive";
 import { makeScheduledMessageStorageLive } from "../services/storage/ScheduledMessageStorage";
@@ -128,11 +129,12 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
     }),
   );
 
-  const applicationStorage = makeApplicationStorageLive(paths.state);
+  const applicationStorage = makeApplicationStorageLive(paths.state, paths.prompts);
   const scheduledMessageStorage = makeScheduledMessageStorageLive(paths.state);
   const automationStorage = makeAutomationStorageLive(paths.state);
   const StorageLive = Layer.mergeAll(
     applicationStorage,
+    makeModelPresetPromptsLive(paths.prompts),
     makeLocalMcpSettingsLive(paths.state),
     LocalMcpServer.layer,
     ProjectTodoReports.layer,

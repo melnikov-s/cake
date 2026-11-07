@@ -41,7 +41,9 @@ await Effect.runPromise(
       ],
     }),
   ).pipe(
-    Effect.provide(makeApplicationStorageLive(paths.state).pipe(Layer.provide(BootstrapLive))),
+    Effect.provide(
+      makeApplicationStorageLive(paths.state, paths.prompts).pipe(Layer.provide(BootstrapLive)),
+    ),
   ),
 );
 

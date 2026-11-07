@@ -22,7 +22,7 @@ const preset = {
   modelId: "gpt-5",
   thinkingLevel: "high" as const,
   fastMode: true,
-  prompt: "Be precise",
+  promptFile: "/cake/prompts/precise.md",
 };
 const model = {
   provider: "openai",
@@ -51,7 +51,7 @@ describe("inline model reference workflow", () => {
     const dialog = await screen.findByRole("dialog", { name: "Model reference" });
     await fixture.user.click(within(dialog).getByRole("button", { name: /Sol/ }));
     expect(fixture.chatStore.draft).toBe(
-      `Use ${serializeModelReference({ ...model, preset: { id: preset.id, prompt: preset.prompt }, presetName: "Sol" })} for review`,
+      `Use ${serializeModelReference({ ...model, preset: { id: preset.id, promptFile: preset.promptFile }, presetName: "Sol" })} for review`,
     );
     expect(showComposerContextMenu).toHaveBeenCalledWith(
       expect.objectContaining({ selection: "this", canInsertModel: true, canReword: true }),

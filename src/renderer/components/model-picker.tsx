@@ -485,9 +485,9 @@ export const ModelPicker = observer(function ModelPicker({
                                 ? {
                                     preset: {
                                       id: preset.id,
-                                      ...(preset.prompt === undefined
+                                      ...(preset.promptFile === undefined
                                         ? null
-                                        : { prompt: preset.prompt }),
+                                        : { promptFile: preset.promptFile }),
                                     },
                                   }
                                 : null),

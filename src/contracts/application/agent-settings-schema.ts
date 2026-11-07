@@ -10,6 +10,11 @@ import { ModelPreset, UtilityModel, SessionLabelMutation, SessionLabel } from ".
 import { NonChatModelPreferences } from "../models/non-chat-model-data";
 import { McpSettingsSnapshot, McpSettingsMutation } from "../pi/mcp-settings-data";
 import { PiNonChatModel } from "../pi/model-data";
+import {
+  ModelPresetCreateInput,
+  ModelPresetUpdateInput,
+  ModelPresetPrompt,
+} from "../model-presets/model-preset-data";
 import { VocabularyChange, VocabularyListInput, VocabularyPage } from "../dictation/vocabulary";
 import { DictationState, TextProcessingMode } from "../dictation/dictation-data";
 import { DesktopSharingInput, DesktopSharingState } from "../desktop/desktop-sharing-data";
@@ -213,15 +218,8 @@ export const agentSettingsOperations = [
   ),
   setting(
     "settings.presets.create",
-    Schema.Struct({
-      name: Schema.String.check(Schema.isMaxLength(80)),
-      provider,
-      modelId: ModelPreset.fields.modelId,
-      prompt: ModelPreset.fields.prompt,
-      thinkingLevel: ModelPreset.fields.thinkingLevel,
-      fastMode: Schema.Boolean,
-    }),
-    "Create a configured chat-model preset.",
+    ModelPresetCreateInput,
+    "Create a chat-model preset. Optional prompt text is saved in a Markdown file; promptFile can reference an existing file under Cake home/prompts.",
     {
       name: "My model",
       provider: "openai",
@@ -233,10 +231,17 @@ export const agentSettingsOperations = [
   ),
   setting(
     "settings.presets.update",
-    ModelPreset,
-    "Replace a preset's editable fields using its existing identity.",
+    ModelPresetUpdateInput,
+    "Update a preset by identity. Omit prompt to preserve its file; supply prompt (including an empty string) to write exact file contents.",
     {},
     presetProjection,
+  ),
+  setting(
+    "settings.presets.prompt",
+    Schema.Struct({ id }),
+    "Read a preset’s current Markdown prompt file and exact contents.",
+    {},
+    ModelPresetPrompt,
   ),
   setting(
     "settings.presets.reorder",

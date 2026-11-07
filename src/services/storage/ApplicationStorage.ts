@@ -15,6 +15,7 @@ import {
   type ApplicationState as ApplicationStateValue,
 } from "../../contracts/application/application-data";
 import { CakePrompts } from "../../contracts/application/cake-prompt-data";
+import { makeModelPresetPrompts, type ModelPresetPrompts } from "./ModelPresetPrompts";
 import versionFivePromptDefaults from "./internal/application-v5-prompt-defaults.json";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 import {
@@ -22,7 +23,7 @@ import {
   ApplicationWriteError,
 } from "../../contracts/storage/application-storage-errors";
 
-const APPLICATION_DOCUMENT_VERSION = 10;
+const APPLICATION_DOCUMENT_VERSION = 11;
 export const APPLICATION_DOCUMENT_NAME = "application.json";
 
 class ApplicationReadError extends Schema.TaggedError<ApplicationReadError>()(
@@ -102,6 +103,16 @@ const LegacyProjectRecord = Schema.Struct({
   workflow: Schema.optionalKey(LegacyProjectWorkflow),
 });
 
+const InlineModelPreset = Schema.Struct({
+  ...Struct.omit(ModelPreset.fields, ["promptFile"]),
+  prompt: Schema.optionalKey(Schema.String),
+});
+const ApplicationStateV10 = Schema.Struct({
+  ...ApplicationState.fields,
+  modelPresets: Schema.Array(InlineModelPreset),
+});
+type ApplicationStateV10 = typeof ApplicationStateV10.Type;
+
 const LegacyApplicationState = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   projects: Schema.optionalKey(Schema.Array(LegacyProjectRecord)),
@@ -110,7 +121,7 @@ const LegacyApplicationState = Schema.Struct({
   trustedProjectPaths: Schema.optionalKey(Schema.Array(Schema.String)),
   fastModeSessionIds: Schema.optionalKey(Schema.Array(Schema.String)),
   utilityModel: Schema.optionalKey(UtilityModel),
-  modelPresets: Schema.optionalKey(Schema.Array(ModelPreset)),
+  modelPresets: Schema.optionalKey(Schema.Array(InlineModelPreset)),
   defaultModelPresetId: Schema.optionalKey(Schema.String),
   vscodeServerPath: Schema.optionalKey(Schema.String),
 });
@@ -124,7 +135,7 @@ const ApplicationStateV1 = Schema.Struct({
   fastModeSessionIds: Schema.Array(Schema.String),
   utilityModel: Schema.optionalKey(UtilityModel),
   vscodeServerPath: Schema.optionalKey(Schema.String),
-  modelPresets: Schema.Array(ModelPreset),
+  modelPresets: Schema.Array(InlineModelPreset),
   defaultModelPresetId: Schema.optionalKey(Schema.String),
 });
 type ApplicationStateV1 = typeof ApplicationStateV1.Type;
@@ -137,7 +148,7 @@ const ApplicationStateV2 = Schema.Struct({
   fastModeSessionIds: Schema.Array(Schema.String),
   utilityModel: Schema.optionalKey(UtilityModel),
   vscodeServerPath: Schema.optionalKey(Schema.String),
-  modelPresets: Schema.Array(ModelPreset),
+  modelPresets: Schema.Array(InlineModelPreset),
   defaultModelPresetId: Schema.optionalKey(Schema.String),
 });
 type ApplicationStateV2 = typeof ApplicationStateV2.Type;
@@ -153,7 +164,7 @@ const ProjectRecordV8 = Schema.Struct({
   ),
 });
 const ApplicationStateV8 = Schema.Struct({
-  ...ApplicationState.fields,
+  ...ApplicationStateV10.fields,
   projects: Schema.Array(ProjectRecordV8),
 });
 type ApplicationStateV8 = typeof ApplicationStateV8.Type;
@@ -166,7 +177,7 @@ const ApplicationStateV3 = Schema.Struct({
   fastModeSessionIds: Schema.Array(Schema.String),
   utilityModel: Schema.optionalKey(UtilityModel),
   vscodeServerPath: Schema.optionalKey(Schema.String),
-  modelPresets: Schema.Array(ModelPreset),
+  modelPresets: Schema.Array(InlineModelPreset),
   defaultModelPresetId: Schema.optionalKey(Schema.String),
 });
 type ApplicationStateV3 = typeof ApplicationStateV3.Type;
@@ -396,8 +407,8 @@ const migrateVersionEight = Effect.fn("ApplicationStorage.migrateVersionEight")(
 const versionNineDefaultWorktreeCreateCommand =
   "git worktree add -b {branchName} {worktreePath} {baseCommit}";
 const migrateVersionNine = Effect.fn("ApplicationStorage.migrateVersionNine")(
-  (state: ApplicationStateValue) =>
-    Effect.succeed<ApplicationStateValue>({
+  (state: ApplicationStateV10) =>
+    Effect.succeed<ApplicationStateV10>({
       ...state,
       projects: state.projects.map((project) =>
         project.settings?.worktreeCreateCommand.trim() === versionNineDefaultWorktreeCreateCommand
@@ -407,16 +418,34 @@ const migrateVersionNine = Effect.fn("ApplicationStorage.migrateVersionNine")(
     }),
 );
 
+const migrateVersionTen = Effect.fn("ApplicationStorage.migrateVersionTen")(function* (
+  state: ApplicationStateV10,
+  prompts: ModelPresetPrompts["Service"],
+) {
+  // Write every file before replacing application.json. On failure the inline originals remain intact.
+  const modelPresets = yield* Effect.forEach(state.modelPresets, ({ prompt, ...preset }) =>
+    prompt === undefined
+      ? Effect.succeed(preset)
+      : prompts.write(prompt).pipe(Effect.map((promptFile) => ({ ...preset, promptFile }))),
+  ).pipe(
+    Effect.mapError(
+      (cause) => new ApplicationMigrationError({ fromVersion: 10, message: cause.message }),
+    ),
+  );
+  return { ...state, modelPresets };
+});
+
 const writeError = (stage: AtomicFileStage, cause: unknown) =>
   new ApplicationWriteError({ stage, message: messageOf(cause) });
 
-export const makeApplicationStorageLive = (userDataDirectory: string) =>
+export const makeApplicationStorageLive = (userDataDirectory: string, promptsDirectory: string) =>
   Layer.effect(
     ApplicationStorage,
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const documentPath = path.join(userDataDirectory, APPLICATION_DOCUMENT_NAME);
+      const prompts = makeModelPresetPrompts(fileSystem, path, promptsDirectory);
       const lock = yield* Semaphore.make(1);
 
       const saveUnlocked = Effect.fn("ApplicationStorage.save")(function* (
@@ -580,13 +609,21 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
             );
             data = yield* migrateVersionEight(previous);
           } else if (version === 9) {
-            const previous = yield* Schema.decodeUnknownEffect(ApplicationState)(data).pipe(
+            const previous = yield* Schema.decodeUnknownEffect(ApplicationStateV10)(data).pipe(
               Effect.mapError(
                 (cause) =>
                   new ApplicationMigrationError({ fromVersion: 9, message: cause.message }),
               ),
             );
             data = yield* migrateVersionNine(previous);
+          } else if (version === 10) {
+            const previous = yield* Schema.decodeUnknownEffect(ApplicationStateV10)(data).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ApplicationMigrationError({ fromVersion: 10, message: cause.message }),
+              ),
+            );
+            data = yield* migrateVersionTen(previous, prompts);
           } else
             return yield* new ApplicationMigrationError({
               fromVersion: version,

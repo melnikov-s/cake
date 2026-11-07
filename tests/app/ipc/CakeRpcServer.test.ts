@@ -26,6 +26,7 @@ import { ClientWorkspacesLive } from "../../../src/services/clients/ClientWorksp
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
+import { modelPresetPromptsTestLayer } from "../helpers/modelPresetPrompts";
 import { unusedEndpointServices } from "./rpc-endpoint-test-backend";
 import { ElevenLabsSpeech } from "../../../src/services/speech/ElevenLabsSpeech";
 import { PocketTts } from "../../../src/services/speech/PocketTts";
@@ -84,6 +85,7 @@ const makeBackend = Effect.fn("RpcEndpoint.test.makeBackend")(function* (
   const backendScope = yield* Scope.fork(yield* Effect.scope);
   const context = yield* Layer.buildWithScope(
     Layer.mergeAll(
+      modelPresetPromptsTestLayer,
       WorkflowTestLive,
       ApplicationState.layer.pipe(Layer.provide(storage)),
       observedClientEvents,

@@ -35,7 +35,7 @@ describe("ApplicationStorage filesystem integration", () => {
       "utf8",
     );
 
-    const live = makeApplicationStorageLive(directory).pipe(
+    const live = makeApplicationStorageLive(directory, join(directory, "prompts")).pipe(
       Layer.provideMerge(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
     );
     const loaded = await Effect.runPromise(
@@ -48,7 +48,7 @@ describe("ApplicationStorage filesystem integration", () => {
     assert.equal(loaded.source, "migrated");
     assert.ok(!("resolvedSessionIds" in loaded.state));
     const document = JSON.parse(await readFile(target, "utf8"));
-    assert.equal(document.version, 10);
+    assert.equal(document.version, 11);
     // Migration retains the shipped v1 labels, rather than substituting today's
     // fresh-install defaults or adding optional preferences that were never saved.
     const migrated = {
@@ -79,7 +79,7 @@ describe("ApplicationStorage filesystem integration", () => {
     // Nothing has created `state/` yet, as on a machine Cake has never run on.
     const directory = join(home, "state");
 
-    const live = makeApplicationStorageLive(directory).pipe(
+    const live = makeApplicationStorageLive(directory, join(directory, "prompts")).pipe(
       Layer.provideMerge(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
     );
     await Effect.runPromise(

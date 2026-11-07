@@ -12,6 +12,7 @@ export interface CakePaths {
   /** Pi Durable storage for the permanent Cake Chat (`coordinator.sqlite`). */
   cakeChat: string;
   state: string;
+  prompts: string;
   sessionFamilies: string;
   resolvedProjectMetadata: string;
   artifacts: string;
@@ -49,6 +50,7 @@ export function resolveCakePaths(options: ResolveCakePathsOptions): CakePaths {
     piSubagentSessions: join(home, "pi", "subagent-sessions"),
     cakeChat: join(home, "pi", "global-chat"),
     state,
+    prompts: join(home, "prompts"),
     sessionFamilies: join(state, "session-families.json"),
     resolvedProjectMetadata: join(state, "resolved-project-metadata"),
     artifacts: join(state, "artifacts"),

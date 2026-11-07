@@ -63,6 +63,7 @@ import {
 } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
+import { modelPresetPromptsTestLayer } from "../../app/helpers/modelPresetPrompts";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import { MessageBoardStorage } from "../../../src/services/storage/MessageBoardStorage";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
@@ -297,6 +298,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     }),
   ).pipe(Layer.provide(coordinator));
   const layer = Layer.mergeAll(
+    modelPresetPromptsTestLayer,
     unusedAutomationEndpointCapabilities,
     WorkflowTestLive,
     Layer.mock(VsCodeServer, {

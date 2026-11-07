@@ -8,6 +8,7 @@ import {
   ModelPresetNotFoundError,
   ModelPresetOrderInput,
   ModelPresetProjection,
+  ModelPresetPrompt,
   ModelPresetUpdateInput,
   ModelPresetValidationError,
 } from "../../contracts/model-presets/model-preset-data";
@@ -68,6 +69,11 @@ export const ModelRpc = RpcGroup.make(
   }),
   Rpc.make("models.refresh", { error: PiModelCatalogError }),
   Rpc.make("modelPresets.list", { success: ModelPresetProjection }),
+  Rpc.make("modelPresets.readPrompt", {
+    payload: { id: Schema.String.check(Schema.isUUID(4)) },
+    success: ModelPresetPrompt,
+    error: Schema.Union([ModelPresetNotFoundError, ModelPresetValidationError]),
+  }),
   Rpc.make("modelPresets.create", {
     payload: ModelPresetCreateInput,
     success: ModelPresetProjection,

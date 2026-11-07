@@ -9,6 +9,7 @@ import {
   remove,
   reorder,
   resolve,
+  readPrompt,
   setDefault,
   update,
 } from "../../../src/domain/model-presets/modelPresets";
@@ -19,6 +20,8 @@ import {
 import { makePiModelsLayer, type PiModels } from "../../../src/services/pi/PiModels";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
+import type { ModelPresetPrompts } from "../../../src/services/storage/ModelPresetPrompts";
+import { modelPresetPromptsTestLayer } from "../helpers/modelPresetPrompts";
 import { ApplicationWriteError } from "../../../src/contracts/storage/application-storage-errors";
 
 const input = (name = "Deep review") => ({
@@ -93,14 +96,14 @@ const makeTestLayer = (options?: {
     complete: () => Effect.succeed(""),
   });
   return {
-    layer: Layer.merge(applicationLayer, modelsLayer),
+    layer: Layer.mergeAll(applicationLayer, modelsLayer, modelPresetPromptsTestLayer),
     persisted: () => persisted,
     maximumActiveSaves: () => maximumActiveSaves,
   };
 };
 
 const run = <A, E>(
-  effect: Effect.Effect<A, E, ApplicationState | PiModels>,
+  effect: Effect.Effect<A, E, ApplicationState | PiModels | ModelPresetPrompts>,
   options?: Parameters<typeof makeTestLayer>[0],
 ) => {
   const test = makeTestLayer(options);
@@ -127,23 +130,31 @@ describe("Model Presets domain", () => {
         const created = (yield* create({ ...input(), prompt: "Review carefully." })).presets[0]!;
         const withoutPrompt = { id: created.id, ...input() };
         const renamed = (yield* update({ ...withoutPrompt, name: "Renamed" })).presets[0]!;
-        assert.equal(renamed.prompt, "Review carefully.");
+        assert.equal((yield* readPrompt(renamed.id)).prompt, "Review carefully.");
+        assert.equal(renamed.promptFile, created.promptFile);
         assert.deepEqual((yield* resolve(created.id)).preset, {
           id: created.id,
-          prompt: "Review carefully.",
+          promptFile: created.promptFile,
         });
-        const copy = (yield* create({ ...renamed, name: "Copy" })).presets[1]!;
-        assert.equal(copy.prompt, renamed.prompt);
+        const copy = (yield* create({
+          ...input("Copy"),
+          prompt: (yield* readPrompt(renamed.id)).prompt,
+        })).presets[1]!;
+        assert.equal((yield* readPrompt(copy.id)).prompt, "Review carefully.");
+        assert.notEqual(copy.promptFile, renamed.promptFile);
         assert.notEqual(copy.id, created.id);
         yield* update({ ...renamed, prompt: "" });
-        assert.equal((yield* list()).presets[0]?.prompt, "");
+        assert.equal((yield* readPrompt(created.id)).prompt, "");
+        assert.equal((yield* readPrompt(copy.id)).prompt, "Review carefully.");
       }),
     );
     return effect.pipe(
       Effect.tap(() =>
         Effect.sync(() => {
-          assert.equal(test.persisted().modelPresets[0]?.prompt, "");
-          assert.equal(test.persisted().modelPresets[1]?.prompt, "Review carefully.");
+          assert.ok(
+            test.persisted().modelPresets.every((preset) => preset.promptFile?.endsWith(".md")),
+          );
+          assert.ok(test.persisted().modelPresets.every((preset) => !("prompt" in preset)));
         }),
       ),
     );
@@ -272,7 +283,9 @@ describe("Model Presets domain", () => {
         transact: (transition) => SynchronizedRef.updateAndGetEffect(stateRef, transition),
       });
       const duplicateError = yield* Effect.flip(update({ ...duplicate, name: "Changed" })).pipe(
-        Effect.provide(Layer.succeed(ApplicationState)(duplicateOwner)),
+        Effect.provide(
+          Layer.merge(Layer.succeed(ApplicationState)(duplicateOwner), modelPresetPromptsTestLayer),
+        ),
       );
       assert.equal(duplicateError._tag, "DuplicateModelPresetIdError");
 

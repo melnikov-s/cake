@@ -82,7 +82,7 @@ const makeApplication = Effect.fn("StateCommitTest.makeApplication")(function* (
 ): Effect.fn.Return<CommitState<ApplicationValue>, unknown, Scope.Scope> {
   const context = yield* Layer.build(
     ApplicationState.layer.pipe(
-      Layer.provideMerge(makeApplicationStorageLive(directory)),
+      Layer.provideMerge(makeApplicationStorageLive(directory, `${directory}/prompts`)),
       Layer.provide(Layer.succeed(FileSystem.FileSystem, fs)),
       Layer.provide(Path.layer),
     ),

@@ -59,7 +59,7 @@ export const AutomationTaskFields = observer(function AutomationTaskFields() {
                     fastMode: preset.fastMode,
                     preset: {
                       id: preset.id,
-                      ...(preset.prompt ? { prompt: preset.prompt } : null),
+                      ...(preset.promptFile ? { promptFile: preset.promptFile } : null),
                     },
                   },
                 },
