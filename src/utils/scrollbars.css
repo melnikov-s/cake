@@ -1,0 +1,75 @@
+/* Shared by Cake's renderer, generated widgets and managed VS Code surface.
+   Native scrollbars use exact dimensions in Chromium. Standards-only engines
+   choose their own "thin" size. Never change overflow or scrolling behavior. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(
+        in srgb,
+        var(--muted-foreground, var(--vscode-descriptionForeground, GrayText)) 35%,
+        transparent
+      )
+      transparent;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(
+    in srgb,
+    var(--muted-foreground, var(--vscode-descriptionForeground, GrayText)) 35%,
+    transparent
+  );
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Monaco and xterm draw their own scrollbars. Slim only the visible thumb;
+   retain their managed scroll geometry and drag targets. Inline dimensions and
+   colors from these libraries require narrowly scoped overrides. */
+:is(.monaco-scrollable-element, .xterm-scrollable-element) > .scrollbar {
+  background: transparent !important;
+}
+
+:is(.monaco-scrollable-element, .xterm-scrollable-element) > .scrollbar > .slider {
+  background: color-mix(
+    in srgb,
+    var(--muted-foreground, var(--vscode-descriptionForeground, GrayText)) 35%,
+    transparent
+  ) !important;
+  border-radius: 999px;
+}
+
+:is(.monaco-scrollable-element, .xterm-scrollable-element) > .scrollbar.vertical > .slider {
+  width: 3px !important;
+  left: auto !important;
+  right: 0;
+}
+
+:is(.monaco-scrollable-element, .xterm-scrollable-element) > .scrollbar.horizontal > .slider {
+  height: 3px !important;
+  top: auto !important;
+  bottom: 0;
+}
+
+:is(.monaco-scrollable-element, .xterm-scrollable-element) > .shadow {
+  box-shadow: none !important;
+}
+
+:is(.monaco-scrollable-element, .xterm-scrollable-element) > .scrollbar > .scra {
+  display: none;
+}

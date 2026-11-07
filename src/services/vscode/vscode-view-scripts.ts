@@ -1,4 +1,5 @@
 import cakeIconMarkup from "../../assets/cake-icon.svg?raw";
+import scrollbarStyles from "../../utils/scrollbars.css?raw";
 
 export const VSCODE_BACKGROUND = { dark: "#121519", light: "#f5f7f9" } as const;
 const WORKBENCH_LAYOUT_READY_TIMEOUT_MS = 10_000;
@@ -54,6 +55,12 @@ export function projectSidebarVisibilityScript(visible: boolean) {
 
 export function vscodeShellControlsScript(workspacePath: string, projectSidebarVisible: boolean) {
   return `(() => {
+    if (!document.getElementById("cake-scrollbar-styles")) {
+      const style = document.createElement("style");
+      style.id = "cake-scrollbar-styles";
+      style.textContent = ${JSON.stringify(scrollbarStyles)};
+      document.head.append(style);
+    }
     const cakeIconMarkup = ${JSON.stringify(cakeIconMarkup)};
     const controlPrefix = ${JSON.stringify(VSCODE_SHELL_CONTROL_PREFIX)};
     const workspace = ${JSON.stringify(workspacePath)};

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import scrollbarStyles from "../../../../src/utils/scrollbars.css?raw";
 import { inlineWidgetLayoutRequirements } from "../../../../src/services/pi/runtime/sidecar-runtime";
 import { compileInlineWidget } from "../../../../src/services/widgets/inline-widget-service";
 
@@ -10,6 +11,7 @@ describe("inline widget service", () => {
     );
 
     expect(compiled.document).toContain("cake-inline-widget");
+    expect(compiled.document).toContain(`<style>${scrollbarStyles}</style>`);
     expect(compiled.document).toContain("<button");
     expect(compiled.document).toContain("body>*{max-width:100%}");
     expect(compiled.document).toContain("overflow-wrap:anywhere");
