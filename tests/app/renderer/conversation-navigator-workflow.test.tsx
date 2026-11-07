@@ -333,7 +333,6 @@ describe("Sessions navigator workflow", () => {
 
   it("renders a dense recursive source-list and inherits working through collapsed family edges", async () => {
     using fixture = renderNavigator();
-    expect(screen.getByText("5 total")).toBeTruthy();
     expect(rowFor("UI Layout Refactor").dataset.relationship).toBe("grouped");
     expect(rowFor("Keyboard Editing & Navigation").dataset.relationship).toBe("family-child");
     expect(rowFor("Nested child implementation").dataset.depth).toBe("3");

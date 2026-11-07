@@ -68,14 +68,41 @@ function expectCount(count: number, visible = String(count)) {
 }
 
 describe("Workspace Sessions running count", () => {
+  it.each([false, true])(
+    "places the list directly after search without a summary/action row (global: %s)",
+    async (global) => {
+      using fixture = renderWorkspace({ global });
+      const runningLabel = sessionsTab().getAttribute("aria-label");
+      const runningTitle = sessionsTab().getAttribute("title");
+      await fixture.user.click(sessionsTab());
+      const panel = screen.getByRole("region", { name: "Sessions", exact: true });
+      const search = within(panel).getByRole("searchbox", { name: "Search sessions" });
+      const list = within(panel).getByLabelText("Session conversations");
+      expect(within(panel).queryByText(/^\d+ (total|running)$/)).toBeNull();
+      expect(within(panel).queryByRole("button", { name: "Collapse all" })).toBeNull();
+      expect(panel.children).toHaveLength(2);
+      expect(panel.firstElementChild?.contains(search)).toBe(true);
+      expect(panel.firstElementChild?.nextElementSibling).toBe(list);
+      await fixture.user.type(search, "no match");
+      expect(within(list).getByText("No matching conversations")).toBeTruthy();
+      await fixture.user.click(
+        within(panel).getByRole("button", { name: "Clear search sessions" }),
+      );
+      expect(search).toHaveProperty("value", "");
+      expect(within(list).queryByText("No matching conversations")).toBeNull();
+      expect(sessionsTab().getAttribute("aria-label")).toBe(runningLabel);
+      expect(sessionsTab().getAttribute("title")).toBe(runningTitle);
+    },
+  );
+
   it("counts scoped work once, independently of search and disclosure, and keeps totals separate", async () => {
     using fixture = renderWorkspace();
     expectCount(5);
     expect(sessionsTab().getAttribute("aria-pressed")).toBe("false");
     expect(sessionsTab().getAttribute("title")).toContain("15 total in this project");
     await fixture.user.click(sessionsTab());
-    expect(screen.getByText("15 total")).toBeTruthy();
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse all" }));
+    expect(screen.queryByText("15 total")).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
     expectCount(5);
     await fixture.user.type(screen.getByRole("searchbox", { name: "Search sessions" }), "no match");
     expect(screen.getByText("No matching conversations")).toBeTruthy();

@@ -51,18 +51,6 @@ export const ConversationNavigator = observer(function ConversationNavigator({
           <PlusIcon />
         </IconButton>
       </div>
-      <div className="mx-3 mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-        <span>{tree.total} total</span>
-        {tree.running > 0 && <span>{tree.running} running</span>}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="ml-auto h-6 px-1 text-xs text-muted-foreground"
-          onClick={() => store.collapseAll(projectPath)}
-        >
-          Collapse all
-        </Button>
-      </div>
       <div
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1.5 pb-3"
         aria-label="Session conversations"
