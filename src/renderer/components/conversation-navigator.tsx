@@ -21,6 +21,8 @@ export const ConversationNavigator = observer(function ConversationNavigator({
   const scope = projectPath ?? "cake-chat";
   const resolvedExpanded = list.isResolvedGroupExpanded(scope);
   const resolvedRows = resolvedExpanded ? store.rows(projectPath, true) : [];
+  const home = tree.roots.find((node) => node.relationship === "home");
+  const activeExpanded = !home || store.isExpanded(projectPath, home.key);
   const activeHasMore = projectPath
     ? list.projectSessions(projectPath).length > list.visibleProjectSessions(projectPath).length
     : false;
@@ -75,7 +77,7 @@ export const ConversationNavigator = observer(function ConversationNavigator({
               {query.trim() ? "No matching conversations" : "No sessions"}
             </p>
           )}
-          {activeHasMore && !query.trim() && (
+          {activeExpanded && activeHasMore && !query.trim() && (
             <Button
               variant="ghost"
               size="sm"
