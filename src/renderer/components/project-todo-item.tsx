@@ -29,6 +29,13 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
   const inspected = store.visible && store.inspectedItemId === item.id;
   const attention = projectTodoCategory(item) === "attention";
   const description = item.description !== item.title ? item.description : "";
+  const sessionIds = new Set<string>();
+  const associations = item.associations.filter((association) => {
+    if (association.kind !== "session") return true;
+    if (sessionIds.has(association.sessionId)) return false;
+    sessionIds.add(association.sessionId);
+    return true;
+  });
   const menuItems: ContextMenuItem[] =
     item.state === "open"
       ? [
@@ -172,12 +179,12 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
               </time>
             </p>
           )}
-          {item.associations.length > 0 && (
+          {associations.length > 0 && (
             <ul
               aria-label={`Work for ${item.title}`}
               className="col-span-full mt-2 flex w-full flex-wrap items-center gap-1.5"
             >
-              {item.associations.map((association) => (
+              {associations.map((association) => (
                 <li
                   key={projectTodoAssociationKey(association)}
                   className="flex max-w-full min-w-0 items-center"

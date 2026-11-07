@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { CommitChangeStats } from "./worktree-changes";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -45,7 +46,10 @@ export interface ManagedWorktreeContext extends Schema.Schema.Type<typeof Manage
 
 /** Display-only enrichment; defaultBranch never changes persisted bases or landing targets. */
 export const WorktreeCatalogEntry = WorktreeRecord.pipe(
-  Schema.fieldsAssign({ defaultBranch: Schema.optional(bounded(1, 512)) }),
+  Schema.fieldsAssign({
+    defaultBranch: Schema.optional(bounded(1, 512)),
+    commitStats: Schema.optional(CommitChangeStats),
+  }),
 );
 export interface WorktreeCatalogEntry extends Schema.Schema.Type<typeof WorktreeCatalogEntry> {}
 

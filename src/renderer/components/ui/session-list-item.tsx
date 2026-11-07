@@ -15,6 +15,7 @@ import { CakeIcon, ChevronIcon, ResolveIcon, RestoreIcon } from "./icons";
 import { LabelSwatch } from "./label-swatch";
 import { associationHighlightClassName, NavItem, type NavItemProps } from "./nav-item";
 import { SessionActivityTime } from "./session-activity-time";
+import { CommitChangeStatsText } from "./commit-change-stats";
 
 export interface SessionListItemProps {
   session: {
@@ -30,7 +31,7 @@ export interface SessionListItemProps {
   };
   managedWorktree?: Pick<
     WorktreeCatalogEntry,
-    "branch" | "baseBranch" | "defaultBranch" | "parentWorktreePath" | "state"
+    "branch" | "baseBranch" | "defaultBranch" | "parentWorktreePath" | "state" | "commitStats"
   >;
   selected: boolean;
   /** Sidebar navigation opens on press; destination pickers retain click activation. */
@@ -130,7 +131,9 @@ export const SessionListItem = observer(function SessionListItem({
       ? managedWorktree?.baseBranch !== defaultBranch
       : managedWorktree?.baseBranch !== "main" && managedWorktree?.baseBranch !== "master");
   const hasActivityTime = isActiveSessionActivity(activity) || Boolean(activityTime.trim());
-  const hasDescription = Boolean(source || hasActivityTime || branch);
+  const commitStats = session.draft ? undefined : managedWorktree?.commitStats;
+  const hasStats = Boolean(commitStats?.commitCount);
+  const hasDescription = Boolean(source || hasActivityTime || branch || hasStats);
   return (
     <div
       ref={rowRef}
@@ -276,7 +279,7 @@ export const SessionListItem = observer(function SessionListItem({
               <span
                 data-slot="session-description"
                 className={cn(
-                  "flex w-full min-w-0 items-center gap-1.5 text-xs font-normal leading-none",
+                  "flex w-full min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs font-normal leading-none",
                   focusMode && "text-xs leading-tight",
                   selected ? "text-sidebar-selection-foreground/80" : "text-muted-foreground/80",
                 )}
@@ -318,7 +321,7 @@ export const SessionListItem = observer(function SessionListItem({
                     {managedWorktree && (
                       <WorktreeStatusIcon state={managedWorktree.state} className="shrink-0" />
                     )}
-                    <span className="truncate">{branch}</span>
+                    <span className="min-w-0 truncate">{branch}</span>
                     {showBaseBranch && (
                       <>
                         <span aria-hidden="true">→</span>
@@ -327,6 +330,7 @@ export const SessionListItem = observer(function SessionListItem({
                     )}
                   </>
                 )}
+                {hasStats && <CommitChangeStatsText stats={commitStats} />}
               </span>
             )
           }

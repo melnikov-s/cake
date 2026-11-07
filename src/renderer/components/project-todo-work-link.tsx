@@ -6,6 +6,7 @@ import { cn } from "../lib/utils";
 import { RootStore } from "../stores/RootStore";
 import { MarkdownLink } from "./ai-elements/markdown";
 import { SessionActivityIndicator } from "./session-activity-indicator";
+import { CommitChangeStatsText } from "./ui/commit-change-stats";
 
 /** Typed work and reference chips keep public identity separate from private Pi session IDs. */
 export const ProjectTodoWorkLink = observer(function ProjectTodoWorkLink({
@@ -46,6 +47,11 @@ export const ProjectTodoWorkLink = observer(function ProjectTodoWorkLink({
       >
         {association.title}
       </MarkdownLink>
+      {association.kind === "session" && (
+        <CommitChangeStatsText
+          stats={root.sessionMetadataStore.sessionCommitStats(association.sessionId)}
+        />
+      )}
     </span>
   );
 });

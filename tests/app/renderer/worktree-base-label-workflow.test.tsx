@@ -8,6 +8,7 @@ import { ManagedWorktreeCatalogUpdate } from "../../../src/contracts/worktrees/m
 import { observe } from "../../../src/domain/worktrees/worktreeCatalog";
 import { Git, GitError } from "../../../src/services/git/Git";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
 import { applyManagedWorktreeCatalogUpdate } from "../../../src/renderer/reducers/WorktreeCatalogReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
@@ -45,7 +46,8 @@ it.each([
       observe().pipe(
         Stream.runCollect,
         Effect.provide(
-          Layer.merge(
+          Layer.mergeAll(
+            Layer.mock(SessionCatalogChanges, { initialThenChanges: (initial) => initial }),
             Layer.mock(ManagedWorktrees, {
               observe: () => Stream.make({ _tag: "Snapshot", worktrees: [record] }),
             }),

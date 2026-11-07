@@ -2,6 +2,14 @@ import { Schema } from "effect";
 
 const count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
+/** Committed changes relative to a Managed Worktree's recorded session base. */
+export const CommitChangeStats = Schema.Struct({
+  commitCount: count,
+  additions: count,
+  deletions: count,
+});
+export interface CommitChangeStats extends Schema.Schema.Type<typeof CommitChangeStats> {}
+
 /** Git numstat uses null counts for binary files. */
 export const ChangedFile = Schema.Struct({
   path: Schema.NonEmptyString,
@@ -40,8 +48,8 @@ export const WorktreeChanges = Schema.Struct({
 });
 export interface WorktreeChanges extends Schema.Schema.Type<typeof WorktreeChanges> {}
 
-export function changeTotals(files: readonly ChangedFile[]) {
-  return files.reduce(
+export function changeTotals(files: readonly Pick<ChangedFile, "additions" | "deletions">[]) {
+  return files.reduce<{ additions: number; deletions: number; binary: number }>(
     (total, file) => ({
       additions: total.additions + (file.additions ?? 0),
       deletions: total.deletions + (file.deletions ?? 0),

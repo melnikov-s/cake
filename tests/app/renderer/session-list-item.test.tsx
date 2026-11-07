@@ -24,6 +24,63 @@ const props: SessionListItemProps = {
 };
 
 describe("session row metadata", () => {
+  it("shows base-relative committed stats without changing navigation or status controls", () => {
+    const onOpen = vi.fn();
+    const onResolve = vi.fn();
+    const { container, rerender } = render(
+      <SessionListItem
+        {...props}
+        managedWorktree={{
+          branch: "agent/task",
+          baseBranch: "main",
+          state: "active",
+          commitStats: { commitCount: 3, additions: 120, deletions: 35 },
+        }}
+        activity="running"
+        onOpen={onOpen}
+        onResolve={onResolve}
+      />,
+    );
+    expect(container.querySelector('[data-slot="commit-change-stats"]')?.textContent).toBe(
+      "3 commits · +120 −35",
+    );
+    expect(screen.getByRole("img", { name: "Running" })).toBeDefined();
+    fireEvent.click(screen.getByText(props.session.title));
+    expect(onOpen).toHaveBeenCalledWith(props.session.sessionId);
+    fireEvent.click(screen.getByRole("button", { name: `Resolve ${props.session.title}` }));
+    expect(onResolve).toHaveBeenCalled();
+    rerender(
+      <SessionListItem
+        {...props}
+        managedWorktree={{
+          branch: "agent/task",
+          baseBranch: "main",
+          state: "active",
+          commitStats: { commitCount: 1, additions: 0, deletions: 0 },
+        }}
+      />,
+    );
+    expect(screen.getByText("1 commit · +0 −0")).toBeDefined();
+  });
+
+  it.each([undefined, { commitCount: 0, additions: 0, deletions: 0 }])(
+    "hides unavailable and empty committed stats (%j)",
+    (commitStats) => {
+      const { container } = render(
+        <SessionListItem
+          {...props}
+          managedWorktree={{
+            branch: "agent/task",
+            baseBranch: "main",
+            state: "active",
+            commitStats,
+          }}
+        />,
+      );
+      expect(container.querySelector('[data-slot="commit-change-stats"]')).toBeNull();
+    },
+  );
+
   it.each([
     ["time only", "1 day ago", undefined, undefined, "1 day ago"],
     ["branch only", "", "feature", undefined, "feature"],

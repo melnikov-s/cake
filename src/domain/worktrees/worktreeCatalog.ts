@@ -6,6 +6,8 @@ import type {
 } from "../../contracts/worktrees/managed-worktree-data";
 import type { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 import type { Git } from "../../services/git/Git";
+import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
+import { makeCommitStatsReader } from "./worktreeCommitStats";
 import { localDefaultBranch } from "../../services/git/default-branch";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 
@@ -15,6 +17,7 @@ const entry = (record: WorktreeRecord, defaultBranch: string | undefined): Workt
 /** Enrich at the backend observation boundary, once per Project in each update, not per row. */
 const projectUpdate = Effect.fn("WorktreeCatalog.projectUpdate")(function* (
   update: ManagedWorktreeCatalogUpdate,
+  readStats: Effect.Success<ReturnType<typeof makeCommitStatsReader>>,
 ): Effect.fn.Return<ManagedWorktreeCatalogUpdate, never, Git> {
   if (update._tag === "Snapshot") {
     const defaults = new Map(
@@ -25,14 +28,30 @@ const projectUpdate = Effect.fn("WorktreeCatalog.projectUpdate")(function* (
     );
     return {
       _tag: "Snapshot" as const,
-      worktrees: update.worktrees.map((record) => entry(record, defaults.get(record.projectPath))),
+      worktrees: yield* Effect.forEach(
+        update.worktrees,
+        (record) =>
+          readStats(record).pipe(
+            Effect.map((commitStats) => ({
+              ...entry(record, defaults.get(record.projectPath)),
+              commitStats,
+            })),
+          ),
+        { concurrency: 4 },
+      ),
     };
   }
   const worktree = update.event.worktree;
   const defaultBranch = yield* localDefaultBranch(worktree.projectPath);
   return {
     _tag: "Event" as const,
-    event: { _tag: "Upserted" as const, worktree: entry(worktree, defaultBranch) },
+    event: {
+      _tag: "Upserted" as const,
+      worktree: {
+        ...entry(worktree, defaultBranch),
+        commitStats: yield* readStats(worktree),
+      },
+    },
   };
 });
 
@@ -40,8 +59,41 @@ const projectUpdate = Effect.fn("WorktreeCatalog.projectUpdate")(function* (
 export const observe = (): Stream.Stream<
   ManagedWorktreeCatalogUpdate,
   ManagedWorktreeError,
-  ManagedWorktrees | Git
+  ManagedWorktrees | Git | SessionCatalogChanges
 > =>
-  Stream.unwrap(Effect.map(ManagedWorktrees, (worktrees) => worktrees.observe())).pipe(
-    Stream.mapEffect(projectUpdate),
+  Stream.unwrap(
+    Effect.gen(function* () {
+      const worktrees = yield* ManagedWorktrees;
+      const changes = yield* SessionCatalogChanges;
+      const readStats = yield* makeCommitStatsReader();
+      // Existing activity notifications cover turn start/settlement (including abort).
+      // Only matching working directories are refreshed; title/read changes do no Git work.
+      const refreshes = changes.initialThenChanges(Stream.empty).pipe(
+        Stream.filter(
+          (change) =>
+            change._tag === "ProjectSessionActivityChanged" ||
+            change._tag === "ProjectSessionChanged",
+        ),
+        Stream.mapEffect((change) =>
+          worktrees.records().pipe(
+            Effect.map((records) =>
+              records
+                .filter(
+                  (record) =>
+                    record.worktreePath === change.workingDirectory &&
+                    record.projectPath === change.projectPath,
+                )
+                .map((worktree): ManagedWorktreeCatalogUpdate => ({
+                  _tag: "Event",
+                  event: { _tag: "Upserted", worktree },
+                })),
+            ),
+          ),
+        ),
+        Stream.flatMap(Stream.fromIterable),
+      );
+      return Stream.merge(worktrees.observe(), refreshes, { haltStrategy: "left" }).pipe(
+        Stream.mapEffect((update) => projectUpdate(update, readStats)),
+      );
+    }),
   );

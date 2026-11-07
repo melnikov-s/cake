@@ -4,6 +4,10 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "./window-state";
+import {
+  defaultApplicationState,
+  type ApplicationState,
+} from "../../src/contracts/application/application-data";
 
 const changesSessionId = "session-changes-review";
 
@@ -27,6 +31,7 @@ export async function seedSessionChanges(
   await writeFile(join(paths.project, "removed.ts"), "export const obsolete = true;\n");
   await git(paths.project, "add", "-A");
   await git(paths.project, "commit", "-m", "Initial fixture");
+  const baseCommit = (await git(paths.project, "rev-parse", "HEAD")).stdout.trim();
   await git(paths.project, "worktree", "add", "-b", "agent/changes-review", worktree);
   await mkdir(join(worktree, "src"), { recursive: true });
   await writeFile(
@@ -120,10 +125,41 @@ export async function seedSessionChanges(
   await writeFile(
     join(paths.cakeHome, "state", "application.json"),
     JSON.stringify({
-      schemaVersion: 1,
-      projects: [
-        { path: paths.project, name: "Cake", addedAt: timestamp, lastOpenedAt: timestamp },
-      ],
+      version: 9,
+      data: {
+        ...defaultApplicationState(),
+        projects: [
+          {
+            path: paths.project,
+            name: "Cake",
+            addedAt: timestamp,
+            lastOpenedAt: timestamp,
+            todos: {
+              selectedId: null,
+              sequence: 0,
+              deliveryToken: null,
+              pending: [],
+              items: [
+                {
+                  id: "00000000-0000-4000-8000-000000000011",
+                  title: "Review worktree changes",
+                  description: "Check committed work before landing.",
+                  status: "",
+                  state: "open",
+                  revision: 0,
+                  associations: [
+                    {
+                      kind: "session",
+                      sessionId: changesSessionId,
+                      title: "Worktree commit history",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      } satisfies ApplicationState,
     }),
   );
   await writeFile(
@@ -136,6 +172,7 @@ export async function seedSessionChanges(
           worktreePath: worktree,
           branch: "agent/changes-review",
           baseBranch: "main",
+          baseCommit,
           state: "active",
           createdAt: timestamp,
         },

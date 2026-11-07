@@ -22,6 +22,11 @@ export class SessionMetadataStore extends Store<{
     );
   }
 
+  sessionCommitStats(sessionId: string) {
+    const directory = this.workingDirectory(sessionId);
+    return directory ? this.props.catalog.managedWorktree(directory)?.commitStats : undefined;
+  }
+
   sessionModifiedAt(sessionId: string) {
     return this.props.catalog.find(sessionId)?.modifiedAt;
   }
