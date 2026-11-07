@@ -29,6 +29,17 @@ export const makeMessageBoardStorageLive = (artifactRoot: string) =>
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const lock = yield* Semaphore.make(1);
+      // Pending work, not an entry cache: at most one ID per changed board until drained.
+      const changedBoards = new Set<ArtifactLineageId>();
+      const takeChangedBoards = Effect.fn("MessageBoardStorage.takeChangedBoards")(() =>
+        lock.withPermits(1)(
+          Effect.sync(() => {
+            const changed = [...changedBoards];
+            changedBoards.clear();
+            return changed;
+          }),
+        ),
+      );
       const directory = (id: ArtifactLineageId) =>
         path.join(artifactRoot, "boards", createHash("sha256").update(id).digest("hex"));
       const entryDirectory = (id: ArtifactLineageId) => path.join(directory(id), "entries");
@@ -40,18 +51,31 @@ export const makeMessageBoardStorageLive = (artifactRoot: string) =>
         atomicWriteFile(fs, path, target, `${JSON.stringify(data)}\n`, (stage, cause) =>
           error(`write:${stage}`, cause),
         );
-      const entries = Effect.fn("MessageBoardStorage.entries")(function* (id: ArtifactLineageId) {
+      const entries = Effect.fn("MessageBoardStorage.entries")(function* (
+        id: ArtifactLineageId,
+        selection?: { readonly after?: number; readonly sequences?: ReadonlyArray<number> },
+      ) {
         yield* Schema.decodeUnknownEffect(ArtifactLineageId)(id).pipe(
           Effect.mapError((cause) => error("entries", cause)),
         );
         const dir = entryDirectory(id);
         if (!(yield* fs.exists(dir).pipe(Effect.mapError((cause) => error("entries", cause)))))
           return [];
-        const names = (yield* fs
-          .readDirectory(dir)
-          .pipe(Effect.mapError((cause) => error("entries", cause))))
-          .filter((name) => /^[0-9]+\.json$/.test(name))
-          .sort();
+        const selected = new Set(selection?.sequences);
+        const names =
+          selection && selection.after === undefined
+            ? [...selected]
+                .sort((a, b) => a - b)
+                .map((sequence) => `${String(sequence).padStart(16, "0")}.json`)
+            : (yield* fs
+                .readDirectory(dir)
+                .pipe(Effect.mapError((cause) => error("entries", cause))))
+                .filter((name) => {
+                  if (!/^[0-9]+\.json$/.test(name)) return false;
+                  const sequence = Number(name.slice(0, -5));
+                  return !selection || sequence > (selection.after ?? 0) || selected.has(sequence);
+                })
+                .sort();
         return yield* Effect.forEach(
           names,
           Effect.fn("MessageBoardStorage.readEntry")(function* (name) {
@@ -136,6 +160,7 @@ export const makeMessageBoardStorageLive = (artifactRoot: string) =>
                 path.join(entryDirectory(id), `${String(entry.sequence).padStart(16, "0")}.json`),
                 { version: 1, entry },
               );
+              changedBoards.add(id);
               return entry;
             }),
           ),
@@ -175,6 +200,6 @@ export const makeMessageBoardStorageLive = (artifactRoot: string) =>
             }),
           ),
       );
-      return MessageBoardStorage.of({ append, entries, receipts, record });
+      return MessageBoardStorage.of({ append, entries, takeChangedBoards, receipts, record });
     }),
   );

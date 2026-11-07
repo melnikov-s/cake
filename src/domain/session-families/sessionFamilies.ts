@@ -82,7 +82,6 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
 });
 
 const runPass = Effect.fn("SessionFamilies.deliverPendingNotices")(function* () {
-  yield* workboardDeliveries.runPass();
   const storage = yield* SessionFamilyStorage;
   for (const turn of (yield* storage.state()).turns) {
     if (!turn.outcome || turn.reported) continue;
@@ -96,7 +95,13 @@ const runPass = Effect.fn("SessionFamilies.deliverPendingNotices")(function* () 
     .pipe(Effect.catch((error) => Effect.logError("Batched update pass will retry", error)));
 });
 
-export const runWorker = runPass().pipe(
-  Effect.catch((error) => Effect.logError("Session result delivery pass failed", error)),
-  Effect.repeat(Schedule.spaced("1 second")),
-);
+export const runWorker = Effect.gen(function* () {
+  const deliverBoards = yield* workboardDeliveries.makePass();
+  yield* Effect.gen(function* () {
+    yield* deliverBoards();
+    yield* runPass();
+  }).pipe(
+    Effect.catch((error) => Effect.logError("Session result delivery pass failed", error)),
+    Effect.repeat(Schedule.spaced("1 second")),
+  );
+});

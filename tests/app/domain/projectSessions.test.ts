@@ -466,6 +466,7 @@ const makeLayer = (
     Layer.succeed(SessionFamilyStorage, {
       deferPassiveNotice: () => Effect.void,
       markPassiveNoticeAdmission: () => Effect.void,
+      advanceBoardDelivery: () => Effect.void,
       recordBoardDelivery: () => Effect.void,
       updateBoardDelivery: () => Effect.void,
       setBoardDeliveryPaused: () => Effect.void,

@@ -24,6 +24,8 @@ export const SessionFamilyChild = Schema.Struct({
   managedWorktreePath: Schema.optionalKey(BoundedPath),
   /** Assignment-first reservations survive restart before durable admission. */
   assignmentTopic: Schema.optionalKey(BoundedId),
+  /** Exact creation-owned entry; retained when delivery scans only newer entries. */
+  assignmentSequence: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
   resultDelivery: Schema.optionalKey(ResultDelivery),
   createdAt: Schema.String,
 });
@@ -37,6 +39,8 @@ export const SessionFamily = Schema.Struct({
   managedWorktreePath: Schema.optionalKey(BoundedPath),
   createdAt: Schema.String,
   children: Schema.Array(SessionFamilyChild),
+  /** Entries already accounted for in durable delivery batches, including irrelevant posts. */
+  boardDeliveryThrough: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 export interface SessionFamily extends Schema.Schema.Type<typeof SessionFamily> {}
 

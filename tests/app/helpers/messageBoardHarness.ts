@@ -5,6 +5,8 @@ import { makeMessageBoardStorageLive } from "../../../src/services/storage/Messa
 /** Real storage policy with a deterministic in-memory filesystem boundary. */
 export const messageBoardHarness = (files = new Map<string, string>()) => {
   const directories = new Set<string>();
+  let reads = 0;
+  let discoveryReads = 0;
   const fail = (method: string) =>
     PlatformError.systemError({ _tag: "NotFound", module: "MessageBoardTest", method });
   const fs = FileSystem.makeNoop({
@@ -15,7 +17,12 @@ export const messageBoardHarness = (files = new Map<string, string>()) => {
           [...files.keys()].some((key) => key.startsWith(`${target}/`)),
       ),
     readFileString: (target) =>
-      files.has(target) ? Effect.succeed(files.get(target) ?? "") : Effect.fail(fail("read")),
+      Effect.suspend(() => {
+        if (target.includes("/boards/") && target.includes("/entries/")) reads++;
+        return files.has(target)
+          ? Effect.succeed(files.get(target) ?? "")
+          : Effect.fail(fail("read"));
+      }),
     writeFileString: (target, content) =>
       Effect.sync(() => {
         files.set(target, content);
@@ -26,13 +33,16 @@ export const messageBoardHarness = (files = new Map<string, string>()) => {
       }),
     chmod: () => Effect.void,
     readDirectory: (target) =>
-      Effect.succeed([
-        ...new Set(
-          [...files.keys()]
-            .filter((key) => key.startsWith(`${target}/`))
-            .map((key) => key.slice(target.length + 1).split("/")[0] ?? ""),
-        ),
-      ]),
+      Effect.sync(() => {
+        if (target.includes("/boards/")) discoveryReads++;
+        return [
+          ...new Set(
+            [...files.keys()]
+              .filter((key) => key.startsWith(`${target}/`))
+              .map((key) => key.slice(target.length + 1).split("/")[0] ?? ""),
+          ),
+        ];
+      }),
     rename: (source, target) =>
       Effect.gen(function* () {
         const text = files.get(source);
@@ -52,5 +62,5 @@ export const messageBoardHarness = (files = new Map<string, string>()) => {
     makeArtifactStorageLive("/artifacts"),
     makeMessageBoardStorageLive("/artifacts"),
   ).pipe(Layer.provide(platform));
-  return { files, layer };
+  return { files, layer, reads: () => reads, discoveryReads: () => discoveryReads };
 };

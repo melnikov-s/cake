@@ -16,9 +16,18 @@ export class MessageBoardStorage extends Context.Service<
       authorSessionId: string,
       input: BoardAppendInput,
     ) => Effect.Effect<BoardEntry, MessageBoardError>;
+    /** With a selection, read the suffix after `after` union the exact `sequences`.
+     * Without `after`, only exact sequences are read; without a selection, read all.
+     */
     readonly entries: (
       boardId: ArtifactLineageId,
+      selection?: {
+        readonly after?: number;
+        readonly sequences?: ReadonlyArray<number>;
+      },
     ) => Effect.Effect<ReadonlyArray<BoardEntry>, MessageBoardError>;
+    /** Single delivery worker drains coalesced append changes; restart discovers persisted boards. */
+    readonly takeChangedBoards: () => Effect.Effect<ReadonlyArray<ArtifactLineageId>>;
     readonly receipts: (
       boardId: ArtifactLineageId,
     ) => Effect.Effect<ReadonlyArray<BoardReceipt>, MessageBoardError>;

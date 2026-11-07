@@ -55,6 +55,11 @@ export class SessionFamilyStorage extends Context.Service<
   SessionFamilyStorage,
   {
     readonly state: () => Effect.Effect<SessionFamilyDocument, SessionFamilyStorageError>;
+    readonly advanceBoardDelivery: (
+      familyId: string,
+      through: number,
+      assignments: ReadonlyArray<{ readonly sessionId: string; readonly sequence: number }>,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly recordBoardDelivery: (
       delivery: BoardDelivery,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
@@ -221,8 +226,8 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
       const lock = yield* Semaphore.make(1);
       const noticeDeliveryLock = yield* Semaphore.make(1);
 
-      // Delivery passes read this document once per family member every second. Decode it
-      // again only after the file changes; every atomic rewrite replaces the file's identity.
+      // Pending delivery and other workflows share this document. Decode it again
+      // only after the file changes; every atomic rewrite replaces the file's identity.
       let decoded:
         | { readonly version: string; readonly document: SessionFamilyDocument }
         | undefined;
@@ -399,6 +404,40 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
               if (changed !== document) yield* saveUnlocked(changed);
             }),
           ),
+      );
+      const advanceBoardDelivery = Effect.fn("SessionFamilyStorage.advanceBoardDelivery")(
+        (
+          familyId: string,
+          through: number,
+          assignments: ReadonlyArray<{ readonly sessionId: string; readonly sequence: number }>,
+        ) =>
+          update((document) => {
+            const family = document.families.find((item) => item.familyId === familyId);
+            if (!family) return document;
+            const children = family.children.map((child) => {
+              const assignment = assignments.find((item) => item.sessionId === child.sessionId);
+              return assignment && child.assignmentSequence === undefined
+                ? { ...child, assignmentSequence: assignment.sequence }
+                : child;
+            });
+            if (
+              through <= (family.boardDeliveryThrough ?? 0) &&
+              children.every((child, i) => child === family.children[i])
+            )
+              return document;
+            return {
+              ...document,
+              families: document.families.map((item) =>
+                item === family
+                  ? {
+                      ...item,
+                      children,
+                      boardDeliveryThrough: Math.max(through, family.boardDeliveryThrough ?? 0),
+                    }
+                  : item,
+              ),
+            };
+          }),
       );
       const recordBoardDelivery = Effect.fn("SessionFamilyStorage.recordBoardDelivery")(
         (delivery: BoardDelivery) =>
@@ -954,6 +993,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         }),
       );
       return SessionFamilyStorage.of({
+        advanceBoardDelivery,
         recordBoardDelivery,
         updateBoardDelivery,
         setBoardDeliveryPaused,

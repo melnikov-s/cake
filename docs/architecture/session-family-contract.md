@@ -64,6 +64,18 @@ batches; real user input accounts for stopped-period posts before re-enabling
 future ones. Queue cancellation and resolved pre-admission batches do not replay.
 Creation's initial assignment is excluded from a second generic child wake.
 
+The delivery worker discovers saved families once at startup, then drains coalesced
+board-append changes and revisits only unfinished batches/backlogs. It never rescans
+unchanged, settled historical boards on its one-second retry cadence. A persisted
+per-family scan cursor advances only after relevant posts have durable batches;
+creation-owned assignment sequence identities keep later same-topic updates eligible.
+Entry reads select the unaccounted suffix plus exact pending batch sequences before
+JSON/schema decoding. Idle recipients remain pending until normal admission is possible;
+deferred routine posts keep the existing notification batch semantics. Restart rebuilds
+the pending index from saved families/cursors/batches, including appends persisted before
+the previous process could stage them. The in-memory index retains only outstanding board
+IDs, not an ever-growing cache of entries. One backend owns board mutations.
+
 Creating an isolated child uses the normal Managed Worktree service with the
 caller's Working Directory as `baseWorktreePath`. Git history therefore includes
 the parent's committed branch tip, while uncommitted files remain in the parent
@@ -289,7 +301,9 @@ hidden unless delegated work is running, queued, or needs attention; idle sessio
 not keep it visible. Sessions open through ordinary navigation; subagents use their owner's
 existing side-chat surface.
 
-Family storage version 8 migrates persisted report/continuation combinations to resultDelivery without dropping pending obligations, inboxes, correlations, delivery attempts or handled receipts. Explicit resume maps to reply, none to notification, otherwise digest maps to notification and immediate/default obligations to reply. Versions 1–7 remain readable; new writes contain only canonical modes. Persisted Pi envelopes decode their historical fields at the transcript boundary.
+Family storage version 11 adds optional delivery scan cursors and exact initial-assignment
+sequence identities. Older documents start discovery at sequence zero without rewriting
+saved delivery IDs or statuses. Version 8 migrates persisted report/continuation combinations to resultDelivery without dropping pending obligations, inboxes, correlations, delivery attempts or handled receipts. Explicit resume maps to reply, none to notification, otherwise digest maps to notification and immediate/default obligations to reply. Versions 1–7 remain readable; new writes contain only canonical modes. Persisted Pi envelopes decode their historical fields at the transcript boundary.
 
 Family storage version 5 established recursive parentage, per-child Working
 Directory bindings, sender/recipient request and reply correlation, response

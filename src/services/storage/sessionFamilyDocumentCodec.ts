@@ -12,7 +12,7 @@ import {
   SessionFamilyDocument,
 } from "../../contracts/session-families/session-family-document";
 
-export const DOCUMENT_VERSION = 10;
+export const DOCUMENT_VERSION = 11;
 const LegacyDelivery = {
   continuation: Schema.optionalKey(Schema.Literals(["none", "resume"])),
   reportPolicy: Schema.optionalKey(Schema.Literals(["digest", "interrupt"])),
@@ -98,7 +98,7 @@ export const decodeSessionFamilyDocument = Effect.fn("SessionFamilyStorage.decod
     const envelope = yield* Schema.decodeUnknownEffect(StoredEnvelope)(parsed).pipe(
       Effect.mapError((cause) => storageError("load", cause)),
     );
-    if (![1, 2, 3, 4, 5, 6, 7, 8, 9, DOCUMENT_VERSION].includes(envelope.version))
+    if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, DOCUMENT_VERSION].includes(envelope.version))
       return yield* storageError(
         "load",
         `Unsupported session family document version ${envelope.version}`,
@@ -252,6 +252,7 @@ export const decodeSessionFamilyDocument = Effect.fn("SessionFamilyStorage.decod
           : null),
       };
     }
+    // v11 adds optional boardDeliveryThrough; older documents discover from sequence zero.
     // v9 drops retired Workboard completion grants on decode. Default board
     // delivery owns one cursor/batch per recipient; old budgets cannot gate or double-wake it.
     // v5 drops member-synchronization journals. The root's actual namespace

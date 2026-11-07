@@ -70,7 +70,7 @@ describe("SessionFamilyStorage", () => {
           (yield* storage.state()).boardDeliveries?.map((item) => item.status),
           ["pending", "canceled"],
         );
-        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 10);
+        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 11);
       }).pipe(Effect.provide(familyStorageHarness(files).layer));
     },
   );
@@ -175,7 +175,7 @@ describe("SessionFamilyStorage", () => {
         assert.equal(reopened.turns.length, modes.length);
         assert.equal(reopened.turns[0]?.deliveryTurnId, "stable-admission");
         assert.deepEqual(reopened.coordinatorDigest, [digest]);
-        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 10);
+        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 11);
         assert.ok(
           !JSON.stringify(
             JSON.parse(files.get("state/session-families.json")!).data.turns,
@@ -323,7 +323,7 @@ describe("SessionFamilyStorage", () => {
         yield* storage.settleTurn("turn", "complete");
         const persisted = JSON.parse(files.get("state/session-families.json") ?? "{}");
         assert.deepEqual(persisted, {
-          version: 10,
+          version: 11,
           data: {
             families: [
               {
@@ -352,7 +352,7 @@ describe("SessionFamilyStorage", () => {
       yield* storage.settleTurn("turn", "complete");
       assert.deepEqual((yield* storage.state()).turns, []);
       assert.equal((yield* storage.list()).length, 1);
-      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 10);
+      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 11);
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
   });
 

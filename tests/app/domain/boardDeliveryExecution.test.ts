@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { it } from "@effect/vitest";
 import { Context, Deferred, Effect, Layer, Stream } from "effect";
+import { TestClock } from "effect/testing";
 import { describe } from "vitest";
 import * as boards from "../../../src/domain/artifacts/messageBoards";
 import * as deliveries from "../../../src/domain/session-families/workboardDeliveries";
+import * as families from "../../../src/domain/session-families/sessionFamilies";
+import { MessageBoardStorage } from "../../../src/services/storage/MessageBoardStorage";
 import * as chats from "../../../src/domain/conversations/sessionChats";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
@@ -46,6 +50,8 @@ const fixture = Effect.fn("BoardDeliveryTest.fixture")(function* (
   const family = familyStorageHarness(settings.familyFiles);
   const board = messageBoardHarness(settings.boardFiles);
   const started = yield* Deferred.make<void>();
+  const acquireFailed = yield* Deferred.make<void>();
+  let acquireAttempts = 0;
   const release = yield* Deferred.make<void>();
   const lanes: string[] = [];
   const recipients: string[] = [];
@@ -85,10 +91,15 @@ const fixture = Effect.fn("BoardDeliveryTest.fixture")(function* (
         changelog: () => Effect.succeed(""),
         createRuntime: (setup) =>
           Effect.suspend(() => {
+            acquireAttempts++;
             if (failAcquire) {
               failAcquire = false;
-              return Effect.fail(
-                new PiSessionError({ operation: "acquire", message: "Temporary failure" }),
+              return Deferred.succeed(acquireFailed, undefined).pipe(
+                Effect.andThen(
+                  Effect.fail(
+                    new PiSessionError({ operation: "acquire", message: "Temporary failure" }),
+                  ),
+                ),
               );
             }
             return Effect.succeed({
@@ -160,7 +171,11 @@ const fixture = Effect.fn("BoardDeliveryTest.fixture")(function* (
       }),
     );
   const state = () => provide(Context.get(core, SessionFamilyStorage).state());
+  const runPass = yield* provide(deliveries.makePass());
   return {
+    runPass: () => provide(runPass()),
+    boardReads: board.reads,
+    discoveryReads: board.discoveryReads,
     provide,
     post,
     state,
@@ -171,6 +186,8 @@ const fixture = Effect.fn("BoardDeliveryTest.fixture")(function* (
       busy = value;
     },
     started,
+    acquireFailed,
+    acquireAttempts: () => acquireAttempts,
     release,
     familyFiles: family.files,
     boardFiles: board.files,
@@ -178,6 +195,153 @@ const fixture = Effect.fn("BoardDeliveryTest.fixture")(function* (
 });
 
 describe("default board-driven execution", () => {
+  it.effect(
+    "does no recurring historical board I/O and reads only the appended delivery entry",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.provide(
+          Effect.gen(function* () {
+            const storage = yield* SessionFamilyStorage;
+            for (let i = 1; i < 72; i++)
+              yield* storage.addChild({
+                familyId: `history-${i}`,
+                parentSessionId: `parent-${i}`,
+                parentWorkingDirectory: "/project",
+                childSessionId: `child-${i}`,
+                childWorkingDirectory: "/project",
+                requestId: `history-${i}`,
+                projectPath: "/project",
+                createdAt: "2026-01-01",
+              });
+            const saved = yield* storage.list();
+            let remaining = 1424;
+            for (const [index, family] of saved.entries()) {
+              const count = Math.ceil(remaining / (saved.length - index));
+              remaining -= count;
+              const hash = createHash("sha256")
+                .update(boards.boardIdFor(family.familyId))
+                .digest("hex");
+              for (let sequence = 1; sequence <= count; sequence++)
+                f.boardFiles.set(
+                  `/artifacts/boards/${hash}/entries/${String(sequence).padStart(16, "0")}.json`,
+                  JSON.stringify({
+                    version: 1,
+                    entry: {
+                      sequence,
+                      authorSessionId: family.parentSessionId,
+                      audience: "workgroup",
+                      description: "Historical note",
+                      body: "Already inactive; no addressed recipient",
+                      createdAt: "2026-01-01T00:00:00Z",
+                    },
+                  }),
+                );
+            }
+            // Controlled baseline reproduces the old delivery pass's storage traversal.
+            const board = yield* MessageBoardStorage;
+            const before = f.boardReads();
+            for (let pass = 0; pass < 10; pass++)
+              for (const family of yield* storage.list())
+                yield* board.entries(boards.boardIdFor(family.familyId));
+            assert.equal(f.boardReads() - before, 14240);
+          }),
+        );
+        const before = f.boardReads();
+        yield* f.runPass();
+        assert.equal(f.boardReads() - before, 1424); // one startup discovery
+        const settledReads = f.boardReads();
+        const settledDiscovery = f.discoveryReads();
+        for (let pass = 0; pass < 10; pass++) yield* f.runPass();
+        assert.equal(f.boardReads(), settledReads);
+        assert.equal(f.discoveryReads(), settledDiscovery);
+        yield* f.post("fresh-after-history");
+        const postedReads = f.boardReads();
+        yield* f.runPass();
+        yield* Deferred.await(f.started);
+        assert.equal(f.boardReads() - postedReads, 1);
+        assert.deepEqual((yield* f.state()).boardDeliveries?.[0]?.sequences, [21]);
+        assert.deepEqual(f.recipients, ["child"]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("retains failed discovery without needing another append event", () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.post();
+      const entryPath = [...f.boardFiles.keys()].find((path) => path.includes("/entries/"));
+      assert.ok(entryPath);
+      const saved = f.boardFiles.get(entryPath);
+      assert.ok(saved);
+      f.boardFiles.set(entryPath, "invalid JSON");
+      yield* f.runPass();
+      assert.deepEqual(f.recipients, []);
+      assert.equal((yield* f.state()).families[0]?.boardDeliveryThrough, undefined);
+      f.boardFiles.set(entryPath, saved);
+      yield* f.runPass();
+      yield* Deferred.await(f.started);
+      assert.deepEqual(f.recipients, ["child"]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("paces failed delivery retries and keeps a stable batch until idle delivery", () =>
+    Effect.gen(function* () {
+      const f = yield* fixture({ failFirstAcquire: true });
+      yield* f.post();
+      yield* f.provide(families.runWorker).pipe(Effect.forkScoped);
+      yield* Deferred.await(f.acquireFailed);
+      yield* TestClock.adjust(0);
+      const pending = (yield* f.state()).boardDeliveries?.[0];
+      assert.equal(pending?.status, "pending");
+      assert.equal(f.acquireAttempts(), 1);
+      yield* TestClock.adjust("999 millis");
+      assert.equal(f.acquireAttempts(), 1);
+      yield* TestClock.adjust("1 millis");
+      yield* Deferred.await(f.started);
+      assert.equal(f.acquireAttempts(), 2);
+      assert.equal((yield* f.state()).boardDeliveries?.[0]?.turnId, pending?.turnId);
+      assert.deepEqual(f.recipients, ["child"]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "restart discovers an append before staging, skips settled history and excludes only the exact initial assignment",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture({ initialAssignment: true });
+        yield* f.provide(
+          boards.append("parent", {
+            audience: ["child"],
+            topic: "child-child",
+            event: "assignment",
+            description: "Initial",
+            body: "Owned by creation",
+          }),
+        );
+        yield* f.runPass();
+        assert.deepEqual(f.recipients, []);
+        assert.equal((yield* f.state()).families[0]?.children[0]?.assignmentSequence, 1);
+        const restarted = yield* fixture({ familyFiles: f.familyFiles, boardFiles: f.boardFiles });
+        const before = restarted.boardReads();
+        yield* restarted.runPass();
+        assert.equal(restarted.boardReads(), before);
+        // A later correction can reuse the topic, but not creation's exact entry identity.
+        yield* restarted.provide(
+          boards.append("parent", {
+            audience: ["child"],
+            topic: "child-child",
+            event: "assignment",
+            description: "Correction",
+            body: "New authorized follow-up",
+          }),
+        );
+        const afterCrash = yield* fixture({ familyFiles: f.familyFiles, boardFiles: f.boardFiles });
+        yield* afterCrash.runPass();
+        yield* Deferred.await(afterCrash.started);
+        assert.deepEqual((yield* afterCrash.state()).boardDeliveries?.[0]?.sequences, [2]);
+        assert.deepEqual(afterCrash.recipients, ["child"]);
+      }).pipe(Effect.scoped),
+  );
   it.effect.each([false, true])(
     "routine family completions stay passive while preserving assignment delivery (busy=%s)",
     (busy) =>
@@ -191,15 +355,20 @@ describe("default board-driven execution", () => {
             body: "No dependent work is waiting.",
           }),
         );
-        yield* f.provide(deliveries.runPass());
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
+        yield* f.runPass();
         assert.deepEqual(f.lanes, []);
         assert.equal((yield* f.state()).boardDeliveries?.[0]?.status, "deferred");
         assert.equal((yield* f.state()).passiveNotices?.length, 1);
+        const deferredReads = f.boardReads();
+        const deferredDiscovery = f.discoveryReads();
+        yield* f.runPass();
+        assert.equal(f.boardReads(), deferredReads);
+        assert.equal(f.discoveryReads(), deferredDiscovery);
         assert.deepEqual((yield* f.provide(boards.readNew("parent", {}, true))).entries, []);
         assert.equal((yield* f.provide(boards.readNew("parent"))).entries.length, 1);
         yield* f.post("necessary-follow-up");
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         if (!busy) {
           yield* Deferred.await(f.started);
           assert.deepEqual(f.recipients, ["child"]);
@@ -219,7 +388,7 @@ describe("default board-driven execution", () => {
             body: "Evidence.",
           }),
         );
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         const id = (yield* f.state()).boardDeliveries?.[0]?.turnId;
         assert.ok(id);
         yield* f.provide(
@@ -231,7 +400,7 @@ describe("default board-driven execution", () => {
             } else yield* storage.markPassiveNoticeAdmission([id], "actual-user-turn", true);
           }),
         );
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         const state = yield* f.state();
         assert.equal(state.boardDeliveries?.[0]?.status, stop ? "canceled" : "notified");
         assert.equal(state.passiveNotices?.[0]?.delivered, true);
@@ -257,12 +426,12 @@ describe("default board-driven execution", () => {
           ],
         });
         yield* f.post();
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         assert.deepEqual(f.recipients, []);
         assert.equal((yield* f.state()).boardDeliveries?.[0]?.status, "canceled");
         assert.deepEqual((yield* f.state()).boardDeliveryPaused, ["child"]);
         yield* f.provide(deliveries.resumeAfterUserInput("child"));
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         assert.deepEqual(f.recipients, []);
       }).pipe(Effect.scoped),
   );
@@ -298,11 +467,11 @@ describe("default board-driven execution", () => {
           body: "Persisted before first admission",
         }),
       );
-      yield* f.provide(deliveries.runPass());
+      yield* f.runPass();
       assert.deepEqual((yield* f.state()).boardDeliveries ?? [], []);
       assert.deepEqual(f.recipients, []);
       yield* f.post();
-      yield* f.provide(deliveries.runPass());
+      yield* f.runPass();
       yield* Deferred.await(f.started);
       assert.deepEqual(f.recipients, ["child"]);
       assert.deepEqual((yield* f.state()).boardDeliveries?.[0]?.sequences, [2]);
@@ -314,12 +483,12 @@ describe("default board-driven execution", () => {
       Effect.gen(function* () {
         const f = yield* fixture({ failFirstAcquire: true });
         yield* f.post();
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         const pending = (yield* f.state()).boardDeliveries?.[0];
         assert.equal(pending?.status, "pending");
         assert.ok(pending?.issue);
         assert.deepEqual(f.recipients, []);
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         yield* Deferred.await(f.started);
         assert.equal((yield* f.state()).boardDeliveries?.[0]?.turnId, pending?.turnId);
         assert.deepEqual(f.recipients, ["child"]);
@@ -329,7 +498,7 @@ describe("default board-driven execution", () => {
     Effect.gen(function* () {
       const f = yield* fixture({ busy: true });
       for (let index = 0; index < 25; index++) yield* f.post(`post-${index}`);
-      yield* f.provide(deliveries.runPass());
+      yield* f.runPass();
       const batch = (yield* f.state()).boardDeliveries?.[0];
       assert.equal(batch?.sequences.length, 20);
       assert.equal(batch?.through, 20);
@@ -337,8 +506,8 @@ describe("default board-driven execution", () => {
       yield* f.provide(
         boards.recordIntake("child", batch!.boardId, batch!.sequences, "notifiedAt"),
       );
-      yield* f.provide(deliveries.runPass());
-      yield* f.provide(deliveries.runPass());
+      yield* f.runPass();
+      yield* f.runPass();
       const records = (yield* f.state()).boardDeliveries ?? [];
       assert.equal(records.length, 2);
       assert.equal(records[0]?.status, "notified");
@@ -355,7 +524,7 @@ describe("default board-driven execution", () => {
         yield* f.post("b");
         yield* f.post("c");
         assert.deepEqual(a.scheduledRecipients, ["child"]);
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         const state = yield* f.state();
         assert.equal(
           state.boardDeliveries?.[0]?.status,
@@ -381,7 +550,7 @@ describe("default board-driven execution", () => {
         assert.equal(journal?.inputs[0]?.turnId, state.boardDeliveries?.[0]?.turnId);
         const again = yield* f.post("a");
         assert.equal(again.entry.sequence, 1);
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         assert.equal(f.lanes.length, 1);
         const receipts = yield* f.provide(boards.entryReceipts("parent", 1));
         assert.equal(receipts.deliveries?.[0]?.status, "admitted");
@@ -423,7 +592,7 @@ describe("default board-driven execution", () => {
             });
           }),
         );
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         assert.deepEqual(f.recipients.sort(), ["child", "parent"]);
         const records = (yield* f.state()).boardDeliveries;
         assert.deepEqual(
@@ -449,7 +618,7 @@ describe("default board-driven execution", () => {
         const f = yield* fixture({ busy: true });
         yield* f.post("a");
         yield* f.post("b");
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         assert.deepEqual(f.lanes, []);
         assert.match(
           (yield* f.state()).boardDeliveries?.[0]?.issue ?? "",
@@ -463,10 +632,10 @@ describe("default board-driven execution", () => {
         // External boundary: observeMessageBoardRequests confirms these only after the
         // real outgoing model stream receives them (covered by message-board-runtime).
         yield* f.provide(boards.recordIntake("child", inbox.boardId, [1, 2], "notifiedAt"));
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         assert.equal((yield* f.state()).boardDeliveries?.[0]?.status, "notified");
         f.setBusy(false);
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         assert.deepEqual(f.lanes, []);
       }),
   );
@@ -477,12 +646,12 @@ describe("default board-driven execution", () => {
       Effect.gen(function* () {
         const f = yield* fixture({ busy: true });
         yield* f.post();
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         assert.deepEqual(f.lanes, []);
         f.setBusy(false);
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         yield* Deferred.await(f.started);
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         assert.equal(f.lanes.length, 1);
       }),
   );
@@ -492,7 +661,7 @@ describe("default board-driven execution", () => {
       const f = yield* fixture();
       yield* f.post();
       assert.equal((yield* f.state()).boardDeliveries?.length ?? 0, 0);
-      yield* f.provide(deliveries.runPass());
+      yield* f.runPass();
       yield* Deferred.await(f.started);
       const records = yield* f.provide(
         Effect.gen(function* () {
@@ -504,7 +673,7 @@ describe("default board-driven execution", () => {
         boardFiles: f.boardFiles,
         records,
       });
-      yield* restarted.provide(deliveries.runPass());
+      yield* restarted.runPass();
       assert.deepEqual(restarted.lanes, []);
       assert.equal(
         (yield* restarted.state()).boardDeliveries?.[0]?.turnId,
@@ -532,7 +701,7 @@ describe("default board-driven execution", () => {
             body: "No herd",
           }),
         );
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         assert.deepEqual(f.lanes, []);
         yield* f.provide(
           boards.append("child", {
@@ -542,7 +711,7 @@ describe("default board-driven execution", () => {
             body: "Root still sees all",
           }),
         );
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         assert.deepEqual(f.recipients, ["parent"]);
       }),
   );
@@ -572,16 +741,16 @@ describe("default board-driven execution", () => {
           }),
         );
         yield* f.post("after-stop");
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         assert.deepEqual(f.lanes, []);
         assert.ok((yield* f.state()).boardDeliveries?.every((item) => item.status === "canceled"));
         yield* f.provide(deliveries.resumeAfterUserInput("child"));
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         assert.deepEqual(f.lanes, []);
         assert.deepEqual((yield* f.provide(boards.readNew("child", {}, true))).entries, []);
         assert.equal((yield* f.provide(boards.readNew("child"))).entries.length, 2);
         yield* f.post("future");
-        yield* f.provide(deliveries.runPass());
+        yield* f.runPass();
         yield* Deferred.await(f.started);
         assert.equal(f.lanes.length, 1);
       }),
@@ -591,7 +760,7 @@ describe("default board-driven execution", () => {
     Effect.gen(function* () {
       const f = yield* fixture({ resolved: mode === "resolved", busy: true });
       yield* f.post();
-      yield* f.provide(deliveries.runPass());
+      yield* f.runPass();
       if (mode === "canceled")
         yield* f.provide(
           Effect.gen(function* () {
@@ -610,8 +779,8 @@ describe("default board-driven execution", () => {
           }),
         );
       f.setBusy(false);
-      yield* f.provide(deliveries.runPass());
-      yield* f.provide(deliveries.runPass());
+      yield* f.runPass();
+      yield* f.runPass();
       assert.deepEqual(f.lanes, []);
       assert.equal((yield* f.state()).boardDeliveries?.[0]?.status, "canceled");
     }),

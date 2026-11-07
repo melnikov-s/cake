@@ -25,9 +25,11 @@ function deliveryEntries(
 ) {
   const child = family.children.find((item) => item.sessionId === recipient);
   const initial = child?.assignmentTopic
-    ? entries.find(
-        (entry) =>
-          entry.topic === child.assignmentTopic && entry.authorSessionId === child.parentSessionId,
+    ? entries.find((entry) =>
+        child.assignmentSequence !== undefined
+          ? entry.sequence === child.assignmentSequence
+          : entry.topic === child.assignmentTopic &&
+            entry.authorSessionId === child.parentSessionId,
       )
     : undefined;
   return entries
@@ -254,23 +256,109 @@ const processRecipient = Effect.fn("WorkboardDeliveries.processRecipient")(funct
   );
 });
 
-/** Existing application-owned delivery worker reconciles durable boards; this is not agent polling. */
-export const runPass = Effect.fn("WorkboardDeliveries.runPass")(function* () {
+/** One serial application worker owns this pending-work index for its lifetime.
+ * Startup discovers saved families once. Afterwards only appends and unfinished
+ * batches are revisited; idle recipients remain pending, never filtered out.
+ * The index retains IDs, not historical entries. Durable cursors/batches recover it.
+ */
+export const makePass = Effect.fn("WorkboardDeliveries.makePass")(function* () {
   const storage = yield* SessionFamilyStorage;
-  for (const family of yield* storage.list()) {
-    const entries = yield* (yield* MessageBoardStorage).entries(boardIdFor(family.familyId));
-    for (const recipient of familyMemberIds(family))
-      yield* Effect.scoped(processRecipient(family, recipient, entries)).pipe(
-        Effect.catch((error) =>
-          Effect.gen(function* () {
-            const pending = (yield* storage.state()).boardDeliveries?.find(
-              (item) => item.recipientSessionId === recipient && item.status === "pending",
+  const boards = yield* MessageBoardStorage;
+  const pendingBoards = new Set<string>();
+  const scanBoards = new Set<string>();
+  let discovered = false;
+
+  return Effect.fn("WorkboardDeliveries.runPass")(function* () {
+    for (const id of yield* boards.takeChangedBoards()) scanBoards.add(id);
+    if (!discovered) {
+      for (const family of (yield* storage.state()).families)
+        scanBoards.add(boardIdFor(family.familyId));
+      discovered = true;
+    }
+    for (const id of new Set([...scanBoards, ...pendingBoards])) {
+      yield* Effect.gen(function* () {
+        const document = yield* storage.state();
+        const savedFamily = document.families.find((item) => boardIdFor(item.familyId) === id);
+        if (!savedFamily) {
+          scanBoards.delete(id);
+          pendingBoards.delete(id);
+          return;
+        }
+        const boardId = boardIdFor(savedFamily.familyId);
+        const after = savedFamily.boardDeliveryThrough ?? 0;
+        const sequences = (document.boardDeliveries ?? [])
+          .filter(
+            (item) =>
+              item.boardId === id && (item.status === "pending" || item.status === "admitted"),
+          )
+          .flatMap((item) => item.sequences);
+        const scanning = scanBoards.has(id);
+        const entries = scanning
+          ? yield* boards.entries(boardId, { after, sequences })
+          : sequences.length
+            ? yield* boards.entries(boardId, { sequences })
+            : [];
+        const family = {
+          ...savedFamily,
+          children: savedFamily.children.map((child) => {
+            if (!child.assignmentTopic || child.assignmentSequence !== undefined) return child;
+            const initial = entries.find(
+              (entry) =>
+                entry.topic === child.assignmentTopic &&
+                entry.authorSessionId === child.parentSessionId,
             );
-            if (pending)
-              yield* storage.updateBoardDelivery(pending.turnId, "pending", String(error));
-            else yield* Effect.logWarning("Workboard delivery remains pending", error);
+            return initial ? { ...child, assignmentSequence: initial.sequence } : child;
           }),
-        ),
-      );
-  }
+        };
+        for (const recipient of familyMemberIds(family))
+          yield* Effect.scoped(processRecipient(family, recipient, entries)).pipe(
+            Effect.catch((error) =>
+              Effect.gen(function* () {
+                const pending = (yield* storage.state()).boardDeliveries?.find(
+                  (item) =>
+                    item.boardId === id &&
+                    item.recipientSessionId === recipient &&
+                    item.status === "pending",
+                );
+                if (pending)
+                  yield* storage.updateBoardDelivery(pending.turnId, "pending", String(error));
+                else yield* Effect.logWarning("Workboard delivery remains pending", error);
+              }),
+            ),
+          );
+        const records = ((yield* storage.state()).boardDeliveries ?? []).filter(
+          (item) => item.boardId === id,
+        );
+        if (scanning) {
+          const latest = Math.max(after, ...entries.map((entry) => entry.sequence));
+          let through = latest;
+          for (const recipient of familyMemberIds(family)) {
+            const accounted = Math.max(
+              0,
+              ...records
+                .filter((item) => item.recipientSessionId === recipient)
+                .map((item) => item.through),
+            );
+            const next = deliveryEntries(family, recipient, entries, accounted)[0];
+            if (next) through = Math.min(through, next.sequence - 1);
+          }
+          // Batches persist before their scan cursor. A crash can repeat discovery,
+          // but cannot skip an unstaged post or invent a new ID for a saved batch.
+          yield* storage.advanceBoardDelivery(
+            family.familyId,
+            through,
+            family.children.flatMap((child) =>
+              child.assignmentSequence === undefined
+                ? []
+                : [{ sessionId: child.sessionId, sequence: child.assignmentSequence }],
+            ),
+          );
+          if (through === latest) scanBoards.delete(id);
+        }
+        if (records.some((item) => ["pending", "admitted", "deferred"].includes(item.status)))
+          pendingBoards.add(id);
+        else pendingBoards.delete(id);
+      }).pipe(Effect.catch((error) => Effect.logWarning("Workboard delivery will retry", error)));
+    }
+  });
 });
