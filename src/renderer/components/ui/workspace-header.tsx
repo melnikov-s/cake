@@ -18,7 +18,9 @@ export function WorkspaceHeader({
       data-slot="workspace-header"
       className={cn(
         "relative box-content flex h-title-bar min-w-0 shrink-0 items-center gap-3 border-b border-border/65 [app-region:drag]",
-        compact ? "overflow-hidden px-5" : "pl-[46px] pr-11",
+        compact
+          ? "overflow-hidden px-5"
+          : "pl-[46px] pr-[calc(2.75rem+var(--workspace-header-inset,0px))]",
       )}
     >
       {compact && titleLeading}

@@ -36,6 +36,24 @@ describe("Application command registry", () => {
     expect(root.projectWorkbenchStore.commandPaneStore.pane).toBe("tree");
   });
 
+  it("routes the Workspace hotkey to the same mode-aware pane toggle", () => {
+    const summary = sessionSummary({ sessionId: "session", projectPath: "/work/alpha" });
+    using fixture = createRendererStoreFixture({ sessions: [summary] });
+    const { root } = fixture;
+    const session = root.sessionRegistry.load(summary.sessionId, summary.workingDirectory);
+    root.navigationStore.showLoadedProjectSession(summary.sessionId);
+    const navigator = root.workspaceNavigatorStore;
+    for (const mode of ["normal", "browser", "vscode"] as const) {
+      session.showPresentation(mode);
+      const previous = navigator.paneVisible;
+      root.commands.execute("toggle-sidebar");
+      expect(navigator.paneVisible).toBe(!previous);
+      expect(session.presentationMode).toBe(mode);
+      root.commands.execute("toggle-sidebar");
+      expect(navigator.paneVisible).toBe(previous);
+    }
+  });
+
   it("dismisses hints even for unavailable commands but lets the hint command toggle itself", () => {
     using fixture = createRendererStoreFixture();
     const { root } = fixture;

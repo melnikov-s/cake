@@ -1,11 +1,12 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { applySnapshot } from "r-state-tree";
+import { applySnapshot, toSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../../src/renderer/components/app";
+import { SidebarNavigationControls } from "../../../src/renderer/components/sidebar-navigation-controls";
 import type { Client } from "../../../src/renderer/client/Client";
 import { editorLease } from "./embedded-editor-workflow-fixture";
 import { CakeChatWorkspaceSurface } from "../../../src/renderer/components/cake-chat-workspace-surface";
@@ -49,7 +50,7 @@ afterEach(() => {
   Reflect.deleteProperty(Range.prototype, "getClientRects");
 });
 
-function renderWorkspace(kind: Kind, mode: Mode, startInChat = false) {
+function renderWorkspace(kind: Kind, mode: Mode, startInChat = false, fullApp = startInChat) {
   const reveal = vi.fn<Client["vscode"]["reveal"]>(async () => ({
     outcome: { view: "file" },
     locations: [],
@@ -148,12 +149,15 @@ function renderWorkspace(kind: Kind, mode: Mode, startInChat = false) {
   const view = render(
     <StoreProvider store={root}>
       <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
-        {startInChat ? (
+        {fullApp ? (
           <StoreProvider store={root.fullscreenSurfaceStore}>
             <App />
           </StoreProvider>
         ) : (
-          surface
+          <>
+            <SidebarNavigationControls />
+            {surface}
+          </>
         )}
       </VirtuosoMockContext.Provider>
     </StoreProvider>,
@@ -300,7 +304,7 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
       );
 
       // File navigation honors a manual close; explicit entry shows the same chat again.
-      await f.user.click(screen.getByRole("button", { name: "Close chat" }));
+      await f.user.click(screen.getByRole("button", { name: "Close Workspace" }));
       await invoke("vscode.open", { path: "src/next.ts" });
       expect(
         screen.queryByRole("complementary", { name: "Current conversation companion" }),
@@ -315,6 +319,115 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
       );
     },
   );
+  it.each(
+    (["browser", "vscode"] as const).flatMap((mode) =>
+      (["chat", "todos", "sessions"] as const).map((tab) => ({ mode, tab })),
+    ),
+  )(
+    "$mode shell toggle hides/restores the entire $tab pane without changing mode",
+    async ({ mode, tab }) => {
+      using f = renderWorkspace(kind, mode, false, true);
+      await f.user.click(
+        screen.getByRole("button", {
+          name: mode === "browser" ? "Open Browser Mode" : "Open VS Code",
+        }),
+      );
+      const navigator = f.root.workspaceNavigatorStore;
+      act(() => (tab === "chat" ? navigator.showChat() : navigator.show(tab)));
+      const workspace = screen.getByRole("region", {
+        name: mode === "browser" ? "Browser workspace" : "VS Code workspace",
+      });
+      const companion = () =>
+        screen.queryByRole("complementary", { name: "Current conversation companion" });
+      expect(companion()).not.toBeNull();
+      expect(document.querySelectorAll('[data-slot="shell-workspace-toggle"]')).toHaveLength(1);
+      expect(document.querySelector('[data-slot="header-chat-toggle"]')).toBeNull();
+      expect(document.querySelector('[data-slot="header-sidebar-toggle"]')).toBeNull();
+      const close = screen.getByRole("button", { name: "Close Workspace" });
+      expect(close.getAttribute("aria-expanded")).toBe("true");
+      await f.user.click(close);
+      expect(companion()).toBeNull();
+      expect(f.session.presentationMode).toBe(mode);
+      expect(workspace.isConnected).toBe(true);
+      const reopen = screen.getByRole("button", { name: "Open Workspace" });
+      expect(reopen.getAttribute("aria-expanded")).toBe("false");
+      await f.user.click(reopen);
+      expect(companion()).not.toBeNull();
+      expect(navigator.companionTab).toBe(tab);
+      expect(f.session.presentationMode).toBe(mode);
+      expect(workspace.isConnected).toBe(true);
+    },
+  );
+
+  it.each<Mode>(["browser", "vscode"])(
+    "%s collapse survives window snapshots and mode switches without hiding Main chat",
+    async (mode) => {
+      using f = renderWorkspace(kind, mode, false, true);
+      await f.user.click(
+        screen.getByRole("button", {
+          name: mode === "browser" ? "Open Browser Mode" : "Open VS Code",
+        }),
+      );
+      const navigator = f.root.workspaceNavigatorStore;
+      act(() => navigator.show("sessions"));
+      await f.user.click(screen.getByRole("button", { name: "Close Workspace" }));
+      const saved = toSnapshot(f.root);
+      using restored = createRendererStoreFixture({
+        snapshot: saved,
+        projects: [projectRecord({ path: "/project", name: "Project" })],
+        sessions: [
+          sessionSummary({ sessionId: projectId, projectPath: "/project", title: "Project task" }),
+        ],
+      });
+      expect(restored.root.workspaceNavigatorStore.paneVisible).toBe(false);
+      expect(restored.root.workspaceNavigatorStore.companionTab).toBe("sessions");
+      restored.root.workspaceNavigatorStore.togglePane();
+      expect(restored.root.workspaceNavigatorStore.paneVisible).toBe(true);
+      expect(restored.root.workspaceNavigatorStore.companionTab).toBe("sessions");
+
+      await f.user.click(screen.getByRole("button", { name: "Back to agent" }));
+      expect(
+        screen.getByRole("combobox", {
+          name: kind === "project" ? "Message" : "Message Project Chat",
+        }),
+      ).toBeDefined();
+      expect(screen.getByRole("complementary", { name: "Workspace" })).toBeDefined();
+      await f.user.click(screen.getByRole("button", { name: "Close Workspace" }));
+      expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
+      expect(
+        screen.getByRole("combobox", {
+          name: kind === "project" ? "Message" : "Message Project Chat",
+        }),
+      ).toBeDefined();
+      await f.user.click(screen.getByRole("button", { name: "Open Workspace" }));
+      expect(screen.getByRole("complementary", { name: "Workspace" })).toBeDefined();
+      expect(f.session.presentationMode).toBe("normal");
+      await f.user.click(
+        screen.getByRole("button", {
+          name: mode === "browser" ? "Open VS Code" : "Open Browser Mode",
+        }),
+      );
+      // Explicit VS Code entry reveals Chat; Browser entry preserves a manual
+      // close. Both existing policies must leave the shell restore action usable.
+      if (!navigator.paneVisible)
+        await f.user.click(screen.getByRole("button", { name: "Open Workspace" }));
+      expect(
+        screen.getByRole("complementary", { name: "Current conversation companion" }),
+      ).toBeDefined();
+      await f.user.click(screen.getByRole("button", { name: "Close Workspace" }));
+      await f.user.click(
+        screen.getByRole("button", {
+          name: mode === "browser" ? "Open Browser Mode" : "Open VS Code",
+        }),
+      );
+      if (!navigator.paneVisible)
+        await f.user.click(screen.getByRole("button", { name: "Open Workspace" }));
+      expect(
+        screen.getByRole("complementary", { name: "Current conversation companion" }),
+      ).toBeDefined();
+    },
+  );
+
   it("sizes the companion against the available center, not the desktop width", () => {
     vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue(
       new DOMRect(64, 0, 700, 900),
@@ -333,12 +446,12 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
       const draft = f.session.conversationSessionStore.composerStore.draftStore;
       const sessionId = f.session.sessionId;
       act(() => draft.setText("Continue the same conversation"));
-      await f.user.click(screen.getByRole("button", { name: "Close chat" }));
+      await f.user.click(screen.getByRole("button", { name: "Close Workspace" }));
       expect(f.session.workspaceChatSidebarVisible).toBe(false);
       expect(f.session.sessionId).toBe(sessionId);
       expect(f.session.conversationSessionStore.chatStore).toBe(chat);
       expect(draft.text).toBe("Continue the same conversation");
-      await f.user.click(screen.getByRole("button", { name: "Open chat" }));
+      await f.user.click(screen.getByRole("button", { name: "Open Workspace" }));
       expect(f.session.workspaceChatSidebarVisible).toBe(true);
       expect(f.session.conversationSessionStore.chatStore).toBe(chat);
       expect(

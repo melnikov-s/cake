@@ -63,7 +63,7 @@ export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
     id: "toggle-sidebar",
     group: "Editor & tools",
     label: "Toggle Workspace",
-    description: "Show or hide the To-dos and Sessions workspace.",
+    description: "Show or hide Workspace, including Chat beside VS Code or Browser.",
     defaultBinding: "Mod+B",
   },
   {

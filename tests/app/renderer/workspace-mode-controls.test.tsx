@@ -331,7 +331,7 @@ describe("Workspace mode navigation", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
     expect(await screen.findByRole("textbox", { name: "Browser address" })).toBeDefined();
     expect(layout()).toEqual(chatLayout);
-    await fixture.user.click(screen.getByRole("button", { name: "Close chat" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Close Workspace" }));
     expect(layout()).toEqual(chatLayout);
     await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
     await screen.findByTitle("VS Code workspace");
@@ -381,8 +381,8 @@ describe("Workspace mode navigation", () => {
         .getByRole("button", { name: "Open Project Chat for Project" })
         .getAttribute("aria-current"),
     ).toBe("page");
-    await fixture.user.click(screen.getByRole("button", { name: "Close chat" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Open chat" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Close Workspace" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Open Workspace" }));
     expect(screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" }).value).toBe(
       "Keep this worker draft",
     );

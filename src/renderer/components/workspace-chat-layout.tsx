@@ -81,6 +81,7 @@ export function WorkspaceChatLayout({
                 onResizeEnd={() => setResizing(false)}
               />
               <aside
+                id="workspace-companion"
                 data-popover-boundary
                 aria-label="Current conversation companion"
                 className="@container/session-pane flex w-[var(--workspace-chat-sidebar-width)] min-w-0 shrink-0 flex-col border-l border-border/65 bg-background"

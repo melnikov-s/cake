@@ -1116,7 +1116,7 @@ export class RootStore extends Store<{
       },
       restoreStagedSession: (projectPath) => this.navigationStore.restoreStagedSession(projectPath),
       selectSession: (sessionId) => this.navigationStore.selectProjectSession(sessionId),
-      toggleProjectSidebar: () => this.workspaceNavigatorStore.toggle(),
+      toggleProjectSidebar: () => this.workspaceNavigatorStore.togglePane(),
       projectSidebarWidth: () => 0,
     });
   }

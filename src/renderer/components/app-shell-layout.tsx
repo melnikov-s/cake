@@ -38,8 +38,12 @@ export const AppShellLayout = observer(function AppShellLayout({
     320,
     window.innerWidth - (navigatorVisible ? accessoryWidth : 0) - 414,
   );
-  const shellStyle: CSSProperties & Record<"--navigator-width" | "--command-width", string> = {
+  const shellStyle: CSSProperties &
+    Record<"--navigator-width" | "--command-width" | "--workspace-header-inset", string> = {
     "--navigator-width": navigatorVisible ? `${accessoryWidth}px` : "0px",
+    // Reserve the same window-header endpoint even when the accessory lives in
+    // the tool companion or is closed. Mode controls must not follow pane bounds.
+    "--workspace-header-inset": navigatorVisible ? "0px" : `${accessoryWidth}px`,
     "--command-width": commandVisible ? `${Math.min(commandPaneWidth, commandMax)}px` : "0px",
   };
   return (

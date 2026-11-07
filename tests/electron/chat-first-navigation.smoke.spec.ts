@@ -113,8 +113,8 @@ test("project home and native Browser keep conversation drafts, companion identi
       page.getByRole("dialog", { name: "Model configuration", exact: true }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Close chat", exact: true }).click();
-    await page.getByRole("button", { name: "Open chat", exact: true }).click();
+    await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
+    await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
     await expect(workerDraft).toHaveValue("Keep the worker conversation draft");
     await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
       "Keyboard Editing & Navigation",

@@ -13,6 +13,7 @@ export class WorkspaceNavigatorStore extends Store<{
     | {
         workspaceChatSidebarVisible: boolean;
         showWorkspaceChatSidebar(): void;
+        toggleWorkspaceChatSidebar(): void;
       }
     | undefined;
 }> {
@@ -30,6 +31,17 @@ export class WorkspaceNavigatorStore extends Store<{
     return session
       ? session.workspaceChatSidebarVisible && this.companionTab !== "chat"
       : this.accessoryVisible;
+  }
+
+  /** The shell toggle owns the whole companion in tool modes, only the accessory in Main. */
+  get paneVisible() {
+    return this.props.companionSession()?.workspaceChatSidebarVisible ?? this.accessoryVisible;
+  }
+
+  togglePane() {
+    const session = this.props.companionSession();
+    if (session) session.toggleWorkspaceChatSidebar();
+    else this.accessoryVisible = !this.accessoryVisible;
   }
 
   showChat() {

@@ -4,7 +4,6 @@ import { ToolbarGroup } from "./ui/toolbar-group";
 import { IconButton } from "./ui/icon-button";
 import { TerminalIcon } from "./ui/icons";
 import { SegmentedControlButton, SegmentedControlGroup } from "./ui/segmented-control";
-import { WorkspacePanelToggle } from "./ui/workspace-panel-toggle";
 
 export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   mode,
@@ -12,8 +11,6 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   terminalOpen,
   browserHost = false,
   ideAvailable = true,
-  chatSidebarVisible,
-  onToggleChatSidebar,
   onBackToAgent,
   onOpenBrowser,
   onOpenIde,
@@ -24,8 +21,6 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   terminalOpen: boolean;
   browserHost?: boolean;
   ideAvailable?: boolean;
-  chatSidebarVisible?: boolean;
-  onToggleChatSidebar?(): void;
   onBackToAgent(): void;
   onOpenBrowser(): void;
   onOpenIde(): void;
@@ -64,15 +59,10 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
           </SegmentedControlButton>
         )}
       </SegmentedControlGroup>
-      <span className="grid size-7 shrink-0 place-items-center [@media(pointer:coarse)]:size-11">
-        {mode !== "normal" && onToggleChatSidebar && (
-          <WorkspacePanelToggle
-            panel="chat"
-            visible={chatSidebarVisible === true}
-            onToggle={onToggleChatSidebar}
-          />
-        )}
-      </span>
+      <span
+        aria-hidden="true"
+        className="grid size-7 shrink-0 place-items-center [@media(pointer:coarse)]:size-11"
+      />
       <IconButton
         data-cake-hint-key="t"
         className="phone:hidden"

@@ -6,18 +6,18 @@ import { SidebarIcon } from "./ui/icons";
 /** One shell-owned Workspace control, retained in place when the accessory closes. */
 export const SidebarNavigationControls = observer(function SidebarNavigationControls() {
   const navigator = useStore(RootStore).workspaceNavigatorStore;
-  const label = navigator.visible ? "Close Workspace" : "Open Workspace";
+  const label = navigator.paneVisible ? "Close Workspace" : "Open Workspace";
   return (
     <IconButton
       data-slot="shell-workspace-toggle"
       data-cake-hint-key="s"
       tooltip={label}
       hotkey="toggle-sidebar"
-      aria-pressed={navigator.visible}
-      aria-expanded={navigator.visible}
-      aria-controls="workspace-navigator"
+      aria-pressed={navigator.paneVisible}
+      aria-expanded={navigator.paneVisible}
+      aria-controls={navigator.inCompanion ? "workspace-companion" : "workspace-navigator"}
       pressedAppearance="subtle"
-      onClick={() => navigator.toggle()}
+      onClick={() => navigator.togglePane()}
     >
       <SidebarIcon />
     </IconButton>

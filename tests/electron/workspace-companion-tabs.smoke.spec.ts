@@ -41,7 +41,7 @@ async function expectAlignedTabs(strip: Locator) {
 }
 
 for (const theme of ["dark", "light"] as const) {
-  test(`workspace companion tabs align, fill and remain keyboard-accessible (${theme})`, async () => {
+  test(`workspace companion tabs align, fill and remain keyboard-accessible (${theme})`, async ({}, testInfo) => {
     test.setTimeout(120_000);
     const root = await mkdtemp(join(tmpdir(), "cake-companion-tabs-"));
     const paths = {
@@ -85,8 +85,22 @@ for (const theme of ["dark", "light"] as const) {
       await application.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0]!.setContentSize(1440, 900),
       );
+      const modeSelector = page.getByRole("group", { name: "Conversation workspace", exact: true });
+      const originalPosition = await modeSelector.boundingBox();
+      const expectStableSelector = async () => {
+        const current = await modeSelector.boundingBox();
+        expect(current).not.toBeNull();
+        expect(current!.x).toBeCloseTo(originalPosition!.x, 0);
+        expect(current!.y).toBeCloseTo(originalPosition!.y, 0);
+        expect(current!.width).toBeCloseTo(originalPosition!.width, 0);
+      };
+      await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
+      await expectStableSelector();
+      await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
+      await expectStableSelector();
       await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
       await expect(page.getByRole("region", { name: "Browser workspace" })).toBeVisible();
+      await expectStableSelector();
       const strip = page.getByRole("group", { name: "Companion content", exact: true });
       const chat = strip.getByRole("button", { name: "Chat", exact: true });
       const todos = strip.getByRole("button", { name: "Todos", exact: true });
@@ -132,6 +146,81 @@ for (const theme of ["dark", "light"] as const) {
       await expectAlignedTabs(strip);
       await todos.click();
       await expect(todos).toHaveAttribute("aria-pressed", "true");
+      await chat.click();
+      await expect(input).toHaveValue("Keep this companion draft");
+
+      // Compare again at this fixed narrower window size.
+      const narrowPosition = await modeSelector.boundingBox();
+      const expectStableNarrowSelector = async () => {
+        const current = await modeSelector.boundingBox();
+        expect(current!.x).toBeCloseTo(narrowPosition!.x, 0);
+        expect(current!.y).toBeCloseTo(narrowPosition!.y, 0);
+        expect(current!.width).toBeCloseTo(narrowPosition!.width, 0);
+      };
+      const toggle = page.locator('[data-slot="shell-workspace-toggle"]');
+      const companion = page.getByRole("complementary", {
+        name: "Current conversation companion",
+        exact: true,
+      });
+      for (const mode of ["browser", "vscode"]) {
+        if (mode === "browser")
+          await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+        else await page.getByRole("button", { name: "Open VS Code", exact: true }).click();
+        const workspace = page.getByRole("region", {
+          name: mode === "browser" ? "Browser workspace" : "VS Code workspace",
+          exact: true,
+        });
+        await expect(workspace).toBeVisible();
+        await expect(toggle).toHaveCount(1);
+        await expect(
+          page.locator('[data-slot="header-chat-toggle"], [data-slot="header-sidebar-toggle"]'),
+        ).toHaveCount(0);
+        for (const tab of [chat, todos, sessions]) {
+          await tab.click();
+          await expect(toggle).toHaveAttribute("aria-expanded", "true");
+          await toggle.click();
+          await expect(companion).toBeHidden();
+          await expect(workspace).toBeVisible();
+          await expect(toggle).toBeVisible();
+          await expect(toggle).toHaveAccessibleName("Open Workspace");
+          await expect(toggle).toHaveAttribute("aria-expanded", "false");
+          await expectStableNarrowSelector();
+          // Restore from the retained right-hand control using the keyboard too.
+          await toggle.focus();
+          await toggle.press("Enter");
+          await expect(companion).toBeVisible();
+          await expect(tab).toHaveAttribute("aria-pressed", "true");
+          await expectStableNarrowSelector();
+          await expect(workspace).toBeVisible();
+        }
+      }
+      await toggle.click();
+      await page.screenshot({ path: testInfo.outputPath(`collapsed-${theme}.png`) });
+      await page.getByRole("button", { name: "Back to agent", exact: true }).click();
+      await expect(input).toBeVisible();
+      await expectStableNarrowSelector();
+      const accessory = page.getByRole("complementary", { name: "Workspace", exact: true });
+      await expect(accessory).toBeVisible();
+      await toggle.click();
+      await expect(accessory).toBeHidden();
+      await expectStableNarrowSelector();
+      await expect(input).toBeVisible();
+      await expect(input).toHaveValue("Keep this companion draft");
+      await toggle.click();
+      await expect(accessory).toBeVisible();
+      await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+      // Browser preserves manual collapse; explicit VS Code entry reveals Chat.
+      await expect(companion).toBeHidden();
+      await expect(toggle).toBeVisible();
+      await toggle.click();
+      await expect(companion).toBeVisible();
+      await toggle.click();
+      await page.getByRole("button", { name: "Open VS Code", exact: true }).click();
+      await expect(
+        page.getByRole("region", { name: "VS Code workspace", exact: true }),
+      ).toBeVisible();
+      await expect(companion).toBeVisible();
+      await expectStableNarrowSelector();
       await chat.click();
       await expect(input).toHaveValue("Keep this companion draft");
     } finally {

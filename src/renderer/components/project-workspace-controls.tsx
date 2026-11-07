@@ -35,8 +35,6 @@ export const ProjectWorkspaceControls = observer(function ProjectWorkspaceContro
       <SessionChangesToggle session={session} />
       <WorkspaceTodosToggle />
       <WorkspaceModeControls
-        chatSidebarVisible={session.workspaceChatSidebarVisible}
-        onToggleChatSidebar={() => session.toggleWorkspaceChatSidebar()}
         mode={mode}
         terminalAvailable={terminal.available}
         terminalOpen={terminal.open}

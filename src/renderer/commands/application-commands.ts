@@ -103,7 +103,7 @@ export function createApplicationCommandRegistry(owners: {
         void owners.terminal().newTab();
       },
     },
-    "toggle-sidebar": { run: () => owners.workspaceNavigator().toggle() },
+    "toggle-sidebar": { run: () => owners.workspaceNavigator().togglePane() },
     "toggle-session-tree": {
       enabled: editableProject,
       run: () => owners.workbench().commandPaneStore.toggle("tree"),

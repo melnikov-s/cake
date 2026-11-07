@@ -113,9 +113,9 @@ for (const mode of ["Browser Mode", "VS Code"] as const) {
       await expect(composer).toBeVisible();
       await expect(composer).toHaveValue("Continue reviewing");
       if (mode === "Browser Mode") {
-        await page.getByRole("button", { name: "Close chat", exact: true }).click();
+        await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
         await expect(composer).toBeHidden();
-        await page.getByRole("button", { name: "Open chat", exact: true }).click();
+        await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
         await expect(composer).toBeVisible();
         await expect(page.getByRole("textbox", { name: "Browser address" })).toBeVisible();
       }

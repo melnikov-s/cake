@@ -33,8 +33,6 @@ export const CakeChatWorkspaceControls = observer(function CakeChatWorkspaceCont
       <SideChatsMenu store={session} onOpen={() => root.workspaceNavigatorStore.showChat()} />
       <WorkspaceTodosToggle />
       <WorkspaceModeControls
-        chatSidebarVisible={session.workspaceChatSidebarVisible}
-        onToggleChatSidebar={() => session.toggleWorkspaceChatSidebar()}
         mode={mode}
         terminalAvailable={terminal.available}
         terminalOpen={terminal.open}

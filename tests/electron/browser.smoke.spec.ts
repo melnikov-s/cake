@@ -188,13 +188,13 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(addressInput).toHaveValue(`${origin}/`);
 
     const workspace = page.getByRole("region", { name: "Browser workspace", exact: true });
-    const chatToggle = workspace.locator('[data-slot="header-chat-toggle"]');
+    const chatToggle = page.locator('[data-slot="shell-workspace-toggle"]');
     const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
-    await expect(chatToggle).toHaveAccessibleName("Close chat");
+    await expect(chatToggle).toHaveAccessibleName("Close Workspace");
     await chatToggle.click();
     await expect(composer).toBeHidden();
-    await expect(chatToggle).toHaveAccessibleName("Open chat");
+    await expect(chatToggle).toHaveAccessibleName("Open Workspace");
     await expect(chatToggle).toHaveAttribute("aria-expanded", "false");
     await chatToggle.click();
     await expect(composer).toBeVisible();
@@ -202,6 +202,10 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(page.getByRole("complementary", { name: "Workspace", exact: true })).toBeHidden();
     await expect(rail.getByRole("button", { name: /^Browser sharing:/ })).toBeVisible();
     await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
+    await page
+      .getByRole("group", { name: "Companion content", exact: true })
+      .getByRole("button", { name: "Sessions", exact: true })
+      .click();
     await expect(page.locator(`.session-item[data-session-id="${sessionId}"]`)).toBeVisible();
 
     const browserState = (url: string) => () =>
