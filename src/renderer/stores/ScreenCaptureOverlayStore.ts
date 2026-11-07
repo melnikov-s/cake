@@ -17,6 +17,7 @@ import {
 import { DictationStore } from "./DictationStore";
 import { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
 import { CaptureDestinationPickerStore } from "./CaptureDestinationPickerStore";
+import { automaticCaptureBounds } from "../screen-capture/capture-bounds";
 
 /** Ephemeral overlay editing state; image and numbered text share one export projection. */
 export class ScreenCaptureOverlayStore extends Store<{
@@ -35,6 +36,7 @@ export class ScreenCaptureOverlayStore extends Store<{
   mode: CaptureMode = "crop";
   readonly drawings: CaptureDrawing[] = observable([]);
   readonly stroke: CapturePoint[] = observable([]);
+  capturePreview: CaptureRect | undefined;
   dragStart: CapturePoint | undefined;
   dragEnd: CapturePoint | undefined;
   editingIndex: number | undefined;
@@ -95,15 +97,50 @@ export class ScreenCaptureOverlayStore extends Store<{
     }
   }
 
+  beginCapturePreview() {
+    if (
+      !this.snapshot ||
+      this.busy ||
+      this.cancelled ||
+      this.capturePreview ||
+      this.editingIndex !== undefined
+    )
+      return;
+    // Include a drawing still under the pointer, but never let its later release crop/draw again.
+    const pending = this.pendingDrawing;
+    if (pending) this.drawings.push(pending);
+    this.abandonDrag();
+    this.capturePreview = automaticCaptureBounds(
+      this.drawings,
+      this.snapshot.width,
+      this.snapshot.height,
+    );
+    this.copied = false;
+  }
+  updateCapturePreview(rect: CaptureRect) {
+    if (this.capturePreview) this.capturePreview = rect;
+  }
+  cancelCapturePreview() {
+    this.capturePreview = undefined;
+  }
+  async releaseCapturePreview() {
+    const rect = this.capturePreview;
+    this.cancelCapturePreview();
+    if (rect) await this.capture(rect);
+  }
   setMode(mode: CaptureMode) {
+    this.cancelCapturePreview();
     this.commitLabel();
     this.abandonDrag();
     this.mode = mode;
   }
   get selection() {
-    return this.mode === "crop" && this.dragStart && this.dragEnd
-      ? captureRect(this.dragStart, this.dragEnd)
-      : undefined;
+    return (
+      this.capturePreview ??
+      (this.mode === "crop" && this.dragStart && this.dragEnd
+        ? captureRect(this.dragStart, this.dragEnd)
+        : undefined)
+    );
   }
   private get pendingDrawing(): CaptureDrawing | undefined {
     if (!this.dragStart || !this.dragEnd || this.mode === "crop") return undefined;
@@ -120,7 +157,14 @@ export class ScreenCaptureOverlayStore extends Store<{
     return drawing && captureDrawingAnchor(drawing);
   }
   begin(point: CapturePoint) {
-    if (!this.snapshot || this.busy || this.cancelled || this.editingIndex !== undefined) return;
+    if (
+      !this.snapshot ||
+      this.busy ||
+      this.cancelled ||
+      this.capturePreview ||
+      this.editingIndex !== undefined
+    )
+      return;
     this.copied = false;
     this.dragStart = point;
     this.dragEnd = point;
@@ -186,7 +230,8 @@ export class ScreenCaptureOverlayStore extends Store<{
     this.copied = false;
   }
   escape() {
-    if (this.editingIndex !== undefined) this.cancelLabel();
+    if (this.capturePreview) this.cancelCapturePreview();
+    else if (this.editingIndex !== undefined) this.cancelLabel();
     else if (this.dragStart) this.abandonDrag();
     else void this.cancel();
   }
@@ -242,6 +287,7 @@ export class ScreenCaptureOverlayStore extends Store<{
     }
   }
   async cancel() {
+    this.cancelCapturePreview();
     if (this.cancelled) return;
     this.cancelled = true;
     try {

@@ -284,6 +284,33 @@ describe("Screen capture overlay", () => {
     );
   });
 
+  it("previews on Enter down, ignores repeats, cancels safely and captures once on release", async () => {
+    const renderImage = vi.fn<ScreenCaptureOverlayStore["props"]["renderImage"]>(
+      async () => "data:image/png;base64,held",
+    );
+    using fixture = await renderOverlay(renderImage);
+    await fixture.user.keyboard("{Enter>}");
+    expect(screen.getByRole("group", { name: "Capture bounds" })).toBeDefined();
+    expect(renderImage).not.toHaveBeenCalled();
+    await fixture.user.keyboard("{Escape}{/Enter}");
+    expect(renderImage).not.toHaveBeenCalled();
+    expect(fixture.finishScreenCapture).not.toHaveBeenCalled();
+    await fixture.user.keyboard("{Enter>}");
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", repeat: true })));
+    expect(renderImage).not.toHaveBeenCalled();
+    await fixture.user.keyboard("{/Enter}");
+    await waitFor(() => expect(fixture.finishScreenCapture).toHaveBeenCalledOnce());
+    expect(renderImage).toHaveBeenCalledExactlyOnceWith(
+      snapshot.image,
+      [],
+      { x: 0, y: 0, width: 1200, height: 800 },
+      snapshot.maxDimension,
+      "yellow",
+    );
+    await fixture.user.keyboard("{/Enter}");
+    expect(fixture.finishScreenCapture).toHaveBeenCalledOnce();
+  });
+
   it("recovers after a render error", async () => {
     const renderImage = vi
       .fn<ScreenCaptureOverlayStore["props"]["renderImage"]>()

@@ -438,7 +438,7 @@ test("captures and annotates through the hidden native overlay into the existing
     await overlay.keyboard.press("Escape");
     await overlay.getByRole("button", { name: "Crop", exact: true }).click();
     await expect(overlay.getByRole("button", { name: "Undo drawing" })).toBeEnabled();
-    await overlay.keyboard.press("Enter");
+    await overlay.getByRole("button", { name: "Attach full display" }).click();
     await expect.poll(() => application.windows().length).toBe(1);
     const preview = page.getByRole("button", { name: /^View Screenshot-/ });
     await expect(preview).toHaveCount(1);

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect } from "react";
 import { StoreProvider, observer } from "r-state-tree/react";
 import type { ScreenCaptureOverlayStore } from "../stores/ScreenCaptureOverlayStore";
 import { CaptureCanvas } from "./ui/capture-canvas";
+import { CaptureBounds } from "./ui/capture-bounds";
 import { CaptureDestinationPicker } from "./capture-destination-picker";
 import { CaptureToolbar } from "./ui/capture-toolbar";
 import { AnnotationDraftPopover } from "./annotation-draft-popover";
@@ -25,17 +26,33 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
         store.escape();
       } else if (
         event.key === "Enter" &&
+        !(
+          event.target instanceof HTMLElement &&
+          event.target.closest('[contenteditable]:not([contenteditable="false"]), [role="textbox"]')
+        ) &&
         !(event.target instanceof HTMLTextAreaElement) &&
         !(event.target instanceof HTMLInputElement) &&
         !(event.target instanceof HTMLSelectElement) &&
         (!(event.target instanceof HTMLButtonElement) || event.target.hasAttribute("aria-pressed"))
       ) {
         event.preventDefault();
-        void store.capture();
+        store.beginCapturePreview();
       }
     };
+    const keyup = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" || !store.capturePreview) return;
+      event.preventDefault();
+      void store.releaseCapturePreview();
+    };
+    const blur = () => store.cancelCapturePreview();
     window.addEventListener("keydown", keydown);
-    return () => window.removeEventListener("keydown", keydown);
+    window.addEventListener("keyup", keyup);
+    window.addEventListener("blur", blur);
+    return () => {
+      window.removeEventListener("keydown", keydown);
+      window.removeEventListener("keyup", keyup);
+      window.removeEventListener("blur", blur);
+    };
   }, [store]);
   const snapshot = store.snapshot;
   const labelPoint = store.labelPoint;
@@ -64,9 +81,9 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
         <CaptureCanvas
           image={snapshot.image}
           drawings={store.visibleDrawings}
-          selection={store.selection}
+          selection={store.capturePreview ? undefined : store.selection}
           mode={store.mode}
-          disabled={store.busy || store.cancelled}
+          disabled={store.busy || store.cancelled || Boolean(store.capturePreview)}
           onEdit={(index) => store.editLabel(index)}
           onBegin={(point) => store.begin(point)}
           onMove={(point) => store.move(point)}
@@ -76,6 +93,14 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
           onError={(error) => {
             store.error = error instanceof Error ? error.message : String(error);
           }}
+        />
+      )}
+      {snapshot && store.capturePreview && (
+        <CaptureBounds
+          rect={store.capturePreview}
+          width={snapshot.width}
+          height={snapshot.height}
+          onChange={(rect) => store.updateCapturePreview(rect)}
         />
       )}
       {labelAnchor && (
@@ -112,27 +137,29 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
           )}
         </StoreProvider>
       )}
-      <CaptureToolbar
-        destination={
-          store.destinationPicker && (
-            <StoreProvider store={store.destinationPicker}>
-              <CaptureDestinationPicker disabled={store.busy || store.cancelled} />
-            </StoreProvider>
-          )
-        }
-        canAttach={Boolean(store.destinationPicker?.destination)}
-        mode={store.mode}
-        color={store.annotationColor}
-        onColor={(color) => store.selectColor(color)}
-        busy={store.busy || !snapshot}
-        canUndo={store.drawings.length > 0}
-        copied={store.copied}
-        onCopy={() => void store.capture(undefined, true)}
-        onMode={(mode) => store.setMode(mode)}
-        onUndo={() => store.undo()}
-        onCapture={() => void store.capture()}
-        onCancel={() => void store.cancel()}
-      />
+      {!store.capturePreview && (
+        <CaptureToolbar
+          destination={
+            store.destinationPicker && (
+              <StoreProvider store={store.destinationPicker}>
+                <CaptureDestinationPicker disabled={store.busy || store.cancelled} />
+              </StoreProvider>
+            )
+          }
+          canAttach={Boolean(store.destinationPicker?.destination)}
+          mode={store.mode}
+          color={store.annotationColor}
+          onColor={(color) => store.selectColor(color)}
+          busy={store.busy || !snapshot}
+          canUndo={store.drawings.length > 0}
+          copied={store.copied}
+          onCopy={() => void store.capture(undefined, true)}
+          onMode={(mode) => store.setMode(mode)}
+          onUndo={() => store.undo()}
+          onCapture={() => void store.capture()}
+          onCancel={() => void store.cancel()}
+        />
+      )}
       {store.error && (
         <div className="absolute bottom-4 left-1/2 z-20 max-w-[calc(100vw-32px)] -translate-x-1/2">
           <Callout variant="error">{store.error}</Callout>

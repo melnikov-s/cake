@@ -1268,6 +1268,7 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
     "annotation-input",
     "annotation-details",
     "color-picker",
+    "capture-preview",
   ],
   environment: (paths) => ({
     CAKE_SMOKE_DICTATION_HELPER: join(paths.userData, "capture-dictation"),
@@ -1362,7 +1363,8 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
       state === "annotate" ||
       state === "annotation-input" ||
       state === "annotation-details" ||
-      state === "color-picker";
+      state === "color-picker" ||
+      state === "capture-preview";
     if (annotationState) {
       await installCaptureMicrophone(overlay);
       await overlay.getByRole("button", { name: "Annotate", exact: true }).click();
@@ -1390,6 +1392,11 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
         await overlay.getByRole("button", { name: "Edit annotation 1", exact: true }).click();
         await expect(overlay.getByRole("dialog", { name: "Annotation details" })).toBeVisible();
       }
+    }
+    if (state === "capture-preview") {
+      await overlay.mouse.click(1, 1);
+      await overlay.keyboard.down("Enter");
+      await expect(overlay.getByRole("group", { name: "Capture bounds" })).toBeVisible();
     }
     if (state === "color-picker") {
       await overlay.getByRole("button", { name: "Annotation color", exact: true }).click();
