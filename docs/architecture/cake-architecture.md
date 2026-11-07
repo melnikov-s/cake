@@ -171,6 +171,13 @@ projections needed by a surface. References do not transfer ownership.
   Scheduled delivery and report outboxes retain their separately defined intents.
 - Sidecar discussions and private subagents have independent Pi transcripts.
   Parent anchors, handles, and projections do not merge transcript ownership.
+  Permanent chats delegate project tasks with `sessions.fork`: native Durable side-chat
+  forks at a completed reply, with their own executable identity and a Cake-managed
+  worktree binding. The source remains open and unchanged; inherited history stays
+  in Durable, not an assignment prompt or another transcript store. These Side Sessions
+  retain originating Cake authority and use the ordinary per-message asynchronous
+  result journal. `sessions.create` deliberately starts fresh context; explicitly
+  requested private subagents remain available. Existing sessions are not migrated.
   User-created side chats inherit the originating conversation's applicable tools,
   permissions and explicit user restrictions. They are not read-only
   or to-do-only workers. Parent-scoped Cake controls retain originating authority;

@@ -1,6 +1,6 @@
 import { Type } from "@earendil-works/pi-durable-ai";
 import { defineTool } from "@earendil-works/pi-durable";
-import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
+import { SideSessionDoc } from "./durable-side-session";
 import { createBashTool, createReadTool } from "@earendil-works/pi-durable/tools";
 import { join } from "node:path";
 
@@ -19,10 +19,6 @@ export const CAKE_CHAT_TOOL_OUTPUT_MAX_LINES = 400;
 export const cakeChatScratchDirectory = (sessionDirectory: string) =>
   join(sessionDirectory, "scratch");
 
-/** Every Cake Chat tool call runs in the scratch directory, whatever the agent's cwd says. */
-export const cakeChatExecutionEnv = (scratchDirectory: string) => () =>
-  new NodeExecutionEnv({ cwd: scratchDirectory });
-
 /** The timeout one call actually gets: a short default, and a ceiling that points at delegation. */
 export function cakeChatBashTimeout(requested: number | undefined): number {
   if (requested === undefined) return CAKE_CHAT_BASH_DEFAULT_TIMEOUT_SECONDS;
@@ -30,7 +26,7 @@ export function cakeChatBashTimeout(requested: number | undefined): number {
     throw new Error("Invalid timeout: must be a positive number of seconds");
   if (requested > CAKE_CHAT_BASH_MAX_TIMEOUT_SECONDS)
     throw new Error(
-      `Cake Chat bash calls are limited to ${CAKE_CHAT_BASH_MAX_TIMEOUT_SECONDS} seconds. Delegate longer work to a subagent or Project Session.`,
+      `Cake Chat bash calls are limited to ${CAKE_CHAT_BASH_MAX_TIMEOUT_SECONDS} seconds. Delegate longer work to a context-forked Side Session.`,
     );
   return requested;
 }
@@ -44,7 +40,7 @@ export function createCakeChatBashTool() {
   const bash = createBashTool();
   return defineTool({
     name: "bash",
-    description: `Run a quick bash command. It starts in Cake Chat's scratch directory, not a project; pass absolute paths or cd explicitly. Default timeout ${CAKE_CHAT_BASH_DEFAULT_TIMEOUT_SECONDS}s, maximum ${CAKE_CHAT_BASH_MAX_TIMEOUT_SECONDS}s. Output keeps the last ${CAKE_CHAT_TOOL_OUTPUT_MAX_LINES} lines or ${CAKE_CHAT_TOOL_OUTPUT_MAX_BYTES / 1024}KB and says when it was truncated. Never mutate a project checkout from here.`,
+    description: `Run a quick bash command. It starts in Cake Chat's scratch directory, not a project; pass absolute paths or cd explicitly. Default timeout ${CAKE_CHAT_BASH_DEFAULT_TIMEOUT_SECONDS}s, maximum ${CAKE_CHAT_BASH_MAX_TIMEOUT_SECONDS}s. Output keeps the last ${CAKE_CHAT_TOOL_OUTPUT_MAX_LINES} lines or ${CAKE_CHAT_TOOL_OUTPUT_MAX_BYTES / 1024}KB and says when it was truncated. Never mutate a project checkout from permanent chat. In task Side Sessions, commands instead run in the assigned managed worktree and may use longer timeouts.`,
     parameters: Type.Object({
       command: Type.String({ description: "Bash command to execute" }),
       timeout: Type.Optional(
@@ -56,7 +52,8 @@ export function createCakeChatBashTool() {
     replay: "unsafe",
     outputLimits: { ...outputLimits, retain: "tail" },
     async execute(args, api, context) {
-      const timeout = cakeChatBashTimeout(args.timeout);
+      const task = await api.snapshot(SideSessionDoc, api.conversationId, context);
+      const timeout = task?.workingDirectory ? args.timeout : cakeChatBashTimeout(args.timeout);
       return bash.execute({ command: args.command, timeout }, api, context);
     },
   });

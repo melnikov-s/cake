@@ -6,13 +6,12 @@ import {
   CAKE_CHAT_BASH_MAX_TIMEOUT_SECONDS,
   CAKE_CHAT_TOOL_OUTPUT_MAX_BYTES,
   cakeChatBashTimeout,
-  cakeChatExecutionEnv,
   cakeChatScratchDirectory,
   createCakeChatBashTool,
   createCakeChatReadTool,
 } from "../../../../src/services/pi-durable/cake-chat-local-tools";
 
-function fakeApi() {
+function fakeApi(task = false) {
   const calls: Array<{ command: unknown; cwd?: string; timeout?: number }> = [];
   const env = {
     cwd: "/scratch",
@@ -23,6 +22,7 @@ function fakeApi() {
   } as unknown as ExecutionEnv;
   const api = {
     env,
+    snapshot: async () => (task ? { workingDirectory: "/managed/task" } : undefined),
     output: () => undefined,
     outputWindow: undefined,
     retainedOutput: () => [],
@@ -58,9 +58,19 @@ describe("Cake Chat bash guards", () => {
         api,
         BACKGROUND_CONTEXT,
       ),
-    ).rejects.toThrow("Delegate longer work to a subagent or Project Session");
+    ).rejects.toThrow("Delegate longer work to a context-forked Side Session");
     expect(calls).toEqual([]);
     expect(() => cakeChatBashTimeout(0)).toThrow("Invalid timeout");
+  });
+
+  it("allows long verification commands only for task Side Session bindings", async () => {
+    const { api, calls } = fakeApi(true);
+    await createCakeChatBashTool().execute(
+      { command: "pnpm test", timeout: 600 },
+      api,
+      BACKGROUND_CONTEXT,
+    );
+    expect(calls[0]?.timeout).toBe(600);
   });
 
   it("caps model-visible output to a tail window", () => {
@@ -71,10 +81,9 @@ describe("Cake Chat bash guards", () => {
     });
   });
 
-  it("runs every tool in Cake Chat's scratch directory, never the agent cwd", () => {
+  it("locates Cake Chat's neutral scratch directory", () => {
     const scratch = cakeChatScratchDirectory("/home/me/.cake/pi/global-chat");
     expect(scratch).toBe("/home/me/.cake/pi/global-chat/scratch");
-    expect(cakeChatExecutionEnv(scratch)().cwd).toBe(scratch);
   });
 
   it("lets interrupted reads replay but never reruns an interrupted command", () => {

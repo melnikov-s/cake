@@ -34,6 +34,12 @@ import {
   cakeChatSideChatSessionId,
 } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
+import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
+import { CakeChatDurable } from "../../../src/services/pi-durable/CakeChatDurable";
+import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
+import { acquireOptions as acquireChatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
+import { cakeChatControlTools } from "../../../src/contracts/application/window-control-definitions";
 import { CakeChatConfiguration } from "../../../src/services/pi-durable/CakeChatConfiguration";
 
 const makeSnapshot = (sessionId: string, sessionFile: string): ConversationSnapshot => ({
@@ -233,7 +239,13 @@ const makeLayer = (
           await Effect.runPromise(Deferred.succeed(mergeOptions.activityGate.entered, undefined));
           await Effect.runPromise(Deferred.await(mergeOptions.activityGate.complete));
           const turnId = input[4];
-          if (turnId) options.onTurnResult?.(turnId, { stopReason: "stop", text: "Settled" });
+          if (turnId)
+            options.onTurnResult?.(turnId, {
+              stopReason: "stop",
+              text: "Implemented the agreed small fix.",
+              entryId: "task-answer",
+              respondsToSessionId: parseCrossSessionMessage(input[0])?.metadata.sender.sessionId,
+            });
         }
         options.onEvent({ type: "streaming", sessionId, streaming: false });
       },
@@ -588,6 +600,186 @@ describe("Cake Chat side-chat merge", () => {
       assert.deepEqual(fixture.importedHistories, []);
     }).pipe(Effect.provide(fixture.layer), Effect.scoped);
   });
+});
+
+describe("task Side Sessions", () => {
+  it.effect(
+    "routes discoverable permanent-chat task forks through managed isolation and correlates async results",
+    () =>
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>();
+        const complete = yield* Deferred.make<void>();
+        const settled = yield* Deferred.make<void>();
+        const fixture = makeLayer({ cakeChat: true, activityGate: { entered, complete } });
+        const forks: unknown[] = [];
+        const setup: string[] = [];
+        const worktree = {
+          projectPath: "/project",
+          worktreePath: "/managed/task",
+          branch: "agent/task",
+          baseBranch: "main",
+          createdAt: "2026-01-01",
+          parentWorktreePath: undefined,
+          baseCommit: "base",
+          state: "active" as const,
+          resolvedFrom: undefined,
+        };
+        yield* Effect.gen(function* () {
+          const storage = yield* SessionFamilyStorage;
+          yield* Effect.gen(function* () {
+            const options = yield* acquireChatOptions({
+              configuration: {
+                location: { workingDirectory: "/home", sessionDirectory: "/cake/cake-chat" },
+                agentDirectory: "/cake",
+              },
+              target: { sessionId: CAKE_CHAT_SESSION_ID, tools: cakeChatControlTools() },
+              newSession: false,
+            });
+            expect(
+              options.runtime.globalControl?.tools.find((tool) => tool.command === "sessions.fork")
+                ?.summary,
+            ).toContain("context-forked Side Session");
+            const invoke = options.runtime.globalControl!.invoke;
+            const result = yield* Effect.promise(() =>
+              invoke(
+                {
+                  name: "sessions.fork",
+                  arguments: {
+                    workspacePath: "/project",
+                    name: "Small fix",
+                    worktreeName: "small-fix",
+                    initialPrompt: "Implement the agreed fix",
+                    resultDelivery: "reply",
+                  },
+                },
+                new AbortController().signal,
+              ),
+            );
+            expect(result).toMatchObject({
+              ok: true,
+              status: "started",
+              sessionId: cakeChatSideChatSessionId(7),
+              workspacePath: "/managed/task",
+              managedWorktree: {
+                projectPath: "/project",
+                worktreePath: "/managed/task",
+                branch: "agent/task",
+              },
+            });
+            yield* Deferred.await(entered);
+            expect(forks).toEqual([
+              { parent: CAKE_CHAT_SESSION_ID, directory: "/managed/task", entryId: undefined },
+            ]);
+            expect(setup).toEqual(["create:/project", "ready:/managed/task"]);
+            const running = (yield* storage.state()).turns.find(
+              (turn) => turn.sessionId === cakeChatSideChatSessionId(7),
+            );
+            expect(running).toMatchObject({
+              senderSessionId: CAKE_CHAT_SESSION_ID,
+              resultDelivery: "reply",
+              reported: false,
+            });
+            expect(running?.outcome).toBeUndefined();
+            yield* Deferred.succeed(complete, undefined);
+            yield* Deferred.await(settled);
+            const finished = (yield* storage.state()).turns.find(
+              (turn) => turn.turnId === running?.turnId,
+            );
+            expect(finished).toMatchObject({
+              sessionId: cakeChatSideChatSessionId(7),
+              outcome: "complete",
+              report: {
+                text: "Implemented the agreed small fix.",
+                resultMessageRef: expect.stringContaining(
+                  encodeURIComponent(cakeChatSideChatSessionId(7)),
+                ),
+              },
+            });
+            expect(fixture.preparedContexts()).toBe(0);
+          }).pipe(
+            Effect.provideService(SessionFamilyStorage, {
+              ...storage,
+              settleTurn: (...args) =>
+                storage
+                  .settleTurn(...args)
+                  .pipe(Effect.tap(() => Deferred.succeed(settled, undefined))),
+            }),
+          );
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              fixture.layer,
+              Layer.mock(CakeChatDurable, {
+                forkTask: (parent, directory, entryId) =>
+                  Effect.sync(() => {
+                    forks.push({ parent, directory, entryId });
+                    return { sessionId: cakeChatSideChatSessionId(7), entryId: "12" };
+                  }),
+              }),
+              Layer.mock(ManagedWorktrees, {
+                createCheckout: (project) =>
+                  Effect.sync(() => {
+                    setup.push(`create:${project}`);
+                    return worktree;
+                  }),
+                awaitSetup: (directory) =>
+                  Effect.sync(() => {
+                    setup.push(`ready:${directory}`);
+                  }),
+              }),
+              Layer.mock(ProjectAccess, {
+                isAllowed: () => Effect.succeed(true),
+                allow: () => Effect.void,
+              }),
+              Layer.mock(ReviewStorage, {
+                agentSessionDirectory: () => "/cake/reviews/thread-1",
+                reviewContextPath: () => "/cake/reviews/context.md",
+                discussionParentContextPath: () => "/cake/reviews/context/parent.md",
+              }),
+            ),
+          ),
+        );
+      }),
+  );
+
+  it.effect(
+    "rejects task forks outside the originating Project Chat scope before creating work",
+    () => {
+      const fixture = makeLayer({ cakeChat: true });
+      return Effect.gen(function* () {
+        const error = yield* discussionSessions
+          .startTaskSideSession(
+            {
+              workspacePath: "/other",
+              name: "Wrong project",
+              worktreeName: "wrong",
+              initialPrompt: "Change it",
+            },
+            {
+              sessionId: CAKE_CHAT_SESSION_ID,
+              title: "Project Chat",
+              workingDirectory: "/project",
+              projectPath: "/project",
+            },
+          )
+          .pipe(Effect.flip);
+        expect(error.message).toContain("not authorized");
+        expect(fixture.createdRecords).toEqual([]);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            fixture.layer,
+            Layer.mock(CakeChatDurable, {}),
+            Layer.mock(ReviewStorage, {
+              agentSessionDirectory: () => "/cake/reviews/thread-1",
+              reviewContextPath: () => "/cake/reviews/context.md",
+              discussionParentContextPath: () => "/cake/reviews/context/parent.md",
+            }),
+          ),
+        ),
+      );
+    },
+  );
 });
 
 describe("Cake Chat side chats", () => {

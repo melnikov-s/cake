@@ -84,11 +84,12 @@ import {
   requireRegisteredModel,
 } from "../pi/runtime/extension-providers";
 import {
-  cakeChatExecutionEnv,
   cakeChatScratchDirectory,
   createCakeChatBashTool,
   createCakeChatReadTool,
 } from "./cake-chat-local-tools";
+import { sideSessionExecutionEnv } from "./durable-side-session";
+import { createEditTool, createWriteTool } from "@earendil-works/pi-durable/tools";
 import { CakeChatMcp, createCakeChatMcpTool, loadCakeChatMcpServers } from "./cake-chat-mcp";
 import type { AssistantContext } from "../../contracts/cake-chats/assistant-context";
 import { AssistantContextDoc, transitionAssistantContext } from "./durable-assistant-context";
@@ -407,10 +408,11 @@ export async function createDurableCakeChatRuntime(
     createCakeChatBashTool(),
     createCakeChatMcpTool(mcp),
   ];
+  const registeredTools: ToolRegistration[] = [...tools, createEditTool(), createWriteTool()];
   registry.install(
     defineExtension({
       name: "cake-coordinator",
-      tools: tools.map((tool) => ({
+      tools: registeredTools.map((tool) => ({
         ...tool,
         execute: (args, api, context) =>
           shutdownDiagnostics.promise(
@@ -473,7 +475,7 @@ export async function createDurableCakeChatRuntime(
     models,
     registry,
     settings: sdkSettings,
-    env: cakeChatExecutionEnv(scratchDirectory),
+    env: sideSessionExecutionEnv(scratchDirectory),
     agent: {
       model: { provider: selected.provider, modelId: selected.id },
       thinkingLevel,

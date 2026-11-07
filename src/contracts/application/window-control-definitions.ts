@@ -1,3 +1,4 @@
+import { SideSessionFork } from "../cake-chats/side-session-fork";
 import { themeOperationDefinitions } from "../themes/theme-operations";
 import { PresetContext } from "../model-presets/preset-context";
 import { ResultDelivery, resultDeliveryGuidance } from "../conversations/result-delivery";
@@ -269,6 +270,22 @@ export const windowControlDefinitions = {
       topic: "sessions",
       summary:
         "Clear queued steering/follow-up inputs and return cleared counts, never message contents. Read selected items before clearing if needed.",
+    },
+  },
+  "sessions.fork": {
+    command: "sessions.fork",
+    args: SideSessionFork,
+    scope: "global",
+    discovery: {
+      topic: "sessions",
+      summary:
+        "Delegate a task to a context-forked Side Session from this permanent chat, in a new Cake-managed worktree. Starts asynchronously; leaves the source open and unchanged.",
+      guidance: [
+        "Preferred task delegation from Project Chat and global Cake Chat. Uses Pi Durable's native fork, inheriting conversation context, model and originating tool permissions; never a task-only private subagent or a transcript pasted into a prompt.",
+        "workspacePath must be an authorized registered Project root; a Project Chat can use only its own project. worktreeName is required. entryId optionally selects an exchange; otherwise uses the latest completed reply before this tool call. If no settled reply exists, the operation fails rather than launching a fresh task.",
+        "initialPrompt is the new assignment, not a replacement for inherited history. The current unfinished exchange is outside the settled fork boundary: include any task specifics from it. The Side Session has its own executable identity and coding tools bound to its managed worktree.",
+        resultDeliveryGuidance,
+      ],
     },
   },
   "sessions.create": {

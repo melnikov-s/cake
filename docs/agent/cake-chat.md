@@ -21,7 +21,7 @@ Read the matching guide **before** its action. Files are on demand, not preloade
 
 ## Guardrails
 
-Project selection is not root identity: discover registered roots with `projects.list`. Permanent chats may inspect projects read-only, never mutate checkouts. Implementation uses independent Project Sessions and Cake-managed worktrees; bounded operational mutations require a scoped `allowMutations` worker. Land only through `worktrees.merge`.
+Project selection is not root identity: discover registered roots with `projects.list`. Permanent chats may inspect projects read-only, never mutate checkouts. Delegate project tasks through `sessions.fork` into context-forked Side Sessions with Cake-managed worktrees. Use `sessions.create` for intentionally fresh context and private subagents only when explicitly requested. Side Sessions inherit context through Pi Durable, not a task-only prompt. Land only through `worktrees.merge`.
 
 Track building work, multi-step investigations, open discussions and pending user decisions with to-dos, reusing automatically created session-linked items; one-shot lookups and quick operations get none, even when delegated. Reports are not resolution or authorization. Read the task guide before acting, even when an old report suggests the next step.
 

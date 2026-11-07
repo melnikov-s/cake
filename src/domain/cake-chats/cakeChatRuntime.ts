@@ -1,3 +1,7 @@
+import { SideSessionFork } from "../../contracts/cake-chats/side-session-fork";
+import { startTaskSideSession } from "../discussion-sessions/discussionSessions";
+import { DiscussionSessionEnvironment } from "../../services/discussion-sessions/DiscussionSessionEnvironment";
+import { ReviewStorage } from "../../services/storage/ReviewStorage";
 import { messageReference } from "../../contracts/conversations/message-reference";
 import { globalArtifactOperationContracts } from "../../contracts/artifacts/global-artifact-control";
 import type { invokeGlobalArtifactCommand } from "../artifacts/globalArtifacts";
@@ -182,6 +186,7 @@ const CAKE_CHAT_OPERATIONS = [
   "sessions.tool-compact",
   "sessions.open",
   "sessions.create",
+  "sessions.fork",
   "sessions.send",
   "sessions.send-batch",
   "sessions.reply",
@@ -318,6 +323,8 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   });
   const vscode = yield* Effect.serviceOption(VsCodeServer);
   const durable = yield* Effect.serviceOption(CakeChatDurable);
+  const discussions = yield* Effect.serviceOption(DiscussionSessionEnvironment);
+  const reviews = yield* Effect.serviceOption(ReviewStorage);
   const families = yield* SessionFamilyStorage;
   const automationEvents = yield* Effect.serviceOption(AutomationEvents);
   const archive = yield* SessionArchiveStorage;
@@ -462,6 +469,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       const sourceEvent =
         Option.isSome(automationEvents) &&
         !companion &&
+        !sideChatSessionId &&
         userText !== undefined &&
         !message &&
         !parseScheduledMessage(input.text)
@@ -477,7 +485,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
         Effect.andThen(
           sessionFamilyAdmission
             .admitTurn(
-              target.sessionId,
+              senderSessionId,
               {
                 cwd: configuration.location.workingDirectory,
                 activeRoot: configuration.location.sessionDirectory,
@@ -486,7 +494,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               input,
               message
                 ? coordination
-                    .bindTurn(target.sessionId, message.metadata.messageId, input.turnId)
+                    .bindTurn(senderSessionId, message.metadata.messageId, input.turnId)
                     .pipe(Effect.andThen(accept))
                 : accept,
             )
@@ -503,6 +511,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
         if (
           Option.isSome(automationEvents) &&
           !companion &&
+          !sideChatSessionId &&
           event.outcome === "complete" &&
           event.result?.stopReason === "stop" &&
           event.result.entryId
@@ -527,7 +536,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                   outcome: "result",
                   text,
                   ...(event.result?.entryId
-                    ? { resultMessageRef: messageReference(target.sessionId, event.result.entryId) }
+                    ? { resultMessageRef: messageReference(senderSessionId, event.result.entryId) }
                     : null),
                 }
               : undefined,
@@ -974,55 +983,89 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                     "This session contains task inputs. Open the Project Session to inspect its content.",
                 };
               const result =
-                invocation.name === "sessions.create"
-                  ? yield* Effect.scoped(
-                      Effect.gen(function* () {
-                        const input = yield* Schema.decodeUnknownEffect(AgentProjectSessionCreate)(
-                          forwarded.arguments,
-                        );
-                        const selected = yield* Schema.decodeUnknownEffect(
-                          Schema.Struct({ inputRefs: inputRefsSchema }),
-                        )(forwarded.arguments);
-                        return toJsonValue(
-                          yield* projectSessionCreation.createPrompted({
-                            ...input,
-                            projectPath: input.workspacePath,
-                            source: { sessionId: target.sessionId, kind: "cake-chat", title },
-                            senderWorkingDirectory: project?.path,
-                            attachments: selected.inputRefs.map((reference) => ({
-                              kind: "forwarded-input" as const,
-                              name: "Attachment",
-                              reference,
-                            })),
-                            requester: {
-                              sessionId: target.sessionId,
-                              kind: "cake-chat",
-                              title,
-                            },
-                          }),
-                        );
-                      }),
-                    )
-                  : ((yield* Effect.scoped(
-                      backendAgentControl.invoke(forwarded.name, forwarded.arguments, {
-                        kind: "cake-chat",
-                        sessionId: [
-                          "sessions.send",
-                          "sessions.reply",
-                          "sessions.thread",
-                          "sessions.close-thread",
-                        ].includes(forwarded.name)
-                          ? senderSessionId
-                          : target.sessionId,
-                        title: sideChatSessionId ? `Side chat of ${title}` : title,
-                        ...(project ? { projectPath: project.path } : null),
-                      }),
-                    )) ??
-                    (yield* rendererRequests.requestCakeChatControl(
-                      target.sessionId,
-                      forwarded,
-                      signal,
-                    )));
+                invocation.name === "sessions.fork"
+                  ? sideChatSessionId || companion
+                    ? {
+                        ok: false,
+                        error:
+                          "Task forks originate from permanent Project Chat or global Cake Chat, not a Side Session or Companion",
+                      }
+                    : Option.isNone(durable) || Option.isNone(discussions) || Option.isNone(reviews)
+                      ? {
+                          ok: false,
+                          error: "Native task Side Sessions are unavailable in this runtime",
+                        }
+                      : toJsonValue(
+                          yield* Effect.scoped(
+                            startTaskSideSession(
+                              yield* Schema.decodeUnknownEffect(SideSessionFork)(
+                                forwarded.arguments,
+                              ),
+                              {
+                                sessionId: target.sessionId,
+                                title,
+                                workingDirectory: configuration.location.workingDirectory,
+                                ...(project ? { projectPath: project.path } : null),
+                              },
+                            ).pipe(
+                              Effect.provideService(CakeChatDurable, durable.value),
+                              Effect.provideService(
+                                DiscussionSessionEnvironment,
+                                discussions.value,
+                              ),
+                              Effect.provideService(ReviewStorage, reviews.value),
+                            ),
+                          ),
+                        )
+                  : invocation.name === "sessions.create"
+                    ? yield* Effect.scoped(
+                        Effect.gen(function* () {
+                          const input = yield* Schema.decodeUnknownEffect(
+                            AgentProjectSessionCreate,
+                          )(forwarded.arguments);
+                          const selected = yield* Schema.decodeUnknownEffect(
+                            Schema.Struct({ inputRefs: inputRefsSchema }),
+                          )(forwarded.arguments);
+                          return toJsonValue(
+                            yield* projectSessionCreation.createPrompted({
+                              ...input,
+                              projectPath: input.workspacePath,
+                              source: { sessionId: target.sessionId, kind: "cake-chat", title },
+                              senderWorkingDirectory: project?.path,
+                              attachments: selected.inputRefs.map((reference) => ({
+                                kind: "forwarded-input" as const,
+                                name: "Attachment",
+                                reference,
+                              })),
+                              requester: {
+                                sessionId: target.sessionId,
+                                kind: "cake-chat",
+                                title,
+                              },
+                            }),
+                          );
+                        }),
+                      )
+                    : ((yield* Effect.scoped(
+                        backendAgentControl.invoke(forwarded.name, forwarded.arguments, {
+                          kind: "cake-chat",
+                          sessionId: [
+                            "sessions.send",
+                            "sessions.reply",
+                            "sessions.thread",
+                            "sessions.close-thread",
+                          ].includes(forwarded.name)
+                            ? senderSessionId
+                            : target.sessionId,
+                          title: sideChatSessionId ? `Side chat of ${title}` : title,
+                          ...(project ? { projectPath: project.path } : null),
+                        }),
+                      )) ??
+                      (yield* rendererRequests.requestCakeChatControl(
+                        target.sessionId,
+                        forwarded,
+                        signal,
+                      )));
               return yield* safeCoordinatorProjection(result);
             }).pipe(Effect.orDie),
             { signal },

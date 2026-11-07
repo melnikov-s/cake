@@ -44,6 +44,11 @@ export class CakeChatDurable extends Context.Service<
     readonly createRuntime: (
       options: CakeSessionRuntimeSetup,
     ) => Effect.Effect<CakeSessionRuntime, DurableChatError>;
+    readonly forkTask: (
+      parentSessionId: string,
+      workingDirectory: string,
+      entryId?: string,
+    ) => Effect.Effect<{ sessionId: string; entryId: string }, DurableChatError>;
     readonly createSideChatRuntime: (
       options: CakeSessionRuntimeSetup,
     ) => Effect.Effect<CakeSessionRuntime, DurableChatError>;
@@ -152,6 +157,13 @@ export const makeCakeChatDurableLive = (
           },
         });
       }),
+      forkTask: (parentSessionId, workingDirectory, entryId) =>
+        operation("forkTask", async () => {
+          const runtime = live.get(parentSessionId);
+          if (!runtime)
+            throw new Error("Open the originating permanent chat before forking a task");
+          return runtime.sideChats.forkTask(workingDirectory, entryId);
+        }),
       createSideChatRuntime: Effect.fn("CakeChatDurable.createSideChatRuntime")(
         function* (options) {
           const parent = cakeChatSideChatParentId(options.sessionId);

@@ -16,6 +16,7 @@ import type { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-ag
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import {
   AgentDoc,
+  AssistantEntry,
   InboxDoc,
   LiveDoc,
   SystemEntry,
@@ -43,7 +44,7 @@ import type {
 } from "../../contracts/conversations/session-contract";
 import { applyPiSetting, projectPiSettings } from "../pi/runtime/settings-translation";
 import { projectSessionEntries } from "../pi/runtime/session-projection";
-import { TurnCanceledError } from "../pi/runtime/RuntimeTurnCompletion";
+import { TurnCanceledError, TurnDetachedError } from "../pi/runtime/RuntimeTurnCompletion";
 import type {
   CakeSessionRuntime,
   CakeSessionRuntimeOptions,
@@ -71,6 +72,9 @@ import {
 
 import { exportDurableSideChatHistory } from "./durable-side-chat-history";
 
+import { SideSessionDoc } from "./durable-side-session";
+import { createEditTool, createWriteTool } from "@earendil-works/pi-durable/tools";
+
 const ORIGINALS = ["pi.user", "pi.assistant", "pi.tool-result"];
 const NO_REPLY = "That Cake Chat message has no completed reply to branch from yet";
 
@@ -91,6 +95,11 @@ export interface DurableSideChatHost {
 export interface DurableSideChats {
   /** Forks Cake Chat after the exchange that contains `entryId`; returns the side chat's session ID. */
   fork(entryId: string): Promise<string>;
+  /** Task fork from an explicit or latest settled reply, with an isolated execution binding. */
+  forkTask(
+    workingDirectory: string,
+    entryId?: string,
+  ): Promise<{ sessionId: string; entryId: string }>;
   /** The Cake conversation runtime of one existing side-chat fork. */
   open(options: CakeSessionRuntimeOptions): Promise<CakeSessionRuntime>;
   preview(sessionId: string): Promise<PiSessionPreview | undefined>;
@@ -191,6 +200,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
   const open = async (options: CakeSessionRuntimeOptions): Promise<CakeSessionRuntime> => {
     const { conversation, after } = await resolve(options.sessionId);
     const sessionId = cakeChatSideChatSessionId(conversation.id, host.parentSessionId);
+    const task = await harness.snapshot(SideSessionDoc, conversation.id, BACKGROUND_CONTEXT);
     let disposed = false;
     let streaming = false;
     let activeTurnIds: string[] = [];
@@ -365,7 +375,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
             { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
           );
           return {
-            workspacePath: options.cwd,
+            workspacePath: task?.workingDirectory ?? options.cwd,
             sessionId,
             sessionFile: host.sessionFile,
             sessionListed: false,
@@ -456,7 +466,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
                 ? [
                     {
                       type: "text" as const,
-                      text: `${DURABLE_SIDE_CHAT_NOTE}\nYour parent/main conversation address is ${host.parentSessionId ?? CAKE_CHAT_SESSION_ID}. Your own messaging identity is ${sessionId}. Use cake sessions.send with input { sessionId: "parent", text: "..." } to message the parent.\n${host.todoContext?.() ?? ""}`,
+                      text: `${DURABLE_SIDE_CHAT_NOTE}\n${task?.workingDirectory ? `You are a task Side Session. Your tools run in the Cake-managed worktree ${task.workingDirectory}. Make code changes only there, never in the source checkout. The inherited permanent-chat restriction on direct project edits applies to the parent, not this explicitly delegated task. Do the assigned work here; do not redelegate it. Cake delivers the correlated result automatically.\n` : ""}Your parent/main conversation address is ${host.parentSessionId ?? CAKE_CHAT_SESSION_ID}. Your own messaging identity is ${sessionId}. Use cake sessions.send with input { sessionId: "parent", text: "..." } to message the parent.\n${host.todoContext?.() ?? ""}`,
                     },
                   ]
                 : []),
@@ -466,7 +476,33 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           },
           BACKGROUND_CONTEXT,
         );
-        const settled = await submission.wait(BACKGROUND_CONTEXT);
+        const settled = await submission.wait(BACKGROUND_CONTEXT).catch((cause: unknown) => {
+          throw new TurnDetachedError(cause instanceof Error ? cause.message : String(cause));
+        });
+        if (turnId && settled.status === "done" && settled.type === "input") {
+          const answer = await conversation.commit(
+            (tx) => tx.entry(AssistantEntry, settled.answer),
+            BACKGROUND_CONTEXT,
+          );
+          const message = answer?.model?.find((item) => item.role === "assistant");
+          const snapshot = await runtime.snapshot();
+          const latestInput = snapshot.parts.findLast(
+            (part) => part.kind === "text" && part.role === "user" && !part.deliveryState,
+          );
+          if (message?.role === "assistant")
+            options.onTurnResult?.(turnId, {
+              stopReason: message.stopReason,
+              entryId: String(settled.answer),
+              text: message.content
+                .filter((block) => block.type === "text")
+                .map((block) => block.text)
+                .join("\n"),
+              respondsToSessionId:
+                latestInput?.kind === "text"
+                  ? latestInput.crossSession?.sender.sessionId
+                  : undefined,
+            });
+        }
         if (settled.status === "unanswered") {
           if (settled.reason === "aborted") throw new TurnCanceledError();
           throw new Error(
@@ -610,6 +646,44 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       if (!dispatch)
         throw new Error("Interviews are unavailable in this closed or unsupported side chat");
       return dispatch(input, api, context);
+    },
+    async forkTask(workingDirectory, entryId) {
+      let at: EntryId | undefined;
+      if (entryId !== undefined) at = await sideChatForkPoint(root, entryId);
+      else {
+        let cursor;
+        do {
+          const page = await root.entries({ order: "descending" }, 64, cursor, BACKGROUND_CONTEXT);
+          for (const entry of page.items) {
+            const reply = entry.model?.find((message) => message.role === "assistant");
+            if (
+              entry.kind === "pi.assistant" &&
+              reply?.role === "assistant" &&
+              (reply.stopReason === "stop" || reply.stopReason === "length") &&
+              !reply.content.some((block) => block.type === "toolCall")
+            ) {
+              at = entry.id;
+              break;
+            }
+          }
+          cursor = page.next;
+        } while (at === undefined && cursor !== undefined);
+      }
+      if (at === undefined) throw new Error(NO_REPLY);
+      const sessionId = await this.fork(String(at));
+      const { conversation } = await resolve(sessionId);
+      const inherited = await conversation.agent(BACKGROUND_CONTEXT);
+      await conversation.configure(
+        {
+          cwd: workingDirectory,
+          tools: [...inherited.callable, createEditTool(), createWriteTool()],
+        },
+        BACKGROUND_CONTEXT,
+      );
+      await conversation.commit(async (tx) => {
+        (await tx.doc(SideSessionDoc, conversation.id)).workingDirectory = workingDirectory;
+      }, BACKGROUND_CONTEXT);
+      return { sessionId, entryId: String(at) };
     },
     async fork(entryId) {
       const at = await sideChatForkPoint(root, entryId);

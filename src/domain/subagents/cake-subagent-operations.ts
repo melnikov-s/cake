@@ -37,7 +37,7 @@ export function createAgentControlOperations(
   const handleSchema = Schema.Struct({ handleId: Schema.String.check(Schema.isUUID()) });
   const guidance = [
     projectAware
-      ? "Subagents are private, hidden general research or project investigators—not full Project Sessions. Use sessions.create for implementation in an independent Project Session, not an investigation worker."
+      ? "Subagents are explicitly requested private, hidden general research or project investigators—not context-forked Side Sessions. Prefer sessions.fork for permanent-chat project tasks so workers inherit the conversation. Use sessions.create only for intentionally fresh context."
       : "Subagents are private, hidden, bounded workers—not full Project Sessions. A request for a child session, related session, or Session Family member is not subagent delegation; use sessions.create-child instead.",
     projectAware
       ? "Use a project investigator for deeper research, project resources or isolated context. Discover registered roots with projects.list, pass projectPath and resolve ambiguous identity first. Omit projectPath for general research; never choose an arbitrary repository for external research. Cake Chat investigations need no separate delegation permission."

@@ -1,3 +1,13 @@
+import { DateTime } from "effect";
+import { CakeChatDurable } from "../../services/pi-durable/CakeChatDurable";
+import { ApplicationState } from "../../services/storage/ApplicationState";
+import { ProjectAccess } from "../../services/projects/ProjectAccess";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
+import * as managedWorktrees from "../worktrees/managedWorktrees";
+import { inheritTaskInputProtection } from "../conversations/taskInputs";
+import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import type { SideSessionFork } from "../../contracts/cake-chats/side-session-fork";
 import * as cakeChatRuntime from "../cake-chats/cakeChatRuntime";
 import * as cakeChatLocations from "../cake-chats/cakeChatLocations";
 import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
@@ -133,6 +143,7 @@ type RefreshServices = Effect.Services<ReturnType<typeof refreshParentContext>>;
  */
 interface SidecarConfiguration {
   readonly runtime: CakeSessionRuntimeAcquireOptions["runtime"];
+  readonly hooks?: Pick<CakeSessionRuntimeAcquireOptions, "admitTurn" | "onTurnSettled">;
 }
 
 const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
@@ -175,7 +186,10 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
       sessionDirectory: location.sessionDirectory,
     }),
     onSessionChanged: refreshParentIndex,
-    onTurnSettled: () => refreshParentIndex,
+    onTurnSettled: (event) =>
+      (configuration.hooks?.onTurnSettled?.(event) ?? Effect.void).pipe(
+        Effect.andThen(refreshParentIndex),
+      ),
     admitTurn: (_input, accept) =>
       current.pipe(
         Effect.flatMap((latest) =>
@@ -198,7 +212,7 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
             ),
           ),
         ),
-        Effect.andThen(accept),
+        Effect.andThen(configuration.hooks?.admitTurn?.(_input, accept) ?? accept),
       ),
   }).pipe(asError("acquire"));
   if (record.sidecarSessionId !== undefined) return { record, handle };
@@ -231,7 +245,7 @@ const sideChatConfiguration = Effect.fn("DiscussionSessions.sideChatConfiguratio
       newSession: false,
       sideChatSessionId: record.sidecarSessionId,
     });
-    return { runtime: options.runtime } satisfies SidecarConfiguration;
+    return { runtime: options.runtime, hooks: options } satisfies SidecarConfiguration;
   }
   if (isCakeChatSideChat(record))
     return yield* new DiscussionSessionError({
@@ -553,6 +567,82 @@ export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChat
     return yield* deliverFirstPrompt(linked, input, connectionId);
   },
 );
+
+/** Agent task launch: native context, existing side-chat presentation and normal result journal. */
+export const startTaskSideSession = Effect.fn("DiscussionSessions.startTaskSideSession")(function* (
+  input: SideSessionFork,
+  source: { sessionId: string; title: string; workingDirectory: string; projectPath?: string },
+) {
+  const application = yield* ApplicationState;
+  if (
+    !isCakeChatSessionId(source.sessionId) ||
+    (source.projectPath !== undefined && source.projectPath !== input.workspacePath) ||
+    !application.snapshot().projects.some((project) => project.path === input.workspacePath) ||
+    !(yield* (yield* ProjectAccess).isAllowed(input.workspacePath))
+  )
+    return yield* new DiscussionSessionError({
+      operation: "forkTask",
+      message: "The Project is not authorized for this permanent chat",
+    });
+  const durable = yield* CakeChatDurable;
+  const worktree = yield* managedWorktrees.create({
+    projectPath: input.workspacePath,
+    worktreeName: input.worktreeName,
+    backgroundSetup: true,
+  });
+  yield* (yield* ManagedWorktrees).awaitSetup(worktree.worktreePath);
+  const fork = yield* durable.forkTask(source.sessionId, worktree.worktreePath, input.entryId);
+  yield* inheritTaskInputProtection(source.sessionId, fork.sessionId);
+  const environment = yield* DiscussionSessionEnvironment;
+  const record = yield* environment.create(source.workingDirectory, source.sessionId, {
+    path: input.name,
+    view: "message",
+    messageId: fork.entryId,
+    entryId: fork.entryId,
+    start: { diffLine: 0 },
+    end: { diffLine: 0 },
+    selectedText: input.name,
+    contextBefore: "",
+    contextAfter: "",
+    diff: "",
+  });
+  const linked = yield* environment.linkSidecar(record, { sessionId: fork.sessionId });
+  const resultDelivery = input.resultDelivery ?? "notification";
+  yield* (yield* SessionFamilyStorage).registerSpawn({
+    sessionId: fork.sessionId,
+    projectPath: input.workspacePath,
+    workingDirectory: worktree.worktreePath,
+    requester: { sessionId: source.sessionId, kind: "cake-chat", title: source.title },
+    title: input.name,
+    reportDelivered: false,
+    resultDelivery,
+    launchedAt: DateTime.formatIso(yield* DateTime.now),
+    handoffSettled: resultDelivery === "ignore",
+  });
+  const requestId = crypto.randomUUID();
+  const text = encodeCrossSessionMessage(input.initialPrompt, {
+    version: 1,
+    messageId: requestId,
+    threadId: requestId,
+    sequence: 1,
+    expectsResponse: resultDelivery !== "ignore",
+    resultDelivery,
+    sender: { sessionId: source.sessionId, kind: "cake-chat", title: source.title },
+  });
+  const started = yield* deliverFirstPrompt(linked, { text });
+  return {
+    ok: true,
+    command: "sessions.fork",
+    status: "started",
+    sessionId: fork.sessionId,
+    sourceSessionId: source.sessionId,
+    entryId: fork.entryId,
+    workspacePath: worktree.worktreePath,
+    managedWorktree: worktree,
+    thread: started.thread,
+    turnId: started.turnId,
+  };
+});
 
 /** Import historical dialogue without submitting a request or changing thread lifecycle. */
 export const merge = Effect.fn("DiscussionSessions.merge")(function* (
