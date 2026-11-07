@@ -155,6 +155,8 @@ it.each([undefined, `project-chat:${"a".repeat(64)}`])(
           "read-only investigation context fork",
           "not an implementation Project Session",
           "Never mutate this worktree or the source checkout",
+          "Read applicable project instruction files in this checkout",
+          "inherited chat context does not replace them",
           "handoff to a fresh independent Project Session via sessions.create",
           "never silently expand research into coding",
           "no duplicate completion message",

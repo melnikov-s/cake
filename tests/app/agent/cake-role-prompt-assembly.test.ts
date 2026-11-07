@@ -6,10 +6,12 @@ import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { createCakeSessionRuntimeCapabilities } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
 import { cakeAgentDocumentationDirectory } from "../../../src/services/pi/runtime/cake-agent-documentation";
 import type * as WorktreePrompt from "../../../src/services/pi/runtime/worktree-system-prompt";
+import { detectGitWorktree } from "../../../src/services/pi/runtime/worktree-system-prompt";
+import { researchSystemPrompt } from "../../../src/services/pi/subagent-system-prompt";
 
 vi.mock("../../../src/services/pi/runtime/worktree-system-prompt", async (importOriginal) => ({
   ...(await importOriginal<typeof WorktreePrompt>()),
-  detectGitWorktree: async () => undefined,
+  detectGitWorktree: vi.fn(async () => undefined),
 }));
 
 const directories: string[] = [];
@@ -26,6 +28,79 @@ async function temporaryDirectory() {
 }
 
 describe("role-specific prompt assembly", () => {
+  it("keeps project instructions, scoped session guidance and authorized landing together", async () => {
+    const directory = await temporaryDirectory();
+    const agentDir = join(directory, "agent");
+    const instructions = "Project policy: keep the repository's required acceptance checks.";
+    const sessionInstructions =
+      "Personal policy and worktree setup: preserve the shared dependencies.";
+    await writeFile(join(directory, "AGENTS.md"), instructions);
+    vi.mocked(detectGitWorktree).mockResolvedValueOnce({
+      worktreePath: directory,
+      mainCheckoutPath: "/project",
+      branch: "agent/change",
+    });
+    const capabilities = await createCakeSessionRuntimeCapabilities({
+      options: {
+        cwd: directory,
+        agentDir,
+        sessionDir: join(directory, "sessions"),
+        additionalSystemPrompt: sessionInstructions,
+        worktreeLanding: "merge",
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      },
+      agentDir,
+      settingsManager: SettingsManager.inMemory(),
+      modelRuntime: { getAvailableOfType: async () => [] },
+      publishSnapshot: async () => undefined,
+      requestExtensions: [],
+    });
+    const append = capabilities.resourceLoader.getAppendSystemPrompt().join("\n");
+    expect(append).toContain(sessionInstructions);
+    expect(append).toContain(`Checkout: ${directory}`);
+    expect(append).toContain("When authorized to land:");
+    expect(append).toContain("worktrees.merge without sessionId");
+    expect(append).toContain("no fallback");
+    expect(append).toContain("Reports/completion grant no merge/resolve approval");
+    expect(append.match(/Pi owns execution\/history/g)).toHaveLength(1);
+    expect(capabilities.resourceLoader.getAgentsFiles().agentsFiles).toEqual(
+      expect.arrayContaining([expect.objectContaining({ content: instructions })]),
+    );
+  });
+
+  it.each([false, true])(
+    "keeps isolated general research free of project/family authority (mutations=%s)",
+    async (allowMutations) => {
+      const directory = await temporaryDirectory();
+      const agentDir = join(directory, "agent");
+      await writeFile(join(directory, "AGENTS.md"), "Unrelated project policy must not leak.");
+      const systemPrompt = researchSystemPrompt({ allowMutations });
+      const capabilities = await createCakeSessionRuntimeCapabilities({
+        options: {
+          cwd: directory,
+          agentDir,
+          sessionDir: join(directory, "sessions"),
+          auxiliary: true,
+          isolatedSystemPrompt: systemPrompt,
+          requestUi: async () => undefined,
+          onEvent: () => undefined,
+        },
+        agentDir,
+        settingsManager: SettingsManager.inMemory(),
+        modelRuntime: { getAvailableOfType: async () => [] },
+        publishSnapshot: async () => undefined,
+        requestExtensions: [],
+      });
+      expect(capabilities.resourceLoader.getSystemPrompt()).toBe(systemPrompt);
+      expect(capabilities.resourceLoader.getAppendSystemPrompt()).toEqual([]);
+      expect(capabilities.resourceLoader.getAgentsFiles().agentsFiles).toEqual([]);
+      expect(systemPrompt).toContain(allowMutations ? "Mutation mode:" : "Investigations only:");
+      expect(systemPrompt).not.toMatch(/Workboard|worktrees\.merge|sessions\.create-child/);
+      expect(Buffer.byteLength(systemPrompt)).toBeLessThan(1000);
+    },
+  );
+
   it.each([false, true])(
     "loads investigator project resources without ordinary session authority (mutations=%s)",
     async (allowMutations) => {

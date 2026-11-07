@@ -1,1 +1,1 @@
-Commit here, then worktrees.merge without sessionId. Resolve conflicts here as Cake requests, then retry. Never land manually in main (merge/cherry-pick/rebase/stash/commit). If managed landing is unavailable, report it; no fallback.
+When authorized to land: Commit here, then worktrees.merge without sessionId. Resolve conflicts here as Cake requests, then retry. Never land manually in main (merge/cherry-pick/rebase/stash/commit). If managed landing is unavailable, report it; no fallback.
