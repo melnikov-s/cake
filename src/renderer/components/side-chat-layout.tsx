@@ -10,6 +10,7 @@ import type { SideChatStore } from "../stores/SideChatStore";
 import { SideChatContext } from "./side-chat-context";
 import { ArtifactMenuSurface } from "./artifact-menu-surface";
 import { ModelSummary } from "./model-summary";
+import { SideChatsMenu } from "./side-chats-menu";
 import { SessionChangesPanel } from "./session-changes-panel";
 import { IconButton } from "./ui/icon-button";
 import { ReloadIcon } from "./ui/icons";
@@ -93,6 +94,9 @@ export const SideChatLayout = observer(function SideChatLayout({
                   </IconButton>
                 ) : (
                   <>
+                    {target.navigationTarget?.kind === "side-chat" && (
+                      <SideChatsMenu store={{ sessionId: target.navigationTarget.sessionId }} />
+                    )}
                     {model && <ModelSummary {...model} className="max-w-[65%]" />}
                     {!dockMergeAction && mergeAction}
                   </>

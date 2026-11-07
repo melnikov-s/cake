@@ -95,6 +95,19 @@ test("project home and native Browser keep conversation drafts, companion identi
     await expect(workerDraft).toHaveValue("Keep the worker conversation draft");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await expectComposerControlsFit(workerDraft);
+    await page.getByRole("button", { name: /^Side chats/ }).click();
+    await page
+      .getByRole("dialog", { name: "Open side chats" })
+      .getByRole("button", { name: "Selection-path audit", exact: true })
+      .click();
+    await expect(
+      page.getByRole("region", { name: "Browser workspace", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("combobox", { name: "Reply to side chat", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Close Side chat", exact: true }).click();
+    await expect(workerDraft).toHaveValue("Keep the worker conversation draft");
     await page.getByRole("button", { name: "Model configuration", exact: true }).click();
     await expect(
       page.getByRole("dialog", { name: "Model configuration", exact: true }),
@@ -151,8 +164,9 @@ test("project home and native Browser keep conversation drafts, companion identi
       .getByRole("button", { name: "Focus restoration", exact: true })
       .click();
     await expect(workerDraft).toHaveValue("Keep the worker conversation draft");
+    await page.getByRole("button", { name: /^Side chats/ }).click();
     await page
-      .getByRole("region", { name: "Sessions", exact: true })
+      .getByRole("dialog", { name: "Open side chats" })
       .getByRole("button", { name: "Selection-path audit", exact: true })
       .click();
     await expect(discussionBody).toBeVisible();
@@ -216,10 +230,19 @@ test("Discussion-owned subagent launches through supported controls and its rele
     page = await application.firstWindow();
     await scenario.prepare(page, "sessions", application);
     const tree = page.getByRole("region", { name: "Sessions", exact: true });
-    await tree
-      .getByRole("searchbox", { name: "Search sessions", exact: true })
-      .fill("Nested discussion review");
-    await tree.getByRole("button", { name: "Nested discussion review", exact: true }).click();
+    await tree.getByRole("button", { name: /^Focus restoration(?: |$)/ }).click();
+    await page.getByRole("button", { name: /^Side chats/ }).click();
+    await page
+      .getByRole("dialog", { name: "Open side chats" })
+      .getByRole("button", { name: "Selection-path audit", exact: true })
+      .click();
+    const discussion = page.getByRole("complementary", { name: "Side chat", exact: true });
+    await discussion.getByRole("button", { name: /^Side chats and subagents,/ }).click();
+    const menu = page.getByRole("dialog", { name: "Open side chats" });
+    await expect(
+      menu.getByRole("button", { name: "Nested discussion review", exact: true }),
+    ).toContainText("Resources released");
+    await menu.getByRole("button", { name: "Nested discussion review", exact: true }).click();
     await expect(page.getByText(/Nested review complete\./)).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
       "Selection-path audit",

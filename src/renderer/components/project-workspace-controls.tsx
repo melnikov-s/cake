@@ -31,7 +31,7 @@ export const ProjectWorkspaceControls = observer(function ProjectWorkspaceContro
         />
       )}
       <SessionArtifactMenu session={session} />
-      <SideChatsMenu store={session} />
+      <SideChatsMenu store={session} onOpen={() => root.workspaceNavigatorStore.showChat()} />
       <SessionChangesToggle session={session} />
       <WorkspaceTodosToggle />
       <WorkspaceModeControls

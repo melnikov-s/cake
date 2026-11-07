@@ -30,7 +30,7 @@ export const CakeChatWorkspaceControls = observer(function CakeChatWorkspaceCont
         />
       )}
       <SessionArtifactMenu session={session} />
-      <SideChatsMenu store={session} />
+      <SideChatsMenu store={session} onOpen={() => root.workspaceNavigatorStore.showChat()} />
       <WorkspaceTodosToggle />
       <WorkspaceModeControls
         chatSidebarVisible={session.workspaceChatSidebarVisible}

@@ -1,5 +1,6 @@
 import { Store, computed, observable, snapshot, type ReadonlySignal } from "r-state-tree";
 import type { RootProjection } from "../models/RootProjection";
+import { conversationOwnedNavigation } from "../lib/conversation-owned-navigation";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SidebarSessionListStore } from "./SidebarSessionListStore";
 import type { ReviewThread } from "../models/ReviewThread";
@@ -67,14 +68,23 @@ export class ConversationNavigatorStore extends Store<{
         : [],
       resolved,
       cakeChats: model.cakeChatCatalog.sessions,
-      discussions: model.discussionCatalogs,
-      subagents: model.subagentCatalogs,
       conversations: [
         ...model.projectConversations,
         ...model.cakeChatConversations,
         ...model.discussionConversations,
       ],
     });
+  }
+
+  /** The header menu reads only this conversation's direct ownership catalogs. */
+  ownedConversations(sessionId: string) {
+    const model = this.props.projection;
+    return conversationOwnedNavigation(
+      sessionId,
+      model.discussionCatalogs.find((catalog) => catalog.sessionId === sessionId),
+      model.subagentCatalogs.find((catalog) => catalog.sessionId === sessionId),
+      model.discussionConversations,
+    );
   }
 
   /** Metadata demand follows the selected scope and discovered public sidecar owners, never transcript demand. */

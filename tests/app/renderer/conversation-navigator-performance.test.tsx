@@ -105,8 +105,8 @@ it("reuses scoped trees and updates their activity without invalidating ownershi
       worker.status = "complete";
     });
     const updated = navigator.tree(navigatorProjectPath);
-    expect(updated).not.toBe(tree);
-    expect(updated.running).toBe(tree.running - 1);
+    expect(updated).toBe(tree);
+    expect(navigator.ownedConversations("focus-chat")[1]?.running).toBe(false);
     expect(navigator.tree(navigatorProjectPath)).toBe(updated);
     expect(labelUpdates).toBe(1);
     fixture.models.discussionCatalog("focus-chat").threads[0]!.anchor = {

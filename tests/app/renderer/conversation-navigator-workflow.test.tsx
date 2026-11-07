@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StoreProvider } from "r-state-tree/react";
 import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
+import { SideChatsMenu } from "../../../src/renderer/components/side-chats-menu";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { conversationNavigationKey } from "../../../src/renderer/lib/conversation-navigation-tree";
 import { applyDiscussionCatalogUpdate } from "../../../src/renderer/reducers/DiscussionReducer";
@@ -99,6 +100,7 @@ function renderNavigator(
   const view = render(
     <StoreProvider store={fixture.root}>
       <ConversationNavigator projectPath={projectPath} />
+      <SideChatsMenu store={{ sessionId: "layout" }} />
     </StoreProvider>,
   );
   return {
@@ -118,25 +120,43 @@ const rowFor = (name: string) =>
 describe("Sessions navigator workflow", () => {
   it("renders a dense recursive source-list with true family edges and an idle parent's collapsed running descendants", async () => {
     using fixture = renderNavigator();
-    expect(screen.getByText("15 total")).toBeTruthy();
-    expect(screen.getByText("5 running")).toBeTruthy();
+    expect(screen.getByText("5 total")).toBeTruthy();
     expect(rowFor("UI Layout Refactor").dataset.relationship).toBe("grouped");
     expect(rowFor("Keyboard Editing & Navigation").dataset.relationship).toBe("family-child");
-    expect(rowFor("Selection-path audit").dataset.depth).toBe("4");
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse UI Layout Refactor" }));
-    expect(screen.queryByRole("button", { name: "Shortcut review" })).toBeNull();
+    expect(rowFor("Nested child implementation").dataset.depth).toBe("3");
     expect(
-      within(rowFor("UI Layout Refactor")).getByLabelText("5 running descendants"),
+      within(screen.getByRole("region", { name: "Sessions" })).queryByText("Pane widths"),
+    ).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats and subagents, 4" }));
+    const menu = within(screen.getByRole("dialog", { name: "Open side chats" }));
+    expect(menu.getAllByRole("heading").map((heading) => heading.textContent)).toEqual([
+      "Side chats",
+      "Subagents",
+    ]);
+    expect(menu.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Pane widths",
+      "Breadcrumb audit",
+      "Icon and tooltip audit",
+      "Dense tree review",
+    ]);
+    expect(menu.queryByText("Shortcut review")).toBeNull();
+    await fixture.user.keyboard("{Escape}");
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse UI Layout Refactor" }));
+    expect(screen.queryByRole("button", { name: /^Nested child implementation/ })).toBeNull();
+    act(() => {
+      fixture.models.sessionCatalog.find("deep-child")!.running = true;
+    });
+    expect(
+      within(rowFor("UI Layout Refactor")).getByLabelText("1 running descendants"),
     ).toBeTruthy();
     expect(within(rowFor("UI Layout Refactor")).getByLabelText("Idle")).toBeTruthy();
     expect(within(rowFor("UI Layout Refactor")).queryByRole("img", { name: "Running" })).toBeNull();
     // Authority updates change counts even while the branch is closed.
     act(() => {
-      fixture.models.subagentCatalog("layout").activities[0]!.streaming = false;
-      fixture.models.subagentCatalog("layout").activities[0]!.status = "complete";
+      fixture.models.sessionCatalog.find("keyboard")!.running = true;
     });
     expect(
-      within(rowFor("UI Layout Refactor")).getByLabelText("4 running descendants"),
+      within(rowFor("UI Layout Refactor")).getByLabelText("2 running descendants"),
     ).toBeTruthy();
   });
 
@@ -147,13 +167,13 @@ describe("Sessions navigator workflow", () => {
       await fixture.user.click(screen.getByRole("button", { name: "Collapse UI Layout Refactor" }));
       await fixture.user.type(
         screen.getByRole("searchbox", { name: "Search sessions" }),
-        "Selection-path audit",
+        "Nested child implementation",
       );
-      expect(screen.getByRole("button", { name: "Selection-path audit" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /^Nested child implementation/ })).toBeTruthy();
       expect(rowFor("Project Chat")).toBeTruthy();
       expect(rowFor("UI Layout Refactor")).toBeTruthy();
       expect(rowFor("Keyboard Editing & Navigation")).toBeTruthy();
-      expect(rowFor("Focus restoration")).toBeTruthy();
+      expect(rowFor("Nested child implementation")).toBeTruthy();
       expect(screen.queryByRole("button", { name: "Icon Placement Exploration" })).toBeNull();
       if (clear === "button")
         await fixture.user.click(screen.getByRole("button", { name: "Clear search sessions" }));
@@ -167,7 +187,7 @@ describe("Sessions navigator workflow", () => {
           .getByRole("button", { name: "Expand UI Layout Refactor" })
           .getAttribute("aria-expanded"),
       ).toBe("false");
-      expect(screen.queryByRole("button", { name: "Selection-path audit" })).toBeNull();
+      expect(screen.queryByRole("button", { name: /^Nested child implementation/ })).toBeNull();
       expect(rowFor("Icon Placement Exploration")).toBeTruthy();
     },
   );
@@ -176,6 +196,7 @@ describe("Sessions navigator workflow", () => {
     using fixture = renderNavigator(navigatorProjectPath, true);
     const catalog = fixture.models.discussionCatalog("layout");
     expect(catalog.threads).toHaveLength(0);
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats and subagents, 4" }));
     await fixture.user.click(screen.getByRole("button", { name: "Pane widths" }));
     await waitFor(() =>
       expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("layout"),
@@ -191,7 +212,11 @@ describe("Sessions navigator workflow", () => {
         threads: [fixture.savedThread],
       }),
     );
-    await waitFor(() => expect(rowFor("Pane widths").dataset.navigationActive).toBe("true"));
+    await waitFor(() =>
+      expect(fixture.root.conversationNavigatorStore.selectedKey).toBe(
+        conversationNavigationKey("widths-chat"),
+      ),
+    );
     expect(fixture.root.workspaceSession?.conversationSessionStore.sideChatStore.target?.key).toBe(
       "discussion:widths",
     );

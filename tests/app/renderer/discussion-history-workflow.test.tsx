@@ -2,7 +2,7 @@
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
-import { observer } from "r-state-tree/react";
+import { observer, StoreProvider } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, expect, it, vi } from "vitest";
 import {
@@ -154,9 +154,11 @@ function renderHistory(
   });
   chat.openSideChat(thread.id);
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
-      <Surface chat={chat} />
-    </VirtuosoMockContext.Provider>,
+    <StoreProvider store={fixture.root}>
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+        <Surface chat={chat} />
+      </VirtuosoMockContext.Provider>
+    </StoreProvider>,
   );
   return {
     panel: within(screen.getByRole("complementary", { name: "Side chat" })),
@@ -206,7 +208,9 @@ it.each(scopes)(
     fixture.publish([recent], { usage: usage(32_000, 64_000) });
     await user.click(screen.getByRole("button", { name: "Close Side chat" }));
     await user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
-    await user.click(await screen.findByRole("button", { name: /Side chat Working/ }));
+    const menu = within(screen.getByRole("dialog", { name: "Open side chats" }));
+    expect(menu.getByText("Working…")).toBeTruthy();
+    await user.click(menu.getByRole("button", { name: "Side chat", exact: true }));
     const reopened = within(screen.getByRole("complementary", { name: "Side chat" }));
     expect(reopened.getByRole("img", { name: "Context usage" }).textContent).toBe("≈32k/64k");
   },

@@ -1,47 +1,38 @@
 import { useState } from "react";
-import { observer } from "r-state-tree/react";
-import type { ReviewThread } from "../models/ReviewThread";
+import { observer, useStore } from "r-state-tree/react";
+import { RootStore } from "../stores/RootStore";
 import { Button } from "./ui/button";
-import { ChatIcon } from "./ui/icons";
+import { BotIcon, ChatIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverNumberedIconTrigger } from "./ui/popover";
-import { StatusDot } from "./ui/status-dot";
+import { SessionActivityIndicator } from "./session-activity-indicator";
 
-function threadTitle(thread: ReviewThread) {
-  if (thread.anchor.selectedText) return thread.anchor.selectedText;
-  return thread.textParts.find((part) => part.role === "user")?.text ?? "Side chat";
-}
-
-function threadPreview(thread: ReviewThread) {
-  return (
-    thread.textParts.findLast((part) => part.role === "assistant")?.text ?? "Waiting for a reply"
-  );
-}
-
-/** Session-scoped access to every open user side chat. */
+/** The conversation's side chats and private workers share its existing speech-bubble menu. */
 export const SideChatsMenu = observer(function SideChatsMenu({
   store,
   onOpen,
 }: {
-  /** A Project Session or Cake Chat, either of which owns open side chats. */
   store: {
-    readonly sideChatThreads: readonly ReviewThread[];
-    openSideChat(threadId: string): boolean;
-    sideChatStreaming(threadId: string): boolean;
+    readonly sessionId: string;
+    openSideChat?(threadId: string): boolean;
   };
-  /** Focuses the surface that owns this menu before a chat opens, when several surfaces share a window. */
+  /** Reveals/focuses the owning chat surface in companion and detached hosts. */
   onOpen?(): void;
 }) {
+  const navigator = useStore(RootStore).conversationNavigatorStore;
   const [open, setOpen] = useState(false);
-  const threads = store.sideChatThreads;
-
-  if (threads.length === 0) return null;
+  const entries = navigator.ownedConversations(store.sessionId);
+  if (entries.length === 0) return null;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverNumberedIconTrigger
-        count={threads.length}
+        count={entries.length}
         data-cake-hint-key="c"
-        tooltip={`Side chats, ${threads.length} open`}
+        tooltip={
+          entries.some((entry) => entry.target.kind === "subagent")
+            ? `Side chats and subagents, ${entries.length}`
+            : `Side chats, ${entries.length} open`
+        }
         onClick={onOpen}
       >
         <ChatIcon size={14} />
@@ -51,43 +42,70 @@ export const SideChatsMenu = observer(function SideChatsMenu({
         className="w-[min(22rem,calc(100vw-24px))] overflow-hidden p-0"
         aria-label="Open side chats"
       >
-        <div className="flex items-center justify-between gap-2 border-b border-border/65 bg-sidebar/30 px-3 py-2">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-            <span className="text-muted-foreground">
-              <ChatIcon size={13} />
-            </span>
-            <span>Open side chats</span>
-          </div>
-          <span className="font-mono text-xs tabular-nums text-muted-foreground">
-            {threads.length}
-          </span>
+        <div className="max-h-96 overflow-y-auto">
+          {(["side-chat", "subagent"] as const).map((kind) => {
+            const section = entries.filter((entry) => entry.target.kind === kind);
+            const title = kind === "side-chat" ? "Side chats" : "Subagents";
+            return (
+              <section key={kind} aria-label={title}>
+                <div className="flex items-center justify-between gap-2 border-b border-border/65 bg-sidebar/30 px-3 py-2">
+                  <h2 className="text-xs font-semibold text-foreground">{title}</h2>
+                  <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                    {section.length}
+                  </span>
+                </div>
+                {section.length ? (
+                  <div className="grid gap-0.5 p-1.5">
+                    {section.map((entry) => (
+                      <Button
+                        key={entry.key}
+                        className="h-auto min-w-0 justify-start gap-2.5 rounded-md px-2.5 py-2 text-left"
+                        variant="ghost"
+                        aria-label={entry.title}
+                        onClick={async () => {
+                          onOpen?.();
+                          if (entry.target.kind === "side-chat" && store.openSideChat) {
+                            if (store.openSideChat(entry.target.threadId)) setOpen(false);
+                          } else {
+                            await navigator.open(entry);
+                            if (!navigator.error) setOpen(false);
+                          }
+                        }}
+                      >
+                        <span className="shrink-0 text-muted-foreground" aria-hidden="true">
+                          {kind === "subagent" ? <BotIcon size={14} /> : <ChatIcon size={14} />}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className="block truncate text-xs font-medium text-foreground"
+                            title={entry.title}
+                          >
+                            {entry.title}
+                          </span>
+                          <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                            {entry.running
+                              ? "Working…"
+                              : (entry.preview ??
+                                (kind === "side-chat" ? "Waiting for a reply" : "Subagent"))}
+                          </span>
+                        </span>
+                        <SessionActivityIndicator activity={entry.activity} />
+                      </Button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="px-3 py-3 text-xs text-muted-foreground">
+                    {kind === "side-chat" ? "No open side chats" : "No subagents"}
+                  </p>
+                )}
+              </section>
+            );
+          })}
         </div>
-        {threads.length ? (
-          <div className="grid max-h-72 gap-0.5 overflow-y-auto p-1.5">
-            {threads.map((thread) => (
-              <Button
-                key={thread.id}
-                className="h-auto min-w-0 justify-start gap-2.5 rounded-md px-2.5 py-2 text-left"
-                variant="ghost"
-                onClick={() => {
-                  onOpen?.();
-                  if (store.openSideChat(thread.id)) setOpen(false);
-                }}
-              >
-                <StatusDot status={store.sideChatStreaming(thread.id) ? "running" : "complete"} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-medium text-foreground">
-                    {threadTitle(thread)}
-                  </span>
-                  <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
-                    {store.sideChatStreaming(thread.id) ? "Working…" : threadPreview(thread)}
-                  </span>
-                </span>
-              </Button>
-            ))}
-          </div>
-        ) : (
-          <p className="px-3 py-4 text-center text-xs text-muted-foreground">No open side chats</p>
+        {navigator.error && (
+          <p role="alert" className="px-3 py-2 text-xs text-destructive">
+            {navigator.error}
+          </p>
         )}
       </PopoverContent>
     </Popover>

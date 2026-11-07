@@ -91,6 +91,7 @@ export function createChatFirstNavigationScenario(
       "search",
       "deep-worker",
       "side-chat",
+      "side-chats-menu",
       "subagent",
       "nested-subagent",
       "discussion-worker",
@@ -192,7 +193,7 @@ export function createChatFirstNavigationScenario(
       const chatId = `project-chat:${chatHash}`;
       await seedChat(join(paths.cakeHome, "pi", "project-chats", chatHash), [
         "Keep the navigation work together. What is ready to review?",
-        "The layout is ready for review. Icon placement needs your choice.\n\nThe Sessions tree keeps side chats, subagents and explicit child sessions beneath their actual parents.",
+        "The layout is ready for review. Icon placement needs your choice.\n\nThe header menu keeps side chats and subagents with their conversation; Sessions keeps actual Project Sessions.",
       ]);
       await seedChat(join(paths.cakeHome, "pi", "global-chat"), [
         "What is happening across my projects?",
@@ -677,9 +678,13 @@ export function createChatFirstNavigationScenario(
           await expect(page.getByText("Reviews are running.", { exact: true })).toBeVisible({
             timeout: 30_000,
           });
+          await page.getByRole("button", { name: /^Side chats and subagents,/ }).click();
           await expect(
-            tree.getByLabel("3 running descendants", { exact: true }).first(),
-          ).toBeVisible({ timeout: 30_000 });
+            page
+              .getByRole("dialog", { name: "Open side chats" })
+              .getByRole("img", { name: "Running", exact: true }),
+          ).toHaveCount(3);
+          await page.keyboard.press("Escape");
           runningStarted = true;
           if (state === "sessions" || state === "rail-activity") {
             await rail
@@ -703,14 +708,14 @@ export function createChatFirstNavigationScenario(
             .getByRole("button", { name: "Collapse UI Layout Refactor", exact: true })
             .click();
           await expect(
-            tree.getByLabel("3 running descendants", { exact: true }).first(),
+            tree.getByRole("button", { name: "Expand UI Layout Refactor", exact: true }),
           ).toBeVisible();
         } else if (state === "search") {
           await tree
             .getByRole("searchbox", { name: "Search sessions", exact: true })
-            .fill("Nested selection review");
+            .fill("Focus restoration");
           await expect(
-            tree.getByRole("button", { name: "Nested selection review", exact: true }),
+            tree.getByRole("button", { name: /^Focus restoration(?: |$)/ }),
           ).toBeVisible();
         } else if (state === "deep-worker" || browserState || vscodeState) {
           await tree
@@ -822,9 +827,23 @@ export function createChatFirstNavigationScenario(
                 .toBe(true);
             }
           }
-        } else if (state === "side-chat" || state === "discussion-worker") {
-          await tree.getByRole("button", { name: "Selection-path audit", exact: true }).click();
-          await expect(page.locator('[data-slot="focused-secondary-conversation"]')).toBeVisible();
+        } else if (
+          state === "side-chat" ||
+          state === "discussion-worker" ||
+          state === "nested-subagent"
+        ) {
+          await tree
+            .locator(`[data-session-id="${sessions[2][0]}"]`)
+            .getByRole("button", { name: /^Focus restoration(?: |$)/ })
+            .click();
+          await page.getByRole("button", { name: /^Side chats/ }).click();
+          await page
+            .getByRole("dialog", { name: "Open side chats" })
+            .getByRole("button", { name: "Selection-path audit", exact: true })
+            .click();
+          await expect(
+            page.getByRole("complementary", { name: "Side chat", exact: true }),
+          ).toBeVisible();
           await expect(
             page.getByText(
               "The selection-path audit discussion stays focused here, with its original parent in the breadcrumb.",
@@ -859,10 +878,14 @@ export function createChatFirstNavigationScenario(
             await expect
               .poll(async () => (await nestedRecord(true))?.parentSessionId, { timeout: 20_000 })
               .toBe(discussionSidecarId);
-            await tree
-              .getByRole("searchbox", { name: "Search sessions", exact: true })
-              .fill(nestedTask);
-            await tree.getByRole("button", { name: nestedTask, exact: true }).click();
+            await page
+              .getByRole("complementary", { name: "Side chat", exact: true })
+              .getByRole("button", { name: /^Side chats and subagents,/ })
+              .click();
+            await page
+              .getByRole("dialog", { name: "Open side chats" })
+              .getByRole("button", { name: nestedTask, exact: true })
+              .click();
             await expect(page.getByText(/Nested review complete\./)).toBeVisible({
               timeout: 20_000,
             });
@@ -870,21 +893,36 @@ export function createChatFirstNavigationScenario(
               page.getByRole("navigation", { name: "Conversation breadcrumb" }),
             ).toContainText("Selection-path audit");
           }
-        } else if (state === "subagent") {
+          if (state === "nested-subagent") {
+            await page
+              .getByRole("complementary", { name: "Side chat", exact: true })
+              .getByRole("button", { name: /^Side chats and subagents,/ })
+              .click();
+            await page
+              .getByRole("dialog", { name: "Open side chats" })
+              .getByRole("button", { name: "Nested selection review", exact: true })
+              .click();
+            await expect(
+              page.locator('[data-slot="focused-secondary-conversation"]'),
+            ).toBeVisible();
+          }
+        } else if (state === "subagent" || state === "side-chats-menu") {
           await tree
-            .locator('[data-slot="conversation-navigator-row"]')
-            .filter({ hasText: "Breadcrumb audit" })
-            .filter({ hasText: "Running" })
+            .locator(`[data-session-id="${sessions[0][0]}"]`)
+            .getByRole("button", { name: /^UI Layout Refactor(?: |$)/ })
+            .click();
+          await page.getByRole("button", { name: /^Side chats and subagents,/ }).click();
+          if (state === "side-chats-menu") {
+            await settle();
+            return;
+          }
+          await page
+            .getByRole("dialog", { name: "Open side chats" })
             .getByRole("button", { name: "Breadcrumb audit", exact: true })
+            .filter({ hasText: "Working…" })
             .click();
           await expect(
             page.getByText("Reviewing the conversation lineage…", { exact: true }),
-          ).toBeVisible({ timeout: 20_000 });
-        } else if (state === "nested-subagent") {
-          await tree.getByRole("button", { name: "Nested selection review", exact: true }).click();
-          await expect(page.locator('[data-slot="focused-secondary-conversation"]')).toBeVisible();
-          await expect(
-            page.getByRole("heading", { name: "Nested selection review", exact: true }),
           ).toBeVisible({ timeout: 20_000 });
         }
       }

@@ -1,8 +1,6 @@
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { ProjectSessionSummary } from "../../contracts/project-sessions/project-session-data";
 import type { CakeChatSummary } from "../../contracts/cake-chats/cake-chat-data";
-import type { DiscussionCatalog } from "../models/DiscussionCatalog";
-import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { Conversation } from "../models/Conversation";
 import type { SessionActivity } from "./session-activity";
 
@@ -75,8 +73,6 @@ export interface ConversationNavigationInput {
     CakeChatSummary,
     "sessionId" | "title" | "projectPath" | "modifiedAt" | "resolved" | "unread" | "running"
   >[];
-  readonly discussions: readonly DiscussionCatalog[];
-  readonly subagents: readonly SubagentCatalog[];
   readonly conversations: readonly Conversation[];
 }
 export const conversationNavigationKey = (sessionId: string) => `session:${sessionId}`;
@@ -169,91 +165,6 @@ export function buildConversationNavigationTree(
       children: [],
       order: session.familyChildOrder ?? catalogOrder,
     });
-  }
-  // Map iteration includes appended side chats: read each reachable owner's catalog once.
-  // Unrelated catalogs must not subscribe this scope to their titles, activity or timestamps.
-  const discussions = new Map(input.discussions.map((catalog) => [catalog.sessionId, catalog]));
-  for (const owner of byKey.values()) {
-    const catalog = discussions.get(owner.target.sessionId);
-    if (!catalog) continue;
-    const threads = catalog.metadataLoaded
-      ? catalog.metadata
-      : catalog.threads.map((thread) => ({
-          id: thread.id,
-          workingDirectory: thread.workingDirectory,
-          createdAt: thread.createdAt,
-          running: thread.sidecarSessionId ? ownRunning(thread.sidecarSessionId) : false,
-          parentSessionId: thread.parentSessionId,
-          sidecarSessionId: thread.sidecarSessionId,
-          title:
-            thread.anchor.selectedText ||
-            thread.textParts.find((part) => part.role === "user")?.text ||
-            "Side chat",
-          status: thread.status,
-          updatedAt: thread.updatedAt,
-        }));
-    for (const thread of threads) {
-      if (thread.status !== "open" || !thread.sidecarSessionId) continue;
-      const key = conversationNavigationKey(thread.sidecarSessionId!);
-      const parentKey = conversationNavigationKey(thread.parentSessionId);
-      if (byKey.has(key) || !byKey.has(parentKey)) continue;
-      const running = ownRunning(thread.sidecarSessionId!) || thread.running;
-      byKey.set(key, {
-        key,
-        title: thread.title,
-        label: "Side chat",
-        relationship: "side-chat",
-        parentKey,
-        target: {
-          kind: "side-chat",
-          sessionId: thread.sidecarSessionId!,
-          parentSessionId: thread.parentSessionId,
-          threadId: thread.id,
-        },
-        modifiedAt: thread.updatedAt,
-        running,
-        activity: running ? "running" : undefined,
-        runningDescendants: 0,
-        children: [],
-      });
-    }
-  }
-  const subagents = new Map(input.subagents.map((catalog) => [catalog.sessionId, catalog]));
-  for (const owner of byKey.values()) {
-    if (owner.target.kind === "subagent") continue;
-    const catalog = subagents.get(owner.target.sessionId);
-    if (!catalog) continue;
-    const activities = catalog.metadataLoaded ? catalog.metadata : catalog.activities;
-    for (const activity of activities) {
-      const parentKey = conversationNavigationKey(activity.parentSessionId);
-      const released =
-        "released" in activity
-          ? activity.released
-          : catalog.releasedHandleIds.includes(activity.handleId);
-      if (!byKey.has(parentKey)) continue;
-      const running =
-        !released &&
-        (activity.streaming || activity.status === "queued" || activity.status === "running");
-      const key = subagentNavigationKey(activity.parentSessionId, activity.handleId);
-      byKey.set(key, {
-        key,
-        title: activity.task || "Subagent",
-        readOnly: released,
-        label: "Subagent",
-        relationship: "subagent",
-        parentKey,
-        target: {
-          kind: "subagent",
-          sessionId: activity.parentSessionId,
-          handleId: activity.handleId,
-        },
-        modifiedAt: "",
-        running,
-        activity: running ? "running" : activity.status === "error" ? "error" : undefined,
-        runningDescendants: 0,
-        children: [],
-      });
-    }
   }
   const roots: MutableNode[] = [];
   for (const node of byKey.values()) {

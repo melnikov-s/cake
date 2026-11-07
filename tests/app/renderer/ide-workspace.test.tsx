@@ -1,9 +1,10 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DiscussionThread } from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
+import { SubagentActivity } from "../../../src/renderer/models/SubagentActivity";
 import {
   editorLease,
   editorSessionId,
@@ -69,6 +70,47 @@ afterEach(() => {
 // Start at the complete App with real Root/Reviews/Comments/Chat/Editor Stores.
 // Native text-marker geometry requires Electron; do not fabricate Range rectangles here.
 describe("IDE conversation workflows", () => {
+  it("opens private worker history from the header without leaving VS Code or duplicating it in Sessions", async () => {
+    using fixture = renderEmbeddedEditor({ vscode: { open: async () => editorLease("a") } });
+    act(() => {
+      const catalog = fixture.models.subagentCatalog(editorSessionId);
+      catalog.loaded = true;
+      catalog.activities.push(
+        SubagentActivity.create({
+          parentSessionId: editorSessionId,
+          handleId: "10000000-0000-4000-8000-000000000099",
+          anchorPartId: "worker-start",
+          task: "Review editor ownership",
+          status: "complete",
+          parts: [
+            {
+              id: "worker-answer",
+              kind: "text",
+              role: "assistant",
+              text: "Editor ownership is intact.",
+              status: "complete",
+            },
+          ],
+        }),
+      );
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats and subagents, 1" }));
+    const menu = within(screen.getByRole("dialog", { name: "Open side chats" }));
+    expect(menu.getByText("No open side chats")).toBeTruthy();
+    await fixture.user.click(menu.getByRole("button", { name: "Review editor ownership" }));
+    act(() => {
+      fixture.root.sessionRegistry
+        .findSession(editorSessionId)!
+        .subagentActivityStore.chatStore("10000000-0000-4000-8000-000000000099")!
+        .transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
+    });
+    expect(await screen.findByText("Editor ownership is intact.")).toBeTruthy();
+    expect(screen.getByTitle("VS Code workspace")).toBeDefined();
+    expect(fixture.root.conversationNavigatorStore.tree(editorWorkingDirectory).total).toBe(1);
+  });
+
   it("keeps an opened selection side chat available when entering and leaving the IDE", async () => {
     using fixture = renderEmbeddedEditor(
       { vscode: { open: async () => editorLease("a") } },

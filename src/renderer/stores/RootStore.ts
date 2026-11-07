@@ -865,6 +865,8 @@ export class RootStore extends Store<{
           .flatMap((session) => session.sideChats.discussionSessions)
           .find((session) => session.sessionId === sessionId),
       activeOwnerSessionId: () => this.appShellStore.activeConversation?.sessionId,
+      activeSecondaryTarget: () =>
+        this.workspaceSession?.conversationSessionStore.sideChatStore.target?.navigationTarget,
       modelPresets: () => this.settingsStore.modelPresets.presets,
       openModelPresetSettings: () => this.navigationStore.showModelPresetSettings(),
     });

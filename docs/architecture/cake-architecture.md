@@ -629,9 +629,12 @@ is a refactoring signal, not precedent.
   changes and window visits. Covering/uncovering does not create a visit. Project
   rail activation and `app.home` open Project Chat in Chat mode without resetting its
   runtime; the registered Return to Project Chat shortcut uses the same intent.
-  `ConversationNavigatorStore` projects real grouping, family, side-chat and public
-  subagent ownership into one scoped recursive source list. Metadata-only catalog
-  observation discovers cold descendants without hydrating their transcripts.
+  `ConversationNavigatorStore` projects real Project Session grouping and family
+  ancestry into the scoped Sessions source list. Independently launched task/worktree
+  sessions remain there, including context forks. Each conversation's speech-bubble
+  header menu lists its direct Side chats first and private Subagents second; neither
+  is duplicated in Sessions. Released worker history remains navigable in that menu.
+  Metadata-only catalog observation discovers cold ownership without hydrating transcripts.
   `DiscussionNavigationStore` retains visited public Discussion identities and reuses
   existing keyed Discussion/worker Stores and canonical conversation Models for actual
   focus. The displayed `SideChatStore.target.navigationTarget` is the canonical

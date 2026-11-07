@@ -129,13 +129,13 @@ it.each(["alpha", CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
         .session("selected-sidecar")!
         .chatStore.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" }),
     );
-    await fixture.showSessions();
+    await fixture.user.click(await screen.findByRole("button", { name: "Side chats, 1 open" }));
     await fixture.user.click(
       await screen.findByRole("button", { name: "Selected side conversation" }),
     );
     const assertSplit = async () => {
       const panel = await screen.findByRole("complementary", {
-        name: "Selected side conversation",
+        name: /^(Side chat|Selected side conversation)$/,
       });
       expect(screen.getByRole("separator", { name: "Resize side chat" })).toBeTruthy();
       expect(await within(panel).findByText("Separate side conversation body")).toBeTruthy();
@@ -177,7 +177,7 @@ it.each(["alpha", CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
     panel = await assertSplit();
     expect(within(panel).getByRole("combobox")).toHaveProperty("value", "Only the side draft");
     await fixture.user.click(
-      within(panel).getByRole("button", { name: "Close Selected side conversation" }),
+      within(panel).getByRole("button", { name: /^Close (Side chat|Selected side conversation)$/ }),
     );
     expect(await screen.findByText("Origin conversation body")).toBeTruthy();
 

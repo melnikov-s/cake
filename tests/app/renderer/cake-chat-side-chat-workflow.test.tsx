@@ -2,7 +2,7 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
-import { observer } from "r-state-tree/react";
+import { observer, StoreProvider } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
@@ -186,9 +186,11 @@ it("merges an idle side chat explicitly, keeps it usable, and reports repeated i
     .mockResolvedValueOnce({ importedMessages: 1 });
   using fixture = mergeFixture(merge);
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
-      <Surface chat={fixture.chat} />
-    </VirtuosoMockContext.Provider>,
+    <StoreProvider store={fixture.root}>
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+        <Surface chat={fixture.chat} />
+      </VirtuosoMockContext.Provider>
+    </StoreProvider>,
   );
   const user = userEvent.setup();
   const panel = screen.getByRole("complementary", { name: "Side chat" });
@@ -311,12 +313,14 @@ it("appends collapsed attributed history with attachments and reopens its preser
       ]),
     );
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
-      <Surface
-        chat={fixture.chat}
-        behavior={cakeChatTranscriptBehaviorFor(fixture.root, fixture.chat)}
-      />
-    </VirtuosoMockContext.Provider>,
+    <StoreProvider store={fixture.root}>
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+        <Surface
+          chat={fixture.chat}
+          behavior={cakeChatTranscriptBehaviorFor(fixture.root, fixture.chat)}
+        />
+      </VirtuosoMockContext.Provider>
+    </StoreProvider>,
   );
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "Merge into main chat" }));
@@ -349,7 +353,11 @@ it("disables merge while either conversation is busy and permits retry after fai
     .mockRejectedValueOnce(new Error("Import failed"))
     .mockResolvedValueOnce({ importedMessages: 2 });
   using fixture = mergeFixture(merge);
-  const view = render(<Surface chat={fixture.chat} />);
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <Surface chat={fixture.chat} />
+    </StoreProvider>,
+  );
   const user = userEvent.setup();
   const button = () =>
     screen.getByRole("button", { name: "Merge into main chat" }) as HTMLButtonElement;
@@ -442,9 +450,11 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
       });
     });
     const view = render(
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
-        <Surface chat={chat} />
-      </VirtuosoMockContext.Provider>,
+      <StoreProvider store={fixture.root}>
+        <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+          <Surface chat={chat} />
+        </VirtuosoMockContext.Provider>
+      </StoreProvider>,
     );
     const user = userEvent.setup();
 

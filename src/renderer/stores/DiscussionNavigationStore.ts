@@ -33,11 +33,20 @@ export class DiscussionNavigationStore extends Store<{
   primarySideChat(sessionId: string): SideChatStore | undefined;
   directDiscussion(sessionId: string): DiscussionSessionStore | undefined;
   activeOwnerSessionId(): string | undefined;
+  activeSecondaryTarget(): ConversationNavigationTarget | undefined;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
 }> {
   @snapshot private retained: readonly RetainedDiscussion[] = [];
   private openingRevision = 0;
+
+  constructor(props: DiscussionNavigationStore["props"]) {
+    super(props);
+    this.effect(() => {
+      const target = this.props.activeSecondaryTarget();
+      if (target?.kind === "side-chat") this.retainLineage(this.props.lineage(target));
+    });
+  }
 
   /** Full child catalogs for visited Discussion owners, not primary-runtime acquisition. */
   get ownerTargets(): readonly ConversationNavigationMetadataTarget[] {

@@ -9,7 +9,7 @@ import { SessionActivityIndicator } from "./session-activity-indicator";
 import { Avatar } from "./ui/avatar";
 import { DepthRails } from "./ui/depth-rails";
 import { IconButton } from "./ui/icon-button";
-import { BotIcon, CakeIcon, ChatIcon, ChevronIcon } from "./ui/icons";
+import { CakeIcon, ChevronIcon } from "./ui/icons";
 import { NavItem } from "./ui/nav-item";
 
 /** One compact native source-list row; own activity never borrows its descendants' state. */
@@ -123,11 +123,7 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
               className="flex w-6 items-center justify-center [&_[data-slot=icon]]:size-4"
               aria-hidden="true"
             >
-              {node.label === "Subagent" ? (
-                <BotIcon />
-              ) : node.label === "Side chat" ? (
-                <ChatIcon />
-              ) : node.relationship === "home" && !project ? (
+              {node.relationship === "home" && !project ? (
                 <CakeIcon />
               ) : (
                 <Avatar

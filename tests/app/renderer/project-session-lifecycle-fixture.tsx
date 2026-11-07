@@ -4,6 +4,7 @@ import type { ConversationSnapshot } from "../../../src/contracts/conversations/
 import type { DiscussionThread } from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { applySnapshot } from "r-state-tree";
+import { StoreProvider } from "r-state-tree/react";
 import type { TestClientOverrides } from "./test-client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SideChatLayout } from "../../../src/renderer/components/side-chat-layout";
@@ -143,19 +144,26 @@ export function renderProjectSelectionLifecycle(start: Client["discussionSession
     chatStore: session.messageCommentsStore.draftChatStore,
   });
   const view = render(
-    <SideChatLayout
-      store={session.conversationSessionStore.sideChatStore}
-      renderChat={(chat, composerHeader) => (
-        <Chat store={chat} composerHeader={composerHeader} embedded composerFocusEnabled={false} />
-      )}
-    >
-      <SideChatsMenu store={session} />
-      <Chat
-        store={session.conversationSessionStore.chatStore}
-        embedded
-        composerFocusEnabled={false}
-      />
-    </SideChatLayout>,
+    <StoreProvider store={fixture.root}>
+      <SideChatLayout
+        store={session.conversationSessionStore.sideChatStore}
+        renderChat={(chat, composerHeader) => (
+          <Chat
+            store={chat}
+            composerHeader={composerHeader}
+            embedded
+            composerFocusEnabled={false}
+          />
+        )}
+      >
+        <SideChatsMenu store={session} />
+        <Chat
+          store={session.conversationSessionStore.chatStore}
+          embedded
+          composerFocusEnabled={false}
+        />
+      </SideChatLayout>
+    </StoreProvider>,
   );
   let revision = 0;
   return {

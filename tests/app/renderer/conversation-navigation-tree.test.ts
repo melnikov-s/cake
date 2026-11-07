@@ -1,13 +1,14 @@
 import { applySnapshot } from "r-state-tree";
 import { describe, expect, it } from "vitest";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { SubagentHandleId } from "../../../src/contracts/subagents/subagent-data";
 import { RootProjection } from "../../../src/renderer/models/RootProjection";
+import { conversationOwnedNavigation } from "../../../src/renderer/lib/conversation-owned-navigation";
 import {
   buildConversationNavigationTree,
   conversationNavigationKey,
   conversationNavigationLineage,
   matchingConversationNavigationKeys,
-  subagentNavigationKey,
 } from "../../../src/renderer/lib/conversation-navigation-tree";
 import {
   navigatorHomeId,
@@ -16,12 +17,70 @@ import {
   populateConversationNavigationFixture,
 } from "./fixtures/conversation-navigation-fixtures";
 
-function treeFixture(projectPath: string | undefined, history = false) {
+function treeFixture(projectPath: string | undefined) {
   const models = RootProjection.create();
   applySnapshot(models.sessionCatalog, { sessions: navigatorSessions });
-  const { deepHandleId } = populateConversationNavigationFixture(models);
-  if (history) {
-    const catalog = models.subagentCatalog("layout");
+  populateConversationNavigationFixture(models);
+  const tree = buildConversationNavigationTree({
+    projectPath,
+    sessions: models.sessionCatalog.sessions,
+    cakeChats: models.cakeChatCatalog.sessions,
+    conversations: models.discussionConversations,
+  });
+  return {
+    models,
+    tree,
+    owned(sessionId: string) {
+      return conversationOwnedNavigation(
+        sessionId,
+        models.discussionCatalog(sessionId),
+        models.subagentCatalog(sessionId),
+        models.discussionConversations,
+      );
+    },
+    [Symbol.dispose]() {
+      models[Symbol.dispose]();
+    },
+  };
+}
+
+describe("conversation navigation projection", () => {
+  it("keeps actual Project Sessions and family/context-fork children in Sessions, with private conversations in their owner's menu", () => {
+    using fixture = treeFixture(navigatorProjectPath);
+    const { tree } = fixture;
+    expect(tree.total).toBe(5);
+    expect(tree.running).toBe(0);
+    expect(tree.roots.map((node) => node.target.sessionId)).toEqual([navigatorHomeId]);
+    expect(tree.roots[0]!.children.map((node) => node.target.sessionId)).toEqual([
+      "layout",
+      "icons",
+    ]);
+    const grouped = tree.byKey.get(conversationNavigationKey("layout"))!;
+    expect(grouped.relationship).toBe("grouped");
+    expect(grouped.parentKey).toBe(conversationNavigationKey(navigatorHomeId));
+    const child = tree.byKey.get(conversationNavigationKey("keyboard"))!;
+    expect(child.relationship).toBe("family-child");
+    expect(child.parentKey).toBe(grouped.key);
+    expect(
+      conversationNavigationLineage(tree, conversationNavigationKey("deep-child")).map(
+        (node) => node.target.sessionId,
+      ),
+    ).toEqual([navigatorHomeId, "layout", "keyboard", "deep-child"]);
+    expect(fixture.owned("layout").map((node) => [node.title, node.target.kind])).toEqual([
+      ["Pane widths", "side-chat"],
+      ["Breadcrumb audit", "subagent"],
+      ["Icon and tooltip audit", "subagent"],
+      ["Dense tree review", "subagent"],
+    ]);
+    expect(fixture.owned("focus-chat").map((node) => node.title)).toEqual([
+      "Selection-path discussion",
+      "Selection-path audit",
+    ]);
+  });
+
+  it("keeps released retained worker history in its owner's menu without counting it as running", () => {
+    using fixture = treeFixture(navigatorProjectPath);
+    const catalog = fixture.models.subagentCatalog("layout");
     catalog.metadataLoaded = true;
     catalog.metadata.push({
       parentSessionId: "layout",
@@ -32,96 +91,37 @@ function treeFixture(projectPath: string | undefined, history = false) {
       streaming: false,
       released: true,
     });
-  }
-  const tree = buildConversationNavigationTree({
-    projectPath,
-    sessions: models.sessionCatalog.sessions,
-    cakeChats: models.cakeChatCatalog.sessions,
-    discussions: models.discussionCatalogs,
-    subagents: models.subagentCatalogs,
-    conversations: models.discussionConversations,
-  });
-  return {
-    models,
-    tree,
-    deepHandleId,
-    [Symbol.dispose]() {
-      models[Symbol.dispose]();
-    },
-  };
-}
-
-describe("conversation navigation projection", () => {
-  it("keeps grouping distinct from family ancestry and recursively joins real side-chat/subagent owners", () => {
-    using fixture = treeFixture(navigatorProjectPath);
-    const { tree } = fixture;
-    expect(tree.total).toBe(15);
-    expect(tree.running).toBe(5);
-    expect(tree.roots.map((node) => node.target.sessionId)).toEqual([navigatorHomeId]);
-    expect(
-      tree.roots[0]!.children.filter((node) => node.target.kind === "project-session").map(
-        (node) => node.target.sessionId,
-      ),
-    ).toEqual(["layout", "icons"]);
-    const grouped = tree.byKey.get(conversationNavigationKey("layout"))!;
-    expect(grouped.relationship).toBe("grouped");
-    expect(grouped.label).toBe("Session");
-    expect(grouped.parentKey).toBe(conversationNavigationKey(navigatorHomeId));
-    const child = tree.byKey.get(conversationNavigationKey("keyboard"))!;
-    expect(child.relationship).toBe("family-child");
-    expect(child.parentKey).toBe(grouped.key);
-    expect(grouped.running).toBe(false);
-    expect(grouped.activity).toBeUndefined();
-    expect(grouped.runningDescendants).toBe(5);
-    const lineage = conversationNavigationLineage(
-      tree,
-      subagentNavigationKey("focus-chat", fixture.deepHandleId),
-    );
-    expect(lineage.map((node) => node.title)).toEqual([
-      "Project Chat",
-      "UI Layout Refactor",
-      "Keyboard Editing & Navigation",
-      "Focus restoration",
-      "Selection-path audit",
-    ]);
-    expect(tree.byKey.get(conversationNavigationKey("deep-discussion-chat"))?.parentKey).toBe(
-      conversationNavigationKey("focus-chat"),
-    );
-  });
-
-  it("keeps released retained worker history visible and read-only without counting it as running", () => {
-    using fixture = treeFixture(navigatorProjectPath, true);
-    const node = [...fixture.tree.byKey.values()].find(
-      (node) => node.title === "Retained released worker",
-    );
-    expect(node).toMatchObject({
-      parentKey: conversationNavigationKey("layout"),
+    expect(fixture.owned("layout")[1]).toMatchObject({
+      title: "Retained released worker",
       readOnly: true,
       running: false,
       activity: undefined,
     });
-    expect(fixture.tree.running).toBe(2);
+    expect(fixture.tree.total).toBe(5);
   });
 
-  it("search retains every matching ancestor but no unrelated branches", () => {
+  it("search retains matching Project Session ancestors but not unrelated branches", () => {
     using fixture = treeFixture(navigatorProjectPath);
-    const keys = matchingConversationNavigationKeys(fixture.tree, "Selection-path audit");
+    const keys = matchingConversationNavigationKeys(fixture.tree, "Nested child implementation");
     expect([...keys]).toEqual(
-      conversationNavigationLineage(
-        fixture.tree,
-        subagentNavigationKey("focus-chat", fixture.deepHandleId),
-      ).map((node) => node.key),
+      conversationNavigationLineage(fixture.tree, conversationNavigationKey("deep-child")).map(
+        (node) => node.key,
+      ),
     );
   });
 
-  it("scopes global Cake Chat to its real descendants", () => {
+  it("scopes global and Project Chat menus to direct owners, not siblings or descendants", () => {
     using fixture = treeFixture(undefined);
-    expect(fixture.tree.total).toBe(3);
-    expect(fixture.tree.running).toBe(1);
-    expect([...fixture.tree.byKey.values()].map((node) => node.title)).toEqual([
-      "Cake Chat",
+    expect(fixture.tree.total).toBe(1);
+    expect(fixture.tree.roots[0]!.title).toBe("Cake Chat");
+    expect(fixture.owned(CAKE_CHAT_SESSION_ID).map((node) => node.title)).toEqual([
       "Weekly planning",
+    ]);
+    expect(fixture.owned("planning-chat").map((node) => node.title)).toEqual([
       "Global project summary",
+    ]);
+    expect(fixture.owned(navigatorHomeId).map((node) => node.title)).toEqual([
+      "Navigation decisions",
     ]);
   });
 });

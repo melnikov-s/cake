@@ -3,6 +3,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Schema } from "effect";
+import { StoreProvider } from "r-state-tree/react";
 import {
   TurnId,
   type ConversationSnapshot,
@@ -140,26 +141,28 @@ function renderSideChats(
     });
   }
   const view = render(
-    <ConversationFocusContext.Provider value>
-      <SideChatLayout
-        store={session.conversationSessionStore.sideChatStore}
-        renderChat={(chat, composerHeader) => (
+    <StoreProvider store={fixture.root}>
+      <ConversationFocusContext.Provider value>
+        <SideChatLayout
+          store={session.conversationSessionStore.sideChatStore}
+          renderChat={(chat, composerHeader) => (
+            <Chat
+              store={chat}
+              composerHeader={composerHeader}
+              embedded
+              composerFocusEnabled={false}
+            />
+          )}
+        >
+          <SideChatsMenu store={session} />
           <Chat
-            store={chat}
-            composerHeader={composerHeader}
+            store={session.conversationSessionStore.chatStore}
             embedded
             composerFocusEnabled={false}
           />
-        )}
-      >
-        <SideChatsMenu store={session} />
-        <Chat
-          store={session.conversationSessionStore.chatStore}
-          embedded
-          composerFocusEnabled={false}
-        />
-      </SideChatLayout>
-    </ConversationFocusContext.Provider>,
+        </SideChatLayout>
+      </ConversationFocusContext.Provider>
+    </StoreProvider>,
   );
   return {
     user: userEvent.setup(),
@@ -348,6 +351,8 @@ describe("Secondary conversation workflows", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     const menu = within(screen.getByLabelText("Open side chats"));
     expect(menu.getByText("Working…")).toBeDefined();
+    expect(menu.getByRole("heading", { name: "Side chats" })).toBeDefined();
+    expect(menu.getByText("No subagents")).toBeDefined();
     expect(menu.queryByText(/Resolved discussion|Code discussion/)).toBeNull();
     await fixture.user.click(menu.getByRole("button", { name: /The important selection/ }));
     expect(screen.queryByLabelText("Open side chats")).toBeNull();

@@ -291,6 +291,14 @@ export class NavigationStore extends Store<{
     retained?.showPresentation("normal");
     if (!(await this.openSession(sessionId)))
       throw new Error("Cake could not open the linked session");
+    const discussion = this.props.discussionNavigation().session(sessionId);
+    if (discussion) {
+      if (!messageId) return;
+      const target = linkedMessageTarget(discussion.chatStore.parts, messageId);
+      if (!target) throw new Error("The linked message is unavailable in the current conversation");
+      discussion.chatStore.transcriptInteraction.navigateToMessage(target.id);
+      return;
+    }
     const session =
       this.props.cakeChat().registry.find(sessionId) ?? this.props.registry.findSession(sessionId);
     session?.showPresentation("normal");
@@ -332,7 +340,9 @@ export class NavigationStore extends Store<{
       }
       return;
     }
-    await this.openSessionLink(parentSessionId);
+    // Header inspection in the already focused owner must retain Browser/VS Code mode.
+    if (this.props.shell.activeConversation?.sessionId !== parentSessionId)
+      await this.openSessionLink(parentSessionId);
     const parent = isCakeChatSessionId(parentSessionId)
       ? this.props.cakeChat().registry.find(parentSessionId)
       : this.props.registry.findSession(parentSessionId);
