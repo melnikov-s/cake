@@ -71,7 +71,7 @@ describe("navigation snapshot migrations", () => {
     expect(saved).toEqual(before);
   });
   it.each(["project-session", "cake-chat"] as const)(
-    "persisted-window restore derives %s from the pane when old shell identities disagree",
+    "migrates %s pane history but startup ignores its old destination",
     (kind) => {
       const selected = conversation(kind, "shell-selection");
       const active = conversation(kind, "shell-retained");
@@ -94,19 +94,23 @@ describe("navigation snapshot migrations", () => {
       const before = structuredClone(saved);
       using fixture = createRendererStoreFixture({ snapshot: saved });
       expect(fixture.root.appShellStore.activeConversation).toEqual(
-        conversation(kind, "pane-current"),
+        conversation("cake-chat", CAKE_CHAT_SESSION_ID),
       );
-      expect(fixture.root.appShellStore.selection).toEqual(conversation(kind, "pane-current"));
+      expect(fixture.root.appShellStore.selection).toEqual(
+        conversation("cake-chat", CAKE_CHAT_SESSION_ID),
+      );
       const focusedLayout =
         kind === "project-session"
           ? fixture.root.sessionLayoutStore
           : fixture.root.cakeChatCollectionStore.sessionLayoutStore;
-      expect(focusedLayout.focusedSessionHistory).toEqual(["older", "pane-current"]);
+      expect(focusedLayout.focusedSessionHistory).toEqual(
+        kind === "project-session"
+          ? ["older", "pane-current"]
+          : ["older", "pane-current", CAKE_CHAT_SESSION_ID],
+      );
       expect(toSnapshot(fixture.root).children.appShellStore).toEqual(
         store({
           navigationVersion: 4,
-          workspace: kind === "project-session" ? "project-sessions" : "cake-chat",
-          coveringSurface: undefined,
           sessionHistory: visits,
           sessionHistoryCursor: 1,
         }),
@@ -116,7 +120,7 @@ describe("navigation snapshot migrations", () => {
   );
 
   it.each(["settings", "artifact-library"] as const)(
-    "migrates a %s cover, seeds a missing conversation layout, and restores without another visit",
+    "migrates a %s cover but launches global without another visit",
     (cover) => {
       const active = conversation("cake-chat", CAKE_CHAT_SESSION_ID);
       const saved = store(
@@ -134,7 +138,8 @@ describe("navigation snapshot migrations", () => {
       expect(migrateNavigation(migrated)).toBe(migrated);
       using fixture = createRendererStoreFixture({ snapshot: migrated });
       const shell = fixture.root.appShellStore;
-      expect(shell.selection).toEqual({ kind: cover });
+      expect(migrated.children.appShellStore).toMatchObject({ state: { coveringSurface: cover } });
+      expect(shell.selection).toEqual(active);
       expect(shell.activeConversation).toEqual(active);
       fixture.root.navigationStore.returnToWorkbench();
       expect(shell.selection).toEqual(active);
@@ -165,17 +170,19 @@ describe("navigation snapshot migrations", () => {
     expect(migrateNavigation(migrated)).toBe(migrated);
     using fixture = createRendererStoreFixture({ snapshot: migrated });
     expect(fixture.root.appShellStore.activeConversation).toEqual(
-      conversation("cake-chat", sessionId),
+      conversation("cake-chat", CAKE_CHAT_SESSION_ID),
     );
-    expect(fixture.root.appShellStore.selection).toEqual({ kind: "settings" });
+    expect(fixture.root.appShellStore.selection).toEqual(
+      conversation("cake-chat", CAKE_CHAT_SESSION_ID),
+    );
     expect(fixture.root.sessionLayoutStore.focusedSessionHistory).toEqual([
       "older",
       "regular",
       sessionId,
     ]);
-    expect(
-      fixture.root.cakeChatCollectionStore.sessionLayoutStore.focusedSessionId,
-    ).toBeUndefined();
+    expect(fixture.root.cakeChatCollectionStore.sessionLayoutStore.focusedSessionId).toBe(
+      CAKE_CHAT_SESSION_ID,
+    );
   });
 
   it("seeds a missing Project Session layout, while home retains its inactive pane history", () => {
@@ -187,11 +194,17 @@ describe("navigation snapshot migrations", () => {
       ),
     });
     expect(seeded.root.sessionLayoutStore.focusedSessionId).toBe("restored");
-    expect(seeded.root.appShellStore.activeConversation).toEqual(active);
+    expect(seeded.root.appShellStore.activeConversation).toEqual(
+      conversation("cake-chat", CAKE_CHAT_SESSION_ID),
+    );
     seeded.root.navigationStore.showEmptyWorkbench();
     using restored = createRendererStoreFixture({ snapshot: toSnapshot(seeded.root) });
-    expect(restored.root.appShellStore.selection).toEqual({ kind: "workbench" });
-    expect(restored.root.appShellStore.activeConversation).toBeUndefined();
+    expect(restored.root.appShellStore.selection).toEqual(
+      conversation("cake-chat", CAKE_CHAT_SESSION_ID),
+    );
+    expect(restored.root.appShellStore.activeConversation).toEqual(
+      conversation("cake-chat", CAKE_CHAT_SESSION_ID),
+    );
     expect(restored.root.sessionLayoutStore.focusedSessionId).toBe("restored");
   });
 });

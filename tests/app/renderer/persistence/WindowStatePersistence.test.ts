@@ -49,7 +49,8 @@ function harness({
   const draft = session.conversationSessionStore.composerStore.draftStore;
   if (!draft.text) draft.setText("unsent request");
   if (!draft.attachments.length) draft.attachments.push(attachment);
-  if (!root.appShellStore.activeConversation) root.navigationStore.selectProjectSession(sessionId);
+  if (!root.sessionLayoutStore.focusedSessionId)
+    root.navigationStore.selectProjectSession(sessionId);
   root.projectWorkbenchStore.showLoadedSession(sessionId);
   persistence.observe(root);
   cleanups.push(() => {
@@ -133,11 +134,13 @@ describe("WindowStatePersistence", () => {
     await vi.advanceTimersByTimeAsync(180);
     expect(h.save).toHaveBeenCalledExactlyOnceWith(expected);
     const payload = h.save.mock.calls[0]![0];
+    expect(payload).not.toHaveProperty("children.appShellStore.state.workspace");
+    expect(payload).not.toHaveProperty("children.appShellStore.state.coveringSurface");
     expect(Schema.decodeUnknownSync(Schema.Json)(payload)).toEqual(payload);
     expect(JSON.parse(JSON.stringify(payload))).toEqual(payload);
     expect(payload).toMatchObject({
       children: {
-        appShellStore: { state: { navigationVersion: 4, workspace: "project-sessions" } },
+        appShellStore: { state: { navigationVersion: 4 } },
         sessionLayoutStore: { state: { history: [sessionId], historyCursor: 0 } },
         sessionRegistry: {
           children: {

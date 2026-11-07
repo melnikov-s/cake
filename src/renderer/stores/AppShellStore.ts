@@ -58,8 +58,8 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   }
 
   @snapshot readonly navigationVersion = 4;
-  @snapshot workspace: ConversationWorkspace = "home";
-  @snapshot coveringSurface: "settings" | "artifact-library" | "automations" | undefined;
+  workspace: ConversationWorkspace = "cake-chat";
+  coveringSurface: "settings" | "artifact-library" | "automations" | undefined;
 
   get activeConversation(): WindowConversationSelection | undefined {
     if (this.workspace === "home") return undefined;

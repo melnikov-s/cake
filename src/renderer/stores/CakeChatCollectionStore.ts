@@ -252,7 +252,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     try {
       this.reconcileAuthoritativeSessions();
       this.hydrated = true;
-      const restoredSessionId = this.sessionId;
+      const restoredSessionId = this.sessionId ?? CAKE_CHAT_SESSION_ID;
       const restored = restoredSessionId
         ? this.summaries.find(
             (summary) => summary.sessionId === restoredSessionId && !summary.resolved,
@@ -263,14 +263,13 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
           this.selectSession(restored.sessionId);
         else await this.open(restored.sessionId);
       } else {
-        const pendingSessionId = this.pendingSessions.firstUnstartedSessionId();
-        if (pendingSessionId) this.selectSession(pendingSessionId);
+        // A missing catalog entry must not redirect startup to another unsent conversation.
+        const sessionId = CAKE_CHAT_SESSION_ID;
+        if (this.summaries.some((summary) => summary.sessionId === sessionId))
+          await this.open(sessionId);
         else {
-          const recent = this.summaries.find(
-            (summary) => summary.sessionId === CAKE_CHAT_SESSION_ID,
-          );
-          if (recent) await this.open(recent.sessionId);
-          else this.prepareNewSession();
+          if (!this.pendingSessions.isPending(sessionId)) this.createPendingSession(sessionId);
+          this.selectSession(sessionId);
         }
       }
     } catch (error) {

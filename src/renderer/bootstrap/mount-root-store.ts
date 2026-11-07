@@ -1,4 +1,5 @@
-import { migrateNavigation } from "../persistence/migrate-navigation";
+import { startupSnapshot } from "./startup-snapshot";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { DesktopConnectionStore } from "../stores/DesktopConnectionStore";
 import { createStore, mount, type StoreSnapshot } from "r-state-tree";
 import type { Client } from "../client/Client";
@@ -24,7 +25,9 @@ export function mountRootStore(
       projection,
       flushWindowState,
     }),
-    { snapshot: migrateNavigation(migratePendingSessions(snapshot)) },
+    { snapshot: startupSnapshot(migratePendingSessions(snapshot)) },
   );
+  // Presentation is session-local; a previously open editor/browser must not cover startup chat.
+  root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID).showPresentation("normal");
   return root;
 }

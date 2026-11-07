@@ -182,7 +182,10 @@ describe("Agent session navigation workflow", () => {
     await requestOpen(fixture, { sessionId: "beta" });
     await expectChat("beta");
     expect(fixture.root.sessionLayoutStore.focusedSessionId).toBe("beta");
-    expect(otherWindow.root.appShellStore.selection).toEqual({ kind: "workbench" });
+    expect(otherWindow.root.appShellStore.selection).toEqual({
+      kind: "cake-chat",
+      sessionId: CAKE_CHAT_SESSION_ID,
+    });
     expect(respondControl).toHaveBeenCalledWith(
       "alpha",
       expect.any(String),
@@ -508,6 +511,9 @@ describe("Agent session navigation workflow", () => {
         { sessionChats: { inspect } },
         { transcriptViewport: true },
       );
+      // Start in a different conversation so both link targets exercise navigation,
+      // independent of the unconditional global startup destination.
+      await fixture.selectSession("alpha");
       const session =
         sessionId === CAKE_CHAT_SESSION_ID
           ? fixture.root.cakeChatCollectionStore.registry.find(sessionId)!

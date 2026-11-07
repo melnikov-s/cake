@@ -1,47 +1,19 @@
-import { migrateNavigation } from "../persistence/migrate-navigation";
+import { startupSnapshot } from "./startup-snapshot";
 import type { StoreSnapshot } from "r-state-tree";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 
-/** Apply phone defaults only at page entry, before restoring the mounted tree. */
+/** All hosts start in global Cake Chat; phones also hide the sidebar at page entry. */
 export function browserInitialSnapshot(
   saved: StoreSnapshot | undefined,
   phoneLayout: boolean,
 ): StoreSnapshot {
-  if (!phoneLayout) return saved ?? { state: {}, children: {} };
-  const snapshot = migrateNavigation(saved ?? { state: {}, children: {} });
+  const snapshot = startupSnapshot(saved ?? { state: {}, children: {} });
+  if (!phoneLayout) return snapshot;
   // SAFETY: RootStore.sidebarStore is a singular @child Store, not a child array.
   const sidebar = snapshot.children.sidebarStore as StoreSnapshot | undefined;
-  // SAFETY: RootStore.appShellStore is also a singular @child Store.
-  const shell = snapshot.children.appShellStore as StoreSnapshot | undefined;
-  // SAFETY: RootStore.cakeChatCollectionStore is a singular @child Store.
-  const collection = snapshot.children.cakeChatCollectionStore as StoreSnapshot | undefined;
   return {
     ...snapshot,
     children: {
       ...snapshot.children,
-      appShellStore: {
-        ...shell,
-        state: {
-          ...shell?.state,
-          navigationVersion: 4,
-          workspace: "cake-chat",
-          coveringSurface: undefined,
-        },
-        children: shell?.children ?? {},
-      },
-      cakeChatCollectionStore: {
-        state: collection?.state ?? {},
-        children: {
-          ...collection?.children,
-          sessionLayoutStore: {
-            state: {
-              history: [CAKE_CHAT_SESSION_ID],
-              historyCursor: 0,
-            },
-            children: {},
-          },
-        },
-      },
       sidebarStore: {
         ...sidebar,
         state: { ...sidebar?.state, hidden: true },

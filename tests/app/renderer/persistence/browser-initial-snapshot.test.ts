@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import type { StoreSnapshot } from "r-state-tree";
 import { browserInitialSnapshot } from "../../../../src/renderer/bootstrap/browser-initial-snapshot";
 import type { AppSelection } from "../../../../src/renderer/stores/AppShellStore";
@@ -57,7 +58,13 @@ describe("browser presentation snapshot boundary", () => {
         expect(phone.children.sidebarStore).toMatchObject({
           state: { hidden: true, width: 330, navigationMode: "activity" },
         });
-        expect(browserInitialSnapshot(saved, false)).toEqual(saved);
+        const desktop = browserInitialSnapshot(saved, false);
+        expect(desktop.children.sidebarStore).toEqual(saved.children.sidebarStore);
+        expect(desktop.children.cakeChatCollectionStore).toMatchObject({
+          children: {
+            sessionLayoutStore: { state: { history: [CAKE_CHAT_SESSION_ID], historyCursor: 0 } },
+          },
+        });
         expect(saved).toEqual(before);
       }
     }

@@ -501,14 +501,8 @@ export class RootStore extends Store<{
 
   initialize() {
     this.applicationControlStore.start();
-    const selection = this.appShellStore.selection;
-    if (selection.kind === "project-session") {
-      return this.projectWorkbenchStore.initialize({
-        sessionId: selection.sessionId,
-        workspacePath: this.requireProjectSessionWorkingDirectory(selection.sessionId),
-      });
-    }
-    if (selection.kind === "workbench") return this.projectWorkbenchStore.initialize();
+    // Navigation is established before mount. Delayed Saved Draft/catalog hydration must
+    // neither restore a prior destination nor reinterpret an explicit navigation as startup.
     return Promise.resolve();
   }
 

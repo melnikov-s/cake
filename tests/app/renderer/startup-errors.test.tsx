@@ -91,22 +91,17 @@ it("replaces restored-session loading with the observation failure, then recover
   expect(screen.queryByText("Pi failed to initialize the session")).toBeNull();
 });
 
-it("shows a restored project's inspection failure in its already-mounted conversation pane", async () => {
-  using fixture = restoredSession({
-    workspaces: {
-      inspect: async () => {
-        throw new Error("Cannot inspect /cake: permission denied");
-      },
-    },
+it("late application initialization does not re-inspect an explicitly selected project", async () => {
+  const inspect = vi.fn(async () => {
+    throw new Error("Cannot inspect /cake: permission denied");
   });
+  using fixture = restoredSession({ workspaces: { inspect } });
   await act(async () => {
     await fixture.root.initialize();
   });
-  expect(screen.getByRole("alert").textContent).toContain(
-    "Cannot inspect /cake: permission denied",
-  );
-  expect(screen.queryByText("Opening session")).toBeNull();
-  expect(screen.getByRole("button", { name: "Copy full error details" })).toBeDefined();
+  expect(inspect).not.toHaveBeenCalled();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByText("Opening session")).toBeDefined();
 });
 
 it("shows bootstrap failure details and a reload action before the Store tree is available", () => {

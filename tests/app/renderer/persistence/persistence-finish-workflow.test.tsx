@@ -42,18 +42,14 @@ describe("window presentation persistence workflows", () => {
       {},
       { snapshot: browserInitialSnapshot(undefined, phone) },
     );
-    if (phone) {
-      expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
-      expect(screen.queryByRole("button", { name: /^alpha conversation / })).toBeNull();
-    } else {
-      expect(screen.getByRole("heading", { name: "What should we build?" })).toBeDefined();
-    }
+    expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
+    if (phone) expect(screen.queryByRole("button", { name: /^alpha conversation / })).toBeNull();
     await openAlpha(fixture.user);
     expect(await screen.findByPlaceholderText("Ask Cake to work in alpha…")).toBeDefined();
   });
 
   it.each([false, true])(
-    "restores saved navigation and unsent input without losing the project when a phone starts in Cake Chat (phone: %s)",
+    "starts global without moving a prior project draft (phone: %s)",
     async (phone) => {
       let saved: StoreSnapshot = { state: {}, children: {} };
       const save = vi.fn<Client["windowState"]["save"]>(async (payload) => {
@@ -81,15 +77,12 @@ describe("window presentation persistence workflows", () => {
         {},
         { snapshot: browserInitialSnapshot(saved, phone) },
       );
-      if (phone) {
-        expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
-        expect(screen.queryByRole("button", { name: /^alpha conversation / })).toBeNull();
-        await openAlpha(restored.user);
-      } else {
-        expect(await screen.findByText("Model configuration")).toBeDefined();
-        await restored.user.click(screen.getByRole("button", { name: "Back to chat" }));
-        expect(screen.queryByRole("button", { name: /^alpha conversation / })).toBeNull();
-      }
+      expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toHaveProperty(
+        "value",
+        "",
+      );
+      expect(screen.queryByText("Model configuration")).toBeNull();
+      await openAlpha(restored.user);
       expect(await screen.findByPlaceholderText("Ask Cake to work in alpha…")).toHaveProperty(
         "value",
         "Continue this unsent investigation",

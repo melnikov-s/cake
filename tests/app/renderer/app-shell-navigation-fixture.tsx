@@ -38,6 +38,7 @@ export function renderAppShellNavigation(
     history?: readonly string[];
     unhydratedIds?: readonly string[];
     transcriptViewport?: boolean;
+    cakeChatCatalogLoaded?: boolean;
   } = {},
 ) {
   let sessions = ["alpha", "beta", "gamma"].map((name) =>
@@ -84,7 +85,7 @@ export function renderAppShellNavigation(
     );
   }
   applySnapshot(fixture.models.cakeChatCatalog, {
-    loaded: true,
+    loaded: options.cakeChatCatalogLoaded ?? true,
     sessions: [
       {
         sessionId: CAKE_CHAT_SESSION_ID,

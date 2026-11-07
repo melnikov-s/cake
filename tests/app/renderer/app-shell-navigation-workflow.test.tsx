@@ -59,7 +59,7 @@ describe("App shell navigation workflow", () => {
       (["settings", "artifact-library"] as const).map((cover) => ({ workspace, cover })),
     ),
   )(
-    "persisted-window restore keeps $workspace under its $cover cover",
+    "starts global after $workspace under $cover, retaining explicit visit history",
     async ({ workspace, cover }) => {
       let saved: StoreSnapshot;
       {
@@ -77,15 +77,9 @@ describe("App shell navigation workflow", () => {
         saved = toSnapshot(fixture.root);
       }
       using restored = renderAppShellNavigation({}, { snapshot: saved });
-      if (cover === "settings") {
-        expect(await screen.findByText("Model configuration")).toBeDefined();
-        await restored.user.click(screen.getByRole("button", { name: "Back to chat" }));
-      } else {
-        expect(await screen.findByText("No artifacts match this view.")).toBeDefined();
-        await restored.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
-      }
-      if (workspace === "cake-chat") await expectCakeChat();
-      else await expectProjectChat("beta");
+      await expectCakeChat();
+      expect(screen.queryByText("Model configuration")).toBeNull();
+      expect(screen.queryByText("No artifacts match this view.")).toBeNull();
       // Window visits survive covering/restoration without becoming pane-local history.
       await openLibrary(restored.user);
       await restored.pressHistory("back");

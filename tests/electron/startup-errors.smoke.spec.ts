@@ -7,7 +7,7 @@ import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("shows a restored session's startup failure in the window instead of loading forever", async () => {
+test("cold launch opens global Cake Chat instead of restoring a missing Project Session", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-startup-errors-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -42,11 +42,14 @@ test("shows a restored session's startup failure in the window instead of loadin
   });
   try {
     const page = await application.firstWindow();
-    const error = page.getByRole("alert").filter({ hasText: "Could not open session" });
-    await expect(error).toBeVisible({ timeout: 20_000 });
-    await expect(error).toContainText(/no longer available|could not find Project Session/);
+    const composer = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
+    await expect(composer).toBeVisible({ timeout: 20_000 });
+    await expect(composer).toHaveValue("");
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toHaveCount(0);
     await expect(page.getByText("Opening session", { exact: true })).toHaveCount(0);
-    await expect(error.getByRole("button", { name: "Copy full error details" })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "Could not open session" })).toHaveCount(
+      0,
+    );
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
