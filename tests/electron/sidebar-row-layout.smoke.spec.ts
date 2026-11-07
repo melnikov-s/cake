@@ -71,7 +71,8 @@ for (const theme of ["light", "dark"] as const) {
           .getByRole("button", { name: "Collapse UI Layout Refactor", exact: true })
           .click();
         await expect(child).toBeHidden();
-        await expect(parent.getByLabel(/running descendants/)).toBeVisible();
+        await expect(parent.getByRole("img", { name: "Running", exact: true })).toBeVisible();
+        await expect(parent.getByLabel(/running descendants/)).toHaveCount(0);
         await parent
           .getByRole("button", { name: "Expand UI Layout Refactor", exact: true })
           .click();

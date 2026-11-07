@@ -34,8 +34,11 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const { management } = useContext(SidebarCapabilities);
   const [renamingValue, setRenamingValue] = useState<string | null>(null);
   const { session, activity, resolved, onResolve } = row;
+  const ownActivity = sessionMetadata
+    ? sessionMetadata.sessionActivity(session.sessionId)
+    : activity;
   const contextMenuUnread =
-    onMarkUnread && !isActiveSessionActivity(activity) ? activity === "unread" : undefined;
+    onMarkUnread && !isActiveSessionActivity(ownActivity) ? ownActivity === "unread" : undefined;
   const isFamilyChild =
     Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
   const commitRename = () => {
@@ -55,7 +58,6 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
       associated={store.isSessionAssociatedWithFocusedTodos(session.sessionId)}
       activityTime={store.sessionActivityTime(session.modifiedAt)}
       childrenWorking={
-        Boolean(session.familyChildSessionIds?.length) &&
         isActiveSessionActivity(activity) &&
         !isActiveSessionActivity(sessionMetadata?.sessionActivity(session.sessionId))
       }

@@ -41,7 +41,6 @@ export interface ConversationNavigationNode extends ConversationNavigationEntry 
   readonly modifiedAt: string;
   readonly activity: SessionActivity | undefined;
   readonly running: boolean;
-  readonly runningDescendants: number;
   /** Released worker history remains navigable, without reactivating its resources. */
   readonly readOnly?: boolean;
   readonly children: readonly ConversationNavigationNode[];
@@ -86,10 +85,9 @@ export const conversationNavigationTargetKey = (target: ConversationNavigationTa
 
 type MutableNode = Omit<
   ConversationNavigationNode,
-  "children" | "runningDescendants" | "parentKey" | "relationship" | "label"
+  "children" | "parentKey" | "relationship" | "label"
 > & {
   children: MutableNode[];
-  runningDescendants: number;
   parentKey: string | undefined;
   relationship: ConversationRelationship;
   label: ConversationNavigationNode["label"];
@@ -131,7 +129,6 @@ export function buildConversationNavigationTree(
       modifiedAt: home?.modifiedAt ?? "",
       activity: running ? "running" : home?.unread ? "unread" : undefined,
       running,
-      runningDescendants: 0,
       children: [],
     });
   }
@@ -165,7 +162,6 @@ export function buildConversationNavigationTree(
               : session.unread
                 ? "unread"
                 : undefined,
-      runningDescendants: 0,
       children: [],
       order: session.familyChildOrder ?? catalogOrder,
     });
@@ -195,8 +191,7 @@ export function buildConversationNavigationTree(
             ? -1
             : b.modifiedAt.localeCompare(a.modifiedAt) || a.key.localeCompare(b.key),
     );
-    node.runningDescendants = node.children.reduce((sum, child) => sum + count(child), 0);
-    return node.runningDescendants + Number(node.running);
+    return node.children.reduce((sum, child) => sum + count(child), Number(node.running));
   };
   const running = roots.reduce((sum, node) => sum + count(node), 0);
   return { roots, byKey, total: byKey.size, running };

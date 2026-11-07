@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import type { ConversationNavigationNode } from "../lib/conversation-navigation-tree";
 import { cn } from "../lib/utils";
+import { sessionActivityWithInheritedWorking } from "../lib/session-activity";
 import { formatRelativeSessionTime } from "../../utils/format-relative-session-time";
 import { RootStore } from "../stores/RootStore";
 import { SidebarSessionItem } from "./sidebar-session-item";
@@ -12,7 +13,7 @@ import { IconButton } from "./ui/icon-button";
 import { CakeIcon, ChevronIcon } from "./ui/icons";
 import { NavItem } from "./ui/nav-item";
 
-/** One compact native source-list row; own activity never borrows its descendants' state. */
+/** One compact native source-list row; only working state propagates through descendants. */
 export const ConversationNavigatorRow = observer(function ConversationNavigatorRow({
   node,
   depth,
@@ -46,8 +47,12 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
   const ownActivity =
     node.target.kind === "cake-chat"
       ? root.cakeChatCollectionStore.ownActivityFor(node.target.sessionId)
-      : node.activity;
-  const time = node.running
+      : session
+        ? root.sessionMetadataStore.sessionActivity(session.sessionId)
+        : node.activity;
+  const working = store.effectiveWorking(node);
+  const activity = sessionActivityWithInheritedWorking(ownActivity, working);
+  const time = working
     ? "Running"
     : node.modifiedAt
       ? formatRelativeSessionTime(node.modifiedAt, root.sidebarStore.now)
@@ -60,6 +65,7 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
       data-session-id={node.target.sessionId}
       data-relationship={node.relationship}
       data-depth={depth}
+      data-working={working}
       data-navigation-active={selected}
       className={cn(
         "group flex min-h-11 min-w-0 items-stretch rounded-md",
@@ -93,7 +99,7 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
             managedWorktree={root.sidebarStore.managedWorktree(session.workingDirectory)}
             selected={selected}
             resolved={session.resolved}
-            activity={root.sessionMetadataStore.sessionActivity(session.sessionId)}
+            activity={activity}
             labels={root.sessionMetadataStore.sessionLabels(session.sessionId)}
             avatarSeed={session.sessionId}
             avatarsEnabled={root.settingsStore.appearance.sessionAvatarsEnabled}
@@ -147,25 +153,16 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
               >
                 {node.label} · {time}
               </span>
-              {node.runningDescendants > 0 && (
-                <span
-                  className="shrink-0 tabular-nums"
-                  aria-label={`${node.runningDescendants} running descendants`}
-                  title={`${node.runningDescendants} running descendants; own state: ${node.running ? "running" : "idle"}`}
-                >
-                  ↓{node.runningDescendants}
-                </span>
-              )}
             </span>
           }
           trailing={
             <span
               className="flex size-6 items-center justify-center"
               data-slot="own-activity"
-              aria-label={ownActivity ? undefined : "Idle"}
-              title={ownActivity ? undefined : "Idle"}
+              aria-label={activity ? undefined : "Idle"}
+              title={activity ? undefined : "Idle"}
             >
-              <SessionActivityIndicator activity={ownActivity} />
+              <SessionActivityIndicator activity={activity} />
             </span>
           }
           onClick={() => void store.open(node)}
@@ -186,15 +183,6 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
               : undefined
           }
         />
-      )}
-      {session && node.runningDescendants > 0 && (
-        <span
-          className="flex shrink-0 items-center pr-1 text-xs text-muted-foreground tabular-nums"
-          aria-label={`${node.runningDescendants} running descendants`}
-          title={`${node.runningDescendants} running descendants; own state: ${node.running ? "running" : "idle"}`}
-        >
-          ↓{node.runningDescendants}
-        </span>
       )}
     </div>
   );

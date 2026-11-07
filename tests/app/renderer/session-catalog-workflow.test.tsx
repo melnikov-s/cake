@@ -344,9 +344,8 @@ describe("Session catalog lifecycle workflows", () => {
       sidebar()
         .getByRole("button", { name: /^Parent / })
         .closest<HTMLElement>('[data-slot="conversation-navigator-row"]')!;
-    expect(within(parentRow()).queryByRole("img", { name: "Running" })).toBeNull();
-    expect(within(parentRow()).getByLabelText("Idle")).toBeTruthy();
-    expect(within(parentRow()).getByLabelText("1 running descendants")).toBeTruthy();
+    expect(within(parentRow()).getByRole("img", { name: "Running" })).toBeTruthy();
+    expect(within(parentRow()).queryByLabelText(/running descendants/)).toBeNull();
     await fixture.publishUpdate({
       _tag: "Event",
       revision: 3,
@@ -380,7 +379,7 @@ describe("Session catalog lifecycle workflows", () => {
       },
     });
     expect(within(row()).getByRole("img", { name: "Running" })).toBeTruthy();
-    expect(within(parentRow()).getByLabelText("1 running descendants")).toBeTruthy();
+    expect(within(parentRow()).getByRole("img", { name: "Running" })).toBeTruthy();
     expect(open).not.toHaveBeenCalled();
   });
 

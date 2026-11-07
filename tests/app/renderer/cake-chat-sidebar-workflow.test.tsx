@@ -87,27 +87,24 @@ function renderActivitySidebar() {
 }
 
 it.each(["queued", "running"] as const)(
-  "shows an owned %s worker separately from the idle coordinator",
-  async (status) => {
+  "inherits only working from an owned %s worker without a descendant count",
+  (status) => {
     using fixture = renderActivitySidebar();
     fixture.updateWorker(cakeChatWorker({ status, streaming: false, parts: [] }));
-    expect(screen.getByLabelText("1 running descendants")).toBeTruthy();
-    expect(coordinator().getByLabelText("Idle")).toBeTruthy();
-    expect(coordinator().queryByRole("img", { name: "Running" })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse Cake Chat" }));
-    expect(screen.getByLabelText("1 running descendants")).toBeTruthy();
-    expect(screen.queryByRole("img", { name: "Running" })).toBeNull();
+    expect(coordinator().getByRole("img", { name: "Running" })).toBeTruthy();
+    expect(screen.queryByLabelText(/running descendants/)).toBeNull();
+    expect(screen.queryByText(/↓\d+/)).toBeNull();
   },
 );
 it.each(["complete", "error", "aborted"] as const)(
-  "counts only live descendants as workers settle with %s",
+  "inherits only live work as workers settle with %s",
   (status) => {
     using fixture = renderActivitySidebar();
     fixture.updateWorker(cakeChatWorker());
     fixture.updateWorker(cakeChatWorker({ handleId: secondHandleId }));
-    expect(screen.getByLabelText("2 running descendants")).toBeTruthy();
+    expect(coordinator().getByRole("img", { name: "Running" })).toBeTruthy();
     fixture.updateWorker(cakeChatWorker({ status, streaming: false, parts: [] }));
-    expect(screen.getByLabelText("1 running descendants")).toBeTruthy();
+    expect(coordinator().getByRole("img", { name: "Running" })).toBeTruthy();
     fixture.updateWorker(
       cakeChatWorker({ handleId: secondHandleId, status, streaming: false, parts: [] }),
     );
@@ -118,16 +115,16 @@ it.each(["complete", "error", "aborted"] as const)(
 it("releases worker activity on removal and authoritative replacement", () => {
   using fixture = renderActivitySidebar();
   fixture.updateWorker(cakeChatWorker());
-  expect(screen.getByLabelText("1 running descendants")).toBeTruthy();
+  expect(coordinator().getByRole("img", { name: "Running" })).toBeTruthy();
   fixture.publish({
     _tag: "Removed",
     revision: 2,
     parentSessionId: CAKE_CHAT_SESSION_ID,
     handleId: cakeChatWorker().handleId,
   });
-  expect(screen.queryByLabelText(/running descendants/)).toBeNull();
+  expect(coordinator().getByLabelText("Idle")).toBeTruthy();
   fixture.updateWorker(cakeChatWorker({ handleId: secondHandleId }));
-  expect(screen.getByLabelText("1 running descendants")).toBeTruthy();
+  expect(coordinator().getByRole("img", { name: "Running" })).toBeTruthy();
   fixture.publish({
     _tag: "Snapshot",
     revision: 4,
@@ -135,7 +132,7 @@ it("releases worker activity on removal and authoritative replacement", () => {
     activities: [],
     backgroundActive: false,
   });
-  expect(screen.queryByLabelText(/running descendants/)).toBeNull();
+  expect(coordinator().getByLabelText("Idle")).toBeTruthy();
 });
 
 it.each(["complete", "failed", "aborted"] as const)(

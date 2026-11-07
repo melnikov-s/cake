@@ -52,6 +52,14 @@ export function settledSessionActivity(
   return outcome === "aborted" ? "error" : "unread";
 }
 
+/** Inherit work only; a parent's own unread/attention/outcome keeps its display precedence. */
+export function sessionActivityWithInheritedWorking(
+  own: SessionActivity | undefined,
+  working: boolean,
+): SessionActivity | undefined {
+  return own ?? (working ? "running" : undefined);
+}
+
 /** Waiting sessions still own an active Pi turn blocked on user input. */
 export function isActiveSessionActivity(activity: SessionActivity | undefined) {
   return activity === "waiting" || activity === "running";

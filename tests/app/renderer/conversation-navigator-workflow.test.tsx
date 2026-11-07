@@ -117,8 +117,151 @@ function renderNavigator(
 const rowFor = (name: string) =>
   screen.getByText(name).closest('[data-slot="conversation-navigator-row"]') as HTMLElement;
 
+function settleFixtureWorkers(fixture: ReturnType<typeof renderNavigator>) {
+  act(() => {
+    for (const catalog of fixture.models.subagentCatalogs)
+      for (const worker of catalog.activities) {
+        worker.status = "complete";
+        worker.streaming = false;
+      }
+  });
+}
+
 describe("Sessions navigator workflow", () => {
-  it("renders a dense recursive source-list with true family edges and an idle parent's collapsed running descendants", async () => {
+  it.each([
+    ["own", "layout"],
+    ["child", "keyboard"],
+    ["grandchild", "deep-child"],
+    ["all idle", undefined],
+  ] as const)("derives %s working identically when expanded and collapsed", async (_, activeId) => {
+    using fixture = renderNavigator();
+    settleFixtureWorkers(fixture);
+    if (activeId)
+      act(() => {
+        fixture.models.sessionCatalog.find(activeId)!.running = true;
+      });
+    const assertStatus = (names = ["UI Layout Refactor", "Project Chat"]) => {
+      const store = fixture.root.conversationNavigatorStore;
+      const parent = store
+        .tree(navigatorProjectPath)
+        .byKey.get(conversationNavigationKey("layout"))!;
+      expect(store.effectiveWorking(parent)).toBe(Boolean(activeId));
+      for (const name of names) {
+        const row = rowFor(name);
+        expect(row.dataset.working).toBe(String(Boolean(activeId)));
+        expect(within(row).queryByRole("img", { name: "Running" }) !== null).toBe(
+          Boolean(activeId),
+        );
+        if (!activeId) expect(within(row).getByLabelText("Idle")).toBeTruthy();
+      }
+      expect(screen.queryByLabelText(/running descendants/)).toBeNull();
+      expect(screen.queryByText(/↓\d+/)).toBeNull();
+    };
+    assertStatus();
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse UI Layout Refactor" }));
+    assertStatus();
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse Project Chat" }));
+    expect(screen.queryByText("UI Layout Refactor")).toBeNull();
+    assertStatus(["Project Chat"]);
+    await fixture.user.click(screen.getByRole("button", { name: "Expand Project Chat" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Expand UI Layout Refactor" }));
+    assertStatus();
+    if (activeId) {
+      act(() => {
+        fixture.models.sessionCatalog.find(activeId)!.running = false;
+      });
+      expect(rowFor("UI Layout Refactor").dataset.working).toBe("false");
+      expect(within(rowFor("UI Layout Refactor")).getByLabelText("Idle")).toBeTruthy();
+      expect(within(rowFor("Project Chat")).getByLabelText("Idle")).toBeTruthy();
+    }
+  });
+
+  it.each(["unread", "error", "stopped", "blocked", "complete"] as const)(
+    "keeps descendant %s independent of an idle parent",
+    async (status) => {
+      using fixture = renderNavigator();
+      settleFixtureWorkers(fixture);
+      act(() => {
+        const child = fixture.models.sessionCatalog.find("deep-child")!;
+        child.unread = status === "unread";
+        child.latestTurnOutcome =
+          status === "error"
+            ? "failed"
+            : status === "stopped"
+              ? "aborted"
+              : status === "complete"
+                ? "complete"
+                : undefined;
+        if (status === "blocked") child.recoveryIssue = "Needs recovery";
+      });
+      const childLabel =
+        status === "unread"
+          ? "Ready, unread"
+          : status === "error"
+            ? "Error"
+            : status === "blocked"
+              ? "Needs your input"
+              : undefined;
+      if (childLabel)
+        expect(
+          within(rowFor("Nested child implementation")).getByRole("img", { name: childLabel }),
+        ).toBeTruthy();
+      const parent = fixture.models.sessionCatalog.find("layout")!;
+      const assertIdle = () => {
+        expect(rowFor("UI Layout Refactor").dataset.working).toBe("false");
+        expect(within(rowFor("UI Layout Refactor")).getByLabelText("Idle")).toBeTruthy();
+        expect(within(rowFor("Project Chat")).getByLabelText("Idle")).toBeTruthy();
+        expect(
+          fixture.root.sidebarStore.sessionListStore.sessionActivityForDisplay(parent),
+        ).toBeUndefined();
+        expect(
+          fixture.root.sidebarStore.sessionListStore.projectActivityForDisplay(
+            navigatorProjectPath,
+          ),
+        ).toBeUndefined();
+        expect(parent.unread).toBe(false);
+      };
+      assertIdle();
+      await fixture.user.click(screen.getByRole("button", { name: "Collapse UI Layout Refactor" }));
+      assertIdle();
+    },
+  );
+
+  it("preserves a parent's own unread indication and data while descendants work", async () => {
+    using fixture = renderNavigator();
+    settleFixtureWorkers(fixture);
+    const parent = fixture.models.sessionCatalog.find("layout")!;
+    act(() => {
+      parent.unread = true;
+      parent.latestTurnOutcome = "complete";
+      fixture.models.cakeChatCatalog.sessions.find(
+        (chat) => chat.sessionId === navigatorHomeId,
+      )!.unread = true;
+      fixture.models.sessionCatalog.find("deep-child")!.running = true;
+    });
+    const assertUnread = () => {
+      expect(parent.unread).toBe(true);
+      expect(fixture.root.sidebarStore.sessionListStore.sessionActivityForDisplay(parent)).toBe(
+        "unread",
+      );
+      for (const name of ["UI Layout Refactor", "Project Chat"]) {
+        expect(rowFor(name).dataset.working).toBe("true");
+        expect(within(rowFor(name)).getByRole("img", { name: "Ready, unread" })).toBeTruthy();
+      }
+    };
+    assertUnread();
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse UI Layout Refactor" }));
+    assertUnread();
+    act(() => {
+      fixture.models.sessionCatalog.find("deep-child")!.running = false;
+    });
+    expect(parent.unread).toBe(true);
+    expect(
+      within(rowFor("UI Layout Refactor")).getByRole("img", { name: "Ready, unread" }),
+    ).toBeTruthy();
+  });
+
+  it("renders a dense recursive source-list and inherits working through collapsed family edges", async () => {
     using fixture = renderNavigator();
     expect(screen.getByText("5 total")).toBeTruthy();
     expect(rowFor("UI Layout Refactor").dataset.relationship).toBe("grouped");
@@ -146,18 +289,15 @@ describe("Sessions navigator workflow", () => {
     act(() => {
       fixture.models.sessionCatalog.find("deep-child")!.running = true;
     });
-    expect(
-      within(rowFor("UI Layout Refactor")).getByLabelText("1 running descendants"),
-    ).toBeTruthy();
-    expect(within(rowFor("UI Layout Refactor")).getByLabelText("Idle")).toBeTruthy();
-    expect(within(rowFor("UI Layout Refactor")).queryByRole("img", { name: "Running" })).toBeNull();
-    // Authority updates change counts even while the branch is closed.
+    expect(within(rowFor("UI Layout Refactor")).getByRole("img", { name: "Running" })).toBeTruthy();
+    expect(within(rowFor("Project Chat")).getByRole("img", { name: "Running" })).toBeTruthy();
+    expect(screen.queryByLabelText(/running descendants/)).toBeNull();
+    expect(screen.queryByText(/↓\d+/)).toBeNull();
+    // Authority updates still propagate while the branch is closed.
     act(() => {
       fixture.models.sessionCatalog.find("keyboard")!.running = true;
     });
-    expect(
-      within(rowFor("UI Layout Refactor")).getByLabelText("2 running descendants"),
-    ).toBeTruthy();
+    expect(within(rowFor("UI Layout Refactor")).getByRole("img", { name: "Running" })).toBeTruthy();
   });
 
   it.each(["button", "Escape"] as const)(

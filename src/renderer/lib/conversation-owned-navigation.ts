@@ -56,7 +56,6 @@ export function conversationOwnedNavigation(
       modifiedAt: thread.updatedAt,
       running: Boolean(running),
       activity: running ? "running" : undefined,
-      runningDescendants: 0,
       children: [],
     });
   }
@@ -89,7 +88,6 @@ export function conversationOwnedNavigation(
           : worker.status === "aborted"
             ? "stopped"
             : undefined,
-      runningDescendants: 0,
       children: [],
     });
   }

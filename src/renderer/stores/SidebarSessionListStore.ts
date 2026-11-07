@@ -5,7 +5,10 @@ import {
   compareSessionSummariesByCreation,
   compareSessionSummariesForSidebar,
 } from "../../utils/session-summary-order";
-import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
+import {
+  isActiveSessionActivity,
+  sessionActivityWithInheritedWorking,
+} from "../lib/session-activity";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
@@ -267,42 +270,37 @@ export class SidebarSessionListStore extends Store<{
     sessionId: string;
     familyChildSessionIds?: readonly string[];
   }) {
-    if (!session.familyChildSessionIds) return this.metadata.sessionActivity(session.sessionId);
-    return this.collapsedSessionActivity([session]);
-  }
-
-  projectActivityForDisplay(projectPath: string, expanded: boolean) {
-    const projectChat = this.props.cakeChat().projectChat(projectPath);
-    const own = projectChat ? this.props.cakeChat().activityFor(projectChat.sessionId) : undefined;
-    if (expanded) return own;
-    return this.collapsedSessionActivity(
-      this.props.catalog.projectSessions(projectPath, false),
-      own,
+    return sessionActivityWithInheritedWorking(
+      this.metadata.sessionActivity(session.sessionId),
+      this.sessionsWorking([session]),
     );
   }
 
-  /** One hierarchy traversal and precedence policy for families and collapsed Projects. */
-  private collapsedSessionActivity(
+  projectActivityForDisplay(projectPath: string) {
+    const projectChat = this.props.cakeChat().projectChat(projectPath);
+    const own = projectChat
+      ? this.props.cakeChat().ownActivityFor(projectChat.sessionId)
+      : undefined;
+    return sessionActivityWithInheritedWorking(
+      own,
+      this.sessionsWorking(this.props.catalog.projectSessions(projectPath, false)),
+    );
+  }
+
+  /** Disclosure never changes activity; only active work crosses ownership boundaries. */
+  private sessionsWorking(
     sessions: ReadonlyArray<{ sessionId: string; familyChildSessionIds?: readonly string[] }>,
-    own?: SessionActivity,
-  ): SessionActivity | undefined {
-    const activities: Array<SessionActivity | undefined> = [own];
+  ): boolean {
     const visited = new Set<string>();
-    const visit = (session: (typeof sessions)[number]) => {
-      if (visited.has(session.sessionId)) return;
+    const visit = (session: (typeof sessions)[number]): boolean => {
+      if (visited.has(session.sessionId)) return false;
       visited.add(session.sessionId);
-      activities.push(this.metadata.sessionActivity(session.sessionId));
-      for (const id of session.familyChildSessionIds ?? [])
-        visit(this.props.catalog.find(id) ?? { sessionId: id });
+      if (isActiveSessionActivity(this.metadata.sessionActivity(session.sessionId))) return true;
+      return (session.familyChildSessionIds ?? []).some((id) =>
+        visit(this.props.catalog.find(id) ?? { sessionId: id }),
+      );
     };
-    for (const session of sessions) visit(session);
-    if (activities.includes("waiting")) return "waiting";
-    if (activities.includes("running")) return "running";
-    if (activities.includes("blocked")) return "blocked";
-    if (activities.includes("error")) return "error";
-    if (activities.includes("unread")) return "unread";
-    if (activities.includes("stopped")) return "stopped";
-    return undefined;
+    return sessions.some(visit);
   }
 
   isActiveGroupExpanded(groupKey: string) {

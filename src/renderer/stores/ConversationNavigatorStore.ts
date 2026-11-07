@@ -1,4 +1,5 @@
 import { Store, computed, observable, snapshot, type ReadonlySignal } from "r-state-tree";
+import { isActiveSessionActivity } from "../lib/session-activity";
 import type { RootProjection } from "../models/RootProjection";
 import { conversationOwnedNavigation } from "../lib/conversation-owned-navigation";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
@@ -85,6 +86,16 @@ export class ConversationNavigatorStore extends Store<{
       model.discussionCatalogs.find((catalog) => catalog.sessionId === sessionId),
       model.subagentCatalogs.find((catalog) => catalog.sessionId === sessionId),
       model.discussionConversations,
+    );
+  }
+
+  /** Work is recursive and independent of disclosure; unread and outcomes stay with their owner. */
+  effectiveWorking(node: ConversationNavigationNode): boolean {
+    if (node.running || isActiveSessionActivity(node.activity)) return true;
+    if (node.children.some((child) => this.effectiveWorking(child))) return true;
+    if (node.target.kind === "subagent") return false;
+    return this.ownedConversations(node.target.sessionId).some((child) =>
+      this.effectiveWorking(child),
     );
   }
 
