@@ -39,6 +39,7 @@ it("reports inline visibility only after viewport observation and removes it whe
     class implements IntersectionObserver {
       readonly root = null;
       readonly rootMargin = "0px";
+      readonly scrollMargin = "0px";
       readonly thresholds = [0];
       private element: Element | undefined;
       constructor(callback: IntersectionObserverCallback) {

@@ -76,6 +76,48 @@ describe("Workflow script files", () => {
         expect(() => parseWorkflowProgram(code)).toThrow();
     }),
   );
+  it.effect("accepts literal templates, escaped strings and phase arrays", () =>
+    Effect.sync(() => {
+      expect(
+        parseWorkflowProgram(
+          'export const meta = { name: `audit`, description: "Audit\\nfiles", phases: ["read", `check`] };\nawait tools.read({});\nreturn 3;',
+        ).meta,
+      ).toEqual({ name: "audit", description: "Audit\nfiles", phases: ["read", "check"] });
+    }),
+  );
+
+  it.each([
+    ["spread", 'export const meta = {name: "audit", description: "Audit", ...args};'],
+    ["computed key", 'export const meta = {["name"]: "audit", description: "Audit"};'],
+    ["shorthand", 'export const meta = {name, description: "Audit"};'],
+    ["getter", 'export const meta = {get name(){return "audit"}, description: "Audit"};'],
+    ["interpolated template", 'export const meta = {name: `${args}`, description: "Audit"};'],
+    ["parenthesized expression", 'export const meta = {name: ("audit"), description: "Audit"};'],
+    [
+      "array spread",
+      'export const meta = {name: "audit", description: "Audit", phases: [...args]};',
+    ],
+    [
+      "array hole",
+      'export const meta = {name: "audit", description: "Audit", phases: [, "read"]};',
+    ],
+    ["regular expression", 'export const meta = {name: /audit/, description: "Audit"};'],
+    ["bigint", 'export const meta = {name: 1n, description: "Audit"};'],
+    ["wrong declaration", 'export let meta = {name: "audit", description: "Audit"};'],
+    [
+      "multiple declarations",
+      'export const meta = {name: "audit", description: "Audit"}, other = 1;',
+    ],
+    ["static import", `${source()}\nimport "fs";`],
+    ["nested import", `${source()}\nconst load = () => import("fs");`],
+    ["re-export", `${source()}\nexport * from "fs";`],
+    ["named re-export", `${source()}\nexport {readFile} from "fs";`],
+    ["extra export", `${source()}\nexport const other = 1;`],
+    ["default export", `${source()}\nexport default 1;`],
+  ])("rejects %s without executing metadata or modules", (_name, code) => {
+    expect(() => parseWorkflowProgram(code)).toThrow();
+  });
+
   it.effect(
     "preserves source line numbers when removing the metadata declaration for sandbox execution",
     () =>
@@ -84,6 +126,15 @@ describe("Workflow script files", () => {
         expect(parseWorkflowProgram(code).body.split("\n")[4]).toBe("return 3;");
         expect(parseWorkflowProgram(code).body.length).toBe(code.length);
       }),
+  );
+  it.effect("preserves UTF-16 offsets and CRLF lines after Unicode comments", () =>
+    Effect.sync(() => {
+      const code = `// 🧁 workflow\r\nexport const meta = {\r\nname: "audit",\r\ndescription: "Audit"\r\n};\r\nreturn 3;`;
+      const parsed = parseWorkflowProgram(code);
+      expect(parsed.body.split("\r\n")[5]).toBe("return 3;");
+      expect(parsed.metaEnd).toBe(code.indexOf(";\r\nreturn") + 1);
+      expect(parsed.body.length).toBe(code.length);
+    }),
   );
   it.effect(
     "discovers nearest project definitions and lets them shadow personal definitions",

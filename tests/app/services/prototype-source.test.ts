@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  moduleImports,
   readPrototypeSource,
   selectedPrototypeModules,
 } from "../../../src/services/widgets/prototype-source";
@@ -141,6 +142,46 @@ describe("validated prototype source format", () => {
     const bundle = prototypeFixture();
     change(bundle);
     expect(() => readPrototypeSource(encodePrototype(bundle))).toThrow();
+  });
+
+  it("preserves manifest offsets after Unicode comments without evaluating source", () => {
+    const bundle = prototypeFixture();
+    expect(readPrototypeSource(`// 🧁 prototype\n${encodePrototype(bundle)}`)).toEqual(bundle);
+    expect(
+      readPrototypeSource(`${encodePrototype(bundle)}\nconsole.log('extra');`),
+    ).toBeUndefined();
+  });
+
+  it("collects TSX imports, type-only imports, and re-exports before any type erasure", () => {
+    expect([
+      ...moduleImports({
+        id: "typed-option",
+        source: [
+          'import type {ReactNode} from "react";',
+          'import {palette} from "cake:prototype/palette";',
+          'export type {Token} from "cake:prototype/tokens";',
+          'export * from "cake:prototype/shared";',
+          'const label: ReactNode = "require(\\"ignored\\")";',
+          "export default () => <section style={{color: palette.ink}}>{label}</section>;",
+        ].join("\n"),
+      }),
+    ]).toEqual([
+      "react",
+      "cake:prototype/palette",
+      "cake:prototype/tokens",
+      "cake:prototype/shared",
+    ]);
+  });
+
+  it.each([
+    ['import React = require("react");', "import equals"],
+    ['export const load = () => import("react");', "nested dynamic import"],
+    ['export const load = () => require("react");', "nested require"],
+    ['export const load = () => require?.("react");', "optional require"],
+    ["export default () => <section>;", "malformed JSX"],
+    ["export const label: = 1;", "malformed TypeScript"],
+  ])("rejects unsupported module source: %s (%s)", (source) => {
+    expect(() => moduleImports({ id: "bad", source })).toThrow();
   });
 
   it("never evaluates executable manifests", () => {

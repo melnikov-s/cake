@@ -1,5 +1,5 @@
-import ts from "typescript";
-import { parse } from "acorn";
+import { parse, type Expression, type SpreadElement } from "acorn";
+import { full } from "acorn-walk";
 import { Schema } from "effect";
 import { WorkflowError, WorkflowMeta } from "../../../contracts/workflows/workflow-data";
 import type { JsonValue } from "../../../contracts/serialization/json-contract";
@@ -8,25 +8,41 @@ const invalid = (message: string) =>
   new WorkflowError({ operation: "parse", reason: "script", message });
 
 /** Syntax-only decoding: generated metadata is never executed on the host. */
-function literal(node: ts.Expression): JsonValue {
-  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
-  if (ts.isNumericLiteral(node)) return Number(node.text);
-  if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
-  if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
-  if (node.kind === ts.SyntaxKind.NullKeyword) return null;
-  if (ts.isArrayLiteralExpression(node)) return node.elements.map((item) => literal(item));
-  if (ts.isObjectLiteralExpression(node)) {
+function literal(node: Expression | SpreadElement | null): JsonValue {
+  if (node?.type === "Literal") {
+    const value = node.value;
+    if (
+      value === null ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    )
+      return value;
+  }
+  if (node?.type === "TemplateLiteral" && node.expressions.length === 0) {
+    const value = node.quasis[0]?.value.cooked;
+    if (value !== null && value !== undefined) return value;
+  }
+  if (node?.type === "ArrayExpression") return node.elements.map((item) => literal(item));
+  if (node?.type === "ObjectExpression") {
     const result: Record<string, JsonValue> = {};
     for (const item of node.properties) {
       if (
-        !ts.isPropertyAssignment(item) ||
-        !item.name ||
-        !(ts.isIdentifier(item.name) || ts.isStringLiteral(item.name))
+        item.type !== "Property" ||
+        item.computed ||
+        item.shorthand ||
+        item.method ||
+        item.kind !== "init" ||
+        !(
+          item.key.type === "Identifier" ||
+          (item.key.type === "Literal" && typeof item.key.value === "string")
+        )
       ) {
         throw invalid("Metadata must contain only literal properties.");
       }
-      Object.defineProperty(result, item.name.text, {
-        value: literal(item.initializer),
+      const key = item.key.type === "Identifier" ? item.key.name : String(item.key.value);
+      Object.defineProperty(result, key, {
+        value: literal(item.value),
         enumerable: true,
         configurable: true,
       });
@@ -39,59 +55,47 @@ function literal(node: ts.Expression): JsonValue {
 }
 
 export function parseWorkflowProgram(source: string) {
-  const file = ts.createSourceFile(
-    "workflow.js",
-    source,
-    ts.ScriptTarget.ESNext,
-    true,
-    ts.ScriptKind.JS,
-  );
   // Acorn rejects TypeScript and malformed JavaScript without evaluating host code.
-  parse(source, {
+  const file = parse(source, {
     ecmaVersion: "latest",
     sourceType: "module",
     allowAwaitOutsideFunction: true,
     allowReturnOutsideFunction: true,
+    preserveParens: true,
   });
-  const first = file.statements[0];
+  const first = file.body[0];
   if (
-    !first ||
-    !ts.isVariableStatement(first) ||
-    !first.modifiers?.some((item) => item.kind === ts.SyntaxKind.ExportKeyword) ||
-    !(first.declarationList.flags & ts.NodeFlags.Const) ||
-    first.declarationList.declarations.length !== 1
+    first?.type !== "ExportNamedDeclaration" ||
+    first.declaration?.type !== "VariableDeclaration" ||
+    first.declaration.kind !== "const" ||
+    first.declaration.declarations.length !== 1
   ) {
     throw invalid("The first statement must be export const meta = { name, description }.");
   }
-  const declaration = first.declarationList.declarations[0];
+  const declaration = first.declaration.declarations[0];
   if (
-    !declaration ||
-    !ts.isIdentifier(declaration.name) ||
-    declaration.name.text !== "meta" ||
-    !declaration.initializer ||
-    !ts.isObjectLiteralExpression(declaration.initializer)
+    declaration?.id.type !== "Identifier" ||
+    declaration.id.name !== "meta" ||
+    declaration.init?.type !== "ObjectExpression"
   )
     throw invalid("Invalid workflow metadata declaration.");
-  const meta = Schema.decodeUnknownSync(WorkflowMeta)(literal(declaration.initializer));
-  const visit = (node: ts.Node): void => {
+  const meta = Schema.decodeUnknownSync(WorkflowMeta)(literal(declaration.init));
+  full(file, (node) => {
     if (
-      ts.isImportDeclaration(node) ||
-      ts.isImportEqualsDeclaration(node) ||
-      ts.isExportDeclaration(node) ||
-      (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword)
+      node.type === "ImportDeclaration" ||
+      node.type === "ImportExpression" ||
+      node.type === "ExportAllDeclaration" ||
+      (node.type === "ExportNamedDeclaration" && node.source)
     ) {
       throw invalid("Workflow scripts cannot load modules.");
     }
     if (
       node !== first &&
-      ts.canHaveModifiers(node) &&
-      ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)
+      (node.type === "ExportNamedDeclaration" || node.type === "ExportDefaultDeclaration")
     ) {
       throw invalid("Only the metadata declaration may be exported.");
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
+  });
   const end = first.end;
   return {
     meta,

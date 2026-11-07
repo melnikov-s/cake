@@ -16,9 +16,6 @@ jobs:
   static:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      # tsc and typed ESLint exceed Node's default heap on a 16 GB runner.
-      NODE_OPTIONS: --max-old-space-size=6144
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

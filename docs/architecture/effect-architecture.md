@@ -276,9 +276,10 @@ as uncertain until the user deliberately reconciles it. The browser Client rejec
 unsupported native/window/auth operations before dispatch and routes external links
 to its local host. Browser bootstrap never attaches WindowStatePersistence.
 
-ESLint restricts Effect execution APIs to the explicit boundary files listed in
-`eslint.config.js`. The main process entry point executes `MainApplication` and
-owns runtime disposal. Composition adapters execute only the Promise callbacks
+Effect execution APIs belong only at explicit runtime or external SDK callback
+boundaries. This is a code-review requirement; the former ESLint-only enforcement
+was removed with the migration to Oxlint. The main process entry point executes
+`MainApplication` and owns runtime disposal. Composition adapters execute only the Promise callbacks
 that Pi requires, using the narrow dependency Context captured when the adapter
 is built and forwarding Pi's `AbortSignal`. Managed Worktree creation, repository
 serialization, landing queues, rollback, and persistence are native Effects owned
@@ -1050,8 +1051,9 @@ Client → CakeIpcClient ↔ shared RPC protocol ↔ CakeRpcServer
 CakeRpcServer → domain operations → Services
 ```
 
-`architecture/module-boundaries` in `tools/eslint/module-boundaries.js` enforces
-these dependencies through the repository's ESLint configuration (`pnpm lint`):
+These dependencies remain code-review requirements. The former
+`architecture/module-boundaries` ESLint rule was removed rather than retained as
+a second linter alongside Oxlint:
 
 | Source                                                    | Allowed application dependencies                                            |
 | --------------------------------------------------------- | --------------------------------------------------------------------------- |
@@ -1075,13 +1077,12 @@ Node builtins (including bare imports), Electron, and Effect Node platform packa
 are forbidden in renderer, client, protocol, and shared modules. Pi packages terminate
 beneath `services/pi` or `services/pi-durable`.
 
-The rule checks value and type-only imports, re-exports, static dynamic imports,
-TypeScript import types/import-equals, and `require`. It normalizes relative paths,
-absolute paths, the `@/` renderer alias, `src/` imports, directory imports, and Vite
-query suffixes. Runtime-loaded extension URLs remain an explicit external-module
-boundary, not statically resolvable application imports. Named client/envelope
-transports are classified explicitly; new transport implementations default to backend.
-The separate rule ID prevents narrower renderer restrictions from replacing these checks.
+Review value and type-only imports, re-exports, static dynamic imports,
+TypeScript import types/import-equals, and `require` against this matrix, including
+relative paths, aliases, directory imports, and Vite query suffixes. Runtime-loaded
+extension URLs remain an explicit external-module boundary, not statically
+resolvable application imports. Named client/envelope transports are classified
+explicitly; new transport implementations default to backend.
 
 RPC payloads never expose raw Pi, Git, Electron, filesystem, Effect runtime, Store,
 or Model objects. Extract shared values rather than granting type-only exceptions

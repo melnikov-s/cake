@@ -45,7 +45,6 @@ const endpoint = Effect.fn("LocalMcp.endpoint")(function* () {
     ],
     call: async (_name, input, signal) => {
       // Enter the existing backend Context and its canonical Cake operation implementations.
-      // eslint-disable-next-line no-restricted-syntax
       const result = await Effect.runPromiseWith(context)(
         Effect.scoped(call(input)).pipe(Effect.result),
         { signal },

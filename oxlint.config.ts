@@ -35,6 +35,13 @@ export default defineConfig({
   },
   overrides: [
     {
+      files: ["**/*.{ts,tsx}"],
+      rules: {
+        "typescript/consistent-type-imports": "error",
+        "typescript/no-empty-object-type": ["error", { allowInterfaces: "with-single-extends" }],
+      },
+    },
+    {
       // Raw Pi values terminate in the adapter. Runtime inspection is the
       // boundary mechanism; the rules that keep its Cake-facing outputs typed
       // remain enabled.

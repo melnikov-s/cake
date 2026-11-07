@@ -1,4 +1,4 @@
-import ts from "typescript";
+import { parseSync, Visitor } from "oxc-parser";
 import { Schema } from "effect";
 import { PrototypeSource, type PrototypeModule } from "../../contracts/widgets/prototype-source";
 
@@ -6,26 +6,22 @@ export const prototypeModuleSpecifier = (id: string) => `cake:prototype/${id}`;
 
 /** A structured source format, not a search for component names or source markers. */
 export function readPrototypeSource(source: string): PrototypeSource | undefined {
-  const file = ts.createSourceFile(
-    "widget.tsx",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
-  const statement = file.statements[0];
+  const parsed = parseSync("widget.tsx", source);
+  const file = parsed.program;
+  const statement = file.body[0];
   if (
-    file.statements.length !== 1 ||
-    !statement ||
-    !ts.isExportAssignment(statement) ||
-    statement.isExportEquals ||
-    !ts.isObjectLiteralExpression(statement.expression)
+    file.body.length !== 1 ||
+    statement?.type !== "ExportDefaultDeclaration" ||
+    statement.declaration.type !== "ObjectExpression"
   )
     return undefined;
   // Strict JSON deliberately excludes computed expressions, spreads and executable manifests.
   let bundle: PrototypeSource;
   try {
-    const value: unknown = JSON.parse(statement.expression.getText(file));
+    if (parsed.errors.length > 0) throw new Error("Invalid manifest syntax");
+    const value: unknown = JSON.parse(
+      source.slice(statement.declaration.start, statement.declaration.end),
+    );
     bundle = Schema.decodeUnknownSync(PrototypeSource, { onExcessProperty: "error" })(value);
   } catch {
     // Do not leak other alternatives through decoder diagnostics at a source-read boundary.
@@ -81,45 +77,28 @@ export function readPrototypeSource(source: string): PrototypeSource | undefined
 
 /** The distinct static import/re-export specifiers of one module; rejects invalid syntax. */
 export function moduleImports(module: Pick<PrototypeModule, "id" | "source">): Set<string> {
-  const diagnostics =
-    ts.transpileModule(module.source, {
-      fileName: `${module.id}.tsx`,
-      reportDiagnostics: true,
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        target: ts.ScriptTarget.ESNext,
-        module: ts.ModuleKind.ESNext,
-      },
-    }).diagnostics ?? [];
-  if (diagnostics.some((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error))
-    throw new Error(`Invalid prototype module syntax: ${module.id}`);
-  const file = ts.createSourceFile(
-    `${module.id}.tsx`,
-    module.source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
+  const parsed = parseSync(`${module.id}.tsx`, module.source);
+  if (parsed.errors.length > 0) throw new Error(`Invalid prototype module syntax: ${module.id}`);
   const imports = new Set<string>();
-  const visit = (node: ts.Node) => {
-    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
-      const specifier = node.moduleSpecifier;
-      if (specifier) {
-        if (!ts.isStringLiteral(specifier))
-          throw new Error("Prototype imports must be static strings");
-        imports.add(specifier.text);
-      }
-    }
-    if (
-      ts.isImportEqualsDeclaration(node) ||
-      (ts.isCallExpression(node) &&
-        (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-          (ts.isIdentifier(node.expression) && node.expression.text === "require")))
-    )
-      throw new Error(`Prototype ${module.id}: dynamic imports/require are unsupported`);
-    ts.forEachChild(node, visit);
+  const unsupported = () => {
+    throw new Error(`Prototype ${module.id}: dynamic imports/require are unsupported`);
   };
-  visit(file);
+  new Visitor({
+    ImportDeclaration(node) {
+      imports.add(node.source.value);
+    },
+    ExportNamedDeclaration(node) {
+      if (node.source) imports.add(node.source.value);
+    },
+    ExportAllDeclaration(node) {
+      imports.add(node.source.value);
+    },
+    ImportExpression: unsupported,
+    TSImportEqualsDeclaration: unsupported,
+    CallExpression(node) {
+      if (node.callee.type === "Identifier" && node.callee.name === "require") unsupported();
+    },
+  }).visit(parsed.program);
   return imports;
 }
 

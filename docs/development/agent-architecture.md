@@ -116,8 +116,9 @@ workflow example; do not copy its entire reference into unrelated prompts.
   Backend and renderer implementations never import one another. Shared schemas,
   errors, values, and pure codecs consumed across layers belong in feature-named
   `src/contracts/` modules, not IPC infrastructure, implementation files, or
-  forwarding facades. `architecture/module-boundaries` enforces these
-  directions in ESLint; see `docs/architecture/effect-architecture.md` for the matrix.
+  forwarding facades. These directions remain architecture requirements reviewed in code;
+  see `docs/architecture/effect-architecture.md` for the matrix. ESLint-only
+  enforcement was removed with the migration to Oxlint.
 - Cross-process data is untrusted until parsed by the shared runtime schemas.
 - A Cake Chat Session is an application-level Cake Session backed by Pi. Keep
   it separate from Project Session lists and use curated Cake control intents

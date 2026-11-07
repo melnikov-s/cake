@@ -18,12 +18,14 @@ Format changed supported files with Oxfmt before final verification, using
 `pnpm exec oxfmt <paths>` to preserve unrelated worktree changes. Run
 `pnpm format:check` to verify that no formatting changes remain.
 
-Run Oxlint for every source-code change with `pnpm lint:oxlint`; do not rely on
-ESLint alone. Run `pnpm lint` for final lint verification when the task's scope
-permits, since it runs Oxlint first and then ESLint. Run focused tests and the
-typecheck or build warranted by the affected behavior. Docs-only changes need
-only applicable documentation formatting/link checks, not tests, builds or
-Electron checks.
+Run Oxlint for every source-code change with `pnpm lint:oxlint`. Run `pnpm lint`
+for final lint verification when the task's scope permits; it runs Oxlint and
+Knip's unused-code checks. ESLint and its unsupported rules are intentionally
+removed. Run focused tests and the typecheck or build warranted by the affected
+behavior. `pnpm typecheck` uses stable TypeScript 7's native Go compiler (the
+command is still named `tsc`), not the legacy Node compiler or a preview package.
+Docs-only changes need only applicable documentation formatting/link checks, not
+tests, builds or Electron checks.
 
 ### Verification scope and cadence
 
