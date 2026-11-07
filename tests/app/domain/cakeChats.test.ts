@@ -118,6 +118,7 @@ function fixture(runtimeOverrides: Partial<CakeSessionRuntimes["Service"]> = {})
       initialThenChanges: (initial) => initial.pipe(Stream.concat(Stream.fromIterable(changes))),
     }),
     Layer.mock(CakeSessionRuntimes, {
+      currentStatus: () => Effect.succeed(undefined),
       catalogEntry: (_, id) =>
         Effect.sync(() => {
           catalogReads.push(id);
@@ -361,6 +362,7 @@ describe("permanent Cake Chat", () => {
     return Effect.gen(function* () {
       expect(yield* metadata.lookup(sessionId, location)).toEqual({
         sessionId,
+        running: false,
         projectPath: "/new-project",
         title: "new-project",
         createdAt: "2026-01-01T00:00:00.000Z",

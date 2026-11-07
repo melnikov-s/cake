@@ -12,6 +12,7 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
   const projectOpen = store.projectOpenStore;
   const session = store.activeSession;
   const surface = root.appShellStore.surface;
+  const applicationView = surface === "settings" || surface === "automations";
   const extensionUi = root.extensionUiStore;
   const terminal = root.terminalStore;
   const returnToWorkbench = () => root.navigationStore.returnToWorkbench();
@@ -20,12 +21,12 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
       data-slot="workspace-header"
       className={cn(
         "relative box-content flex h-title-bar w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-[88px] phone:pl-[88px]",
-        "pl-10",
+        applicationView ? "pl-[100px]" : "pl-[46px]",
       )}
     >
       <div className="flex w-0 min-w-0 flex-1 items-center gap-3">
-        {surface !== "settings" && <SidebarNavigationControls header />}
-        {surface === "settings" && (
+        {!applicationView && <SidebarNavigationControls header />}
+        {applicationView && (
           <IconButton
             className="grid size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]"
             tooltip="Back to chat"

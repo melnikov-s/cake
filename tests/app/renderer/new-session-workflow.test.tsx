@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
+import { WorkspaceNavigator } from "../../../src/renderer/components/workspace-navigator";
 import { ProjectRail } from "../../../src/renderer/components/project-rail";
 import { NewSessionDialog } from "../../../src/renderer/components/new-session-dialog";
 import { projectRecord } from "./fixtures/catalog-fixtures";
@@ -42,6 +43,7 @@ function renderPicker(options: Pick<RendererStoreFixtureOptions, "projects" | "s
     resolvedHasMore: false,
   });
   const root = fixture.root;
+  root.workspaceNavigatorStore.show("sessions");
   const Surface = observer(function Surface() {
     const selection = root.appShellStore.selection;
     const session =
@@ -51,6 +53,7 @@ function renderPicker(options: Pick<RendererStoreFixtureOptions, "projects" | "s
     return (
       <>
         <ProjectRail />
+        <WorkspaceNavigator />
         <NewSessionDialog store={root.newSessionStore} />
         {session && (
           <Chat

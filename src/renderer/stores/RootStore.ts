@@ -29,6 +29,8 @@ import { SessionMetadataContext } from "./context/SessionMetadataContext";
 import { SessionRegistryContext } from "./context/SessionRegistryContext";
 import { ToastContext } from "./context/ToastContext";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
+import { ProjectRailStore } from "./ProjectRailStore";
+import { ProjectRailInsetContext } from "./context/ProjectRailInsetContext";
 import { TerminalTopInsetContext } from "./context/TerminalTopInsetContext";
 import { DeliveryAvailabilityContext } from "./context/DeliveryAvailabilityContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
@@ -275,6 +277,10 @@ export class RootStore extends Store<{
 
   [ProjectCatalogContext.provide]() {
     return this.projectCatalogStore;
+  }
+
+  [ProjectRailInsetContext.provide]() {
+    return this.projectRailStore.overlayRight;
   }
 
   [TerminalTopInsetContext.provide]() {
@@ -865,6 +871,11 @@ export class RootStore extends Store<{
 
   [WorkspaceNavigatorContext.provide]() {
     return this.workspaceNavigatorStore;
+  }
+
+  @child
+  get projectRailStore() {
+    return createStore(ProjectRailStore, {});
   }
 
   @child

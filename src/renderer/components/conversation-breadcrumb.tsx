@@ -1,11 +1,9 @@
 import { Fragment } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { Button } from "./ui/button";
-import { IconButton } from "./ui/icon-button";
-import { HomeIcon } from "./ui/icons";
 import { cn } from "../lib/utils";
-import { formatHotkey } from "../lib/hotkeys";
 
 /** Persistent, navigable ownership lineage; grouping never claims Session Family ancestry. */
 export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
@@ -19,9 +17,16 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
     root.sessionCatalogStore.find(sessionId)?.projectPath ??
     root.cakeChatCollectionStore.summaries.find((chat) => chat.sessionId === sessionId)
       ?.projectPath;
-  const lineage = navigator.lineageFor(sessionId);
+  const lineage = navigator
+    .lineageFor(sessionId)
+    .filter(
+      (node) =>
+        projectPath ||
+        node.target.kind !== "cake-chat" ||
+        node.target.sessionId !== CAKE_CHAT_SESSION_ID,
+    );
   return (
-    <div className="flex w-full min-w-0 items-start gap-2 [app-region:no-drag]">
+    <div className="flex w-full min-w-0 items-start py-[calc((var(--title-bar-height)-24px)/2)]">
       <nav
         aria-label="Conversation breadcrumb"
         className="flex min-w-0 flex-1 flex-wrap items-center gap-x-0.5 gap-y-1 text-xs leading-5"
@@ -29,10 +34,17 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 px-1 text-xs font-normal text-muted-foreground"
-          onClick={() => void root.navigationStore.returnToProjectChat()}
+          className="h-6 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
+          aria-current={!projectPath && lineage.length === 0 ? "page" : undefined}
+          onClick={() => {
+            root.appShellStore.recordConversationInteraction({
+              kind: "cake-chat",
+              sessionId: CAKE_CHAT_SESSION_ID,
+            });
+            void root.navigationStore.openCakeChat(CAKE_CHAT_SESSION_ID);
+          }}
         >
-          Cake home
+          Cake Chat
         </Button>
         {projectPath && (
           <>
@@ -42,7 +54,7 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 max-w-full px-1 text-xs font-normal text-muted-foreground"
+              className="h-6 max-w-full px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
               title={projectPath}
               onClick={() => void root.navigationStore.openProjectChat(projectPath)}
             >
@@ -59,12 +71,16 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
               variant="ghost"
               size="sm"
               className={cn(
-                "h-auto min-h-6 max-w-full whitespace-normal break-words px-1 py-0.5 text-left text-xs font-normal text-muted-foreground",
+                "h-auto min-h-6 max-w-full whitespace-normal break-words px-1 py-0.5 text-left text-xs font-normal text-muted-foreground [app-region:no-drag]",
                 index === lineage.length - 1 && "font-medium text-foreground",
               )}
               title={node.title}
               aria-current={index === lineage.length - 1 ? "page" : undefined}
-              onClick={() => void navigator.open(node)}
+              onClick={() =>
+                void (node.relationship === "home" && projectPath
+                  ? root.navigationStore.openProjectChat(projectPath)
+                  : navigator.open(node))
+              }
             >
               {node.relationship === "home"
                 ? projectPath
@@ -75,20 +91,6 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
           </Fragment>
         ))}
       </nav>
-      <span className="flex shrink-0 items-center gap-1">
-        <IconButton
-          tooltip={projectPath ? "Return to Project Chat" : "Return to Cake Chat"}
-          ariaLabel={projectPath ? "Return to Project Chat" : "Return to Cake Chat"}
-          hotkey="return-to-project-chat"
-          className="shrink-0"
-          onClick={() => void root.navigationStore.returnToProjectChat()}
-        >
-          <HomeIcon />
-        </IconButton>
-        <span className="text-xs leading-7 text-muted-foreground">
-          {formatHotkey(root.settingsStore.hotkeys.bindingFor("return-to-project-chat"))}
-        </span>
-      </span>
     </div>
   );
 });

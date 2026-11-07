@@ -34,9 +34,13 @@ it("offers an actionable retry when a Discussion observation is no longer availa
         observeOperations: () => Stream.never,
       },
       projectSessions: { observeCatalog: () => Stream.never },
-      cakeChats: { observeCatalog: () => Stream.never },
+      cakeChats: {
+        observeCatalog: () => Stream.never,
+        observeSideChatMetadata: () => Stream.never,
+      },
       conversations: { observe: () => Stream.never },
       discussionSessions: {
+        observeMetadata: () => Stream.never,
         observe,
         observeCatalog: () =>
           Stream.make({
@@ -67,7 +71,7 @@ it("offers an actionable retry when a Discussion observation is no longer availa
             ],
           }).pipe(Stream.concat(Stream.never)),
       },
-      subagents: { observe: () => Stream.never },
+      subagents: { observe: () => Stream.never, observeMetadata: () => Stream.never },
       workflows: { observe: () => Stream.never },
       scheduledMessages: { observe: () => Stream.never },
     }),

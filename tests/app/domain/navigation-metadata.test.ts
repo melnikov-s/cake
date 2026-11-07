@@ -8,6 +8,10 @@ import {
 import type { SubagentError, SubagentResult } from "../../../src/contracts/subagents/subagent-data";
 import * as subagentObservation from "../../../src/domain/subagents/subagentObservation";
 import * as discussions from "../../../src/domain/discussion-sessions/discussionSessions";
+import * as cakeChatMetadata from "../../../src/domain/cake-chats/cakeChatMetadata";
+import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { projectRecord } from "../renderer/fixtures/catalog-fixtures";
 import {
   SubagentCoordinator,
   SubagentCoordinatorLive,
@@ -24,6 +28,42 @@ import {
   makeSubagentStorageTestLayer,
   subagentHistoryFixture,
 } from "../helpers/subagentStorageFixture";
+
+it.effect(
+  "Project Chat catalog reports running and idle without opening or inspecting its transcript",
+  () => {
+    let running = true;
+    const location = { workingDirectory: "/cake", sessionDirectory: "/cake/chats" };
+    return Effect.gen(function* () {
+      const active = yield* cakeChatMetadata.catalog(location);
+      expect(active).toHaveLength(1);
+      expect(active[0]).toMatchObject({ projectPath: "/other", running: true });
+      running = false;
+      expect((yield* cakeChatMetadata.catalog(location))[0]).toMatchObject({
+        projectPath: "/other",
+        running: false,
+      });
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          Layer.mock(ApplicationState, {
+            snapshot: () => ({
+              ...defaultApplicationState(),
+              projects: [projectRecord({ path: "/other" })],
+            }),
+          }),
+          Layer.mock(CakeSessionRuntimes, {
+            catalogEntry: () => Effect.succeed(undefined),
+            currentStatus: () =>
+              Effect.succeed({ streaming: running, pending: false, persisted: false }),
+            acquire: () => Effect.die("Catalog activity must not acquire a runtime"),
+            inspect: () => Effect.die("Catalog activity must not inspect a transcript"),
+          }),
+        ),
+      ),
+    );
+  },
+);
 
 it.effect(
   "cold Subagent metadata does not hydrate Pi; full observation still obtains the retained transcript",

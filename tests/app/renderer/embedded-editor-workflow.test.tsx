@@ -523,7 +523,7 @@ describe("Embedded editor workflow", () => {
       expect(openSourceControl).not.toHaveBeenCalled();
       expect(workspaceFrame()).toBeNull();
       expect(
-        screen.getByPlaceholderText(
+        await screen.findByPlaceholderText(
           `Ask Cake to work in ${workingDirectory === editorWorkingDirectory ? "Project" : "Other"}…`,
         ),
       ).toBeDefined();

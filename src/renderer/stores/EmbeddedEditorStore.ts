@@ -6,6 +6,7 @@ import type { EditorSelectionHighlights } from "../../contracts/editor/editor-se
 import type { Attachment } from "../../contracts/conversations/session-contract";
 import type { EmbeddedEditorStateSnapshot, EmbeddedEditorStatus } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
+import { ProjectRailInsetContext } from "./context/ProjectRailInsetContext";
 import { TerminalTopInsetContext } from "./context/TerminalTopInsetContext";
 import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../lib/error-details";
@@ -117,11 +118,16 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       Math.max(0, TerminalTopInsetContext.consume(this) - rect.y),
     );
     const height = rect.height - coveredHeight;
+    const coveredWidth = Math.min(
+      rect.width,
+      Math.max(0, ProjectRailInsetContext.consume(this) - rect.x),
+    );
+    const width = rect.width - coveredWidth;
     return {
-      visible: this.nativeViewReady && rect.width > 0 && height > 0,
-      x: rect.x,
+      visible: this.nativeViewReady && width > 0 && height > 0,
+      x: rect.x + coveredWidth,
       y: rect.y + coveredHeight,
-      width: rect.width,
+      width,
       height,
       projectSidebarWidth: this.projectSidebarWidth,
     };

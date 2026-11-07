@@ -28,9 +28,10 @@ export const AppShellLayout = observer(function AppShellLayout({
   const terminal = root.terminalStore;
   const conversationPaneVisible = Boolean(root.workspaceSession) && !shell.coveringSurface;
   const navigatorVisible = navigator.visible && !shell.coveringSurface;
+  const applicationView = shell.surface === "settings" || shell.surface === "automations";
   const shellRef = useRef<HTMLElement>(null);
   const [resizingPanel, setResizingPanel] = useState(false);
-  const commandVisible = Boolean(store.commandPaneStore.pane);
+  const commandVisible = Boolean(store.commandPaneStore.pane) && !applicationView;
   const accessoryWidth = Math.min(navigator.width, Math.max(240, window.innerWidth - 414));
   const commandMax = Math.max(
     320,
@@ -45,11 +46,18 @@ export const AppShellLayout = observer(function AppShellLayout({
       ref={shellRef}
       className={cn(
         "relative grid h-full w-full max-w-[100vw] grid-cols-[54px_minmax(0,1fr)_var(--navigator-width)_var(--command-width)] overflow-hidden bg-background text-foreground max-[700px]:grid-cols-[44px_minmax(0,1fr)_0px_0px]",
+        applicationView &&
+          "grid-cols-[0px_minmax(0,1fr)_0px_var(--command-width)] max-[700px]:grid-cols-[0px_minmax(0,1fr)_0px_0px]",
         resizingPanel && "cursor-col-resize select-none",
       )}
       style={shellStyle}
     >
-      <ProjectRail />
+      <div
+        aria-hidden="true"
+        data-slot="window-controls-drag-region"
+        className="absolute left-0 top-0 z-40 h-title-bar w-[100px] [app-region:drag]"
+      />
+      {!applicationView && <ProjectRail />}
       <section
         data-slot="workspace"
         className={cn(
@@ -87,7 +95,7 @@ export const AppShellLayout = observer(function AppShellLayout({
           onResizeEnd={() => setResizingPanel(false)}
         />
       )}
-      <CommandPane store={store} extensionUi={root.extensionUiStore} />
+      {!applicationView && <CommandPane store={store} extensionUi={root.extensionUiStore} />}
       {commandVisible && (
         <ResizeHandle
           className="right-[calc(var(--command-width)-5px)] max-[700px]:hidden"

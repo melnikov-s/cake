@@ -11,4 +11,5 @@ export class CakeChatSummary extends Model {
   parentSessionId: string | undefined;
   resolved = false;
   unread = false;
+  running = false;
 }

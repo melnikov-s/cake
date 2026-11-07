@@ -97,6 +97,8 @@ worktree tools beneath it when present. Empty caps collapse without reserved spa
 
 ## Navigation and layout
 
+[`NavigationRail`](../../src/renderer/components/ui/navigation-rail.tsx) reveals project/action labels as an overlay on hover or focus-within, with a touch-only focus affordance and independently scrolling sections. `IconButton.label` supplies visible labels for the rail, including existing popover triggers. The transient `ProjectRailStore` reserves the overlay edge in native editor/browser bounds without moving the conversation layout.
+
 | Component                                                                                                                                    | Use for                                                                                   |
 | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | [NavItem](../../src/renderer/components/ui/nav-item.tsx)                                                                                     | Accessible navigation rows with labels, descriptions, badges and trailing controls.       |

@@ -592,7 +592,10 @@ test("Project Chat isolates history and restores its root workspace, while globa
       sideChat.getByRole("button", { name: "Already merged", exact: true }),
     ).toBeVisible();
     expect(requests).toHaveLength(beforeSide + 1);
-    await page.getByRole("button", { name: "Return to Project Chat", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Conversation breadcrumb" })
+      .getByRole("button", { name: "Project Chat", exact: true })
+      .click();
     const imported = page.locator('[data-slot="side-chat-import"]');
     await expect(imported).toHaveCount(1);
     await expect(imported).toContainText("2 messages");

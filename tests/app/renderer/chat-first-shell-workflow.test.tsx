@@ -25,20 +25,30 @@ it("opens Project settings from a project context menu without changing the focu
   expect(menu).toHaveBeenCalledWith(expect.objectContaining({ path: "/alpha" }));
 });
 
-it("keeps global utilities usable when Workspace is closed and reopens the exclusive accessory", async () => {
-  using fixture = renderAppShellNavigation();
-  const rail = within(screen.getByRole("navigation", { name: "Projects and global utilities" }));
-  await fixture.user.click(rail.getByRole("button", { name: "Close Workspace" }));
+it("keeps utilities reachable after closing Workspace and returns from dedicated application views", async () => {
+  using fixture = renderAppShellNavigation({}, { history: ["beta"] });
+  const rail = () =>
+    within(screen.getByRole("navigation", { name: "Projects and global utilities" }));
+  await fixture.user.click(rail().getByRole("button", { name: "Close Workspace" }));
   expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
-  await fixture.user.click(rail.getByRole("button", { name: "Settings" }));
-  expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
-  await fixture.user.click(rail.getByRole("button", { name: "Automations" }));
-  expect(screen.getByRole("heading", { name: "Automations" })).toBeTruthy();
-  await fixture.user.click(rail.getByRole("button", { name: "Open Cake Chat" }));
-  await fixture.user.click(rail.getByRole("button", { name: "Open Workspace" }));
+  for (const view of ["Settings", "Automations"]) {
+    await fixture.user.click(rail().getByRole("button", { name: view }));
+    expect(screen.getByRole("heading", { name: view })).toBeTruthy();
+    expect(screen.queryByRole("navigation", { name: "Projects and global utilities" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
+    expect(document.querySelector('[data-slot="workspace"]')?.getAttribute("data-session-id")).toBe(
+      "beta",
+    );
+  }
+  await fixture.user.click(rail().getByRole("button", { name: "Open Cake Chat" }));
+  const breadcrumb = within(screen.getByRole("navigation", { name: "Conversation breadcrumb" }));
+  expect(breadcrumb.getAllByRole("button")).toHaveLength(1);
+  expect(breadcrumb.getByRole("button", { name: "Cake Chat" })).toBeTruthy();
+  await fixture.user.click(rail().getByRole("button", { name: "Open Workspace" }));
   const workspace = within(screen.getByRole("complementary", { name: "Workspace" }));
   await fixture.user.click(workspace.getByRole("button", { name: /^Sessions/ }));
-  expect(workspace.getByRole("searchbox", { name: "Search sessions" })).toBeTruthy();
+  expect(workspace.getByRole("button", { name: "New Session" })).toBeTruthy();
   await fixture.user.click(workspace.getByRole("button", { name: /^To-dos/ }));
   expect(workspace.getByRole("searchbox", { name: "Search to-dos" })).toBeTruthy();
 });

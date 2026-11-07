@@ -806,9 +806,9 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
   observer.observe({
     projection,
     navigationTargets: () =>
-      root.appShellStore.activeConversation
-        ? root.conversationNavigatorStore.metadataTargets(root.workspaceProjectPath)
-        : [],
+      root.conversationNavigatorStore.metadataTargetsForProjects(
+        root.projectCatalogStore.orderedProjectPaths,
+      ),
     focusedDiscussionOwners: () => root.discussionNavigationStore.ownerTargets,
     focusedDiscussionTargets: () => root.discussionNavigationStore.discussionTargets,
     projectSessionCatalogQueries: () =>

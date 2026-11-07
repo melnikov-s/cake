@@ -86,8 +86,14 @@ export const catalog = Effect.fn("CakeChats.catalog")(function* (
       .pipe(asError("catalog"));
     const createdAt = item?.created ?? scope.addedAt;
     if (!createdAt) continue;
+    const activity = yield* sessions.currentStatus({
+      workingDirectory: scope.location.workingDirectory,
+      sessionDirectory: scope.location.sessionDirectory,
+      sessionId: scope.sessionId,
+    });
     summaries.push({
       sessionId: scope.sessionId,
+      running: activity?.streaming ?? false,
       title: scope.title,
       ...(scope.projectPath ? { projectPath: scope.projectPath } : null),
       createdAt,

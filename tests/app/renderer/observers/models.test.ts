@@ -653,10 +653,16 @@ describe("Discussion sidecar retention", () => {
       await vi.waitFor(() =>
         expect(projection.findDiscussionConversation(sidecarId)).toBeUndefined(),
       );
-      expect(projection.discussionCatalogs).toHaveLength(0);
+      expect(
+        projection.discussionCatalogs.filter((item) => item.sessionId === parentId),
+      ).toHaveLength(0);
 
       root.sessionRegistry.load(parentId, "/project");
-      await vi.waitFor(() => expect(projection.discussionCatalogs).toHaveLength(1));
+      await vi.waitFor(() =>
+        expect(
+          projection.discussionCatalogs.filter((item) => item.sessionId === parentId),
+        ).toHaveLength(1),
+      );
       const reloadedCatalog = projection.discussionCatalog(parentId);
       expect(reloadedCatalog).not.toBe(catalog);
       await Effect.runPromise(

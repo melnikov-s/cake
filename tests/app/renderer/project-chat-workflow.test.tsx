@@ -327,7 +327,9 @@ it.each(
       }
     }
     act(() => f.root.projectWorkbenchStore.projectOpenStore.activate("/finance"));
-    const link = screen.getByRole("button", { name: "Return to Project Chat" });
+    const link = within(
+      screen.getByRole("navigation", { name: "Conversation breadcrumb" }),
+    ).getByRole("button", { name: "Project Chat" });
     await f.user.click(link);
     await waitFor(() =>
       expect(

@@ -18,6 +18,7 @@ export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
   store,
   sessionArtifacts,
   ownerLabel,
+  railLabel,
   onOpen,
   onOpenArtifact,
   onOpenLibrary,
@@ -26,6 +27,7 @@ export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
   sessionArtifacts?: SessionArtifactsStore;
   /** Explicit inherited library owner when a secondary conversation is focused. */
   ownerLabel?: string;
+  railLabel?: string;
   onOpen?(): void;
   onOpenArtifact(lineageId: string): void;
   onOpenLibrary(): void;
@@ -70,7 +72,7 @@ export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
           <ArtifactIcon />
         </PopoverNumberedIconTrigger>
       ) : (
-        <PopoverIconTrigger tooltip="Artifacts" data-cake-hint-key="a">
+        <PopoverIconTrigger tooltip="Artifacts" label={railLabel} data-cake-hint-key="a">
           <ArtifactIcon />
         </PopoverIconTrigger>
       )}

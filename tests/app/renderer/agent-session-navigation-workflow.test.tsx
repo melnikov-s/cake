@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { applySnapshot, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { messageReference } from "../../../src/contracts/conversations/message-reference";
@@ -96,7 +96,12 @@ describe("Agent session navigation workflow", () => {
     await act(async () => {
       await fixture.root.navigationStore.openSession("alpha");
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Return to Project Chat" }));
+    await fixture.user.click(
+      within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByRole(
+        "button",
+        { name: "Project Chat" },
+      ),
+    );
     await waitFor(() =>
       expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(projectChatId),
     );

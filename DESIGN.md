@@ -73,7 +73,7 @@ value remains accessible.
 
 Project Chat is each project's home. Keep one focused conversation primary, with
 generous room for explanations and diffs and a stable, clearly framed composer.
-The compact left project rail always exposes project artwork and global utilities.
+The compact left project rail exposes project artwork and global utilities below the native titlebar. Hover or keyboard focus reveals names in an overlay without shifting the conversation; touch has a dedicated label-reveal affordance. Projects scroll independently of top actions and bottom utilities. A small activity dot remains visible on project artwork in either rail width and aggregates lightweight running summaries across its conversations and descendants. Settings and Automations are dedicated full-window application views with the same Back navigation, not side panes or OS fullscreen.
 The right Workspace accessory shows either To-dos or the recursive Sessions source
 list, never both, and can close without hiding global actions. Persistent clickable
 breadcrumbs show the conversation's full ownership path and a direct route home.

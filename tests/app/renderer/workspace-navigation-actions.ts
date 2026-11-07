@@ -19,6 +19,7 @@ export async function openSessionFromSearch(user: User, name: RegExp) {
 }
 
 export async function createSessionInProject(user: User, name: RegExp) {
+  await showSessions(user);
   await user.click(screen.getByRole("button", { name: "New Session" }));
   await user.click(
     within(screen.getByRole("dialog", { name: "New session" })).getByRole("option", { name }),
@@ -26,6 +27,8 @@ export async function createSessionInProject(user: User, name: RegExp) {
 }
 
 export async function showSessions(user: User) {
+  const back = screen.queryByRole("button", { name: "Back to chat" });
+  if (back) await user.click(back);
   const open = screen.queryByRole("button", { name: "Open Workspace" });
   if (open) await user.click(open);
   await user.click(screen.getByRole("button", { name: /^Sessions / }));

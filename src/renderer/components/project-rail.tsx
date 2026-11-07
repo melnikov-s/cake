@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
@@ -9,7 +9,6 @@ import {
   CakeIcon,
   FolderPlusIcon,
   LightningIcon,
-  PlusIcon,
   SearchIcon,
   SettingsIcon,
   SidebarIcon,
@@ -18,6 +17,8 @@ import { ProjectSettingsDialog } from "./project-settings-dialog";
 import { ArtifactCatalogMenu } from "./artifact-catalog-menu";
 import { BrowserSharingMenu } from "./browser-sharing-menu";
 import { SortableItem } from "./ui/sortable-item";
+import { NavigationRail } from "./ui/navigation-rail";
+import { StatusDot } from "./ui/status-dot";
 import { ProjectActionDialog, type ProjectAction } from "./project-action-dialog";
 import { SessionSearchDialog } from "./session-search-dialog";
 
@@ -35,144 +36,175 @@ export const ProjectRail = observer(function ProjectRail() {
       setAction({ path, kind: selected });
   };
   const activeProject = root.workspaceProjectPath;
+  const runningProjects = new Set(
+    projects.orderedProjectPaths.filter((path) =>
+      root.conversationNavigatorStore.projectRunning(path),
+    ),
+  );
+  const setOverlayRight = useCallback(
+    (right: number) => root.projectRailStore.setOverlayRight(right),
+    [root],
+  );
   return (
-    <nav
-      aria-label="Projects and global utilities"
-      data-slot="project-rail"
-      className="flex h-full min-h-0 flex-col items-center gap-1.5 overflow-hidden border-r border-border/70 bg-sidebar px-2 pb-3 pt-title-bar text-sidebar-foreground select-none"
-    >
-      <IconButton
-        tooltip="Cake Chat"
-        ariaLabel="Open Cake Chat"
-        className={cn(
-          "size-9 shrink-0",
-          !activeProject &&
-            root.appShellStore.surface === "cake-chat" &&
-            "bg-sidebar-active text-foreground",
-        )}
-        onClick={() => {
-          root.appShellStore.recordConversationInteraction({
-            kind: "cake-chat",
-            sessionId: CAKE_CHAT_SESSION_ID,
-          });
-          void root.navigationStore.openCakeChat();
-        }}
-      >
-        <CakeIcon />
-      </IconButton>
-      <div className="my-1 h-px w-7 shrink-0 bg-border/70" />
-      <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 overflow-y-auto">
-        {projects.orderedProjectPaths.map((path) => (
-          <SortableItem
-            key={path}
-            id={path}
-            className="shrink-0"
-            onMove={(source, target, placement) => projects.move(source, target, placement)}
-          >
-            {(dragHandleProps) => (
-              <IconButton
-                {...dragHandleProps}
-                tooltip={projects.nameForPath(path)}
-                ariaLabel={`Open Project Chat for ${projects.nameForPath(path)}`}
-                className={cn(
-                  "size-9 shrink-0",
-                  activeProject === path && "bg-sidebar-active text-foreground",
-                )}
-                aria-current={activeProject === path ? "page" : undefined}
-                aria-keyshortcuts="Shift+F10"
-                onClick={() => {
-                  const home = root.cakeChatCollectionStore.projectChat(path);
-                  if (home)
-                    root.appShellStore.recordConversationInteraction({
-                      kind: "cake-chat",
-                      sessionId: home.sessionId,
-                    });
-                  void root.navigationStore.openProjectChat(path);
-                }}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  void projectMenu(path, event.clientX, event.clientY);
-                }}
-                onKeyDown={(event) => {
-                  if ((event.shiftKey && event.key === "F10") || event.key === "ContextMenu") {
-                    event.preventDefault();
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    void projectMenu(path, rect.right, rect.top);
-                  }
-                }}
-              >
-                <Avatar
-                  kind="project"
-                  seed={projects.nameForPath(path)}
-                  customIcon={projects.find(path)?.settings?.icon}
-                  title={projects.nameForPath(path)}
-                  aria-hidden="true"
-                />
-              </IconButton>
+    <>
+      <NavigationRail
+        label="Projects and global utilities"
+        onOverlayRightChange={setOverlayRight}
+        header={
+          <>
+            <IconButton
+              tooltip="Cake Chat"
+              label="Cake Chat"
+              ariaLabel="Open Cake Chat"
+              className={cn(
+                "h-9 shrink-0",
+                !activeProject &&
+                  root.appShellStore.surface === "cake-chat" &&
+                  "bg-sidebar-active text-foreground",
+              )}
+              onClick={() => {
+                root.appShellStore.recordConversationInteraction({
+                  kind: "cake-chat",
+                  sessionId: CAKE_CHAT_SESSION_ID,
+                });
+                void root.navigationStore.openCakeChat();
+              }}
+            >
+              <CakeIcon />
+            </IconButton>
+            <IconButton
+              tooltip="Add project"
+              label="Add project"
+              className="h-9 shrink-0"
+              onClick={() => void root.navigationStore.chooseProject()}
+            >
+              <FolderPlusIcon />
+            </IconButton>
+          </>
+        }
+        footer={
+          <>
+            <IconButton
+              tooltip={navigator.visible ? "Close Workspace" : "Open Workspace"}
+              label={navigator.visible ? "Close Workspace" : "Open Workspace"}
+              ariaLabel={navigator.visible ? "Close Workspace" : "Open Workspace"}
+              hotkey="toggle-sidebar"
+              aria-pressed={navigator.visible}
+              data-cake-hint-key="s"
+              className="h-9 shrink-0 aria-pressed:bg-sidebar-active aria-pressed:text-foreground aria-pressed:shadow-none aria-pressed:hover:bg-sidebar-hover"
+              onClick={() => navigator.toggle()}
+            >
+              <SidebarIcon />
+            </IconButton>
+            <IconButton
+              tooltip="Search sessions"
+              label="Search sessions"
+              className="h-9 shrink-0"
+              onClick={() => root.sidebarStore.sessionSearchStore.show()}
+            >
+              <SearchIcon />
+            </IconButton>
+            {!root.props.browserHost && !root.desktopConnection?.remote && (
+              <div className="w-full shrink-0">
+                <BrowserSharingMenu rail />
+              </div>
             )}
-          </SortableItem>
-        ))}
-      </div>
-      <IconButton
-        tooltip={navigator.visible ? "Close Workspace" : "Open Workspace"}
-        ariaLabel={navigator.visible ? "Close Workspace" : "Open Workspace"}
-        hotkey="toggle-sidebar"
-        aria-pressed={navigator.visible}
-        data-cake-hint-key="s"
-        className="size-9 shrink-0 aria-pressed:bg-sidebar-active aria-pressed:text-foreground aria-pressed:shadow-none aria-pressed:hover:bg-sidebar-hover"
-        onClick={() => navigator.toggle()}
+            <div className="w-full shrink-0">
+              <ArtifactCatalogMenu
+                railLabel="Artifacts"
+                store={root.artifactLibraryStore}
+                onOpenArtifact={(lineageId) =>
+                  root.navigationStore.openArtifact(undefined, lineageId)
+                }
+                onOpenLibrary={() => root.navigationStore.showArtifactLibrary()}
+              />
+            </div>
+            <IconButton
+              tooltip="Automations"
+              label="Automations"
+              className="h-9 shrink-0"
+              onClick={() => root.navigationStore.showAutomations()}
+            >
+              <LightningIcon />
+            </IconButton>
+            <IconButton
+              tooltip="Settings"
+              label="Settings"
+              hotkey="open-settings"
+              className="h-9 shrink-0"
+              onClick={() => root.navigationStore.showSettings()}
+            >
+              <SettingsIcon />
+            </IconButton>
+          </>
+        }
       >
-        <SidebarIcon />
-      </IconButton>
-      <IconButton
-        tooltip="New Session"
-        hotkey="new-session"
-        className="size-9 shrink-0"
-        onClick={() => root.newSessionStore.show()}
-      >
-        <PlusIcon />
-      </IconButton>
-      <IconButton
-        tooltip="Search sessions"
-        className="size-9 shrink-0"
-        onClick={() => root.sidebarStore.sessionSearchStore.show()}
-      >
-        <SearchIcon />
-      </IconButton>
-      <IconButton
-        tooltip="Add project"
-        className="size-9 shrink-0"
-        onClick={() => void root.navigationStore.chooseProject()}
-      >
-        <FolderPlusIcon />
-      </IconButton>
-      {!root.props.browserHost && !root.desktopConnection?.remote && (
-        <div className="flex size-9 shrink-0 items-center justify-center">
-          <BrowserSharingMenu />
+        <div className="flex w-full min-w-0 flex-col gap-1">
+          {projects.orderedProjectPaths.map((path) => (
+            <SortableItem
+              key={path}
+              id={path}
+              className="w-full shrink-0"
+              onMove={(source, target, placement) => projects.move(source, target, placement)}
+            >
+              {(dragHandleProps) => (
+                <IconButton
+                  {...dragHandleProps}
+                  tooltip={projects.nameForPath(path)}
+                  label={projects.nameForPath(path)}
+                  ariaLabel={`Open Project Chat for ${projects.nameForPath(path)}`}
+                  className={cn(
+                    "h-9 shrink-0",
+                    activeProject === path && "bg-sidebar-active text-foreground",
+                  )}
+                  aria-current={activeProject === path ? "page" : undefined}
+                  aria-keyshortcuts="Shift+F10"
+                  onClick={() => {
+                    const home = root.cakeChatCollectionStore.projectChat(path);
+                    if (home)
+                      root.appShellStore.recordConversationInteraction({
+                        kind: "cake-chat",
+                        sessionId: home.sessionId,
+                      });
+                    void root.navigationStore.openProjectChat(path);
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    void projectMenu(path, event.clientX, event.clientY);
+                  }}
+                  onKeyDown={(event) => {
+                    if ((event.shiftKey && event.key === "F10") || event.key === "ContextMenu") {
+                      event.preventDefault();
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      void projectMenu(path, rect.right, rect.top);
+                    }
+                  }}
+                >
+                  <span className="relative grid size-9 place-items-center">
+                    <Avatar
+                      kind="project"
+                      seed={projects.nameForPath(path)}
+                      customIcon={projects.find(path)?.settings?.icon}
+                      title={projects.nameForPath(path)}
+                      aria-hidden="true"
+                    />
+                    {runningProjects.has(path) && (
+                      <StatusDot
+                        status="running"
+                        size="sm"
+                        role="img"
+                        aria-hidden={false}
+                        aria-label={`Work running in ${projects.nameForPath(path)}`}
+                        className="absolute bottom-0.5 right-0.5 ring-2 ring-sidebar"
+                      />
+                    )}
+                  </span>
+                </IconButton>
+              )}
+            </SortableItem>
+          ))}
         </div>
-      )}
-      <div className="flex size-9 shrink-0 items-center justify-center">
-        <ArtifactCatalogMenu
-          store={root.artifactLibraryStore}
-          onOpenArtifact={(lineageId) => root.navigationStore.openArtifact(undefined, lineageId)}
-          onOpenLibrary={() => root.navigationStore.showArtifactLibrary()}
-        />
-      </div>
-      <IconButton
-        tooltip="Automations"
-        className="size-9 shrink-0"
-        onClick={() => root.navigationStore.showAutomations()}
-      >
-        <LightningIcon />
-      </IconButton>
-      <IconButton
-        tooltip="Settings"
-        hotkey="open-settings"
-        className="size-9 shrink-0"
-        onClick={() => root.navigationStore.showSettings()}
-      >
-        <SettingsIcon />
-      </IconButton>
+      </NavigationRail>
       <ProjectSettingsDialog store={root.projectSettingsStore} />
       <SessionSearchDialog
         sidebar={root.sidebarStore}
@@ -210,6 +242,6 @@ export const ProjectRail = observer(function ProjectRail() {
           }}
         />
       )}
-    </nav>
+    </>
   );
 });

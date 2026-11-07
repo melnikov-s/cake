@@ -65,7 +65,7 @@ export const FocusedConversationLayout = observer(function FocusedConversationLa
         <div
           className={cn(
             "flex min-w-0 items-center",
-            compactHeader ? "flex-1" : "min-h-title-bar pl-10 pr-3 py-1.5",
+            compactHeader ? "flex-1" : "min-h-title-bar pl-[46px] pr-3",
           )}
         >
           {renderTitle ? (

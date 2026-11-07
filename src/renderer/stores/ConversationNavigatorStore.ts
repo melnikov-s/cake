@@ -76,6 +76,7 @@ export class ConversationNavigatorStore extends Store<{
   /** Metadata demand follows the selected scope and discovered public sidecar owners, never transcript demand. */
   metadataTargets(
     projectPath: string | undefined,
+    includeClosed = false,
   ): readonly ConversationNavigationMetadataTarget[] {
     const projection = this.props.projection;
     const targets = new Map<string, ConversationNavigationMetadataTarget>();
@@ -92,7 +93,11 @@ export class ConversationNavigatorStore extends Store<{
       });
     if (projectPath)
       for (const session of this.props.catalog.projectSessions(projectPath)) {
-        if (!session.resolved || this.props.sessionList.isResolvedGroupExpanded(projectPath))
+        if (
+          includeClosed ||
+          !session.resolved ||
+          this.props.sessionList.isResolvedGroupExpanded(projectPath)
+        )
           targets.set(session.sessionId, {
             sessionId: session.sessionId,
             workingDirectory: session.workingDirectory,
@@ -106,7 +111,7 @@ export class ConversationNavigatorStore extends Store<{
         if (!targets.has(catalog.sessionId)) continue;
         for (const thread of catalog.metadataLoaded ? catalog.metadata : catalog.threads) {
           if (
-            thread.status !== "open" ||
+            (!includeClosed && thread.status !== "open") ||
             !thread.sidecarSessionId ||
             targets.has(thread.sidecarSessionId)
           )
@@ -121,6 +126,62 @@ export class ConversationNavigatorStore extends Store<{
       }
     }
     return [...targets.values()];
+  }
+
+  /** All registered project dots use only catalogs/metadata, never hidden transcript demand. */
+  metadataTargetsForProjects(projectPaths: readonly string[]) {
+    const targets = [undefined, ...projectPaths].flatMap((path) =>
+      this.metadataTargets(path, true),
+    );
+    return [...new Map(targets.map((target) => [target.sessionId, target])).values()];
+  }
+
+  projectRunning(projectPath: string) {
+    const projection = this.props.projection;
+    const owners = new Set(
+      this.metadataTargets(projectPath, true).map((target) => target.sessionId),
+    );
+    if (this.props.catalog.projectSessions(projectPath).some((session) => session.running))
+      return true;
+    if (
+      projection.cakeChatCatalog.sessions.some(
+        (chat) => chat.projectPath === projectPath && chat.running,
+      )
+    )
+      return true;
+    if (
+      [
+        ...projection.projectConversations,
+        ...projection.cakeChatConversations,
+        ...projection.discussionConversations,
+      ].some(
+        (conversation) =>
+          owners.has(conversation.sessionId) &&
+          (conversation.streaming || conversation.activeTurnIds.length > 0),
+      )
+    )
+      return true;
+    if (
+      projection.discussionCatalogs.some(
+        (catalog) =>
+          owners.has(catalog.sessionId) && catalog.metadata.some((thread) => thread.running),
+      )
+    )
+      return true;
+    for (const workers of projection.subagentCatalogs) {
+      if (!owners.has(workers.sessionId)) continue;
+      const activities = workers.metadataLoaded ? workers.metadata : workers.activities;
+      if (
+        activities.some(
+          (activity) =>
+            !workers.releasedHandleIds.includes(activity.handleId) &&
+            !("released" in activity && activity.released) &&
+            (activity.streaming || activity.status === "queued" || activity.status === "running"),
+        )
+      )
+        return true;
+    }
+    return false;
   }
 
   countFor(projectPath?: string) {

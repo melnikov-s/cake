@@ -7,6 +7,7 @@ import type { BrowserStateSnapshot } from "../client/Client";
 import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
+import { ProjectRailInsetContext } from "./context/ProjectRailInsetContext";
 import { TerminalTopInsetContext } from "./context/TerminalTopInsetContext";
 
 export interface BrowserStoreProps {
@@ -80,14 +81,18 @@ export class BrowserStore extends Store<BrowserStoreProps> {
       Math.max(0, TerminalTopInsetContext.consume(this) - rect.y),
     );
     const height = rect.height - coveredHeight;
+    const coveredWidth = Math.min(
+      rect.width,
+      Math.max(0, ProjectRailInsetContext.consume(this) - rect.x),
+    );
+    const width = rect.width - coveredWidth;
     return {
       // Geometry belongs to the opened native view, even after selection has changed.
       sessionId: this.openedSessionId ?? "",
-      visible:
-        this.visible && this.openedSessionId === this.sessionId && rect.width > 0 && height > 0,
-      x: rect.x,
+      visible: this.visible && this.openedSessionId === this.sessionId && width > 0 && height > 0,
+      x: rect.x + coveredWidth,
       y: rect.y + coveredHeight,
-      width: rect.width,
+      width,
       height,
     };
   }

@@ -99,6 +99,13 @@ export function createChatFirstNavigationScenario(
       "vscode",
       "closed",
       "settings-icon",
+      "rail-hover",
+      "rail-keyboard",
+      "rail-activity",
+      "application-settings",
+      "application-automations",
+      "browser-rail",
+      "vscode-rail",
     ],
     async seed(paths, theme) {
       const baseCleanup = await seedBase(paths, theme);
@@ -191,7 +198,14 @@ export function createChatFirstNavigationScenario(
         "What is happening across my projects?",
         "Navigation work is active. Each project keeps its own Project Chat home.",
       ]);
-      const otherProjects = ["docs-site", "orchard"].map((name) => ({
+      const otherProjects = [
+        "docs-site",
+        "orchard",
+        ...Array.from(
+          { length: 28 },
+          (_, index) => `project-${String(index + 1).padStart(2, "0")}`,
+        ),
+      ].map((name) => ({
         path: join(project, "..", name),
         name,
         addedAt: timestamp,
@@ -548,8 +562,29 @@ export function createChatFirstNavigationScenario(
       };
     },
     async prepare(page, state, application) {
-      const browserState = state === "browser" || state === "browser-compact";
+      const browserState =
+        state === "browser" || state === "browser-compact" || state === "browser-rail";
+      const vscodeState = state === "vscode" || state === "vscode-rail";
       const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
+      const settle = () =>
+        page.evaluate(async () => {
+          await document.fonts.ready;
+          await Promise.all(
+            document
+              .getAnimations()
+              .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+              .map((animation) => animation.finished.catch(() => undefined)),
+          );
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          );
+        });
+      const hoverRail = async () => {
+        await rail.hover();
+        const bounds = (await rail.boundingBox())!;
+        await page.mouse.move(bounds.x + 1, bounds.y + 3);
+        await expect.poll(async () => (await rail.boundingBox())!.width).toBe(240);
+      };
       await rail.getByRole("button", { name: "Open Project Chat for cake", exact: true }).click();
       await expect(
         page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
@@ -564,6 +599,29 @@ export function createChatFirstNavigationScenario(
       await expect(
         workspace.getByRole("button", { name: "Review conversation navigation", exact: true }),
       ).toBeVisible();
+      if (state === "rail-hover" || state === "rail-keyboard") {
+        if (state === "rail-hover") await hoverRail();
+        else {
+          await page.mouse.move(500, 200);
+          await rail
+            .getByRole("button", { name: "Open Project Chat for project-28", exact: true })
+            .focus();
+        }
+        await expect(
+          rail
+            .getByRole("button", { name: "Settings", exact: true })
+            .locator("[data-slot=icon-button-label]"),
+        ).toBeVisible();
+        await settle();
+        return;
+      }
+      if (state === "application-settings" || state === "application-automations") {
+        const name = state === "application-settings" ? "Settings" : "Automations";
+        await rail.getByRole("button", { name, exact: true }).click();
+        await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+        await settle();
+        return;
+      }
       if (state === "closed")
         await workspace.getByRole("button", { name: "Close Workspace", exact: true }).click();
       else if (state === "settings-icon") {
@@ -623,7 +681,7 @@ export function createChatFirstNavigationScenario(
             tree.getByLabel("3 running descendants", { exact: true }).first(),
           ).toBeVisible({ timeout: 30_000 });
           runningStarted = true;
-          if (state === "sessions") {
+          if (state === "sessions" || state === "rail-activity") {
             await rail
               .getByRole("button", { name: "Open Project Chat for cake", exact: true })
               .click();
@@ -654,7 +712,7 @@ export function createChatFirstNavigationScenario(
           await expect(
             tree.getByRole("button", { name: "Nested selection review", exact: true }),
           ).toBeVisible();
-        } else if (state === "deep-worker" || browserState || state === "vscode") {
+        } else if (state === "deep-worker" || browserState || vscodeState) {
           await tree
             .locator(`[data-session-id="${sessions[2][0]}"]`)
             .getByRole("button", { name: /^Focus restoration(?: |$)/ })
@@ -741,7 +799,7 @@ export function createChatFirstNavigationScenario(
                 )
                 .toBe(true);
             }
-            if (state === "vscode") {
+            if (vscodeState) {
               if (!application) throw new Error("VS Code capture requires Electron");
               await page.getByRole("link", { name: "navigation.ts", exact: true }).click();
               await expect
@@ -831,18 +889,33 @@ export function createChatFirstNavigationScenario(
         }
       }
       await page.waitForFunction(() => document.fonts.status === "loaded");
-      await page.mouse.move(1, 1);
-      await page.evaluate(async () => {
-        await Promise.all(
-          document
-            .getAnimations()
-            .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
-            .map((animation) => animation.finished.catch(() => undefined)),
-        );
-        await new Promise<void>((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-        );
-      });
+      if (state === "rail-activity") {
+        await rail.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+        await expect(
+          page.getByText(
+            "Navigation work is active. Each project keeps its own Project Chat home.",
+            { exact: true },
+          ),
+        ).toBeVisible();
+        await expect(
+          rail.getByRole("img", { name: "Work running in cake", exact: true }),
+        ).toBeVisible();
+        await hoverRail();
+      } else if (state === "browser-rail" || state === "vscode-rail") {
+        await hoverRail();
+        if (application)
+          await expect
+            .poll(async () =>
+              application.evaluate(({ BrowserWindow }) =>
+                BrowserWindow.getAllWindows()[0]!.contentView.children.some((view) => {
+                  const bounds = view.getBounds();
+                  return bounds.x >= 240 && bounds.width > 0;
+                }),
+              ),
+            )
+            .toBe(true);
+      } else await page.mouse.move(1, 1);
+      await settle();
     },
     region: (page) => page.locator("body"),
   };

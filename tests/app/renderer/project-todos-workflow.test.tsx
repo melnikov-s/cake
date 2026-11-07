@@ -19,6 +19,8 @@ import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 const projectChat = "project-chat:/cake";
+const todoRegions = () =>
+  within(screen.getByRole("complementary", { name: "Workspace" })).queryAllByRole("region");
 
 function renderTodos(
   withSidebar = false,
@@ -211,8 +213,7 @@ function renderTodos(
 it("renders only nonempty categories with separators between visible sections and preserves disclosure across filtering", async () => {
   using fixture = renderTodos(false, { todos: emptyProjectTodos(), sessions: [] });
   const categories = ["Needs attention", "Active", "Snoozed", "Done"];
-  const visibleCategories = () =>
-    screen.queryAllByRole("region").map((region) => region.getAttribute("aria-label"));
+  const visibleCategories = () => todoRegions().map((region) => region.getAttribute("aria-label"));
   expect(visibleCategories()).toEqual([]);
   expect(screen.getByRole("status").textContent).toBe("No to-dos.");
 
@@ -287,7 +288,7 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
     item.attentionReason,
   );
   expect(within(attention()).getByRole("link", { name: "Findings" })).toBeDefined();
-  expect(screen.getAllByRole("region").map((region) => region.getAttribute("aria-label"))).toEqual([
+  expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual([
     "Needs attention",
     "Active",
     "Snoozed",
@@ -367,7 +368,7 @@ it("places Focus above the other four sections without duplicating focused rows"
     sessions: [],
   });
   await fixture.user.click(screen.getByRole("button", { name: "Task 101" }));
-  expect(screen.getAllByRole("region").map((region) => region.getAttribute("aria-label"))).toEqual([
+  expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual([
     "Focus",
     "Needs attention",
     "Active",
@@ -395,9 +396,7 @@ it("restores every underlying section on explicit unfocus and keeps attachment a
     await fixture.user.click(screen.getByRole("button", { name: item.title }));
   const focus = () => within(screen.getByRole("list", { name: "Focus to-dos" }));
   expect(focus().getAllByRole("button", { name: /^Unfocus to-do:/ })).toHaveLength(4);
-  expect(screen.getAllByRole("region").map((region) => region.getAttribute("aria-label"))).toEqual([
-    "Focus",
-  ]);
+  expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual(["Focus"]);
   const draft =
     fixture.root.cakeChatCollectionStore.registry.load(projectChat).conversationSessionStore
       .composerStore.draftStore;
@@ -544,9 +543,7 @@ it("renders newest creation first within all four sections, including live addit
       (row) => row.getAttribute("data-todo-id"),
     );
   const checkOrder = (days: number[]) => {
-    expect(
-      screen.getAllByRole("region").map((region) => region.getAttribute("aria-label")),
-    ).toEqual(categories);
+    expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual(categories);
     categories.forEach((category, section) =>
       expect(sectionOrder(category)).toEqual(days.map((day) => todo(section * 10 + day).id)),
     );

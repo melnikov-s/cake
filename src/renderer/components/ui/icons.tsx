@@ -79,12 +79,6 @@ export const EarOffIcon = () => (
   </Icon>
 );
 
-export const HomeIcon = () => (
-  <Icon>
-    <path d="m3 10 9-7 9 7v10H14v-6h-4v6H3z" />
-  </Icon>
-);
-
 export const FolderIcon = () => (
   <Icon>
     <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />

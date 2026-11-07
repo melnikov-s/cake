@@ -2,7 +2,8 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { ConversationNavigatorRow } from "./conversation-navigator-row";
 import { Button } from "./ui/button";
-import { ChevronIcon } from "./ui/icons";
+import { ChevronIcon, PlusIcon } from "./ui/icons";
+import { IconButton } from "./ui/icon-button";
 import { SearchInput } from "./ui/search-input";
 
 /** Scoped recursive Sessions source-list. Project utilities remain in the persistent rail. */
@@ -28,13 +29,22 @@ export const ConversationNavigator = observer(function ConversationNavigator({
     : list.hasMoreResolvedCakeChatSessions;
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Sessions">
-      <SearchInput
-        className="mx-2 mb-2"
-        label="Search sessions"
-        placeholder="Search sessions…"
-        value={query}
-        onValueChange={(query) => store.setQuery(projectPath, query)}
-      />
+      <div className="mx-2 mb-2 flex min-w-0 items-center gap-1">
+        <SearchInput
+          className="min-w-0 flex-1"
+          label="Search sessions"
+          placeholder="Search sessions…"
+          value={query}
+          onValueChange={(query) => store.setQuery(projectPath, query)}
+        />
+        <IconButton
+          tooltip="New Session"
+          hotkey="new-session"
+          onClick={() => root.newSessionStore.show()}
+        >
+          <PlusIcon />
+        </IconButton>
+      </div>
       <div className="mx-3 mb-1 flex items-center gap-2 text-xs text-muted-foreground">
         <span>{tree.total} total</span>
         {tree.running > 0 && <span>{tree.running} running</span>}

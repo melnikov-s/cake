@@ -5,6 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 import { windowState } from "../fixtures/window-state";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -108,6 +109,7 @@ for (const theme of ["dark", "light"] as const) {
       await expect(cakeProject).toHaveAttribute("aria-selected", "true");
       await research.click();
       await expect(dialog).toBeHidden();
+      await expect(message).toHaveAttribute("placeholder", "Ask Cake to work in Research…");
       await expect(message).toBeFocused();
       await page.keyboard.press(process.platform === "darwin" ? "Meta+N" : "Control+N");
       await expect(research).toHaveAttribute("aria-selected", "true");
@@ -220,6 +222,7 @@ test("new session dialog supports filtering, keyboard, mouse and cancellation", 
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 
     await page.keyboard.press(`${modifier}+B`);
+    await showSessions(page);
     await page.getByRole("button", { name: "New Session", exact: true }).click();
     await expect(filter).toBeFocused();
     await dialog.getByRole("option", { name: /Beta/ }).click();

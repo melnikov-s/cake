@@ -149,8 +149,8 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
     <WorkspaceChatLayout
       workspace={workspace}
       workspaceHeader={
-        <header className="flex min-h-title-bar shrink-0 flex-col gap-1 border-b border-border/65 bg-background px-3 py-1 [-webkit-app-region:drag]">
-          <div className="min-w-0 pl-7 [-webkit-app-region:no-drag]">{headerLeading}</div>
+        <header className="flex min-h-title-bar shrink-0 flex-col gap-1 border-b border-border/65 bg-background px-3 pb-1 [-webkit-app-region:drag]">
+          <div className="min-w-0 pl-[34px]">{headerLeading}</div>
           <div className="flex flex-wrap items-center gap-1 [-webkit-app-region:no-drag]">
             {headerActions}
           </div>

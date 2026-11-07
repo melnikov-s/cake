@@ -33,6 +33,8 @@ export type IconButtonProps = Omit<
   "title" | "aria-label"
 > & {
   hotkey?: CakeHotkeyActionId;
+  /** Visible navigation label; the containing rail controls its disclosure. */
+  label?: ReactNode;
   pressedAppearance?: "solid" | "subtle";
   /** Persistent view focus, independent of pressed/open and keyboard focus. */
   viewFocused?: boolean;
@@ -44,6 +46,7 @@ export type IconButtonProps = Omit<
 const ObservedIconButton = observer(function ObservedIconButton({
   tooltip,
   hotkey,
+  label: visibleLabel,
   ariaLabel,
   type = "button",
   className,
@@ -70,6 +73,7 @@ const ObservedIconButton = observer(function ObservedIconButton({
       type={type}
       className={cn(
         "icon-button grid shrink-0 touch-manipulation size-7 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 place-items-center rounded-md border-0 bg-transparent text-muted-foreground transition-colors hover:bg-muted/85 hover:text-foreground active:bg-muted disabled:opacity-30 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-muted-foreground [app-region:no-drag]",
+        visibleLabel !== undefined && "h-9 w-full grid-cols-[2.75rem_minmax(0,1fr)] gap-1",
         !viewFocused &&
           (pressedAppearance === "solid"
             ? "aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:shadow-2xs aria-pressed:hover:bg-primary/90"
@@ -102,7 +106,16 @@ const ObservedIconButton = observer(function ObservedIconButton({
         onBlur?.(event);
       }}
     >
-      {children}
+      {visibleLabel === undefined ? (
+        children
+      ) : (
+        <>
+          <span className="grid h-9 w-11 place-items-center">{children}</span>
+          <span data-slot="icon-button-label" className="w-full min-w-0 truncate text-left text-xs">
+            {visibleLabel}
+          </span>
+        </>
+      )}
       {label && anchor && (
         <TooltipBubble label={label} anchor={anchor} wrap={wrapTooltip || Boolean(binding)} />
       )}

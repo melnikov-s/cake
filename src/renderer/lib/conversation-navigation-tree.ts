@@ -73,7 +73,7 @@ export interface ConversationNavigationInput {
   >[];
   readonly cakeChats: readonly Pick<
     CakeChatSummary,
-    "sessionId" | "title" | "projectPath" | "modifiedAt" | "resolved" | "unread"
+    "sessionId" | "title" | "projectPath" | "modifiedAt" | "resolved" | "unread" | "running"
   >[];
   readonly discussions: readonly DiscussionCatalog[];
   readonly subagents: readonly SubagentCatalog[];
@@ -120,7 +120,7 @@ export function buildConversationNavigationTree(
     : (home?.sessionId ?? (input.projectPath === undefined ? CAKE_CHAT_SESSION_ID : undefined));
   const homeKey = homeId ? conversationNavigationKey(homeId) : undefined;
   if (homeId) {
-    const running = ownRunning(homeId);
+    const running = ownRunning(homeId) || Boolean(home?.running);
     byKey.set(homeKey!, {
       key: homeKey!,
       title: input.projectPath === undefined ? "Cake Chat" : "Project Chat",

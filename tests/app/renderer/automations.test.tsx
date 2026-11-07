@@ -773,6 +773,7 @@ describe("automation product workflows", () => {
   it("preselects a registered Project from its actual native context-menu action", async () => {
     const menu = vi.fn<Client["electron"]["showProjectContextMenu"]>(async () => "new-automation");
     using fixture = setup({ client: { electron: { showProjectContextMenu: menu } } });
+    await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
     fireEvent.contextMenu(screen.getByRole("button", { name: "Open Project Chat for Cake" }), {
       clientX: 10,
       clientY: 20,

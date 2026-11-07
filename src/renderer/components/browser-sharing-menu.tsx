@@ -9,7 +9,11 @@ import { cn } from "../lib/utils";
 import { QrCode } from "./ui/qr-code";
 
 /** A shortcut to the same listener controlled by Settings; never configures a tunnel. */
-export const BrowserSharingMenu = observer(function BrowserSharingMenu() {
+export const BrowserSharingMenu = observer(function BrowserSharingMenu({
+  rail = false,
+}: {
+  rail?: boolean;
+}) {
   const root = useStore(RootStore);
   const sharing = root.settingsStore.desktopSharing;
   const [open, setOpen] = useState(false);
@@ -30,6 +34,7 @@ export const BrowserSharingMenu = observer(function BrowserSharingMenu() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverIconTrigger
+        label={rail ? `Browser sharing: ${status}` : undefined}
         tooltip={`Browser sharing: ${status}${status === "Offline" ? " — go online" : ""}`}
         className={cn(
           sharing.enabled && "text-success",

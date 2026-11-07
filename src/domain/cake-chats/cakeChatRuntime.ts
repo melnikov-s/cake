@@ -537,6 +537,11 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           resolved: false,
         });
       }),
+    onTurnActivityChanged: catalogs.publish({
+      _tag: "CakeChatSessionChanged",
+      sessionId: target.sessionId,
+      resolved: false,
+    }),
     onSessionChanged: catalogs.publish({
       _tag: "CakeChatSessionChanged",
       sessionId: target.sessionId,

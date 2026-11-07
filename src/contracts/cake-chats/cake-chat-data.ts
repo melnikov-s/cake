@@ -38,6 +38,8 @@ export const CakeChatSummary = Schema.Struct({
   parentSessionId: Schema.optionalKey(boundedId),
   resolved: Schema.Boolean,
   unread: Schema.Boolean,
+  /** Lightweight runtime-owned activity, without opening the conversation. */
+  running: Schema.optionalKey(Schema.Boolean),
 });
 export interface CakeChatSummary extends Schema.Schema.Type<typeof CakeChatSummary> {}
 

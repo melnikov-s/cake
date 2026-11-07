@@ -10,7 +10,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 import { windowState } from "../fixtures/window-state";
 
 const execFileAsync = promisify(execFile);
-import { createSessionInProject } from "./fixtures/workspace-navigation";
+import { createSessionInProject, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -72,6 +72,7 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
 
   try {
     const page = await application.firstWindow();
+    await showSessions(page);
     await expect(page.getByRole("button", { name: "New Session", exact: true })).toBeVisible({
       timeout: 20_000,
     });
@@ -275,6 +276,7 @@ test("filters existing worktrees from the keyboard in the new-chat composer", as
 
   try {
     const page = await application.firstWindow();
+    await showSessions(page);
     const newChat = page.getByRole("button", { name: "New Session", exact: true });
     await expect(newChat).toBeVisible({ timeout: 20_000 });
     await createSessionInProject(page, /^project(?: |$)/i);

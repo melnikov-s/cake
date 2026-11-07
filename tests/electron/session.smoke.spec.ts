@@ -85,6 +85,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
       timeout: 20_000,
     });
+    await showSessions(page);
     await expect(page.getByRole("button", { name: "New Session", exact: true })).toBeVisible();
     const configuration = page.getByRole("button", { name: "Model configuration" });
     await expect(configuration).toBeVisible();

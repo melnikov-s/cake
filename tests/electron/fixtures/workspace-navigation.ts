@@ -28,11 +28,11 @@ export async function openProjectSettings(
   await expect(page.getByRole("dialog", { name: /settings/i })).toBeVisible();
 }
 
-/** Creates an unsent Session through the persistent rail's real destination picker. */
+/** Creates an unsent Session through the Sessions accessory destination picker. */
 export async function createSessionInProject(page: Page, name: RegExp) {
   await showSessions(page);
   await page
-    .getByRole("navigation", { name: "Projects and global utilities" })
+    .getByRole("region", { name: "Sessions", exact: true })
     .getByRole("button", { name: "New Session", exact: true })
     .click();
   await page
@@ -43,6 +43,8 @@ export async function createSessionInProject(page: Page, name: RegExp) {
 
 /** Opens the real exclusive Sessions accessory without changing the focused conversation. */
 export async function showSessions(page: Page) {
+  const back = page.getByRole("button", { name: "Back to chat", exact: true });
+  if (await back.isVisible()) await back.click();
   const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
   await expect(rail).toBeVisible({ timeout: 20_000 });
   const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });

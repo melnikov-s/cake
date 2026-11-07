@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -58,6 +59,7 @@ test("icon buttons reveal their tooltip bubble on hover and hide on leave", asyn
     await page.mouse.move(400, 300);
     await expect(page.getByRole("tooltip")).toHaveCount(0);
 
+    await showSessions(page);
     const newSession = page.getByRole("button", { name: "New Session", exact: true });
     await newSession.hover();
     await expect(page.getByRole("tooltip")).toHaveText(`New Session (${modifier}N)`, {

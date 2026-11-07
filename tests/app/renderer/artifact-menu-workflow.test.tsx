@@ -375,14 +375,16 @@ describe("Artifact accessory workflow", () => {
     },
   );
 
-  it("opens a global menu selection fullscreen without replacing Settings, and still browses explicitly", async () => {
+  it("returns from Settings to open a global artifact fullscreen above the retained conversation, and still browses explicitly", async () => {
     using fixture = renderArtifacts();
+    const original = fixture.root.appShellStore.activeConversation;
     await fixture.user.click(
       within(screen.getByRole("navigation", { name: "Projects and global utilities" })).getByRole(
         "button",
         { name: "Settings" },
       ),
     );
+    await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
     await fixture.user.click(
       within(screen.getByRole("navigation", { name: "Projects and global utilities" })).getByRole(
         "button",
@@ -395,7 +397,7 @@ describe("Artifact accessory workflow", () => {
     expect(await within(surface).findByText("unrelated body revision 2")).toBeDefined();
     expect(screen.queryByRole("textbox", { name: "Search artifact library" })).toBeNull();
     await fixture.user.keyboard("{Escape}");
-    expect(screen.getByRole("button", { name: "Back to chat" })).toBeDefined();
+    expect(fixture.root.appShellStore.activeConversation).toEqual(original);
     await fixture.user.click(
       within(screen.getByRole("navigation", { name: "Projects and global utilities" })).getByRole(
         "button",
