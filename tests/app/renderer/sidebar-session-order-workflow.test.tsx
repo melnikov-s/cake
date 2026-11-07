@@ -6,6 +6,7 @@ import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionCatalogUpdate } from "../../../src/contracts/application/catalog-data";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import type { surfaceEventSchema } from "../../../src/contracts/application/cake-rpc-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import {
@@ -42,6 +43,41 @@ const withUnreadOlder = initialSessions.map((session) =>
     ? { ...session, unread: true, latestTurnOutcome: "complete" as const }
     : session,
 );
+function familySessions(parentUnread = false): SessionSummaryFixture[] {
+  return [
+    ...initialSessions.map((session) =>
+      session.sessionId === "older"
+        ? {
+            ...session,
+            unread: parentUnread,
+            latestTurnOutcome: "complete" as const,
+            familyId: "older",
+            familyChildSessionIds: ["child"],
+          }
+        : session,
+    ),
+    sessionSummary({
+      sessionId: "child",
+      projectPath,
+      familyId: "older",
+      familyParentSessionId: "older",
+      familyChildSessionIds: ["grandchild"],
+      modifiedAt: "2026-02-01T00:00:00.000Z",
+      unread: true,
+      latestTurnOutcome: "complete",
+    }),
+    sessionSummary({
+      sessionId: "grandchild",
+      projectPath,
+      familyId: "older",
+      familyParentSessionId: "child",
+      modifiedAt: "2026-03-01T00:00:00.000Z",
+      unread: true,
+      latestTurnOutcome: "complete",
+    }),
+  ];
+}
+
 function conversation(sessionId: string): ConversationSnapshot {
   return {
     sessionId,
@@ -78,7 +114,7 @@ function renderOrdering(sessions: SessionSummaryFixture[] = initialSessions) {
   const setSessionUnread = vi.fn<Client["workspaces"]["setSessionUnread"]>(
     async (sessionId, unread) => {
       publishCatalogEvent({ _tag: "StatusChanged", sessionId, resolved: false, unread });
-      return {} as never;
+      return defaultApplicationState();
     },
   );
   const fixture = createRendererStoreFixture({
@@ -265,6 +301,91 @@ for (const kind of ["project-session"] as const) {
         await fixture.openSession("older");
         expect(fixture.selected()).toBe("older");
         expect(fixture.order()).toEqual(["previous", "older", "oldest"]);
+      },
+    );
+
+    it.each(["date", "label"] as const)(
+      "keeps descendant unread and recency out of parent %s ordering, but inherits running",
+      async (sort) => {
+        using fixture = renderOrdering(familySessions());
+        act(() =>
+          fixture.root.sidebarStore.sessionListStore.setProjectSessionSort(projectPath, sort),
+        );
+        const expandedOrder = ["newer", "previous", "older", "child", "grandchild", "oldest"];
+        const collapsedOrder = ["newer", "previous", "older", "oldest"];
+        expect(fixture.order()).toEqual(expandedOrder);
+        expect(fixture.status("older")).toBeUndefined();
+        expect(fixture.status("child")).toBe("Ready, unread");
+        expect(fixture.status("grandchild")).toBe("Ready, unread");
+        await fixture.user.click(screen.getByRole("button", { name: "Collapse older" }));
+        expect(fixture.order()).toEqual(collapsedOrder);
+        expect(fixture.status("older")).toBeUndefined();
+
+        for (const sessionId of ["child", "grandchild"]) {
+          fixture.publishCatalogEvent({ _tag: "ActivityChanged", sessionId, running: true });
+          expect(fixture.status("older")).toBe("Running");
+          expect(fixture.order()).toEqual(["older", "newer", "previous", "oldest"]);
+          await fixture.user.click(screen.getByRole("button", { name: "Expand older" }));
+          expect(fixture.order()).toEqual([
+            "older",
+            "child",
+            "grandchild",
+            "newer",
+            "previous",
+            "oldest",
+          ]);
+          expect(fixture.status("older")).toBe("Running");
+          fixture.publishCatalogEvent({
+            _tag: "ActivityChanged",
+            sessionId,
+            running: false,
+            unread: true,
+            modifiedAt: "2026-04-01T00:00:00.000Z",
+          });
+          expect(fixture.order()).toEqual(expandedOrder);
+          expect(fixture.status("older")).toBeUndefined();
+          await fixture.user.click(screen.getByRole("button", { name: "Collapse older" }));
+        }
+
+        // Own unread still leads, ordered by the parent's own date within that group.
+        for (const sessionId of ["older", "previous"])
+          fixture.publishCatalogEvent({
+            _tag: "StatusChanged",
+            sessionId,
+            resolved: false,
+            unread: true,
+          });
+        expect(fixture.order()).toEqual(["previous", "older", "newer", "oldest"]);
+        expect(fixture.status("older")).toBe("Ready, unread");
+      },
+    );
+
+    it.each([false, true])(
+      "reads only the visited parent, leaving child and grandchild unread (collapsed: %s)",
+      async (collapsed) => {
+        using fixture = renderOrdering(familySessions(true));
+        await fixture.openSession("older");
+        if (collapsed)
+          await fixture.user.click(screen.getByRole("button", { name: "Collapse older" }));
+        await fixture.openSession("newer");
+        expect(fixture.setSessionUnread).toHaveBeenCalledExactlyOnceWith(
+          "older",
+          false,
+          expect.anything(),
+        );
+        expect(fixture.status("older")).toBeUndefined();
+        expect(fixture.root.sessionCatalogStore.find("older")!.unread).toBe(false);
+        for (const id of ["child", "grandchild"])
+          expect(fixture.root.sessionCatalogStore.find(id)!.unread).toBe(true);
+        expect(fixture.order()).toEqual(
+          collapsed
+            ? ["newer", "previous", "older", "oldest"]
+            : ["newer", "previous", "older", "child", "grandchild", "oldest"],
+        );
+        if (collapsed)
+          await fixture.user.click(screen.getByRole("button", { name: "Expand older" }));
+        expect(fixture.status("child")).toBe("Ready, unread");
+        expect(fixture.status("grandchild")).toBe("Ready, unread");
       },
     );
 

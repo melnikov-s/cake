@@ -65,13 +65,7 @@ export class SidebarSessionListStore extends Store<{
           ? {
               sessionId: root.sessionId,
               rank: this.activityRank(root),
-              modifiedAt: this.familyModifiedDates(
-                new Map(
-                  this.props.catalog
-                    .projectSessions(root.projectPath, false)
-                    .map((session) => [session.sessionId, session]),
-                ),
-              ).get(root.sessionId)!,
+              modifiedAt: root.modifiedAt,
             }
           : undefined;
       },
@@ -381,8 +375,7 @@ export class SidebarSessionListStore extends Store<{
         session.familyParentSessionId === session.sessionId ||
         !byId.has(session.familyParentSessionId),
     );
-    // Rank active roots by the same child-aware activity shown on their rows:
-    // unread, then running, then the rest.
+    // Only working state crosses family boundaries; unread rank belongs to the root.
     const held = this.heldRoot;
     const activityPriorities = new Map(
       roots.map((session) => [
@@ -394,14 +387,10 @@ export class SidebarSessionListStore extends Store<{
             : this.activityRank(session),
       ]),
     );
-    // A family's time is its latest update anywhere in the family.
-    const modifiedDates = this.familyModifiedDates(byId);
     const latestActivity = (session: ProjectSession) =>
-      !resolved && held?.sessionId === session.sessionId
-        ? held.modifiedAt
-        : modifiedDates.get(session.sessionId)!;
-    // Running rows update constantly, so they keep creation order; every other
-    // group shows the most recently updated family first.
+      !resolved && held?.sessionId === session.sessionId ? held.modifiedAt : session.modifiedAt;
+    // Running rows keep creation order; other groups use each root's own update,
+    // never a descendant's completion or unread message.
     const compareByDate = (left: (typeof roots)[number], right: (typeof roots)[number]) =>
       activityPriorities.get(left.sessionId) === 1
         ? compareSessionSummariesByCreation(left, right)
@@ -430,25 +419,6 @@ export class SidebarSessionListStore extends Store<{
   private activityRank(session: ProjectSession) {
     const activity = this.sessionActivityForDisplay(session);
     return activity === "unread" ? 0 : isActiveSessionActivity(activity) ? 1 : 2;
-  }
-
-  private familyModifiedDates(byId: ReadonlyMap<string, ProjectSession>) {
-    const dates = new Map<string, string>();
-    const visit = (session: ProjectSession): string => {
-      const known = dates.get(session.sessionId);
-      if (known) return known;
-      let modifiedAt = session.modifiedAt;
-      for (const id of session.familyChildSessionIds ?? []) {
-        const child = byId.get(id);
-        if (!child) continue;
-        const childModifiedAt = visit(child);
-        if (childModifiedAt > modifiedAt) modifiedAt = childModifiedAt;
-      }
-      dates.set(session.sessionId, modifiedAt);
-      return modifiedAt;
-    };
-    for (const session of byId.values()) visit(session);
-    return dates;
   }
 
   private limitKey(groupKey: string, resolved: boolean) {

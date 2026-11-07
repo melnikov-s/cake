@@ -38,8 +38,13 @@ function renderNavigator(
     sessions: navigatorSessions,
     client: {
       projectSessions: { open: async () => undefined },
-      cakeChats: { open: async () => undefined },
-      workspaces: { loadStagedSlashCommands: async () => [] },
+      cakeChats: { open: async () => undefined, setUnread: async () => undefined },
+      workspaces: {
+        loadStagedSlashCommands: async () => [],
+        setSessionUnread: async () => {
+          throw new Error("Project Chat acknowledgement must not mark a Project Session read");
+        },
+      },
     },
   });
   const facts = populateConversationNavigationFixture(fixture.models);
@@ -114,8 +119,14 @@ function renderNavigator(
     },
   };
 }
-const rowFor = (name: string) =>
-  screen.getByText(name).closest('[data-slot="conversation-navigator-row"]') as HTMLElement;
+function rowFor(name: string) {
+  // Project Chat's title is the project name, not its composed status subtitle.
+  const row = screen
+    .getByText(name === "Project Chat" ? "cake" : name)
+    .closest<HTMLElement>('[data-slot="conversation-navigator-row"]');
+  if (!row) throw new Error(`Missing conversation row: ${name}`);
+  return row;
+}
 
 function settleFixtureWorkers(fixture: ReturnType<typeof renderNavigator>) {
   act(() => {
@@ -160,10 +171,10 @@ describe("Sessions navigator workflow", () => {
     assertStatus();
     await fixture.user.click(screen.getByRole("button", { name: "Collapse UI Layout Refactor" }));
     assertStatus();
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse Project Chat" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
     expect(screen.queryByText("UI Layout Refactor")).toBeNull();
     assertStatus(["Project Chat"]);
-    await fixture.user.click(screen.getByRole("button", { name: "Expand Project Chat" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Expand cake" }));
     await fixture.user.click(screen.getByRole("button", { name: "Expand UI Layout Refactor" }));
     assertStatus();
     if (activeId) {
@@ -224,6 +235,65 @@ describe("Sessions navigator workflow", () => {
       assertIdle();
       await fixture.user.click(screen.getByRole("button", { name: "Collapse UI Layout Refactor" }));
       assertIdle();
+    },
+  );
+
+  it.each([false, true])(
+    "reads Project Chat independently of unread descendants (collapsed: %s)",
+    async (collapsed) => {
+      using fixture = renderNavigator();
+      settleFixtureWorkers(fixture);
+      await fixture.user.click(screen.getByRole("button", { name: /^Icon Placement Exploration/ }));
+      const setUnread = vi
+        .spyOn(fixture.client.cakeChats, "setUnread")
+        .mockImplementation(async ({ sessionId, unread }) => {
+          act(() => {
+            fixture.models.cakeChatCatalog.sessions.find(
+              (chat) => chat.sessionId === sessionId,
+            )!.unread = unread;
+          });
+        });
+      const setSessionUnread = vi.spyOn(fixture.client.workspaces, "setSessionUnread");
+      act(() => {
+        fixture.models.cakeChatCatalog.sessions.find(
+          (chat) => chat.sessionId === navigatorHomeId,
+        )!.unread = true;
+        for (const id of ["layout", "keyboard", "deep-child"]) {
+          const session = fixture.models.sessionCatalog.find(id)!;
+          session.unread = true;
+          session.latestTurnOutcome = "complete";
+        }
+      });
+      if (collapsed)
+        await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
+      expect(
+        within(rowFor("Project Chat")).getByRole("img", { name: "Ready, unread" }),
+      ).toBeTruthy();
+      await fixture.user.click(screen.getByRole("button", { name: "cake", exact: true }));
+      await waitFor(() =>
+        expect(within(rowFor("Project Chat")).getByLabelText("Idle")).toBeTruthy(),
+      );
+      // Selection and open each acknowledge the owner before the catalog reply arrives.
+      expect(setUnread.mock.calls.map(([input]) => input)).toEqual([
+        { sessionId: navigatorHomeId, unread: false },
+        { sessionId: navigatorHomeId, unread: false },
+      ]);
+      expect(setSessionUnread).not.toHaveBeenCalled();
+      for (const id of ["layout", "keyboard", "deep-child"])
+        expect(fixture.models.sessionCatalog.find(id)!.unread).toBe(true);
+      if (collapsed) {
+        // Opening reveals the selected row; collapse it again to check the read state hidden.
+        await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
+        expect(within(rowFor("Project Chat")).getByLabelText("Idle")).toBeTruthy();
+        await fixture.user.click(screen.getByRole("button", { name: "Expand cake" }));
+      }
+      for (const name of [
+        "UI Layout Refactor",
+        "Keyboard Editing & Navigation",
+        "Nested child implementation",
+      ])
+        expect(within(rowFor(name)).getByRole("img", { name: "Ready, unread" })).toBeTruthy();
+      expect(within(rowFor("Project Chat")).getByLabelText("Idle")).toBeTruthy();
     },
   );
 
