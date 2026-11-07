@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { makeVsCodeServerLive } from "../services/vscode/VsCodeServerLive";
 import { companionAssets } from "../services/vscode/companion-assets";
 import { Effect, Layer } from "effect";
+import { startupDiagnostics } from "../services/diagnostics/startup-diagnostics";
 import type { CakePaths } from "../config/CakePaths";
 import * as scheduledMessages from "../domain/scheduled-messages/scheduledMessages";
 import * as sessionFamilies from "../domain/session-families/sessionFamilies";
@@ -313,15 +314,21 @@ export const makeBackendLive = <HostServices, HostError>(
   );
 
   const InitializedLive = Layer.merge(
-    Layer.effectDiscard(initializeBackend()),
+    Layer.effectDiscard(startupDiagnostics.measure("backend-initialize", initializeBackend())),
     ArtifactRuntimeHostLive,
   ).pipe(Layer.provide(SessionWorkflowsLive));
   const BackgroundWorkersLive = Layer.mergeAll(
     Layer.effectDiscard(
       Effect.gen(function* () {
-        yield* (yield* AutomationRecords).initialize().pipe(Effect.orDie);
+        yield* startupDiagnostics.measure(
+          "automation-records-initialize",
+          (yield* AutomationRecords).initialize().pipe(Effect.orDie),
+        );
         yield* automationWorker.runEventWorker.pipe(Effect.forkScoped);
-        yield* automationWorker.recover().pipe(Effect.orDie);
+        yield* startupDiagnostics.measure(
+          "automation-recover",
+          automationWorker.recover().pipe(Effect.orDie),
+        );
         yield* automationWorker
           .runScheduleWorker((schedule) =>
             globalArtifacts.callTool({
@@ -333,13 +340,22 @@ export const makeBackendLive = <HostServices, HostError>(
           .pipe(Effect.forkScoped);
       }),
     ),
-    Layer.effectDiscard(localMcp.initialize()),
-    Layer.effectDiscard(projectTodoResolution.initialize()),
-    Layer.effectDiscard(projectTodoSnoozes.initialize()),
-    Layer.effectDiscard(projectTodoUpdates.initialize()),
+    Layer.effectDiscard(startupDiagnostics.measure("local-mcp-initialize", localMcp.initialize())),
+    Layer.effectDiscard(
+      startupDiagnostics.measure("todo-resolution-initialize", projectTodoResolution.initialize()),
+    ),
+    Layer.effectDiscard(
+      startupDiagnostics.measure("todo-snoozes-initialize", projectTodoSnoozes.initialize()),
+    ),
+    Layer.effectDiscard(
+      startupDiagnostics.measure("todo-updates-initialize", projectTodoUpdates.initialize()),
+    ),
     Layer.effectDiscard(
       Effect.gen(function* () {
-        yield* scheduledMessages.initialize().pipe(Effect.orDie);
+        yield* startupDiagnostics.measure(
+          "scheduled-messages-initialize",
+          scheduledMessages.initialize().pipe(Effect.orDie),
+        );
         yield* scheduledMessages.runWorker.pipe(Effect.forkScoped);
       }),
     ),
@@ -351,12 +367,19 @@ export const makeBackendLive = <HostServices, HostError>(
         // Missing/corrupt recovery evidence must never be interpreted as no
         // unfinished work. Keep the app usable, but start no automatic work or
         // orphan-abort reconciliation until all recovery authorities can be read.
-        const ready = yield* Effect.all([
-          coordination.checkStorage(),
-          recovery.list(),
-          workers.list(),
-          (yield* WorkflowRunStorage).list(),
-        ]).pipe(Effect.result);
+        const ready = yield* startupDiagnostics
+          .measure(
+            "recovery-storage-check",
+            Effect.all([
+              coordination.checkStorage(),
+              recovery
+                .list()
+                .pipe((effect) => startupDiagnostics.measure("recovery-records-list", effect)),
+              workers.list(),
+              (yield* WorkflowRunStorage).list(),
+            ]),
+          )
+          .pipe(Effect.result);
         if (ready._tag === "Failure") {
           yield* Effect.logWarning(
             "Automatic restart recovery is paused. Repair the reported metadata file and restart; saved conversations remain available.",
@@ -364,7 +387,10 @@ export const makeBackendLive = <HostServices, HostError>(
           );
           return;
         }
-        yield* workflows.reconcile().pipe(Effect.orDie);
+        yield* startupDiagnostics.measure(
+          "workflows-reconcile",
+          workflows.reconcile().pipe(Effect.orDie),
+        );
         const recoverable = (sessionId: string, turnId?: string) =>
           recovery.get(sessionId).pipe(
             Effect.map(
@@ -378,19 +404,34 @@ export const makeBackendLive = <HostServices, HostError>(
                 : workflowLifecycle.holdsTurnCompletion(sessionId, turnId),
             ),
           );
-        yield* sessionFamilies
-          .initialize(paths.piSessions, paths.piResolvedSessions, recoverable)
-          .pipe(Effect.orDie);
-        const resumeWorkers = yield* subagentRecovery.initialize().pipe(Effect.orDie);
-        yield* runtimeRecovery.initialize().pipe(Effect.orDie);
-        yield* resumeWorkers;
-        yield* workflows.recoverReports().pipe(Effect.orDie);
+        yield* startupDiagnostics.measure(
+          "session-families-initialize",
+          sessionFamilies
+            .initialize(paths.piSessions, paths.piResolvedSessions, recoverable)
+            .pipe(Effect.orDie),
+        );
+        const resumeWorkers = yield* startupDiagnostics.measure(
+          "subagent-recovery-initialize",
+          subagentRecovery.initialize().pipe(Effect.orDie),
+        );
+        yield* startupDiagnostics.measure(
+          "runtime-recovery-initialize",
+          runtimeRecovery.initialize().pipe(Effect.orDie),
+        );
+        yield* startupDiagnostics.measure("subagent-resume-workers", resumeWorkers);
+        yield* startupDiagnostics.measure(
+          "workflow-reports-recover",
+          workflows.recoverReports().pipe(Effect.orDie),
+        );
         yield* sessionFamilies.runWorker.pipe(Effect.forkScoped);
       }),
     ),
   ).pipe(Layer.provide(Layer.merge(SessionWorkflowsLive, InitializedLive)));
 
-  return Layer.suspend(() =>
-    Layer.mergeAll(SessionWorkflowsLive, InitializedLive, BackgroundWorkersLive),
+  return startupDiagnostics.layer(
+    "backend-graph",
+    Layer.suspend(() =>
+      Layer.mergeAll(SessionWorkflowsLive, InitializedLive, BackgroundWorkersLive),
+    ),
   );
 };

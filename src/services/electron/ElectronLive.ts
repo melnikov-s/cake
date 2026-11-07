@@ -23,6 +23,8 @@ import type { CakeWindowFocus } from "./cake-chat-overlay-policy";
 import { ACCESSIBILITY_PERMISSION_MESSAGE, readSelectedText, runOsaScript } from "./selected-text";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { installRendererDiagnostics } from "./renderer-diagnostics";
+import { startupDiagnostics } from "../diagnostics/startup-diagnostics";
+import { makeRendererStartupReceiver } from "../diagnostics/renderer-startup-timing";
 import { CAKE_TITLE_BAR_HEIGHT, Electron, type ElectronWindowLifecycle } from "./Electron";
 import { ElectronError } from "../../contracts/desktop/electron-errors";
 import { makeElectronContextMenus } from "./ElectronContextMenus";
@@ -57,7 +59,9 @@ const makeElectronService = (
   clientEvents: ClientEvents["Service"],
   clientWorkspaces: ClientWorkspaces["Service"],
   connections: ClientConnections["Service"],
+  reportStartup: (phase: string, fields?: Readonly<Record<string, string | number>>) => void,
 ) => {
+  let startupWindowCreated = false;
   const windows = new Map<number, BrowserWindow>();
   const updates = new AppUpdateChecks(options.application);
   let lastFocusedWindow: BrowserWindow | undefined;
@@ -311,6 +315,9 @@ const makeElectronService = (
   };
 
   const createWindow = () => {
+    const startupWindow = !startupWindowCreated;
+    startupWindowCreated = true;
+    if (startupWindow) reportStartup("window-create-start");
     const browserWindowOptions = {
       width: 1180,
       height: 820,
@@ -338,11 +345,24 @@ const makeElectronService = (
     });
     const nativeId = window.webContents.id;
     const ownerId = connections.desktop(nativeId);
-    installRendererDiagnostics(window, () => {
-      failedRenderers.add(ownerId);
-      for (const listener of fullscreenSurfaceListeners)
-        listener({ connectionId: ownerId, open: true });
-    });
+    if (startupWindow) reportStartup("window-created");
+    installRendererDiagnostics(
+      window,
+      () => {
+        failedRenderers.add(ownerId);
+        for (const listener of fullscreenSurfaceListeners)
+          listener({ connectionId: ownerId, open: true });
+      },
+      startupWindow
+        ? makeRendererStartupReceiver(({ phase, rendererElapsedMs }) =>
+            reportStartup(phase, { rendererElapsedMs }),
+          )
+        : undefined,
+    );
+    if (startupWindow) {
+      window.webContents.once("dom-ready", () => reportStartup("window-dom-ready"));
+      window.webContents.once("did-finish-load", () => reportStartup("window-load-finished"));
+    }
     window.webContents.on("did-start-navigation", (event) => {
       if (!event.isMainFrame || event.isSameDocument || !failedRenderers.delete(ownerId)) return;
       for (const listener of fullscreenSurfaceListeners)
@@ -889,7 +909,14 @@ export const makeElectronLive = (options: ElectronLiveOptions) =>
       const clientEvents = yield* ClientEvents;
       const clientWorkspaces = yield* ClientWorkspaces;
       const connections = yield* ClientConnections;
-      const service = makeElectronService(options, clientEvents, clientWorkspaces, connections);
+      const runDiagnostic = Effect.runSyncWith(yield* Effect.context<never>());
+      const service = makeElectronService(
+        options,
+        clientEvents,
+        clientWorkspaces,
+        connections,
+        (phase, fields) => runDiagnostic(startupDiagnostics.mark(phase, fields)),
+      );
       return yield* Effect.acquireRelease(Effect.succeed(service), () => service.stop());
     }),
   );

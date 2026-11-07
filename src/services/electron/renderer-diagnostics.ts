@@ -1,8 +1,13 @@
 import { WebContentsView, type BrowserWindow } from "electron";
 
 /** Console output remains in DevTools; mirror errors to stderr without depending on backend RPC. */
-export function installRendererDiagnostics(window: BrowserWindow, onCrash: () => void) {
+export function installRendererDiagnostics(
+  window: BrowserWindow,
+  onCrash: () => void,
+  onStartupTiming?: (message: string) => void,
+) {
   window.webContents.on("console-message", (event) => {
+    if (event.frame === window.webContents.mainFrame) onStartupTiming?.(event.message);
     if (event.level !== "error") return;
     console.error(
       `[cake.renderer:${window.webContents.id}] ${event.message}\n${event.sourceId}:${event.lineNumber}`,

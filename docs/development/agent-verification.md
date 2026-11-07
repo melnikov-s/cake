@@ -178,6 +178,56 @@ kill can lose the pending batch. Log-directory/write failures warn on the consol
 rather than stopping Cake. New logging code requires a rebuilt/restarted host;
 it cannot recover diagnostics from earlier runs that did not retain them.
 
+### Startup phase diagnostics
+
+After deploying this code, the next user-controlled launch writes `Cake startup`
+records to `$CAKE_HOME/logs/desktop.log`. No restart, launch or measurement is
+performed by adding the instrumentation. Group records by `run` (a host-process
+UUID). Standalone backends write their own run to `server.log`; a remote desktop
+run cannot measure that server's startup.
+
+- `elapsedMs` is monotonic time from Node's performance origin, not a wall-clock
+  timestamp or exact Electron PID birth time. The first graph record starts after
+  the operational logger is acquired; earlier bootstrap/module work is visible
+  only as the initial elapsed offset.
+- `desktop-graph` encloses main graph acquisition; `backend-graph` encloses the
+  local backend graph. Stage start/settlement records include `status` and
+  `durationMs`: application/project access/draft initialization, VS Code refresh,
+  automation, MCP, to-do and scheduled-message initialization, recovery storage
+  checks (including recovery-record listing), workflow reconciliation, session
+  families, subagent/runtime recovery, worker resumption and report recovery.
+  Nested/concurrent stages overlap: **do not add their durations**. Layer
+  dependencies and SDK internals remain aggregate costs, not per-file traces.
+- Compare `window-create-start`, `window-created`, `window-dom-ready` and
+  `window-load-finished` with graph completion to separate pre-window cost from
+  renderer loading. Only the first desktop window is retained, not later windows,
+  overlays or repeated reload phases.
+- Renderer records include `rendererElapsedMs`, measured from that document's
+  navigation performance origin. They cover renderer entry (after imports),
+  window-state loading, hydration (including draft migration/decode/Store mount),
+  navigation restoration, render scheduling and `first-commit`. The main-process
+  `elapsedMs` on these records is **console-event receipt time**, including IPC
+  delay; renderer and main clocks are not interchangeable. Local renderer marks
+  are also available as `cake.startup.<phase>` in the Performance timeline.
+- `selected-chat-projection-commit` means the diagnostic React probe committed
+  with the first selected conversation's live snapshot observed, not history-only
+  and without an observation error. It does **not** prove chat DOM paint, composer
+  input/focus, Markdown completion, provider readiness or usable chat. No selected
+  conversation means no such milestone; changing selection before it settles
+  emits `selected-chat-changed` instead. A covering Settings/Library surface does
+  not change the underlying conversation. `navigation-restore-end` alone does not
+  imply a live conversation, and hydration completion may include existing error
+  fallbacks.
+
+Records are bounded to fixed startup stages (no polling or per-session/file
+records). Renderer input is main-frame-only, size-limited, decoded against fixed
+phase/numeric fields and retained once per phase. No transcript, prompt, session
+identity or error bodies are included. Normal operational log retention/flush
+limits apply; missing records after an abrupt kill are not proof a stage was
+never reached. In-process tests verify instrumentation, not launch latency or a
+startup improvement. Validate the real process boundary and timings on the next
+user-controlled launch before choosing an optimization.
+
 ### Shutdown diagnostics
 
 Electron's next quit attempt writes `Cake shutdown` records to the terminal and

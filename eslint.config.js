@@ -14,6 +14,7 @@ const effectExecutionBoundaries = [
   "src/services/pi/live/ArtifactRuntimeWorker.ts", // Abortable Promise callbacks supplied to the persistent artifact QuickJS worker.
   "src/layers/ProjectSessionRuntimeHostLive.ts", // Final artifact and renderer callbacks supplied to Pi.
   "src/layers/DesktopSharingLive.ts", // Durable account-binding callback supplied to the Node authentication boundary.
+  "src/services/electron/ElectronLive.ts", // Metadata-only logging from native window/renderer console callbacks.
 ];
 const executionApi = "/^run(Fork|Callback|Promise|Sync)(Exit)?(With)?$/";
 

@@ -44,6 +44,7 @@ import {
   makeShutdownLogWriter,
 } from "../services/diagnostics/BackendLoggingLive";
 import { shutdownDiagnostics } from "../services/diagnostics/shutdown-diagnostics";
+import { startupDiagnostics } from "../services/diagnostics/startup-diagnostics";
 import { installStdioErrorHandlers } from "./stdio-errors";
 import { reportMainFailure } from "./report-main-failure";
 import { installProcessErrorHandlers } from "./process-errors";
@@ -112,22 +113,29 @@ function startMain() {
   const LoggingLive = makeBackendLoggingLive(paths.logs, "desktop").pipe(
     Layer.provide(BootstrapLive),
   );
-  const mainRuntime = ManagedRuntime.make(MainLive.pipe(Layer.provideMerge(LoggingLive)));
-  const mainProgram = Effect.promise(() => app.whenReady()).pipe(
-    Effect.tap(() => Effect.sync(() => installDesktopSocketOrigin(selectedHost))),
-    Effect.andThen(
-      MainApplication({
-        application: app,
-        shutdownLog: makeShutdownLogWriter(paths.logs, "desktop"),
-        initializeDeveloperTools,
-        initializeNativeProtocols: () => {
-          const endpoint = selectedHost.kind === "remote" ? selectedHost.url : undefined;
-          handleInlineWidgetScheme(endpoint);
-          handleExtensionCompanionScheme(endpoint);
-        },
-      }),
-    ),
+  const mainRuntime = ManagedRuntime.make(
+    startupDiagnostics.layer("desktop-graph", MainLive).pipe(Layer.provideMerge(LoggingLive)),
   );
+  const mainProgram = startupDiagnostics
+    .measure(
+      "electron-when-ready",
+      Effect.promise(() => app.whenReady()),
+    )
+    .pipe(
+      Effect.tap(() => Effect.sync(() => installDesktopSocketOrigin(selectedHost))),
+      Effect.andThen(
+        MainApplication({
+          application: app,
+          shutdownLog: makeShutdownLogWriter(paths.logs, "desktop"),
+          initializeDeveloperTools,
+          initializeNativeProtocols: () => {
+            const endpoint = selectedHost.kind === "remote" ? selectedHost.url : undefined;
+            handleInlineWidgetScheme(endpoint);
+            handleExtensionCompanionScheme(endpoint);
+          },
+        }),
+      ),
+    );
   void mainRuntime
     .runPromiseExit(
       mainProgram.pipe(

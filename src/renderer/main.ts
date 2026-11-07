@@ -10,6 +10,8 @@ import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { StartupError } from "./components/startup-error";
 import { RendererRoot } from "./components/renderer-root";
+import { StartupTimingProbe } from "./components/startup-timing-probe";
+import { rendererStartupTiming } from "./lib/startup-timing";
 import { startCakeChatOverlay } from "./bootstrap/start-cake-chat-overlay";
 import { CAKE_CHAT_OVERLAY_QUERY } from "../contracts/desktop/cake-chat-overlay-data";
 import { ScreenCaptureOverlay } from "./components/screen-capture-overlay";
@@ -36,6 +38,7 @@ import { migrateSavedDrafts } from "./persistence/migrate-saved-drafts";
 import "streamdown/styles.css";
 import "./styles.css";
 
+rendererStartupTiming("renderer-entry");
 const root = createRoot(document.getElementById("root")!);
 const disposeStaleAssetRecovery = installStaleAssetRecovery();
 interface PersistenceRef {
@@ -155,10 +158,12 @@ async function mountDesktop(
   const projection = RootProjection.create();
   let hydrationError: unknown;
   let savedDraftsReady = false;
+  rendererStartupTiming("window-state-load-start");
   const loadedWindow = await client.windowState.load().catch((error: unknown) => {
     hydrationError = error;
     return { state: {}, children: {} };
   });
+  rendererStartupTiming("window-state-load-end");
   let windowSnapshot = loadedWindow;
   if (!overlay)
     try {
@@ -184,6 +189,7 @@ async function mountDesktop(
     projection,
     connection,
   );
+  rendererStartupTiming("window-state-hydrated");
   const stopObservingConnection = reactiveEffect(() => {
     if (connection.remote && !connection.connected)
       untracked(() => {
@@ -235,6 +241,7 @@ async function mountDesktop(
   );
   void rootStore.modelCatalogStore.ensureLoaded();
   void rootStore.settingsStore.providers.hydrate();
+  rendererStartupTiming("navigation-restore-start");
   void rootStore.sessionRegistry.pendingSessions
     .refreshSavedDrafts()
     .catch((error: unknown) =>
@@ -245,13 +252,15 @@ async function mountDesktop(
       }),
     )
     .then(() => (overlay ? startCakeChatOverlay(rootStore) : rootStore.initialize()))
-    .catch((error: unknown) =>
+    .then(() => rendererStartupTiming("navigation-restore-end"))
+    .catch((error: unknown) => {
+      rendererStartupTiming("navigation-restore-failed");
       rootStore.toastStore.show({
         tone: "error",
         title: "Could not restore navigation",
         message: error instanceof Error ? error.message : String(error),
-      }),
-    );
+      });
+    });
   if (hydrationError)
     rootStore.toastStore.show({
       tone: "warning",
@@ -264,23 +273,27 @@ async function mountDesktop(
       title: "Could not open link",
       message: error instanceof Error ? error.message : String(error),
     });
+  rendererStartupTiming("render-scheduled");
   root.render(
-    createElement(RendererRoot, {
+    createElement(StartupTimingProbe, {
       rootStore,
-      variant: overlay ? "cake-chat-overlay" : "app",
-      openExternalUrl: (url) => {
-        void rootStore.openExternalUrl(url).catch(reportLinkError);
-      },
-      openSubagent: (parentSessionId, handleId, messageId) => {
-        void rootStore.navigationStore
-          .openSubagentLink(parentSessionId, handleId, messageId)
-          .catch(reportLinkError);
-      },
-      openSession: (sessionId, messageId, attachmentId) => {
-        void rootStore.navigationStore
-          .openSessionLink(sessionId, messageId, attachmentId)
-          .catch(reportLinkError);
-      },
+      children: createElement(RendererRoot, {
+        rootStore,
+        variant: overlay ? "cake-chat-overlay" : "app",
+        openExternalUrl: (url) => {
+          void rootStore.openExternalUrl(url).catch(reportLinkError);
+        },
+        openSubagent: (parentSessionId, handleId, messageId) => {
+          void rootStore.navigationStore
+            .openSubagentLink(parentSessionId, handleId, messageId)
+            .catch(reportLinkError);
+        },
+        openSession: (sessionId, messageId, attachmentId) => {
+          void rootStore.navigationStore
+            .openSessionLink(sessionId, messageId, attachmentId)
+            .catch(reportLinkError);
+        },
+      }),
     }),
   );
   // The window is already visible; the model loads in main's speech process, off this thread.
