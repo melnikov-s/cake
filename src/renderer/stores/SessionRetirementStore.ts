@@ -12,6 +12,7 @@ export interface SessionRetirementStoreProps {
   layout: SessionLayoutStore;
   navigate(target: SessionHistoryEntry): Promise<void>;
   createProjectSession(projectPath: string): Promise<void>;
+  openProjectChat(projectPath: string): Promise<boolean>;
 }
 
 /**
@@ -25,9 +26,8 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
   }
 
   async setProjectSessionResolved(sessionId: string, resolved: boolean) {
-    const rendererDraft = this.props.registry.pendingSessions.isDraft(sessionId);
     return this.management.resolveSession(sessionId, resolved, async (ids) => {
-      if (!this.signal.aborted && !rendererDraft) await this.forgetProjectSessions(ids);
+      if (!this.signal.aborted) await this.forgetProjectSessions(ids);
     });
   }
 
@@ -69,7 +69,7 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
       await this.props.createProjectSession(fallbackProjectPath);
   }
 
-  /** Releases live Project Session ownership before navigating away from archived transcripts. */
+  /** Retires resolved sessions; only a removed selection returns to its local Project Chat. */
   async forgetProjectSessions(sessionIds: readonly string[], fallbackProjectPath?: string) {
     if (this.signal.aborted) return;
     const active = this.props.shell.activeConversation;
@@ -77,15 +77,17 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
       active?.kind === "project-session" && sessionIds.includes(active.sessionId)
         ? active.sessionId
         : undefined;
-    const activeProjectPath = activeSessionId
-      ? this.props.catalog.find(activeSessionId)?.projectPath
+    const projectPath = activeSessionId
+      ? (this.props.catalog.find(activeSessionId)?.projectPath ?? fallbackProjectPath)
       : undefined;
-    // Capture the visit target before pruning its authoritative focused pane.
-    const target = this.props.shell.removeSessionsFromHistory(sessionIds);
+    // Prune retired visits, but never use history as the resolution destination.
+    this.props.shell.removeSessionsFromHistory(sessionIds);
     this.props.layout.removeSessions(sessionIds);
-    for (const sessionId of sessionIds) this.props.registry.removeSession(sessionId);
-    const fallback = fallbackProjectPath ?? activeProjectPath;
-    if (target) await this.props.navigate(target);
-    else if (activeSessionId && fallback) await this.props.createProjectSession(fallback);
+    for (const sessionId of sessionIds) {
+      // Saved drafts retain their renderer identity and unsent content for reopening.
+      if (!this.props.registry.pendingSessions.isDraft(sessionId))
+        this.props.registry.removeSession(sessionId);
+    }
+    if (projectPath) await this.props.openProjectChat(projectPath);
   }
 }

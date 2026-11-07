@@ -552,6 +552,7 @@ export class RootStore extends Store<{
       layout: this.sessionLayoutStore,
       navigate: (target) => this.navigationStore.navigateToHistoryEntry(target),
       createProjectSession: (projectPath) => this.navigationStore.createSession(projectPath),
+      openProjectChat: (projectPath) => this.navigationStore.openProjectChat(projectPath),
     });
   }
 

@@ -3,6 +3,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StoreProvider } from "r-state-tree/react";
+import { applySnapshot } from "r-state-tree";
 import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
 import { SideChatsMenu } from "../../../src/renderer/components/side-chats-menu";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
@@ -483,6 +484,26 @@ describe("Sessions navigator workflow", () => {
     expect(
       fixture.root.conversationNavigatorStore.lineageFor("layout").map((node) => node.title),
     ).toEqual(["cake", "UI Layout Refactor"]);
+  });
+
+  it("retains resolved Session titles and family ancestry in breadcrumbs without adding them to active lists", () => {
+    using fixture = renderNavigator();
+    act(() =>
+      applySnapshot(fixture.models.sessionCatalog, {
+        sessions: navigatorSessions.map((session) => ({ ...session, resolved: true })),
+        resolvedHasMoreByProject: {},
+      }),
+    );
+    expect(
+      fixture.root.conversationNavigatorStore
+        .lineageFor("deep-child")
+        .map((node) => node.target.sessionId),
+    ).toEqual([navigatorHomeId, "layout", "keyboard", "deep-child"]);
+    expect(
+      fixture.root.conversationNavigatorStore
+        .tree(navigatorProjectPath)
+        .byKey.has(conversationNavigationKey("deep-child")),
+    ).toBe(false);
   });
 
   it("opens a real child Session and reveals its selected ancestry after an external deep link", async () => {

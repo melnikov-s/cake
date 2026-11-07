@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -15,6 +16,7 @@ test("resolves and restores the selected session through the project Sessions ac
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
   const sessionId = "sidebar-resolved-session";
+  const projectChatId = `project-chat:${createHash("sha256").update(project).digest("hex")}`;
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
   const timestamp = new Date(0).toISOString();
   await Promise.all([
@@ -76,9 +78,15 @@ test("resolves and restores the selected session through the project Sessions ac
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+    await expect(page.getByRole("button", { name: "Search sessions" })).toBeVisible({
       timeout: 20_000,
     });
+    // Explicit selection keeps this regression independent of startup selection policy.
+    await page.getByRole("button", { name: "Search sessions" }).click();
+    const search = page.getByRole("dialog", { name: "Search sessions" });
+    await search.getByRole("combobox").fill("Implement the resolved sidebar");
+    await search.getByRole("option", { name: /Implement the resolved sidebar/ }).click();
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
     const workspace = await showSessions(page);
 
     const selectedSession = page
@@ -92,6 +100,22 @@ test("resolves and restores the selected session through the project Sessions ac
     );
     await expect(page.getByRole("button", { name: "Ask session assistant" })).toBeVisible();
     await selectedSession.locator(".session-resolve-action").click();
+    await expect(
+      page
+        .getByRole("navigation", { name: "Conversation breadcrumb" })
+        .getByRole("button", { name: "project", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(page.locator('[data-slot="session-pane"]')).toHaveAttribute(
+      "data-session-id",
+      projectChatId,
+    );
+    await expect(
+      page.getByRole("button", { name: "Open Cake Chat", exact: true }),
+    ).not.toHaveAttribute("aria-current", "page");
+    await expect(
+      page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByTestId("resolved-session-notice")).toHaveCount(0);
 
     await page
       .getByRole("navigation", { name: "Projects and global utilities" })

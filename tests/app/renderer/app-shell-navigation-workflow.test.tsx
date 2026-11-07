@@ -1,8 +1,10 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
-import { toSnapshot, type StoreSnapshot } from "r-state-tree";
+import { applySnapshot, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
 
@@ -27,6 +29,7 @@ afterEach(() => {
   cleanup();
   Reflect.deleteProperty(SVGElement.prototype, "getBBox");
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const settings = () => screen.getByRole("button", { name: "Settings" });
@@ -50,6 +53,20 @@ const expectProjectChat = async (name: string) => {
 const expectCakeChat = async () => {
   expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
 };
+
+async function selectProjectSession(
+  fixture: ReturnType<typeof renderAppShellNavigation>,
+  sessionId: string,
+) {
+  await fixture.selectSession(sessionId);
+  await waitFor(() =>
+    expect(fixture.root.appShellStore.activeConversation).toEqual({
+      kind: "project-session",
+      sessionId,
+    }),
+  );
+  await screen.findByRole("combobox", { name: "Message" });
+}
 
 // The artifact browser exposes the shell's conversation history; workbench Back/Forward
 // first traverses pane-local history (covered by project-navigation/workbench workflows).
@@ -90,6 +107,174 @@ describe("App shell navigation workflow", () => {
       else await expectProjectChat("beta");
     },
   );
+
+  it.each([false, true])(
+    "resolving the selected Project Session opens its local Project Chat, not global or history (prior visit: %s)",
+    async (priorVisit) => {
+      // Virtuoso uses the custom scroll parent’s geometry even with its mock viewport.
+      vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(900);
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 900,
+        bottom: 900,
+        width: 900,
+        height: 900,
+        toJSON() {},
+      });
+      const resolve = vi.fn<Client["projectSessions"]["resolve"]>(async () => undefined);
+      const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+        TurnId.make("10000000-0000-4000-8000-000000000001"),
+      );
+      using fixture = renderAppShellNavigation(
+        { projectSessions: { resolve }, sessionChats: { prompt } },
+        { transcriptViewport: true },
+      );
+      const localId = `project-chat:${"b".repeat(64)}`;
+      act(() =>
+        applySnapshot(fixture.models.cakeChatCatalog, {
+          loaded: true,
+          sessions: [
+            ...(toSnapshot(fixture.models.cakeChatCatalog).sessions ?? []),
+            {
+              ...toSnapshot(fixture.models.cakeChatCatalog).sessions?.[0],
+              sessionId: localId,
+              title: "beta",
+              projectPath: "/beta",
+            },
+          ],
+        }),
+      );
+      const local = fixture.root.cakeChatCollectionStore.registry.load(localId);
+      const global = fixture.root.cakeChatCollectionStore.registry.find(CAKE_CHAT_SESSION_ID)!;
+      act(() => {
+        global.conversationSessionStore.composerStore.draftStore.setText("Global draft");
+        local.conversationSessionStore.composerStore.draftStore.setText("Project draft");
+      });
+      await fixture.publishCakeChatProjection(
+        localId,
+        [
+          {
+            id: "local-history",
+            kind: "text",
+            role: "assistant",
+            text: "Local project history",
+            status: "complete",
+          },
+        ],
+        "Snapshot",
+      );
+      if (priorVisit) {
+        await selectProjectSession(fixture, "alpha");
+        await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "Alpha draft");
+      }
+      await selectProjectSession(fixture, "beta");
+      await fixture.showSessions();
+      await fixture.user.click(screen.getByRole("button", { name: "Resolve beta conversation" }));
+      await waitFor(() =>
+        expect(fixture.root.appShellStore.activeConversation).toEqual({
+          kind: "cake-chat",
+          sessionId: localId,
+        }),
+      );
+      expect(resolve).toHaveBeenCalledWith(
+        { sessionId: "beta", workingDirectory: "/beta", userInitiated: true },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(
+        within(screen.getByRole("navigation", { name: "Conversation breadcrumb" }))
+          .getByRole("button", { name: "beta" })
+          .getAttribute("aria-current"),
+      ).toBe("page");
+      expect(
+        document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+      ).toBe(localId);
+      expect(cakeChatButton().getAttribute("aria-current")).not.toBe("page");
+      expect(screen.queryByTestId("resolved-session-notice")).toBeNull();
+      expect(await screen.findByText("Local project history")).toBeDefined();
+      const composer = screen.getByRole("combobox", { name: "Message Project Chat" });
+      expect(composer).toHaveProperty("value", "Project draft");
+      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+      expect(prompt).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: localId, text: "Project draft" }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(global.conversationSessionStore.composerStore.draftStore.text).toBe("Global draft");
+      await fixture.publishResolved("beta");
+      await selectProjectSession(fixture, "beta");
+      expect(fixture.root.appShellStore.activeConversation).toEqual({
+        kind: "project-session",
+        sessionId: "beta",
+      });
+      expect(
+        screen.getByRole("navigation", { name: "Conversation breadcrumb" }).textContent,
+      ).toContain("beta conversation");
+      expect(screen.getByTestId("resolved-session-notice")).toBeDefined();
+      expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
+      expect(resolve).toHaveBeenCalledOnce();
+      if (priorVisit) {
+        await selectProjectSession(fixture, "alpha");
+        expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty(
+          "value",
+          "Alpha draft",
+        );
+      }
+    },
+  );
+
+  it.each(["alpha", "cake-chat"])(
+    "resolving a background session retains the current %s view and draft",
+    async (view) => {
+      const resolve = vi.fn<Client["projectSessions"]["resolve"]>(async () => undefined);
+      using fixture = renderAppShellNavigation({ projectSessions: { resolve } });
+      await selectProjectSession(fixture, "beta");
+      await selectProjectSession(fixture, "alpha");
+      if (view === "cake-chat") await fixture.user.click(cakeChatButton());
+      const composerName = view === "cake-chat" ? "Message Cake Chat" : "Message";
+      await fixture.user.type(
+        screen.getByRole("combobox", { name: composerName }),
+        "Keep this draft",
+      );
+      const selected = fixture.root.appShellStore.activeConversation;
+      await act(async () => fixture.root.sidebarStore.setSessionResolved("beta", true));
+      await fixture.publishResolved("beta");
+      expect(resolve).toHaveBeenCalledOnce();
+      expect(fixture.root.appShellStore.activeConversation).toEqual(selected);
+      expect(
+        document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+      ).toBe(selected?.sessionId);
+      expect(screen.getByRole("combobox", { name: composerName })).toHaveProperty(
+        "value",
+        "Keep this draft",
+      );
+    },
+  );
+
+  it("does not redirect navigation made while selected-session resolution is pending", async () => {
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    using fixture = renderAppShellNavigation({ projectSessions: { resolve: () => pending } });
+    await selectProjectSession(fixture, "beta");
+    let resolving!: Promise<boolean>;
+    act(() => {
+      resolving = fixture.root.sessionRetirementStore.setProjectSessionResolved("beta", true);
+    });
+    await selectProjectSession(fixture, "alpha");
+    await act(async () => {
+      finish();
+      await resolving;
+    });
+    expect(fixture.root.appShellStore.activeConversation).toEqual({
+      kind: "project-session",
+      sessionId: "alpha",
+    });
+    await expectProjectChat("alpha");
+  });
 
   it("traverses project and Cake Chat visits without recording reselections and truncates a divergent forward branch", async () => {
     const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);

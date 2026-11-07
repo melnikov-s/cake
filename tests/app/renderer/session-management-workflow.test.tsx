@@ -64,6 +64,16 @@ async function renderManagement(
     projects: [projectRecord({ path: projectPath, name: "Cake", workflow })],
   });
   const { root } = fixture;
+  applySnapshot(fixture.models.cakeChatCatalog, {
+    loaded: true,
+    sessions: [
+      {
+        sessionId: `project-chat:${"c".repeat(64)}`,
+        title: "Project Chat",
+        projectPath: projectPath,
+      },
+    ],
+  });
   root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded(projectPath);
   await root.sessionRegistry.pendingSessions.refreshSavedDrafts();
   const pending = options.pendingSessionId
@@ -102,6 +112,7 @@ async function renderManagement(
     </StoreProvider>,
   );
   return {
+    root,
     user: userEvent.setup(),
     async publishSessions(sessions: SessionSummaryFixture[]) {
       await act(async () =>
@@ -191,13 +202,12 @@ describe("Session management workflow", () => {
       ),
     );
     await waitFor(() =>
-      expect(
-        region()
-          .getByText("other")
-          .closest("[data-session-id]")
-          ?.getAttribute("data-navigation-active"),
-      ).toBe("true"),
+      expect(fixture.root.appShellStore.activeConversation).toEqual({
+        kind: "cake-chat",
+        sessionId: `project-chat:${"c".repeat(64)}`,
+      }),
     );
+    expect(fixture.root.sessionRegistry.findSession("child")).toBeUndefined();
     expect(
       await screen.findByText("Sessions resolved; cleanup failed for /child-tree: Checkout busy", {
         selector: "span",

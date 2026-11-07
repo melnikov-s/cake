@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { applySnapshot } from "r-state-tree";
 import type { Client } from "../../../src/renderer/client/Client";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
@@ -408,6 +409,35 @@ describe("Workspace Sessions navigation workflow", () => {
     await fixture.showSessions(true);
     await fixture.user.click(await screen.findByRole("button", { name: "Restore Saved plan" }));
     await waitFor(() => expect(drafts.records.get("draft")?.resolved).toBe(false));
+    expect(open).not.toHaveBeenCalled();
+
+    await act(async () =>
+      applySnapshot(fixture.models.cakeChatCatalog, {
+        loaded: true,
+        sessions: [
+          {
+            sessionId: `project-chat:${"c".repeat(64)}`,
+            title: "Project Chat",
+            projectPath: "/cake",
+          },
+        ],
+      }),
+    );
+    await fixture.selectSession("draft");
+    expect(await screen.findByRole("button", { name: "Activate draft" })).toBeDefined();
+    expect(fixture.root.sessionRegistry.pendingSessions.savedRecord("draft")?.text).toBe("Later");
+    await fixture.showSessions();
+    await fixture.user.click(screen.getByRole("button", { name: "Resolve Saved plan" }));
+    await waitFor(() =>
+      expect(fixture.root.appShellStore.activeConversation).toEqual({
+        kind: "cake-chat",
+        sessionId: `project-chat:${"c".repeat(64)}`,
+      }),
+    );
+    expect(drafts.records.get("draft")).toMatchObject({ resolved: true, text: "Later" });
+    await fixture.selectSession("draft");
+    expect(await screen.findByRole("button", { name: "Activate draft" })).toBeDefined();
+    expect(fixture.root.sessionRegistry.pendingSessions.savedRecord("draft")?.text).toBe("Later");
     expect(open).not.toHaveBeenCalled();
   });
   it("renders live waiting/running/failure facts and worktree lifecycle metadata without truncating titles", async () => {

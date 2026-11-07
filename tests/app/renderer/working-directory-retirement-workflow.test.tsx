@@ -2,6 +2,7 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
+import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ResolutionCleanupFailed } from "../../../src/contracts/project-sessions/project-session-resolution";
 import { WorkbenchErrorNotice } from "./workbench-error-notice";
@@ -91,6 +92,16 @@ function renderRetirement(
     fixture.root.sessionLayoutStore.ensureSession(id);
   }
   const { root } = fixture;
+  applySnapshot(fixture.models.cakeChatCatalog, {
+    loaded: true,
+    sessions: [
+      {
+        sessionId: `project-chat:${"c".repeat(64)}`,
+        title: "Project Chat",
+        projectPath: "/project",
+      },
+    ],
+  });
   const view = render(
     <StoreProvider store={root}>
       <ConversationNavigator projectPath="/project" />
@@ -114,6 +125,7 @@ function renderRetirement(
     </StoreProvider>,
   );
   return {
+    root,
     user: userEvent.setup(),
     inspect,
     close,
@@ -160,12 +172,10 @@ describe("Working Directory retirement workflow", () => {
       expect.stringContaining("cleanup failed for /one: Checkout busy"),
     );
     await waitFor(() =>
-      expect(
-        screen
-          .getByText("Session two")
-          .closest("[data-session-id]")
-          ?.getAttribute("data-navigation-active"),
-      ).toBe("true"),
+      expect(fixture.root.appShellStore.activeConversation).toEqual({
+        kind: "cake-chat",
+        sessionId: `project-chat:${"c".repeat(64)}`,
+      }),
     );
     expect(fixture.resolve).toHaveBeenCalledOnce();
   });

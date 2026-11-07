@@ -265,12 +265,11 @@ export class ConversationNavigatorStore extends Store<{
     const projection = this.props.projection;
     const session = this.props.catalog.find(sessionId);
     if (session) {
-      if (session.resolved) return [];
       const parentId = session.familyParentSessionId;
       const familyChild = Boolean(parentId && parentId !== sessionId);
       const parent = familyChild ? this.props.catalog.find(parentId!) : undefined;
       const ancestors =
-        parent && parent.projectPath === session.projectPath && !parent.resolved
+        parent && parent.projectPath === session.projectPath
           ? this.sessionLineage(parent.sessionId)
           : this.homeLineage(session.projectPath);
       return [
