@@ -8,7 +8,7 @@ export function ToolbarGroup({ label, children }: { label: string; children: Rea
       <div
         role="group"
         aria-label={label}
-        className="flex shrink-0 items-center gap-1 rounded-lg border border-border/65 bg-muted/30 p-1"
+        className="flex shrink-0 items-center gap-1 rounded-lg border border-border/65 bg-muted/30 px-1"
       >
         {children}
       </div>

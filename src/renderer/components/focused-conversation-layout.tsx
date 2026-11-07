@@ -64,7 +64,6 @@ export const FocusedConversationLayout = observer(function FocusedConversationLa
             </strong>
           )
         }
-        actionTitle={renderTitle ? title(sessionId) : undefined}
       >
         {session && renderHeader(session)}
       </WorkspaceHeader>

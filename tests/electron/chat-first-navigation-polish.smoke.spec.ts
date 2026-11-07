@@ -87,6 +87,9 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
     await expectTitlebarAlignment(application, page);
     const workspaceControlBounds = async () => {
       const tools = page.getByRole("group", { name: "Workspace tools", exact: true });
+      const titleBarHeight = await tools.evaluate((element) =>
+        Number.parseFloat(getComputedStyle(element.closest("header")!).height),
+      );
       return Promise.all(
         [
           tools,
@@ -94,7 +97,10 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
           tools.getByRole("button", { name: "Open VS Code", exact: true }),
           tools.getByRole("button", { name: "Open Browser Mode", exact: true }),
           tools.getByRole("button", { name: "Terminal", exact: true }),
-        ].map((control) => control.boundingBox()),
+        ].map(async (control) => {
+          const box = await control.boundingBox();
+          return box && { ...box, y: box.y - titleBarHeight / 2 };
+        }),
       );
     };
     const chatControlBounds = await workspaceControlBounds();

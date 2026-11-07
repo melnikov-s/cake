@@ -212,7 +212,7 @@ for (const state of ["default", "project", "reference"]) {
       await source.focus();
       await expect(source).toBeFocused();
       await source.press("Enter");
-      await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText(
+      await expect(page.locator('[data-slot="workspace-title"] [aria-current="page"]')).toHaveText(
         "Add and globally install manual post-mortem skill",
       );
       await expect(page.getByText("Install the skill.", { exact: true })).toBeVisible();

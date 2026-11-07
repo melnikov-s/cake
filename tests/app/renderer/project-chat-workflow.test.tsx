@@ -914,7 +914,7 @@ it("keeps the destination selected and accepts a draft while its authority has n
   );
 });
 
-it("uses each registered project name for its breadcrumb, action title and home navigation row", async () => {
+it("uses each registered project name for its breadcrumb, header and home navigation row", async () => {
   using f = await fixture(undefined, [
     projectRecord({ path: "/zombies", name: "Orchard" }),
     projectRecord({ path: "/finance", name: "Ledger" }),
@@ -928,9 +928,9 @@ it("uses each registered project name for its breadcrumb, action title and home 
     ]);
     expect(breadcrumb.getByRole("button", { name }).getAttribute("aria-current")).toBe("page");
     expect(breadcrumb.queryByRole("button", { name: "Project Chat" })).toBeNull();
-    expect(document.querySelector('[data-slot="workspace-actions"] strong')?.textContent).toBe(
-      name,
-    );
+    expect(
+      document.querySelector('[data-slot="workspace-title"] [aria-current="page"]')?.textContent,
+    ).toBe(name);
     const open = screen.queryByRole("button", { name: "Open Workspace" });
     if (open) await f.user.click(open);
     const workspace = within(screen.getByRole("complementary", { name: "Workspace" }));

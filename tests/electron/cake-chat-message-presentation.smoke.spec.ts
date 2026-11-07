@@ -638,7 +638,7 @@ for (const [delivery, theme] of [
         .getByRole("link", { name: "Detailed delegated review", exact: true })
         .click();
       await expect(sourceFullscreen).toHaveCount(0);
-      await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText(
+      await expect(page.locator('[data-slot="workspace-title"] [aria-current="page"]')).toHaveText(
         "Detailed delegated review",
       );
       await expect(page.getByRole("heading", { name: "Original detailed findings" })).toBeVisible();

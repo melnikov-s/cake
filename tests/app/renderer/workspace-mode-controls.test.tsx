@@ -282,7 +282,7 @@ describe("app.state visible workspace metadata", () => {
 });
 
 describe("Workspace mode navigation", () => {
-  it("keeps the same header rows and control slots through Main, Browser and VS Code", async () => {
+  it("keeps one shared header row and control slots through Main, Browser and VS Code", async () => {
     using fixture = renderEmbeddedEditor({
       vscode: { open: async () => editorLease("a") },
       browser: {
@@ -306,8 +306,16 @@ describe("Workspace mode navigation", () => {
       expect(chatSlot.classList.contains("size-7")).toBe(true);
       expect(chatSlot.classList.contains("[@media(pointer:coarse)]:size-11")).toBe(true);
       expect(actions.classList.contains("overflow-x-auto")).toBe(true);
-      expect(actions.classList.contains("justify-end")).toBe(true);
-      expect(header.firstElementChild!.classList.contains("min-h-workspace-title-bar")).toBe(true);
+      expect(actions.classList.contains("shrink-0")).toBe(true);
+      expect(header.classList.contains("h-title-bar")).toBe(true);
+      expect(header.classList.contains("flex-col")).toBe(false);
+      expect(header.classList.contains("border-b")).toBe(true);
+      expect(actions.querySelector("strong")).toBeNull();
+      const breadcrumb = within(header).getByRole("navigation", {
+        name: "Conversation breadcrumb",
+      });
+      expect(breadcrumb.classList.contains("flex-wrap")).toBe(false);
+      expect(breadcrumb.classList.contains("overflow-x-auto")).toBe(true);
       return {
         header: header.className,
         titleRow: header.firstElementChild!.className,

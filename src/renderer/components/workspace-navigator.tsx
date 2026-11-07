@@ -17,7 +17,7 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
       aria-label="Workspace"
       className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l border-border/70 bg-sidebar text-sidebar-foreground select-none"
     >
-      <header className="flex h-title-bar shrink-0 items-center gap-1 pl-2 pr-11">
+      <header className="box-content flex h-title-bar shrink-0 items-center gap-1 border-b border-border/65 pl-2 pr-11">
         <SegmentedControlGroup className="min-w-0 flex-1" aria-label="Workspace content" size="sm">
           <SegmentedControlButton
             active={navigator.mode === "todos"}

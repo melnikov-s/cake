@@ -67,7 +67,9 @@ for (const theme of ["dark", "light"] as const) {
         "aria-current",
         "page",
       );
-      await expect(page.locator('[data-slot="workspace-actions"] strong')).toHaveText("cake");
+      await expect(page.locator('[data-slot="workspace-title"] [aria-current="page"]')).toHaveText(
+        "cake",
+      );
       const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
       await expect(rail.getByRole("button", { name: /^(Open|Close) Workspace$/ })).toHaveCount(0);
       const toggle = page.locator('[data-slot="shell-workspace-toggle"]');

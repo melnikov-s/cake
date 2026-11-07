@@ -25,10 +25,10 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
         (node.target.kind !== "cake-chat" || node.target.sessionId !== CAKE_CHAT_SESSION_ID),
     );
   return (
-    <div className="flex w-full min-w-0 items-start py-[calc((var(--title-bar-height)-24px)/2)]">
+    <div className="flex h-full w-full min-w-0 items-center">
       <nav
         aria-label="Conversation breadcrumb"
-        className="flex min-w-0 flex-1 flex-wrap items-center gap-x-0.5 gap-y-1 text-xs leading-5"
+        className="flex h-full min-w-0 flex-1 items-center gap-x-0.5 overflow-x-auto text-xs leading-5 [&>*]:shrink-0"
       >
         <Button
           variant="ghost"
@@ -71,7 +71,7 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
               variant="ghost"
               size="sm"
               className={cn(
-                "h-auto min-h-6 max-w-full whitespace-normal break-words px-1 py-0.5 text-left text-xs font-normal text-muted-foreground [app-region:no-drag]",
+                "h-6 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]",
                 index === lineage.length - 1 && "font-medium text-foreground",
               )}
               title={node.title}

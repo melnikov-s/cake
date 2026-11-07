@@ -3503,6 +3503,8 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
         )
         .toBe(true);
     }
+    if (state.startsWith("vscode"))
+      await page.waitForFunction(() => document.documentElement.dataset.titleBar === "vscode");
     if (state === "terminal") {
       await page.getByRole("button", { name: "Terminal", exact: true }).click();
       await expect(page.locator('section[aria-label="Terminal"]')).toHaveAttribute(
@@ -3516,6 +3518,52 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
     await page.mouse.move(700, 600);
     // Let layout-driven native view bounds and traffic-light positions settle.
     await page.waitForTimeout(500);
+    if (state !== "terminal") {
+      const geometry = await page.locator('[data-slot="workspace-header"]').evaluate((header) => {
+        const box = header.getBoundingClientRect();
+        const titleBarHeight = Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue("--title-bar-height"),
+        );
+        const actions = header.querySelector('[data-slot="workspace-actions"]')!;
+        const title = header.querySelector('[data-slot="workspace-title"]')!;
+        const navigator = document.querySelector('[data-slot="workspace-navigator"] > header');
+        return {
+          titleBarHeight,
+          headerHeight: box.height,
+          border: getComputedStyle(header).borderBottomWidth,
+          titleCenter: title.getBoundingClientRect().y + title.getBoundingClientRect().height / 2,
+          actionsCenter:
+            actions.getBoundingClientRect().y + actions.getBoundingClientRect().height / 2,
+          navigatorBottom: navigator?.getBoundingClientRect().bottom,
+          headerBottom: box.bottom,
+          buttonsContained: [...actions.querySelectorAll("button")].every((button) => {
+            const b = button.getBoundingClientRect();
+            return b.top >= box.top && b.bottom <= box.bottom;
+          }),
+        };
+      });
+      expect(geometry.headerHeight).toBe(geometry.titleBarHeight + 1);
+      expect(geometry.border).toBe("1px");
+      expect(geometry.titleCenter).toBe(geometry.titleBarHeight / 2);
+      expect(geometry.actionsCenter).toBe(geometry.titleBarHeight / 2);
+      expect(geometry.buttonsContained).toBe(true);
+      if (geometry.navigatorBottom !== undefined)
+        expect(geometry.navigatorBottom).toBe(geometry.headerBottom);
+      let nativeCenter: number | undefined;
+      if (application && process.platform === "darwin") {
+        nativeCenter = await application.evaluate(({ BrowserWindow }) => {
+          const lights = BrowserWindow.getAllWindows()[0]!.getWindowButtonPosition();
+          if (!lights) throw new Error("Native traffic-light position is unavailable");
+          return lights.y + 7;
+        });
+        expect(nativeCenter).toBe(geometry.titleBarHeight / 2);
+      }
+      await expect(page.locator('[data-slot="window-controls-drag-region"]')).toHaveCSS(
+        "-webkit-app-region",
+        "drag",
+      );
+      console.log("TITLE_BAR_GEOMETRY", JSON.stringify({ ...geometry, nativeCenter }));
+    }
   },
   region: (page) => page.locator("body"),
 };
@@ -4145,7 +4193,9 @@ function numberedIconButtonsScenario(todoCount: number): VisualCaptureScenario {
       await assistantMarkdownCode.prepare(page, "default");
       await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
       const header = page.locator('[data-slot="workspace-header"]');
-      await expect(header.locator("strong")).toContainText("Cake Chat");
+      await expect(
+        header.locator('[data-slot="workspace-title"] [aria-current="page"]'),
+      ).toContainText("Cake Chat");
       const artifact = header.getByRole("button", { name: "4 artifacts", exact: true });
       const todo = header.getByRole("button", { name: "To-do", exact: true });
       const chats = header.getByRole("button", { name: "Side chats, 1 open", exact: true });
