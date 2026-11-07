@@ -22,7 +22,7 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
           <SegmentedControlButton
             active={navigator.mode === "todos"}
             onClick={() => navigator.show("todos")}
-            className="flex-1 gap-1.5"
+            className="shrink-0 gap-1.5 whitespace-nowrap"
             size="sm"
           >
             To-dos{" "}
@@ -33,12 +33,13 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
           <SegmentedControlButton
             active={navigator.mode === "sessions"}
             onClick={() => navigator.show("sessions")}
-            aria-label={`Sessions · ${sessions.running} running`}
-            title={`${sessions.running} running · ${sessions.total} total in ${navigator.projectPath ? "this project" : "Cake Chat"} (including side chats and subagents)`}
+            aria-label={`Sessions · ${sessions.running} running · ${sessions.unread} unread`}
+            title={`${sessions.running} running · ${sessions.unread} unread · ${sessions.total} total in ${navigator.projectPath ? "this project" : "Cake Chat"}`}
             className="min-w-0 flex-1 gap-1.5 whitespace-nowrap"
             size="sm"
           >
-            Sessions <ActivityCount count={sessions.running} />
+            <span className="truncate">Sessions</span> <ActivityCount count={sessions.running} />
+            <ActivityCount kind="unread" count={sessions.unread} />
           </SegmentedControlButton>
         </SegmentedControlGroup>
       </header>

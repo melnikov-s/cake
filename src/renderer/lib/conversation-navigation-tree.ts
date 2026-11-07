@@ -50,6 +50,7 @@ export interface ConversationNavigationTree {
   readonly byKey: ReadonlyMap<string, ConversationNavigationNode>;
   readonly total: number;
   readonly running: number;
+  readonly unread: number;
 }
 export interface ConversationNavigationInput {
   readonly projectPath: string | undefined;
@@ -88,6 +89,8 @@ type MutableNode = Omit<
   "children" | "parentKey" | "relationship" | "label"
 > & {
   children: MutableNode[];
+  /** Canonical own read state, independent of activity display precedence. */
+  unread: boolean;
   parentKey: string | undefined;
   relationship: ConversationRelationship;
   label: ConversationNavigationNode["label"];
@@ -127,6 +130,7 @@ export function buildConversationNavigationTree(
       target: { kind: "cake-chat", sessionId: homeId },
       parentKey: undefined,
       modifiedAt: home?.modifiedAt ?? "",
+      unread: home?.unread ?? false,
       activity: running ? "running" : home?.unread ? "unread" : undefined,
       running,
       children: [],
@@ -150,6 +154,7 @@ export function buildConversationNavigationTree(
       target: { kind: "project-session", sessionId: session.sessionId },
       parentKey: familyChild ? conversationNavigationKey(parentId!) : homeKey,
       modifiedAt: session.modifiedAt,
+      unread: session.unread,
       running,
       activity: running
         ? "running"
@@ -181,7 +186,9 @@ export function buildConversationNavigationTree(
       }
     }
   }
+  let unread = 0;
   const count = (node: MutableNode): number => {
+    unread += Number(node.unread);
     node.children.sort((a, b) =>
       a.order !== undefined && b.order !== undefined
         ? a.order - b.order
@@ -194,7 +201,7 @@ export function buildConversationNavigationTree(
     return node.children.reduce((sum, child) => sum + count(child), Number(node.running));
   };
   const running = roots.reduce((sum, node) => sum + count(node), 0);
-  return { roots, byKey, total: byKey.size, running };
+  return { roots, byKey, total: byKey.size, running, unread };
 }
 
 export function conversationNavigationLineage(

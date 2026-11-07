@@ -61,7 +61,7 @@ const sessionsTab = () =>
 
 function expectCount(count: number, visible = String(count)) {
   const tab = sessionsTab();
-  expect(tab.getAttribute("aria-label")).toBe(`Sessions · ${count} running`);
+  expect(tab.getAttribute("aria-label")).toBe(`Sessions · ${count} running · 0 unread`);
   expect(tab.textContent).toBe(`Sessions ${visible}`);
   expect(tab.getAttribute("title")).toContain(`${count} running ·`);
   expect(within(tab).getByRole("img", { name: `${count} running` })).toBeTruthy();

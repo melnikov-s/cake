@@ -87,6 +87,7 @@ export function createChatFirstNavigationScenario(
     states: [
       "project-todos",
       "sessions",
+      "sessions-unread",
       "sessions-collapsed",
       "search",
       "deep-worker",
@@ -695,7 +696,7 @@ export function createChatFirstNavigationScenario(
           ).toHaveCount(3);
           await page.keyboard.press("Escape");
           runningStarted = true;
-          if (state === "sessions" || state === "rail-activity") {
+          if (state === "sessions" || state === "sessions-unread" || state === "rail-activity") {
             await rail
               .getByRole("button", { name: "Open Project Chat for cake", exact: true })
               .click();
@@ -712,7 +713,30 @@ export function createChatFirstNavigationScenario(
           const expand = tree.getByRole("button", { name: `Expand ${title}`, exact: true });
           if (await expand.count()) await expand.click();
         }
-        if (state === "sessions-collapsed") {
+        if (state === "sessions-unread") {
+          if (!application) throw new Error("Unread capture requires isolated Electron");
+          // Replace only the native popup selection; product unread mutation and catalog events stay real.
+          await application.evaluate(({ Menu }) => {
+            const build = Menu.buildFromTemplate.bind(Menu);
+            Menu.buildFromTemplate = (template) => {
+              const menu = build(template);
+              const unread = menu.items.find((item) => item.label === "Mark as Unread");
+              if (unread) {
+                Menu.buildFromTemplate = build;
+                menu.popup = (options) => {
+                  unread.click(unread, options!.window!, { triggeredByAccelerator: false });
+                  options?.callback?.();
+                };
+              }
+              return menu;
+            };
+          });
+          await tree
+            .locator(`[data-session-id="${sessions[3][0]}"]`)
+            .getByRole("button", { name: /^Icon Placement Exploration(?: |$)/ })
+            .click({ button: "right" });
+          await expect(workspace.getByRole("img", { name: "1 unread", exact: true })).toBeVisible();
+        } else if (state === "sessions-collapsed") {
           await tree
             .getByRole("button", { name: "Collapse UI Layout Refactor", exact: true })
             .click();

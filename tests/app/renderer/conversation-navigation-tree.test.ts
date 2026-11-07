@@ -1,6 +1,7 @@
 import { applySnapshot } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { sessionSummary } from "./fixtures/catalog-fixtures";
 import { SubagentHandleId } from "../../../src/contracts/subagents/subagent-data";
 import { RootProjection } from "../../../src/renderer/models/RootProjection";
 import { conversationOwnedNavigation } from "../../../src/renderer/lib/conversation-owned-navigation";
@@ -45,6 +46,49 @@ function treeFixture(projectPath: string | undefined) {
 }
 
 describe("conversation navigation projection", () => {
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])(
+    "counts own running=%s and unread=%s independently, once per session ID",
+    (running, unread) => {
+      const session = sessionSummary({
+        sessionId: "parent",
+        projectPath: navigatorProjectPath,
+        running,
+        unread,
+        latestTurnOutcome: "failed",
+      });
+      const tree = buildConversationNavigationTree({
+        projectPath: navigatorProjectPath,
+        sessions: [session, session],
+        cakeChats: [],
+        conversations: [],
+      });
+      expect(tree.total).toBe(1);
+      expect(tree.running).toBe(Number(running));
+      expect(tree.unread).toBe(Number(unread));
+    },
+  );
+
+  it("counts descendant unread without marking its parent or Project Chat unread", () => {
+    using fixture = treeFixture(navigatorProjectPath);
+    fixture.models.sessionCatalog.find("deep-child")!.unread = true;
+    fixture.models.sessionCatalog.find("keyboard")!.running = true;
+    const tree = buildConversationNavigationTree({
+      projectPath: navigatorProjectPath,
+      sessions: fixture.models.sessionCatalog.sessions,
+      cakeChats: fixture.models.cakeChatCatalog.sessions,
+      conversations: [],
+    });
+    expect(tree.unread).toBe(1);
+    expect(tree.running).toBe(1);
+    expect(tree.byKey.get(conversationNavigationKey("layout"))!.activity).toBeUndefined();
+    expect(tree.byKey.get(conversationNavigationKey(navigatorHomeId))!.activity).toBeUndefined();
+  });
+
   it("keeps actual Project Sessions and family/context-fork children in Sessions, with private conversations in their owner's menu", () => {
     using fixture = treeFixture(navigatorProjectPath);
     const { tree } = fixture;
