@@ -93,7 +93,7 @@ export interface ChatStoreProps {
     draft: string,
     options?: { renderUserMessageAsMarkdown?: boolean },
   ): Promise<boolean | void | { turnId: string }>;
-  sendToSideChat?(): Promise<boolean>;
+  sendQueuedToSideChat?(id: string): Promise<void>;
   userMessagePresentation?: UserMessagePresentationCapabilities;
   activateDraft?(choice?: WorktreeDraftChoice): Promise<boolean>;
   sessionCreationChoice?(): WorktreeDraftChoice;
@@ -603,18 +603,32 @@ export class ChatStore extends Store<ChatStoreProps> {
     }
   }
 
-  get canSendToSideChat() {
-    return Boolean(this.props.sendToSideChat) && !this.isDraftSession && !this.editingMessage;
+  private divertingQueuedId: string | undefined;
+
+  canSendQueuedToSideChat(entry: QueuedPrompt) {
+    return (
+      Boolean(this.props.sendQueuedToSideChat) &&
+      !entry.pending &&
+      entry.editable !== false &&
+      !entry.command &&
+      !entry.provenance &&
+      !entry.automatic &&
+      !entry.scheduled
+    );
   }
 
-  async sendToSideChat() {
-    const send = this.props.sendToSideChat;
-    if (!send || !this.canSendToSideChat || !this.canSubmitValue(this.draft)) return false;
-    this.submittingLocally = true;
+  get sendingQueuedToSideChat() {
+    return this.divertingQueuedId !== undefined;
+  }
+
+  async sendQueuedToSideChat(id: string) {
+    const entry = this.queuedPrompts.find((item) => item.id === id);
+    if (!entry || !this.canSendQueuedToSideChat(entry) || this.sendingQueuedToSideChat) return;
+    this.divertingQueuedId = id;
     try {
-      return await send();
+      await this.props.sendQueuedToSideChat?.(id);
     } finally {
-      this.submittingLocally = false;
+      this.divertingQueuedId = undefined;
     }
   }
 

@@ -4,11 +4,7 @@ import {
   type CakeChatSideChatStartInput,
   type DiscussionAnchor,
 } from "../../contracts/discussion-sessions/discussion-session-data";
-import type {
-  Attachment,
-  Annotation,
-  ModelPreset,
-} from "../../contracts/conversations/session-contract";
+import type { Annotation, ModelPreset } from "../../contracts/conversations/session-contract";
 import type { Conversation } from "../models/Conversation";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import { describeError } from "../lib/error-details";
@@ -30,7 +26,7 @@ export interface CakeChatSideChatsStoreProps {
   /** Cake Chat's own model; a new side chat starts on it. */
   parent(): Conversation;
   parentBusy(): boolean;
-  sendToSideChat(text: string, attachments: Attachment[]): Promise<boolean>;
+  sendQueuedToSideChat(sessionId: string, partId: string): Promise<void>;
   configuration(): ChatConfigurationStore;
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
@@ -80,7 +76,7 @@ export class CakeChatSideChatsStore
         openModelPresetSettings: this.props.openModelPresetSettings,
 
         parentBusy: this.props.parentBusy,
-        sendToSideChat: this.props.sendToSideChat,
+        sendQueuedToSideChat: this.props.sendQueuedToSideChat,
         setResolved: (resolved) => this.resolveThread(thread.id, resolved),
       }),
     );
@@ -123,12 +119,13 @@ export class CakeChatSideChatsStore
     }
   }
 
-  /** Each composer activation starts a fresh native fork of the main conversation. */
-  async createComposerThread(text: string, attachments: Attachment[]) {
+  /** Divert one accepted inbox item, rooted at the main conversation's settled context. */
+  async createQueuedThread(sessionId: string, partId: string) {
     const parent = this.props.parent();
     const accepted = await this.client.cakeChats.startSideChat(
       {
-        parentSessionId: parent.sessionId,
+        parentSessionId: sessionId,
+        queuedPartId: partId,
         anchor: {
           path: `session:${parent.sessionId}`,
           view: "session",
@@ -139,8 +136,7 @@ export class CakeChatSideChatsStore
           contextAfter: "",
           diff: "",
         },
-        text,
-        attachments,
+        text: "",
       },
       { signal: this.signal },
     );

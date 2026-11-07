@@ -1,9 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
-import type {
-  Attachment,
-  ModelPreset,
-  UiPart,
-} from "../../contracts/conversations/session-contract";
+import type { ModelPreset, UiPart } from "../../contracts/conversations/session-contract";
 import type { ReviewThread } from "../models/ReviewThread";
 import type { Conversation } from "../models/Conversation";
 import { ConversationSessionStore } from "./ConversationSessionStore";
@@ -22,7 +18,7 @@ export interface DiscussionSessionStoreProps {
   setResolved(resolved: boolean): Promise<boolean>;
   /** Present only for user-created Project Chat / Cake Chat side chats. */
   parentBusy?(): boolean;
-  sendToSideChat?(text: string, attachments: Attachment[]): Promise<boolean>;
+  sendQueuedToSideChat?(sessionId: string, partId: string): Promise<void>;
 }
 
 /**
@@ -94,7 +90,6 @@ export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
       // before the first snapshot lands waits for it instead of racing it.
       ensureSessionActive: () => this.model.observedSnapshotRevision > 0 || Promise.resolve(true),
       composer: {
-        sendToSideChat: this.props.sendToSideChat,
         renameSession: async () => {
           throw new Error("Side chats cannot be renamed");
         },
@@ -106,6 +101,7 @@ export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
       },
       configuration: {},
       chat: {
+        sendQueuedToSideChat: this.props.sendQueuedToSideChat,
         estimatedContextUsage: true,
         history: this.history,
         commands: () => [],

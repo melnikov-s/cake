@@ -10,7 +10,7 @@ import type { ProjectSessionPresentationMode } from "../../contracts/project-ses
 import { EditorSelectionsStore } from "./EditorSelectionsStore";
 import { SessionPresentationContext } from "./context/SessionPresentationContext";
 import type { Conversation } from "../models/Conversation";
-import type { Attachment, ModelPreset } from "../../contracts/conversations/session-contract";
+import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { ConversationHistoryStore } from "./ConversationHistoryStore";
 import { ConversationSessionStore } from "./ConversationSessionStore";
@@ -193,7 +193,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       catalog: this.props.discussionCatalog,
       discussionSessionModel: this.props.discussionSessionModel,
       parent: () => this.model,
-      sendToSideChat: (text, attachments) => this.sendToSideChat(text, attachments),
+      sendQueuedToSideChat: (sessionId, partId) => this.sendQueuedToSideChat(sessionId, partId),
       parentBusy: () => {
         const chat = this.conversationSessionStore.chatStore;
         return chat.loading || chat.queuedPrompts.length > 0;
@@ -261,11 +261,10 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     return true;
   }
 
-  private async sendToSideChat(text: string, attachments: Attachment[]) {
-    const threadId = await this.sideChats.createComposerThread(text, attachments);
+  private async sendQueuedToSideChat(sessionId: string, partId: string) {
+    const threadId = await this.sideChats.createQueuedThread(sessionId, partId);
     this.pendingSideChatThreadId = threadId;
     this.openSideChat(threadId);
-    return true;
   }
 
   private async createSideChat(prompt: string) {
@@ -338,7 +337,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       ensureSessionActive: () => true,
       composer: {
         createSideChat: (prompt) => this.createSideChat(prompt),
-        sendToSideChat: (text, attachments) => this.sendToSideChat(text, attachments),
         scheduleMessage: async (sessionId, args) => {
           const scheduled = parseScheduledMessage(args);
           await this.client.scheduledMessages.schedule(
@@ -381,6 +379,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
           this.props.pendingSessions.conversation(this.sessionId)?.setConfiguration(configuration),
       },
       chat: {
+        sendQueuedToSideChat: (sessionId, partId) => this.sendQueuedToSideChat(sessionId, partId),
         contextUsage: true,
         history: this.history,
         commands: () => this.model.commands,

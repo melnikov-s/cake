@@ -2,6 +2,8 @@ import { toJsonValue } from "../../../src/utils/to-json-value";
 import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import assert from "node:assert/strict";
+import { AttachmentUploadError } from "../../../src/contracts/filesystem/attachment-uploads-errors";
+import { DurableChatError } from "../../../src/services/pi-durable/durable-chat-data";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
@@ -103,6 +105,7 @@ const makeLayer = (
   options: {
     readonly inspectSession?: CakeSessionRuntime["inspectSession"];
     readonly persistedSidecar?: boolean;
+    readonly queuedUser?: boolean;
     readonly cakeChat?: boolean;
     /** Cake Chat forks natively into this Durable conversation instead of refusing. */
     readonly durableFork?: number;
@@ -215,6 +218,27 @@ const makeLayer = (
           }),
       snapshot: async () => ({
         ...makeSnapshot(sessionId, sessionFile),
+        ...(mergeOptions.queuedUser && sessionId === CAKE_CHAT_SESSION_ID
+          ? {
+              parts: [
+                {
+                  id: "queued-user",
+                  kind: "text" as const,
+                  role: "user" as const,
+                  status: "complete" as const,
+                  deliveryState: "queued" as const,
+                  text: "Waiting",
+                  queuedInput: {
+                    itemId: "user",
+                    turnId: "user",
+                    text: "Waiting",
+                    renderUserMessageAsMarkdown: true,
+                    attachments: [attachmentReference],
+                  },
+                },
+              ],
+            }
+          : {}),
         streaming:
           mergeOptions.mergeBusy === (sessionId === CAKE_CHAT_SESSION_ID ? "parent" : "source"),
       }),
@@ -992,62 +1016,139 @@ describe("task Side Sessions", () => {
 });
 
 describe("Cake Chat side chats", () => {
-  it.effect(
-    "dispatches side-chat composers through a fresh settled main fork with attachments",
-    () => {
-      const fixture = makeLayer({ cakeChat: true, durableFork: 8 });
-      const forks: string[] = [];
-      const attachments = [{ kind: "text" as const, name: "Notes", text: "Keep this context" }];
+  it.effect.each([undefined, "grant", "handoff"] as const)(
+    "prepares queued handoff and forwards attachment access before transfer (%s)",
+    (failure) => {
+      const fixture = makeLayer({ cakeChat: true, durableFork: 8, queuedUser: true });
+      const events: string[] = [];
       return Effect.gen(function* () {
         yield* assembleCakeChat;
-        for (const source of [CAKE_CHAT_SESSION_ID, cakeChatSideChatSessionId(7)]) {
-          const accepted = yield* discussionSessions.startCakeChatSideChat(
+        const result = yield* discussionSessions
+          .startCakeChatSideChat(
             {
-              parentSessionId: source,
-              anchor: {
-                ...cakeChatAnchor,
-                view: "session",
-                entryId: undefined,
-                messageId: undefined,
-              },
-              text: "Separate question",
-              attachments,
+              parentSessionId: CAKE_CHAT_SESSION_ID,
+              queuedPartId: "queued-user",
+              anchor: { ...cakeChatAnchor, view: "session" },
+              text: "",
             },
             "/home",
-          );
-          assert.equal(accepted.thread.sidecarSessionId, cakeChatSideChatSessionId(8));
-        }
-        assert.deepEqual(forks, [CAKE_CHAT_SESSION_ID, CAKE_CHAT_SESSION_ID]);
+            12,
+          )
+          .pipe(Effect.result);
+        assert.equal(result._tag, failure ? "Failure" : "Success");
         assert.deepEqual(
-          fixture.createdRecords.map((record) => record.parentSessionId),
-          [CAKE_CHAT_SESSION_ID, CAKE_CHAT_SESSION_ID],
+          events,
+          failure === "grant" ? ["authorize", "grant"] : ["authorize", "grant", "handoff"],
         );
-        assert.deepEqual(fixture.prompts.at(-1)?.slice(0, 3), [
-          "Separate question",
-          "prompt",
-          [attachmentReference],
-        ]);
-        assert.deepEqual(fixture.isolatedInputs, [
-          { sessionId: cakeChatSideChatSessionId(8), attachments },
-          { sessionId: cakeChatSideChatSessionId(8), attachments },
-        ]);
+        assert.deepEqual(fixture.prompts, []);
+        assert.equal(fixture.rendererBindings.at(-1)?.sessionId, cakeChatSideChatSessionId(8));
+        assert.equal(fixture.rendererBindings.at(-1)?.connectionId, 12);
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
             fixture.layer,
             Layer.mock(CakeChatDurable, {
-              forkSideChat: (parent, entryId) =>
-                Effect.sync(() => {
-                  assert.equal(entryId, undefined);
-                  forks.push(parent);
-                  return cakeChatSideChatSessionId(8);
-                }),
+              forkSideChat: () => Effect.succeed(cakeChatSideChatSessionId(8)),
+              transferQueuedToSideChat: (parent, source, target, partId) => {
+                events.push("handoff");
+                assert.deepEqual(
+                  [parent, source, target, partId],
+                  [
+                    CAKE_CHAT_SESSION_ID,
+                    CAKE_CHAT_SESSION_ID,
+                    cakeChatSideChatSessionId(8),
+                    "queued-user",
+                  ],
+                );
+                return failure === "handoff"
+                  ? Effect.fail(
+                      new DurableChatError({ operation: "transfer", message: "Already consumed" }),
+                    )
+                  : Effect.succeed("10000000-0000-4000-8000-000000000009");
+              },
+            }),
+            Layer.mock(TaskInputStorage, {
+              isRecipient: () => Effect.succeed(false),
+              authorizeForward: (owner, refs, recipient) => {
+                events.push("authorize");
+                assert.deepEqual(
+                  [owner, refs, recipient],
+                  [CAKE_CHAT_SESSION_ID, [attachmentReference.id], cakeChatSideChatSessionId(8)],
+                );
+                return Effect.succeed(["forward-token"]);
+              },
+              grant: (recipient, refs) => {
+                events.push("grant");
+                assert.deepEqual(
+                  [recipient, refs],
+                  [cakeChatSideChatSessionId(8), ["forward-token"]],
+                );
+                return failure === "grant"
+                  ? Effect.fail(
+                      new AttachmentUploadError({ operation: "grant", message: "Grant failed" }),
+                    )
+                  : Effect.succeed([attachmentReference]);
+              },
             }),
           ),
         ),
       );
     },
   );
+
+  it.effect("keeps session-anchor starts rooted at the main conversation with attachments", () => {
+    const fixture = makeLayer({ cakeChat: true, durableFork: 8 });
+    const forks: string[] = [];
+    const attachments = [{ kind: "text" as const, name: "Notes", text: "Keep this context" }];
+    return Effect.gen(function* () {
+      yield* assembleCakeChat;
+      for (const source of [CAKE_CHAT_SESSION_ID, cakeChatSideChatSessionId(7)]) {
+        const accepted = yield* discussionSessions.startCakeChatSideChat(
+          {
+            parentSessionId: source,
+            anchor: {
+              ...cakeChatAnchor,
+              view: "session",
+              entryId: undefined,
+              messageId: undefined,
+            },
+            text: "Separate question",
+            attachments,
+          },
+          "/home",
+        );
+        assert.equal(accepted.thread.sidecarSessionId, cakeChatSideChatSessionId(8));
+      }
+      assert.deepEqual(forks, [CAKE_CHAT_SESSION_ID, CAKE_CHAT_SESSION_ID]);
+      assert.deepEqual(
+        fixture.createdRecords.map((record) => record.parentSessionId),
+        [CAKE_CHAT_SESSION_ID, CAKE_CHAT_SESSION_ID],
+      );
+      assert.deepEqual(fixture.prompts.at(-1)?.slice(0, 3), [
+        "Separate question",
+        "prompt",
+        [attachmentReference],
+      ]);
+      assert.deepEqual(fixture.isolatedInputs, [
+        { sessionId: cakeChatSideChatSessionId(8), attachments },
+        { sessionId: cakeChatSideChatSessionId(8), attachments },
+      ]);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          fixture.layer,
+          Layer.mock(CakeChatDurable, {
+            forkSideChat: (parent, entryId) =>
+              Effect.sync(() => {
+                assert.equal(entryId, undefined);
+                forks.push(parent);
+                return cakeChatSideChatSessionId(8);
+              }),
+          }),
+        ),
+      ),
+    );
+  });
 
   it.effect("forks Cake Chat natively instead of copying its conversation", () => {
     const fixture = makeLayer({ cakeChat: true, durableFork: 7 });

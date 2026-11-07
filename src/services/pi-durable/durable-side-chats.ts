@@ -70,6 +70,7 @@ import {
   withoutDurableSideChatNote,
 } from "./durable-input-presentation";
 
+import { transferDurableQueuedToSideChat } from "./durable-queued-side-chat";
 import { exportDurableSideChatHistory } from "./durable-side-chat-history";
 
 import { inspectDurableSideChatMessages } from "./durable-side-chat-messages";
@@ -97,6 +98,7 @@ export interface DurableSideChatHost {
 export interface DurableSideChats {
   /** Forks the main conversation after an anchored exchange, or its latest settled reply when omitted. */
   fork(entryId?: string): Promise<string>;
+  transferQueued(sourceSessionId: string, targetSessionId: string, partId: string): Promise<string>;
   /** Task fork from an explicit or latest settled reply, with an isolated execution binding. */
   forkTask(
     workingDirectory: string,
@@ -650,6 +652,23 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
   };
 
   return {
+    async transferQueued(sourceSessionId, targetSessionId, partId) {
+      const source =
+        sourceSessionId === (host.parentSessionId ?? CAKE_CHAT_SESSION_ID)
+          ? root
+          : (await resolve(sourceSessionId)).conversation;
+      const target = (await resolve(targetSessionId)).conversation;
+      return transferDurableQueuedToSideChat({
+        harness,
+        storage,
+        source,
+        target,
+        partId,
+        parentSessionId: host.parentSessionId ?? CAKE_CHAT_SESSION_ID,
+        targetSessionId,
+        todoContext: host.todoContext?.(),
+      });
+    },
     async inspectMessages(sessionId, query) {
       await resolve(sessionId);
       return inspectDurableSideChatMessages(storage, sessionId, query);

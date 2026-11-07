@@ -55,6 +55,7 @@ type ConfigurationCapabilities = Omit<
 >;
 
 interface ConversationChatCapabilities {
+  sendQueuedToSideChat?(sessionId: string, partId: string): Promise<void>;
   contextUsage?: boolean;
   estimatedContextUsage?: boolean;
   history?: ChatStoreProps["history"];
@@ -273,8 +274,14 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
           ? (entryId) => this.composerStore.beginEditMessage(entryId)
           : undefined,
       isDraftSession: capabilities.isDraftSession,
-      sendToSideChat: this.props.composer.sendToSideChat
-        ? () => this.composerStore.sendToSideChat()
+      sendQueuedToSideChat: capabilities.sendQueuedToSideChat
+        ? async (partId) => {
+            try {
+              await capabilities.sendQueuedToSideChat?.(this.sessionId, partId);
+            } catch (error) {
+              if (!this.signal.aborted) this.composerStore.reportError(error, "Queued message");
+            }
+          }
         : undefined,
       editingMessage: () => this.composerStore.editingMessage,
       abort: () => this.abort(),

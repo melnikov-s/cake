@@ -156,6 +156,8 @@ export interface DiscussionSessionStartInput extends Schema.Schema.Type<
  */
 export const CakeChatSideChatStartInput = Schema.Struct({
   parentSessionId: Schema.optionalKey(Schema.String),
+  /** Divert this existing inbox item instead of submitting text/attachments again. */
+  queuedPartId: Schema.optionalKey(boundedId),
   anchor: DiscussionAnchor,
   text: DiscussionSessionStartInput.fields.text,
   attachments: DiscussionSessionStartInput.fields.attachments,

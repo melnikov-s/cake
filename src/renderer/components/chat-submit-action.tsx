@@ -1,6 +1,6 @@
 import { observer } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
-import { ForkIcon, StopIcon } from "@/components/ui/icons";
+import { StopIcon } from "@/components/ui/icons";
 import { ComposerSubmitButton } from "@/components/ui/composer-submit-button";
 import type { ChatStore } from "../stores/ChatStore";
 
@@ -16,15 +16,6 @@ export const ChatSubmitAction = observer(function ChatSubmitAction({
 
   return (
     <>
-      {store.canSendToSideChat && (
-        <IconButton
-          tooltip="Send to side chat"
-          disabled={!store.canSubmitValue(store.draft)}
-          onClick={() => void store.sendToSideChat()}
-        >
-          <ForkIcon />
-        </IconButton>
-      )}
       {(activatingDraft || !store.loading || hasInput) && (
         <ComposerSubmitButton
           data-cake-hint-key="u"

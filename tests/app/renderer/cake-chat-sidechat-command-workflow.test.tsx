@@ -24,7 +24,13 @@ import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 function renderChat(
   sessionId: string,
-  options: { pending?: boolean; empty?: boolean; fail?: boolean; originalHistory?: boolean } = {},
+  options: {
+    pending?: boolean;
+    empty?: boolean;
+    fail?: boolean;
+    originalHistory?: boolean;
+    queued?: boolean;
+  } = {},
 ) {
   const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
     TurnId.make("10000000-0000-4000-8000-000000000002"),
@@ -54,8 +60,10 @@ function renderChat(
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
+  const handoff = Promise.withResolvers<void>();
   const startSideChat = vi.fn<Client["cakeChats"]["startSideChat"]>(async () => {
     if (options.fail) throw new Error("Side chat service unavailable");
+    if (options.queued) await handoff.promise;
     return { thread, turnId: TurnId.make("10000000-0000-4000-8000-000000000001") };
   });
   const fixture = createRendererStoreFixture({
@@ -83,6 +91,21 @@ function renderChat(
   if (options.pending) collection.pendingSessions.create(sessionId);
   collection.sessionLayoutStore.showSession(sessionId);
   fixture.root.navigationStore.selectCakeChat(sessionId);
+  const queuedPart = {
+    id: "queued-waiting",
+    kind: "text",
+    role: "user",
+    text: "Waiting question",
+    status: "complete",
+    deliveryState: "queued",
+    queuedInput: {
+      itemId: "10000000-0000-4000-8000-000000000003",
+      turnId: "10000000-0000-4000-8000-000000000003",
+      text: "Waiting question",
+      renderUserMessageAsMarkdown: true,
+      attachments: [{ kind: "text", name: "Notes", text: "Keep context" }],
+    },
+  };
   const snapshot: ConversationSnapshot = {
     sessionId,
     sessionFile: options.pending ? "" : "/chat.sqlite",
@@ -105,6 +128,7 @@ function renderChat(
             text: "Working now",
             status: "streaming",
           },
+          ...(options.queued ? [queuedPart] : []),
         ],
     models: [],
     model: { provider: "anthropic", id: "claude", name: "Claude" },
@@ -131,6 +155,29 @@ function renderChat(
     start,
     startSideChat,
     thread,
+    handoff,
+    chat,
+    queueSide() {
+      applyConversationSnapshot(
+        fixture.models.discussionConversation("sidecar-1", "/project", sessionId),
+        {
+          ...snapshot,
+          sessionId: "sidecar-1",
+          streaming: true,
+          parts: [queuedPart],
+        },
+      );
+    },
+    removeQueued() {
+      applyConversationUpdate(chat.model, {
+        _tag: "Snapshot",
+        revision: 2,
+        snapshot: {
+          ...snapshot,
+          parts: snapshot.parts.slice(0, -1),
+        },
+      });
+    },
     publish() {
       applyDiscussionCatalogUpdate(fixture.models.discussionCatalog(sessionId), sessionId, {
         _tag: "Snapshot",
@@ -197,28 +244,44 @@ describe.each([
   it("keeps ordinary Send in the busy conversation instead of automatically forwarding", async () => {
     using fixture = renderChat(sessionId);
     await fixture.user.type(screen.getByRole("combobox"), "Keep this here");
-    expect(screen.getByRole("button", { name: "Send to side chat" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Send to side chat" })).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(fixture.prompt).toHaveBeenCalledTimes(1));
     expect(fixture.prompt.mock.calls[0]![0]).toMatchObject({ sessionId, text: "Keep this here" });
     expect(fixture.startSideChat).not.toHaveBeenCalled();
   });
-  it("sends the composed text and attachments into a new main-rooted side chat, including from a side chat", async () => {
-    using fixture = renderChat(sessionId, { originalHistory: true });
+  it("sends only the selected admitted queue ID, keeps the draft, and opens the resulting side chat", async () => {
+    using fixture = renderChat(sessionId, { originalHistory: true, queued: true });
     const input = screen.getByRole<HTMLTextAreaElement>("combobox");
-    await fixture.user.click(input);
-    await fixture.user.paste("attachment line\n".repeat(100));
-    await fixture.user.type(input, "Separate question");
-    await fixture.user.click(screen.getByRole("button", { name: "Send to side chat" }));
+    await fixture.user.type(input, "Keep my draft");
+    expect(screen.queryByRole("button", { name: "Send to side chat" })).toBeNull();
+    const send = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Send to side chat: Waiting question",
+    });
+    await fixture.user.click(send);
+    expect(send.disabled).toBe(true);
+    await fixture.user.click(send);
     expect(fixture.startSideChat).toHaveBeenCalledTimes(1);
     expect(fixture.startSideChat.mock.calls[0]![0]).toMatchObject({
       parentSessionId: sessionId,
+      queuedPartId: "queued-waiting",
       anchor: { view: "session" },
-      text: "Separate question",
-      attachments: [{ kind: "text", text: "attachment line\n".repeat(100) }],
+      text: "",
     });
-    expect(input.value).toBe("");
-    act(() => fixture.publish());
+    expect(input.value).toBe("Keep my draft");
+    expect(
+      screen.getByRole("button", { name: "Send to side chat: Waiting question" }),
+    ).toBeDefined();
+    await act(async () => {
+      fixture.handoff.resolve();
+    });
+    act(() => {
+      fixture.removeQueued();
+      fixture.publish();
+    });
+    expect(
+      screen.queryByRole("button", { name: "Send to side chat: Waiting question" }),
+    ).toBeNull();
     const panel = await screen.findByRole("complementary", { name: "Side chat" });
     const history = await within(panel).findByRole("button", { name: "Original history" });
     expect(within(panel).queryByText("The main question")).toBeNull();
@@ -228,25 +291,35 @@ describe.each([
     expect(within(panel).getByText("The main answer")).toBeDefined();
     const sideInput = within(panel).getByRole("combobox");
     await fixture.user.type(sideInput, "Another separate question");
-    await fixture.user.click(within(panel).getByRole("button", { name: "Send to side chat" }));
+    expect(within(panel).queryByRole("button", { name: "Send to side chat" })).toBeNull();
+    act(() => fixture.queueSide());
+    await fixture.user.click(
+      within(panel).getByRole("button", { name: "Send to side chat: Waiting question" }),
+    );
     expect(fixture.startSideChat).toHaveBeenCalledTimes(2);
     expect(fixture.startSideChat.mock.calls[1]![0]).toMatchObject({
-      parentSessionId: sessionId,
-      anchor: { view: "session" },
-      text: "Another separate question",
+      parentSessionId: "sidecar-1",
+      queuedPartId: "queued-waiting",
+      text: "",
     });
     expect(fixture.prompt).not.toHaveBeenCalled();
     expect(fixture.start).not.toHaveBeenCalled();
   });
 
-  it("restores the text and supported attachments after failed side-chat creation, leaving ordinary send available", async () => {
-    using fixture = renderChat(sessionId, { fail: true });
+  it("retains the queued item and unrelated draft on failure, with a retryable error", async () => {
+    using fixture = renderChat(sessionId, { fail: true, queued: true });
     const input = screen.getByRole<HTMLTextAreaElement>("combobox");
     await fixture.user.click(input);
     await fixture.user.paste("attachment line\n".repeat(100));
     await fixture.user.type(input, "Keep my draft");
-    await fixture.user.click(screen.getByRole("button", { name: "Send to side chat" }));
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Send to side chat: Waiting question" }),
+    );
     expect(await screen.findByText("Side chat service unavailable")).toBeDefined();
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Send to side chat: Waiting question" })
+        .disabled,
+    ).toBe(false);
     expect(input.value).toBe("Keep my draft");
     expect(screen.getByRole("button", { name: /Remove.*Pasted text/ })).toBeDefined();
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Send" }).disabled).toBe(false);

@@ -581,7 +581,34 @@ export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChat
   function* (input: CakeChatSideChatStartInput, workingDirectory: string, connectionId?: number) {
     const sourceSessionId = input.parentSessionId ?? CAKE_CHAT_SESSION_ID;
     const parentSessionId = cakeChatSideChatParentId(sourceSessionId) ?? sourceSessionId;
-    yield* requirePrompt(input);
+    if (!input.queuedPartId) yield* requirePrompt(input);
+    const queuedPart = input.queuedPartId
+      ? yield* Effect.scoped(
+          Effect.gen(function* () {
+            const handle = yield* (yield* CakeSessionRuntimes).acquireSession(sourceSessionId);
+            const snapshot = yield* handle.snapshot();
+            const part = snapshot.parts.find((part) => part.id === input.queuedPartId);
+            if (
+              !part ||
+              part.kind !== "text" ||
+              part.role !== "user" ||
+              (part.deliveryState !== "queued" && part.deliveryState !== "steering") ||
+              !part.queuedInput ||
+              part.queuedInput.internal ||
+              part.queuedInput.command ||
+              part.crossSession ||
+              part.subagentReport ||
+              part.scheduled ||
+              part.agentSource
+            )
+              return yield* new DiscussionSessionError({
+                operation: "start",
+                message: "That queued user message is no longer available",
+              });
+            return part.queuedInput;
+          }),
+        ).pipe(asError("start"))
+      : undefined;
     const latest = input.anchor.view === "session";
     const messageId = input.anchor.messageId;
     if (!latest && (input.anchor.view !== "message" || !messageId))
@@ -627,7 +654,43 @@ export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChat
     const linked = yield* environment
       .linkSidecar(record, { sessionId: forked.sessionId })
       .pipe(asError("start"));
-    return yield* deliverFirstPrompt(linked, input, connectionId);
+    if (!input.queuedPartId || !queuedPart)
+      return yield* deliverFirstPrompt(linked, input, connectionId);
+    // Complete fallible setup before the inbox handoff. The original remains
+    // queued until Durable atomically places the new input and settles the old.
+    const prepared = yield* prepare(linked);
+    yield* bindSidecarRenderer(prepared.handle, connectionId);
+    const inputs = yield* TaskInputStorage;
+    const references = queuedPart.attachments.flatMap((attachment) =>
+      attachment.kind === "input" ? [attachment.id] : [],
+    );
+    if (references.length) {
+      const forwarded = yield* inputs
+        .authorizeForward(sourceSessionId, references, forked.sessionId)
+        .pipe(asError("start"));
+      yield* inputs.grant(forked.sessionId, forwarded).pipe(asError("start"));
+    }
+    yield* inheritTaskInputProtection(sourceSessionId, forked.sessionId).pipe(asError("start"));
+    const turnId = TurnId.make(
+      yield* (yield* CakeChatDurable)
+        .transferQueuedToSideChat(
+          parentSessionId,
+          sourceSessionId,
+          forked.sessionId,
+          input.queuedPartId,
+        )
+        .pipe(asError("start")),
+    );
+    // Once committed, catalog enrichment must not turn a successful
+    // handoff into a reported failure (which could invite a duplicate retry).
+    yield* environment
+      .refreshParentIndex(prepared.record)
+      .pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("Side-chat handoff catalog refresh failed", error),
+        ),
+      );
+    return { turnId, thread: projectThread(prepared.record) };
   },
 );
 

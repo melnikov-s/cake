@@ -55,6 +55,12 @@ export class CakeChatDurable extends Context.Service<
     readonly createSideChatRuntime: (
       options: CakeSessionRuntimeSetup,
     ) => Effect.Effect<CakeSessionRuntime, DurableChatError>;
+    readonly transferQueuedToSideChat: (
+      parentSessionId: string,
+      sourceSessionId: string,
+      targetSessionId: string,
+      partId: string,
+    ) => Effect.Effect<string, DurableChatError>;
     readonly forkSideChat: (
       parentSessionId: string,
       entryId?: string,
@@ -201,6 +207,12 @@ export const makeCakeChatDurableLive = (
           );
         },
       ),
+      transferQueuedToSideChat: (parentSessionId, sourceSessionId, targetSessionId, partId) =>
+        operation("transferQueuedToSideChat", async () => {
+          const runtime = live.get(parentSessionId);
+          if (!runtime) throw new Error("Open the main conversation before starting a side chat");
+          return runtime.sideChats.transferQueued(sourceSessionId, targetSessionId, partId);
+        }),
       forkSideChat: (parentSessionId, entryId) =>
         operation("forkSideChat", async () => {
           const runtime = live.get(parentSessionId);

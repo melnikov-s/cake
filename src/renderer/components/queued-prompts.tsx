@@ -14,6 +14,7 @@ import {
   ClockIcon,
   ContextIcon,
   EditIcon,
+  ForkIcon,
   RemoveIcon,
 } from "@/components/ui/icons";
 import { IconIndicator } from "@/components/ui/icon-indicator";
@@ -173,6 +174,16 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                                 <span className="@min-[24rem]/queue:hidden">Steer</span>
                               </Button>
                             )}
+                          {store.canSendQueuedToSideChat(entry) && (
+                            <IconButton
+                              tooltip="Send to side chat"
+                              ariaLabel={`Send to side chat: ${label}`}
+                              disabled={store.sendingQueuedToSideChat}
+                              onClick={() => void store.sendQueuedToSideChat(entry.id)}
+                            >
+                              <ForkIcon />
+                            </IconButton>
+                          )}
                           {entry.provenance ? (
                             <IconIndicator
                               label={

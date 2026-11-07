@@ -25,6 +25,7 @@ import {
   durableInputText,
 } from "../../../../src/services/pi-durable/durable-input-presentation";
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
+import { transferDurableQueuedToSideChat } from "../../../../src/services/pi-durable/durable-queued-side-chat";
 import { setDurableUserMessageMarkdown } from "../../../../src/services/pi-durable/durable-message-presentation";
 
 const context = BACKGROUND_CONTEXT;
@@ -118,6 +119,7 @@ async function fixture(kind: "root" | "side-chat", activeText = "Active") {
   return {
     harness,
     storage,
+    forkPoint: settled.answer,
     root,
     side,
     conversation,
@@ -148,6 +150,194 @@ const metadata: CrossSessionMessageMetadata = {
 };
 
 describe.each(["root", "side-chat"] as const)("Durable %s queue", (kind) => {
+  it("atomically hands off the complete payload once and prevents later parent execution", async () => {
+    const f = await fixture(kind);
+    const target = await f.root.fork(f.forkPoint, { ownership: { kind: "ownerless" } }, context);
+    const image = { type: "image" as const, data: "aW1hZ2U=", mimeType: "image/png" };
+    const content = [
+      {
+        type: "text" as const,
+        text: durableInputText(
+          "Divert me",
+          [
+            {
+              kind: "input",
+              id: "10000000-0000-4000-8000-000000000001",
+              name: "Notes",
+              mimeType: "text/plain",
+              byteLength: 10,
+            },
+            {
+              kind: "annotation",
+              annotations: [
+                {
+                  id: "10000000-0000-4000-8000-000000000002",
+                  messageId: "reply",
+                  selectedText: "Selected context",
+                  startOffset: 0,
+                  endOffset: 16,
+                  contextBefore: "",
+                  contextAfter: "",
+                },
+              ],
+            },
+          ],
+          true,
+        ),
+      },
+      image,
+    ];
+    const queued = await f.conversation.submit(
+      {
+        type: "input",
+        content,
+        requestId: "divert",
+        whenBusy: "followUp",
+      },
+      context,
+    );
+    const transfer = () =>
+      transferDurableQueuedToSideChat({
+        harness: f.harness,
+        storage: f.storage,
+        source: f.conversation,
+        target,
+        partId: "queued-divert",
+        parentSessionId: "cake-chat",
+        targetSessionId: "side-chat",
+      });
+    const results = await Promise.allSettled([transfer(), transfer()]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const sideCall = await f.nextRequest();
+    expect(await queued.wait(context)).toMatchObject({ status: "unanswered", reason: "aborted" });
+    expect(await f.queue.inbox()).toEqual([]);
+    const targetContext = await target.context(context);
+    const user = targetContext.messages.findLast((message) => message.role === "user");
+    expect(user?.content).toEqual([
+      ...content,
+      expect.objectContaining({ text: expect.stringContaining(DURABLE_SIDE_CHAT_NOTE) }),
+    ]);
+    expect(JSON.stringify(f.requests.at(-1))).toContain("Divert me");
+    expect(JSON.stringify(f.requests.at(-1))).toContain("Selected context");
+    const calls = f.calls.length;
+    f.activeCall.finish();
+    await f.active.wait(context);
+    const live = await f.harness.snapshot(LiveDoc, target.id, context);
+    if (!live?.run) throw new Error("Side chat did not start");
+    expect(live.run.inputs).toHaveLength(1);
+    sideCall.finish();
+    await f.harness.waitForTask(live.run.taskId, context);
+    expect(f.calls).toHaveLength(calls);
+    expect(
+      f.requests.filter((request) => JSON.stringify(request).includes("Divert me")),
+    ).toHaveLength(1);
+  });
+
+  it("retains the original input if target admission fails, and rejects a parent-consumed input", async () => {
+    const f = await fixture(kind);
+    const queued = await f.submit("Waiting", "divert-failure");
+    const target = await f.root.fork(f.forkPoint, { ownership: { kind: "ownerless" } }, context);
+    const busy = await f.submit("Target busy", "target-busy", "followUp", target);
+    const busyCall = await f.nextRequest();
+    const transfer = () =>
+      transferDurableQueuedToSideChat({
+        harness: f.harness,
+        storage: f.storage,
+        source: f.conversation,
+        target,
+        partId: "queued-divert-failure",
+        parentSessionId: "cake-chat",
+        targetSessionId: "side-chat",
+      });
+    await expect(transfer()).rejects.toThrow("already busy");
+    expect(await f.storage.submission(queued.id, context)).toMatchObject({ status: "queued" });
+    expect(await f.queue.inbox()).toHaveLength(1);
+    f.activeCall.finish();
+    await f.active.wait(context);
+    const parentCall = await f.nextRequest();
+    await expect(transfer()).rejects.toThrow(/no longer exists|already consumed/);
+    expect(
+      f.requests.filter((request) => JSON.stringify(request).includes("Waiting")),
+    ).toHaveLength(1);
+    parentCall.finish();
+    busyCall.finish();
+    await Promise.all([queued.wait(context), busy.wait(context)]);
+  });
+
+  it("rolls back target placement and retains the parent input when the handoff transaction fails", async () => {
+    const f = await fixture(kind);
+    const queued = await f.submit("Keep queued", "rollback");
+    const target = await f.root.fork(f.forkPoint, { ownership: { kind: "ownerless" } }, context);
+    const commit = f.conversation.commit.bind(f.conversation);
+    vi.spyOn(f.conversation, "commit").mockImplementationOnce(async (callback, ctx) =>
+      commit(async (tx) => {
+        await callback(tx);
+        throw new Error("Handoff failed before commit");
+      }, ctx),
+    );
+    await expect(
+      transferDurableQueuedToSideChat({
+        harness: f.harness,
+        storage: f.storage,
+        source: f.conversation,
+        target,
+        partId: "queued-rollback",
+        parentSessionId: "cake-chat",
+        targetSessionId: "side-chat",
+      }),
+    ).rejects.toThrow("Handoff failed before commit");
+    expect(await f.storage.submission(queued.id, context)).toMatchObject({ status: "queued" });
+    expect(await f.queue.inbox()).toHaveLength(1);
+    expect((await f.harness.snapshot(LiveDoc, target.id, context))?.run).toBeUndefined();
+    expect(
+      (await target.context(context)).messages.some((message) =>
+        JSON.stringify(message).includes("Keep queued"),
+      ),
+    ).toBe(false);
+    f.activeCall.finish();
+    await f.active.wait(context);
+    const parentCall = await f.nextRequest();
+    parentCall.finish();
+    expect(await queued.wait(context)).toMatchObject({ status: "done" });
+  });
+
+  it("loses safely when the parent consumes between selection and the handoff transaction", async () => {
+    const f = await fixture(kind);
+    const queued = await f.submit("Parent wins", "race");
+    const target = await f.root.fork(f.forkPoint, { ownership: { kind: "ownerless" } }, context);
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const commit = f.conversation.commit.bind(f.conversation);
+    vi.spyOn(f.conversation, "commit").mockImplementationOnce(async (callback, ctx) => {
+      entered.resolve();
+      await release.promise;
+      return commit(callback, ctx);
+    });
+    const handoff = transferDurableQueuedToSideChat({
+      harness: f.harness,
+      storage: f.storage,
+      source: f.conversation,
+      target,
+      partId: "queued-race",
+      parentSessionId: "cake-chat",
+      targetSessionId: "side-chat",
+    });
+    const rejected = expect(handoff).rejects.toThrow("already consumed");
+    await entered.promise;
+    f.activeCall.finish();
+    await f.active.wait(context);
+    const parentCall = await f.nextRequest();
+    release.resolve();
+    await rejected;
+    expect((await f.harness.snapshot(LiveDoc, target.id, context))?.run).toBeUndefined();
+    expect(
+      f.requests.filter((request) => JSON.stringify(request).includes("Parent wins")),
+    ).toHaveLength(1);
+    parentCall.finish();
+    expect(await queued.wait(context)).toMatchObject({ status: "done" });
+  });
+
   it("keeps user follow-up queued until the active report response finishes", async () => {
     const report = encodeCrossSessionMessage("Worker result", metadata);
     const f = await fixture(kind, report);

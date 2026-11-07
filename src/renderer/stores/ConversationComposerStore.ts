@@ -25,7 +25,6 @@ export interface ConversationComposerStoreProps {
   isStreaming(): boolean;
   openCommandPane?(pane: "changelog" | "tree" | "resources"): Promise<void>;
   createSideChat?(prompt: string): Promise<boolean>;
-  sendToSideChat?(text: string, attachments: Attachment[]): Promise<boolean>;
   selectModel(value: string): Promise<boolean | void>;
   renameSession?(name: string): Promise<boolean | void>;
   toolCompactSession?(entryId: string): Promise<boolean>;
@@ -176,27 +175,6 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
         true,
         renderUserMessageAsMarkdown,
       );
-    }
-  }
-
-  async sendToSideChat(): Promise<boolean> {
-    if (!this.props.sendToSideChat || !this.props.canSubmit() || this.editingMessage) return false;
-    const sessionId = this.props.sessionId();
-    if (!sessionId || this.props.isDeferredSession?.(sessionId)) return false;
-    this.clearError();
-    const text = this.draftStore.text.trim();
-    const attachments = this.draftStore.submissionAttachments;
-    this.draftStore.clearForSubmit();
-    try {
-      const created = await this.props.sendToSideChat(text, attachments);
-      if (!created) throw new Error("Could not create side chat");
-      return true;
-    } catch (error) {
-      if (!this.signal.aborted) {
-        this.draftStore.restoreAfterFailure(text, attachments);
-        this.reportError(error);
-      }
-      return false;
     }
   }
 
