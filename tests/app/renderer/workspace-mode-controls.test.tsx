@@ -282,7 +282,7 @@ describe("app.state visible workspace metadata", () => {
 });
 
 describe("Workspace mode navigation", () => {
-  it("keeps the same header rows and control slots through Chat, Browser and VS Code", async () => {
+  it("keeps the same header rows and control slots through Main, Browser and VS Code", async () => {
     using fixture = renderEmbeddedEditor({
       vscode: { open: async () => editorLease("a") },
       browser: {
@@ -293,6 +293,12 @@ describe("Workspace mode navigation", () => {
     // jsdom checks shared layout wiring, not pixel geometry (covered by Electron).
     const layout = () => {
       const tools = screen.getByRole("group", { name: "Workspace tools" });
+      const modes = within(tools).getByRole("group", { name: "Conversation workspace" });
+      expect(
+        within(modes)
+          .getAllByRole("button")
+          .map((button) => button.textContent),
+      ).toEqual(["Main", "VS Code", "Browser"]);
       const header = tools.closest("header")!;
       const actions = header.querySelector('[data-slot="workspace-actions"]')!;
       const terminal = within(tools).getByRole("button", { name: "Terminal" });
@@ -310,6 +316,9 @@ describe("Workspace mode navigation", () => {
         slots: [...tools.children].map((child) => child.className),
       };
     };
+    expect(
+      screen.getByRole("button", { name: "Main", exact: true }).getAttribute("aria-pressed"),
+    ).toBe("true");
     const chatLayout = layout();
     await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
     expect(await screen.findByRole("textbox", { name: "Browser address" })).toBeDefined();
@@ -322,6 +331,9 @@ describe("Workspace mode navigation", () => {
     await waitFor(() => expect(document.documentElement.dataset.titleBar).toBe("vscode"));
     expect(layout()).toEqual(chatLayout);
     await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    expect(
+      screen.getByRole("button", { name: "Main", exact: true }).getAttribute("aria-pressed"),
+    ).toBe("true");
     expect(layout()).toEqual(chatLayout);
   });
   it("opens the worker CWD while retaining its owning project and draft across tool companions", async () => {

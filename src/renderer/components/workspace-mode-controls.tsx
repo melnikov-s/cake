@@ -37,10 +37,10 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
         <SegmentedControlButton
           size="sm"
           active={mode === "normal"}
-          aria-label={mode === "normal" ? "Chat" : "Back to agent"}
+          aria-label={mode === "normal" ? "Main" : "Back to agent"}
           onClick={onBackToAgent}
         >
-          Chat
+          Main
         </SegmentedControlButton>
         {ideAvailable && (
           <SegmentedControlButton

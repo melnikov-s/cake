@@ -90,7 +90,7 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
       return Promise.all(
         [
           tools,
-          tools.getByRole("button", { name: /^(Chat|Back to agent)$/ }),
+          tools.getByRole("button", { name: /^(Main|Back to agent)$/ }),
           tools.getByRole("button", { name: "Open VS Code", exact: true }),
           tools.getByRole("button", { name: "Open Browser Mode", exact: true }),
           tools.getByRole("button", { name: "Terminal", exact: true }),

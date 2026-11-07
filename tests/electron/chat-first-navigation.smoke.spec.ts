@@ -186,7 +186,7 @@ test("project home and native Browser keep conversation drafts, companion identi
     const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
     await rail.getByRole("button", { name: "Open Project Chat for cake", exact: true }).click();
     await expect(homeDraft).toHaveValue("Keep the Project Chat draft");
-    await expect(page.getByRole("button", { name: "Chat", exact: true })).toHaveAttribute(
+    await expect(page.getByRole("button", { name: "Main", exact: true })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
