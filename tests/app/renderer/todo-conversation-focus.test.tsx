@@ -39,6 +39,14 @@ const user = (id: string, taskTodoId?: string | null): UiPart => ({
   status: "complete",
   ...(taskTodoId === undefined ? { taskAttributionPending: true } : { taskTodoId }),
 });
+const image = (id: string): UiPart => ({
+  id,
+  kind: "attachment",
+  name: `${id}.png`,
+  attachmentKind: "image",
+  mediaType: "image/png",
+  data: "cGl4ZWxz",
+});
 const answer = (id: string): UiPart => ({
   id,
   kind: "text",
@@ -82,8 +90,11 @@ for (const global of [false, true]) {
       user("casual", null),
       answer("casual-answer"),
       user("a1", a),
+      image("a1-shot"),
       answer("a1-answer"),
       user("b1", b),
+      image("b1-shot"),
+      image("b1-detail"),
       answer("b1-answer"),
       user("a2", a),
       answer("a2-answer"),
@@ -114,6 +125,9 @@ for (const global of [false, true]) {
       const expanded = () =>
         [...headingA(), headingB()].map((h) => h.getAttribute("aria-expanded"));
       expect(expanded()).toEqual(["true", "true", "true"]);
+      expect(transcript.getByRole("img", { name: "a1-shot.png" })).toBeDefined();
+      await u.click(transcript.getByRole("button", { name: "Collapse image: a1-shot.png" }));
+      expect(transcript.queryByRole("img", { name: "a1-shot.png" })).toBeNull();
       const navigation = transcript.getAllByRole("button", { name: "Show in To-do: Task A" })[0]!;
       act(() => store.setQuery("not a matching task"));
       await u.click(navigation);
@@ -123,9 +137,17 @@ for (const global of [false, true]) {
       expect(expanded()).toEqual(["false", "true", "true"]);
       await u.click(panel.getByRole("button", { name: "Task B" }));
       expect(expanded()).toEqual(["false", "false", "true"]);
+      expect(transcript.queryByRole("button", { name: "Expand image: a1-shot.png" })).toBeNull();
+      expect(transcript.getByRole("img", { name: "b1-shot.png" })).toBeDefined();
+      expect(transcript.getByRole("img", { name: "b1-detail.png" })).toBeDefined();
       expect(transcript.getByText("casual-answer")).toBeDefined();
       await u.click(panel.getByRole("button", { name: "Task A" }));
       expect(expanded()).toEqual(["true", "true", "false"]);
+      expect(transcript.queryByRole("img", { name: "b1-shot.png" })).toBeNull();
+      expect(transcript.queryByRole("img", { name: "b1-detail.png" })).toBeNull();
+      // The manual image choice survives its task being unmounted and reopened.
+      await u.click(transcript.getByRole("button", { name: "Expand image: a1-shot.png" }));
+      expect(transcript.getByRole("img", { name: "a1-shot.png" })).toBeDefined();
       expect(store.focusedItems.map((item) => item.id)).toEqual([a]);
       expect(screen.getByText("Focused to-do:")).toBeDefined();
       await u.click(panel.getByRole("button", { name: "Task A" }));
@@ -137,6 +159,10 @@ for (const global of [false, true]) {
       // Explicit manual expansion and message navigation still work outside the focused set.
       await u.click(headingB());
       expect(transcript.getByText("b1-answer")).toBeDefined();
+      expect(transcript.getByRole("img", { name: "b1-shot.png" })).toBeDefined();
+      await u.click(transcript.getByRole("button", { name: "Collapse image: b1-shot.png" }));
+      expect(transcript.queryByRole("img", { name: "b1-shot.png" })).toBeNull();
+      expect(transcript.getByRole("img", { name: "b1-detail.png" })).toBeDefined();
       await u.click(headingB());
       act(() =>
         session.conversationSessionStore.chatStore.transcriptInteraction.navigateToMessage(

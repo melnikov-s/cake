@@ -402,7 +402,7 @@ describe.each([
       expect(element).not.toBeNull();
       return element!;
     });
-    const frame = figure.firstElementChild!;
+    const frame = figure.lastElementChild!;
     expect(within(figure).getByRole("status", { name: "Loading shot.png" })).toBeDefined();
     expect(within(figure).getByRole("link", { name: "shot.png" })).toBeDefined();
     expect(readAttachment).toHaveBeenCalledExactlyOnceWith(
@@ -415,7 +415,21 @@ describe.each([
     );
     expect(transcriptImages(chat.view.container)).toEqual([imageSrc]);
     expect(figure.isConnected).toBe(true);
-    expect(figure.firstElementChild).toBe(frame);
+    expect(figure.lastElementChild).toBe(frame);
+    const user = userEvent.setup();
+    const collapse = within(figure).getByRole("button", { name: "Collapse image: shot.png" });
+    expect(collapse.getAttribute("aria-controls")).toBe(frame.id);
+    await user.click(collapse);
+    expect(frame.hasAttribute("hidden")).toBe(true);
+    expect(within(figure).queryByRole("img")).toBeNull();
+    // The original attachment remains reachable while its pixels are folded.
+    expect(within(figure).getByRole("link", { name: "shot.png" })).toBeDefined();
+    const expand = within(figure).getByRole("button", { name: "Expand image: shot.png" });
+    expect(expand.getAttribute("aria-expanded")).toBe("false");
+    await user.click(expand);
+    expect(frame.hasAttribute("hidden")).toBe(false);
+    expect(transcriptImages(chat.view.container)).toEqual([imageSrc]);
+    expect(readAttachment).toHaveBeenCalledTimes(1);
     await userEvent.setup().click(within(figure).getByRole("link", { name: "shot.png" }));
     expect(chat.openSession).toHaveBeenCalledExactlyOnceWith(sessionId, undefined, reference.id);
   });

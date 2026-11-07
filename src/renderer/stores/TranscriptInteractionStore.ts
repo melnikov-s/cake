@@ -57,6 +57,16 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
   transcriptScrollPosition: TranscriptScrollPosition | undefined;
   messageSelection: MessageSelection | undefined;
   private readonly openSideChatImports = observable(new Set<string>());
+  private readonly collapsedImages = observable(new Set<string>());
+
+  imageExpanded(partId: string) {
+    return !this.collapsedImages.has(partId);
+  }
+
+  toggleImage(partId: string) {
+    if (this.collapsedImages.has(partId)) this.collapsedImages.delete(partId);
+    else this.collapsedImages.add(partId);
+  }
 
   sideChatImportOpen(groupId: string) {
     return this.openSideChatImports.has(groupId);

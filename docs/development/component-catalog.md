@@ -193,6 +193,7 @@ original through the session-authorized attachment boundary, never a backend pat
 [`TranscriptImageAttachment`](../../src/renderer/components/transcript-image-attachment.tsx)
 shows a user's image in one fixed frame whether it is pending, saved with pixels, or a
 vaulted Cake Chat reference; the caption becomes the `AttachmentReference` once saved.
+The caption’s chevron collapses/expands pixels with native keyboard activation; transcript-local disclosure survives task folding and virtualization. Attachments before a user body follow that body’s to-do section, including unresolved turns. Composer tiles are unchanged.
 Vaulted pixels come from the conversation's renderer-only `TranscriptAttachmentImagesStore`:
 a sent image hands its pixels to the saved reference, older ones load for display only.
 

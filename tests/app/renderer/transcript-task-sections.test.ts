@@ -64,6 +64,57 @@ it("starts one section at each A → B → A transition, not on follow-ups or st
   expect(transcriptTaskSections(items).sections).toEqual(sections);
 });
 
+it("attributes preceding attachments to their own turn across switches, repeats and unresolved inputs", () => {
+  const image = (id: string): UiPart => ({
+    id,
+    kind: "attachment",
+    attachmentKind: "image",
+    mediaType: "image/png",
+    name: id,
+    data: "pixels",
+  });
+  const items = groupTranscriptParts([
+    user("a", "A"),
+    image("a-shot"),
+    answer("a-answer"),
+    user("b", "B"),
+    image("b-shot"),
+    image("b-detail"),
+    answer("b-answer"),
+    user("b-followup", "B"),
+    image("b-followup-shot"),
+    user("none", null),
+    image("none-shot"),
+    user("a-return", "A"),
+    image("a-return-shot"),
+    { ...user("pending"), taskAttributionPending: true },
+    image("pending-shot"),
+  ]);
+  const result = transcriptTaskSections(items);
+  expect(items.map((item, index) => [item.id, result.sections[index]!.todoId])).toEqual([
+    ["a-shot", "A"],
+    ["a", "A"],
+    ["a-answer", "A"],
+    ["b-shot", "B"],
+    ["b-detail", "B"],
+    ["b", "B"],
+    ["b-answer", "B"],
+    ["b-followup-shot", "B"],
+    ["b-followup", "B"],
+    ["none-shot", undefined],
+    ["none", undefined],
+    ["a-return-shot", "A"],
+    ["a-return", "A"],
+    ["pending-shot", undefined],
+    ["pending", undefined],
+  ]);
+  expect(
+    result.sections.flatMap((section, index) => (section.start ? [items[index]!.id] : [])),
+  ).toEqual(["a-shot", "b-shot", "a-return-shot"]);
+  expect(result.sections[5]!.startIndex).toBe(3);
+  expect(result.sections[8]!.startIndex).toBe(3);
+});
+
 it("uses known incoming associations once per switch and lets explicit human attribution clear a section", () => {
   const items = groupTranscriptParts([
     user("a", "A"),

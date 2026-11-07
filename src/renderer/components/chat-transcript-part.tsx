@@ -368,6 +368,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         behavior.store.attachmentImages &&
         isAttachmentImageMimeType(part.inputReference.mimeType)) ? (
       <TranscriptImageAttachment
+        interaction={behavior.store.transcriptInteraction}
         part={part}
         sessionId={behavior.messageReferenceSessionId}
         images={behavior.store.attachmentImages}

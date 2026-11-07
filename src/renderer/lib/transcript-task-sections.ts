@@ -7,9 +7,8 @@ export function transcriptTaskSections(
 ) {
   let discussion: string | undefined;
   let current: string | undefined;
-  let startIndex = 0;
-  const sections = items.map((item, index) => {
-    const previous = current;
+  const attributions: (string | undefined)[] = [];
+  items.forEach((item, index) => {
     const linked = linkedTodo?.(item);
     const incoming =
       (item.kind === "text" &&
@@ -24,11 +23,23 @@ export function transcriptTaskSections(
           : item.taskTodoId === undefined
             ? linked
             : (item.taskTodoId ?? undefined);
+      // Presentation moves a user turn's attachments before its body. They
+      // belong to that turn, not the discussion that happened to precede it.
+      for (let preceding = index - 1; preceding >= 0; preceding--) {
+        const attached = items[preceding]!;
+        if (attached.kind !== "attachment" && attached.kind !== "annotation") break;
+        attributions[preceding] = discussion;
+      }
     }
     if (item.kind === "skill") discussion = undefined;
     // A source card owns only its row, not the next conversational response.
     // Unknown/ambiguous sources interrupt the rail rather than borrowing its identity.
-    current = !human && (incoming || linked) ? linked : discussion;
+    attributions.push(!human && (incoming || linked) ? linked : discussion);
+  });
+  let startIndex = 0;
+  const sections = attributions.map((todoId, index) => {
+    const previous = current;
+    current = todoId;
     if (current !== previous) startIndex = index;
     return { todoId: current, start: Boolean(current && current !== previous), startIndex };
   });
