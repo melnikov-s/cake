@@ -55,6 +55,7 @@ export const ConversationNavigator = observer(function ConversationNavigator({
               key={node.key}
               node={node}
               depth={depth}
+              hideHomeRail={home?.label === "Project Chat"}
               projectPath={projectPath}
             />
           ))}

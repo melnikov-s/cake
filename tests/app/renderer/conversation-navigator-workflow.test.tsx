@@ -139,6 +139,59 @@ function settleFixtureWorkers(fixture: ReturnType<typeof renderNavigator>) {
 }
 
 describe("Sessions navigator workflow", () => {
+  it("hides only the Project Chat grouping rail without changing indentation or family rails", async () => {
+    using fixture = renderNavigator();
+    expect(rowFor("Project Chat").querySelector('[data-slot="depth-rails"]')).toBeNull();
+    const assertRails = () => {
+      for (const [name, depth] of [
+        ["UI Layout Refactor", 1],
+        ["Icon Placement Exploration", 1],
+        ["Keyboard Editing & Navigation", 2],
+        ["Nested child implementation", 3],
+      ] as const) {
+        const row = rowFor(name);
+        const rails = row.querySelector<HTMLElement>('[data-slot="depth-rails"]')!;
+        expect(row.dataset.depth).toBe(String(depth));
+        expect(rails.parentElement!.style.width).toBe(`${depth * 6}px`);
+        // Suppress only the first ancestor's border, not its width or deeper connectors.
+        expect(rails.classList.contains("[&>span:first-child]:border-l-0")).toBe(true);
+        expect(rails.children).toHaveLength(depth);
+        for (const rail of rails.children) expect(rail.classList.contains("border-l")).toBe(true);
+      }
+    };
+    assertRails();
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
+    expect(screen.queryByText("UI Layout Refactor")).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Expand cake" }));
+    assertRails();
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse UI Layout Refactor" }));
+    expect(screen.queryByText("Keyboard Editing & Navigation")).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Expand UI Layout Refactor" }));
+    assertRails();
+  });
+
+  it("preserves resolved Project Session connectors where there is no Project Chat ancestor", async () => {
+    using fixture = renderNavigator();
+    act(() => {
+      for (const id of ["layout", "keyboard", "deep-child"])
+        fixture.models.sessionCatalog.find(id)!.resolved = true;
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Resolved sessions" }));
+    expect(rowFor("UI Layout Refactor").dataset.depth).toBe("0");
+    for (const [name, depth] of [
+      ["Keyboard Editing & Navigation", 1],
+      ["Nested child implementation", 2],
+    ] as const) {
+      const row = rowFor(name);
+      const rails = row.querySelector<HTMLElement>('[data-slot="depth-rails"]')!;
+      expect(row.dataset.depth).toBe(String(depth));
+      expect(rails.parentElement!.style.width).toBe(`${depth * 6}px`);
+      expect(rails.classList.contains("[&>span:first-child]:border-l-0")).toBe(false);
+      expect(rails.children).toHaveLength(depth);
+      for (const rail of rails.children) expect(rail.classList.contains("border-l")).toBe(true);
+    }
+  });
+
   it.each([
     ["own", "layout"],
     ["child", "keyboard"],

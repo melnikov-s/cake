@@ -17,10 +17,13 @@ import { NavItem } from "./ui/nav-item";
 export const ConversationNavigatorRow = observer(function ConversationNavigatorRow({
   node,
   depth,
+  hideHomeRail = false,
   projectPath,
 }: {
   node: ConversationNavigationNode;
   depth: number;
+  /** Hide only the Project Chat grouping rail, preserving indentation and family rails. */
+  hideHomeRail?: boolean;
   projectPath: string | undefined;
 }) {
   const root = useStore(RootStore);
@@ -74,7 +77,13 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
     >
       {depth > 0 && (
         <span className="flex shrink-0 items-stretch" style={{ width: Math.min(depth * 6, 24) }}>
-          <DepthRails depth={depth} className="h-auto w-full min-w-0 max-w-none" />
+          <DepthRails
+            depth={depth}
+            className={cn(
+              "h-auto w-full min-w-0 max-w-none",
+              hideHomeRail && "[&>span:first-child]:border-l-0",
+            )}
+          />
         </span>
       )}
       <span className="flex w-5 shrink-0 items-center justify-center">
