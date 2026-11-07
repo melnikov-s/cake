@@ -4,7 +4,6 @@ import { RootStore } from "../stores/RootStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
 import { ConversationActivity } from "./conversation-activity";
-import { WorkspaceTodosToggle } from "./workspace-todos-toggle";
 import { SessionChangesToggle } from "./session-changes-toggle";
 import { SideChatsMenu } from "./side-chats-menu";
 
@@ -33,7 +32,6 @@ export const ProjectWorkspaceControls = observer(function ProjectWorkspaceContro
       <SessionArtifactMenu session={session} />
       <SideChatsMenu store={session} onOpen={() => root.workspaceNavigatorStore.showChat()} />
       <SessionChangesToggle session={session} />
-      <WorkspaceTodosToggle />
       <WorkspaceModeControls
         mode={mode}
         terminalAvailable={terminal.available}

@@ -6,7 +6,6 @@ import { SessionArtifactMenu } from "./session-artifact-menu";
 import { SessionChangesToggle } from "./session-changes-toggle";
 import { ConversationActivity } from "./conversation-activity";
 import { WorkspaceModeControls } from "./workspace-mode-controls";
-import { WorkspaceTodosToggle } from "./workspace-todos-toggle";
 
 export const ProjectPaneHeader = observer(function ProjectPaneHeader({
   session: paneSession,
@@ -31,7 +30,6 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
       )}
       <SessionArtifactMenu session={paneSession} />
       <SideChatsMenu store={paneSession} />
-      <WorkspaceTodosToggle />
       {!resolved && (
         <>
           <SessionChangesToggle session={paneSession} />

@@ -5,7 +5,6 @@ import { WorkspaceModeControls } from "./workspace-mode-controls";
 import { SideChatsMenu } from "./side-chats-menu";
 import { SessionArtifactMenu } from "./session-artifact-menu";
 import { ConversationActivity } from "./conversation-activity";
-import { WorkspaceTodosToggle } from "./workspace-todos-toggle";
 
 export const CakeChatWorkspaceControls = observer(function CakeChatWorkspaceControls({
   session,
@@ -31,7 +30,6 @@ export const CakeChatWorkspaceControls = observer(function CakeChatWorkspaceCont
       )}
       <SessionArtifactMenu session={session} />
       <SideChatsMenu store={session} onOpen={() => root.workspaceNavigatorStore.showChat()} />
-      <WorkspaceTodosToggle />
       <WorkspaceModeControls
         mode={mode}
         terminalAvailable={terminal.available}

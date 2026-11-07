@@ -7,7 +7,6 @@ import { SessionArtifactMenu } from "./session-artifact-menu";
 import { SideChatsMenu } from "./side-chats-menu";
 import { ConversationActivity } from "./conversation-activity";
 import { WorkspaceModeControls } from "./workspace-mode-controls";
-import { WorkspaceTodosToggle } from "./workspace-todos-toggle";
 
 export interface CakeChatOverlayChrome {
   /** Puts the drop-down overlay away. */
@@ -37,7 +36,6 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
         />
       )}
       {!overlay && <SessionArtifactMenu session={paneSession} />}
-      {!overlay && <WorkspaceTodosToggle />}
       <SideChatsMenu store={paneSession} />
       {overlay ? (
         <>
