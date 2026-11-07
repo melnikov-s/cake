@@ -15,6 +15,7 @@ export interface WorktreeStoreProps {
   enabled(): boolean;
   isStreaming(): boolean;
   operation(): typeof WorktreeLandingOperation.Encoded | undefined;
+  onMergeAndResolveStarted(operationId: string): void;
   /**
    * Presents one landing outcome. Every session view sharing a Working Directory observes the
    * same operation, so presentation must be keyed by `operationId`, not by the calling Store.
@@ -167,6 +168,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     const operationId = crypto.randomUUID();
     this.startedLandingOperationId = operationId;
     this.startedResolveAfterLanding = resolveAfterLanding;
+    if (resolveAfterLanding) this.props.onMergeAndResolveStarted(operationId);
     try {
       const operation = await this.managedWorktrees.startLanding({
         operationId,
@@ -177,6 +179,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         commitBeforeLanding: true,
         resolveAfterLanding,
       });
+      if (resolveAfterLanding) this.props.onMergeAndResolveStarted(operation.operationId);
       this.startedLandingOperationId = operation.operationId;
       this.applyOperationPresentation(operation);
       await this.refresh(workspacePath);

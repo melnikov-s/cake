@@ -33,6 +33,7 @@ import { SessionPresentationContext } from "./context/SessionPresentationContext
 import { CommandPaneContext } from "./context/CommandPaneContext";
 import { SessionContinuationContext } from "./context/SessionContinuationContext";
 import { ToastContext } from "./context/ToastContext";
+import { SessionRegistryContext } from "./context/SessionRegistryContext";
 import { settledSessionActivity, type SessionActivity } from "../lib/session-activity";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 
@@ -265,7 +266,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       enabled: () => this.props.isActive(),
       isStreaming: () => this.isStreaming,
       operation: this.props.worktreeOperation,
+      onMergeAndResolveStarted: (operationId) =>
+        SessionRegistryContext.consume(this)!.silenceWorktreeLanding(operationId),
       onLanded: (_record, result) => {
+        if (SessionRegistryContext.consume(this)!.isWorktreeLandingSilent(result.operationId))
+          return;
         // Sibling sessions sharing this Working Directory observe the same operation; keying
         // the toast by operation keeps one landing (and its family resolution) to one toast.
         const coalesceKey = `worktree-landed:${result.operationId}`;

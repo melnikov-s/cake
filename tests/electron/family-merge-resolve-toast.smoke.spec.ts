@@ -27,9 +27,9 @@ const sessionEntries = (sessionId: string, cwd: string, text: string) => {
   ];
 };
 
-// Every visible family pane observes the shared worktree's landing. One Merge & resolve on the
-// root must still produce exactly one completion toast for the whole resolved family.
-test("merging and resolving a family root shows one consolidated toast", async () => {
+// Loaded family sessions observe the shared worktree's landing. A clicked Merge & resolve
+// must not emit a completion toast from the root or any of its descendants.
+test("clicking Merge & resolve on a family root does not show a success toast", async () => {
   test.setTimeout(90_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-family-merge-resolve-"));
   const userData = join(temporaryRoot, "user-data");
@@ -185,17 +185,12 @@ test("merging and resolving a family root shows one consolidated toast", async (
     await expect(mergeAndResolve).toBeVisible({ timeout: 20_000 });
     await mergeAndResolve.click();
 
-    const toasts = page.locator('[aria-live="polite"] > [role="status"]');
-    await expect(toasts.filter({ hasText: "merged and resolved" })).toHaveCount(1, {
+    await expect(page.getByRole("button", { name: "Current checkout", exact: true })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(toasts).toHaveCount(1);
-    await expect(toasts).toContainText("Sessions merged and resolved");
-    await expect(toasts).toContainText("4 sessions were resolved");
-    await page.screenshot({
-      path: join(repositoryRoot, ".visual-captures", "family-merge-resolve-toast.png"),
-    });
-    expect(existsSync(worktreePath)).toBe(false);
+    await expect.poll(() => existsSync(worktreePath)).toBe(false);
+    const toasts = page.locator('[aria-live="polite"] > [role="status"]');
+    await expect(toasts).toHaveCount(0);
     expect((await git(["log", "-1", "--format=%s"])).stdout.trim()).toBe("family work");
   } finally {
     await application.close();

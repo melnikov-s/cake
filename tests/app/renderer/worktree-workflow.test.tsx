@@ -231,10 +231,10 @@ describe("Worktree operation workflows", () => {
       }),
       null,
     );
-    expect(await screen.findByText("Session merged and resolved")).toBeDefined();
     expect(
       await screen.findByText(/Sessions resolved; cleanup failed for \/worktree: Checkout busy/),
     ).toBeDefined();
+    expect(screen.queryByText("Session merged and resolved")).toBeNull();
     expect(screen.queryByRole("button", { name: "Merge" })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Land new commit/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
@@ -585,15 +585,18 @@ describe("Worktree operation workflows", () => {
     expect(screen.getByRole("button", { name: "Merge" })).toHaveProperty("disabled", false);
   });
 
-  it("preserves merge-and-resolve intent through a commit pause and reports completion even when acknowledgment fails", async () => {
+  it("keeps clicked merge-and-resolve quiet through a commit pause even when acknowledgment fails", async () => {
     const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async () =>
       operation("waiting", { resolveAfterLanding: true }),
     );
     const cancelLanding = vi.fn<Client["managedWorktrees"]["cancelLanding"]>(async () => {
       throw new Error("Acknowledgment transport failed");
     });
+    const retryLanding = vi.fn<Client["managedWorktrees"]["retryLanding"]>(async () =>
+      operation("waiting", { resolveAfterLanding: true }),
+    );
     using fixture = renderWorktree({
-      client: { managedWorktrees: { startLanding, cancelLanding } },
+      client: { managedWorktrees: { startLanding, cancelLanding, retryLanding } },
     });
     await fixture.user.click(await screen.findByRole("button", { name: "Merge & resolve" }));
     expect(startLanding).toHaveBeenCalledWith(
@@ -603,14 +606,17 @@ describe("Worktree operation workflows", () => {
       operation("stalled", { pauseReason: "commit", resolveAfterLanding: true }),
     );
     expect(await screen.findByRole("button", { name: "Committing…" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retryLanding).toHaveBeenCalledOnce();
     await fixture.publish(operation("landed", { resolveAfterLanding: true }), null);
-    expect(await screen.findByText("Session merged and resolved")).toBeDefined();
-    expect(cancelLanding).toHaveBeenCalledWith({
-      operationId: "landing-operation",
-      workspacePath: "/worktree",
-      intent: "acknowledge",
-    });
+    await waitFor(() =>
+      expect(cancelLanding).toHaveBeenCalledWith({
+        operationId: "landing-operation",
+        workspacePath: "/worktree",
+        intent: "acknowledge",
+      }),
+    );
+    expect(screen.queryByText("Session merged and resolved")).toBeNull();
   });
 
   it("reconciles a rebase that finishes before its accepted start response arrives", async () => {

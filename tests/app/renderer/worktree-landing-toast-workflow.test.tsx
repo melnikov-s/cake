@@ -159,30 +159,28 @@ function renderSessions(selectedSessionId = "parent") {
 afterEach(cleanup);
 
 describe("Worktree landing completion toasts", () => {
-  it("shows one consolidated toast when merging and resolving a parent with nested descendants", async () => {
+  it("does not toast a clicked merge-and-resolve for a parent or its nested descendants", async () => {
     using fixture = renderSessions();
     await fixture.user.click(
       await fixture.pane("parent").findByRole("button", { name: "Merge & resolve" }),
     );
     const operationId = fixture.startLanding.mock.calls[0]![0].operationId;
+    await fixture.publish({ ...landed(operationId, "/family", "parent"), phase: "queued" });
+    expect(
+      await fixture.pane("parent").findByRole("button", { name: "Waiting to merge…" }),
+    ).toBeDefined();
     await fixture.publish(
       landed(operationId, "/family", "parent", ["parent", "child-1", "child-2", "grandchild"]),
     );
 
-    expect(
-      await screen.findByText(
-        "The worktree was merged into the project and 4 sessions were resolved.",
-      ),
-    ).toBeDefined();
-    // Every pane sharing the worktree finished presenting the same operation.
+    // Wait for every observer to finish, rather than checking absence before completion.
     await waitFor(() =>
       expect(
         fixture.cancelLanding.mock.calls.filter(([request]) => request.intent === "acknowledge"),
       ).toHaveLength(4),
     );
-    expect(screen.getAllByRole("status")).toHaveLength(1);
-    expect(screen.getByText("Sessions merged and resolved")).toBeDefined();
-    expect(screen.queryByText("Session merged and resolved")).toBeNull();
+    expect(fixture.toasts()).toHaveLength(0);
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("counts only the sessions main reported, so already-resolved members are not announced again", async () => {
@@ -199,18 +197,92 @@ describe("Worktree landing completion toasts", () => {
     expect(screen.getAllByRole("status")).toHaveLength(1);
   });
 
-  it("keeps standalone merge-and-resolve to its single-session toast", async () => {
+  it("does not toast a clicked standalone merge-and-resolve, but still toasts a later background landing", async () => {
     using fixture = renderSessions("standalone");
     await fixture.user.click(
       await fixture.pane("standalone").findByRole("button", { name: "Merge & resolve" }),
     );
     const operationId = fixture.startLanding.mock.calls[0]![0].operationId;
     await fixture.publish(landed(operationId, "/standalone", "standalone", ["standalone"]));
+    await waitFor(() =>
+      expect(fixture.cancelLanding).toHaveBeenCalledWith({
+        operationId,
+        workspacePath: "/standalone",
+        intent: "acknowledge",
+      }),
+    );
+    expect(fixture.toasts()).toHaveLength(0);
+
+    await fixture.publish(
+      landed("background-landing", "/standalone", "standalone", ["standalone"]),
+    );
     expect(await screen.findByText("Session merged and resolved")).toBeDefined();
-    expect(
-      screen.getByText("This session was merged into the project and resolved."),
-    ).toBeDefined();
     expect(screen.getAllByRole("status")).toHaveLength(1);
+  });
+
+  it("stays quiet when completion is projected before the start response arrives", async () => {
+    using fixture = renderSessions("standalone");
+    let accept!: (operation: WorktreeLandingOperation) => void;
+    fixture.startLanding.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          accept = resolve;
+        }),
+    );
+    await fixture.user.click(
+      await fixture.pane("standalone").findByRole("button", { name: "Merge & resolve" }),
+    );
+    const operationId = fixture.startLanding.mock.calls[0]![0].operationId;
+    const completion = landed(operationId, "/standalone", "standalone", ["standalone"]);
+    await fixture.publish(completion);
+    await waitFor(() =>
+      expect(fixture.cancelLanding).toHaveBeenCalledWith({
+        operationId,
+        workspacePath: "/standalone",
+        intent: "acknowledge",
+      }),
+    );
+    await act(async () => accept({ ...completion, phase: "waiting" }));
+    expect(fixture.toasts()).toHaveLength(0);
+  });
+
+  it("still toasts an ordinary clicked Merge", async () => {
+    using fixture = renderSessions("standalone");
+    await fixture.user.click(
+      await fixture.pane("standalone").findByRole("button", { name: /^Merge$/ }),
+    );
+    const operationId = fixture.startLanding.mock.calls[0]![0].operationId;
+    await fixture.publish({
+      ...landed(operationId, "/standalone", "standalone"),
+      resolveAfterLanding: false,
+    });
+    expect(await screen.findByText("Worktree merged")).toBeDefined();
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+  });
+
+  it("keeps direct merge-and-resolve start errors visible", async () => {
+    using fixture = renderSessions("standalone");
+    fixture.startLanding.mockRejectedValueOnce(new Error("Merge target is unavailable"));
+    await fixture.user.click(
+      await fixture.pane("standalone").findByRole("button", { name: "Merge & resolve" }),
+    );
+    expect(await screen.findByText("Merge target is unavailable")).toBeDefined();
+    expect(fixture.toasts()).toHaveLength(0);
+  });
+
+  it("keeps projected merge-and-resolve failures visible", async () => {
+    using fixture = renderSessions("standalone");
+    await fixture.user.click(
+      await fixture.pane("standalone").findByRole("button", { name: "Merge & resolve" }),
+    );
+    const operationId = fixture.startLanding.mock.calls[0]![0].operationId;
+    await fixture.publish({
+      ...landed(operationId, "/standalone", "standalone"),
+      phase: "failed",
+      error: "Merge could not be completed",
+    });
+    expect(await screen.findByText("Merge could not be completed")).toBeDefined();
+    expect(fixture.toasts()).toHaveLength(0);
   });
 
   it("does not coalesce independent landing operations", async () => {

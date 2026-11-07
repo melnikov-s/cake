@@ -50,6 +50,7 @@ export interface SessionRegistryStoreProps {
 export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   @snapshot readonly targets: SessionTarget[] = observable([]);
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
+  private readonly silentWorktreeLandings = new Set<string>();
   private readonly forkPreviews = observable(
     new Map<string, { title: string; sourceSessionId: string }>(),
   );
@@ -137,6 +138,15 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       if (this.pendingSessions.isTemporary(session.sessionId))
         demand.set(session.sessionId, session);
     return [...demand.values()];
+  }
+
+  /** Shared by every observer of an explicitly clicked Merge & resolve operation. */
+  silenceWorktreeLanding(operationId: string) {
+    this.silentWorktreeLandings.add(operationId);
+  }
+
+  isWorktreeLandingSilent(operationId: string) {
+    return this.silentWorktreeLandings.has(operationId);
   }
 
   findModel(sessionId: string) {
