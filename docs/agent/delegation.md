@@ -2,12 +2,12 @@
 
 ## Choose a task session
 
-From permanent chats, select by task; never use family children:
+From permanent chats, select by task; never use family children. Private subagents require an explicit request:
 
 - Implementation/code changes -> sessions.create: a fresh independent Project Session, normally the default for "do work". Give it its own scoped task, managed worktree, relevant findings/constraints and acceptance checks. It does not inherit conversation history. Never use sessions.fork for coding delegation.
 - Investigation/research with useful existing context, where implementation is not yet clear -> sessions.fork: an inline/side context fork for read-only investigation. If code changes become needed, return findings for handoff to a fresh Project Session via sessions.create; never silently expand research into coding.
 - Investigation with an explicitly requested different model -> private subagent directly with the requested model, not sessions.fork or sessions.create as a research workaround.
-- Investigation where existing context is not helpful -> a private subagent is also authorized. Otherwise use the contextual fork for investigation.
+- Investigation where existing context is not helpful -> private subagent only when explicitly authorized. Otherwise use the contextual fork for investigation.
 
 For sessions.create/fork pass the authorized registered root as workspacePath, worktreeName, name and focused initialPrompt. Project Chat targets only its own project; global Cake Chat can target authorized registered projects.
 [Context fork details](sessions.md#permanent-chat-context-forks) explains settled context, source lifetime and continuation.
@@ -18,7 +18,7 @@ Keep project scoping, safety boundaries and authorized worktree/concurrency limi
 
 ## Private investigators
 
-For permanent-chat investigation, an explicitly requested different model requires a private subagent; unhelpful existing context also permits one without a separate request for subagents. Otherwise use sessions.fork for useful-context investigation. Repository implementation belongs in a fresh independent Project Session via sessions.create, not a private investigator. Project Session private delegation otherwise retains its explicit-request policy.
+Private subagents require an explicit request. Once authorized, use the requested model or investigate without useful existing context. Otherwise use sessions.fork for useful-context investigation. Repository implementation requires sessions.create, never a private investigator.
 Project investigator: exact registered projectPath. General researcher: omit projectPath; no project resources or guaranteed web.
 Investigators stay read-only; never turn research into code changes. Bounded user-requested non-code operations may use allowMutations: true with exact operational targets; it is not an implementation workaround. Existing handles cannot gain mutation mode. This flag is not a filesystem sandbox.
 Project investigators inherit instructions/skills/extensions/MCP but omit edit/write. General workers have read/bash/message_parent; distinguish retrieval from prior knowledge and disclose access failures.

@@ -12,6 +12,9 @@ import { createCakeChatWorktreeOperations } from "../../../src/domain/worktrees/
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { coordinatorSystemPrompt } from "../../../src/services/pi-durable/coordinator-system-prompt";
 import { coreChatOperations } from "../../../src/services/pi-durable/core-chat-operations";
+import { durableArchiveRecallInstructions } from "../../../src/services/pi-durable/durable-archive-recall";
+import { TASK_ATTRIBUTION_INSTRUCTIONS } from "../../../src/services/pi-durable/durable-task-attribution";
+import { presetGuidance } from "../../../src/contracts/model-presets/preset-context";
 
 const unused = async (): Promise<never> => {
   throw new Error("Reference generation must not execute controls");
@@ -21,6 +24,7 @@ const operations = new CakeOperationRegistry([
     provider: "test",
     modelId: "test",
     thinkingLevel: "off",
+    fastMode: false,
   })),
   ...createProjectTodoOperations({
     select: unused,
@@ -130,6 +134,56 @@ describe("core coordinator calling reference", () => {
   it(`bounds prompt size (${reference.length} reference; ${prompt.length} coordinator; ${projectTodoBaseline(emptyProjectTodos()).length} empty to-do baseline chars)`, () => {
     expect(reference.length).toBeLessThan(3500);
     expect(prompt.length).toBeLessThan(7000);
+  });
+
+  it.each(["Cake Chat", "Project Chat"] as const)(
+    "bounds the shipped %s ingredients with recall, to-dos, attribution and preset guidance",
+    (chat) => {
+      const docs = `/Users/user/.pi/agent/cake-docs/${"a".repeat(64)}`;
+      const assembled = [
+        coordinatorSystemPrompt("", docs, false, reference),
+        durableArchiveRecallInstructions("project-chat:fixture"),
+        projectTodoBaseline(emptyProjectTodos(), chat),
+        TASK_ATTRIBUTION_INSTRUCTIONS,
+        presetGuidance({
+          id: "00000000-0000-4000-8000-000000000001",
+          prompt: "Be concise; retain necessary constraints.",
+        }),
+      ].join("\n\n");
+      // Budget shipped ingredients, not user instructions, skills or populated list data.
+      expect(Buffer.byteLength(assembled)).toBeLessThan(9000);
+      for (const command of [
+        "sessions.create",
+        "sessions.fork",
+        "todos.create",
+        "todos.update",
+        "sessions.send",
+        "sessions.abort",
+        "worktrees.merge",
+        "sessions.resolve",
+        "messages.read",
+      ])
+        expect(
+          assembled.split("\n").filter((item) => item.startsWith(`${command} {`)),
+        ).toHaveLength(1);
+      expect(assembled).toContain("all required sessions resolve");
+      expect(assembled).toContain("Reports/completion grant no merge/resolve approval");
+      expect(assembled).toContain("shared/project instructions take precedence");
+      expect(assembled.match(/Zoom relevant remembered dialogue/g)).toHaveLength(1);
+      expect(assembled).not.toContain("Memory: Zoom");
+    },
+  );
+
+  it("keeps the companion's recall and authority without coordinator or to-do instructions", () => {
+    const assembled = [
+      coordinatorSystemPrompt("", "/docs", true, reference),
+      durableArchiveRecallInstructions("companion"),
+    ].join("\n\n");
+    expect(assembled).toContain("Never edit settings files");
+    expect(assembled).toContain("Reports/completion grant no merge/resolve approval");
+    expect(assembled).toContain("no sibling or arbitrary database access");
+    expect(assembled).not.toMatch(/Core chat operations|cake-todo|to-dos \(application context\)/);
+    expect(Buffer.byteLength(assembled)).toBeLessThan(3500);
   });
 
   it("never advertises missing/disabled controls or injects coordinator controls into the companion", () => {

@@ -70,7 +70,7 @@ describe("Cake Chat bash guards", () => {
     );
     expect(description).toContain("read-only context fork via sessions.fork");
     expect(description).toContain(
-      "private subagent for an explicitly requested different model or unhelpful context",
+      "explicitly authorized private subagent for an explicitly requested different model or unhelpful context",
     );
     expect(description).toContain("does not authorize code changes");
   });

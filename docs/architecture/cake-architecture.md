@@ -176,9 +176,10 @@ projections needed by a surface. References do not transfer ownership.
   worktrees, never family children. Useful-context investigation with implementation
   not yet clear uses `sessions.fork`: read-only inline/side context forks, not coding
   sessions. Needed code changes require findings handed off to a fresh Project Session.
-  Investigation with an explicitly requested different model uses a private subagent
-  directly with that model, not a fork or independent session workaround. Unhelpful
-  existing context also permits a private investigator; otherwise use the context fork.
+  Private subagents require an explicit request. Once authorized, investigation with
+  a requested different model uses that model directly, not a fork or independent
+  session workaround. Unhelpful context permits a private investigator only when
+  explicitly authorized; otherwise use the context fork.
   Native Durable context forks branch at a completed reply with their own executable
   identity and a Cake-managed worktree binding. The source stays open and unchanged;
   inherited history stays in Durable, not an assignment prompt or another transcript

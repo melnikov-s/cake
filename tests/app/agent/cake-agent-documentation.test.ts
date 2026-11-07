@@ -63,7 +63,8 @@ it("publishes the shipped fresh-task delegation default for installed backends",
     ])
       expect(guidance.toLowerCase(), `${name}: ${rule}`).toContain(rule.toLowerCase());
     expect(guidance).not.toContain("Prefer sessions.fork for project");
-    expect(guidance).not.toContain("Private subagents require an explicit user request");
+    expect(guidance).toContain("Private subagents require an explicit request");
+    expect(guidance).toContain("only when explicitly authorized");
   }
 });
 

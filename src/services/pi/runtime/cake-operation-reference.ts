@@ -1,4 +1,9 @@
-import type { JsonObject, JsonValue } from "../../../contracts/serialization/json-contract";
+import { Schema } from "effect";
+import {
+  jsonObjectSchema,
+  type JsonObject,
+  type JsonValue,
+} from "../../../contracts/serialization/json-contract";
 
 /** A calling sketch, not another schema: required keys plus selected common options. */
 export function compactOperationInput(
@@ -7,7 +12,7 @@ export function compactOperationInput(
   expand: readonly string[] = [],
 ): string {
   const object = (value: JsonValue | undefined): JsonObject | undefined =>
-    value !== null && typeof value === "object" && !Array.isArray(value) ? value : undefined;
+    Schema.is(jsonObjectSchema)(value) ? value : undefined;
   const resolve = (value: JsonObject): JsonObject => {
     if (typeof value.$ref !== "string" || !value.$ref.startsWith("#/")) return value;
     let target: JsonValue | undefined = root;

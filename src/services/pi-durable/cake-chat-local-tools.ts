@@ -26,7 +26,7 @@ export function cakeChatBashTimeout(requested: number | undefined): number {
     throw new Error("Invalid timeout: must be a positive number of seconds");
   if (requested > CAKE_CHAT_BASH_MAX_TIMEOUT_SECONDS)
     throw new Error(
-      `Cake Chat bash calls are limited to ${CAKE_CHAT_BASH_MAX_TIMEOUT_SECONDS} seconds. Delegate code changes to a fresh Project Session via sessions.create; investigate read-only via sessions.fork when existing context is useful, or a private subagent for a requested different model or unhelpful context.`,
+      `Cake Chat bash calls are limited to ${CAKE_CHAT_BASH_MAX_TIMEOUT_SECONDS} seconds. Delegate code changes to a fresh Project Session via sessions.create; investigate read-only via sessions.fork when existing context is useful, or an explicitly authorized private subagent for a requested different model or unhelpful context.`,
     );
   return requested;
 }
@@ -40,7 +40,7 @@ export function createCakeChatBashTool() {
   const bash = createBashTool();
   return defineTool({
     name: "bash",
-    description: `Run a quick bash command. It starts in Cake Chat's scratch directory, not a project; pass absolute paths or cd explicitly. Default timeout ${CAKE_CHAT_BASH_DEFAULT_TIMEOUT_SECONDS}s, maximum ${CAKE_CHAT_BASH_MAX_TIMEOUT_SECONDS}s. Output keeps the last ${CAKE_CHAT_TOOL_OUTPUT_MAX_LINES} lines or ${CAKE_CHAT_TOOL_OUTPUT_MAX_BYTES / 1024}KB and says when it was truncated. Never mutate a project checkout from permanent chat. Delegate code changes to a fresh independent Project Session via sessions.create. Investigation uses a read-only context fork via sessions.fork when existing context is useful, or a private subagent for an explicitly requested different model or unhelpful context. Context-fork commands run in the assigned managed worktree and may use longer timeouts; that does not authorize code changes.`,
+    description: `Run a quick bash command. It starts in Cake Chat's scratch directory, not a project; pass absolute paths or cd explicitly. Default timeout ${CAKE_CHAT_BASH_DEFAULT_TIMEOUT_SECONDS}s, maximum ${CAKE_CHAT_BASH_MAX_TIMEOUT_SECONDS}s. Output keeps the last ${CAKE_CHAT_TOOL_OUTPUT_MAX_LINES} lines or ${CAKE_CHAT_TOOL_OUTPUT_MAX_BYTES / 1024}KB and says when it was truncated. Never mutate a project checkout from permanent chat. Delegate code changes to a fresh independent Project Session via sessions.create. Investigation uses a read-only context fork via sessions.fork when existing context is useful, or an explicitly authorized private subagent for an explicitly requested different model or unhelpful context. Context-fork commands run in the assigned managed worktree and may use longer timeouts; that does not authorize code changes.`,
     parameters: Type.Object({
       command: Type.String({ description: "Bash command to execute" }),
       timeout: Type.Optional(

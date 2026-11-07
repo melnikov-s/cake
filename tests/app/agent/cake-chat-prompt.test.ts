@@ -77,11 +77,10 @@ describe("compact Cake Chat guidance", () => {
 
   it("defaults permanent chats to fresh sessions for distinct tasks, not feature-label reuse", () => {
     for (const rule of [
-      "Default to fresh scoped sessions for distinct tasks",
-      "even under one broad feature label",
-      "transfer findings, not inherited history",
-      "never to conserve session count or preserve a session",
-      "Already-authorized work needs no extra permission to create its session",
+      "Fresh scoped sessions per distinct task",
+      "transfer findings, not history",
+      "never to conserve sessions",
+      "Already-authorized work needs no extra session approval",
     ])
       expect(prompt).toContain(rule);
     for (const rule of [
@@ -97,7 +96,7 @@ describe("compact Cake Chat guidance", () => {
   });
 
   it("keeps useful same-task continuation coherent without expanding authority or lifecycle", () => {
-    expect(prompt).toContain("same-task continuation with materially useful context");
+    expect(prompt).toContain("Reuse only useful same-task context");
     expect(prompt).toContain("Keep one task coherent");
     for (const rule of [
       "Reuse only for genuine continuation of the same task",
