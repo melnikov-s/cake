@@ -209,7 +209,10 @@ export function createRootApplicationControlHost(
           throw new Error("Cake could not open VS Code for that Project Chat");
         if (capabilities.appShellStore.activeConversation?.sessionId === source.sessionId)
           await capabilities.projectWorkbenchStore.presentationStore.openIde();
-        else session.showPresentation("vscode");
+        else {
+          session.showWorkspaceChatSidebar();
+          session.showPresentation("vscode");
+        }
       },
       open: (source, location) => {
         const store = selectionStore(source.sessionId);

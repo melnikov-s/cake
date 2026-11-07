@@ -177,6 +177,7 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
 
   async openIde() {
     if (!this.canOpen()) return;
+    this.session?.showWorkspaceChatSidebar();
     this.props.dismissCommandPane();
     this.reviews.clearActiveThread();
     this.browserStore.suspend();

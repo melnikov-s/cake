@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";
+import { applySnapshot } from "r-state-tree";
 import { TurnId } from "../../../../src/contracts/conversations/conversation-data";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
 import {
@@ -33,49 +34,81 @@ const sessionSummary = (sessionId: string, workingDirectory: string) =>
 // embedded-editor and workbench workflows. Shortcut forwarding-count assertions
 // were implementation-only, not user-facing behavior.
 describe("RootStore agent-control transport and composition", () => {
-  it("switches a background session to VS Code without stealing pane focus", async () => {
-    const sessions = [
-      sessionSummary("focused", projectPath),
-      sessionSummary("background", projectPath),
-    ];
-    const respondControl = vi.fn(async () => undefined);
-    const client: TestClientOverrides = { projectSessions: { respondControl } };
-    using fixture = createRendererStoreFixture({
-      client,
-      projects: [projectRecord({ path: projectPath, name: "Example" })],
-      sessions,
-    });
-    const root = fixture.root;
+  it.each(["project-session", "cake-chat"] as const)(
+    "switches a background %s to VS Code with its chat shown without stealing focus",
+    async (kind) => {
+      const backgroundId = kind === "cake-chat" ? `project-chat:${"a".repeat(64)}` : "background";
+      const sessions = [
+        sessionSummary("focused", projectPath),
+        ...(kind === "project-session" ? [sessionSummary(backgroundId, projectPath)] : []),
+      ];
+      const respondControl = vi.fn(async () => undefined);
+      const client: TestClientOverrides = { projectSessions: { respondControl } };
+      using fixture = createRendererStoreFixture({
+        client,
+        projects: [projectRecord({ path: projectPath, name: "Example" })],
+        sessions,
+      });
+      const root = fixture.root;
 
-    root.sessionRegistry.load("focused", projectPath);
-    root.sessionRegistry.load("background", projectPath);
-    root.sessionLayoutStore.ensureSession("focused");
-    root.navigationStore.selectProjectSession("focused");
-    root.projectWorkbenchStore.showLoadedSession("focused");
+      root.sessionRegistry.load("focused", projectPath);
+      applySnapshot(fixture.models.cakeChatCatalog, {
+        loaded: true,
+        sessions:
+          kind === "cake-chat"
+            ? [{ sessionId: backgroundId, title: "Project Chat", projectPath }]
+            : [],
+      });
+      const background =
+        kind === "cake-chat"
+          ? root.cakeChatCollectionStore.registry.load(backgroundId)
+          : root.sessionRegistry.load(backgroundId, projectPath);
+      background.toggleWorkspaceChatSidebar();
+      root.sessionLayoutStore.ensureSession("focused");
+      root.navigationStore.selectProjectSession("focused");
+      root.projectWorkbenchStore.showLoadedSession("focused");
 
-    await root.applicationControlStore.handleProjectSessionRequest({
-      sessionId: "background",
-      controlRequestId: "00000000-0000-4000-8000-000000000020",
-      invocation: {
-        _tag: "InvokeAppControl",
-        command: "vscode.enter",
-        input: {},
-      },
-    });
+      if (kind === "cake-chat") {
+        expect(
+          await root.applicationControlStore.invoke(
+            { name: "vscode.enter", arguments: {} },
+            {
+              kind,
+              sessionId: backgroundId,
+              projectPath,
+              workingDirectory: projectPath,
+              title: "Project Chat",
+            },
+          ),
+        ).toMatchObject({ ok: true });
+      } else
+        await root.applicationControlStore.handleProjectSessionRequest({
+          sessionId: backgroundId,
+          controlRequestId: "00000000-0000-4000-8000-000000000020",
+          invocation: {
+            _tag: "InvokeAppControl",
+            command: "vscode.enter",
+            input: {},
+          },
+        });
 
-    expect(root.appShellStore.activeConversation).toEqual({
-      kind: "project-session",
-      sessionId: "focused",
-    });
-    expect(root.sessionLayoutStore.focusedSessionId).toBe("focused");
-    expect(root.sessionRegistry.findSession("background")?.presentationMode).toBe("vscode");
-    expect(respondControl).toHaveBeenCalledWith(
-      "background",
-      "00000000-0000-4000-8000-000000000020",
-      expect.objectContaining({ ok: true, command: "vscode.enter" }),
-      expect.anything(),
-    );
-  });
+      expect(root.appShellStore.activeConversation).toEqual({
+        kind: "project-session",
+        sessionId: "focused",
+      });
+      expect(root.sessionLayoutStore.focusedSessionId).toBe("focused");
+      expect(background.presentationMode).toBe("vscode");
+      expect(background.workspaceChatSidebarVisible).toBe(true);
+      expect(root.projectWorkbenchStore.presentationStore.embeddedEditorStore.visible).toBe(false);
+      if (kind === "project-session")
+        expect(respondControl).toHaveBeenCalledWith(
+          "background",
+          "00000000-0000-4000-8000-000000000020",
+          expect.objectContaining({ ok: true, command: "vscode.enter" }),
+          expect.anything(),
+        );
+    },
+  );
 
   it("routes agent worktree merge and discard controls through the managed queue client", async () => {
     const sessions = [sessionSummary("child", worktreePath)];

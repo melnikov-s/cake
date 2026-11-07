@@ -1,10 +1,13 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { App } from "../../../src/renderer/components/app";
+import type { Client } from "../../../src/renderer/client/Client";
+import { editorLease } from "./embedded-editor-workflow-fixture";
 import { CakeChatWorkspaceSurface } from "../../../src/renderer/components/cake-chat-workspace-surface";
 import { ProjectWorkspaceSurface } from "../../../src/renderer/components/project-workspace-surface";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
@@ -44,7 +47,11 @@ afterEach(() => {
   Reflect.deleteProperty(Range.prototype, "getClientRects");
 });
 
-function renderWorkspace(kind: Kind, mode: Mode) {
+function renderWorkspace(kind: Kind, mode: Mode, startInChat = false) {
+  const reveal = vi.fn<Client["vscode"]["reveal"]>(async () => ({
+    outcome: { view: "file" },
+    locations: [],
+  }));
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project", name: "Project" })],
     sessions: [
@@ -62,7 +69,18 @@ function renderWorkspace(kind: Kind, mode: Mode) {
           inspecting: false,
         }),
       },
-      vscode: { updateBounds: async () => undefined },
+      filesystem: {
+        prepareFileLocation: async ({ location }) => ({ viewer: "vscode", location }),
+      },
+      vscode: {
+        open: async () => editorLease("a"),
+        reveal,
+        release: async () => undefined,
+        updateBounds: async () => undefined,
+        updateAnnotations: async () => undefined,
+        updateSelectionHighlights: async () => undefined,
+        setTheme: async () => undefined,
+      },
     },
   });
   const { root, models } = fixture;
@@ -82,7 +100,8 @@ function renderWorkspace(kind: Kind, mode: Mode) {
     root.navigationStore.selectCakeChat(session.sessionId);
     root.cakeChatCollectionStore.sessionLayoutStore.ensureSession(session.sessionId);
   }
-  session.showPresentation(mode);
+  session.showPresentation(startInChat ? "normal" : mode);
+  if (startInChat) session.toggleWorkspaceChatSidebar();
   session.setWorkspaceChatSidebarWidth(440);
   applyConversationSnapshot(session.model, {
     sessionId: session.sessionId,
@@ -127,13 +146,20 @@ function renderWorkspace(kind: Kind, mode: Mode) {
   const view = render(
     <StoreProvider store={root}>
       <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
-        {surface}
+        {startInChat ? (
+          <StoreProvider store={root.fullscreenSurfaceStore}>
+            <App />
+          </StoreProvider>
+        ) : (
+          surface
+        )}
       </VirtuosoMockContext.Provider>
     </StoreProvider>,
   );
   return {
     root,
     session,
+    reveal,
     view,
     user: userEvent.setup(),
     [Symbol.dispose]() {
@@ -146,6 +172,67 @@ function renderWorkspace(kind: Kind, mode: Mode) {
 // Real workflow Stores, Models, controls, Chat and side-chat composition.
 // These assertions cover rendered wiring, not pixel layout, native input or focus.
 describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
+  it.each(["tool", "toolbar"])(
+    "shows the invoking conversation on %s VS Code entry and keeps the requested file",
+    async (entry) => {
+      using f = renderWorkspace(kind, "vscode", true);
+      const draft = f.session.conversationSessionStore.composerStore.draftStore;
+      act(() => draft.setText("Keep my draft"));
+      const source = {
+        kind: kind === "project" ? ("project-session" as const) : ("cake-chat" as const),
+        sessionId: f.session.sessionId,
+        projectPath: "/project",
+        workingDirectory: "/project",
+        title: "Invoking conversation",
+      };
+      const invoke = async (name: string, args = {}) => {
+        await act(async () => {
+          expect(
+            await f.root.applicationControlStore.invoke({ name, arguments: args }, source),
+          ).toMatchObject({ ok: true });
+        });
+      };
+      if (entry === "tool") await invoke("vscode.enter");
+      else await f.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+      const companion = screen.getByRole("complementary", {
+        name: "Current conversation companion",
+      });
+      expect(await within(companion).findByText("Workspace answer")).toBeDefined();
+      expect(
+        within(companion).getByRole("combobox", {
+          name: kind === "project" ? "Message" : "Message Project Chat",
+        }).textContent,
+      ).toBe("Keep my draft");
+      await invoke("vscode.open", { path: "src/services/pi/runtime/prompts/cake-chat.md" });
+      expect(f.reveal).toHaveBeenLastCalledWith(
+        "/project",
+        { kind: "working-directory", path: "src/services/pi/runtime/prompts/cake-chat.md" },
+        expect.anything(),
+      );
+      expect(f.root.appShellStore.activeConversation?.sessionId).toBe(f.session.sessionId);
+      expect(screen.getByTitle("VS Code workspace").getAttribute("src")).toBe(
+        editorLease("a").endpoint,
+      );
+      expect(screen.getByRole("complementary", { name: "Current conversation companion" })).toBe(
+        companion,
+      );
+
+      // File navigation honors a manual close; explicit entry shows the same chat again.
+      await f.user.click(screen.getByRole("button", { name: "Close chat" }));
+      await invoke("vscode.open", { path: "src/next.ts" });
+      expect(
+        screen.queryByRole("complementary", { name: "Current conversation companion" }),
+      ).toBeNull();
+      await invoke("vscode.enter");
+      expect(await screen.findByText("Workspace answer")).toBeDefined();
+      expect(f.reveal).toHaveBeenCalledTimes(2);
+      await waitFor(() =>
+        expect(screen.getByTitle("VS Code workspace").getAttribute("src")).toBe(
+          editorLease("a").endpoint,
+        ),
+      );
+    },
+  );
   it("sizes the companion against the available center, not the desktop width", () => {
     vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue(
       new DOMRect(64, 0, 700, 900),

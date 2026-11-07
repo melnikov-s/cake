@@ -427,6 +427,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       await this.presentationStore.openIde();
       return;
     }
+    session.showWorkspaceChatSidebar();
     session.showPresentation("vscode");
   }
 

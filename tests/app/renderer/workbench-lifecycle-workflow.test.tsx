@@ -390,6 +390,8 @@ describe("Workbench conversation lifecycle", () => {
     });
     await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
     expect(screen.getByRole("region", { name: "VS Code workspace" })).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Close chat" }));
     expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
     const selection = {
       path: "src/main.ts",
