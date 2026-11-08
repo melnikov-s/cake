@@ -153,6 +153,12 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
 
   try {
     const page = await application.firstWindow();
+    // Select explicitly: legacy window-state navigation is no longer an active selection.
+    await page.getByRole("button", { name: "Search sessions", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Search sessions", exact: true })
+      .locator(`[data-session-id="${sessionId}"]`)
+      .click();
     const log = page.locator('[data-slot="activity-group"]');
     await expect(log).toHaveCount(1, { timeout: 20_000 });
     await expect(log.locator(":scope > div")).toHaveCount(0);
@@ -272,11 +278,28 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
     await expect.poll(() => log.locator('[data-slot="tool"]').count()).toBeGreaterThan(0);
     await expect(log.locator('[data-slot="tool"] [aria-expanded="true"]')).toHaveCount(0);
 
-    // Work-log display choices live in Appearance and still affect this conversation.
+    // The restored two-icon control sits immediately after Terminal.
+    const trigger = page.getByRole("button", { name: "Work log display options", exact: true });
+    const terminalBounds = await page
+      .getByRole("button", { name: "Terminal", exact: true })
+      .boundingBox();
+    const triggerBounds = await trigger.boundingBox();
+    expect(terminalBounds).not.toBeNull();
+    expect(triggerBounds).not.toBeNull();
+    expect(triggerBounds!.x).toBeGreaterThanOrEqual(terminalBounds!.x + terminalBounds!.width);
+    expect(Math.abs(triggerBounds!.y - terminalBounds!.y)).toBeLessThanOrEqual(1);
     const openOptions = async () => {
-      await page.getByRole("button", { name: "Open settings", exact: true }).click();
-      await page.getByRole("button", { name: /^Appearance/ }).click();
-      return page.getByRole("region", { name: "Work log display options" });
+      await trigger.focus();
+      await page.keyboard.press("Enter");
+      const controls = page.getByRole("dialog", { name: "Work log display options" });
+      await expect(controls).toBeVisible();
+      await expect(controls.getByRole("button", { name: "Auto view mode" })).toBeFocused();
+      return controls;
+    };
+    const closeOptions = async () => {
+      await page.keyboard.press("Escape");
+      await expect(trigger).toBeFocused();
+      await expect(trigger).toHaveAttribute("aria-expanded", "false");
     };
     let controls = await openOptions();
     await expect(controls.getByRole("button", { name: "Auto view mode" })).toHaveAttribute(
@@ -288,10 +311,8 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
       "true",
     );
     await controls.getByRole("button", { name: "Full work logs" }).click();
-    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await closeOptions();
     await expect(log).toHaveAttribute("open", "");
-    // Covering chat with Settings remounts its local steps disclosure.
-    await log.getByRole("button", { name: /View steps/ }).click();
     await expect
       .poll(async () => {
         const tools = await log.locator('[data-slot="tool"]').count();
@@ -306,7 +327,7 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
       "true",
     );
     await controls.getByRole("button", { name: "Collapsed work logs" }).click();
-    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await closeOptions();
     await expect(log).not.toHaveAttribute("open", "");
 
     // Existing shortcuts continue to update the same saved settings.
@@ -317,7 +338,7 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
         "aria-pressed",
         "true",
       );
-      await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+      await closeOptions();
     }
   } finally {
     await application.close();

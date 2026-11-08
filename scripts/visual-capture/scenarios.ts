@@ -2419,6 +2419,43 @@ const browserSharingQrScenario: VisualCaptureScenario = {
   region: (page) => page.getByRole("dialog", { name: "Browser sharing" }),
 };
 
+const workLogControlsScenario: VisualCaptureScenario = {
+  name: "work-log-controls",
+  description: "Restored work-log display popover immediately after Terminal in the slim toolbar",
+  states: ["default", "open", "diff-full"],
+  seed: assistantMarkdownCode.seed,
+  async prepare(page, state) {
+    await page.getByRole("button", { name: "Search sessions", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Search sessions", exact: true })
+      .locator('[data-session-id="visual-assistant-markdown-code"]')
+      .click();
+    await assistantMarkdownCode.prepare(page, "default");
+    const trigger = page.getByRole("button", { name: "Work log display options", exact: true });
+    await expect(trigger).toBeVisible();
+    if (state !== "default") {
+      await trigger.click();
+      const controls = page.getByRole("dialog", { name: "Work log display options" });
+      await expect(controls).toBeVisible();
+      if (state === "diff-full") {
+        await controls.getByRole("button", { name: "Diff view mode" }).click();
+        await controls.getByRole("button", { name: "Full work logs" }).click();
+      }
+    }
+    await page.mouse.move(1, 1);
+    if (state !== "default") {
+      const controls = page.getByRole("dialog", { name: "Work log display options" });
+      await expect(controls).toBeVisible();
+      await controls.evaluate(async (element) => {
+        await Promise.all(
+          element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+        );
+      });
+    }
+  },
+  region: (page) => page.locator('[data-slot="session-pane"]'),
+};
+
 const appearanceSettingsScenario: VisualCaptureScenario = {
   name: "appearance-settings",
   description: "Session-only sidebar character preference in Cake Appearance settings",
@@ -7250,6 +7287,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   localMcpSettingsScenario,
   mcpSettingsLayoutScenario,
   appearanceSettingsScenario,
+  workLogControlsScenario,
   importedColorThemeScenario,
   themeGalleryScenario,
   bundledColorThemeScenario,

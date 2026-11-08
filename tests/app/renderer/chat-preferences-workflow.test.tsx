@@ -7,7 +7,7 @@ import type { DiscussionThread } from "../../../src/contracts/discussion-session
 import type { PiSettings, UiPart } from "../../../src/contracts/conversations/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";
-import { SettingsWorkLogOptions } from "../../../src/renderer/components/settings-work-log-options";
+import { WorkLogControls } from "../../../src/renderer/components/work-log-controls";
 import {
   applyConversationSnapshot,
   applyDiscussionSessionUpdate,
@@ -61,7 +61,9 @@ it("shares work-log choices and disclosure resets across parent, compact side ch
   const groups = () =>
     screen.getAllByText("Work log", { exact: true }).map((node) => node.closest("details")!);
   const choose = async (name: string) => {
+    await fixture.user.click(screen.getByRole("button", { name: "Work log display options" }));
     await fixture.user.click(screen.getByRole("button", { name }));
+    await fixture.user.keyboard("{Escape}");
   };
   expect(groups().map((group) => group.open)).toEqual([false, false, false]);
   await choose("Full work logs");
@@ -94,6 +96,7 @@ it("shares work-log choices and disclosure resets across parent, compact side ch
     "true",
   );
   await choose("Log view mode");
+  await fixture.user.click(screen.getByRole("button", { name: "Work log display options" }));
   expect(screen.getByRole("button", { name: "Log view mode" }).getAttribute("aria-pressed")).toBe(
     "true",
   );
@@ -101,7 +104,8 @@ it("shares work-log choices and disclosure resets across parent, compact side ch
 
 it("applies Hide thinking to nested workers while respecting each Pi conversation's explicit setting", async () => {
   using fixture = await renderPreferences();
-  // Expansion uses the real Settings control, not a synthetic Store mutation.
+  // Expansion uses the real toolbar control, not a synthetic Store mutation.
+  await fixture.user.click(screen.getByRole("button", { name: "Work log display options" }));
   await fixture.user.click(screen.getByRole("button", { name: "Full work logs" }));
   await fixture.user.keyboard("{Escape}");
   expect(screen.getAllByText("Shared reasoning")).toHaveLength(3);
@@ -223,7 +227,7 @@ async function renderPreferences() {
   const view = render(
     <>
       <SettingsPage settings={fixture.root.settingsStore} />
-      <SettingsWorkLogOptions appearance={fixture.root.settingsStore.appearance} />
+      <WorkLogControls store={chats[0]!} />
       <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
         {chats.map((chat, index) => (
           <section key={chat.id} aria-label={["Parent", "Side chat", "Worker"][index]}>

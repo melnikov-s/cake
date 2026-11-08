@@ -5,6 +5,7 @@ import { WorkspaceModeControls } from "./workspace-mode-controls";
 import { SideChatsMenu } from "./side-chats-menu";
 import { SessionArtifactMenu } from "./session-artifact-menu";
 import { ConversationActivity } from "./conversation-activity";
+import { WorkLogControls } from "./work-log-controls";
 
 export const CakeChatWorkspaceControls = observer(function CakeChatWorkspaceControls({
   session,
@@ -41,6 +42,7 @@ export const CakeChatWorkspaceControls = observer(function CakeChatWorkspaceCont
         onOpenIde={() => void presentation.openIde()}
         onToggleTerminal={() => void terminal.toggle()}
       />
+      <WorkLogControls store={session.conversationSessionStore.chatStore} />
     </>
   );
 });

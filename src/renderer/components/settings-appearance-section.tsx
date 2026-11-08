@@ -2,7 +2,6 @@ import { observer } from "r-state-tree/react";
 import { Select } from "./ui/select";
 import { FilePicker } from "./ui/file-picker";
 import { SegmentedControlButton, SegmentedControlGroup } from "./ui/segmented-control";
-import { SettingsWorkLogOptions } from "./settings-work-log-options";
 import { SettingsThemeGallery } from "./settings-theme-gallery";
 import { SettingsToggle } from "./settings/settings-toggle";
 import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
@@ -74,7 +73,6 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
             </p>
           ) : null}
         </div>
-        <SettingsWorkLogOptions appearance={appearance} />
         <SettingsToggle
           id="setting-project-avatars"
           label="Project avatars"

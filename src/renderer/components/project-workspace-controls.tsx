@@ -4,6 +4,7 @@ import { RootStore } from "../stores/RootStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
 import { ConversationActivity } from "./conversation-activity";
+import { WorkLogControls } from "./work-log-controls";
 import { SessionChangesToggle } from "./session-changes-toggle";
 import { SideChatsMenu } from "./side-chats-menu";
 
@@ -42,6 +43,7 @@ export const ProjectWorkspaceControls = observer(function ProjectWorkspaceContro
         onOpenIde={() => void store.presentationStore.openIde()}
         onToggleTerminal={() => void terminal.toggle()}
       />
+      <WorkLogControls store={session.conversationSessionStore.chatStore} />
     </>
   );
 });

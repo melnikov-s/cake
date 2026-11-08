@@ -7,6 +7,7 @@ import { SessionArtifactMenu } from "./session-artifact-menu";
 import { SideChatsMenu } from "./side-chats-menu";
 import { ConversationActivity } from "./conversation-activity";
 import { WorkspaceModeControls } from "./workspace-mode-controls";
+import { WorkLogControls } from "./work-log-controls";
 
 export interface CakeChatOverlayChrome {
   /** Puts the drop-down overlay away. */
@@ -51,18 +52,21 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
           </IconButton>
         </>
       ) : (
-        <WorkspaceModeControls
-          mode="normal"
-          terminalAvailable={terminal.available}
-          terminalOpen={paneSession.sessionId === cakeChatCollection.sessionId && terminal.open}
-          ideAvailable={cakeChatCollection.summaries.some(
-            (chat) => chat.sessionId === paneSession.sessionId && chat.projectPath,
-          )}
-          onBackToAgent={() => void root.projectWorkbenchStore.presentationStore.backToAgent()}
-          onOpenBrowser={() => void root.projectWorkbenchStore.presentationStore.openBrowser()}
-          onOpenIde={() => void root.projectWorkbenchStore.presentationStore.openIde()}
-          onToggleTerminal={() => void terminal.toggle()}
-        />
+        <>
+          <WorkspaceModeControls
+            mode="normal"
+            terminalAvailable={terminal.available}
+            terminalOpen={paneSession.sessionId === cakeChatCollection.sessionId && terminal.open}
+            ideAvailable={cakeChatCollection.summaries.some(
+              (chat) => chat.sessionId === paneSession.sessionId && chat.projectPath,
+            )}
+            onBackToAgent={() => void root.projectWorkbenchStore.presentationStore.backToAgent()}
+            onOpenBrowser={() => void root.projectWorkbenchStore.presentationStore.openBrowser()}
+            onOpenIde={() => void root.projectWorkbenchStore.presentationStore.openIde()}
+            onToggleTerminal={() => void terminal.toggle()}
+          />
+          <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
+        </>
       )}
     </>
   );

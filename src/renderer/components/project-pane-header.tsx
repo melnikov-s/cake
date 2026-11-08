@@ -5,6 +5,7 @@ import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
 import { SessionChangesToggle } from "./session-changes-toggle";
 import { ConversationActivity } from "./conversation-activity";
+import { WorkLogControls } from "./work-log-controls";
 import { WorkspaceModeControls } from "./workspace-mode-controls";
 
 export const ProjectPaneHeader = observer(function ProjectPaneHeader({
@@ -45,6 +46,7 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
           />
         </>
       )}
+      <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
     </>
   );
 });

@@ -334,11 +334,6 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
         settings: [
           { label: "Theme", targetId: "setting-theme", keywords: "light dark system color" },
           {
-            label: "Work log display options",
-            targetId: "setting-work-log-display",
-            keywords: "auto diff log view mode expansion collapsed compact full",
-          },
-          {
             label: "Show session characters",
             targetId: "setting-sidebar-characters",
             keywords: "avatars icons labels squares appearance",
