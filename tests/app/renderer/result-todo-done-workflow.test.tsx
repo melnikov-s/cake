@@ -376,6 +376,44 @@ it.each(["Project Chat"] as const)(
   },
 );
 
+it("keeps multiple linked titles flexible beside non-shrinking right-hand actions", async () => {
+  await using f = await renderChat("Project Chat");
+  const title = "Review the evidence " + "UnbrokenTitle".repeat(30);
+  await f.commit(
+    projectTodos.create(f.scope, {
+      title,
+      description: "A long title must wrap without pushing its action out of the footer.",
+      associations: [
+        {
+          kind: "source",
+          ref: `cake://session/${f.chat.sessionId}?message=session-reply`,
+          title: "Exact report",
+        },
+      ],
+    }),
+  );
+  const group = f.groupFor("session-reply")!;
+  const entries = group.querySelectorAll<HTMLElement>('[data-slot="result-todo-entry"]');
+  expect(entries).toHaveLength(2);
+  const expectRow = (entry: HTMLElement) => {
+    expect(entry.classList.contains("flex")).toBe(true);
+    expect(entry.classList.contains("flex-col")).toBe(false);
+    expect(entry.classList.contains("flex-wrap")).toBe(false);
+    expect(entry.classList.contains("min-w-0")).toBe(true);
+    const label = entry.firstElementChild!;
+    expect(label.classList.contains("flex-1")).toBe(true);
+    expect(label.classList.contains("min-w-0")).toBe(true);
+    expect(label.classList.contains("break-words")).toBe(true);
+    const action = within(entry).getByRole("button");
+    expect(action.classList.contains("shrink-0")).toBe(true);
+    expect(action.classList.contains("self-start")).toBe(false);
+  };
+  entries.forEach(expectRow);
+  await f.user.click(within(group).getByRole("button", { name: `Mark done: ${title}` }));
+  expect(within(group).getByRole("button", { name: `Done: ${title}` })).toBeDefined();
+  group.querySelectorAll<HTMLElement>('[data-slot="result-todo-entry"]').forEach(expectRow);
+});
+
 it.each(
   (["Project Chat"] as const).flatMap(
     (kind) =>

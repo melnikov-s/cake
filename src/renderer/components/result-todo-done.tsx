@@ -30,9 +30,9 @@ export const ResultTodoDone = observer(function ResultTodoDone({ origin, todos }
           <div
             key={item.id}
             data-slot="result-todo-entry"
-            className="flex min-w-0 flex-col gap-0.5"
+            className="flex min-w-0 items-start gap-2"
           >
-            <span className="min-w-0 break-words">To-do · {item.title}</span>
+            <span className="min-w-0 flex-1 break-words">To-do · {item.title}</span>
             <Button
               variant="ghost"
               size="sm"
@@ -40,7 +40,7 @@ export const ResultTodoDone = observer(function ResultTodoDone({ origin, todos }
               title={`${action}: ${item.title}`}
               disabled={todos.busy}
               className={cn(
-                "gap-1.5 self-start [&_svg]:size-3.5",
+                "shrink-0 gap-1.5 [&_svg]:size-3.5",
                 done && "bg-accent/15 text-accent hover:bg-accent/20 hover:text-accent",
               )}
               onClick={() => void todos.setDone(item)}

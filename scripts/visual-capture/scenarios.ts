@@ -3874,15 +3874,10 @@ const subagentReportsScenario: VisualCaptureScenario = {
 const resultTodoActionsScenario: VisualCaptureScenario = {
   name: "result-todo-actions",
   description: "Two named to-dos with individual footer actions and no header completion controls",
-  states: ["open", "done", "collapsed"],
+  states: ["open", "done", "collapsed", "narrow"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
-    const sessionId = "visual-assistant-markdown-code";
-    const transcript = join(
-      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
-      `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`,
-    );
-    const original = await readFile(transcript, "utf8");
+    const hash = createHash("sha256").update(paths.project).digest("hex");
     const text = encodeCrossSessionMessage(
       "The build checks passed. Review the findings and verify publication independently.",
       {
@@ -3898,18 +3893,7 @@ const resultTodoActionsScenario: VisualCaptureScenario = {
         },
       },
     );
-    await writeFile(
-      transcript,
-      original +
-        JSON.stringify({
-          type: "message",
-          id: "todo-report",
-          parentId: "assistant-1",
-          timestamp: new Date(2).toISOString(),
-          message: { role: "user", content: [{ type: "text", text }], timestamp: 2 },
-        }) +
-        "\n",
-    );
+    await seedDurableChat(join(paths.cakeHome, "pi", "project-chats", hash), [text]);
     const file = join(paths.cakeHome, "state", "application.json");
     const state = JSON.parse(await readFile(file, "utf8"));
     state.version = 9;
@@ -3925,40 +3909,54 @@ const resultTodoActionsScenario: VisualCaptureScenario = {
         status: "Awaiting review",
         state: "open",
         revision: 0,
-        associations:
-          index === 0
-            ? [{ kind: "session", sessionId: resultTodoSessionId, title: "Build verification" }]
-            : [
-                {
-                  kind: "source",
-                  ref: `cake://session/${sessionId}?message=todo-report`,
-                  title: "Exact report",
-                },
-              ],
+        associations: [
+          { kind: "session", sessionId: resultTodoSessionId, title: "Build verification" },
+        ],
       })),
     };
     await writeFile(file, JSON.stringify(state));
   },
   async prepare(page, state) {
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
     const report = page.locator('[data-slot="session-message"]');
     await expect(report).toBeVisible({ timeout: 20_000 });
     await page.waitForFunction(() => document.fonts.status === "loaded");
     const entries = report.locator('[data-slot="result-todo-entry"]');
     await expect(entries).toHaveCount(2);
+    if (state === "narrow") {
+      await report.locator('[data-slot="result-todo-done"]').evaluate((group) => {
+        group.style.flex = "0 1 240px";
+      });
+    }
     for (const title of ["Review the findings", "Verify publication"]) {
       const action = report.getByRole("button", { name: `Mark done: ${title}`, exact: true });
       await expect(action).toBeVisible();
       const geometry = await action.evaluate((button) => {
-        const title = button.previousElementSibling!.getBoundingClientRect();
+        const label = button.previousElementSibling!;
+        const title = label.getBoundingClientRect();
         const action = button.getBoundingClientRect();
+        const entry = button.parentElement!;
         return {
-          titleBottom: title.bottom,
-          actionTop: action.top,
+          titleRight: title.right,
+          titleHeight: title.height,
+          lineHeight: Number.parseFloat(getComputedStyle(label).lineHeight),
+          actionLeft: action.left,
+          actionRight: action.right,
+          entryRight: entry.getBoundingClientRect().right,
+          overflow: entry.scrollWidth - entry.clientWidth,
+          shrink: getComputedStyle(button).flexShrink,
           inFooter: Boolean(button.closest("footer")),
         };
       });
       expect(geometry.inFooter).toBe(true);
-      expect(geometry.actionTop).toBeGreaterThanOrEqual(geometry.titleBottom);
+      expect(geometry.titleRight).toBeLessThanOrEqual(geometry.actionLeft);
+      expect(Math.abs(geometry.actionRight - geometry.entryRight)).toBeLessThanOrEqual(1);
+      expect(geometry.overflow).toBeLessThanOrEqual(1);
+      expect(geometry.shrink).toBe("0");
+      if (state === "narrow") expect(geometry.titleHeight).toBeGreaterThan(geometry.lineHeight);
     }
     const header = report.locator('[data-slot="response-header"]').locator("..");
     await expect(header.getByRole("button", { name: /^(Mark done|Reopen):/ })).toHaveCount(0);
@@ -3967,7 +3965,7 @@ const resultTodoActionsScenario: VisualCaptureScenario = {
         .getByRole("button", { name: "Mark done: Review the findings", exact: true })
         .click();
       await expect(
-        report.getByRole("button", { name: "Reopen: Review the findings", exact: true }),
+        report.getByRole("button", { name: "Done: Review the findings", exact: true }),
       ).toBeEnabled();
       await expect(
         report.getByRole("button", { name: "Mark done: Verify publication", exact: true }),
@@ -3976,7 +3974,7 @@ const resultTodoActionsScenario: VisualCaptureScenario = {
     if (state === "collapsed") {
       await report.locator('[data-slot="response-disclosure"]').click();
       await expect(report.locator("footer")).toHaveCount(0);
-      await expect(report.getByRole("button", { name: /^(Mark done|Reopen):/ })).toHaveCount(0);
+      await expect(report.getByRole("button", { name: /^(Mark done|Done):/ })).toHaveCount(0);
     }
     await report.scrollIntoViewIfNeeded();
     await page.mouse.move(1, 1);
