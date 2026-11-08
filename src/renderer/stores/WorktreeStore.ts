@@ -107,6 +107,26 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     );
   }
 
+  get queuedStatus() {
+    if (!this.isQueued) return undefined;
+    const queue = this.props.operation()?.queue;
+    if (!queue) return "Waiting for landing admission. This merge will start automatically.";
+    const phase = queue.blockingPhase;
+    const reason =
+      phase === "resolving" || phase === "resolving-rebase"
+        ? "waiting for conflict resolution"
+        : phase === "stalled"
+          ? "paused; owner action needed"
+          : phase === "committing"
+            ? "waiting for a commit"
+            : phase === "proposing"
+              ? "waiting for a squash message"
+              : phase === "landing"
+                ? "preparing or running Git"
+                : "waiting for owner progress";
+    return `Queued #${queue.position} behind landing ${queue.blockingOperationId.slice(0, 8)}${queue.blockingSessionId ? ` (session ${queue.blockingSessionId.slice(0, 8)})` : ""} — ${reason}.`;
+  }
+
   get isRebaseOperation() {
     return this.props.operation()?.kind === "rebase" || this.phase === "resolving-rebase";
   }

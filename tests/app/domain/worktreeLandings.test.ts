@@ -83,6 +83,7 @@ function services(options: {
   const managed = ManagedWorktrees.of({
     records: () => Effect.succeed(options.records?.() ?? [record]),
     observe: () => Stream.never,
+    observeLandingQueue: () => Stream.succeed([]),
     createCheckout: () => Effect.fail(failure("createCheckout")),
     awaitSetup: () => Effect.void,
     status: () => Effect.sync(options.status),

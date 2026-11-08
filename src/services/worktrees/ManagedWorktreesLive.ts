@@ -33,6 +33,7 @@ import { makeWorktreeRepository } from "./WorktreeRepository";
 import { makeWorktreeCheckout } from "./WorktreeCheckout";
 import { makeWorktreeLanding } from "./WorktreeLanding";
 import { makeWorktreeLandingQueue } from "./WorktreeLandingQueue";
+import { measureLanding } from "../diagnostics/responsiveness-diagnostics";
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 const internalError = (message: string) => Effect.fail(new Error(message));
@@ -277,6 +278,7 @@ export const ManagedWorktreesLive: Layer.Layer<
     });
 
     const service = ManagedWorktrees.of({
+      observeLandingQueue: landingQueue.observe,
       records,
       observe: () =>
         Stream.unwrap(
@@ -433,7 +435,13 @@ export const ManagedWorktreesLive: Layer.Layer<
                 const prepared = yield* withWorktreeLock(
                   record.worktreePath,
                   (authorize ?? Effect.void).pipe(
-                    Effect.andThen(landRecord(record, request, true)),
+                    Effect.andThen(
+                      measureLanding(
+                        operationId,
+                        "git-preparation",
+                        landRecord(record, request, true),
+                      ),
+                    ),
                   ),
                 );
                 if (prepared.outcome !== "ready") {
@@ -444,13 +452,21 @@ export const ManagedWorktreesLive: Layer.Layer<
               // Never hold a worktree lock while waiting for FIFO promotion.
               yield* acquireLanding(record, operationId, onProgress?.("queued"));
               yield* onProgress?.("landing") ?? Effect.void;
-              const outcome = yield* withWorktreeLock(
-                record.worktreePath,
+              const outcome = yield* measureLanding(
+                operationId,
+                "git-locks-and-execution",
                 withWorktreeLock(
-                  record.parentWorktreePath ?? record.projectPath,
-                  withRepositoryLock(
-                    record.projectPath,
-                    (authorize ?? Effect.void).pipe(Effect.andThen(landRecord(record, request))),
+                  record.worktreePath,
+                  withWorktreeLock(
+                    record.parentWorktreePath ?? record.projectPath,
+                    withRepositoryLock(
+                      record.projectPath,
+                      (authorize ?? Effect.void).pipe(
+                        Effect.andThen(
+                          measureLanding(operationId, "git-execution", landRecord(record, request)),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               );

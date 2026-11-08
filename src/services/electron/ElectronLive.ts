@@ -24,6 +24,12 @@ import type { CakeWindowFocus } from "./cake-chat-overlay-policy";
 import { ACCESSIBILITY_PERMISSION_MESSAGE, readSelectedText, runOsaScript } from "./selected-text";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { installRendererDiagnostics } from "./renderer-diagnostics";
+import {
+  disposeWindowResponsivenessDiagnostics,
+  installWindowResponsivenessDiagnostics,
+  type WindowDiagnostic,
+} from "./window-responsiveness-diagnostics";
+import { diagnosticId } from "../diagnostics/responsiveness-diagnostics";
 import { startupDiagnostics } from "../diagnostics/startup-diagnostics";
 import { makeRendererStartupReceiver } from "../diagnostics/renderer-startup-timing";
 import { CAKE_TITLE_BAR_HEIGHT, Electron, type ElectronWindowLifecycle } from "./Electron";
@@ -61,6 +67,7 @@ const makeElectronService = (
   clientWorkspaces: ClientWorkspaces["Service"],
   connections: ClientConnections["Service"],
   reportStartup: (phase: string, fields?: Readonly<Record<string, string | number>>) => void,
+  reportWindow: (record: WindowDiagnostic) => void,
 ) => {
   let startupWindowCreated = false;
   const windows = new Map<number, BrowserWindow>();
@@ -111,6 +118,7 @@ const makeElectronService = (
     prepareWindow: (window) => {
       const nativeId = window.webContents.id;
       const ownerId = connections.desktop(nativeId);
+      installWindowResponsivenessDiagnostics(window, ownerId, reportWindow);
       installContentGuards(window);
       installOverlayHotkeyInput(window);
       window.on("closed", () => {
@@ -347,6 +355,7 @@ const makeElectronService = (
     const nativeId = window.webContents.id;
     const ownerId = connections.desktop(nativeId);
     if (startupWindow) reportStartup("window-created");
+    installWindowResponsivenessDiagnostics(window, ownerId, reportWindow);
     installRendererDiagnostics(
       window,
       () => {
@@ -393,7 +402,10 @@ const makeElectronService = (
       fullscreenSurfaces.delete(ownerId);
     });
     window.on("close", (event) => {
-      if (applicationQuitting || approvedCloses.delete(ownerId)) return;
+      if (applicationQuitting || approvedCloses.delete(ownerId)) {
+        disposeWindowResponsivenessDiagnostics(window);
+        return;
+      }
       if (failedRenderers.has(ownerId)) return;
       if (closeFullscreenSurfaceForWindow(window)) {
         event.preventDefault();
@@ -881,6 +893,7 @@ const makeElectronService = (
         // renderer windows now so RPC transports and native views cannot retain the runtime.
         for (const window of windows.values()) {
           clientWorkspaces.releaseConnection(connectionForWindow(window));
+          disposeWindowResponsivenessDiagnostics(window);
           if (!window.isDestroyed()) window.destroy();
         }
         fullscreenSurfaceListeners.clear();
@@ -921,6 +934,16 @@ export const makeElectronLive = (options: ElectronLiveOptions) =>
         clientWorkspaces,
         connections,
         (phase, fields) => runDiagnostic(startupDiagnostics.mark(phase, fields)),
+        (record) => {
+          const workspace = clientWorkspaces.workspaceForConnection(record.connectionId);
+          const fields: WindowDiagnostic & { workspace?: string } = { ...record };
+          if (workspace) fields.workspace = diagnosticId(workspace);
+          runDiagnostic(
+            record.event === "unresponsive" || record.abnormal
+              ? Effect.logWarning("Cake renderer lifecycle", fields)
+              : Effect.logInfo("Cake renderer lifecycle", fields),
+          );
+        },
       );
       return yield* Effect.acquireRelease(Effect.succeed(service), () => service.stop());
     }),

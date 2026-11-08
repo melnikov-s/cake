@@ -526,6 +526,7 @@ export class RootStore extends Store<{
       sessionId: operation.sessionId,
       kind: operation.kind,
       phase: operation.phase,
+      queue: operation.queue,
       strategy: operation.strategy,
       allowDirtyTarget: operation.allowDirtyTarget,
       resolveAfterLanding: operation.resolveAfterLanding,

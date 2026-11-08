@@ -1,4 +1,5 @@
 import { BrowserWindow, globalShortcut, screen } from "electron";
+import { disposeWindowResponsivenessDiagnostics } from "./window-responsiveness-diagnostics";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { captureAccelerator } from "../../contracts/desktop/screen-capture-data";
 import {
@@ -180,7 +181,10 @@ export class CakeChatOverlayWindow {
     const window = this.window;
     this.window = undefined;
     this.visible = false;
-    if (window && !window.isDestroyed()) window.destroy();
+    if (window && !window.isDestroyed()) {
+      disposeWindowResponsivenessDiagnostics(window);
+      window.destroy();
+    }
   }
 
   stop() {

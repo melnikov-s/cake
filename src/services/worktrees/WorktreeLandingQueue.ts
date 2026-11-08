@@ -1,4 +1,10 @@
-import { Deferred, Effect, Ref } from "effect";
+import { Clock, Deferred, Effect, Stream, SubscriptionRef } from "effect";
+import type { LandingQueueWait } from "../../contracts/worktrees/landing-queue";
+import {
+  diagnosticId,
+  landingMark,
+  measureLanding,
+} from "../diagnostics/responsiveness-diagnostics";
 import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
 import type { WorktreeRepository } from "./WorktreeRepository";
 
@@ -6,6 +12,7 @@ interface LandingEntry {
   readonly operationId: string;
   readonly worktreePath: string;
   readonly ready: Deferred.Deferred<void, Error>;
+  readonly reservedAt: number;
 }
 interface LandingQueue {
   readonly active: LandingEntry | undefined;
@@ -19,11 +26,28 @@ const resolveNormalized = (path: string) => path.replace(/\/+$/, "");
 export const makeWorktreeLandingQueue = Effect.fn("ManagedWorktrees.makeLandingQueue")(function* (
   repositoryIdentity: WorktreeRepository["repositoryIdentity"],
 ) {
-  const landingQueues = yield* Ref.make(new Map<string, LandingQueue>());
+  const landingQueues = yield* SubscriptionRef.make(new Map<string, LandingQueue>());
+  const observe = () =>
+    SubscriptionRef.changes(landingQueues).pipe(
+      Stream.map((queues) => {
+        const waits: LandingQueueWait[] = [];
+        for (const queue of queues.values()) {
+          if (!queue.active) continue;
+          for (const [index, entry] of queue.pending.entries())
+            waits.push({
+              operationId: entry.operationId,
+              blockingOperationId: queue.active.operationId,
+              position: index + 1,
+              queuedAt: entry.reservedAt,
+            });
+        }
+        return waits;
+      }),
+    );
   const landingState = Effect.fn("ManagedWorktrees.landingState")(function* (
     record: WorktreeRecord,
   ) {
-    const queue = (yield* Ref.get(landingQueues)).get(
+    const queue = (yield* SubscriptionRef.get(landingQueues)).get(
       yield* repositoryIdentity(record.projectPath),
     );
     if (!queue) return undefined;
@@ -41,16 +65,28 @@ export const makeWorktreeLandingQueue = Effect.fn("ManagedWorktrees.makeLandingQ
     operationId: string,
   ) {
     const repository = yield* repositoryIdentity(record.projectPath);
-    const promoted = yield* Ref.modify(landingQueues, (queues) => {
+    const promoted = yield* SubscriptionRef.modify(landingQueues, (queues) => {
       const queue = queues.get(repository);
       if (!queue || queue.active?.operationId !== operationId) return [undefined, queues] as const;
       const [nextActive, ...pending] = queue.pending;
       const next = new Map(queues);
       if (nextActive) next.set(repository, { active: nextActive, pending });
       else next.delete(repository);
-      return [nextActive?.ready, next] as const;
+      return [nextActive ? { entry: nextActive, pending } : undefined, next] as const;
     });
-    if (promoted) yield* Deferred.succeed(promoted, undefined);
+    if (promoted) {
+      // Wake the FIFO owner before recording diagnostics; logging must not hold admission.
+      yield* Deferred.succeed(promoted.entry.ready, undefined);
+      const now = yield* Clock.currentTimeMillis;
+      yield* landingMark(promoted.entry.operationId, "queue-admitted", {
+        durationMs: Math.max(0, now - promoted.entry.reservedAt),
+      });
+      for (const entry of promoted.pending)
+        yield* landingMark(entry.operationId, "queue-blocker-changed", {
+          blocker: diagnosticId(promoted.entry.operationId),
+          durationMs: Math.max(0, now - entry.reservedAt),
+        });
+    }
   });
   const acquireLanding = Effect.fn("ManagedWorktrees.acquireLanding")(function* (
     record: WorktreeRecord,
@@ -63,21 +99,52 @@ export const makeWorktreeLandingQueue = Effect.fn("ManagedWorktrees.makeLandingQ
       operationId,
       worktreePath: resolveNormalized(record.worktreePath),
       ready,
+      reservedAt: yield* Clock.currentTimeMillis,
     };
     const repository = yield* repositoryIdentity(record.projectPath);
-    const waiting = yield* Ref.modify(landingQueues, (queues) => {
+    const reservation = yield* SubscriptionRef.modify<
+      Map<string, LandingQueue>,
+      {
+        waiting: Deferred.Deferred<void, Error> | undefined;
+        inserted: boolean;
+        blocker: string | undefined;
+      }
+    >(landingQueues, (queues) => {
       const current = queues.get(repository);
-      if (current?.active?.operationId === operationId) return [undefined, queues] as const;
+      if (current?.active?.operationId === operationId)
+        return [{ waiting: undefined, inserted: false, blocker: undefined }, queues] as const;
       const existing = current?.pending.find((item) => item.operationId === operationId);
-      if (existing) return [existing.ready, queues] as const;
+      if (existing)
+        return [
+          { waiting: existing.ready, inserted: false, blocker: current?.active?.operationId },
+          queues,
+        ] as const;
       const next = new Map(queues);
       if (!current) next.set(repository, { active: entry, pending: [] });
       else next.set(repository, { ...current, pending: [...current.pending, entry] });
-      return [current ? ready : undefined, next] as const;
+      return [
+        {
+          waiting: current ? ready : undefined,
+          inserted: true,
+          blocker: current?.active?.operationId,
+        },
+        next,
+      ] as const;
     });
+    if (reservation.inserted) {
+      const fields = { workspace: diagnosticId(record.worktreePath) };
+      if (reservation.blocker)
+        Object.assign(fields, { blocker: diagnosticId(reservation.blocker) });
+      yield* landingMark(
+        operationId,
+        reservation.waiting ? "queue-reserved" : "queue-owner",
+        fields,
+      );
+    }
+    const waiting = reservation.waiting;
     if (waiting && waitForTurn)
       yield* (onQueued ?? Effect.void).pipe(
-        Effect.andThen(Deferred.await(waiting)),
+        Effect.andThen(measureLanding(operationId, "queue-wait", Deferred.await(waiting))),
         Effect.onInterrupt(() => cancelLandingInternal(record, operationId, false)),
       );
   });
@@ -87,7 +154,7 @@ export const makeWorktreeLandingQueue = Effect.fn("ManagedWorktrees.makeLandingQ
     onlyIfQueued: boolean,
   ) {
     const repository = yield* repositoryIdentity(record.projectPath);
-    const result = yield* Ref.modify<
+    const result = yield* SubscriptionRef.modify<
       Map<string, LandingQueue>,
       "missing" | "active" | { readonly _tag: "pending"; readonly entry: LandingEntry }
     >(landingQueues, (queues) => {
@@ -112,8 +179,13 @@ export const makeWorktreeLandingQueue = Effect.fn("ManagedWorktrees.makeLandingQ
     } else if (result === "missing") {
       if (onlyIfQueued)
         return yield* internalError("This merge has already started and cannot be canceled.");
-    } else if (result.entry)
+    } else if (result.entry) {
       yield* Deferred.fail(result.entry.ready, new Error("Worktree landing was canceled."));
+      const now = yield* Clock.currentTimeMillis;
+      yield* landingMark(operationId, "queue-canceled", {
+        durationMs: Math.max(0, now - result.entry.reservedAt),
+      });
+    }
     return result !== "missing";
   });
 
@@ -121,7 +193,7 @@ export const makeWorktreeLandingQueue = Effect.fn("ManagedWorktrees.makeLandingQ
     record: WorktreeRecord,
   ) {
     const normalized = resolveNormalized(record.worktreePath);
-    const queue = (yield* Ref.get(landingQueues)).get(
+    const queue = (yield* SubscriptionRef.get(landingQueues)).get(
       yield* repositoryIdentity(record.projectPath),
     );
     for (const pending of queue?.pending ?? [])
@@ -130,5 +202,5 @@ export const makeWorktreeLandingQueue = Effect.fn("ManagedWorktrees.makeLandingQ
     if (queue?.active?.worktreePath === normalized)
       yield* releaseLanding(record, queue.active.operationId);
   });
-  return { landingState, acquireLanding, releaseLanding, cancelLandingInternal, remove };
+  return { landingState, acquireLanding, releaseLanding, cancelLandingInternal, remove, observe };
 });

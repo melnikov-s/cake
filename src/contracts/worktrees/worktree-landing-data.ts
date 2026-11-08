@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { worktreeStatusSchema } from "./worktree-contract";
+import { LandingQueueWait } from "./landing-queue";
 import { ResolutionCleanupFailed } from "../project-sessions/project-session-resolution";
 
 const bounded = (minimum: number, maximum: number) =>
@@ -27,6 +28,15 @@ export const WorktreeLandingOperation = Schema.Struct({
   sessionId: bounded(1, 256),
   kind: Schema.Literals(["landing", "rebase"]),
   phase: WorktreeLandingPhase,
+  queue: Schema.optionalKey(
+    Schema.Struct({
+      blockingOperationId: bounded(1, 256),
+      blockingSessionId: Schema.optionalKey(bounded(1, 256)),
+      blockingPhase: Schema.optionalKey(WorktreeLandingPhase),
+      position: LandingQueueWait.fields.position,
+      queuedAt: LandingQueueWait.fields.queuedAt,
+    }),
+  ),
   strategy: Schema.optionalKey(Schema.Literals(["preserve", "squash"])),
   allowDirtyTarget: Schema.Boolean,
   resolveAfterLanding: Schema.optionalKey(Schema.Boolean),

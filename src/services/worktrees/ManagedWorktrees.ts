@@ -7,6 +7,7 @@ import {
   type Stream,
 } from "effect";
 import type { Git } from "../git/Git";
+import type { LandingQueueWait } from "../../contracts/worktrees/landing-queue";
 import type {
   ManagedWorktreeCatalogUpdate,
   WorktreeRecord,
@@ -52,6 +53,7 @@ export interface WorktreeCheckoutPlan {
 
 export interface ManagedWorktreesService {
   readonly records: () => Effect.Effect<ReadonlyArray<WorktreeRecord>, ManagedWorktreeError>;
+  readonly observeLandingQueue: () => Stream.Stream<ReadonlyArray<LandingQueueWait>>;
   readonly observe: () => Stream.Stream<ManagedWorktreeCatalogUpdate, ManagedWorktreeError>;
   /** Runs the domain planner with this engine's Git/filesystem/path capabilities under its
    * repository lock and reserves the planned branch there. Checkout and setup commands run

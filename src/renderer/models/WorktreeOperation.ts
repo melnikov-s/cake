@@ -11,6 +11,7 @@ export class WorktreeOperation extends Model {
   sessionId = "";
   kind: WorktreeLandingOperation["kind"] = "landing";
   phase: WorktreeLandingPhase = "waiting";
+  queue: WorktreeLandingOperation["queue"];
   strategy: WorktreeLandingOperation["strategy"];
   allowDirtyTarget = false;
   resolveAfterLanding: WorktreeLandingOperation["resolveAfterLanding"];

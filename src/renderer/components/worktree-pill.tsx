@@ -505,9 +505,7 @@ export const WorktreePill = observer(function WorktreePill({
         </p>
       )}
       {actions.isQueued && (
-        <p className="px-2 text-xs text-muted-foreground">
-          Another merge is in progress. This merge will start automatically when it finishes.
-        </p>
+        <p className="px-2 text-xs text-muted-foreground">{actions.queuedStatus}</p>
       )}
       {actions.error && <p className="px-2 text-xs text-destructive">{actions.error}</p>}
     </ComposerCap>

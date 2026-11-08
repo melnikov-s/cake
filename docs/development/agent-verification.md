@@ -277,6 +277,51 @@ kill can lose the pending batch. Log-directory/write failures warn on the consol
 rather than stopping Cake. New logging code requires a rebuilt/restarted host;
 it cannot recover diagnostics from earlier runs that did not retain them.
 
+### Renderer responsiveness and landing diagnostics
+
+New hosts retain `Cake renderer lifecycle`, `Cake landing` and `Cake landing phase`
+records in the existing operational `desktop.log` / `server.log` (same 5 MiB file,
+three backups, asynchronous 250 ms flush and abrupt-kill limits described above).
+This adds observability, not a diagnosis or performance fix for a historical freeze.
+Activation requires a rebuilt host on a later user-controlled launch; do not restart
+the live user app to activate or test it.
+
+- Renderer records identify the host responsiveness `run`, native window,
+  webContents, client connection, renderer PID, receipt timestamp and hashed current
+  workspace when bound. Native `unresponsive` / `responsive` pairs include the
+  elapsed stall duration. `render-gone` retains Electron's fixed reason and exit
+  code; clean exits are not crashes. Intentional managed teardown disposes listeners
+  first. Records are event-driven, deduplicated per window/document and removed
+  on destruction. No raw renderer console/error message is persisted here.
+- Landing records share that responsiveness run on a local desktop. Session,
+  workspace, operation and blocking-operation identifiers are SHA-256 prefixes
+  (16 hex characters); no branch names, paths, commands, prompts or transcript
+  bodies are retained. Match `landing` across queue and workflow events. This run
+  is separate from the startup/shutdown diagnostic run IDs. A remote backend's
+  run is distinct from its desktop client's run; hashed workspace IDs can correlate
+  only identical path strings.
+- Queue reservation, blocker changes, admission and cancellation are distinct
+  from `git-preparation`, `git-locks-and-execution` and `git-execution` timings.
+  Source preparation may run before admission; it does not own the target queue.
+  Workflow phase transitions measure commit/owner-conflict/squash-message waits,
+  retries and terminal success/failure/cancellation. Phase durations use coordinator
+  observation receipt time; boundary timings measure the actual wrapped wait.
+  `resolution-cleanup` measures resolve-after-landing only, never ordinary merge.
+  Failure records include safe error categories and cause fingerprints, not raw
+  error bodies; original errors still propagate to the existing status/error UI.
+  Nested timings overlap: do not add them as end-to-end latency.
+- The existing worktree pill displays queue position and the actual blocking
+  landing/session IDs plus the owner's phase. This is a projection of engine FIFO
+  ownership, not an elapsed-time guess. It updates on queue/owner changes without
+  polling; queued work is not labeled running Git or completed.
+
+Focused tests cover queue ownership/projection, phase durations, native-event
+persistence and disposal. The hidden Electron landing-wait smoke reserves real
+fixture FIFO entries with a synthetic conflict-owner phase and exercises Settings
+navigation, return and composer input; it never calls landing Git, prompts or
+session resolution. Neither that smoke nor in-process native-event fakes prove
+OS stall detection, a real OOM/crash, or the historical freeze's cause.
+
 ### Startup phase diagnostics
 
 After deploying this code, the next user-controlled launch writes `Cake startup`

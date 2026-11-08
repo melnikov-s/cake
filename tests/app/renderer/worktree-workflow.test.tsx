@@ -587,6 +587,39 @@ describe("Worktree operation workflows", () => {
     });
   });
 
+  it("identifies the blocking landing and updates its phase and identity without calling queued work Git", async () => {
+    const queue = {
+      blockingOperationId: "blocker-first",
+      blockingSessionId: "owner-first",
+      blockingPhase: "resolving" as const,
+      position: 2,
+      queuedAt: 0,
+    };
+    using fixture = renderWorktree({ operation: operation("queued", { queue }) });
+    await screen.findByText(/Queued #2 behind landing blocker-/);
+    expect(screen.getByText(/waiting for conflict resolution/)).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Merging…" })).toBeNull();
+    await fixture.publish(operation("queued", { queue: { ...queue, blockingPhase: "stalled" } }));
+    expect(await screen.findByText(/paused; owner action needed/)).toBeDefined();
+    await fixture.publish(
+      operation("queued", {
+        queue: {
+          ...queue,
+          blockingOperationId: "next-owner",
+          position: 1,
+          blockingPhase: "landing",
+        },
+      }),
+    );
+    expect(await screen.findByText(/Queued #1 behind landing next-own/)).toBeDefined();
+    await fixture.publish(operation("landing"));
+    expect(await screen.findByRole("button", { name: "Merging…" })).toBeDefined();
+    expect(screen.queryByText(/Queued #/)).toBeNull();
+    await fixture.publish(operation("failed", { error: "Fixture failure" }));
+    expect(await screen.findByText("Fixture failure")).toBeDefined();
+    expect(screen.queryByText(/Queued #/)).toBeNull();
+  });
+
   it("reconciles a projection update received during an older in-flight status refresh", async () => {
     const response = gate<Awaited<ReturnType<Client["managedWorktrees"]["landing"]>>>();
     const landing = vi

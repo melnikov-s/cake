@@ -18,6 +18,8 @@ import {
   type WorktreeLandingSnapshot,
 } from "../../contracts/worktrees/worktree-landing-data";
 
+import { measureLanding } from "../../services/diagnostics/responsiveness-diagnostics";
+
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
 const normalizeOperation = (operation: WorktreeLandingOperation): WorktreeLandingOperation => {
@@ -37,10 +39,30 @@ const normalizeOperation = (operation: WorktreeLandingOperation): WorktreeLandin
 /** Current-first process-lifetime projection of landing and queue progress. */
 export const observeOperations = Effect.fn("WorktreeLandings.observeOperations")(function* () {
   const coordinator = yield* WorktreeLandingCoordinator;
-  return SubscriptionRef.changes(coordinator.state).pipe(
-    Stream.map((state) => {
+  const worktrees = yield* ManagedWorktrees;
+  return Stream.zipLatest(
+    SubscriptionRef.changes(coordinator.state),
+    worktrees.observeLandingQueue(),
+  ).pipe(
+    Stream.map(([state, waits]) => {
+      const byId = new Map([...state.operations.values()].map((item) => [item.operationId, item]));
       const update = {
-        operations: [...state.operations.values()],
+        operations: [...state.operations.values()].map((operation) => {
+          const wait = waits.find((item) => item.operationId === operation.operationId);
+          if (!wait || operation.phase !== "queued") return operation;
+          const blocker = byId.get(wait.blockingOperationId);
+          const queue: NonNullable<WorktreeLandingOperation["queue"]> = {
+            blockingOperationId: wait.blockingOperationId,
+            position: wait.position,
+            queuedAt: wait.queuedAt,
+          };
+          if (blocker)
+            Object.assign(queue, {
+              blockingSessionId: blocker.sessionId,
+              blockingPhase: blocker.phase,
+            });
+          return { ...operation, queue };
+        }),
         autoMergeProjects: state.autoMergeProjects ?? [],
         autoMergeRequests: state.autoMergeRequests ?? [],
       };
@@ -124,9 +146,11 @@ const completeLanding = Effect.fn("WorktreeLandings.completeLanding")(function* 
         resolutionError: undefined,
       };
       if (current.resolveAfterLanding) {
-        const result = yield* completion
-          .resolveWorkingDirectory(operation.workspacePath)
-          .pipe(Effect.result);
+        const result = yield* measureLanding(
+          operation.operationId,
+          "resolution-cleanup",
+          completion.resolveWorkingDirectory(operation.workspacePath),
+        ).pipe(Effect.result);
         if (result._tag === "Failure") {
           completed = {
             ...completed,
