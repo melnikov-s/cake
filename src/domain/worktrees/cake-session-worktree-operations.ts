@@ -13,6 +13,7 @@ const mergeResult =
 
 /** Shared behavior guidance for every surface that exposes Cake's native worktree merge. */
 const worktreeMergeGuidance = [
+  "Only projects configured to Merge with Cake allow direct landing. Projects configured to Merge outside Cake use their external pull request workflow; do not invoke merging or report auto-merge readiness for them.",
   "This is Cake's normal Merge workflow, identical to the Merge action in the Cake UI: Cake prompts the owning session to commit any uncommitted worktree changes, replays the worktree branch onto the branch it was created from through Cake's serialized repository landing queue, and marks the worktree landed. It never resolves the session.",
   "The call waits until the landing lands, fails, stalls, or needs the owning agent (bounded to about two minutes), then returns a structured report. Follow its nextStep text.",
   "Conflicts: Cake rebases the worktree branch onto the target and, on conflicts, prompts the owning session to resolve them inside its own worktree (outcome awaiting-agent with conflictFiles). When that turn ends Cake retries automatically. If the worktree is still blocked the outcome is stalled; once the owner has finished, call worktrees.merge again to retry.",
@@ -102,6 +103,7 @@ export function createCakeChatWorktreeOperations(
       limitations: [
         "The target must own a Cake-managed worktree and support native Project Session resolution. Lifecycle policy still requires inactive family members; this command does not override resolution authority.",
         "Authorization to merge alone does not grant authorization to resolve.",
+        "Projects configured to Merge outside Cake reject this command. Resolve remains a separate action.",
       ],
       execute: (input, context) =>
         // SAFETY: CakeOperationRegistry parsed input with this operation's schema.

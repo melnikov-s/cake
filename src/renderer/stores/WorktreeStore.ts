@@ -107,6 +107,10 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     );
   }
 
+  get isRebaseOperation() {
+    return this.props.operation()?.kind === "rebase" || this.phase === "resolving-rebase";
+  }
+
   get isSessionRunning() {
     return this.props.isStreaming();
   }

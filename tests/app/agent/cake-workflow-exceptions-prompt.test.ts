@@ -44,6 +44,8 @@ it.each(["merge", "pull-request"] as const)(
       expect(prompt).toContain("no fallback");
     } else {
       expect(prompt).toContain("worktrees.merge is unavailable");
+      expect(prompt).toContain("worktrees.reportReadiness");
+      expect(prompt).toContain("use PRs");
     }
   },
 );

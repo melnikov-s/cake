@@ -3,7 +3,8 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
-import { observer } from "r-state-tree/react";
+import { observer, StoreProvider } from "r-state-tree/react";
+import { AutoMergeToggle } from "../../../src/renderer/components/auto-merge-toggle";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ResolutionCleanupFailed } from "../../../src/contracts/project-sessions/project-session-resolution";
@@ -108,6 +109,7 @@ function renderWorktree(
     ],
     client: {
       ...options.client,
+      cakeChats: { open: async () => undefined, ...options.client?.cakeChats },
       managedWorktrees: { landing, ...options.client?.managedWorktrees },
       terminals: {
         workingDirectoryStatus: async () => ({ runningProgramCount: 0 }),
@@ -115,6 +117,16 @@ function renderWorktree(
         ...options.client?.terminals,
       },
     },
+  });
+  applySnapshot(fixture.models.cakeChatCatalog, {
+    loaded: true,
+    sessions: [
+      {
+        sessionId: `project-chat:${"c".repeat(64)}`,
+        title: "Project Chat",
+        projectPath: "/project",
+      },
+    ],
   });
   applySnapshot(fixture.models.worktrees, { worktrees: [options.record ?? currentStatus.record] });
   applyWorktreeOperationCatalogUpdate(fixture.models.worktreeOperations, {
@@ -172,10 +184,28 @@ function renderWorktree(
       </section>
     );
   });
-  const view = render(<Surface />);
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <Surface />
+      <AutoMergeToggle projectPath="/project" />
+    </StoreProvider>,
+  );
   return {
     user: userEvent.setup(),
     landing,
+    root: fixture.root,
+    async setLanding(worktreeLanding: "merge" | "pull-request") {
+      await act(async () =>
+        applySnapshot(fixture.models.projects, {
+          projects: [
+            projectRecord({
+              path: "/project",
+              settings: { ...defaultProjectSettings(), worktreeLanding },
+            }),
+          ],
+        }),
+      );
+    },
     async publish(
       next: WorktreeLandingOperation | undefined,
       nextStatus: WorktreeStatus | null = currentStatus ?? null,
@@ -208,6 +238,60 @@ function renderWorktree(
 afterEach(cleanup);
 
 describe("Worktree operation workflows", () => {
+  it("keeps manual Merge and Merge & resolve when project auto-merge is off", async () => {
+    using fixture = renderWorktree();
+    expect(fixture.root.autoMergeForProject("/project")?.enabled ?? false).toBe(false);
+    expect(await screen.findByRole("button", { name: "Merge" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Merge & resolve" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Auto-merge: off" })).toBeDefined();
+  });
+
+  it("keeps explicit destructive discard confirmation for external projects", async () => {
+    const discard = vi.fn<Client["managedWorktrees"]["discard"]>(async () => undefined);
+    using fixture = renderWorktree({
+      landing: "pull-request",
+      client: { managedWorktrees: { discard } },
+    });
+    await waitFor(() => expect(fixture.landing).toHaveBeenCalled());
+    await fixture.user.click(screen.getByRole("button", { name: "Discard & resolve" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/all unmerged work will be lost/)).toBeDefined();
+    expect(discard).not.toHaveBeenCalled();
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(discard).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("reacts to live workflow changes without mutating global auto-merge", async () => {
+    using fixture = renderWorktree();
+    await waitFor(() => expect(fixture.landing).toHaveBeenCalled());
+    await fixture.setLanding("pull-request");
+    expect(screen.queryByRole("button", { name: "Merge" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Merge & resolve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Auto-merge/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Resolve" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Discard & resolve" })).toBeDefined();
+    expect(fixture.root.autoMergeForProject("/project")?.enabled ?? false).toBe(false);
+    await fixture.setLanding("merge");
+    expect(screen.getByRole("button", { name: "Merge" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Auto-merge: off" })).toBeDefined();
+  });
+
+  it("hides additional-commit landing and stalled merge retry for external projects", async () => {
+    using fixture = renderWorktree({
+      landing: "pull-request",
+      status: status({ record: { ...status().record, state: "landed" } }),
+      operation: operation("stalled", { pauseReason: "conflict" }),
+    });
+    await waitFor(() => expect(fixture.landing).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: /Land.*commit/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Auto-merge/ })).toBeNull();
+    await fixture.publish(operation("stalled", { kind: "rebase", pauseReason: "rebase-conflict" }));
+    expect(await screen.findByRole("button", { name: "Retry" })).toBeDefined();
+  });
+
   it("presents a landed and resolved operation with cleanup warnings without offering another merge", async () => {
     const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async () =>
       operation("waiting", { resolveAfterLanding: true }),
@@ -286,6 +370,7 @@ describe("Worktree operation workflows", () => {
     await waitFor(() => expect(fixture.landing).toHaveBeenCalled());
     expect(screen.queryByRole("button", { name: "Merge" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Merge & resolve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Auto-merge/ })).toBeNull();
     // The merge target's state is irrelevant when Cake never merges.
     expect(screen.queryByTestId("worktree-target-warning")).toBeNull();
     expect(screen.getByRole("button", { name: "Discard & resolve" })).toBeDefined();
@@ -296,6 +381,13 @@ describe("Worktree operation workflows", () => {
         expect.anything(),
       ),
     );
+    await waitFor(() =>
+      expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(
+        `project-chat:${"c".repeat(64)}`,
+      ),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(fixture.root.toastStore.toasts).toEqual([]);
   });
 
   it("keeps merge disabled without changes and offers rebase only after the target advances", async () => {

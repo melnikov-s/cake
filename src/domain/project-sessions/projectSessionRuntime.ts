@@ -404,10 +404,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       ]
         .filter(Boolean)
         .join("\n\n"),
-      worktreeLanding:
-        location.managedWorktree && projectSettings?.worktreeLanding === "pull-request"
-          ? "pull-request"
-          : "merge",
+      worktreeLanding: projectSettings?.worktreeLanding ?? "merge",
       sessionDir: configuration.sessionDirectory,
       newSession,
       sessionId,
@@ -743,33 +740,39 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             ),
             { signal },
           ),
-        mergeSession: async (targetSessionId, signal) => {
-          const target = await run(worktreeOperationTarget(targetSessionId), { signal });
-          if (
-            Option.isNone(landingCoordinator) ||
-            Option.isNone(landingAgent) ||
-            Option.isNone(landingCompletion)
-          )
-            throw new Error("Managed Worktree landing is unavailable");
-          return toJsonValue(
-            await run(
-              Effect.scoped(
-                worktreeMerges
-                  .merge({
-                    sessionId: target.sessionId,
-                    workspacePath: target.location.workingDirectory,
-                    callerSessionId: sessionId,
-                  })
-                  .pipe(
-                    Effect.provideService(WorktreeLandingCoordinator, landingCoordinator.value),
-                    Effect.provideService(WorktreeLandingAgent, landingAgent.value),
-                    Effect.provideService(WorktreeLandingCompletion, landingCompletion.value),
+        mergeSession:
+          projectSettings?.worktreeLanding === "pull-request"
+            ? undefined
+            : async (targetSessionId, signal) => {
+                const target = await run(worktreeOperationTarget(targetSessionId), { signal });
+                if (
+                  Option.isNone(landingCoordinator) ||
+                  Option.isNone(landingAgent) ||
+                  Option.isNone(landingCompletion)
+                )
+                  throw new Error("Managed Worktree landing is unavailable");
+                return toJsonValue(
+                  await run(
+                    Effect.scoped(
+                      worktreeMerges
+                        .merge({
+                          sessionId: target.sessionId,
+                          workspacePath: target.location.workingDirectory,
+                          callerSessionId: sessionId,
+                        })
+                        .pipe(
+                          Effect.provideService(
+                            WorktreeLandingCoordinator,
+                            landingCoordinator.value,
+                          ),
+                          Effect.provideService(WorktreeLandingAgent, landingAgent.value),
+                          Effect.provideService(WorktreeLandingCompletion, landingCompletion.value),
+                        ),
+                    ),
+                    { signal },
                   ),
-              ),
-              { signal },
-            ),
-          );
-        },
+                );
+              },
         discardSession: async (targetSessionId, keepBranch, signal) => {
           const target = await run(worktreeOperationTarget(targetSessionId), { signal });
           await run(managedWorktrees.discard(target.location.workingDirectory, keepBranch), {
@@ -893,23 +896,28 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         ),
       worktreeLandingControl: location.managedWorktree
         ? {
-            reportReadiness: Option.isSome(landingCoordinator)
-              ? (readiness: MergeReadiness) =>
-                  run(
-                    autoMergeReadiness
-                      .report(
-                        {
-                          sessionId,
-                          workingDirectory: location.workingDirectory,
-                          sessionDirectory: location.sessionDirectory,
-                        },
-                        readiness,
-                      )
-                      .pipe(
-                        Effect.provideService(WorktreeLandingCoordinator, landingCoordinator.value),
-                      ),
-                  )
-              : undefined,
+            reportReadiness:
+              projectSettings?.worktreeLanding !== "pull-request" &&
+              Option.isSome(landingCoordinator)
+                ? (readiness: MergeReadiness) =>
+                    run(
+                      autoMergeReadiness
+                        .report(
+                          {
+                            sessionId,
+                            workingDirectory: location.workingDirectory,
+                            sessionDirectory: location.sessionDirectory,
+                          },
+                          readiness,
+                        )
+                        .pipe(
+                          Effect.provideService(
+                            WorktreeLandingCoordinator,
+                            landingCoordinator.value,
+                          ),
+                        ),
+                    )
+                : undefined,
             proposeSquashMessage: (message) =>
               run(
                 worktrees.proposeSquashMessage({

@@ -106,6 +106,19 @@ export class SessionMetadataStore extends Store<{
     const request = this.props.worktreeOperations?.autoMergeRequests.findLast(
       (request) => request.sessionId === sessionId,
     );
+    const directory = this.workingDirectory(sessionId);
+    const projectPath =
+      this.props.catalog.find(sessionId)?.projectPath ??
+      (directory ? this.props.catalog.projectPathFor(directory) : undefined);
+    if (
+      projectPath &&
+      this.props.projects.find(projectPath)?.settings.worktreeLanding === "pull-request" &&
+      request?.state !== "failed" &&
+      request?.state !== "landing" &&
+      !request?.outcome?.merged
+    )
+      return undefined;
+    // Keep actual landing failures/outcomes inspectable after a workflow change.
     // A partial family resolution can resolve this member while leaving landing follow-up.
     const resolutionFailed = request?.outcome?.merged && !request.outcome.resolutionSucceeded;
     if (this.isResolved(sessionId) && !resolutionFailed) return undefined;

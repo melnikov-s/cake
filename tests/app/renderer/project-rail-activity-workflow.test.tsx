@@ -6,6 +6,8 @@ import {
   applyProjectCatalogUpdate,
   applySessionCatalogGroupUpdate,
 } from "../../../src/renderer/reducers/CatalogReducer";
+import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
+import { applySnapshot } from "r-state-tree";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { CakeChatSummary } from "../../../src/renderer/models/CakeChatSummary";
 import { Profiler } from "react";
@@ -57,6 +59,70 @@ it("has no global rail toggle; explicit project controls stay independent across
   view.rerender(surface("/unregistered"));
   expect(screen.queryByRole("button", { name: /Auto-merge/ })).toBeNull();
   expect(setAutoMerge.mock.calls).toEqual([["/cake", true]]);
+});
+
+it("hides project Auto-merge live for external workflows without disabling direct projects", async () => {
+  const setAutoMerge = vi.fn(async () => undefined);
+  using fixture = createRendererStoreFixture({
+    projects: [
+      projectRecord({ path: "/direct" }),
+      projectRecord({
+        path: "/external",
+        settings: { ...defaultProjectSettings(), worktreeLanding: "pull-request" },
+      }),
+    ],
+    client: { managedWorktrees: { setAutoMerge } },
+  });
+  applyWorktreeOperationCatalogUpdate(fixture.models.worktreeOperations, {
+    operations: [],
+    autoMergeProjects: ["/direct", "/external"].map((projectPath) => ({
+      projectPath,
+      enabled: true,
+      epoch: "test",
+      status: "On",
+    })),
+  });
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <section aria-label="Direct project">
+        <AutoMergeToggle projectPath="/direct" />
+      </section>
+      <section aria-label="External project">
+        <AutoMergeToggle projectPath="/external" />
+      </section>
+    </StoreProvider>,
+  );
+  expect(
+    within(screen.getByRole("region", { name: "Direct project" })).getByRole("button", {
+      name: "Auto-merge: on",
+    }),
+  ).toBeDefined();
+  expect(
+    within(screen.getByRole("region", { name: "External project" })).queryByRole("button"),
+  ).toBeNull();
+  await act(async () =>
+    applySnapshot(fixture.models.projects, {
+      projects: [
+        projectRecord({
+          path: "/direct",
+          settings: { ...defaultProjectSettings(), worktreeLanding: "pull-request" },
+        }),
+        projectRecord({ path: "/external" }),
+      ],
+    }),
+  );
+  expect(
+    within(screen.getByRole("region", { name: "Direct project" })).queryByRole("button"),
+  ).toBeNull();
+  expect(
+    within(screen.getByRole("region", { name: "External project" })).getByRole("button", {
+      name: "Auto-merge: on",
+    }),
+  ).toBeDefined();
+  expect(fixture.root.autoMergeForProject("/direct")?.enabled).toBe(true);
+  expect(fixture.root.autoMergeForProject("/external")?.enabled).toBe(true);
+  expect(setAutoMerge).not.toHaveBeenCalled();
+  view.unmount();
 });
 
 it("keeps the owning project's Auto-merge off when authorization fails", async () => {

@@ -742,8 +742,14 @@ removal and restoration of one checkout serialize with its landing and rebase
 through a per-worktree lock instead. Configured removal must leave `checkoutPath`
 absent, because external tools can report success without removing anything.
 
-Pull-request Projects refuse `worktreeLandings.start` (and therefore
-`worktrees.merge`). Resolving their sessions retires an active checkout only when it
+`worktreeLanding` is project-level direct-merge permission, independent of checkout
+location, managed ownership and the application-wide Auto-merge opt-in. `"merge"`
+(Merge with Cake, also the missing-setting default) permits manual merging even with
+Auto-merge off. `"pull-request"` (Merge outside Cake) hides Cake merge/Auto-merge
+controls and rejects manual, tool and automatic landing/readiness. `worktreeLifecycle`
+checks current settings at admission and through the engine’s execution authorization
+hook, so queued/replayed requests cannot bypass a live policy change. Mixed projects
+retain the application-wide opt-in; selecting an outside-Cake project never disables it. Resolving their sessions retires an active checkout only when it
 has no uncommitted, conflicted or in-progress work; its branch is kept when it has
 commits so restoration can recreate the same Working Directory.
 

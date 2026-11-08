@@ -12,9 +12,13 @@ import {
 } from "../../../src/contracts/worktrees/worktree-landing-data";
 import { WorktreeOperationCatalogUpdate } from "../../../src/contracts/worktrees/worktree-operation-data";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import {
+  defaultApplicationState,
+  defaultProjectSettings,
+} from "../../../src/contracts/application/application-data";
 import type { CakePrompts } from "../../../src/contracts/application/cake-prompt-data";
 import * as worktreeLandings from "../../../src/domain/worktrees/worktreeLandings";
+import * as worktreeLifecycle from "../../../src/domain/worktrees/worktreeLifecycle";
 import type {
   WorktreeLandOutcome,
   WorktreeStatus,
@@ -61,6 +65,7 @@ const failure = (operation: string) =>
 
 function services(options: {
   status: () => WorktreeStatus | undefined;
+  landing?: () => "merge" | "pull-request";
   records?: () => ReadonlyArray<WorktreeRecord>;
   events: string[];
   land?: () => WorktreeLandOutcome;
@@ -89,13 +94,14 @@ function services(options: {
       Effect.sync(() => options.events.push("prepare")).pipe(
         Effect.andThen(options.queued ? Effect.void : (options.prepare ?? Effect.void)),
       ),
-    land: (_path, _operationId, _request, onProgress) =>
+    land: (_path, _operationId, _request, onProgress, authorize) =>
       Effect.gen(function* () {
         if (options.queued) {
           yield* onProgress?.("queued") ?? Effect.void;
           yield* options.prepare ?? Effect.void;
           yield* onProgress?.("landing") ?? Effect.void;
         }
+        yield* authorize ?? Effect.void;
         options.events.push("land");
         return options.land?.() ?? ({ outcome: "landed" } as const);
       }),
@@ -127,7 +133,21 @@ function services(options: {
   const application = ApplicationState.of({
     initialize: () => Effect.succeed(state),
     current: () => Effect.succeed(state),
-    snapshot: () => state,
+    snapshot: () => ({
+      ...state,
+      projects: [
+        {
+          path: record.projectPath,
+          name: "Project",
+          addedAt: record.createdAt,
+          lastOpenedAt: record.createdAt,
+          settings: {
+            ...defaultProjectSettings(),
+            worktreeLanding: options.landing?.() ?? "merge",
+          },
+        },
+      ],
+    }),
     changes: () => Stream.never,
     transact: (transition) => transition(state),
   });
@@ -164,6 +184,100 @@ const awaitPhase = (phase: WorktreeLandingPhase) =>
   });
 
 describe("WorktreeLandings", () => {
+  it.effect("missing project settings keep the existing direct-merge default", () =>
+    Effect.gen(function* () {
+      yield* worktreeLifecycle.requireDirectMerge("/project-without-settings");
+      expect(
+        (yield* worktreeLifecycle.forProject("/project-without-settings")).landsThroughPullRequests,
+      ).toBe(false);
+    }).pipe(
+      Effect.provideService(
+        ApplicationState,
+        ApplicationState.of({
+          initialize: () => Effect.succeed(defaultApplicationState()),
+          current: () => Effect.succeed(defaultApplicationState()),
+          snapshot: () => defaultApplicationState(),
+          changes: () => Stream.never,
+          transact: (transition) => transition(defaultApplicationState()),
+        }),
+      ),
+    ),
+  );
+
+  it.effect("rejects a stale direct start request for an external project before mutation", () => {
+    const events: string[] = [];
+    return Effect.gen(function* () {
+      const result = yield* worktreeLandings
+        .start({
+          operationId: "stale-start",
+          workspacePath,
+          sessionId: "session-1",
+          strategy: "preserve",
+          allowDirtyTarget: false,
+          commitBeforeLanding: true,
+          resolveAfterLanding: true,
+        })
+        .pipe(Effect.result);
+      expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "WorktreeLandingError" } });
+      expect(events).toEqual([]);
+    }).pipe(
+      Effect.provide(services({ status: baseStatus, events, landing: () => "pull-request" })),
+    );
+  });
+
+  it.effect("manual queued execution rechecks the current external policy before Git", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let landing: "merge" | "pull-request" = "merge";
+        const events: string[] = [];
+        const release = yield* Deferred.make<void>();
+        yield* Effect.gen(function* () {
+          yield* worktreeLandings.start({
+            operationId: "queued-policy",
+            workspacePath,
+            sessionId: "session-1",
+            strategy: "preserve",
+            allowDirtyTarget: false,
+            commitBeforeLanding: false,
+          });
+          yield* awaitPhase("queued");
+          landing = "pull-request";
+          yield* Deferred.succeed(release, undefined);
+          yield* awaitPhase("failed");
+          expect(events).toEqual(["prepare", "cancel"]);
+        }).pipe(
+          Effect.provide(
+            services({
+              status: baseStatus,
+              events,
+              queued: true,
+              prepare: Deferred.await(release),
+              landing: () => landing,
+            }),
+          ),
+        );
+      }),
+    ),
+  );
+
+  it.effect("does not adopt a persisted landing for an external project during inspection", () => {
+    const events: string[] = [];
+    return Effect.gen(function* () {
+      const snapshot = yield* worktreeLandings.inspect({ workspacePath, sessionId: "session-1" });
+      expect(snapshot.status).toBeDefined();
+      expect(snapshot.operation).toBeUndefined();
+      expect(events).toEqual([]);
+    }).pipe(
+      Effect.provide(
+        services({
+          events,
+          landing: () => "pull-request",
+          status: () => ({ ...baseStatus(), record: { ...record, pendingStrategy: "preserve" } }),
+        }),
+      ),
+    );
+  });
+
   it.effect(
     "reports resolve-intent persistence failure instead of leaving an unstarted waiting operation",
     () => {

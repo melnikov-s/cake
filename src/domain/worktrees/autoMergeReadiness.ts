@@ -7,6 +7,7 @@ import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLan
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
+import * as worktreeLifecycle from "./worktreeLifecycle";
 
 export const setEnabled = Effect.fn("AutoMerge.setEnabled")(function* (
   projectPath: string,
@@ -66,15 +67,21 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
     yield* storage.invalidateAutoMerge(target.workingDirectory);
     return { eligible: false as const, reason: "Merge readiness was revoked." };
   }
+  const record = (yield* (yield* ManagedWorktrees).records()).find(
+    (item) => item.worktreePath === target.workingDirectory,
+  );
+  if (!record)
+    return yield* new WorktreeLandingError({
+      operation: "readiness",
+      message: "Merge readiness requires a Cake-managed worktree.",
+    });
+  yield* worktreeLifecycle.requireDirectMerge(record.projectPath);
   if (!readiness.taskCompleted || !readiness.validationPassed)
     return yield* new WorktreeLandingError({
       operation: "readiness",
       message: "Finish the task and all necessary validation before declaring readiness.",
     });
-  const record = (yield* (yield* ManagedWorktrees).records()).find(
-    (item) => item.worktreePath === target.workingDirectory,
-  );
-  const projectPath = record?.projectPath;
+  const projectPath = record.projectPath;
   if (
     !projectPath ||
     !(yield* ApplicationState).snapshot().projects.some((item) => item.path === projectPath)

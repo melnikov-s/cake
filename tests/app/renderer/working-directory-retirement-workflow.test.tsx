@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
 import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import { ResolutionCleanupFailed } from "../../../src/contracts/project-sessions/project-session-resolution";
 import { WorkbenchErrorNotice } from "./workbench-error-notice";
 import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
@@ -26,6 +27,7 @@ function renderRetirement(
     runningProgramCount: 1,
   }),
   resolveWorkingDirectory?: Client["projectSessions"]["resolveWorkingDirectory"],
+  landing: "merge" | "pull-request" = "merge",
 ) {
   const inspect = vi.fn(workingDirectoryStatus);
   const close = vi.fn<Client["terminals"]["closeWorkingDirectory"]>(async () => undefined);
@@ -44,7 +46,13 @@ function renderRetirement(
       terminals: { workingDirectoryStatus: inspect, closeWorkingDirectory: close },
       projectSessions: { resolveWorkingDirectory: resolve, open: async () => undefined },
     },
-    projects: [projectRecord({ path: "/project", name: "Project" })],
+    projects: [
+      projectRecord({
+        path: "/project",
+        name: "Project",
+        settings: { ...defaultProjectSettings(), worktreeLanding: landing },
+      }),
+    ],
     sessions: ["one", "two"].map((name) =>
       sessionSummary({
         sessionId: `session-${name}`,
@@ -63,7 +71,7 @@ function renderRetirement(
       branch: `agent/${name}`,
       baseBranch: "main",
       createdAt: new Date(0).toISOString(),
-      state: "landed",
+      state: landing === "pull-request" ? "active" : "landed",
     };
     return { name, session, record };
   });
@@ -114,6 +122,7 @@ function renderRetirement(
             record={record}
             sessionId={`session-${name}`}
             projectPath="/project"
+            landing={landing}
             onConfigured={() => {}}
           />
         </section>
@@ -146,6 +155,35 @@ function resolveButton(name = "one") {
 afterEach(cleanup);
 
 describe("Working Directory retirement workflow", () => {
+  it.each(["merge", "pull-request"] as const)(
+    "resolves %s sessions without duplicate unmerged-work warnings",
+    async (landing) => {
+      using fixture = renderRetirement(
+        async () => ({ runningProgramCount: 0 }),
+        undefined,
+        landing,
+      );
+      await fixture.user.click(resolveButton());
+      await waitFor(() => expect(fixture.resolve).toHaveBeenCalledOnce());
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.queryByText(/unmerged work/i)).toBeNull();
+      expect(fixture.root.toastStore.toasts).toHaveLength(0);
+    },
+  );
+
+  it("keeps external-project terminal retirement safety and operational failures visible", async () => {
+    using fixture = renderRetirement(
+      async () => {
+        throw new Error("External terminal inspection failed");
+      },
+      undefined,
+      "pull-request",
+    );
+    await fixture.user.click(resolveButton());
+    expect(await screen.findByText("External terminal inspection failed")).toBeDefined();
+    expect(fixture.resolve).not.toHaveBeenCalled();
+  });
+
   it("retires committed sessions in a mixed batch while presenting rejection and cleanup details", async () => {
     using fixture = renderRetirement(
       async () => ({ runningProgramCount: 0 }),

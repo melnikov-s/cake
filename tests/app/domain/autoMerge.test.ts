@@ -7,7 +7,10 @@ import { runPass } from "../../../src/domain/worktrees/autoMerge";
 import { report, setEnabled } from "../../../src/domain/worktrees/autoMergeReadiness";
 import { ManagedWorktreeError } from "../../../src/contracts/worktrees/managed-worktrees-errors";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import {
+  defaultApplicationState,
+  defaultProjectSettings,
+} from "../../../src/contracts/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
@@ -52,9 +55,13 @@ function fixture(
     executingTurns?: string[];
     extraRecords?: WorktreeRecord[];
     requester?: string | null;
+    landing?: "merge" | "pull-request";
+    externalSecond?: boolean;
   } = {},
 ) {
   const events: string[] = [];
+  let landing = options.landing ?? "merge";
+  const externalRecord = { ...record, projectPath: "/external", worktreePath: "/external-tree" };
   let active: string[] = [];
   let currentRecord: WorktreeRecord = options.recovery
     ? { ...record, state: "landed", resolveAfterLanding: true, landedSourceCommit: commit }
@@ -100,11 +107,20 @@ function fixture(
     Layer.mock(ApplicationState, {
       snapshot: () => ({
         ...defaultApplicationState(),
-        projects: ["/project", "/other"].map((path) => ({
+        projects: ["/project", "/other", "/external"].map((path) => ({
           path,
           name: path,
-          addedAt: "2026-01-01",
-          lastOpenedAt: "2026-01-01",
+          addedAt: record.createdAt,
+          lastOpenedAt: record.createdAt,
+          settings: {
+            ...defaultProjectSettings(),
+            worktreeLanding:
+              path === "/external"
+                ? ("pull-request" as const)
+                : path === "/project"
+                  ? landing
+                  : ("merge" as const),
+          },
         })),
       }),
     }),
@@ -123,7 +139,12 @@ function fixture(
           rebasing: false,
           squashMessageReady: false,
         }),
-      records: () => Effect.sync(() => [currentRecord, ...(options.extraRecords ?? [])]),
+      records: () =>
+        Effect.sync(() => [
+          currentRecord,
+          ...(options.extraRecords ?? []),
+          ...(options.externalSecond ? [externalRecord] : []),
+        ]),
       prepareLanding: () => Effect.void,
       cancelLanding: () => Effect.void,
       setResolveAfterLanding: (_path, value) =>
@@ -174,6 +195,9 @@ function fixture(
   return {
     layer,
     events,
+    setLanding: (value: "merge" | "pull-request") => {
+      landing = value;
+    },
     setActive: (paths: string[]) => {
       active = paths;
     },
@@ -236,6 +260,95 @@ it.effect.each([
     }).pipe(Effect.provide(test.layer));
   },
 );
+
+it.effect("external projects reject readiness even when project auto-merge is enabled", () => {
+  const test = fixture({ landing: "pull-request" });
+  return Effect.gen(function* () {
+    yield* setEnabled("/project", true);
+    const result = yield* report(target, readiness).pipe(Effect.result);
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "WorktreeLandingError",
+        message: expect.stringContaining("merges outside Cake"),
+      },
+    });
+    expect(yield* requests).toEqual([]);
+    expect(
+      (yield* SubscriptionRef.get(
+        (yield* WorktreeLandingCoordinator).state,
+      )).autoMergeProjects?.find((project) => project.projectPath === "/project")?.enabled,
+    ).toBe(true);
+    expect(test.events).toEqual([]);
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect(
+  "a live external transition cancels prior readiness without switching project auto-merge off",
+  () => {
+    const test = fixture();
+    return Effect.gen(function* () {
+      yield* ready;
+      test.setLanding("pull-request");
+      yield* runPass();
+      expect((yield* requests)[0]?.state).toBe("canceled");
+      expect(test.events).toEqual([]);
+      expect(
+        (yield* SubscriptionRef.get(
+          (yield* WorktreeLandingCoordinator).state,
+        )).autoMergeProjects?.find((project) => project.projectPath === "/project")?.enabled,
+      ).toBe(true);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect("mixed projects skip external readiness and still auto-merge the direct project", () => {
+  const test = fixture({ externalSecond: true });
+  return Effect.gen(function* () {
+    yield* ready;
+    const storage = yield* SessionFamilyStorage;
+    const direct = (yield* requests)[0];
+    if (!direct) return yield* Effect.die("Missing direct readiness");
+    yield* storage.recordAutoMerge({
+      ...direct,
+      id: "external-turn",
+      sessionId: "external-owner",
+      workspacePath: "/external-tree",
+      projectPath: "/external",
+      state: "pending",
+    });
+    yield* storage.updateAutoMerge("external-turn", "ready");
+    // Direct work remains eligible regardless of the other project’s policy.
+    yield* runPass();
+    yield* terminal;
+    yield* runPass();
+    expect((yield* requests).find((item) => item.id === "external-turn")?.state).toBe("canceled");
+    expect((yield* requests).find((item) => item.id === "turn")?.state).toBe("landed");
+    expect(test.events.filter((event) => event === "land")).toHaveLength(1);
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect("queued automatic execution rechecks the project policy before Git", () => {
+  return Effect.gen(function* () {
+    const admitted = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    const test = fixture({
+      wait: Deferred.succeed(admitted, undefined).pipe(Effect.andThen(Deferred.await(release))),
+    });
+    yield* Effect.gen(function* () {
+      yield* ready;
+      yield* runPass();
+      yield* Deferred.await(admitted);
+      test.setLanding("pull-request");
+      yield* Deferred.succeed(release, undefined);
+      yield* terminal;
+      yield* runPass();
+      expect(test.events).not.toContain("land");
+      expect(test.events).not.toContain("resolve");
+      expect((yield* requests)[0]?.state).toBe("failed");
+    }).pipe(Effect.provide(test.layer));
+  });
+});
 
 const requests = Effect.flatMap(SessionFamilyStorage, (storage) =>
   storage.state().pipe(Effect.map((state) => state.autoMergeRequests ?? [])),

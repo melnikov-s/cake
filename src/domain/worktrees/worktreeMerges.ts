@@ -11,6 +11,7 @@ import { findLocation } from "../project-sessions/projectSessionMetadata";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
 import * as worktreeLandings from "./worktreeLandings";
+import * as worktreeLifecycle from "./worktreeLifecycle";
 import type { WorktreeMergeAndResolveReport } from "../../contracts/worktrees/worktree-merge-data";
 
 /**
@@ -131,6 +132,14 @@ interface WorktreeMergeInput {
 const mergeWorkflow = Effect.fn("WorktreeMerges.mergeWorkflow")(function* (
   input: WorktreeMergeInput & { readonly resolveAfterLanding: boolean },
 ) {
+  const policyRecord = (yield* (yield* ManagedWorktrees)
+    .records()
+    .pipe(
+      Effect.mapError(
+        (error) => new WorktreeLandingError({ operation: "merge", message: error.message }),
+      ),
+    )).find((item) => item.worktreePath === input.workspacePath);
+  if (policyRecord) yield* worktreeLifecycle.requireDirectMerge(policyRecord.projectPath);
   const coordinator = yield* WorktreeLandingCoordinator;
   const existing = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
     input.workspacePath,

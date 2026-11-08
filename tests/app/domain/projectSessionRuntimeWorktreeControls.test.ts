@@ -77,177 +77,202 @@ const addFamilyMember = (
   });
 
 describe("Project Session runtime worktree controls", () => {
-  it.effect("reads current family membership after runtime option acquisition", () => {
-    const invocations: ProjectSessionControlInvocation[] = [];
-    const integrations: ProjectSessionRuntimeIntegrations = {
-      requestUi: async () => undefined,
-      requestApplicationControl: async (invocation) => {
-        invocations.push(invocation);
-        return { ok: true };
-      },
-      emitExtensionUiIntent: () => undefined,
-      persistArtifact: async () => {
-        throw new Error("Unexpected artifact persistence");
-      },
-      requestInterview: async () => undefined,
-      generateInlineWidget: async () => {
-        throw new Error("Unexpected widget generation");
-      },
-    };
-    const environment = Layer.mergeAll(
-      AgentControlTestLive,
-      makeProjectSessionRuntimeMechanismTestLayer(integrations),
-      WorktreeLandingCoordinatorLive,
-      Layer.mock(WorktreeLandingAgent, { promptAndWait: () => Effect.void }),
-      Layer.mock(WorktreeLandingCompletion, {
-        resolveWorkingDirectory: (workingDirectory) =>
-          Effect.succeed({
-            projectPath: "/project",
-            workingDirectory,
-            resolvedSessionIds: [],
-            failures: [],
-            cleanupFailures: [],
-          }),
-      }),
-      familyStorageHarness().layer,
-      SessionCatalogChanges.layer,
-      Layer.mock(CakeSessionRuntimes, { sessionIds: () => Stream.empty }),
-      Layer.mock(SessionArchiveStorage, {
-        locate: () => Effect.succeed("active" as const),
-        resolved: () => Stream.empty,
-        resolvedProjects: () => Stream.empty,
-      }),
-      Layer.mock(ApplicationState, {
-        transact: (transition) => transition(defaultApplicationState()),
-        snapshot: () => ({
-          ...defaultApplicationState(),
-          globalCustomInstructions: "Give direct answers globally.",
-          projects: [
-            {
-              path: "/project",
-              name: "Project",
-              addedAt: "2026-01-01T00:00:00.000Z",
-              lastOpenedAt: "2026-01-01T00:00:00.000Z",
-              settings: {
-                ...defaultProjectSettings(),
-                worktreeSetupInstructions: "Run pnpm install only when dependencies are needed.",
-                customInstructions: "Prefer focused tests for this project.",
-                projectChatInstructions: "Project Chat only: discuss strategy.",
-              },
-            },
-          ],
-        }),
-      }),
-      Layer.mock(ManagedWorktrees, {
-        records: () => Effect.succeed(worktreeRecords),
-        status: (workspacePath) =>
-          Effect.succeed({
-            record:
-              worktreeRecords.find((record) => record.worktreePath === workspacePath) ??
-              worktreeRecords[0]!,
-            targetBranch: "main",
-            dirtyCount: 0,
-            aheadCount: 1,
-            behindCount: 0,
-            merged: false,
-            targetDirty: false,
-            targetOnBranch: true,
-            merging: false,
-            rebasing: false,
-            squashMessageReady: false,
-          }),
-        prepareLanding: () => Effect.void,
-        land: () => Effect.succeed({ outcome: "landed" as const }),
-        discard: () => Effect.void,
-        proposeSquashMessage: () => Effect.void,
-      }),
-    );
-
-    return Effect.gen(function* () {
-      const rootOptions = yield* acquireOptions({
-        location: projectLocation,
-        sessionId: rootId,
-        newSession: false,
-      });
-      assert.doesNotMatch(rootOptions.runtime.additionalSystemPrompt ?? "", /pnpm install/);
-      assert.doesNotMatch(rootOptions.runtime.additionalSystemPrompt ?? "", /discuss strategy/);
-      assert.match(
-        rootOptions.runtime.additionalSystemPrompt ?? "",
-        /## Personal global instructions\n\nGive direct answers globally\./,
-      );
-      assert.match(
-        rootOptions.runtime.additionalSystemPrompt ?? "",
-        /## Personal project instructions\n\nPrefer focused tests for this project\./,
-      );
-      assert.equal(rootOptions.runtime.cakeChatSystemPrompt, undefined);
-      const storage = yield* SessionFamilyStorage;
-
-      yield* addFamilyMember(storage, sharedChildId, rootId, "/project", "/project");
-      yield* addFamilyMember(storage, isolatedChildId, rootId, "/project", isolatedChildPath);
-      yield* addFamilyMember(
-        storage,
-        grandchildId,
-        isolatedChildId,
-        isolatedChildPath,
-        grandchildPath,
-      );
-
-      const rootControl = rootOptions.runtime.currentSessionControl;
-      const rootMerge = rootControl?.mergeSession;
-      const rootDiscard = rootControl?.discardSession;
-      assert.ok(rootMerge);
-      assert.ok(rootDiscard);
-      const signal = new AbortController().signal;
-      const report = yield* Effect.promise(() => rootMerge(isolatedChildId, signal));
-      assert.partialDeepStrictEqual(report, {
-        command: "worktrees.merge",
-        outcome: "landed",
-        sessionId: isolatedChildId,
-        workingDirectory: isolatedChildPath,
-        targetBranch: "main",
-      });
-      // A valid discard runs through the backend worktree domain (not renderer control).
-      yield* Effect.promise(() => rootDiscard(isolatedChildId, true, signal));
-
-      yield* Effect.promise(() =>
-        assert.rejects(rootMerge(grandchildId, signal), /immediate child of the calling session/),
-      );
-      yield* Effect.promise(() =>
-        assert.rejects(
-          rootDiscard(sharedChildId, false, signal),
-          /shares its parent's Working Directory/,
-        ),
-      );
-
-      const childOptions = yield* acquireOptions({
-        location: {
-          ...projectLocation,
-          workingDirectory: isolatedChildPath,
-          managedWorktree: worktreeRecords[0],
+  it.effect.each(["merge", "pull-request"] as const)(
+    "uses current family membership and %s project capability without inferring checkout topology",
+    (landing) => {
+      const invocations: ProjectSessionControlInvocation[] = [];
+      const integrations: ProjectSessionRuntimeIntegrations = {
+        requestUi: async () => undefined,
+        requestApplicationControl: async (invocation) => {
+          invocations.push(invocation);
+          return { ok: true };
         },
-        sessionId: isolatedChildId,
-        newSession: false,
-      });
-      assert.match(
-        childOptions.runtime.additionalSystemPrompt ?? "",
-        /## Project worktree setup instructions\n\nRun pnpm install only when dependencies are needed\./,
-      );
-      assert.match(
-        childOptions.runtime.additionalSystemPrompt ?? "",
-        /## Personal global instructions\n\nGive direct answers globally\./,
-      );
-      assert.match(
-        childOptions.runtime.additionalSystemPrompt ?? "",
-        /## Personal project instructions\n\nPrefer focused tests for this project\./,
-      );
-      const childMerge = childOptions.runtime.currentSessionControl?.mergeSession;
-      assert.ok(childMerge);
-      yield* Effect.promise(() => childMerge(undefined, signal));
-      yield* Effect.promise(() =>
-        assert.rejects(childMerge(sharedChildId, signal), /immediate child of the calling session/),
+        emitExtensionUiIntent: () => undefined,
+        persistArtifact: async () => {
+          throw new Error("Unexpected artifact persistence");
+        },
+        requestInterview: async () => undefined,
+        generateInlineWidget: async () => {
+          throw new Error("Unexpected widget generation");
+        },
+      };
+      const environment = Layer.mergeAll(
+        AgentControlTestLive,
+        makeProjectSessionRuntimeMechanismTestLayer(integrations),
+        WorktreeLandingCoordinatorLive,
+        Layer.mock(WorktreeLandingAgent, { promptAndWait: () => Effect.void }),
+        Layer.mock(WorktreeLandingCompletion, {
+          resolveWorkingDirectory: (workingDirectory) =>
+            Effect.succeed({
+              projectPath: "/project",
+              workingDirectory,
+              resolvedSessionIds: [],
+              failures: [],
+              cleanupFailures: [],
+            }),
+        }),
+        familyStorageHarness().layer,
+        SessionCatalogChanges.layer,
+        Layer.mock(CakeSessionRuntimes, { sessionIds: () => Stream.empty }),
+        Layer.mock(SessionArchiveStorage, {
+          locate: () => Effect.succeed("active" as const),
+          resolved: () => Stream.empty,
+          resolvedProjects: () => Stream.empty,
+        }),
+        Layer.mock(ApplicationState, {
+          transact: (transition) => transition(defaultApplicationState()),
+          snapshot: () => ({
+            ...defaultApplicationState(),
+            globalCustomInstructions: "Give direct answers globally.",
+            projects: [
+              {
+                path: "/project",
+                name: "Project",
+                addedAt: "2026-01-01T00:00:00.000Z",
+                lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                settings: {
+                  ...defaultProjectSettings(),
+                  worktreeLanding: landing,
+                  worktreeSetupInstructions: "Run pnpm install only when dependencies are needed.",
+                  customInstructions: "Prefer focused tests for this project.",
+                  projectChatInstructions: "Project Chat only: discuss strategy.",
+                },
+              },
+            ],
+          }),
+        }),
+        Layer.mock(ManagedWorktrees, {
+          records: () => Effect.succeed(worktreeRecords),
+          status: (workspacePath) =>
+            Effect.succeed({
+              record:
+                worktreeRecords.find((record) => record.worktreePath === workspacePath) ??
+                worktreeRecords[0]!,
+              targetBranch: "main",
+              dirtyCount: 0,
+              aheadCount: 1,
+              behindCount: 0,
+              merged: false,
+              targetDirty: false,
+              targetOnBranch: true,
+              merging: false,
+              rebasing: false,
+              squashMessageReady: false,
+            }),
+          prepareLanding: () => Effect.void,
+          land: () => Effect.succeed({ outcome: "landed" as const }),
+          discard: () => Effect.void,
+          proposeSquashMessage: () => Effect.void,
+        }),
       );
 
-      assert.deepEqual(invocations, []);
-    }).pipe(Effect.provide(environment));
-  });
+      return Effect.gen(function* () {
+        const rootOptions = yield* acquireOptions({
+          location: projectLocation,
+          sessionId: rootId,
+          newSession: false,
+        });
+        assert.doesNotMatch(rootOptions.runtime.additionalSystemPrompt ?? "", /pnpm install/);
+        assert.doesNotMatch(rootOptions.runtime.additionalSystemPrompt ?? "", /discuss strategy/);
+        assert.match(
+          rootOptions.runtime.additionalSystemPrompt ?? "",
+          /## Personal global instructions\n\nGive direct answers globally\./,
+        );
+        assert.match(
+          rootOptions.runtime.additionalSystemPrompt ?? "",
+          /## Personal project instructions\n\nPrefer focused tests for this project\./,
+        );
+        assert.equal(rootOptions.runtime.cakeChatSystemPrompt, undefined);
+        const storage = yield* SessionFamilyStorage;
+
+        yield* addFamilyMember(storage, sharedChildId, rootId, "/project", "/project");
+        yield* addFamilyMember(storage, isolatedChildId, rootId, "/project", isolatedChildPath);
+        yield* addFamilyMember(
+          storage,
+          grandchildId,
+          isolatedChildId,
+          isolatedChildPath,
+          grandchildPath,
+        );
+
+        const rootControl = rootOptions.runtime.currentSessionControl;
+        const rootMerge = rootControl?.mergeSession;
+        if (landing === "pull-request") {
+          assert.equal(rootOptions.runtime.worktreeLanding, "pull-request");
+          assert.equal(rootMerge, undefined);
+          assert.ok(rootControl?.discardSession);
+          const externalOptions = yield* acquireOptions({
+            location: {
+              ...projectLocation,
+              workingDirectory: isolatedChildPath,
+              managedWorktree: worktreeRecords[0],
+            },
+            sessionId: isolatedChildId,
+            newSession: false,
+          });
+          assert.equal(externalOptions.runtime.currentSessionControl?.mergeSession, undefined);
+          assert.equal(externalOptions.runtime.worktreeLandingControl?.reportReadiness, undefined);
+          assert.ok(externalOptions.runtime.currentSessionControl?.discardSession);
+          return;
+        }
+        const rootDiscard = rootControl?.discardSession;
+        assert.ok(rootMerge);
+        assert.ok(rootDiscard);
+        const signal = new AbortController().signal;
+        const report = yield* Effect.promise(() => rootMerge(isolatedChildId, signal));
+        assert.partialDeepStrictEqual(report, {
+          command: "worktrees.merge",
+          outcome: "landed",
+          sessionId: isolatedChildId,
+          workingDirectory: isolatedChildPath,
+          targetBranch: "main",
+        });
+        // A valid discard runs through the backend worktree domain (not renderer control).
+        yield* Effect.promise(() => rootDiscard(isolatedChildId, true, signal));
+
+        yield* Effect.promise(() =>
+          assert.rejects(rootMerge(grandchildId, signal), /immediate child of the calling session/),
+        );
+        yield* Effect.promise(() =>
+          assert.rejects(
+            rootDiscard(sharedChildId, false, signal),
+            /shares its parent's Working Directory/,
+          ),
+        );
+
+        const childOptions = yield* acquireOptions({
+          location: {
+            ...projectLocation,
+            workingDirectory: isolatedChildPath,
+            managedWorktree: worktreeRecords[0],
+          },
+          sessionId: isolatedChildId,
+          newSession: false,
+        });
+        assert.match(
+          childOptions.runtime.additionalSystemPrompt ?? "",
+          /## Project worktree setup instructions\n\nRun pnpm install only when dependencies are needed\./,
+        );
+        assert.match(
+          childOptions.runtime.additionalSystemPrompt ?? "",
+          /## Personal global instructions\n\nGive direct answers globally\./,
+        );
+        assert.match(
+          childOptions.runtime.additionalSystemPrompt ?? "",
+          /## Personal project instructions\n\nPrefer focused tests for this project\./,
+        );
+        const childMerge = childOptions.runtime.currentSessionControl?.mergeSession;
+        assert.ok(childMerge);
+        yield* Effect.promise(() => childMerge(undefined, signal));
+        yield* Effect.promise(() =>
+          assert.rejects(
+            childMerge(sharedChildId, signal),
+            /immediate child of the calling session/,
+          ),
+        );
+
+        assert.deepEqual(invocations, []);
+      }).pipe(Effect.provide(environment));
+    },
+  );
 });

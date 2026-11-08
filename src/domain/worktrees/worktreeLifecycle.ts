@@ -4,6 +4,7 @@ import {
   type ProjectSettings,
 } from "../../contracts/application/application-data";
 import { ApplicationState } from "../../services/storage/ApplicationState";
+import { WorktreeLandingError } from "../../contracts/worktrees/worktree-landing-data";
 import type { WorktreeLifecycle } from "../../services/worktrees/ManagedWorktrees";
 
 /** The Project's configured worktree commands. Blank commands select the built-in Git ones. */
@@ -28,6 +29,18 @@ const projectSettings = Effect.fn("WorktreeLifecycle.projectSettings")(function*
     application.snapshot().projects.find((project) => project.path === projectPath)?.settings ??
     defaultProjectSettings()
   );
+});
+
+/** Direct landing permission is independent of worktree ownership and global auto-merge. */
+export const requireDirectMerge = Effect.fn("WorktreeLifecycle.requireDirectMerge")(function* (
+  projectPath: string,
+) {
+  if ((yield* projectSettings(projectPath)).worktreeLanding === "pull-request")
+    return yield* new WorktreeLandingError({
+      operation: "merge",
+      message:
+        "This project merges outside Cake. Commit on the worktree branch and follow the repository’s pull request workflow; Cake does not merge its worktrees.",
+    });
 });
 
 /** Lifecycle commands and landing policy for the Project that owns a Managed Worktree. */

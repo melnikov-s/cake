@@ -3,6 +3,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/worktree-landing-data";
 import type { WorktreeStatus } from "../../../src/contracts/worktrees/worktree-contract";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -57,7 +58,7 @@ const landed = (
  * unrelated standalone session in its own worktree. Each session's Worktree control is mounted to
  * exercise the shared backend operation independently of conversation selection.
  */
-function renderSessions(selectedSessionId = "parent") {
+function renderSessions(selectedSessionId = "parent", landing: "merge" | "pull-request" = "merge") {
   const sessions = [
     sessionSummary({
       sessionId: "parent",
@@ -97,16 +98,46 @@ function renderSessions(selectedSessionId = "parent") {
     resolveAfterLanding: request.resolveAfterLanding,
   }));
   const cancelLanding = vi.fn<Client["managedWorktrees"]["cancelLanding"]>(async () => undefined);
+  const resolveWorkingDirectory = vi.fn<Client["projectSessions"]["resolveWorkingDirectory"]>(
+    async ({ workingDirectory }) => ({
+      projectPath: "/project",
+      workingDirectory,
+      resolvedSessionIds: ["standalone"],
+      failures: [],
+      cleanupFailures: [],
+    }),
+  );
   const fixture = createRendererStoreFixture({
-    projects: [projectRecord({ path: "/project" })],
+    projects: [
+      projectRecord({
+        path: "/project",
+        settings: { ...defaultProjectSettings(), worktreeLanding: landing },
+      }),
+    ],
     sessions,
     client: {
+      cakeChats: { open: async () => undefined },
+      projectSessions: { resolveWorkingDirectory },
+      terminals: {
+        workingDirectoryStatus: async () => ({ runningProgramCount: 0 }),
+        closeWorkingDirectory: async () => undefined,
+      },
       managedWorktrees: {
         landing: async ({ workspacePath }) => ({ status: statuses.get(workspacePath) }),
         startLanding,
         cancelLanding,
       },
     },
+  });
+  applySnapshot(fixture.models.cakeChatCatalog, {
+    loaded: true,
+    sessions: [
+      {
+        sessionId: `project-chat:${"c".repeat(64)}`,
+        title: "Project Chat",
+        projectPath: "/project",
+      },
+    ],
   });
   applySnapshot(fixture.models.worktrees, {
     worktrees: [...statuses.values()].map((item) => item.record),
@@ -127,6 +158,7 @@ function renderSessions(selectedSessionId = "parent") {
             actions={stores.get(session.sessionId)!.worktreeStore}
             sessionId={session.sessionId}
             projectPath="/project"
+            landing={landing}
             onConfigured={() => undefined}
           />
         </section>
@@ -136,8 +168,10 @@ function renderSessions(selectedSessionId = "parent") {
   );
   return {
     user: userEvent.setup(),
+    activeConversation: () => fixture.root.appShellStore.activeConversation,
     startLanding,
     cancelLanding,
+    resolveWorkingDirectory,
     pane: (sessionId: string) => within(screen.getByRole("region", { name: sessionId })),
     /** Publishes main's process-lifetime landing projection to every observing Store. */
     async publish(...next: WorktreeLandingOperation[]) {
@@ -159,6 +193,20 @@ function renderSessions(selectedSessionId = "parent") {
 afterEach(cleanup);
 
 describe("Worktree landing completion toasts", () => {
+  it("resolves external work without an unmerged-work confirmation or landing toast", async () => {
+    using fixture = renderSessions("standalone", "pull-request");
+    await fixture.user.click(
+      await fixture.pane("standalone").findByRole("button", { name: "Resolve" }),
+    );
+    await waitFor(() => expect(fixture.resolveWorkingDirectory).toHaveBeenCalledOnce());
+    expect(fixture.startLanding).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(fixture.activeConversation()?.sessionId).toBe(`project-chat:${"c".repeat(64)}`),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(fixture.toasts()).toEqual([]);
+  });
+
   it("does not toast a clicked merge-and-resolve for a parent or its nested descendants", async () => {
     using fixture = renderSessions();
     await fixture.user.click(

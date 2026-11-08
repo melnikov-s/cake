@@ -9,6 +9,7 @@ import { ApplicationState } from "../../services/storage/ApplicationState";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
 import * as landings from "./worktreeLandings";
+import * as worktreeLifecycle from "./worktreeLifecycle";
 
 const emptyRequests: ReadonlyArray<AutoMergeRequest> = [];
 
@@ -129,6 +130,20 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
           "Auto-merge interrupted; inspect the managed worktree before retrying. No landing was replayed.",
         );
       }
+      continue;
+    }
+    const policyRecord = (yield* worktrees.records()).find(
+      (item) => item.worktreePath === request.workspacePath,
+    );
+    if (
+      policyRecord &&
+      (yield* worktreeLifecycle.forProject(policyRecord.projectPath)).landsThroughPullRequests
+    ) {
+      yield* finish(
+        request,
+        "canceled",
+        "This project merges outside Cake; auto-merge is unavailable.",
+      );
       continue;
     }
     if (request.runId !== current.autoMergeRunId) {

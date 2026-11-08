@@ -12,6 +12,7 @@ import {
   type ProjectTodoUserMutation,
 } from "../../../src/contracts/projects/project-todos";
 import { localSnoozeDateTime } from "../../../src/renderer/lib/project-todo-snooze";
+import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import type { AutoMergeRequest } from "../../../src/contracts/worktrees/auto-merge";
 import { WorkspaceNavigator } from "../../../src/renderer/components/workspace-navigator";
 import { ProjectRail } from "../../../src/renderer/components/project-rail";
@@ -65,7 +66,14 @@ function renderTodos(
   };
   const mutations: ProjectTodoUserMutation[] = [];
   const autoMergeChanges: boolean[] = [];
-  const project = () => ({ ...projectRecord({ path: "/cake" }), todos });
+  let landing: "merge" | "pull-request" = "merge";
+  const project = () => ({
+    ...projectRecord({
+      path: "/cake",
+      settings: { ...defaultProjectSettings(), worktreeLanding: landing },
+    }),
+    todos,
+  });
   const sessions =
     initial?.sessions ??
     (withSidebar ? ["first", "second", "third"] : ["first", "second"]).map((sessionId) =>
@@ -202,6 +210,10 @@ function renderTodos(
     todos: () => todos,
     mutations,
     autoMergeChanges,
+    async updateLanding(value: "merge" | "pull-request") {
+      landing = value;
+      await act(async () => applySnapshot(fixture.models.projects, { projects: [project()] }));
+    },
     async updateMergeRequests(requests: AutoMergeRequest[]) {
       await act(async () =>
         applyWorktreeOperationCatalogUpdate(fixture.models.worktreeOperations, {
@@ -279,6 +291,41 @@ function mergeRequest(
     ...overrides,
   };
 }
+
+it("keeps the rail free of global Auto-merge and hides project Activity and to-do controls on a live external transition", async () => {
+  using fixture = renderTodos(false, {
+    todos: emptyProjectTodos(),
+    sessions: [sessionSummary({ sessionId: "running", projectPath: "/cake", running: true })],
+    autoMergeEnabled: true,
+  });
+  expect(screen.getAllByRole("button", { name: "Auto-merge: on" }).length).toBeGreaterThan(0);
+  await fixture.updateLanding("pull-request");
+  expect(screen.queryByRole("button", { name: /Auto-merge/ })).toBeNull();
+  expect(screen.queryByText("Auto-merge")).toBeNull();
+  expect(fixture.root.autoMergeForProject("/cake")?.enabled).toBe(true);
+  expect(fixture.autoMergeChanges).toEqual([]);
+  await fixture.updateLanding("merge");
+  expect(screen.getAllByRole("button", { name: "Auto-merge: on" }).length).toBeGreaterThan(0);
+});
+
+it("external projects do not present retained readiness as merge-ready, but keep actual failure details", async () => {
+  const ready = todo(991, undefined, ["ready"]);
+  using fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items: [ready] },
+    sessions: [
+      sessionSummary({ sessionId: "ready", projectPath: "/cake", latestTurnOutcome: "complete" }),
+    ],
+    autoMergeRequests: [mergeRequest("ready")],
+  });
+  expect(screen.getByRole("list", { name: "Ready to Merge to-dos" })).toBeDefined();
+  await fixture.updateLanding("pull-request");
+  expect(screen.queryByRole("list", { name: "Ready to Merge to-dos" })).toBeNull();
+  expect(screen.queryByLabelText("Merge status for ready")).toBeNull();
+  await fixture.updateMergeRequests([
+    mergeRequest("ready", { state: "failed", message: "Target dirty" }),
+  ]);
+  expect(screen.getByLabelText("Merge status for ready").textContent).toContain("Target dirty");
+});
 
 it("groups accepted structured declarations and retains them while auto-merge is off", async () => {
   const ready = todo(201, undefined, ["ready"]);

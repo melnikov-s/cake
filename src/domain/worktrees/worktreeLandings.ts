@@ -196,6 +196,17 @@ const performLanding: (
         allowDirtyTarget: operation.allowDirtyTarget || undefined,
       };
   const coordinator = yield* WorktreeLandingCoordinator;
+  const statusBeforeLanding = yield* requireStatus(operation.workspacePath);
+  // The engine invokes authorization after queue admission, immediately before Git.
+  const authorize = worktreeLifecycle
+    .requireDirectMerge(statusBeforeLanding.record.projectPath)
+    .pipe(
+      Effect.andThen(automatic?.authorize ?? Effect.void),
+      Effect.provideService(ApplicationState, application),
+      Effect.mapError(
+        (error) => new ManagedWorktreeError({ operation: "merge", message: error.message }),
+      ),
+    );
   const outcome = yield* worktrees
     .land(
       operation.workspacePath,
@@ -206,11 +217,7 @@ const performLanding: (
           ...current,
           phase,
         })).pipe(Effect.provideService(WorktreeLandingCoordinator, coordinator)),
-      automatic?.authorize.pipe(
-        Effect.mapError(
-          (error) => new ManagedWorktreeError({ operation: "autoMerge", message: error.message }),
-        ),
-      ),
+      authorize,
     )
     .pipe(asError("land"));
   if (outcome.outcome === "landed") {
@@ -274,6 +281,8 @@ const performLanding: (
 const reserveLanding = Effect.fn("WorktreeLandings.reserveLanding")(function* (
   operation: WorktreeLandingOperation,
 ) {
+  const status = yield* requireStatus(operation.workspacePath);
+  yield* worktreeLifecycle.requireDirectMerge(status.record.projectPath);
   yield* (yield* ManagedWorktrees)
     .prepareLanding(operation.workspacePath, operation.operationId)
     .pipe(asError("prepareLanding"));
@@ -461,12 +470,7 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
   readonly automatic?: AutomaticLanding;
 }) {
   const status = yield* requireStatus(input.workspacePath);
-  if ((yield* worktreeLifecycle.forProject(status.record.projectPath)).landsThroughPullRequests)
-    return yield* new WorktreeLandingError({
-      operation: "start",
-      message:
-        "This project lands work through pull requests, so Cake does not merge its worktrees. Commit on this worktree's branch and follow the repository's pull request workflow.",
-    });
+  yield* worktreeLifecycle.requireDirectMerge(status.record.projectPath);
   const operation = normalizeOperation({
     operationId: input.operationId,
     workspacePath: input.workspacePath,
@@ -517,6 +521,7 @@ export const mergeAndResolve = Effect.fn("WorktreeLandings.mergeAndResolve")(fun
         (record?.state === "landed" ||
           (record?.state === "resolved" && record.resolvedFrom === "landed")) &&
         (!status || (!gitBlocked(status) && status.aheadCount === 0));
+      if (record) yield* worktreeLifecycle.requireDirectMerge(record.projectPath);
       if (
         alreadyLanded &&
         current?.phase === "landed" &&
@@ -528,12 +533,6 @@ export const mergeAndResolve = Effect.fn("WorktreeLandings.mergeAndResolve")(fun
         return yield* new WorktreeLandingError({
           operation: "mergeAndResolve",
           message: "Cake could not find that worktree",
-        });
-      if ((yield* worktreeLifecycle.forProject(record.projectPath)).landsThroughPullRequests)
-        return yield* new WorktreeLandingError({
-          operation: "mergeAndResolve",
-          message:
-            "This project lands work through pull requests, so Cake does not merge its worktrees.",
         });
       yield* worktrees
         .setResolveAfterLanding(input.workspacePath, true)
@@ -597,6 +596,11 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
   const coordinator = yield* WorktreeLandingCoordinator;
   const application = yield* ApplicationState;
   const status = yield* requireStatus(input.workspacePath);
+  const current = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
+    input.workspacePath,
+  );
+  if (current?.kind === "landing")
+    yield* worktreeLifecycle.requireDirectMerge(status.record.projectPath);
   const operation = yield* SubscriptionRef.modify(coordinator.state, (state) => {
     const current = state.operations.get(input.workspacePath);
     if (!current || current.phase !== "stalled") return [undefined, state] as const;
@@ -785,7 +789,13 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
   let operation = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
     input.workspacePath,
   );
-  if (!operation && status && (status.record.pendingStrategy || status.rebasing)) {
+  if (
+    !operation &&
+    status &&
+    (status.record.pendingStrategy || status.rebasing) &&
+    (!status.record.pendingStrategy ||
+      !(yield* worktreeLifecycle.forProject(status.record.projectPath)).landsThroughPullRequests)
+  ) {
     const strategy = status.record.pendingStrategy;
     const proposing = strategy === "squash" && !status.merging && !status.rebasing;
     const ready = strategy !== undefined && !landingBlocked(status, strategy);

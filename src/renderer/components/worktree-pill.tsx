@@ -419,15 +419,17 @@ export const WorktreePill = observer(function WorktreePill({
           )}
           {actions.stalled && (
             <>
-              <WorktreePillAction
-                icon={<RestoreIcon />}
-                aria-label="Retry"
-                tooltip="Retry worktree operation"
-                disabledReason={sessionDisabledReason}
-                onClick={() => run(actions.retryLanding())}
-              >
-                Retry
-              </WorktreePillAction>
+              {(merges || actions.isRebaseOperation) && (
+                <WorktreePillAction
+                  icon={<RestoreIcon />}
+                  aria-label="Retry"
+                  tooltip="Retry worktree operation"
+                  disabledReason={sessionDisabledReason}
+                  onClick={() => run(actions.retryLanding())}
+                >
+                  Retry
+                </WorktreePillAction>
+              )}
               <WorktreePillAction
                 icon={<CloseIcon size={14} />}
                 aria-label="Dismiss"

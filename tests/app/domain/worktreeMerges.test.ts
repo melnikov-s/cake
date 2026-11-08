@@ -145,11 +145,47 @@ describe("WorktreeMerges.merge", () => {
       const failure = yield* Effect.flip(merge());
       expect(failure).toMatchObject({
         _tag: "WorktreeLandingError",
-        message: expect.stringContaining("lands work through pull requests"),
+        message: expect.stringContaining("merges outside Cake"),
       });
       expect(harness.prompts).toEqual([]);
     }).pipe(Effect.scoped, Effect.provide(layer(harness)));
   });
+
+  it.effect.each(["stalled", "queued"] as const)(
+    "rejects replayed %s merge operations after an external-workflow transition",
+    (phase) => {
+      const harness: Harness = {
+        status: {},
+        prompts: [],
+        landing: "pull-request",
+        land: () => Effect.die("must not land"),
+      };
+      return Effect.gen(function* () {
+        yield* SubscriptionRef.update((yield* WorktreeLandingCoordinator).state, (state) => ({
+          ...state,
+          operations: new Map([
+            [
+              workspacePath,
+              {
+                operationId: "old",
+                workspacePath,
+                sessionId: "owner",
+                kind: "landing" as const,
+                phase,
+                strategy: "preserve" as const,
+                allowDirtyTarget: false,
+              },
+            ],
+          ]),
+        }));
+        expect(yield* Effect.flip(merge())).toMatchObject({
+          _tag: "WorktreeLandingError",
+          message: expect.stringContaining("merges outside Cake"),
+        });
+        expect(harness.prompts).toEqual([]);
+      }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+    },
+  );
 
   it.effect("reports the landed commit through Cake's normal landing flow", () => {
     const harness: Harness = {
@@ -322,6 +358,14 @@ const awaitLanded = Effect.gen(function* () {
 });
 
 describe("WorktreeMerges.mergeAndResolve", () => {
+  it.effect("refuses external merge-and-resolve without changing resolve intent", () => {
+    const harness = resolvingHarness();
+    harness.landing = "pull-request";
+    return Effect.gen(function* () {
+      expect(yield* Effect.flip(mergeAndResolve())).toMatchObject({ _tag: "WorktreeLandingError" });
+      expect(harness.events).toEqual([]);
+    }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+  });
   it.effect("fresh success resolves once and duplicate requests share the landing", () => {
     const harness = resolvingHarness();
     return Effect.gen(function* () {

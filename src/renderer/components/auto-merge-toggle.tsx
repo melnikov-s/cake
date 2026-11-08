@@ -12,7 +12,8 @@ export const AutoMergeToggle = observer(function AutoMergeToggle({
   const root = useStore(RootStore);
   if (
     !projectPath ||
-    !root.projectCatalogStore.projects.some((project) => project.path === projectPath)
+    !root.projectCatalogStore.projects.some((project) => project.path === projectPath) ||
+    root.projectCatalogStore.find(projectPath)?.settings.worktreeLanding === "pull-request"
   )
     return null;
   const project = root.autoMergeForProject(projectPath);

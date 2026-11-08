@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
-import { observer } from "r-state-tree/react";
+import { observer, useStore } from "r-state-tree/react";
+import { RootStore } from "../stores/RootStore";
 import { AnimatedList } from "@/components/ui/animated-list";
 import { Callout } from "@/components/ui/callout";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
@@ -13,6 +14,11 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
 }: {
   store: ProjectTodosStore;
 }) {
+  const root = useStore(RootStore);
+  const projectPath = store.source?.scope;
+  const allowsCakeMerge =
+    !projectPath ||
+    root.projectCatalogStore.find(projectPath)?.settings.worktreeLanding !== "pull-request";
   const pane = useRef<HTMLDivElement>(null);
   // Only explicit row actions may scroll or restore keyboard focus after a section move.
   // Mounting, filtering and authority updates must not replay an old request.
@@ -42,7 +48,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
     { title: "Focus", items: store.filteredFocusedItems, open: true },
     { title: "Needs attention", items: store.filteredAttentionItems, open: true },
     {
-      title: "Ready to Merge",
+      title: allowsCakeMerge ? "Ready to Merge" : "Ready",
       items: store.filteredReadyItems,
       open: store.readyExpanded,
       toggle: () => store.toggleReady(),
@@ -77,10 +83,10 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
           {store.error}
         </Callout>
       )}
-      {store.filteredReadyItems.length === 0 && (
+      {allowsCakeMerge && store.filteredReadyItems.length === 0 && (
         <div className="mb-3 flex items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
           <span>Auto-merge</span>
-          <AutoMergeToggle projectPath={store.source?.scope} />
+          <AutoMergeToggle projectPath={projectPath} />
         </div>
       )}
       <AnimatedList nested animateRemovals>
@@ -101,7 +107,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
                   onClick={section.toggle}
                 />
                 {section.title === "Ready to Merge" && (
-                  <AutoMergeToggle projectPath={store.source?.scope} />
+                  <AutoMergeToggle projectPath={projectPath} />
                 )}
               </div>
             ) : (
