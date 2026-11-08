@@ -142,41 +142,46 @@ it.each([
   [false, true],
   [true, false],
   [true, true],
-])("shows project running=%s and unread=%s independently", (running, unread) => {
-  using fixture = createRendererStoreFixture({
-    projects: [projectRecord({ path: "/other", name: "Other" })],
-    sessions: [
-      sessionSummary({ sessionId: "other-session", projectPath: "/other", running, unread }),
-    ],
-  });
-  if (running) fixture.models.projects.runningProjectPaths.push("/other");
-  const discussionCatalogs = [...fixture.models.discussionCatalogs];
-  const subagentCatalogs = [...fixture.models.subagentCatalogs];
-  render(
-    <StoreProvider store={fixture.root}>
-      <ProjectRail />
-    </StoreProvider>,
-  );
-  const row = within(screen.getByRole("button", { name: "Open Project Chat for Other" }));
-  const blue = row.queryByRole("img", { name: "Work running in Other" });
-  const green = row.queryByRole("img", { name: "Unread sessions in Other" });
-  expect(Boolean(blue)).toBe(running);
-  expect(Boolean(green)).toBe(unread);
-  if (blue) {
-    expect(blue.className).toContain("bg-accent");
-    expect(blue.className).toContain("right-0.5");
-  }
-  if (green) {
-    expect(green.className).toContain("bg-success");
-    expect(green.className).toContain("left-0.5");
-    expect(green.className).not.toContain("animate-pulse");
-  }
-  expect(fixture.models.projectConversations).toHaveLength(0);
-  expect([...fixture.models.discussionCatalogs]).toEqual(discussionCatalogs);
-  expect([...fixture.models.subagentCatalogs]).toEqual(subagentCatalogs);
-});
+])(
+  "shows at most one project dot with blue precedence for running=%s and unread=%s",
+  (running, unread) => {
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/other", name: "Other" })],
+      sessions: [
+        sessionSummary({ sessionId: "other-session", projectPath: "/other", running, unread }),
+      ],
+    });
+    if (running) fixture.models.projects.runningProjectPaths.push("/other");
+    const discussionCatalogs = [...fixture.models.discussionCatalogs];
+    const subagentCatalogs = [...fixture.models.subagentCatalogs];
+    render(
+      <StoreProvider store={fixture.root}>
+        <ProjectRail />
+      </StoreProvider>,
+    );
+    const row = within(screen.getByRole("button", { name: "Open Project Chat for Other" }));
+    const blue = row.queryByRole("img", { name: "Work running in Other" });
+    const green = row.queryByRole("img", { name: "Unread sessions in Other" });
+    expect(Boolean(blue)).toBe(running);
+    expect(Boolean(green)).toBe(!running && unread);
+    expect(row.queryAllByRole("img")).toHaveLength(running || unread ? 1 : 0);
+    expect(fixture.models.sessionCatalog.find("other-session")!.unread).toBe(unread);
+    if (blue) {
+      expect(blue.className).toContain("bg-accent");
+      expect(blue.className).toContain("right-0.5");
+    }
+    if (green) {
+      expect(green.className).toContain("bg-success");
+      expect(green.className).toContain("left-0.5");
+      expect(green.className).not.toContain("animate-pulse");
+    }
+    expect(fixture.models.projectConversations).toHaveLength(0);
+    expect([...fixture.models.discussionCatalogs]).toEqual(discussionCatalogs);
+    expect([...fixture.models.subagentCatalogs]).toEqual(subagentCatalogs);
+  },
+);
 
-it("clears green only after the last own-unread session is read, without clearing blue", () => {
+it("preserves unread behind blue and clears green only after the last own-unread session is read", () => {
   using fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/cake", name: "Cake" })],
     sessions: [
@@ -217,14 +222,25 @@ it("clears green only after the last own-unread session is read, without clearin
     );
   expect(green()).toBeNull();
   update("child", true, 1);
-  expect(green()).toBeTruthy();
+  expect(green()).toBeNull();
+  expect(screen.getByRole("img", { name: "Work running in Cake" })).toBeTruthy();
+  expect(fixture.models.sessionCatalog.find("child")!.unread).toBe(true);
   expect(fixture.models.sessionCatalog.find("owner")!.unread).toBe(false);
+  act(() => fixture.models.projects.runningProjectPaths.splice(0));
+  expect(green()).toBeTruthy();
+  expect(screen.queryByRole("img", { name: "Work running in Cake" })).toBeNull();
   update("peer", true, 2);
   update("child", false, 3);
   expect(green()).toBeTruthy();
+  act(() => fixture.models.projects.runningProjectPaths.push("/cake"));
+  expect(green()).toBeNull();
+  expect(fixture.models.sessionCatalog.find("peer")!.unread).toBe(true);
   update("peer", false, 4);
   expect(green()).toBeNull();
   expect(screen.getByRole("img", { name: "Work running in Cake" })).toBeTruthy();
+  act(() => fixture.models.projects.runningProjectPaths.splice(0));
+  expect(green()).toBeNull();
+  expect(screen.queryByRole("img", { name: "Work running in Cake" })).toBeNull();
   expect(load).not.toHaveBeenCalled();
   expect(fixture.models.projectConversations).toHaveLength(0);
   expect([...fixture.models.discussionCatalogs]).toEqual(discussionCatalogs);

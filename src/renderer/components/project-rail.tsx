@@ -204,7 +204,7 @@ export const ProjectRail = observer(function ProjectRail() {
                       title={projects.nameForPath(path)}
                       aria-hidden="true"
                     />
-                    {unreadProjects.has(path) && (
+                    {!runningProjects.has(path) && unreadProjects.has(path) && (
                       <StatusDot
                         status="success"
                         size="sm"
