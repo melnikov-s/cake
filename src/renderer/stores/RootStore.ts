@@ -164,6 +164,11 @@ export class RootStore extends Store<{
       cakeChat: () => this.cakeChatCollectionStore,
       cakeChatCatalog: this.cakeChatCatalogModel,
       navigation: () => this.navigationStore,
+      fullscreen: () => this.fullscreenSurfaceStore,
+      capturedArtifact: () => {
+        const sessionId = this.appShellStore.activeConversation?.sessionId;
+        return sessionId ? this.artifactPresentationStore.capture(sessionId) : null;
+      },
     });
   }
 

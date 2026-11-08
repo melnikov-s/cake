@@ -18,6 +18,11 @@ export class FullscreenSurfaceStore extends Store<FullscreenSurfaceStoreProps> {
     };
   }
 
+  /** Dismiss every Cake fullscreen layer, including nested previews, after capture handoff. */
+  closeAll() {
+    for (const close of [...this.closeRequests.values()].reverse()) close();
+  }
+
   requestClose(surfaceId: string) {
     this.closeRequests.get(surfaceId)?.();
   }

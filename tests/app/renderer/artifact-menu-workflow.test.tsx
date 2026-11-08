@@ -13,6 +13,10 @@ import {
 } from "../../../src/contracts/artifacts/artifact-lineage";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import type {
+  CaptureCompletion,
+  CaptureDestination,
+} from "../../../src/contracts/desktop/screen-capture-data";
 import type { TestClientOverrides } from "./test-client";
 import type { Client } from "../../../src/renderer/client/Client";
 import { applyDiscussionCatalogUpdate } from "../../../src/renderer/reducers/DiscussionReducer";
@@ -172,7 +176,99 @@ const openMenu = async (fixture: ReturnType<typeof renderArtifacts>, ownerLabel?
   });
 };
 
+const capturePng =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+
 describe("Artifact accessory workflow", () => {
+  it.each(["same", "different", "cake", "cancel", "failure", "full"] as const)(
+    "returns a fullscreen snapshot to its exact receiving chat: %s",
+    async (outcome) => {
+      let complete!: (value: CaptureCompletion) => void;
+      let fail!: (error: Error) => void;
+      const target: CaptureDestination =
+        outcome === "cake"
+          ? { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID }
+          : { kind: "project-session", sessionId: outcome === "same" ? "alpha" : "beta" };
+      using fixture = renderArtifacts(
+        {
+          electron: {
+            startScreenCapture: () =>
+              new Promise((resolve, reject) => {
+                complete = resolve;
+                fail = reject;
+              }),
+          },
+        },
+        { history: ["alpha"] },
+      );
+      const draft = (
+        target.kind === "cake-chat"
+          ? fixture.root.cakeChatCollectionStore.registry.find(target.sessionId)!
+          : fixture.root.sessionRegistry.findSession(target.sessionId)!
+      ).conversationSessionStore.composerStore.draftStore;
+      const existing = Array.from({ length: outcome === "full" ? 20 : 1 }, (_, index) => ({
+        kind: "file" as const,
+        name: `keep-${index}.txt`,
+        path: `/keep-${index}.txt`,
+      }));
+      act(() => {
+        draft.setText("Receiving draft");
+        draft.appendAttachments(existing);
+      });
+      const menu = await openMenu(fixture);
+      await fixture.user.click(
+        within(menu).getByRole("button", { name: /^Report alpha markdown/ }),
+      );
+      const pane = await screen.findByRole("complementary", { name: "Report alpha" });
+      await fixture.user.click(
+        within(pane).getByRole("button", { name: "View Report alpha fullscreen" }),
+      );
+      await screen.findByRole("dialog", { name: "Report alpha" });
+      // Native shortcut enters this Store directly; there is no capture button in the presentation.
+      let capturing!: Promise<void>;
+      act(() => {
+        capturing = fixture.root.screenCaptureStore.capture();
+      });
+      expect(screen.getByRole("dialog", { name: "Report alpha" })).toBeDefined();
+      expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
+      await act(async () => {
+        if (outcome === "failure") fail(new Error("Capture failed"));
+        else
+          complete({
+            annotationColor: "pink",
+            ...(outcome === "cancel"
+              ? {}
+              : {
+                  capture: {
+                    data: capturePng,
+                    annotationText: "Look at the heading",
+                    destination: target,
+                  },
+                }),
+          });
+        await capturing;
+      });
+      if (["cancel", "failure", "full"].includes(outcome)) {
+        expect(screen.getByRole("dialog", { name: "Report alpha" })).toBeDefined();
+        expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
+        expect(draft.text).toBe("Receiving draft");
+        expect(draft.attachments).toEqual(existing);
+      } else {
+        expect(screen.queryByRole("dialog", { name: "Report alpha" })).toBeNull();
+        expect(fixture.root.appShellStore.activeConversation).toEqual(target);
+        expect(fixture.root.workspaceNavigatorStore.companionTab).toBe("chat");
+        expect(draft.attachments).toEqual([
+          ...existing,
+          expect.objectContaining({ kind: "image", data: capturePng }),
+        ]);
+        expect(draft.text).toMatch(
+          /^Receiving draft\n\n[a-z0-9]{3}\.png\nSnapshot of cake:\/\/artifact\/alpha@r1\nLook at the heading$/,
+        );
+        expect(screen.getByRole("combobox", { name: /^Message/ })).toBeDefined();
+      }
+    },
+  );
+
   it.each(["alpha", "cake"])(
     "opens %s's pinned artifact in the shared pane, expands and returns with exact chat context",
     async (id) => {

@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { windowState } from "../fixtures/window-state";
+import { createSessionInProject } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -68,13 +69,42 @@ test("capture handoff reveals and focuses Chat without leaving Browser or VS Cod
       },
     );
     const page = await app.firstWindow();
+    await createSessionInProject(page, /^Capture return/);
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible();
     await composer.fill("Keep this unsent draft");
     await expect
       .poll(() => app.evaluate(() => typeof Reflect.get(globalThis, "returnCaptureShortcut")))
       .toBe("function");
-    let attachments = 0;
+    const openCapture = async () => {
+      const opened = app.waitForEvent("window");
+      await app.evaluate(() => Reflect.get(globalThis, "returnCaptureShortcut")());
+      const overlay = await opened;
+      await expect(overlay.getByRole("toolbar", { name: "Screen capture tools" })).toBeVisible();
+      return overlay;
+    };
+    let overlay = await openCapture();
+    await overlay.getByRole("button", { name: "Attach full display", exact: true }).click();
+    await expect(composer).toBeFocused();
+    const expectedDraft = "Keep this unsent draft";
+    const images = page.getByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ });
+    await expect(images).toHaveCount(1);
+    await images.first().click();
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    overlay = await openCapture();
+    // Opening/canceling capture must not dismiss the captured fullscreen content.
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    await overlay.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    overlay = await openCapture();
+    await overlay.getByRole("button", { name: "Attach full display", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially(" Ready to discuss");
+    await expect(composer).toHaveValue(`${expectedDraft} Ready to discuss`);
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await composer.fill(expectedDraft);
+    let attachments = 2;
     for (const mode of ["Browser", "VS Code"] as const) {
       await page
         .getByRole("button", {
@@ -87,13 +117,13 @@ test("capture handoff reveals and focuses Chat without leaving Browser or VS Cod
       const tabs = page.getByRole("group", { name: "Companion content", exact: true });
       for (const tab of ["Sessions", "Todos", "Chat"] as const) {
         await tabs.getByRole("button", { name: tab, exact: true }).click();
-        const windowCount = app.windows().length;
         const opened = app.waitForEvent("window");
         await app.evaluate(() => Reflect.get(globalThis, "returnCaptureShortcut")());
         const overlay = await opened;
         await expect(overlay.getByRole("toolbar", { name: "Screen capture tools" })).toBeVisible();
+        const closed = overlay.waitForEvent("close");
         await overlay.getByRole("button", { name: "Attach full display", exact: true }).click();
-        await expect.poll(() => app.windows().length).toBe(windowCount);
+        await closed;
         await expect(workspace).toBeVisible();
         await expect(tabs.getByRole("button", { name: "Chat", exact: true })).toHaveAttribute(
           "aria-pressed",
@@ -101,7 +131,7 @@ test("capture handoff reveals and focuses Chat without leaving Browser or VS Cod
         );
         await expect(composer).toBeVisible();
         await expect(composer).toBeFocused();
-        await expect(composer).toHaveValue("Keep this unsent draft");
+        await expect(composer).toHaveValue(expectedDraft);
         await expect(
           page.getByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ }),
         ).toHaveCount(++attachments);

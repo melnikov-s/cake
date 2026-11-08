@@ -4,6 +4,9 @@ import {
 } from "../../utils/capture-annotation-colors";
 import { speechRecognitionSettings } from "../../utils/speech-input-settings";
 import type { DictationStore } from "./DictationStore";
+import type { ArtifactPresentationContext } from "../../contracts/artifacts/artifact-presentation-context";
+import type { FullscreenSurfaceStore } from "./FullscreenSurfaceStore";
+import { ClientContext } from "./context/ClientContext";
 import { Store, snapshot } from "r-state-tree";
 import {
   DEFAULT_CAPTURE_MAX_DIMENSION,
@@ -43,6 +46,8 @@ export class ScreenCaptureAttachmentStore extends Store<{
   cakeChat(): CakeChatCollectionStore;
   cakeChatCatalog: CakeChatCatalog;
   navigation(): NavigationStore;
+  fullscreen(): FullscreenSurfaceStore;
+  capturedArtifact(): ArtifactPresentationContext | null;
 }> {
   @snapshot annotationColor: CaptureAnnotationColor = DEFAULT_CAPTURE_ANNOTATION_COLOR;
   @snapshot shortcut = DEFAULT_CAPTURE_SHORTCUT;
@@ -178,19 +183,27 @@ export class ScreenCaptureAttachmentStore extends Store<{
         throw new Error("The destination chat is no longer editable.");
       const loaded = this.props.registry.findSession(destination.sessionId);
       if (
-        !loaded ||
-        (!loaded.model.sessionFile &&
-          !this.props.registry.pendingSessions.isTemporary(destination.sessionId))
+        !loaded?.model.sessionFile &&
+        !this.props.registry.pendingSessions.isTemporary(destination.sessionId)
       ) {
-        if (!(await this.props.navigation().openSession(destination.sessionId)))
+        const summary = this.props.catalog.find(destination.sessionId)!;
+        await ClientContext.consume(this)!.projectSessions.open(
+          { sessionId: destination.sessionId, workingDirectory: summary.workingDirectory },
+          { signal: this.signal },
+        );
+        const session = this.props.registry.load(destination.sessionId, summary.workingDirectory);
+        if (!(await session.conversationSessionStore.prepareForCommand()))
           throw new Error("Cake could not open the destination session.");
-      } else {
-        this.props.navigation().showLoadedProjectSession(destination.sessionId);
       }
     } else {
       if (this.props.cakeChatCatalog.find(destination.sessionId)?.resolved)
         throw new Error("The destination chat is no longer editable.");
-      await this.props.navigation().openCakeChat(destination.sessionId);
+      const registry = this.props.cakeChat().registry;
+      const session = registry.load(destination.sessionId);
+      if (!session.model.observedSnapshotRevision)
+        await ClientContext.consume(this)!.cakeChats.open(registry.target(destination.sessionId), {
+          signal: this.signal,
+        });
     }
     return destination;
   }
@@ -278,6 +291,8 @@ export class ScreenCaptureAttachmentStore extends Store<{
         : choices.cakeChats[0]
           ? { kind: "cake-chat", sessionId: choices.cakeChats[0].sessionId }
           : undefined;
+    // Keep the exact captured revision before selection or fullscreen cleanup changes it.
+    const artifact = this.props.capturedArtifact();
     this.busy = true;
     try {
       const preferences: CapturePreferences = { ...choices };
@@ -291,6 +306,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
       if (!result) return;
       const target = await this.prepareDestination(result.destination);
       if (this.signal.aborted) return;
+      if (!this.isAvailable(target)) throw new Error("The destination chat is no longer editable.");
       const draft = this.findDraft(target);
       if (!draft) throw new Error("The destination chat is no longer editable.");
       if (draft.attachments.length >= 20)
@@ -313,14 +329,22 @@ export class ScreenCaptureAttachmentStore extends Store<{
           data: result.data,
         },
       ]);
-      if (result.annotationText)
-        draft.setText(
-          [draft.text, `${name}\n${result.annotationText}`].filter(Boolean).join("\n\n"),
-        );
-      // Reveal only after a successful handoff, after destination hydration/selection.
-      // The window-owned companion tab must not hide the destination composer.
+      const context = [
+        artifact ? `Snapshot of cake://artifact/${artifact.artifactId}@r${artifact.revision}` : "",
+        result.annotationText,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      if (context) draft.setText([draft.text, `${name}\n${context}`].filter(Boolean).join("\n\n"));
+      // Pixels and draft handoff are complete. Never dismiss captured content on failure/cancel.
+      this.props.fullscreen().closeAll();
+      const navigation = this.props.navigation();
+      if (target.kind === "project-session") navigation.showLoadedProjectSession(target.sessionId);
+      else await navigation.openCakeChat(target.sessionId);
       WorkspaceNavigatorContext.consume(this)!.showChat();
-      draft.requestFocus();
+      // Fullscreen unmount restores its former focus; request the composer after that cleanup.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      if (!this.signal.aborted) draft.requestFocus({ explicit: true });
     } catch (error) {
       if (!this.signal.aborted)
         this.reportError(error instanceof Error ? error.message : String(error));
