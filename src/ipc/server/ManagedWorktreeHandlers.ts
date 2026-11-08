@@ -9,8 +9,10 @@ import { ManagedWorktreeRpc } from "../protocol/ManagedWorktreeRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 
 export const managedWorktreeHandlers = ManagedWorktreeRpc.of({
-  "managedWorktrees.setAutoMerge": ({ enabled }) =>
-    Effect.flatMap(RendererConnection, () => autoMergeReadiness.setEnabled(enabled)).pipe(
+  "managedWorktrees.setAutoMerge": ({ projectPath, enabled }) =>
+    Effect.flatMap(RendererConnection, () =>
+      autoMergeReadiness.setEnabled(projectPath, enabled),
+    ).pipe(
       Effect.mapError(
         (error) => new WorktreeLandingError({ operation: "setAutoMerge", message: error.message }),
       ),

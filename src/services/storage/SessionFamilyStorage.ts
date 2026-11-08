@@ -1,3 +1,4 @@
+import { isDirectProjectChatDelegation } from "../../contracts/worktrees/auto-merge-delegation";
 import type { AutoMergeOutcome, AutoMergeRequest } from "../../contracts/worktrees/auto-merge";
 import type { StoredPassiveNotice } from "../../contracts/conversations/passive-notice";
 import type {
@@ -60,6 +61,8 @@ export class SessionFamilyStorage extends Context.Service<
     readonly authorizeAutoMerge: (
       runId: string,
       epoch: string,
+      projectPath: string,
+      projectChatId: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly recordAutoMerge: (
       request: AutoMergeRequest,
@@ -191,6 +194,10 @@ export class SessionFamilyStorage extends Context.Service<
     /** Removes digest items once they were attached to an accepted Cake Chat message. */
     readonly removeDigest: (
       ids: ReadonlyArray<string>,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly markNoticeFailure: (
+      turnId: string,
+      message: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     /** Serializes retry admission with explicit queue withdrawal, not model execution. */
     readonly withNoticeDelivery: <A, E, R>(
@@ -538,13 +545,15 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           })),
       );
       const authorizeAutoMerge = Effect.fn("SessionFamilyStorage.authorizeAutoMerge")(
-        (runId: string, epoch: string) =>
+        (runId: string, epoch: string, projectPath: string, projectChatId: string) =>
           update((document) => ({
             ...document,
             autoMergeRequests: (document.autoMergeRequests ?? []).map((item) => {
               if (
                 !item.readyToMerge ||
                 item.runId !== runId ||
+                item.projectPath !== projectPath ||
+                !isDirectProjectChatDelegation(document.spawnedSessions, item, projectChatId) ||
                 item.state === "landing" ||
                 item.state === "landed"
               )
@@ -583,7 +592,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
               (!outcome || request.outcome))
           )
             return document;
-          const changed = { ...request, state };
+          const changed = { ...Struct.omit(request, ["message"]), state };
           if (message) Object.assign(changed, { message });
           if (outcome) Object.assign(changed, { outcome });
           const next = {
@@ -650,7 +659,29 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         (item: CompletionInboxItem, digest?: CoordinatorDigestItem) =>
           update((document) => {
             const inbox = document.completionInbox ?? [];
-            if (inbox.some((existing) => existing.id === item.id)) return document;
+            const existing = inbox.find((entry) => entry.id === item.id);
+            if (existing) {
+              // Repair a crash/older summary-only record before settling its source.
+              if (
+                existing.resultMessageRef ||
+                existing.resultText ||
+                (!item.resultMessageRef && !item.resultText)
+              )
+                return document;
+              return {
+                ...document,
+                completionInbox: inbox.map((entry) =>
+                  entry.id === item.id
+                    ? {
+                        ...entry,
+                        ...(item.resultMessageRef
+                          ? { resultMessageRef: item.resultMessageRef }
+                          : { resultText: item.resultText }),
+                      }
+                    : entry,
+                ),
+              };
+            }
             return {
               ...document,
               completionInbox: [...inbox, item],
@@ -834,6 +865,17 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             ...document,
             turns: document.turns.map((turn) =>
               turn.turnId === turnId ? { ...turn, deliveryTurnId } : turn,
+            ),
+          })),
+      );
+      const markNoticeFailure = Effect.fn("SessionFamilyStorage.markNoticeFailure")(
+        (turnId: string, message: string) =>
+          update((document) => ({
+            ...document,
+            turns: document.turns.map((turn) =>
+              turn.turnId === turnId && !turn.reported
+                ? { ...turn, deliveryError: message.slice(0, 2000) }
+                : turn,
             ),
           })),
       );
@@ -1175,6 +1217,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         saveUpdateBatch,
         closeUpdateBatch,
         discardUpdates,
+        markNoticeFailure,
         withNoticeDelivery: (effect) => noticeDeliveryLock.withPermit(effect),
         withdrawNotices,
         removeUnmaterializedChild,

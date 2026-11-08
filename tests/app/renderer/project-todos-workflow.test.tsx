@@ -82,9 +82,14 @@ function renderTodos(
     sessions,
     client: {
       managedWorktrees: {
-        setAutoMerge: async (enabled) => {
+        setAutoMerge: async (projectPath, enabled) => {
+          expect(projectPath).toBe("/cake");
           autoMergeChanges.push(enabled);
-          fixture.models.worktreeOperations.autoMergeEnabled = enabled;
+          fixture.models.worktreeOperations.autoMergeProjects.splice(
+            0,
+            fixture.models.worktreeOperations.autoMergeProjects.length,
+            { projectPath, enabled, epoch: "test", status: enabled ? "On" : "Off" },
+          );
         },
       },
       projectTodos: {
@@ -146,7 +151,14 @@ function renderTodos(
   });
   applySnapshot(fixture.models.worktreeOperations, {
     operations: [],
-    autoMergeEnabled: initial?.autoMergeEnabled ?? false,
+    autoMergeProjects: [
+      {
+        projectPath: "/cake",
+        enabled: initial?.autoMergeEnabled ?? false,
+        epoch: "test",
+        status: "Off",
+      },
+    ],
     autoMergeRequests: initial?.autoMergeRequests ?? [],
   });
   applySnapshot(fixture.models.cakeChatCatalog, {
@@ -194,7 +206,7 @@ function renderTodos(
       await act(async () =>
         applyWorktreeOperationCatalogUpdate(fixture.models.worktreeOperations, {
           operations: [],
-          autoMergeEnabled: fixture.models.worktreeOperations.autoMergeEnabled,
+          autoMergeProjects: fixture.models.worktreeOperations.autoMergeProjects,
           autoMergeRequests: requests,
         }),
       );
@@ -268,7 +280,7 @@ function mergeRequest(
   };
 }
 
-it("groups only structured settled readiness and retains it while auto-merge is off", async () => {
+it("groups accepted structured declarations and retains them while auto-merge is off", async () => {
   const ready = todo(201, undefined, ["ready"]);
   const finished = {
     ...todo(202, undefined, ["finished"]),
@@ -293,9 +305,9 @@ it("groups only structured settled readiness and retains it while auto-merge is 
   });
   const readyList = () => screen.getByRole("list", { name: "Ready to Merge to-dos" });
   expect(within(readyList()).getByRole("button", { name: ready.title })).toBeDefined();
-  expect(readyList().querySelectorAll("[data-todo-id]")).toHaveLength(1);
+  expect(readyList().querySelectorAll("[data-todo-id]")).toHaveLength(2);
   const active = screen.getByRole("list", { name: "Active to-dos" });
-  for (const item of [finished, pending, revoked])
+  for (const item of [finished, revoked])
     expect(within(active).getByRole("button", { name: item.title })).toBeDefined();
   await fixture.updateSessions(sessions.map((session) => ({ ...session, unread: true })));
   await fixture.updateSessions(sessions);
@@ -312,7 +324,9 @@ it("groups only structured settled readiness and retains it while auto-merge is 
   expect(within(readyList()).getByRole("button", { name: pending.title })).toBeDefined();
   await fixture.updateMergeRequests(
     requests.map((request) =>
-      request.sessionId === "ready" ? { ...request, readyToMerge: false } : request,
+      request.sessionId === "ready" || request.sessionId === "pending"
+        ? { ...request, readyToMerge: false }
+        : request,
     ),
   );
   expect(screen.queryByRole("region", { name: "Ready to Merge" })).toBeNull();
@@ -354,10 +368,13 @@ it("orders Ready to Merge between attention and Active, preserves collapse, and 
   await fixture.user.click(toggle());
   expect(fixture.autoMergeChanges).toEqual([true]);
   expect(toggle().getAttribute("aria-pressed")).toBe("true");
-  const railToggle = within(
-    screen.getByRole("navigation", { name: "Projects and global utilities" }),
-  ).getByRole("button", { name: "Auto-merge: on" });
-  await fixture.user.click(railToggle);
+  expect(
+    within(screen.getByRole("navigation", { name: "Projects and global utilities" })).queryByRole(
+      "button",
+      { name: /Auto-merge/ },
+    ),
+  ).toBeNull();
+  await fixture.user.click(toggle());
   expect(fixture.autoMergeChanges).toEqual([true, false]);
   expect(toggle().getAttribute("aria-pressed")).toBe("false");
   await fixture.user.click(screen.getByRole("button", { name: "Ready to Merge (1)" }));
@@ -573,6 +590,32 @@ it("preserves flags, snooze and focus without duplicate rows and shows every rea
   for (const item of [attention, snoozed])
     expect(fixture.container.querySelectorAll(`[data-todo-id="${item.id}"]`)).toHaveLength(1);
   expect(fixture.mutations.map((mutation) => mutation._tag)).toEqual(["SetAttention"]);
+});
+
+it("counts accepted declarations while completion/handoff is pending, independently of unread state", async () => {
+  const sessions = ["first", "second"].map((sessionId) =>
+    sessionSummary({ sessionId, projectPath: "/cake", unread: true }),
+  );
+  using fixture = renderTodos(false, {
+    todos: {
+      ...emptyProjectTodos(),
+      items: [todo(249, undefined, ["first"]), todo(250, undefined, ["second"])],
+    },
+    sessions,
+    autoMergeRequests: [
+      mergeRequest("first", { state: "pending", message: "Waiting for task completion" }),
+      mergeRequest("second", { message: "Waiting for result handoff" }),
+    ],
+  });
+  expect(screen.getByRole("button", { name: "Ready to Merge (2)" })).toBeDefined();
+  expect(screen.getByLabelText("Merge status for second").textContent).toContain(
+    "Waiting for result handoff",
+  );
+  await fixture.updateSessions(sessions.map((session) => ({ ...session, unread: false })));
+  expect(screen.getByRole("button", { name: "Ready to Merge (2)" })).toBeDefined();
+  expect(screen.getByLabelText("Merge status for first").textContent).toContain(
+    "Waiting for task completion",
+  );
 });
 
 it("renders only nonempty categories with separators between visible sections and preserves disclosure across filtering", async () => {

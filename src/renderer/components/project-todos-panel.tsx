@@ -80,7 +80,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
       {store.filteredReadyItems.length === 0 && (
         <div className="mb-3 flex items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
           <span>Auto-merge</span>
-          <AutoMergeToggle />
+          <AutoMergeToggle projectPath={store.source?.scope} />
         </div>
       )}
       <AnimatedList nested animateRemovals>
@@ -100,7 +100,9 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
                   open={section.open}
                   onClick={section.toggle}
                 />
-                {section.title === "Ready to Merge" && <AutoMergeToggle />}
+                {section.title === "Ready to Merge" && (
+                  <AutoMergeToggle projectPath={store.source?.scope} />
+                )}
               </div>
             ) : (
               <h2 className="mb-3 px-3 text-xs font-semibold">

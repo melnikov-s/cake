@@ -17,6 +17,8 @@ export const CompletionInboxItem = Schema.Struct({
   sessionId: Schema.String,
   title: Schema.String.check(Schema.isMaxLength(500)),
   resultMessageRef: Schema.optionalKey(MessageReference),
+  /** Original handoff payload only when no Pi message reference exists; never a transcript mirror. */
+  resultText: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(100_000))),
   references: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(6000))),
   summary: Schema.String.check(Schema.isMaxLength(500)),
   reportedAt: Schema.String,

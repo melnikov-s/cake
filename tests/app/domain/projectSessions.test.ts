@@ -474,6 +474,7 @@ const makeLayer = (
     catalogChanges,
     Layer.succeed(SessionFamilyStorage, {
       authorizeAutoMerge: () => Effect.void,
+      markNoticeFailure: () => Effect.void,
       recordAutoMerge: () => Effect.void,
       updateAutoMerge: () => Effect.void,
       invalidateAutoMerge: () => Effect.void,

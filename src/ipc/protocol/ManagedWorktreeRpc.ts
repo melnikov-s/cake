@@ -38,7 +38,7 @@ const landingRpc = <Type extends LandingOperation>(type: Type) =>
 
 export const ManagedWorktreeRpc = RpcGroup.make(
   Rpc.make("managedWorktrees.setAutoMerge", {
-    payload: { enabled: Schema.Boolean },
+    payload: { projectPath: Schema.NonEmptyString, enabled: Schema.Boolean },
     success: Schema.Void,
     error: WorktreeLandingError,
   }),

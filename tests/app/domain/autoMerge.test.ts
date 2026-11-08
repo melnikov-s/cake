@@ -18,7 +18,11 @@ import {
   WorktreeLandingCoordinator,
   WorktreeLandingCoordinatorLive,
 } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
+import { DOCUMENT_VERSION } from "../../../src/services/storage/sessionFamilyDocumentCodec";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
+import { retainNotification } from "../../../src/domain/session-families/sessionFamilyCompletion";
+import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 
 const target = { sessionId: "owner", workingDirectory: "/tree", sessionDirectory: "/sessions" };
 const commit = "a".repeat(40);
@@ -46,6 +50,8 @@ function fixture(
     head?: string;
     recovery?: boolean;
     executingTurns?: string[];
+    extraRecords?: WorktreeRecord[];
+    requester?: string | null;
   } = {},
 ) {
   const events: string[] = [];
@@ -54,13 +60,54 @@ function fixture(
     ? { ...record, state: "landed", resolveAfterLanding: true, landedSourceCommit: commit }
     : record;
   const layer = Layer.mergeAll(
-    familyStorageHarness().layer,
+    familyStorageHarness(
+      new Map([
+        [
+          "state/session-families.json",
+          JSON.stringify({
+            version: DOCUMENT_VERSION,
+            data: {
+              families: [],
+              turns: [],
+              spawnedSessions:
+                options.requester === null
+                  ? []
+                  : [
+                      {
+                        sessionId: "owner",
+                        projectPath: "/project",
+                        workingDirectory: "/tree",
+                        requester: {
+                          sessionId: options.requester ?? projectChatSessionId("/project"),
+                          kind: "cake-chat",
+                          title: "Project Chat",
+                        },
+                        reportDelivered: true,
+                        handoffSettled: true,
+                      },
+                    ],
+            },
+          }),
+        ],
+      ]),
+    ).layer,
     WorktreeLandingCoordinatorLive,
+    Layer.mock(SessionCatalogChanges, { publish: () => Effect.void }),
     Layer.mock(CakeSessionRuntimes, {
       executingTurnIds: () => Effect.succeed(options.executingTurns ?? ["turn"]),
       activeWorkingDirectories: () => Effect.sync(() => active),
     }),
-    Layer.mock(ApplicationState, { snapshot: () => defaultApplicationState() }),
+    Layer.mock(ApplicationState, {
+      snapshot: () => ({
+        ...defaultApplicationState(),
+        projects: ["/project", "/other"].map((path) => ({
+          path,
+          name: path,
+          addedAt: "2026-01-01",
+          lastOpenedAt: "2026-01-01",
+        })),
+      }),
+    }),
     Layer.mock(ManagedWorktrees, {
       status: () =>
         Effect.succeed({
@@ -76,7 +123,7 @@ function fixture(
           rebasing: false,
           squashMessageReady: false,
         }),
-      records: () => Effect.sync(() => [currentRecord]),
+      records: () => Effect.sync(() => [currentRecord, ...(options.extraRecords ?? [])]),
       prepareLanding: () => Effect.void,
       cancelLanding: () => Effect.void,
       setResolveAfterLanding: (_path, value) =>
@@ -148,7 +195,11 @@ it.effect.each([
         sessionId: "owner",
         projectPath: "/project",
         workingDirectory: "/tree",
-        requester: { sessionId: "project-chat:origin", kind: "cake-chat", title: "Project Chat" },
+        requester: {
+          sessionId: projectChatSessionId("/project"),
+          kind: "cake-chat",
+          title: "Project Chat",
+        },
         reportDelivered: true,
         handoffSettled: true,
       });
@@ -170,7 +221,8 @@ it.effect.each([
       // This outbox is independent of the now-resolved source and schedules no new wake.
       expect((yield* storage.state()).updateBatches ?? []).toEqual([]);
       const handle = {
-        snapshot: () => Effect.succeed({ ...snapshot, sessionId: "project-chat:origin" }),
+        snapshot: () =>
+          Effect.succeed({ ...snapshot, sessionId: projectChatSessionId("/project") }),
       };
       const prepared = yield* digest.prepareUserMessage(handle, "My next question");
       expect(prepared.text).toContain("<system-reminder>");
@@ -189,7 +241,7 @@ const requests = Effect.flatMap(SessionFamilyStorage, (storage) =>
   storage.state().pipe(Effect.map((state) => state.autoMergeRequests ?? [])),
 );
 const ready = Effect.gen(function* () {
-  yield* setEnabled(true);
+  yield* setEnabled("/project", true);
   expect(yield* report(target, readiness)).toEqual({ eligible: true });
   yield* (yield* SessionFamilyStorage).updateAutoMerge("turn", "ready");
 });
@@ -211,7 +263,7 @@ it.effect(
       expect(yield* report(target, readiness)).toEqual({ eligible: true });
       yield* runPass();
       expect(test.events).toEqual([]);
-      yield* setEnabled(true);
+      yield* setEnabled("/project", true);
       yield* runPass();
       expect(test.events).toEqual([]);
       expect((yield* requests)[0]?.state).toBe("pending");
@@ -270,12 +322,17 @@ it.effect(
       yield* storage.invalidateAutoMerge("/changed");
       yield* runPass();
       expect(test.events).toEqual([]);
-      yield* Effect.all([setEnabled(true), setEnabled(true)], { concurrency: "unbounded" });
-      const epoch = (yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state))
-        .autoMergeEpoch;
-      yield* setEnabled(true);
+      yield* Effect.all([setEnabled("/project", true), setEnabled("/project", true)], {
+        concurrency: "unbounded",
+      });
+      const epoch = (yield* SubscriptionRef.get(
+        (yield* WorktreeLandingCoordinator).state,
+      )).autoMergeProjects?.find((item) => item.projectPath === "/project")?.epoch;
+      yield* setEnabled("/project", true);
       expect(
-        (yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state)).autoMergeEpoch,
+        (yield* SubscriptionRef.get(
+          (yield* WorktreeLandingCoordinator).state,
+        )).autoMergeProjects?.find((item) => item.projectPath === "/project")?.epoch,
       ).toBe(epoch);
       yield* runPass();
       yield* runPass();
@@ -305,7 +362,11 @@ it.effect(
         sessionId: "owner",
         projectPath: "/project",
         workingDirectory: "/tree",
-        requester: { sessionId: "project-chat:origin", kind: "cake-chat", title: "Project Chat" },
+        requester: {
+          sessionId: projectChatSessionId("/project"),
+          kind: "cake-chat",
+          title: "Project Chat",
+        },
         reportDelivered: true,
         handoffSettled: true,
       });
@@ -314,9 +375,9 @@ it.effect(
       yield* terminal;
       yield* runPass();
       expect((yield* requests)[0]).toMatchObject({ state: "failed", readyToMerge: true });
-      yield* setEnabled(false);
+      yield* setEnabled("/project", false);
       options.failure = false;
-      yield* setEnabled(true);
+      yield* setEnabled("/project", true);
       yield* runPass();
       yield* terminal;
       yield* runPass();
@@ -340,8 +401,8 @@ it.effect(
       yield* runPass();
       yield* terminal;
       yield* runPass();
-      yield* setEnabled(false);
-      yield* setEnabled(true);
+      yield* setEnabled("/project", false);
+      yield* setEnabled("/project", true);
       yield* runPass();
       yield* terminal;
       yield* runPass();
@@ -353,15 +414,18 @@ it.effect(
   },
 );
 
-it.effect.each([{ executingTurns: [] }, { executingTurns: ["turn", "another-turn"] }])(
-  "rejects readiness without exactly one executing turn: %j",
+it.effect.each([{ executingTurns: [] }])(
+  "rejects readiness without an executing run and includes diagnostic IDs: %j",
   ({ executingTurns }) => {
     const test = fixture({ executingTurns });
     return Effect.gen(function* () {
       const result = yield* report(target, readiness).pipe(Effect.result);
       expect(result).toMatchObject({
         _tag: "Failure",
-        failure: { message: "Readiness requires one executing task turn." },
+        failure: {
+          message:
+            "Readiness requires an executing task run for session owner; executing input count=0, ids=[].",
+        },
       });
       expect(yield* requests).toEqual([]);
     }).pipe(Effect.provide(test.layer));
@@ -396,7 +460,7 @@ it.effect.each(["revoked", "previous-run", "different-commit"] as const)(
               : "Stored readiness does not match this session, workspace, or validated commit.",
       });
       expect((yield* requests)[0]?.commit).toBe(commit);
-      yield* setEnabled(true);
+      yield* setEnabled("/project", true);
       yield* runPass();
       expect(test.events).toEqual([]);
     }).pipe(Effect.provide(test.layer));
@@ -429,7 +493,7 @@ it.effect.each(["taskCompleted", "validationPassed"] as const)(
   (field) => {
     const test = fixture();
     return Effect.gen(function* () {
-      yield* setEnabled(true);
+      yield* setEnabled("/project", true);
       expect(
         (yield* report(target, { ...readiness, [field]: false }).pipe(Effect.result))._tag,
       ).toBe("Failure");
@@ -444,7 +508,7 @@ it.effect(
   () => {
     const test = fixture();
     return Effect.gen(function* () {
-      yield* setEnabled(true);
+      yield* setEnabled("/project", true);
       yield* report(target, readiness);
       yield* runPass();
       expect(test.events).toEqual([]);
@@ -472,8 +536,8 @@ it.effect.each(["off", "new-input", "re-enabled"] as const)(
         if (change === "new-input")
           yield* (yield* SessionFamilyStorage).invalidateAutoMerge("/tree");
         else {
-          yield* setEnabled(false);
-          if (change === "re-enabled") yield* setEnabled(true);
+          yield* setEnabled("/project", false);
+          if (change === "re-enabled") yield* setEnabled("/project", true);
         }
         yield* Deferred.succeed(gate, undefined);
         yield* terminal;
@@ -558,7 +622,7 @@ it.effect(
   () => {
     const test = fixture();
     return Effect.gen(function* () {
-      yield* setEnabled(true);
+      yield* setEnabled("/project", true);
       const storage = yield* SessionFamilyStorage;
       yield* storage.recordTurn({
         sessionId: "owner",
@@ -582,16 +646,250 @@ it.effect(
   },
 );
 
+it.effect(
+  "off → structured readiness → exact quiet handoff → enable → serialized landing and resolution",
+  () => {
+    const test = fixture({ requester: null });
+    return Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      const source = "cake://session/owner?message=original-result";
+      const turn = {
+        sessionId: "owner",
+        senderSessionId: projectChatSessionId("/project"),
+        turnId: "turn",
+        requestMessageId: "owner",
+        threadId: "thread",
+        reported: false,
+        resultDelivery: "notification" as const,
+      };
+      yield* storage.registerSpawn({
+        sessionId: "owner",
+        projectPath: "/project",
+        workingDirectory: "/tree",
+        requester: { sessionId: turn.senderSessionId, kind: "cake-chat", title: "Project Chat" },
+        reportDelivered: false,
+        handoffSettled: false,
+      });
+      yield* storage.recordTurn(turn);
+      expect(yield* report(target, readiness)).toEqual({ eligible: true });
+      yield* storage.updateAutoMerge("turn", "ready");
+      const reportBody = {
+        outcome: "completed" as const,
+        text: "Implemented and validated the complete requested repair.",
+        resultMessageRef: source,
+      };
+      yield* storage.settleTurn("turn", "complete", reportBody);
+      yield* runPass();
+      expect((yield* requests)[0]?.message).toBe("Waiting for result handoff");
+      const settled = (yield* storage.state()).turns[0];
+      expect(settled).toBeDefined();
+      if (!settled) return;
+      yield* retainNotification(settled, (yield* storage.state()).spawnedSessions[0]);
+      yield* runPass();
+      expect(test.events).toEqual([]);
+      expect((yield* requests)[0]?.message).toBe("Auto-merge is off; ready for manual landing");
+      expect((yield* storage.state()).completionInbox?.[0]?.resultMessageRef).toBe(source);
+      yield* setEnabled("/project", true);
+      yield* runPass();
+      yield* terminal;
+      yield* runPass();
+      expect(test.events).toEqual(["land", "intent:true", "resolve", "intent:false"]);
+      expect((yield* requests)[0]?.state).toBe("landed");
+      expect((yield* storage.state()).completionInbox?.[0]?.resultMessageRef).toBe(source);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect("rejects foreign executing-input ownership with explicit IDs", () => {
+  const test = fixture({ executingTurns: ["turn", "foreign"] });
+  return Effect.gen(function* () {
+    const storage = yield* SessionFamilyStorage;
+    yield* storage.recordTurn({
+      sessionId: "another-session",
+      senderSessionId: "requester",
+      turnId: "foreign",
+      requestMessageId: "foreign",
+      threadId: "foreign",
+      reported: false,
+    });
+    const result = yield* report(target, readiness).pipe(Effect.result);
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        message:
+          'Executing inputs do not belong to session owner; count=2, ids=["turn","foreign"], foreign ids=["foreign"].',
+      },
+    });
+    expect(yield* requests).toEqual([]);
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect("legacy readiness without canonical project ownership is never adopted", () => {
+  const test = fixture();
+  return Effect.gen(function* () {
+    const storage = yield* SessionFamilyStorage;
+    yield* report(target, readiness);
+    const first = (yield* requests)[0];
+    if (!first) throw new Error("Expected readiness");
+    yield* storage.recordAutoMerge({
+      id: "legacy",
+      sessionId: "owner",
+      workspacePath: "/tree",
+      epoch: "old-global-authorization",
+      runId: first.runId,
+      commit,
+      readyToMerge: true,
+      state: "ready",
+    });
+    yield* setEnabled("/project", true);
+    expect((yield* requests).find((item) => item.id === "legacy")?.epoch).toBe(
+      "old-global-authorization",
+    );
+    yield* runPass();
+    expect((yield* requests).find((item) => item.id === "legacy")).toMatchObject({
+      state: "canceled",
+      message: "Owning project is unavailable; fresh readiness required",
+    });
+    expect(test.events).toEqual([]);
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect("correlates readiness with a consumed task plus steering and coordination inputs", () => {
+  const test = fixture({ executingTurns: ["task", "steer", "coordination"] });
+  return Effect.gen(function* () {
+    const storage = yield* SessionFamilyStorage;
+    for (const id of ["task", "steer", "coordination"])
+      yield* storage.recordTurn({
+        sessionId: "owner",
+        senderSessionId: projectChatSessionId("/project"),
+        turnId: id,
+        requestMessageId: id,
+        threadId: id,
+        reported: false,
+      });
+    expect(yield* report(target, readiness)).toEqual({ eligible: true });
+    expect((yield* requests)[0]).toMatchObject({
+      id: "task",
+      projectPath: "/project",
+      state: "pending",
+    });
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect.each([
+  { requester: null, origin: "human/unknown" },
+  { requester: "ca4ec4a7-0000-4000-8000-000000000001", origin: "global chat" },
+  { requester: projectChatSessionId("/other"), origin: "another project's chat" },
+  { requester: "ordinary-session", origin: "nested delegation" },
+])(
+  "retains manual readiness without authorizing automatic landing from $origin",
+  ({ requester }) => {
+    const test = fixture({ requester });
+    return Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      expect(yield* report(target, readiness)).toEqual({ eligible: true });
+      yield* storage.updateAutoMerge("turn", "ready");
+      // A later request from the right chat never rewrites creation provenance.
+      yield* storage.recordTurn({
+        sessionId: "owner",
+        senderSessionId: projectChatSessionId("/project"),
+        turnId: "followup",
+        requestMessageId: "followup",
+        threadId: "followup",
+        reported: false,
+        outcome: "complete",
+      });
+      yield* storage.completeNotice("followup");
+      yield* setEnabled("/project", true);
+      expect((yield* requests)[0]?.epoch).toBe("");
+      yield* runPass();
+      expect(test.events).toEqual([]);
+      expect((yield* requests)[0]).toMatchObject({ readyToMerge: true, state: "ready" });
+      expect((yield* requests)[0]?.message).toContain("Manual landing only");
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect(
+  "authorizes only the selected registered project and rejects global/worktree scope",
+  () => {
+    const executingTurns = ["turn"];
+    const test = fixture({
+      executingTurns,
+      extraRecords: [{ ...record, projectPath: "/other", worktreePath: "/other-tree" }],
+    });
+    return Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      yield* report(target, readiness);
+      yield* storage.updateAutoMerge("turn", "ready");
+      executingTurns.splice(0, 1, "other-turn");
+      yield* storage.registerSpawn({
+        sessionId: "other-owner",
+        projectPath: "/other",
+        workingDirectory: "/other-tree",
+        requester: {
+          sessionId: projectChatSessionId("/other"),
+          kind: "cake-chat",
+          title: "Other Project Chat",
+        },
+        reportDelivered: true,
+        handoffSettled: true,
+      });
+      expect(
+        yield* report(
+          { ...target, sessionId: "other-owner", workingDirectory: "/other-tree" },
+          readiness,
+        ),
+      ).toEqual({ eligible: true });
+      yield* storage.updateAutoMerge("other-turn", "ready");
+      yield* setEnabled("/project", true);
+      expect((yield* requests).find((item) => item.id === "other-turn")?.epoch).toBe("");
+      yield* runPass();
+      yield* terminal;
+      yield* runPass();
+      expect((yield* requests).find((item) => item.id === "other-turn")).toMatchObject({
+        state: "ready",
+        message: "Auto-merge is off; ready for manual landing",
+      });
+      expect(test.events.filter((event) => event === "land")).toHaveLength(1);
+      for (const path of ["", "/tree", "cake-chat", "/unknown"])
+        expect((yield* setEnabled(path, true).pipe(Effect.result))._tag).toBe("Failure");
+      yield* setEnabled("/project", false);
+      yield* runPass();
+      expect(
+        (yield* SubscriptionRef.get(
+          (yield* WorktreeLandingCoordinator).state,
+        )).autoMergeProjects?.find((item) => item.projectPath === "/other"),
+      ).toBeUndefined();
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
 it.effect("serializes concurrent ready sessions without stealing a running operation", () =>
   Effect.gen(function* () {
     const gate = yield* Deferred.make<void>();
-    const test = fixture({ wait: Deferred.await(gate) });
+    const test = fixture({
+      wait: Deferred.await(gate),
+      extraRecords: [{ ...record, worktreePath: "/second" }],
+    });
     yield* Effect.gen(function* () {
       yield* ready;
       const storage = yield* SessionFamilyStorage;
       const first = (yield* requests)[0];
       expect(first).toBeDefined();
       if (!first) return;
+      yield* storage.registerSpawn({
+        sessionId: "second",
+        projectPath: "/project",
+        workingDirectory: "/second",
+        requester: {
+          sessionId: projectChatSessionId("/project"),
+          kind: "cake-chat",
+          title: "Project Chat",
+        },
+        reportDelivered: true,
+        handoffSettled: true,
+      });
       yield* storage.recordAutoMerge({
         ...first,
         id: "second",

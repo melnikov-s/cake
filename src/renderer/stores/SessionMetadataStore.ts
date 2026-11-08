@@ -109,9 +109,7 @@ export class SessionMetadataStore extends Store<{
     // A partial family resolution can resolve this member while leaving landing follow-up.
     const resolutionFailed = request?.outcome?.merged && !request.outcome.resolutionSucceeded;
     if (this.isResolved(sessionId) && !resolutionFailed) return undefined;
-    return request?.readyToMerge && request.state !== "pending" && request.state !== "landed"
-      ? request
-      : undefined;
+    return request?.readyToMerge && request.state !== "landed" ? request : undefined;
   }
 
   /** To-do readiness must survive read acknowledgement and resolve/restore. */

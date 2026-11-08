@@ -482,15 +482,23 @@ export class RootStore extends Store<{
   get autoMergeRequests() {
     return this.props.projection.worktreeOperations.autoMergeRequests;
   }
-  get autoMergeEnabled() {
-    return this.props.projection.worktreeOperations.autoMergeEnabled;
+  autoMergeForProject(projectPath: string) {
+    return this.props.projection.worktreeOperations.autoMergeProjects.find(
+      (item) => item.projectPath === projectPath,
+    );
   }
-  get autoMergeStatus() {
-    return this.props.projection.worktreeOperations.autoMergeStatus;
+  projectForSession(sessionId: string) {
+    return (
+      this.cakeChatCollectionStore.summaries.find((chat) => chat.sessionId === sessionId)
+        ?.projectPath ?? this.sessionCatalogStore.find(sessionId)?.projectPath
+    );
   }
-  async toggleAutoMerge() {
+  async toggleAutoMerge(projectPath: string) {
     try {
-      await this.client.managedWorktrees.setAutoMerge(!this.autoMergeEnabled);
+      await this.client.managedWorktrees.setAutoMerge(
+        projectPath,
+        !this.autoMergeForProject(projectPath)?.enabled,
+      );
     } catch (error) {
       this.toastStore.show({
         tone: "error",

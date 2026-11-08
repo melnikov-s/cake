@@ -1,13 +1,11 @@
 import { Context, Effect, FiberMap, Layer, SubscriptionRef } from "effect";
-import type { AutoMergeRequest } from "../../contracts/worktrees/auto-merge";
+import type { AutoMergeRequest, ProjectAutoMerge } from "../../contracts/worktrees/auto-merge";
 import type { WorktreeLandingOperation } from "../../contracts/worktrees/worktree-landing-data";
 
 export interface WorktreeLandingCoordinatorState {
   readonly operations: ReadonlyMap<string, WorktreeLandingOperation>;
-  readonly autoMergeEnabled?: boolean;
-  readonly autoMergeEpoch?: string;
+  readonly autoMergeProjects?: ReadonlyArray<ProjectAutoMerge>;
   readonly autoMergeRunId?: string;
-  readonly autoMergeStatus?: string;
   readonly autoMergeRequests?: ReadonlyArray<AutoMergeRequest>;
 }
 
@@ -28,8 +26,7 @@ export const WorktreeLandingCoordinatorLive = Layer.effect(
     const runId = crypto.randomUUID();
     const state = yield* SubscriptionRef.make<WorktreeLandingCoordinatorState>({
       operations: new Map(),
-      autoMergeEnabled: false,
-      autoMergeEpoch: runId,
+      autoMergeProjects: [],
       autoMergeRunId: runId,
     });
     const fibers = yield* FiberMap.make<string>();

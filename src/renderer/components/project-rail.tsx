@@ -16,7 +16,6 @@ import {
   SettingsIcon,
 } from "./ui/icons";
 import { ProjectSettingsDialog } from "./project-settings-dialog";
-import { AutoMergeToggle } from "./auto-merge-toggle";
 import { BrowserSharingMenu } from "./browser-sharing-menu";
 import { SortableItem } from "./ui/sortable-item";
 import { NavigationRail } from "./ui/navigation-rail";
@@ -151,7 +150,6 @@ export const ProjectRail = observer(function ProjectRail({
             >
               <LightningIcon />
             </IconButton>
-            <AutoMergeToggle rail />
             <IconButton
               tooltip="Settings"
               label="Settings"

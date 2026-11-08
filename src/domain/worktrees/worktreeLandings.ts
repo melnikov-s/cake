@@ -41,10 +41,9 @@ export const observeOperations = Effect.fn("WorktreeLandings.observeOperations")
     Stream.map((state) => {
       const update = {
         operations: [...state.operations.values()],
-        autoMergeEnabled: state.autoMergeEnabled ?? false,
+        autoMergeProjects: state.autoMergeProjects ?? [],
         autoMergeRequests: state.autoMergeRequests ?? [],
       };
-      if (state.autoMergeStatus) Object.assign(update, { autoMergeStatus: state.autoMergeStatus });
       return update;
     }),
   );

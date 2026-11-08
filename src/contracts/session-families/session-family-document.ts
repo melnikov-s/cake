@@ -123,6 +123,8 @@ export const FamilyTurn = Schema.Struct({
   threadId: BoundedId,
   reported: Schema.Boolean,
   deliveryTurnId: Schema.optionalKey(BoundedId),
+  /** Last failed handoff attempt; the obligation remains open for retry. */
+  deliveryError: Schema.optionalKey(Schema.String),
   replyMessageIds: Schema.optionalKey(Schema.Array(BoundedId)),
   outcome: Schema.optionalKey(Schema.Literals(["complete", "failed", "aborted"])),
   resultDelivery: Schema.optionalKey(ResultDelivery),

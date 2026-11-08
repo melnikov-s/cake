@@ -27,7 +27,17 @@ export const AutoMergeOutcome = Schema.Struct({
 });
 export interface AutoMergeOutcome extends Schema.Schema.Type<typeof AutoMergeOutcome> {}
 
+export const ProjectAutoMerge = Schema.Struct({
+  projectPath: Schema.NonEmptyString,
+  enabled: Schema.Boolean,
+  epoch: Schema.String,
+  status: Schema.String,
+});
+export interface ProjectAutoMerge extends Schema.Schema.Type<typeof ProjectAutoMerge> {}
+
 export const AutoMergeRequest = Schema.Struct({
+  /** Absent on legacy declarations: never authorize without a fresh owning-project declaration. */
+  projectPath: Schema.optionalKey(Schema.NonEmptyString),
   readyToMerge: Schema.Boolean,
   id: Schema.String,
   sessionId: Schema.String,

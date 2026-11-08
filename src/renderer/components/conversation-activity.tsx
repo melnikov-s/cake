@@ -24,7 +24,8 @@ export const ConversationActivity = observer(function ConversationActivity({
   placement?: "header" | "composer" | "strip";
   composerFooter?: ReactNode;
 }) {
-  const conversationActivity = useStore(RootStore).conversationActivityStore;
+  const root = useStore(RootStore);
+  const conversationActivity = root.conversationActivityStore;
   const sessions = conversationActivity
     .sessionsFor(sessionId)
     .filter((session) => session.status === "running");
@@ -37,7 +38,7 @@ export const ConversationActivity = observer(function ConversationActivity({
       summary={`${running} running`}
       status="running"
       onOpen={onOpen}
-      actions={<AutoMergeToggle />}
+      actions={<AutoMergeToggle projectPath={root.projectForSession(sessionId)} />}
       items={[
         ...sessions.map((session) => ({
           id: `session:${session.sessionId}`,

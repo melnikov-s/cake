@@ -281,6 +281,7 @@ export const runPass = Effect.fn("UpdateBatches.runPass")(function* () {
         });
     });
     const outcome = yield* Effect.scoped(deliverBatch(recipientSessionId)).pipe(
+      Effect.timeout("10 seconds"),
       Effect.catch((error) =>
         Effect.logWarning("Batched update delivery will retry", error).pipe(
           Effect.andThen(retryLater),

@@ -19,7 +19,6 @@ export const queue = Effect.fn("CompletionInbox.queue")(function* (
   },
 ) {
   const storage = yield* SessionFamilyStorage;
-  if ((yield* storage.state()).completionInbox?.some((item) => item.id === input.id)) return;
   const { status, isolated, notify, ...item } = input;
   const summary = isReferenceNotification(item.summary)
     ? "Result available in the linked message."

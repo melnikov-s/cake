@@ -21,78 +21,47 @@ import { ToastHost } from "../../../src/renderer/components/toast-host";
 
 afterEach(cleanup);
 
-it("exposes default-off Auto-merge in the activity rail and follows authoritative on/off updates", async () => {
-  const setAutoMerge = vi.fn(async (enabled: boolean) => {
+it("has no global rail toggle; explicit project controls stay independent across view switches", async () => {
+  const setAutoMerge = vi.fn(async (projectPath: string, enabled: boolean) => {
+    const projects = fixture.models.worktreeOperations.autoMergeProjects;
     applyWorktreeOperationCatalogUpdate(fixture.models.worktreeOperations, {
       operations: [],
-      autoMergeEnabled: enabled,
-      autoMergeStatus: enabled ? "Waiting for fresh validated completion" : "Off",
+      autoMergeProjects: [
+        ...projects.filter((item) => item.projectPath !== projectPath),
+        { projectPath, enabled, epoch: "test", status: enabled ? "On" : "Off" },
+      ],
     });
   });
-  using fixture = createRendererStoreFixture({ client: { managedWorktrees: { setAutoMerge } } });
-  const view = render(
+  using fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: "/cake" }), projectRecord({ path: "/other" })],
+    sessions: [sessionSummary({ sessionId: "owner", projectPath: "/cake" })],
+    client: { managedWorktrees: { setAutoMerge } },
+  });
+  const surface = (projectPath: string | undefined) => (
     <StoreProvider store={fixture.root}>
       <ProjectRail />
-    </StoreProvider>,
+      <AutoMergeToggle projectPath={projectPath} />
+    </StoreProvider>
   );
-  const user = userEvent.setup();
-  expect(screen.getByRole("button", { name: "Auto-merge: off" }).getAttribute("aria-pressed")).toBe(
-    "false",
-  );
-  await user.click(screen.getByRole("button", { name: "Auto-merge: off" }));
-  await waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: "Auto-merge: on" }).getAttribute("aria-pressed"),
-    ).toBe("true"),
-  );
-  const enabled = screen.getByRole("button", { name: "Auto-merge: on" });
-  expect(enabled.className).toContain("aria-pressed:text-worktree-merged");
-  expect(enabled.className).toContain("aria-pressed:hover:text-worktree-merged");
-  expect(enabled.className).not.toContain("aria-pressed:text-accent");
-  await user.hover(enabled);
-  expect(await screen.findByRole("tooltip")).toHaveProperty(
-    "textContent",
-    "Auto-merge on — Waiting for fresh validated completion",
-  );
-  await user.click(enabled);
-  await waitFor(() => expect(screen.getByRole("button", { name: "Auto-merge: off" })).toBeTruthy());
-  expect(setAutoMerge.mock.calls).toEqual([[true], [false]]);
-  // A second surface consumes the same authoritative opt-in, never local settings.
-  view.rerender(
-    <StoreProvider store={fixture.root}>
-      <AutoMergeToggle />
-    </StoreProvider>,
-  );
-  const iconOnly = screen.getByRole("button", { name: "Auto-merge: off" });
-  expect(iconOnly.textContent).toBe("");
-  expect(iconOnly.className).toContain("text-muted-foreground");
-  await user.click(iconOnly);
+  const view = render(surface(undefined));
+  expect(screen.queryByRole("button", { name: /Auto-merge/ })).toBeNull();
+  view.rerender(surface("/cake"));
+  await userEvent.setup().click(screen.getByRole("button", { name: "Auto-merge: off" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Auto-merge: on" })).toBeTruthy());
-  act(() =>
-    applyWorktreeOperationCatalogUpdate(fixture.models.worktreeOperations, {
-      operations: [],
-      autoMergeEnabled: true,
-      autoMergeRequests: [
-        {
-          id: "ready-task",
-          sessionId: "owner",
-          workspacePath: "/tree",
-          epoch: "enabled",
-          runId: "run",
-          commit: "a".repeat(40),
-          readyToMerge: true,
-          state: "failed",
-          message: "Target dirty",
-        },
-      ],
-    }),
-  );
-  expect(fixture.root.autoMergeRequests[0]?.message).toBe("Target dirty");
-  view.unmount();
+  view.rerender(surface("/other"));
+  expect(screen.getByRole("button", { name: "Auto-merge: off" })).toBeTruthy();
+  expect(fixture.root.projectForSession("owner")).toBe("/cake");
+  expect(fixture.root.projectForSession(CAKE_CHAT_SESSION_ID)).toBeUndefined();
+  view.rerender(surface("/cake"));
+  expect(screen.getByRole("button", { name: "Auto-merge: on" })).toBeTruthy();
+  view.rerender(surface("/unregistered"));
+  expect(screen.queryByRole("button", { name: /Auto-merge/ })).toBeNull();
+  expect(setAutoMerge.mock.calls).toEqual([["/cake", true]]);
 });
 
-it("keeps Auto-merge off and shows a failed authorization update", async () => {
+it("keeps the owning project's Auto-merge off when authorization fails", async () => {
   using fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: "/cake" })],
     client: {
       managedWorktrees: {
         setAutoMerge: async () => {
@@ -101,9 +70,10 @@ it("keeps Auto-merge off and shows a failed authorization update", async () => {
       },
     },
   });
-  const view = render(
+  render(
     <StoreProvider store={fixture.root}>
       <ProjectRail />
+      <AutoMergeToggle projectPath="/cake" />
       <ToastHost store={fixture.root.toastStore} />
     </StoreProvider>,
   );
@@ -112,7 +82,6 @@ it("keeps Auto-merge off and shows a failed authorization update", async () => {
   expect(screen.getByRole("button", { name: "Auto-merge: off" }).getAttribute("aria-pressed")).toBe(
     "false",
   );
-  view.unmount();
 });
 
 it("shows unselected-project activity from the project catalog without discovering descendants", () => {

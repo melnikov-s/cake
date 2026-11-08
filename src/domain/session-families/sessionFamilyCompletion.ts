@@ -48,10 +48,23 @@ const reportMessageId = (turnId: string) => {
 
 export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (turn: FamilyTurn) {
   const storage = yield* SessionFamilyStorage;
+  if (!turn.outcome || turn.reported) return;
+  // Retain quiet results before touching either runtime or the source checkout.
+  // A dead requester (including legacy Side Chats) must not hold this handoff open.
+  if (
+    !stoppedByRequester(turn) &&
+    turn.resultDelivery === "notification" &&
+    turn.report?.outcome !== "blocked"
+  )
+    return yield* (
+      isCakeChatSessionId(turn.senderSessionId) ? deliverRequesterNotice : retainNotification
+    )(
+      turn,
+      (yield* storage.state()).spawnedSessions.find((item) => item.sessionId === turn.sessionId),
+    );
   const family =
     (yield* storage.familyForMember(turn.sessionId)) ??
     (yield* storage.familyForMember(turn.senderSessionId));
-  if (!turn.outcome || turn.reported) return;
   if (stoppedByRequester(turn)) {
     // The requester stopped this work itself; telling it so would be noise. The obligation
     // is settled, and Cake Chat's launch status still records the neutral stop.
@@ -332,23 +345,6 @@ const digestSummary = (turn: FamilyTurn, report: SessionCompletionReport | undef
   return line.length > 200 ? `${line.slice(0, 199)}…` : line;
 };
 
-const sessionTitle = Effect.fn("SessionFamilies.sessionTitle")(function* (
-  sessionId: string,
-  workingDirectory: string | undefined,
-) {
-  const sessions = yield* CakeSessionRuntimes;
-  const locations = yield* projectSessionLocations.locations({ includeInactive: true });
-  for (const location of locations) {
-    if (workingDirectory !== undefined && location.workingDirectory !== workingDirectory) continue;
-    const entry = yield* sessions.catalogEntry(
-      { workingDirectory: location.workingDirectory, sessionDirectory: location.sessionDirectory },
-      sessionId,
-    );
-    if (entry) return entry.title;
-  }
-  return undefined;
-});
-
 const queueTurnCompletion = Effect.fn("SessionFamilies.queueTurnCompletion")(function* (
   turn: FamilyTurn,
   spawn?: SpawnedSession,
@@ -362,16 +358,14 @@ const queueTurnCompletion = Effect.fn("SessionFamilies.queueTurnCompletion")(fun
     id: turn.turnId,
     coordinatorSessionId: turn.senderSessionId,
     sessionId: turn.sessionId,
-    title: (
-      title ??
-      (yield* sessionTitle(turn.sessionId, spawn?.workingDirectory).pipe(
-        Effect.catch(() => Effect.succeed(undefined)),
-      )) ??
-      `Session ${turn.sessionId}`
-    ).slice(0, 500),
+    title: (title ?? spawn?.title ?? `Session ${turn.sessionId}`).slice(0, 500),
     summary: digestSummary(turn, report).slice(0, 500),
     notify: notify ?? (turn.resultDelivery === "notification" && report?.outcome !== "blocked"),
-    ...(report?.resultMessageRef ? { resultMessageRef: report.resultMessageRef } : null),
+    ...(report?.resultMessageRef
+      ? { resultMessageRef: report.resultMessageRef }
+      : report
+        ? { resultText: report.text }
+        : null),
     ...(report && isReferenceNotification(report.text)
       ? { references: report.text.replace(/\s+/g, " ").slice(0, 6000) }
       : null),
@@ -383,6 +377,39 @@ const queueTurnCompletion = Effect.fn("SessionFamilies.queueTurnCompletion")(fun
         : (report?.resultKind ?? (report?.outcome === "completed" ? "ready" : "investigation")),
     isolated: isolated || (spawn !== undefined && spawn.workingDirectory !== spawn.projectPath),
   });
+});
+
+/** Durable quiet handling has no runtime/checkout dependency. The inbox retains
+ * the exact source before settlement; both writes reconcile by the original turn ID. */
+export const retainNotification = Effect.fn("SessionFamilies.retainNotification")(function* (
+  turn: FamilyTurn,
+  spawn?: SpawnedSession,
+) {
+  const storage = yield* SessionFamilyStorage;
+  const current = (yield* storage.state()).turns.find(
+    (item) => item.turnId === turn.turnId && !item.reported,
+  );
+  if (!current?.outcome) return;
+  turn = current;
+  yield* queueTurnCompletion(turn, spawn);
+  yield* storage.digestNotice(turn.turnId, {
+    id: turn.turnId,
+    coordinatorSessionId: turn.senderSessionId,
+    sessionId: turn.sessionId,
+    title: (spawn?.title ?? `Session ${turn.sessionId}`).slice(0, 500),
+    status: launchStatus(turn, turn.report),
+    summary: digestSummary(turn, turn.report),
+    reportedAt: DateTime.formatIso(yield* DateTime.now),
+    ...(turn.report?.resultMessageRef ? { resultMessageRef: turn.report.resultMessageRef } : null),
+  });
+  if (spawn)
+    yield* (yield* SessionCatalogChanges).publish({
+      _tag: "ProjectSessionChanged",
+      sessionId: spawn.sessionId,
+      projectPath: spawn.projectPath,
+      workingDirectory: spawn.workingDirectory,
+      resolved: false,
+    });
 });
 
 /**
@@ -473,23 +500,8 @@ const deliverRequesterNotice = Effect.fn("SessionFamilies.deliverRequesterNotice
     yield* publishLaunch;
     return;
   }
-  if (turn.resultDelivery === "notification" && status !== "blocked") {
-    const title = yield* sessionTitle(turn.sessionId, spawn?.workingDirectory).pipe(
-      Effect.catch(() => Effect.succeed(undefined)),
-    );
-    yield* storage.withNoticeDelivery(
-      storage.digestNotice(turn.turnId, {
-        id: turn.turnId,
-        coordinatorSessionId: turn.senderSessionId,
-        sessionId: turn.sessionId,
-        title: (title ?? `Session ${turn.sessionId}`).slice(0, 500),
-        ...launchReport,
-        ...(report?.resultMessageRef ? { resultMessageRef: report.resultMessageRef } : null),
-      }),
-    );
-    yield* publishLaunch;
-    return;
-  }
+  if (turn.resultDelivery === "notification" && status !== "blocked")
+    return yield* retainNotification(turn, spawn);
   const presence = yield* Effect.serviceOption(CakeChatComposerPresence);
   if (
     !turn.deliveryTurnId &&

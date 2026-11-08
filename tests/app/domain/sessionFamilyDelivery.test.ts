@@ -1,9 +1,15 @@
 import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Layer, Stream } from "effect";
+import { Deferred, Effect, Fiber, Layer, Stream } from "effect";
+import { TestClock } from "effect/testing";
 import { describe } from "vitest";
-import { initialize } from "../../../src/domain/session-families/sessionFamilies";
+import {
+  initialize,
+  runPass,
+  runWorker,
+} from "../../../src/domain/session-families/sessionFamilies";
+import { MessageBoardStorage } from "../../../src/services/storage/MessageBoardStorage";
 import { deliver } from "../../../src/domain/session-families/sessionFamilyCompletion";
 import {
   encodeCrossSessionMessage,
@@ -80,6 +86,178 @@ const environment = Layer.mergeAll(
 );
 
 describe("Session Family outcome delivery", () => {
+  it.effect("the worker retains results even while the independent Workboard lane is stuck", () => {
+    const retained = Deferred.makeUnsafe<void>();
+    return Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      yield* storage.recordTurn({
+        ...outcome,
+        senderSessionId: "ca4ec4a7-0000-4000-8000-000000000001",
+        resultDelivery: "notification",
+        report: { outcome: "completed", text: "Original completed task result." },
+      });
+      // Publishing the launch status is the final durable-retention step.
+      yield* storage.registerSpawn({
+        sessionId: outcome.sessionId,
+        projectPath: "/project",
+        workingDirectory: "/project",
+        requester: {
+          sessionId: "ca4ec4a7-0000-4000-8000-000000000001",
+          kind: "cake-chat",
+          title: "Requester",
+        },
+        reportDelivered: false,
+        handoffSettled: false,
+      });
+      const worker = yield* runWorker.pipe(Effect.forkScoped);
+      yield* Deferred.await(retained);
+      assert.equal((yield* storage.state()).turns.length, 0);
+      assert.equal(
+        (yield* storage.state()).completionInbox?.[0]?.resultText,
+        "Original completed task result.",
+      );
+      yield* Fiber.interrupt(worker);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          environment,
+          familyStorageHarness().layer,
+          makeRuntimeRecoveryStorageTestLayer(),
+          Layer.mock(CakeSessionRuntimes, {}),
+          Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+          Layer.mock(MessageBoardStorage, { takeChangedBoards: () => Effect.never }),
+          Layer.mock(SessionCatalogChanges, {
+            publish: () => Deferred.succeed(retained, undefined).pipe(Effect.asVoid),
+          }),
+        ),
+      ),
+    );
+  });
+
+  it.effect(
+    "a stuck old reply cannot block exact quiet results; cancellation and restart neither duplicate nor drop them",
+    () =>
+      Effect.gen(function* () {
+        const files = new Map<string, string>();
+        const started = yield* Deferred.make<void>();
+        const retained = yield* Deferred.make<void>();
+        const old = {
+          ...outcome,
+          turnId: "old-aborted-sidechat",
+          sessionId: "old-sidechat",
+          outcome: "aborted" as const,
+          resultDelivery: "reply" as const,
+        };
+        const original = "Exact original handoff. ".repeat(100).trim();
+        const quiet = {
+          ...outcome,
+          sessionId: "3f663722-58c0-46c5-9307-7e880c23cdab",
+          turnId: "quiet-result",
+          requestMessageId: "3f663722-58c0-46c5-9307-7e880c23cdab",
+          senderSessionId: "ca4ec4a7-0000-4000-8000-000000000001",
+          resultDelivery: "notification" as const,
+          report: { outcome: "completed" as const, text: original },
+        };
+        const linked = {
+          ...quiet,
+          sessionId: "cbe23730-05cb-46d2-a1a2-e2b783e16257",
+          turnId: "linked-result",
+          requestMessageId: "cbe23730-05cb-46d2-a1a2-e2b783e16257",
+          report: {
+            outcome: "completed" as const,
+            text: original,
+            resultMessageRef: "cake://session/linked-source?message=original-entry",
+          },
+        };
+        const makeLayer = () =>
+          Layer.mergeAll(
+            environment,
+            Layer.mock(SessionCatalogChanges, {
+              publish: () => Deferred.succeed(retained, undefined).pipe(Effect.asVoid),
+            }),
+            Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+            Layer.mock(CakeSessionRuntimes, {}),
+            Layer.effect(
+              SessionFamilyStorage,
+              Effect.gen(function* () {
+                const storage = yield* SessionFamilyStorage;
+                return SessionFamilyStorage.of({
+                  ...storage,
+                  familyForMember: (id) =>
+                    id === "old-sidechat"
+                      ? Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never))
+                      : storage.familyForMember(id),
+                });
+              }),
+            ).pipe(Layer.provide(familyStorageHarness(files).layer)),
+          );
+        yield* Effect.gen(function* () {
+          const storage = yield* SessionFamilyStorage;
+          yield* storage.recordTurn(old);
+          for (const turn of [quiet, linked]) {
+            yield* storage.registerSpawn({
+              sessionId: turn.sessionId,
+              projectPath: "/project",
+              workingDirectory: "/project",
+              requester: {
+                sessionId: quiet.senderSessionId,
+                kind: "cake-chat",
+                title: "Requester",
+              },
+              reportDelivered: false,
+              handoffSettled: false,
+            });
+            yield* storage.recordTurn(turn);
+          }
+          const pass = yield* runPass().pipe(Effect.forkScoped);
+          yield* Deferred.await(started);
+          yield* Deferred.await(retained);
+          // Join the bounded attempt: even an unreachable first obligation cannot hold the pass forever.
+          yield* TestClock.adjust("10 seconds");
+          yield* Fiber.join(pass);
+          const state = yield* storage.state();
+          assert.equal(
+            state.completionInbox?.find((item) => item.id === quiet.turnId)?.resultText,
+            original,
+          );
+          assert.equal(
+            state.completionInbox?.find((item) => item.id === linked.turnId)?.resultMessageRef,
+            linked.report.resultMessageRef,
+          );
+          assert.equal(
+            state.completionInbox?.find((item) => item.id === linked.turnId)?.resultText,
+            undefined,
+          );
+          assert.deepEqual(
+            state.turns.map((turn) => turn.turnId),
+            [old.turnId],
+          );
+          assert.ok(
+            state.spawnedSessions.every((spawn) => spawn.handoffSettled && spawn.reportDelivered),
+          );
+          assert.match(state.turns[0]?.deliveryError ?? "", /Timeout/);
+          const retry = yield* runPass().pipe(Effect.forkScoped);
+          yield* Effect.yieldNow;
+          yield* Fiber.interrupt(retry);
+          assert.equal((yield* storage.state()).turns[0]?.reported, false);
+        }).pipe(Effect.provide(makeLayer()));
+        // Recreate the storage service, not merely another pass against its in-memory cache.
+        yield* Effect.gen(function* () {
+          const storage = yield* SessionFamilyStorage;
+          yield* Effect.scoped(deliver(quiet));
+          yield* Effect.scoped(deliver(linked));
+          const state = yield* storage.state();
+          assert.equal(state.completionInbox?.length, 2);
+          assert.equal(state.coordinatorDigest?.length, 2);
+          assert.equal(state.completionInbox?.[0]?.resultText, original);
+          assert.deepEqual(
+            state.turns.map((turn) => turn.turnId),
+            [old.turnId],
+          );
+        }).pipe(Effect.provide(makeLayer()));
+      }),
+  );
+
   it.effect("an aborted turn with a pending obligation sends exactly one canceled notice", () =>
     Effect.gen(function* () {
       const received: string[] = [];

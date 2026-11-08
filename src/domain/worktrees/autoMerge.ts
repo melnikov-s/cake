@@ -1,8 +1,11 @@
 import { Effect, SubscriptionRef } from "effect";
+import { isDirectProjectChatDelegation } from "../../contracts/worktrees/auto-merge-delegation";
+import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import { WorktreeLandingError } from "../../contracts/worktrees/worktree-landing-data";
 import type { AutoMergeOutcome, AutoMergeRequest } from "../../contracts/worktrees/auto-merge";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import { ApplicationState } from "../../services/storage/ApplicationState";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
 import * as landings from "./worktreeLandings";
@@ -15,6 +18,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
   const coordinator = yield* WorktreeLandingCoordinator;
   const worktrees = yield* ManagedWorktrees;
   const sessions = yield* CakeSessionRuntimes;
+  const application = yield* ApplicationState;
   const requests = (yield* storage.state()).autoMergeRequests ?? emptyRequests;
   yield* SubscriptionRef.update(coordinator.state, (state) =>
     state.autoMergeRequests === requests ? state : { ...state, autoMergeRequests: requests },
@@ -56,7 +60,9 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
     yield* storage.updateAutoMerge(request.id, state, message, outcome);
     yield* SubscriptionRef.update(coordinator.state, (current) => ({
       ...current,
-      autoMergeStatus: message,
+      autoMergeProjects: current.autoMergeProjects?.map((item) =>
+        item.projectPath === request.projectPath ? { ...item, status: message } : item,
+      ),
     }));
   });
   for (const request of requests) {
@@ -129,8 +135,55 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
       yield* storage.invalidateAutoMerge(request.workspacePath, request.id);
       continue;
     }
-    if (request.state === "pending" || !current.autoMergeEnabled) continue;
-    if (current.autoMergeEpoch !== request.epoch) {
+    const owner = (yield* worktrees.records()).find(
+      (item) => item.worktreePath === request.workspacePath,
+    );
+    if (
+      !request.projectPath ||
+      owner?.projectPath !== request.projectPath ||
+      !application.snapshot().projects.some((item) => item.path === request.projectPath)
+    ) {
+      yield* finish(request, "canceled", "Owning project is unavailable; fresh readiness required");
+      continue;
+    }
+    const project = current.autoMergeProjects?.find(
+      (item) => item.projectPath === request.projectPath,
+    );
+    const document = yield* storage.state();
+    const pendingHandoffs = document.turns.filter(
+      (turn) => turn.sessionId === request.sessionId && !turn.reported,
+    );
+    const handoffError = pendingHandoffs.find((turn) => turn.deliveryError)?.deliveryError;
+    const waiting =
+      pendingHandoffs.length > 0 ||
+      document.spawnedSessions.some(
+        (spawn) => spawn.sessionId === request.sessionId && !spawn.handoffSettled,
+      );
+    const reason =
+      request.state === "pending"
+        ? "Waiting for task completion"
+        : waiting
+          ? `Waiting for result handoff${handoffError ? `: ${handoffError}` : ""}`
+          : !isDirectProjectChatDelegation(
+                document.spawnedSessions,
+                request,
+                projectChatSessionId(request.projectPath),
+              )
+            ? "Manual landing only: not directly delegated by this project’s Project Chat"
+            : !project?.enabled
+              ? "Auto-merge is off; ready for manual landing"
+              : (yield* sessions.activeWorkingDirectories()).includes(request.workspacePath)
+                ? "Waiting for session to become idle"
+                : [...current.operations.values()].some(
+                      (item) => !["landed", "complete", "failed", "stalled"].includes(item.phase),
+                    )
+                  ? "Waiting for another landing"
+                  : undefined;
+    if (reason) {
+      yield* storage.updateAutoMerge(request.id, request.state, reason);
+      continue;
+    }
+    if (project?.epoch !== request.epoch) {
       yield* finish(
         request,
         "canceled",
@@ -138,26 +191,34 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
       );
       continue;
     }
-    // Preserve normal completion delivery before retiring its source checkout.
-    if ((yield* storage.state()).turns.some((turn) => turn.turnId === request.id && !turn.reported))
-      continue;
-    if ((yield* sessions.activeWorkingDirectories()).includes(request.workspacePath)) continue;
-    // Admit one automatic landing at a time. Manual operations retain engine FIFO order.
-    if (
-      [...current.operations.values()].some(
-        (item) => !["landed", "complete", "failed", "stalled"].includes(item.phase),
-      )
-    )
-      continue;
     const authorize = Effect.gen(function* () {
       const authorization = yield* SubscriptionRef.get(coordinator.state);
-      const latest = (yield* storage.state()).autoMergeRequests?.find(
-        (item) => item.id === request.id,
+      const document = yield* storage.state();
+      const latest = document.autoMergeRequests?.find((item) => item.id === request.id);
+      const authorizedProject = authorization.autoMergeProjects?.find(
+        (item) => item.projectPath === request.projectPath,
+      );
+      const owner = (yield* worktrees.records()).find(
+        (item) => item.worktreePath === request.workspacePath,
       );
       if (
-        !authorization.autoMergeEnabled ||
-        authorization.autoMergeEpoch !== request.epoch ||
+        !authorizedProject?.enabled ||
+        authorizedProject.epoch !== request.epoch ||
+        owner?.projectPath !== request.projectPath ||
+        !isDirectProjectChatDelegation(
+          document.spawnedSessions,
+          request,
+          projectChatSessionId(authorizedProject.projectPath),
+        ) ||
+        !application.snapshot().projects.some((item) => item.path === request.projectPath) ||
         latest?.state !== "landing" ||
+        latest.runId !== authorization.autoMergeRunId ||
+        !latest.readyToMerge ||
+        latest.commit !== request.commit ||
+        document.turns.some((turn) => turn.sessionId === request.sessionId && !turn.reported) ||
+        document.spawnedSessions.some(
+          (spawn) => spawn.sessionId === request.sessionId && !spawn.handoffSettled,
+        ) ||
         (yield* sessions.activeWorkingDirectories()).includes(request.workspacePath)
       )
         return yield* new WorktreeLandingError({

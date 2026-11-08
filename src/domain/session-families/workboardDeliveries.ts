@@ -312,6 +312,7 @@ export const makePass = Effect.fn("WorkboardDeliveries.makePass")(function* () {
         };
         for (const recipient of familyMemberIds(family))
           yield* Effect.scoped(processRecipient(family, recipient, entries)).pipe(
+            Effect.timeout("10 seconds"),
             Effect.catch((error) =>
               Effect.gen(function* () {
                 const pending = (yield* storage.state()).boardDeliveries?.find(

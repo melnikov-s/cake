@@ -4,26 +4,53 @@ import { WorktreeLandingError } from "../../contracts/worktrees/worktree-landing
 import { CakeSessionRuntimes, type PiSessionTarget } from "../../services/pi/CakeSessionRuntimes";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
+import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
+import { ApplicationState } from "../../services/storage/ApplicationState";
+import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 
-export const setEnabled = Effect.fn("AutoMerge.setEnabled")(function* (enabled: boolean) {
+export const setEnabled = Effect.fn("AutoMerge.setEnabled")(function* (
+  projectPath: string,
+  enabled: boolean,
+) {
+  if (
+    !(yield* ApplicationState).snapshot().projects.some((project) => project.path === projectPath)
+  )
+    return yield* new WorktreeLandingError({
+      operation: "setAutoMerge",
+      message:
+        "Auto-merge requires an exact registered project root; no global authorization exists.",
+    });
   const coordinator = yield* WorktreeLandingCoordinator;
   const storage = yield* SessionFamilyStorage;
   yield* storage.withCreationLock(
-    "auto-merge-toggle",
+    `auto-merge-toggle:${projectPath}`,
     Effect.gen(function* () {
       const current = yield* SubscriptionRef.get(coordinator.state);
-      if (Boolean(current.autoMergeEnabled) === enabled) return;
+      const previous = current.autoMergeProjects?.find((item) => item.projectPath === projectPath);
+      if (Boolean(previous?.enabled) === enabled) return;
       const epoch = crypto.randomUUID();
-      const runId = current.autoMergeRunId ?? current.autoMergeEpoch ?? crypto.randomUUID();
-      if (enabled) yield* storage.authorizeAutoMerge(runId, epoch);
+      const runId = current.autoMergeRunId ?? crypto.randomUUID();
+      if (enabled)
+        yield* storage.authorizeAutoMerge(
+          runId,
+          epoch,
+          projectPath,
+          projectChatSessionId(projectPath),
+        );
       yield* SubscriptionRef.update(coordinator.state, (state) => ({
         ...state,
-        autoMergeEnabled: enabled,
-        autoMergeEpoch: epoch,
         autoMergeRunId: runId,
-        autoMergeStatus: enabled
-          ? "Merging valid ready work; waiting for validated completion"
-          : "Off",
+        autoMergeProjects: [
+          ...(state.autoMergeProjects ?? []).filter((item) => item.projectPath !== projectPath),
+          {
+            projectPath,
+            enabled,
+            epoch,
+            status: enabled
+              ? "Merging validated work directly delegated by this project’s Project Chat"
+              : "Off",
+          },
+        ],
       }));
     }),
   );
@@ -44,6 +71,18 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
       operation: "readiness",
       message: "Finish the task and all necessary validation before declaring readiness.",
     });
+  const record = (yield* (yield* ManagedWorktrees).records()).find(
+    (item) => item.worktreePath === target.workingDirectory,
+  );
+  const projectPath = record?.projectPath;
+  if (
+    !projectPath ||
+    !(yield* ApplicationState).snapshot().projects.some((item) => item.path === projectPath)
+  )
+    return yield* new WorktreeLandingError({
+      operation: "readiness",
+      message: `No registered owning project for managed workspace ${target.workingDirectory}.`,
+    });
   const family = yield* storage.familyForMember(target.sessionId);
   if (family && family.parentSessionId !== target.sessionId)
     return yield* new WorktreeLandingError({
@@ -51,11 +90,13 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
       message: "Only the family root may declare merge-and-resolve readiness.",
     });
   const ids = yield* (yield* CakeSessionRuntimes).executingTurnIds(target);
-  const id = ids.length === 1 ? ids[0] : undefined;
+  // Pi consumes steering and coordination inputs into one run. The oldest accepted
+  // consumed input anchors that run; the rest are not competing task executions.
+  const id = ids[0];
   if (!id)
     return yield* new WorktreeLandingError({
       operation: "readiness",
-      message: "Readiness requires one executing task turn.",
+      message: `Readiness requires an executing task run for session ${target.sessionId}; executing input count=${ids.length}, ids=${JSON.stringify(ids)}.`,
     });
   const state = yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state);
   if (!state.autoMergeRunId)
@@ -64,6 +105,14 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
       reason: "Readiness requires a current app-run identity.",
     };
   const document = yield* storage.state();
+  const foreignTurns = document.turns.filter(
+    (turn) => ids.includes(turn.turnId) && turn.sessionId !== target.sessionId,
+  );
+  if (foreignTurns.length)
+    return yield* new WorktreeLandingError({
+      operation: "readiness",
+      message: `Executing inputs do not belong to session ${target.sessionId}; count=${ids.length}, ids=${JSON.stringify(ids)}, foreign ids=${JSON.stringify(foreignTurns.map((turn) => turn.turnId))}.`,
+    });
   const coordinatorSessionId =
     document.spawnedSessions.find((item) => item.sessionId === target.sessionId)?.requester
       .sessionId ?? document.turns.find((item) => item.turnId === id)?.senderSessionId;
@@ -71,10 +120,12 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
     id,
     sessionId: target.sessionId,
     workspacePath: target.workingDirectory,
-    epoch: state.autoMergeEpoch ?? "",
+    projectPath,
+    epoch: state.autoMergeProjects?.find((item) => item.projectPath === projectPath)?.epoch ?? "",
     runId: state.autoMergeRunId,
     commit: readiness.validatedCommit,
     state: "pending",
+    message: "Waiting for task completion",
     readyToMerge: true,
   };
   if (coordinatorSessionId) Object.assign(request, { coordinatorSessionId });
@@ -86,6 +137,7 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
   if (
     stored.sessionId !== target.sessionId ||
     stored.workspacePath !== target.workingDirectory ||
+    stored.projectPath !== projectPath ||
     stored.commit !== readiness.validatedCommit
   )
     return {

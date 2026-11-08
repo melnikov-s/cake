@@ -1,6 +1,6 @@
 import * as workboardDeliveries from "./workboardDeliveries";
 import * as updateBatches from "./updateBatches";
-import { Effect, Schedule } from "effect";
+import { Cause, Effect, Schedule } from "effect";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { deliver } from "./sessionFamilyCompletion";
@@ -81,27 +81,47 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
   }
 });
 
-const runPass = Effect.fn("SessionFamilies.deliverPendingNotices")(function* () {
+/** Admission attempts are bounded, not the task execution they may start. Stable
+ * report message IDs and durable receipts reconcile interrupted attempts on retry. */
+export const runPass = Effect.fn("SessionFamilies.deliverPendingNotices")(function* () {
   const storage = yield* SessionFamilyStorage;
-  for (const turn of (yield* storage.state()).turns) {
-    if (!turn.outcome || turn.reported) continue;
-    yield* Effect.scoped(deliver(turn)).pipe(
-      Effect.catch((error) => Effect.logError("Session result delivery will retry", error)),
-    );
-  }
-  // After results settle into deferred stores, so a completion opens its batch this pass.
-  yield* updateBatches
-    .runPass()
-    .pipe(Effect.catch((error) => Effect.logError("Batched update pass will retry", error)));
+  const turns = (yield* storage.state()).turns.filter((turn) => turn.outcome && !turn.reported);
+  yield* Effect.forEach(
+    turns,
+    (turn) =>
+      Effect.scoped(deliver(turn)).pipe(
+        Effect.timeout("10 seconds"),
+        Effect.catchCauseIf(
+          (cause) => !Cause.hasInterrupts(cause),
+          (cause) =>
+            Effect.logError("Session result delivery will retry", cause).pipe(
+              Effect.annotateLogs({ turnId: turn.turnId, sessionId: turn.sessionId }),
+              Effect.andThen(storage.markNoticeFailure(turn.turnId, Cause.pretty(cause))),
+            ),
+        ),
+      ),
+    { concurrency: 8, discard: true },
+  );
 });
 
+/** Independent supervised lanes: a stuck Workboard or deferred wake cannot stop
+ * durable completion retention. The backend scope still owns cancellation. */
 export const runWorker = Effect.gen(function* () {
   const deliverBoards = yield* workboardDeliveries.makePass();
-  yield* Effect.gen(function* () {
-    yield* deliverBoards();
-    yield* runPass();
-  }).pipe(
-    Effect.catch((error) => Effect.logError("Session result delivery pass failed", error)),
-    Effect.repeat(Schedule.spaced("1 second")),
+  const repeat = <A, E, R>(name: string, pass: Effect.Effect<A, E, R>) =>
+    pass.pipe(
+      Effect.catchCauseIf(
+        (cause) => !Cause.hasInterrupts(cause),
+        (cause) => Effect.logError(`${name} pass will retry`, cause),
+      ),
+      Effect.repeat(Schedule.spaced("1 second")),
+    );
+  yield* Effect.all(
+    [
+      repeat("Session result delivery", runPass()),
+      repeat("Workboard delivery", deliverBoards().pipe(Effect.timeout("30 seconds"))),
+      repeat("Batched update delivery", updateBatches.runPass().pipe(Effect.timeout("30 seconds"))),
+    ],
+    { concurrency: "unbounded", discard: true },
   );
 });

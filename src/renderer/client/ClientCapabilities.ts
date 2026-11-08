@@ -311,10 +311,10 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
       },
     },
     managedWorktrees: {
-      setAutoMerge: (enabled, options) =>
+      setAutoMerge: (projectPath, enabled, options) =>
         execute(
           "managedWorktrees.setAutoMerge",
-          (client) => client.managedWorktrees.setAutoMerge({ enabled }),
+          (client) => client.managedWorktrees.setAutoMerge({ projectPath, enabled }),
           options,
         ),
       inspectChanges: (input, options) =>
