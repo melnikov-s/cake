@@ -2,7 +2,7 @@ import { it } from "@effect/vitest";
 import { join } from "node:path";
 import { recoveryRecordFileName } from "../../../../src/services/storage/internal/recoveryRecordFiles";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
-import { Effect, FileSystem, Layer, Path, PlatformError, Ref } from "effect";
+import { Deferred, Effect, Fiber, FileSystem, Layer, Path, PlatformError, Ref } from "effect";
 import { describe, expect } from "vitest";
 import {
   makeRuntimeRecoveryStorageLive,
@@ -179,6 +179,54 @@ describe("RuntimeRecoveryStorage", () => {
           ).pipe(Effect.provideService(FileSystem.FileSystem, countedFs));
         }),
       ),
+  );
+
+  it.effect("loads recovery files with bounded parallel I/O while excluding mutations", () =>
+    withDirectory((directory) =>
+      Effect.gen(function* () {
+        const records = Array.from({ length: 40 }, (_, index) => ({
+          ...record,
+          sessionId: `session-${index}`,
+        }));
+        yield* open(directory, (storage) => Effect.forEach(records, storage.update));
+        const fs = yield* FileSystem.FileSystem;
+        const firstBatch = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const counts = yield* Ref.make({ active: 0, peak: 0, total: 0 });
+        const parallelFs: FileSystem.FileSystem = {
+          ...fs,
+          readFileString: (file, encoding) =>
+            Effect.gen(function* () {
+              const count = yield* Ref.updateAndGet(counts, ({ active, peak, total }) => ({
+                active: active + 1,
+                peak: Math.max(peak, active + 1),
+                total: total + 1,
+              }));
+              if (count.total === 16) yield* Deferred.succeed(firstBatch, undefined);
+              yield* Deferred.await(release);
+              return yield* fs.readFileString(file, encoding);
+            }).pipe(
+              Effect.ensuring(
+                Ref.update(counts, (count) => ({ ...count, active: count.active - 1 })),
+              ),
+            ),
+        };
+        yield* open(directory, (storage) =>
+          Effect.gen(function* () {
+            const listing = yield* storage.list().pipe(Effect.forkChild);
+            yield* Deferred.await(firstBatch);
+            expect(yield* Ref.get(counts)).toEqual({ active: 16, peak: 16, total: 16 });
+            const updated = { ...record, sessionId: "session-0", state: "complete" as const };
+            const mutation = yield* storage.update(updated).pipe(Effect.forkChild);
+            yield* Deferred.succeed(release, undefined);
+            expect(yield* Fiber.join(listing)).toHaveLength(40);
+            yield* Fiber.join(mutation);
+            expect(yield* storage.get(updated.sessionId)).toEqual(updated);
+            expect(yield* Ref.get(counts)).toEqual({ active: 0, peak: 16, total: 40 });
+          }),
+        ).pipe(Effect.provideService(FileSystem.FileSystem, parallelFs));
+      }),
+    ),
   );
 
   it.effect("isolates a malformed record from healthy sessions without overwriting evidence", () =>

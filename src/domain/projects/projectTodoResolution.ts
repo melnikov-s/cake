@@ -128,10 +128,8 @@ export const completeLinked = Effect.fn("ProjectTodos.completeLinked")(function*
   );
 });
 
-/** Runs after backend initialization, even when no Project Chat/runtime is loaded. Idempotent
- * repair also covers a process exit between the session authority and the to-do commit.
- */
-export const initialize = Effect.fn("ProjectTodos.reconcileOnStartup")(function* () {
+/** Idempotent repair covers a process exit between the session authority and the to-do commit. */
+const reconcileOnStartup = Effect.fn("ProjectTodos.reconcileOnStartup")(function* () {
   const projects = (yield* ApplicationState).snapshot().projects;
   for (const scope of [...projects.map((project) => project.path), CAKE_CHAT_TODO_SCOPE])
     yield* completeLinked(scope).pipe(
@@ -142,6 +140,13 @@ export const initialize = Effect.fn("ProjectTodos.reconcileOnStartup")(function*
         ),
       ),
     );
+});
+
+/** Linked to-do repair is not a startup prerequisite. Keep its potentially cross-project
+ * identity scans in the backend scope, without delaying the first window or acquiring runtimes.
+ */
+export const initialize = Effect.fn("ProjectTodos.initialize")(function* () {
+  return yield* reconcileOnStartup().pipe(Effect.forkScoped);
 });
 
 /** Both UI and tools use this after an actual committed lifecycle transition. Context only;

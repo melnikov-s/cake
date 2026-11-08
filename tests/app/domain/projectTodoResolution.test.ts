@@ -32,6 +32,7 @@ import * as controls from "../../../src/domain/projects/projectTodoAssociations"
 import {
   completeLinked,
   completeLinkedForProject,
+  initialize,
   join,
   recordLifecycle,
 } from "../../../src/domain/projects/projectTodoResolution";
@@ -473,6 +474,51 @@ it.effect(
       yield* todos.update(project, { id: first.id, expectedRevision: 2, status: "New intent" });
       yield* todos.completeResolved(project, [candidate]);
       expect((yield* todos.read(project, first.id)).state).toBe("open");
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect.each(["finish", "shutdown"] as const)(
+  "startup returns while linked to-do repair is blocked and owns its worker through %s",
+  (outcome) => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const item = yield* todos.create(project, {
+        title: "Interrupted reconciliation",
+        description: "Resolved while Cake was closed.",
+        associations: [link(a)],
+      });
+      f.resolved.add(a);
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const interrupted = yield* Deferred.make<void>();
+      const archive = yield* SessionArchiveStorage;
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const worker = yield* initialize();
+          // initialize must return even though its real metadata join cannot finish.
+          yield* Deferred.await(entered);
+          expect((yield* todos.read(project, item.id)).state).toBe("open");
+          if (outcome === "finish") {
+            yield* Deferred.succeed(release, undefined);
+            yield* Fiber.join(worker);
+            expect((yield* todos.read(project, item.id)).state).toBe("done");
+          }
+        }).pipe(
+          Effect.provideService(SessionArchiveStorage, {
+            ...archive,
+            resolutionSnapshot: () =>
+              Deferred.succeed(entered, undefined).pipe(
+                Effect.andThen(Deferred.await(release)),
+                Effect.andThen(archive.resolutionSnapshot()),
+                Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
+              ),
+          }),
+        ),
+      );
+      expect(yield* Deferred.isDone(interrupted)).toBe(outcome === "shutdown");
+      if (outcome === "shutdown") expect((yield* todos.read(project, item.id)).state).toBe("open");
     }).pipe(Effect.provide(f.layer));
   },
 );

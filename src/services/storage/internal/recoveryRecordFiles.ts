@@ -64,10 +64,13 @@ export const makeRecoveryRecordFiles = Effect.fn("RecoveryRecordFiles.make")(fun
             const files = yield* fs
               .readDirectory(options.directory)
               .pipe(Effect.mapError(failure("read", options.directory)));
-            for (const file of files) {
-              if (!/^[a-f0-9]{64}\.json$/.test(file)) continue;
-              yield* read(path.join(options.directory, file));
-            }
+            // The lock still excludes mutations and other listings, but independent files
+            // need not pay filesystem latency serially for every historical session.
+            yield* Effect.forEach(
+              files.filter((file) => /^[a-f0-9]{64}\.json$/.test(file)),
+              (file) => read(path.join(options.directory, file)),
+              { concurrency: 16, discard: true },
+            );
           }
           yield* Ref.set(loaded, true);
         }
