@@ -70,15 +70,26 @@ export const SessionChangesPanel = observer(function SessionChangesPanel({
               Open in VS Code
             </Button>
           </div>
+          <section aria-label="Outstanding changes" className="pb-3">
+            <div className="flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground">
+              <span>Outstanding changes</span>
+              <span>{data.files.length}</span>
+              <span className="flex-1" />
+              <ChangeStats {...changeTotals(data.files)} />
+            </div>
+            {data.files.map((file) => (
+              <SessionChangeFile key={file.path} file={file} store={store} outstanding />
+            ))}
+            {data.files.length === 0 && (
+              <p className="px-4 py-3 text-xs text-muted-foreground">No outstanding changes</p>
+            )}
+          </section>
           <DisclosureTrigger
             title="Commits"
             open={store.commitsExpanded}
             chevronPosition="start"
             className="px-4 py-2 hover:bg-muted/55"
             subtitle={data.totalCommits}
-            trailing={
-              <ChangeStats {...changeTotals(data.commits.flatMap((commit) => commit.files))} />
-            }
             onClick={() => store.toggleCommits()}
           />
           {store.commitsExpanded && (

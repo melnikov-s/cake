@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 const count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
-/** Committed changes relative to a Managed Worktree's recorded session base. */
+/** Outstanding committed changes relative to the current configured landing target. */
 export const CommitChangeStats = Schema.Struct({
   commitCount: count,
   additions: count,
@@ -38,9 +38,14 @@ export const commitListLimit = 200;
 
 export const WorktreeChanges = Schema.Struct({
   branch: Schema.String,
-  /** Branch HEAD is compared with, inferred from the Git graph; null when none exists. */
+  /** Configured landing target for managed worktrees; inferred parent otherwise. */
   base: Schema.NullOr(Schema.String),
   baseAlternatives: Schema.Array(BaseAlternative),
+  /** Immutable revisions used for the net committed diff; null without a comparison target. */
+  baseRevision: Schema.NullOr(Schema.String),
+  headRevision: Schema.String,
+  files: Schema.Array(ChangedFile),
+  /** Per-commit historical edits, not the net outstanding line/file totals. */
   commits: Schema.Array(BranchCommit),
   totalCommits: count,
   staged: Schema.Array(ChangedFile),

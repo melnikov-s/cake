@@ -309,6 +309,7 @@ async function send(payload: object, expectedStatus = 204) {
 interface FakeGitRepository {
   status: ReturnType<typeof vi.fn>;
   diffWith: ReturnType<typeof vi.fn>;
+  diffBetween: ReturnType<typeof vi.fn>;
   state: { workingTreeChanges: Array<{ uri: FakeUri }> };
 }
 let gitRepository: FakeGitRepository | undefined;
@@ -320,6 +321,7 @@ function fakeGitRepository(options: {
   return {
     status: vi.fn(async () => undefined),
     diffWith: vi.fn(typeof diff === "function" ? diff : async () => diff),
+    diffBetween: vi.fn(typeof diff === "function" ? diff : async () => diff),
     state: {
       workingTreeChanges: (options.workingTreeChanges ?? []).map((file) => ({
         uri: FakeUri.file(file),
@@ -897,6 +899,34 @@ describe("companion editor reveals", () => {
     );
   });
 
+  it("opens an immutable branch diff without mixing in working-tree edits", async () => {
+    const changedPath = `${WORKSPACE}/src/run.ts`;
+    gitRepository = fakeGitRepository({ diff: "@@" });
+    const outcome = await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      view: "changes",
+      base: "fork-sha",
+      revision: "head-sha",
+    });
+    expect(outcome).toEqual({ outcome: { view: "changes" }, locations: [] });
+    expect(gitRepository.diffWith).not.toHaveBeenCalled();
+    expect(gitRepository.diffBetween).toHaveBeenCalledWith("fork-sha", "head-sha", changedPath);
+    expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith(
+      "vscode.diff",
+      expect.objectContaining({
+        scheme: "git",
+        query: JSON.stringify({ path: changedPath, ref: "fork-sha" }),
+      }),
+      expect.objectContaining({
+        scheme: "git",
+        query: JSON.stringify({ path: changedPath, ref: "head-sha" }),
+      }),
+      "run.ts (fork-sha ↔ head-sha)",
+      { preview: false },
+    );
+  });
+
   it("opens the file itself and says so when Git cannot resolve the base revision", async () => {
     gitRepository = fakeGitRepository({
       diff: () => Promise.reject(new Error("fatal: bad revision 'nope'")),
@@ -926,7 +956,19 @@ describe("companion editor reveals", () => {
         }),
       ).rejects.toThrow("single Git revision");
     }
+    for (const revision of ["--output=/tmp/x", "main..HEAD", "HEAD:src/run.ts", " "]) {
+      await expect(
+        commands.get("cake.reveal")!({
+          kind: "working-directory",
+          path: "src/run.ts",
+          view: "changes",
+          base: "HEAD",
+          revision,
+        }),
+      ).rejects.toThrow("single Git revision");
+    }
     expect(gitRepository.diffWith).not.toHaveBeenCalled();
+    expect(gitRepository.diffBetween).not.toHaveBeenCalled();
     expect(openTextDocument).not.toHaveBeenCalled();
   });
 

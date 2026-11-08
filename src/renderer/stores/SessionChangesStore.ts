@@ -117,18 +117,26 @@ export class SessionChangesStore extends Store<SessionChangesStoreProps> {
     }
   }
 
-  async openFile(file: ChangedFile, commit?: string) {
+  async openFile(file: ChangedFile, commit?: string, outstanding = false) {
     const location = workingDirectoryEditorLocation(
-      file.deleted || !file.workingTreeExists
+      outstanding && this.data?.baseRevision
         ? {
             path: file.path,
             view: "changes",
-            side: "before",
-            base: commit ? (file.deleted ? `${commit}^` : commit) : "HEAD",
+            base: this.data.baseRevision,
+            revision: this.data.headRevision,
+            side: file.deleted ? "before" : "after",
           }
-        : commit
-          ? { path: file.path }
-          : { path: file.path, view: "changes" },
+        : file.deleted || !file.workingTreeExists
+          ? {
+              path: file.path,
+              view: "changes",
+              side: "before",
+              base: commit ? (file.deleted ? `${commit}^` : commit) : "HEAD",
+            }
+          : commit
+            ? { path: file.path }
+            : { path: file.path, view: "changes" },
     );
     try {
       await SessionPresentationContext.consume(this)!.openFile(location);

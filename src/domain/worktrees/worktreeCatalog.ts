@@ -67,7 +67,8 @@ export const observe = (): Stream.Stream<
       const changes = yield* SessionCatalogChanges;
       const readStats = yield* makeCommitStatsReader();
       // Existing activity notifications cover turn start/settlement (including abort).
-      // Only matching working directories are refreshed; title/read changes do no Git work.
+      // Refresh the source and worktrees landing there: target advancement changes outstanding
+      // stats even when a child's HEAD is unchanged. Title/read changes do no Git work.
       const refreshes = changes.initialThenChanges(Stream.empty).pipe(
         Stream.filter(
           (change) =>
@@ -80,8 +81,10 @@ export const observe = (): Stream.Stream<
               records
                 .filter(
                   (record) =>
-                    record.worktreePath === change.workingDirectory &&
-                    record.projectPath === change.projectPath,
+                    record.projectPath === change.projectPath &&
+                    (record.worktreePath === change.workingDirectory ||
+                      (record.parentWorktreePath ?? record.projectPath) ===
+                        change.workingDirectory),
                 )
                 .map((worktree): ManagedWorktreeCatalogUpdate => ({
                   _tag: "Event",

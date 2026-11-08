@@ -6,10 +6,11 @@ import { parseNumstat } from "../../services/git/git-numstat";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { inferBase } from "./worktreeChangesBase";
+import { outstandingRange } from "./worktreeOutstandingRange";
 
 /**
- * Read-only review of HEAD against the branch it forked from. The base is inferred from the
- * Git graph on every call (or chosen by the user for this request); Cake stores none of it.
+ * Read-only review against the current landing target. Unmanaged checkouts retain graph-based
+ * parent selection; a view preference must never override a managed worktree's landing target.
  */
 export const inspect = Effect.fn("WorktreeChanges.inspect")(
   function* (workspacePath: string, options: { readonly base?: string | undefined }) {
@@ -22,11 +23,31 @@ export const inspect = Effect.fn("WorktreeChanges.inspect")(
     const run = (args: readonly string[]) => git.run(workspacePath, args);
     const status = yield* (yield* ManagedWorktrees).status(workspacePath);
     const branch = (yield* run(["rev-parse", "--abbrev-ref", "HEAD"])).trim();
-    const inferred = yield* inferBase(run, { branch, requested: options.base });
+    const record = status?.record;
+    const inferred = record
+      ? {
+          base: { name: record.baseBranch, ref: `refs/heads/${record.baseBranch}` },
+          alternatives: [],
+        }
+      : yield* inferBase(run, { branch, requested: options.base });
     const base = inferred.base?.ref;
-    // A landed checkpoint hides commits already delivered by a squash landing.
-    const landed = status?.record?.landedSourceCommit;
-    const revisions = base ? ["HEAD", `^${base}`, ...(landed ? [`^${landed}`] : [])] : [];
+    const range = base
+      ? yield* outstandingRange(workspacePath, "HEAD", base, record?.landedSourceCommit)
+      : null;
+    const headRevision = range?.tip ?? (yield* run(["rev-parse", "HEAD"])).trim();
+    const revisions = range ? [range.tip, `^${range.targetTip}`, `^${range.base}`] : [];
+    const filesOutput = range
+      ? yield* run([
+          "diff",
+          "--raw",
+          "--numstat",
+          "-z",
+          "--no-renames",
+          range.base,
+          range.tip,
+          "--",
+        ])
+      : "";
     const totalCommits = base
       ? Number((yield* run(["rev-list", "--count", ...revisions, "--"])).trim())
       : 0;
@@ -88,15 +109,22 @@ export const inspect = Effect.fn("WorktreeChanges.inspect")(
       ),
     );
     const tracked = yield* Effect.try({
-      try: () => ({ staged: parseNumstat(stagedOutput), unstaged: parseNumstat(unstagedOutput) }),
+      try: () => ({
+        files: parseNumstat(filesOutput),
+        staged: parseNumstat(stagedOutput),
+        unstaged: parseNumstat(unstagedOutput),
+      }),
       catch: (cause) => new ManagedWorktreeError({ operation: "changes", message: String(cause) }),
     });
     // Earlier commits may name a file deleted by a later commit. Preserve that
     // distinction from deletion *in* the listed commit for existing revision navigation.
     const paths = new Set(
-      [...commits.flatMap((commit) => commit.files), ...tracked.staged, ...tracked.unstaged].map(
-        (file) => file.path,
-      ),
+      [
+        ...tracked.files,
+        ...commits.flatMap((commit) => commit.files),
+        ...tracked.staged,
+        ...tracked.unstaged,
+      ].map((file) => file.path),
     );
     const existence = new Map(
       yield* Effect.forEach([...paths], (path) =>
@@ -115,6 +143,9 @@ export const inspect = Effect.fn("WorktreeChanges.inspect")(
         branch: name,
         distance,
       })),
+      baseRevision: range?.base ?? null,
+      headRevision,
+      files: withExistence(tracked.files),
       commits: commits.map((commit) => ({ ...commit, files: withExistence(commit.files) })),
       totalCommits,
       staged: withExistence(tracked.staged),

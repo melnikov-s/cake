@@ -37,9 +37,14 @@ it.effect(
             Layer.succeed(
               Git,
               Git.of({
-                run: (cwd) => {
-                  calls.push(cwd);
-                  return Effect.succeed("origin/trunk\n");
+                run: (cwd, args) => {
+                  if (args[0] === "symbolic-ref") {
+                    calls.push(cwd);
+                    return Effect.succeed("origin/trunk\n");
+                  }
+                  return Effect.fail(
+                    new GitError({ operation: "read", workingDirectory: cwd, message: "No refs" }),
+                  );
                 },
               }),
             ),
@@ -79,6 +84,7 @@ it.effect(
       };
       let tip: string | undefined = "first";
       let diffCalls = 0;
+      let targetLanded = false;
       const lifecycle = yield* Queue.unbounded<ManagedWorktreeCatalogUpdate>();
       const updates = yield* Queue.unbounded<ManagedWorktreeCatalogUpdate>();
       const changes = yield* SessionCatalogChanges;
@@ -108,9 +114,11 @@ it.effect(
                       }),
                     );
                   if (args[0] === "rev-parse") return Effect.succeed(tip);
-                  if (args[0] === "rev-list") return Effect.succeed(tip === "first" ? "1" : "3");
+                  if (args[0] === "merge-base") return Effect.succeed(targetLanded ? tip : "base");
+                  if (args[0] === "rev-list")
+                    return Effect.succeed(targetLanded ? "0" : tip === "first" ? "1" : "3");
                   diffCalls++;
-                  return Effect.succeed("120\t35\tcode.ts\0");
+                  return Effect.succeed(targetLanded ? "" : "120\t35\tcode.ts\0");
                 },
               }),
             ),
@@ -138,6 +146,15 @@ it.effect(
       yield* changes.publish(activity);
       yield* Queue.take(updates);
       expect(diffCalls).toBe(2);
+      // Activity in the landing target must refresh the unchanged source branch too.
+      targetLanded = true;
+      yield* changes.publish({ ...activity, workingDirectory: "/project" });
+      const landed = yield* Queue.take(updates);
+      expect(landed._tag === "Event" && landed.event.worktree.commitStats).toEqual({
+        commitCount: 0,
+        additions: 0,
+        deletions: 0,
+      });
       tip = undefined;
       yield* Queue.offer(lifecycle, {
         _tag: "Event",

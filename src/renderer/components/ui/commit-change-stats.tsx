@@ -10,7 +10,7 @@ export function CommitChangeStatsText({ stats }: { stats?: CommitChangeStats }) 
       className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-normal tabular-nums [&>svg]:size-3"
       role="img"
       aria-label={`${stats.commitCount} ${stats.commitCount === 1 ? "commit" : "commits"}, +${stats.additions} −${stats.deletions}`}
-      title="Committed changes since the session worktree base; binary line counts excluded"
+      title="Outstanding committed changes against the landing target; binary line counts excluded"
     >
       <span>{stats.commitCount}</span>
       <CommitIcon />

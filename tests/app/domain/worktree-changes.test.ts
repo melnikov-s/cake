@@ -61,7 +61,14 @@ function dependencies(
               message: options.fail.message,
             }),
           );
-        if (args[0] === "rev-parse") return Effect.succeed(`${options.branch ?? "agent/review"}\n`);
+        if (args[0] === "rev-parse")
+          return Effect.succeed(
+            args.includes("--abbrev-ref") ? `${options.branch ?? "agent/review"}\n` : "tip\n",
+          );
+        if (args[0] === "merge-base")
+          return Effect.succeed(
+            args.includes("acknowledged") && args.includes("tip") ? "acknowledged\n" : "fork\n",
+          );
         if (args[0] === "for-each-ref")
           return Effect.succeed(
             (options.branches ?? [["main", 0, 1]])
@@ -109,7 +116,7 @@ const commitLog = (commands: string[][]) =>
 
 describe("Worktree Changes Git projection", () => {
   it.effect(
-    "excludes landed commits from the inferred range and preserves every file's deltas",
+    "uses the managed landing checkpoint rather than an inferred parent and preserves historical deltas",
     () =>
       Effect.gen(function* () {
         const fixture = dependencies({
@@ -134,7 +141,7 @@ describe("Worktree Changes Git projection", () => {
         });
         const result = yield* inspect("/checkout", {}).pipe(Effect.provide(fixture.layer));
         expect(commitLog(fixture.commands)).toEqual(
-          expect.arrayContaining(["HEAD", "^acknowledged", "^refs/heads/main"]),
+          expect.arrayContaining(["tip", "^acknowledged"]),
         );
         expect(result.commits).toHaveLength(1);
         expect(result.commits[0]?.files).toEqual([
@@ -195,6 +202,9 @@ describe("Worktree Changes Git projection", () => {
         branch: "agent/review",
         base: null,
         baseAlternatives: [],
+        baseRevision: null,
+        headRevision: "tip",
+        files: [],
         commits: [],
         totalCommits: 0,
         staged: [],
@@ -262,8 +272,9 @@ describe("Worktree Changes Git projection", () => {
       expect(fixture.commands.find((args) => args[0] === "rev-list")).toEqual([
         "rev-list",
         "--count",
-        "HEAD",
-        "^refs/heads/main",
+        "tip",
+        "^tip",
+        "^fork",
         "--",
       ]);
       expect(result.totalCommits).toBe(8156);

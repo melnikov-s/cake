@@ -15,6 +15,9 @@ const changes: WorktreeChanges = {
   base: "main",
   baseAlternatives: [],
   totalCommits: 2,
+  baseRevision: "fork-sha",
+  headRevision: "head-sha",
+  files: [],
   commits: [
     {
       hash: "abc1234567",
@@ -103,6 +106,9 @@ function renderChanges(
             baseAlternatives: [],
             commits: [],
             totalCommits: 0,
+            baseRevision: "other-fork",
+            headRevision: "other-head",
+            files: [],
             staged: [],
             unstaged: [],
           }
@@ -379,6 +385,32 @@ describe("Session Changes review", () => {
       ),
     );
     await waitFor(() => expect((picker as HTMLSelectElement).value).toBe("main"));
+  });
+
+  it("shows net outstanding totals separately from historical commit edits and opens the exact revision diff", async () => {
+    using fixture = renderChanges({
+      ...changes,
+      files: [
+        { path: "net.ts", additions: 2, deletions: 1, deleted: false, workingTreeExists: true },
+      ],
+    });
+    const pane = await openChanges(fixture);
+    const outstanding = within(pane).getByRole("region", { name: "Outstanding changes" });
+    expect(within(outstanding).getAllByText("+2")).toHaveLength(2);
+    expect(within(outstanding).queryByText("+22")).toBeNull();
+    await fixture.user.click(within(outstanding).getByRole("button", { name: /net.ts/ }));
+    expect(fixture.reveal).toHaveBeenLastCalledWith(
+      editorWorkingDirectory,
+      {
+        kind: "working-directory",
+        path: "net.ts",
+        view: "changes",
+        base: "fork-sha",
+        revision: "head-sha",
+        side: "after",
+      },
+      expect.anything(),
+    );
   });
 
   it("explains a capped commit list", async () => {

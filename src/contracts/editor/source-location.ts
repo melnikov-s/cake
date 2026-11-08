@@ -48,6 +48,8 @@ export const sourceLocationSchema = Schema.Struct({
   side: Schema.optional(Schema.Literals(["before", "after"])),
   /** Revision the working tree is compared with in the changes view; omitted means HEAD. */
   base: Schema.optional(gitRevisionSchema),
+  /** Compare with this committed revision instead of the working tree when supplied. */
+  revision: Schema.optional(gitRevisionSchema),
   range: Schema.optional(sourceRangeSchema),
   /** Disjoint ranges in one document, ordered as they should be presented. */
   ranges: Schema.optional(sourceRangesSchema),

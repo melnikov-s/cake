@@ -50,6 +50,7 @@ export const EditorSelectionLocation = Schema.Union([
     view: Schema.Literal("changes"),
     side: Schema.Literals(["before", "after"]),
     base: gitRevisionSchema,
+    revision: sourceLocationSchema.fields.revision,
   }),
   Schema.Struct({
     kind: Schema.Literal("absolute-file"),

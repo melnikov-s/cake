@@ -35,6 +35,7 @@ const absoluteFileEditorLocationSchema = Schema.Struct({
   view: sourceLocationSchema.fields.view,
   side: sourceLocationSchema.fields.side,
   base: sourceLocationSchema.fields.base,
+  revision: sourceLocationSchema.fields.revision,
   range: sourceLocationSchema.fields.range,
   ranges: sourceLocationSchema.fields.ranges,
   symbol: sourceLocationSchema.fields.symbol,

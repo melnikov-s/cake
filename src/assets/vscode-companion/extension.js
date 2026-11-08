@@ -336,8 +336,10 @@ function matchingSelectionLocations(editor, editors) {
       return path.resolve(location.path) === absolutePath && !base;
     if (location.kind !== "working-directory" || location.path !== relativePath) return false;
     if (location.view === "file") return uri.scheme === "file" && !base;
+    if (location.view !== "changes") return false;
+    if (location.revision)
+      return gitRevision(uri) === (location.side === "before" ? location.base : location.revision);
     return (
-      location.view === "changes" &&
       location.base === base &&
       (location.side === "before" ? uri.scheme === "git" : uri.scheme === "file")
     );
@@ -360,7 +362,7 @@ function updateSelectionHighlights(vscode, payload) {
   applySelectionHighlights(vscode);
 }
 
-async function visibleDiffEditor(vscode, target, side, base) {
+async function visibleDiffEditor(vscode, target, side, base, revision) {
   const before = side === "before";
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const editors = vscode.window.visibleTextEditors;
@@ -369,6 +371,7 @@ async function visibleDiffEditor(vscode, target, side, base) {
       const filePath = documentFilePath(uri);
       if (!filePath || path.resolve(filePath) !== target) return false;
       if (before) return gitRevision(uri) === base;
+      if (revision) return gitRevision(uri) === revision;
       return (
         uri.scheme === "file" &&
         editors.some(
@@ -466,7 +469,7 @@ function changesBase(payload) {
 }
 
 /**
- * Decides whether the target's working tree differs from the base revision.
+ * Decides whether the target's working tree (or requested revision) differs from the base.
  *
  * This asks Git about the one path only (`git diff <base> -- <path>`), which
  * stays fast in very large checkouts. It deliberately avoids both alternatives:
@@ -474,7 +477,7 @@ function changesBase(payload) {
  * Cake waits for a reveal, while the extension's cached Source Control list can
  * lag behind a commit and would open an empty diff.
  */
-async function probeWorkingTreeChange(vscode, targetUri, base) {
+async function probeWorkingTreeChange(vscode, targetUri, base, revision) {
   const probe = (async () => {
     const extension = vscode.extensions.getExtension("vscode.git");
     if (!extension) return gitUnavailable();
@@ -484,7 +487,9 @@ async function probeWorkingTreeChange(vscode, targetUri, base) {
     if (!api || !repository) return gitUnavailable();
     let diff;
     try {
-      diff = await repository.diffWith(base, path.resolve(targetUri.fsPath));
+      diff = revision
+        ? await repository.diffBetween(base, revision, path.resolve(targetUri.fsPath))
+        : await repository.diffWith(base, path.resolve(targetUri.fsPath));
     } catch {
       // Git rejected the comparison; an unknown revision is by far the usual cause.
       return { changed: false, fallback: "unknown-base" };
@@ -504,18 +509,22 @@ async function probeWorkingTreeChange(vscode, targetUri, base) {
 }
 
 /**
- * Opens VS Code's native diff editor for the target's working tree against the
+ * Opens VS Code's native diff editor for the target's working tree or revision against the
  * base revision. The left side is a `git:` URI whose content comes from one
  * `git show <base>:<path>`, so this stays fast regardless of repository size
  * and does not depend on the Source Control list being current.
  */
-async function openWorkingTreeDiff(vscode, api, targetUri, base) {
+async function openWorkingTreeDiff(vscode, api, targetUri, base, revision) {
   const name = path.basename(targetUri.fsPath);
-  const title = base === "HEAD" ? `${name} (Working Tree)` : `${name} (${base} ↔ Working Tree)`;
+  const title = revision
+    ? `${name} (${base} ↔ ${revision})`
+    : base === "HEAD"
+      ? `${name} (Working Tree)`
+      : `${name} (${base} ↔ Working Tree)`;
   await vscode.commands.executeCommand(
     "vscode.diff",
     api.toGitUri(targetUri, base),
-    targetUri,
+    revision ? api.toGitUri(targetUri, revision) : targetUri,
     title,
     { preview: false },
   );
@@ -765,12 +774,14 @@ async function activate(context) {
     let fallback;
     if (payload.view === "changes") {
       const base = changesBase(payload);
-      const probe = await probeWorkingTreeChange(vscode, targetUri, base);
+      const revision =
+        payload.revision === undefined ? undefined : changesBase({ base: payload.revision });
+      const probe = await probeWorkingTreeChange(vscode, targetUri, base, revision);
       fallback = probe.fallback;
       if (probe.changed) {
         try {
           await openSourceControl(vscode);
-          await openWorkingTreeDiff(vscode, probe.api, targetUri, base);
+          await openWorkingTreeDiff(vscode, probe.api, targetUri, base, revision);
           const requestedRanges = payload.ranges || (payload.range ? [payload.range] : []);
           const locations = [];
           if (requestedRanges.length > 0) {
@@ -780,7 +791,7 @@ async function activate(context) {
                 ? "workbench.action.compareEditor.focusPrimarySide"
                 : "workbench.action.compareEditor.focusSecondarySide",
             );
-            const editor = await visibleDiffEditor(vscode, target, side, base);
+            const editor = await visibleDiffEditor(vscode, target, side, base, revision);
             if (!editor) throw new Error("The requested diff editor side is unavailable");
             locations.push(
               ...resolvedRanges(vscode, editor, requestedRanges).map((range) => ({
@@ -789,6 +800,7 @@ async function activate(context) {
                 view: "changes",
                 side,
                 base,
+                revision,
                 range,
               })),
             );
