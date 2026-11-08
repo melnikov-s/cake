@@ -153,8 +153,9 @@ export const ProjectRail = observer(function ProjectRail() {
                   label={projects.nameForPath(path)}
                   ariaLabel={`Open Project Chat for ${projects.nameForPath(path)}`}
                   className={cn(
-                    "h-9 shrink-0",
-                    activeProject === path && "bg-sidebar-active text-foreground",
+                    "relative h-9 shrink-0",
+                    activeProject === path &&
+                      "bg-[color-mix(in_oklab,var(--sidebar-active),var(--foreground)_8%)] text-foreground hover:bg-[color-mix(in_oklab,var(--sidebar-active),var(--foreground)_8%)] before:pointer-events-none before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-accent",
                   )}
                   aria-current={activeProject === path ? "page" : undefined}
                   aria-keyshortcuts="Shift+F10"

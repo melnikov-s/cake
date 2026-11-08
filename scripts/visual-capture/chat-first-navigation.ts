@@ -104,6 +104,7 @@ export function createChatFirstNavigationScenario(
       "rail-hover",
       "rail-keyboard",
       "rail-activity",
+      "rail-selection",
       "application-settings",
       "application-automations",
       "browser-rail",
@@ -696,7 +697,12 @@ export function createChatFirstNavigationScenario(
           ).toHaveCount(3);
           await page.keyboard.press("Escape");
           runningStarted = true;
-          if (state === "sessions" || state === "sessions-unread" || state === "rail-activity") {
+          if (
+            state === "sessions" ||
+            state === "sessions-unread" ||
+            state === "rail-activity" ||
+            state === "rail-selection"
+          ) {
             await rail
               .getByRole("button", { name: "Open Project Chat for cake", exact: true })
               .click();
@@ -960,18 +966,29 @@ export function createChatFirstNavigationScenario(
         }
       }
       await page.waitForFunction(() => document.fonts.status === "loaded");
-      if (state === "rail-activity") {
-        await rail.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
-        await expect(
-          page.getByText(
-            "Navigation work is active. Each project keeps its own Project Chat home.",
-            { exact: true },
-          ),
-        ).toBeVisible();
+      if (state === "rail-activity" || state === "rail-selection") {
+        if (state === "rail-activity") {
+          await rail.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+          await expect(
+            page.getByText(
+              "Navigation work is active. Each project keeps its own Project Chat home.",
+              { exact: true },
+            ),
+          ).toBeVisible();
+        }
         await expect(
           rail.getByRole("img", { name: "Work running in cake", exact: true }),
         ).toBeVisible();
         await hoverRail();
+        if (state === "rail-selection") {
+          await page.keyboard.press("Tab");
+          await rail
+            .getByRole("button", { name: "Open Project Chat for cake", exact: true })
+            .focus();
+          await rail
+            .getByRole("button", { name: "Open Project Chat for docs-site", exact: true })
+            .hover();
+        }
       } else if (state === "browser-rail" || state === "vscode-rail") {
         await hoverRail();
         if (application)
