@@ -8,7 +8,7 @@ import { canFullscreenText } from "../lib/text-fullscreen";
 import { cn } from "../lib/utils";
 import type { MessageReferencePreviewStore } from "../stores/MessageReferencePreviewStore";
 import { MessageSourceBody, MessageSourceCopy, OriginalResponse } from "./message-source-body";
-import { ResultTodoDone, ResultTodoTitles, type ResultTodoLink } from "./result-todo-done";
+import { ResultTodoDone, type ResultTodoLink } from "./result-todo-done";
 import { badgeVariants } from "./ui/badge";
 import { Button } from "./ui/button";
 import { ChevronIcon } from "./ui/icons";
@@ -92,7 +92,7 @@ export const SessionMessage = observer(function SessionMessage({
   const renderTodos = () =>
     linkedTodos.length > 0 && (
       <footer className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 px-5 py-2 text-xs text-muted-foreground">
-        <ResultTodoTitles {...todo} />
+        <ResultTodoDone {...todo} />
       </footer>
     );
   return (
@@ -179,7 +179,6 @@ export const SessionMessage = observer(function SessionMessage({
               )}
             </div>
           </div>
-          <ResultTodoDone {...todo} />
         </div>
         {open && (
           <>
@@ -200,12 +199,7 @@ export const SessionMessage = observer(function SessionMessage({
         )}
       </div>
       {fullscreen && (
-        <FullscreenSurface
-          eyebrow="Message"
-          title={title}
-          onClose={() => setFullscreen(false)}
-          toolbar={linkedTodos.length > 0 ? <ResultTodoDone {...todo} /> : undefined}
-        >
+        <FullscreenSurface eyebrow="Message" title={title} onClose={() => setFullscreen(false)}>
           <div className="flex min-w-0 flex-col gap-3">
             {children}
             {[...sources, ...originals].map((store) => (

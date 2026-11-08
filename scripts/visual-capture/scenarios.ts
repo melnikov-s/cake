@@ -3796,6 +3796,119 @@ const subagentReportsScenario: VisualCaptureScenario = {
         }),
 };
 
+const resultTodoActionsScenario: VisualCaptureScenario = {
+  name: "result-todo-actions",
+  description: "Two named to-dos with individual footer actions and no header completion controls",
+  states: ["open", "done", "collapsed"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const sessionId = "visual-assistant-markdown-code";
+    const transcript = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`,
+    );
+    const original = await readFile(transcript, "utf8");
+    const text = encodeCrossSessionMessage(
+      "The build checks passed. Review the findings and verify publication independently.",
+      {
+        version: 1,
+        messageId: "4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f",
+        threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
+        sequence: 1,
+        expectsResponse: false,
+        sender: {
+          sessionId: resultTodoSessionId,
+          title: "Build verification",
+          kind: "project-session",
+        },
+      },
+    );
+    await writeFile(
+      transcript,
+      original +
+        JSON.stringify({
+          type: "message",
+          id: "todo-report",
+          parentId: "assistant-1",
+          timestamp: new Date(2).toISOString(),
+          message: { role: "user", content: [{ type: "text", text }], timestamp: 2 },
+        }) +
+        "\n",
+    );
+    const file = join(paths.cakeHome, "state", "application.json");
+    const state = JSON.parse(await readFile(file, "utf8"));
+    state.version = 9;
+    state.data.projects[0].todos = {
+      selectedId: null,
+      sequence: 0,
+      deliveryToken: null,
+      pending: [],
+      items: ["Review the findings", "Verify publication"].map((title, index) => ({
+        id: `00000000-0000-4000-8000-${String(index + 31).padStart(12, "0")}`,
+        title,
+        description: title,
+        status: "Awaiting review",
+        state: "open",
+        revision: 0,
+        associations:
+          index === 0
+            ? [{ kind: "session", sessionId: resultTodoSessionId, title: "Build verification" }]
+            : [
+                {
+                  kind: "source",
+                  ref: `cake://session/${sessionId}?message=todo-report`,
+                  title: "Exact report",
+                },
+              ],
+      })),
+    };
+    await writeFile(file, JSON.stringify(state));
+  },
+  async prepare(page, state) {
+    const report = page.locator('[data-slot="session-message"]');
+    await expect(report).toBeVisible({ timeout: 20_000 });
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    const entries = report.locator('[data-slot="result-todo-entry"]');
+    await expect(entries).toHaveCount(2);
+    for (const title of ["Review the findings", "Verify publication"]) {
+      const action = report.getByRole("button", { name: `Mark done: ${title}`, exact: true });
+      await expect(action).toBeVisible();
+      const geometry = await action.evaluate((button) => {
+        const title = button.previousElementSibling!.getBoundingClientRect();
+        const action = button.getBoundingClientRect();
+        return {
+          titleBottom: title.bottom,
+          actionTop: action.top,
+          inFooter: Boolean(button.closest("footer")),
+        };
+      });
+      expect(geometry.inFooter).toBe(true);
+      expect(geometry.actionTop).toBeGreaterThanOrEqual(geometry.titleBottom);
+    }
+    const header = report.locator('[data-slot="response-header"]').locator("..");
+    await expect(header.getByRole("button", { name: /^(Mark done|Reopen):/ })).toHaveCount(0);
+    if (state === "done") {
+      await report
+        .getByRole("button", { name: "Mark done: Review the findings", exact: true })
+        .click();
+      await expect(
+        report.getByRole("button", { name: "Reopen: Review the findings", exact: true }),
+      ).toBeEnabled();
+      await expect(
+        report.getByRole("button", { name: "Mark done: Verify publication", exact: true }),
+      ).toBeEnabled();
+    }
+    if (state === "collapsed") {
+      await report.locator('[data-slot="response-disclosure"]').click();
+      await expect(report.locator("footer")).toHaveCount(0);
+      await expect(report.getByRole("button", { name: /^(Mark done|Reopen):/ })).toHaveCount(0);
+    }
+    await report.scrollIntoViewIfNeeded();
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('[data-slot="session-message"]'),
+};
+
 const reportHeaderTitle =
   "Read-only research: why would Cake sessions.list take over a minute? User screenshot investigation and findings";
 const reportHeaderCases = [
@@ -7119,6 +7232,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   cakeChatOverlayScenario,
   subagentReportsScenario,
   reportHeadersScenario,
+  resultTodoActionsScenario,
   incomingTaskSectionsScenario,
   cakeChatArtifactScenario,
   contextOutlineScenario,

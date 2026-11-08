@@ -37,6 +37,7 @@ import { ApplicationStorage } from "../../../src/services/storage/ApplicationSto
 import { CakeChatSurface } from "../../../src/renderer/components/cake-chat-surface";
 import { AppShellLayout } from "../../../src/renderer/components/app-shell-layout";
 import { Chat } from "../../../src/renderer/components/chat";
+import { SessionMessage } from "../../../src/renderer/components/session-message";
 import { projectTranscriptBehaviorFor } from "../../../src/renderer/lib/project-transcript-behavior";
 import { nestedTranscriptBehaviorFor } from "../../../src/renderer/lib/nested-transcript-behavior";
 import { sessionSummary } from "./fixtures/catalog-fixtures";
@@ -170,7 +171,7 @@ function createTodoRuntime() {
  * tool or automatic completion) reaches the window only as an application projection, as in
  * the app, so the pane and the message control can only agree through the shared list.
  */
-async function renderChat(kind: ChatKind) {
+async function renderChat(kind: ChatKind, incomingCards = false) {
   const runtime = createTodoRuntime();
   const chatId = kind === "Cake Chat" ? CAKE_CHAT_SESSION_ID : projectChatId;
   const scope = kind === "Cake Chat" ? CAKE_CHAT_TODO_SCOPE : projectPath;
@@ -258,11 +259,51 @@ async function renderChat(kind: ChatKind) {
       kind: "top",
     });
   });
+  // Cake/Project Chat use task sections instead of per-card associations. Exercise
+  // the incoming cards in an ordinary viewing session over the same live list.
+  let viewer;
+  if (incomingCards) {
+    applySnapshot(fixture.models.sessionCatalog, {
+      sessions: [
+        sessionSummary({ sessionId: "result-viewer", projectPath, workingDirectory: projectPath }),
+      ],
+      resolvedHasMoreByProject: {},
+    });
+    viewer = fixture.root.sessionRegistry.load("result-viewer", projectPath);
+    applyConversationSnapshot(viewer.model, {
+      sessionId: "result-viewer",
+      sessionFile: "/viewer.jsonl",
+      parts,
+      models: [],
+      thinkingLevel: "off",
+      availableThinkingLevels: ["off"],
+      streaming: false,
+      diagnostics: [],
+      commands: [],
+      compatibility: { resources: [], diagnostics: [] },
+      extensionUi: { statuses: [] },
+      tree: [],
+    });
+    viewer.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+      kind: "top",
+    });
+  }
   const view = render(
     <StoreProvider store={fixture.root}>
       <VirtuosoMockContext.Provider value={{ viewportHeight: 4000, itemHeight: 100 }}>
         <AppShellLayout overlays={null} commandPaneWidth={420} onCommandPaneWidthChange={() => {}}>
           <CakeChatSurface />
+          {viewer && (
+            <Chat
+              store={viewer.conversationSessionStore.chatStore}
+              transcriptBehavior={{
+                ...projectTranscriptBehaviorFor(fixture.root, viewer),
+                todos: chat.todos,
+                messageReferenceSessionId: chatId,
+              }}
+              composerFocusEnabled={false}
+            />
+          )}
         </AppShellLayout>
       </VirtuosoMockContext.Provider>
     </StoreProvider>,
@@ -272,9 +313,9 @@ async function renderChat(kind: ChatKind) {
   );
   const user = userEvent.setup();
   const groupFor = (partId: string) =>
-    view.container
-      .querySelector(`[data-part-id="${partId}"]`)
-      ?.querySelector('[data-slot="result-todo-done"]') ?? null;
+    [...view.container.querySelectorAll(`[data-part-id="${partId}"]`)]
+      .map((part) => part.querySelector<HTMLElement>('[data-slot="result-todo-done"]'))
+      .find(Boolean) ?? null;
   const pane = async () => {
     const open = screen.queryByRole("complementary", { name: "Workspace" });
     if (open) return open;
@@ -297,13 +338,6 @@ async function renderChat(kind: ChatKind) {
     mutateUser,
     items: { workerTodo, sessionTodo, sourceTodo },
     groupFor,
-    /** The message control for one to-do, by its live title. */
-    control: (title: string) => screen.getAllByRole("checkbox", { name: `Done: ${title}` }).at(-1)!,
-    checked: (title: string) =>
-      screen
-        .getAllByRole("checkbox", { name: `Done: ${title}` })
-        .at(-1)!
-        .getAttribute("aria-checked"),
     read: (id: string) => runtime.runPromise(projectTodos.read(scope, id)),
     list: () => runtime.runPromise(projectTodos.list(scope)),
     /** The pane's own open/done rows, expanding Done history when needed. */
@@ -328,6 +362,184 @@ async function renderChat(kind: ChatKind) {
     },
   };
 }
+
+it.each(chats)(
+  "keeps linked to-do actions in named footers, never collapsed headers in %s",
+  async (kind) => {
+    await using f = await renderChat(kind, true);
+    for (const [partId, title] of [
+      ["worker-report", "Research options"],
+      ["session-progress", "Fix the build"],
+      ["session-reply", "Fix the build"],
+      ["session-request", "Fix the build"],
+    ]) {
+      const group = f.groupFor(partId!)!;
+      const card = group.closest<HTMLElement>('[data-slot="session-message-card"]')!;
+      const action = within(group).getByRole("button", { name: `Mark done: ${title}` });
+      expect(group.closest("footer")).not.toBeNull();
+      expect(action.textContent).toBe("Mark done");
+      expect(action.getAttribute("title")).toBe(`Mark done: ${title}`);
+      expect(action.previousElementSibling?.textContent).toBe(`To-do · ${title}`);
+      expect(
+        card
+          .querySelector('[data-slot="response-header"]')!
+          .parentElement!.querySelector('[data-slot="result-todo-done"]'),
+      ).toBeNull();
+      const disclosure = within(card).getByRole("button", { expanded: true });
+      await f.user.click(disclosure);
+      expect(card.querySelector("footer")).toBeNull();
+      expect(within(card).queryByRole("button", { name: /^(Mark done|Reopen):/ })).toBeNull();
+      expect(within(card).queryByRole("checkbox")).toBeNull();
+      await f.user.click(disclosure);
+      expect(within(card).getByRole("button", { name: `Mark done: ${title}` })).toBeDefined();
+    }
+    expect(f.groupFor("unlinked-report")).toBeNull();
+    expect(f.groupFor("different-source")).toBeNull();
+    expect(f.mutateUser).not.toHaveBeenCalled();
+  },
+);
+
+it.each(
+  chats.flatMap(
+    (kind) =>
+      [
+        [kind, "worker-report", "workerTodo"],
+        [kind, "session-reply", "sessionTodo"],
+      ] as const,
+  ),
+)("toggles only the named linked or standalone to-do in %s / %s", async (kind, partId, itemKey) => {
+  await using f = await renderChat(kind, true);
+  const linked = f.items[itemKey];
+  const standalone = await f.commit(
+    projectTodos.create(f.scope, {
+      title: "Review the evidence",
+      description: "A separate review of this exact message.",
+      associations: [
+        {
+          kind: "source",
+          ref: `cake://session/${f.chat.sessionId}?message=${partId}`,
+          title: "Exact report",
+        },
+      ],
+    }),
+  );
+  const group = f.groupFor(partId)!;
+  const entries = group.querySelectorAll('[data-slot="result-todo-entry"]');
+  expect(entries).toHaveLength(2);
+  for (const item of [linked, standalone]) {
+    const action = within(group).getByRole("button", { name: `Mark done: ${item.title}` });
+    expect(action.previousElementSibling?.textContent).toBe(`To-do · ${item.title}`);
+  }
+  const expectedRevision = linked.revision;
+  await f.user.click(within(group).getByRole("button", { name: `Mark done: ${linked.title}` }));
+  expect(f.mutateUser).toHaveBeenCalledTimes(1);
+  expect(f.mutateUser.mock.calls[0]![0]).toEqual({
+    scope: f.scope,
+    mutation: {
+      _tag: "SetState",
+      id: linked.id,
+      expectedRevision,
+      state: "done",
+    },
+  });
+  expect((await f.read(linked.id)).completion?.by).toBe("user");
+  expect((await f.read(standalone.id)).state).toBe("open");
+  expect(within(group).getByRole("button", { name: `Reopen: ${linked.title}` }).textContent).toBe(
+    "Reopen",
+  );
+  await f.user.click(within(group).getByRole("button", { name: "Mark done: Review the evidence" }));
+  expect((await f.read(standalone.id)).completion?.by).toBe("user");
+  await f.user.click(within(group).getByRole("button", { name: `Reopen: ${linked.title}` }));
+  expect((await f.read(linked.id)).state).toBe("open");
+  expect((await f.read(standalone.id)).state).toBe("done");
+  const current = await f.read(standalone.id);
+  await f.commit(
+    projectTodos.update(f.scope, {
+      id: current.id,
+      expectedRevision: current.revision,
+      title: "Evidence reviewed",
+    }),
+  );
+  expect(within(group).getByText("To-do · Evidence reviewed")).toBeDefined();
+  expect(within(group).getByRole("button", { name: "Reopen: Evidence reviewed" })).toBeDefined();
+  await f.clickPane("Reopen", "Evidence reviewed");
+  expect(within(group).getByRole("button", { name: "Mark done: Evidence reviewed" })).toBeDefined();
+});
+
+it.each(chats)(
+  "disables all linked footer actions during a pending mutation in %s",
+  async (kind) => {
+    await using f = await renderChat(kind, true);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    f.mutateUser.mockImplementationOnce(async ({ scope, mutation }) => {
+      await gate;
+      return f.commit(projectTodos.mutateUser(scope, mutation));
+    });
+    try {
+      const group = f.groupFor("session-reply")!;
+      await f.user.click(within(group).getByRole("button", { name: "Mark done: Fix the build" }));
+      expect(f.chat.todos.busy).toBe(true);
+      const actions = f.view.container.querySelectorAll<HTMLButtonElement>(
+        '[data-slot="result-todo-done"] button',
+      );
+      expect(actions.length).toBeGreaterThan(1);
+      expect([...actions].every((action) => action.disabled)).toBe(true);
+      await f.user.click(
+        within(f.groupFor("worker-report")!).getByRole("button", {
+          name: "Mark done: Research options",
+        }),
+      );
+      expect(f.mutateUser).toHaveBeenCalledTimes(1);
+    } finally {
+      await act(async () => {
+        release();
+        await gate;
+      });
+    }
+    await waitFor(() => expect(f.chat.todos.busy).toBe(false));
+    expect(
+      within(f.groupFor("session-reply")!)
+        .getByRole("button", { name: "Reopen: Fix the build" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+    expect((await f.read(f.items.workerTodo.id)).state).toBe("open");
+  },
+);
+
+it("keeps fullscreen completion actions under the named to-do, not in its toolbar", async () => {
+  await using f = await renderChat("Project Chat");
+  f.view.unmount();
+  const text = "Detailed result findings. ".repeat(250);
+  const view = render(
+    <StoreProvider store={f.root}>
+      <StoreProvider store={f.root.fullscreenSurfaceStore}>
+        <SessionMessage
+          title="Build report"
+          preview={text}
+          todo={{ origin: { sessionIds: [sessionA] }, todos: f.chat.todos }}
+        >
+          {text}
+        </SessionMessage>
+      </StoreProvider>
+    </StoreProvider>,
+  );
+  await f.user.click(screen.getByRole("button", { name: "View message fullscreen: Build report" }));
+  const dialog = screen.getByRole("dialog", { name: "Build report" });
+  const action = within(dialog).getByRole("button", { name: "Mark done: Fix the build" });
+  expect(action.closest("footer")).not.toBeNull();
+  expect(
+    within(dialog.querySelector("header")!).queryByRole("button", { name: /^(Mark done|Reopen):/ }),
+  ).toBeNull();
+  await f.user.click(action);
+  expect((await f.read(f.items.sessionTodo.id)).state).toBe("done");
+  expect(within(dialog).getByRole("button", { name: "Reopen: Fix the build" })).toBeDefined();
+  await f.user.click(within(dialog).getByRole("button", { name: "Exit fullscreen Build report" }));
+  expect(screen.getByRole("button", { name: "Reopen: Fix the build" })).toBeDefined();
+  view.unmount();
+});
 
 it.each(chats)(
   "groups attributed follow-ups with one live rail label per switch and reveals without selecting context in %s",
@@ -727,14 +939,10 @@ it("reuses the Project's to-do list for incoming Project Session and secondary-c
       </VirtuosoMockContext.Provider>
     </StoreProvider>,
   );
-  expect(screen.getAllByRole("checkbox", { name: "Done: Fix the build" })).toHaveLength(3);
-  await f.user.click(screen.getAllByRole("checkbox", { name: "Done: Fix the build" })[0]!);
+  expect(screen.getAllByRole("button", { name: "Mark done: Fix the build" })).toHaveLength(3);
+  await f.user.click(screen.getAllByRole("button", { name: "Mark done: Fix the build" })[0]!);
   expect((await f.read(f.items.sessionTodo.id)).state).toBe("done");
-  expect(
-    screen
-      .getAllByRole("checkbox", { name: "Done: Fix the build" })
-      .every((control) => control.getAttribute("aria-checked") === "true"),
-  ).toBe(true);
+  expect(screen.getAllByRole("button", { name: "Reopen: Fix the build" })).toHaveLength(3);
   view.unmount();
 });
 
