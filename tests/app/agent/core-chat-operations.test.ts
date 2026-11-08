@@ -167,6 +167,10 @@ describe("core coordinator calling reference", () => {
           assembled.split("\n").filter((item) => item.startsWith(`${command} {`)),
         ).toHaveLength(1);
       expect(assembled).toContain("all required sessions resolve");
+      expect(assembled).toContain("No new to-dos for routine one-shot actions");
+      expect(assembled).toContain("Attribution may be null; never create just to attribute turns");
+      expect(assembled).toContain("Use JSON null if unmatched");
+      expect(assembled).toContain("Only durable work warrants creation");
       expect(assembled).toContain("Reports/completion grant no merge/resolve approval");
       expect(assembled).toContain("shared/project instructions take precedence");
       expect(assembled.match(/Zoom relevant remembered dialogue/g)).toHaveLength(1);

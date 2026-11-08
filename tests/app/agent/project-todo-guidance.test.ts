@@ -42,6 +42,21 @@ it("keeps self-contained lifecycle, writing and attention rules in both baseline
     expect(baseline.length).toBeLessThan(2300);
   }
 });
+it("excludes routine actions while preserving durable work across both chats, help and guide", () => {
+  for (const rule of [
+    "Track durable ongoing building, multi-step research and discussions/decisions to revisit",
+    "Reuse existing/session-created items",
+    "No new to-dos for routine one-shot actions",
+    "merge approved work, open websites, navigate, direct answers/lookups",
+    "even with multiple tools, delegation, verification or blockers",
+    "Update underlying tasks for blockers, not administrative umbrella items",
+    "Attribution may be null; never create just to attribute turns",
+    "Assistant-maintained, not user chores",
+  ])
+    expect(PROJECT_TODO_CREATION_RULE).toContain(rule);
+  expect(guide).toContain(PROJECT_TODO_CREATION_RULE);
+  expect(registry.operationHelp("todos.create")).toContain(PROJECT_TODO_CREATION_RULE);
+});
 it("shares exact link and attention rules in mutation help", () => {
   for (const command of ["todos.create", "todos.update", "todos.update-many"]) {
     expect(registry.operationHelp(command)).toContain(PROJECT_TODO_LINK_GUIDANCE);
@@ -59,7 +74,6 @@ it("preserves evidence, closure, association replacement and dismissed requests"
     "subagent-only items close explicitly",
   ])
     expect(PROJECT_TODO_LINK_GUIDANCE).toContain(rule);
-  expect(PROJECT_TODO_CREATION_RULE).toContain("No one-shot lookups, even delegated");
   expect(PROJECT_TODO_CLOSING_RULE).toContain("Research stays open awaiting review");
   expect(PROJECT_TODO_ATTENTION_GUIDANCE).toContain("Never revive/reword a dismissed request");
   for (const rule of [

@@ -2,7 +2,7 @@
 
 ## Track and close
 
-Track building work, multi-step research and discussions/decisions to revisit. No one-shot lookups. Reuse existing/session-created items; do not bulk-import history.
+Track durable ongoing building, multi-step research and discussions/decisions to revisit. Reuse existing/session-created items. No new to-dos for routine one-shot actions (merge approved work, open websites, navigate, direct answers/lookups), even with multiple tools, delegation, verification or blockers. Update underlying tasks for blockers, not administrative umbrella items. Attribution may be null; never create just to attribute turns. Assistant-maintained, not user chores. Do not bulk-import history.
 Titles name tasks; descriptions give a short latest outcome, blockers and verification gaps. Keep provenance in links, not routine commit/test bookkeeping.
 Session-linked items close through session resolution, not manual done. Other items close when checked complete/user satisfied. Research stays open awaiting review; link exact findings. Restore never reopens items; done never resolves work.
 Sources do not affect closure. Subagent-only items require explicit done; mixed items follow all required Project Sessions resolved.

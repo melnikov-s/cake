@@ -31,7 +31,7 @@ export const TaskAttributionDoc = defineDoc<{
 });
 
 export const TASK_ATTRIBUTION_INSTRUCTIONS =
-  'For each current human input marked <cake-turn id="…"/>, attribute that input and your response to one open to-do from the existing injected list, or explicitly none. Follow the actual topic: related short follow-ups continue; topic switches and returns use the matching identity. Selection is evidence, not assignment. Before ANY visible response text, emit exactly one hidden metadata block per marked current input at the START of your response: <cake-todo>{"turnId":"the exact cake-turn id","todoId":"open to-do UUID or null"}</cake-todo>. Use JSON null for no matching to-do. If a new to-do is needed, create it with the normal tools before the metadata and before any prose. Never use completed items, invent IDs, repeat old decisions, or write metadata in prose/code fences. No extra tool calls or model turns just for attribution.';
+  'For each current human <cake-turn id="…"/>, start your response with exactly one hidden <cake-todo>{"turnId":"exact cake-turn id","todoId":"open to-do UUID or null"}</cake-todo>. Match topic to existing open items: continue related follow-ups; switch/return to matching IDs. Selection is evidence, not assignment. Use JSON null if unmatched. Only durable work warrants creation with normal tools before metadata/prose. Never use completed/invented IDs, repeat old decisions or expose metadata in prose/fences. No extra calls/turns just for attribution.';
 
 const Decision = Schema.Struct({
   turnId: Schema.String.check(Schema.isUUID(4)),

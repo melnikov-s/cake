@@ -6,7 +6,7 @@
 
 Permanent Project Chat owns its project's list; global Cake Chat owns a separate cross-project list. Coding sessions do not edit these lists. Side chats share their originating parent's live list immediately; no conversation merge or focus change is needed.
 Each new Project Session (including child/fork) receives a linked project to-do; sessions created by global Cake Chat also receive one in its global list. Reuse rather than duplicate; never bulk-import history.
-Use to-dos for ongoing building/research/discussion/decisions, not quick lookups even if delegated.
+Follow the creation rules in [To-dos](chat-todos.md): durable work, not routine actions or administrative umbrella items. The assistant maintains the list; it is not chores for the user.
 Descriptions are one or two short sentences on latest outcome/state, blockers and readiness gaps, not task restatements or routine hashes/test diaries.
 Non-session items close when checked done/user satisfied. Research reports remain open awaiting review, with exact findings linked; report arrival alone is not completion.
 All required Project Sessions resolved automatically closes linked items in any list, including snoozed items, newly added already-resolved links and startup reconciliation. Restore never reopens. Report/source links do not veto or cause closure.

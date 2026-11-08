@@ -81,7 +81,7 @@ export const PROJECT_TODO_AUTO_COMPLETION_RULE =
 
 /** When a to-do must exist; shared by the injected baseline, operation help and chat-todos.md. */
 export const PROJECT_TODO_CREATION_RULE =
-  "Track ongoing building, multi-step research and discussions/decisions to revisit. No one-shot lookups, even delegated. Reuse existing/session-created items.";
+  "Track durable ongoing building, multi-step research and discussions/decisions to revisit. Reuse existing/session-created items. No new to-dos for routine one-shot actions (merge approved work, open websites, navigate, direct answers/lookups), even with multiple tools, delegation, verification or blockers. Update underlying tasks for blockers, not administrative umbrella items. Attribution may be null; never create just to attribute turns. Assistant-maintained, not user chores.";
 
 /** When to close one; session-linked items still close only through session resolution. */
 export const PROJECT_TODO_CLOSING_RULE =
