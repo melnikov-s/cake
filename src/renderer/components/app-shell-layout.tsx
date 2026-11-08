@@ -11,6 +11,7 @@ import { WorkspaceNavigator } from "./workspace-navigator";
 import { AppSurfaceHeader } from "./app-surface-header";
 import { ConversationFocusContext } from "../lib/conversation-focus-context";
 import { FullscreenViewportContext } from "./fullscreen-viewport-context";
+import { SessionChatHomeButton } from "./session-chat-home-button";
 
 export const AppShellLayout = observer(function AppShellLayout({
   children,
@@ -81,6 +82,7 @@ export const AppShellLayout = observer(function AppShellLayout({
             {children}
           </ConversationFocusContext.Provider>
         </FullscreenViewportContext>
+        <SessionChatHomeButton />
         {terminal.docked && (
           <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
         )}

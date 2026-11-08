@@ -435,6 +435,33 @@ export class NavigationStore extends Store<{
     });
   }
 
+  /** Direct conversation home, independent of visit history and Session Family ancestry. */
+  get sessionChatHome(): { projectPath: string | undefined } | undefined {
+    const active = this.props.shell.activeConversation;
+    if (!active || this.props.shell.applicationSurface) return undefined;
+    if (active.kind === "cake-chat") return undefined;
+    if (active.kind === "automation-session") {
+      const context = this.props.automationSessions().selectedSession?.identity.context;
+      return context
+        ? { projectPath: context._tag === "Project" ? context.projectPath : undefined }
+        : undefined;
+    }
+    const session = this.props.catalog.find(active.sessionId);
+    const loaded = this.props.registry.findSession(active.sessionId);
+    return {
+      projectPath:
+        session?.projectPath ??
+        (loaded ? this.props.catalog.projectPathFor(loaded.workspacePath) : undefined),
+    };
+  }
+
+  async returnToChatHome() {
+    const home = this.sessionChatHome;
+    if (!home) return;
+    if (home.projectPath) await this.openProjectChat(home.projectPath);
+    else await this.openSessionLink(CAKE_CHAT_SESSION_ID);
+  }
+
   /** One ownership edge per invocation; never substitute a project home for a missing parent. */
   async goUpOneLevel(): Promise<boolean> {
     const active = this.props.shell.activeConversation;
