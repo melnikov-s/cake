@@ -87,6 +87,11 @@ export class SessionArchiveStorage extends Context.Service<
       sessionId: string,
       location: SessionArchiveLocation,
     ) => Effect.Effect<"active" | "resolved" | undefined, SessionArchiveStorageError>;
+    /** Startup-local presence discovery after legacy migration; one listing per location. */
+    readonly locateMany: (
+      sessionIds: ReadonlyArray<string>,
+      location: SessionArchiveLocation,
+    ) => Effect.Effect<ReadonlySet<string>, SessionArchiveStorageError>;
     /** Pure read of the existing authoritative index, once; no migration or transcript IO. */
     readonly resolutionSnapshot: () => Effect.Effect<
       typeof SessionResolutionIndex.Type,

@@ -667,6 +667,8 @@ const makeLayer = (
               ]),
             ),
           ),
+        locateMany: () =>
+          Effect.die("Unexpected startup reconciliation in session-operation fixture"),
         relocate: () => Effect.void,
         resolve: () => Effect.succeed(false),
         restore: () => Effect.succeed(false),

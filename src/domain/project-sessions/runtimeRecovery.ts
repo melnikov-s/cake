@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { startupDiagnostics } from "../../services/diagnostics/startup-diagnostics";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { RuntimeRecoveryStorage } from "../../services/storage/RuntimeRecoveryStorage";
 import { acquireTarget } from "./projectSessionOperations";
@@ -36,21 +37,28 @@ export const initialize = Effect.fn("RuntimeRecovery.initialize")(function* () {
               ),
             );
           const sessions = yield* CakeSessionRuntimes;
-          const persisted = yield* sessions.catalogEntry(
-            {
+          const persisted = yield* startupDiagnostics.measure(
+            "runtime-recovery-transcript-check",
+            sessions.hasTranscript({
               workingDirectory: record.workingDirectory,
               sessionDirectory: record.sessionDirectory,
-            },
-            record.sessionId,
+              sessionId: record.sessionId,
+            }),
           );
-          if (persisted === undefined && record.transcriptPersisted)
+          if (!persisted && record.transcriptPersisted)
             return yield* Effect.fail(
               new Error(
                 "The saved Pi transcript is missing. Restore it before continuing; the original task will not be replayed.",
               ),
             );
-          const handle = yield* acquireTarget(location, record.sessionId, persisted === undefined);
-          yield* handle.recover(record.inputs, record.state === "stopped");
+          const handle = yield* startupDiagnostics.measure(
+            "runtime-recovery-acquire",
+            acquireTarget(location, record.sessionId, !persisted),
+          );
+          yield* startupDiagnostics.measure(
+            "runtime-recovery-replay",
+            handle.recover(record.inputs, record.state === "stopped"),
+          );
         }),
       ),
     );

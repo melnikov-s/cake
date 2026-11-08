@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Effect, Stream } from "effect";
 import {
   findSessionFilesByIds,
+  hasSessionFileById,
   findSessionFileById,
   findSessionFileMetadataById,
   streamSessionFiles,
@@ -128,6 +129,22 @@ describe("session metadata filename exclusions", () => {
 });
 
 describe("exact session file lookups remain fresh", () => {
+  it("checks recovery presence without title parsing and rejects empty originals", async () => {
+    const input = await fixture();
+    expect(await hasSessionFileById("session", input)).toBe(false);
+    const file = join(input.root, filename("session"));
+    await writeFile(file, "");
+    await expect(hasSessionFileById("session", input)).rejects.toThrow("nonempty regular file");
+    await writeFile(file, "Body parsing belongs to runtime construction");
+    expect(await hasSessionFileById("session", input)).toBe(true);
+    await writeFile(join(input.root, "malformed_session.jsonl"), "retained evidence");
+    await expect(hasSessionFileById("session", input)).rejects.toThrow(
+      "Session ID collision detected",
+    );
+    await rm(file);
+    // Keep the old catalog's filename eligibility; malformed-only history isn't new-session authority.
+    expect(await hasSessionFileById("session", input)).toBe(false);
+  });
   it("batches selected IDs in one directory read without statting unrelated history", async () => {
     const input = await fixture();
     await Promise.all(
@@ -180,8 +197,14 @@ describe("exact session file lookups remain fresh", () => {
     await expect(findSessionFileMetadataById("session", lookup)).rejects.toThrow(
       "Session ID collision detected: session",
     );
+    await expect(
+      findSessionFilesByIds(new Set(["session"]), lookup, new AbortController().signal),
+    ).rejects.toThrow("Session ID collision detected: session");
     await rm(path);
     expect(await findSessionFileById("session", lookup)).toBe(duplicate);
+    expect(
+      await findSessionFilesByIds(new Set(["session"]), lookup, new AbortController().signal),
+    ).toEqual(new Map([["session", duplicate]]));
     expect(await findSessionFileMetadataById("session", lookup)).toBeUndefined();
     await rm(duplicate);
     expect(await findSessionFileById("session", lookup)).toBeUndefined();

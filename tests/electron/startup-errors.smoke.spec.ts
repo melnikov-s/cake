@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
@@ -40,6 +40,7 @@ test("cold launch opens global Cake Chat instead of restoring a missing Project 
       PI_CODING_AGENT_SESSION_DIR: "",
     },
   });
+  let closed = false;
   try {
     const page = await application.firstWindow();
     const composer = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
@@ -50,8 +51,40 @@ test("cold launch opens global Cake Chat instead of restoring a missing Project 
     await expect(page.getByRole("alert").filter({ hasText: "Could not open session" })).toHaveCount(
       0,
     );
-  } finally {
     await application.close();
+    closed = true;
+    // Shutdown flushes the operational logger; all receipts belong to this isolated profile.
+    const log = await readFile(join(cakeHome, "logs", "desktop.log"), "utf8");
+    const bootstrap = log.split("\n").find((line) => line.includes('"phase":"desktop-bootstrap"'));
+    expect(bootstrap).toBeDefined();
+    for (const phase of [
+      "entryMs",
+      "importsCompletedMs",
+      "profileClaimedMs",
+      "graphConstructedMs",
+      "loggingStartedMs",
+      "loggingCompletedMs",
+    ])
+      expect(bootstrap).toContain(`"${phase}":`);
+    expect(log).toContain('"phase":"electron-window-start"');
+    expect(log).toContain('"phase":"backend-recovery-ready"');
+    console.info(
+      "Isolated startup receipts (one empty-profile sample, not a before/after benchmark)",
+      log
+        .split("\n")
+        .filter((line) =>
+          [
+            "desktop-bootstrap",
+            "backend-graph",
+            "backend-recovery-ready",
+            "window-created",
+            "first-commit",
+            "selected-chat-projection-commit",
+          ].some((phase) => line.includes(`"phase":"${phase}"`)),
+        ),
+    );
+  } finally {
+    if (!closed) await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 });

@@ -76,7 +76,10 @@ const fixture = Effect.fn("ChildAssignmentTest.fixture")(function* (
       board.layer,
       SessionCatalogChanges.layer,
       Layer.mock(PiModels, { resolve: (model) => Effect.succeed(model) }),
-      Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed(undefined) }),
+      Layer.mock(SessionArchiveStorage, {
+        locate: () => Effect.succeed(undefined),
+        locateMany: () => Effect.succeed(new Set<string>()),
+      }),
     ),
   );
   let context = core;
@@ -323,7 +326,7 @@ describe("assignment-first child handoff", () => {
         const logs: unknown[] = [];
         const logger = Logger.layer([
           Logger.make((entry) => {
-            logs.push(entry.message);
+            if (entry.logLevel === "Warn") logs.push(entry.message);
           }),
         ]);
         const first = yield* f.launch().pipe(Effect.provide(logger));

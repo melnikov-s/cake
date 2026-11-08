@@ -419,7 +419,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
           },
         };
       }),
-  }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
+  }).pipe(Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer()));
   let companionContextSessionId: string | undefined;
   let storedSchedules: readonly ScheduledMessage[] = [];
   const dependencies = Layer.mergeAll(
@@ -3831,7 +3831,8 @@ it.effect("workflow timings aggregate repeated queries and count work before pag
     Effect.provide(
       Logger.layer([
         Logger.make(({ message }) => {
-          messages.push(message);
+          if (Array.isArray(message) && message[0] === "Slow workflow session list")
+            messages.push(message);
         }),
       ]),
     ),
@@ -3890,7 +3891,8 @@ it.effect(
       Effect.provide(
         Logger.layer([
           Logger.make(({ message }) => {
-            messages.push(message);
+            if (Array.isArray(message) && message[0] === "Slow workflow session list")
+              messages.push(message);
           }),
         ]),
       ),
@@ -4958,4 +4960,152 @@ it.effect(
       ]);
       expect(state.deferredReferences).toHaveLength(1);
     }).pipe(Effect.scoped),
+);
+
+for (const state of ["active", "blocked", "stopped"] as const) {
+  it.effect(
+    `restart recovery preserves ${state} input when the committed transcript is missing or colliding`,
+    () =>
+      Effect.gen(function* () {
+        for (const collision of [false, true]) {
+          const f = yield* fixture();
+          const record: RuntimeRecoveryRecord = {
+            sessionId: target,
+            workingDirectory: "/project",
+            sessionDirectory: "/cake/sessions",
+            profile: "ProjectSession",
+            transcriptPersisted: true,
+            state,
+            inputs: [
+              {
+                turnId: "retained-input",
+                text: "Do not replay missing history",
+                delivery: "prompt",
+                attachments: [],
+                markdown: false,
+              },
+            ],
+          };
+          const recovery = yield* Layer.build(makeRuntimeRecoveryStorageTestLayer([record]));
+          const sessions = Context.get(f.context, CakeSessionRuntimes);
+          const context = Context.merge(f.context, recovery).pipe(
+            Context.add(CakeSessionRuntimes, {
+              ...sessions,
+              catalogEntry: () => Effect.die("Recovery must not read titles"),
+              hasTranscript: () =>
+                collision
+                  ? Effect.fail(
+                      new PiSessionError({
+                        operation: "hasTranscript",
+                        message: "Session ID collision detected",
+                      }),
+                    )
+                  : Effect.succeed(false),
+            }),
+          );
+          yield* runtimeRecovery.initialize().pipe(Effect.provide(context));
+          const retained = yield* Context.get(recovery, RuntimeRecoveryStorage).get(target);
+          expect(retained).toMatchObject({
+            state: state === "stopped" ? "stopped" : "blocked",
+            inputs: record.inputs,
+          });
+          expect(retained?.issue).toMatch(
+            collision ? /collision/ : /saved Pi transcript is missing/,
+          );
+          expect(f.runtimeCreates).not.toContain(target);
+          expect(f.listReads.entries).toEqual([]);
+        }
+      }),
+  );
+}
+
+it.effect(
+  "restart recovery admits crash-before-transcript input exactly once without a catalog title",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const record: RuntimeRecoveryRecord = {
+        sessionId: target,
+        workingDirectory: "/project",
+        sessionDirectory: "/cake/sessions",
+        profile: "ProjectSession",
+        transcriptPersisted: false,
+        state: "active",
+        inputs: [
+          {
+            turnId: "crash-input",
+            text: "Retain the accepted task",
+            delivery: "prompt",
+            attachments: [],
+            markdown: false,
+          },
+        ],
+      };
+      yield* Context.get(f.context, RuntimeRecoveryStorage).update(record);
+      const sessions = Context.get(f.context, CakeSessionRuntimes);
+      const context = f.context.pipe(
+        Context.add(CakeSessionRuntimes, {
+          ...sessions,
+          catalogEntry: () => Effect.die("Recovery must not read titles"),
+          hasTranscript: () => Effect.succeed(false),
+        }),
+      );
+      yield* runtimeRecovery.initialize().pipe(Effect.provide(context));
+      yield* runtimeRecovery.initialize().pipe(Effect.provide(context));
+      expect((yield* Queue.take(f.prompts)).sessionId).toBe(target);
+      expect(f.runtimeCreates.filter((id) => id === target)).toHaveLength(1);
+      expect(f.listReads.entries).toEqual([]);
+    }),
+);
+
+it.effect(
+  "cancelling recovery discovery preserves committed input instead of marking it blocked",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const storage = Context.get(f.context, RuntimeRecoveryStorage);
+      const record: RuntimeRecoveryRecord = {
+        sessionId: target,
+        workingDirectory: "/project",
+        sessionDirectory: "/cake/sessions",
+        profile: "ProjectSession",
+        transcriptPersisted: true,
+        state: "active",
+        inputs: [
+          {
+            turnId: "interrupted-check",
+            text: "Keep this input",
+            delivery: "prompt",
+            attachments: [],
+            markdown: false,
+          },
+        ],
+      };
+      yield* storage.update(record);
+      const entered = yield* Deferred.make<void>();
+      let cancelled = false;
+      const sessions = Context.get(f.context, CakeSessionRuntimes);
+      const context = f.context.pipe(
+        Context.add(CakeSessionRuntimes, {
+          ...sessions,
+          hasTranscript: () =>
+            Deferred.succeed(entered, undefined).pipe(
+              Effect.andThen(Effect.never),
+              Effect.onInterrupt(() =>
+                Effect.sync(() => {
+                  cancelled = true;
+                }),
+              ),
+            ),
+        }),
+      );
+      const pending = yield* runtimeRecovery
+        .initialize()
+        .pipe(Effect.provide(context), Effect.forkScoped);
+      yield* Deferred.await(entered);
+      yield* Fiber.interrupt(pending);
+      expect(cancelled).toBe(true);
+      expect(yield* storage.get(target)).toEqual(record);
+      expect(f.runtimeCreates).not.toContain(target);
+    }),
 );

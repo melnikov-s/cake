@@ -372,6 +372,7 @@ export const makeBackendLive = <HostServices, HostError>(
             "Automatic restart recovery is paused. Repair the reported metadata file and restart; saved conversations remain available.",
             ready.failure,
           );
+          yield* startupDiagnostics.mark("backend-recovery-paused");
           return;
         }
         const recoverable = (sessionId: string, turnId?: string) =>
@@ -405,6 +406,7 @@ export const makeBackendLive = <HostServices, HostError>(
           Effect.repeat(Schedule.spaced("1 second")),
           Effect.forkScoped,
         );
+        yield* startupDiagnostics.mark("backend-recovery-ready");
       }),
     ),
   ).pipe(Layer.provide(Layer.merge(SessionWorkflowsLive, InitializedLive)));

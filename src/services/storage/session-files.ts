@@ -174,6 +174,20 @@ export async function findSessionFileById(
   return findSessionFileAt(sessionId, input.workingDirectory, sessionRouting(input));
 }
 
+/** Recovery presence without title parsing. Retain catalog filename eligibility
+ * and reject empty originals rather than letting Pi initialize them as new history. */
+export async function hasSessionFileById(
+  sessionId: string,
+  input: { readonly workingDirectory: string; readonly root: string; readonly direct?: boolean },
+): Promise<boolean> {
+  const file = await findSessionFileById(sessionId, input);
+  if (!file || !identityFromFilename(basename(file))) return false;
+  const info = await stat(file);
+  if (!info.isFile() || info.size === 0)
+    throw new Error(`Session transcript requires a nonempty regular file: ${file}`);
+  return true;
+}
+
 async function findSessionFileAt(
   sessionId: string,
   cwd: string,
@@ -196,7 +210,7 @@ async function findSessionFileAt(
 /** Request-local filename discovery: one directory listing, no per-entry scans or stats. */
 export async function findSessionFilesByIds(
   sessionIds: ReadonlySet<string>,
-  input: { readonly workingDirectory: string; readonly root: string },
+  input: { readonly workingDirectory: string; readonly root: string; readonly direct?: boolean },
   signal: AbortSignal,
 ): Promise<ReadonlyMap<string, string>> {
   const { directory, shared } = sessionRouting(input);
@@ -207,16 +221,29 @@ export async function findSessionFilesByIds(
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return new Map();
     throw error;
   }
-  const allowed = shared
-    ? await piSessionIdsForWorkingDirectory(input.workingDirectory, directory, signal)
-    : sessionIds;
   const files = new Map<string, string>();
   for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    const identity = identityFromFilename(entry.name);
-    if (!identity || !sessionIds.has(identity.id) || !allowed.has(identity.id)) continue;
-    if (files.has(identity.id)) throw new Error(`Session ID collision detected: ${identity.id}`);
-    files.set(identity.id, join(directory, entry.name));
+    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+    // Match the exact lookup's suffix semantics, including malformed timestamps
+    // and IDs containing underscores. Detect collisions before cwd filtering.
+    for (
+      let index = entry.name.indexOf("_");
+      index !== -1;
+      index = entry.name.indexOf("_", index + 1)
+    ) {
+      const id = entry.name.slice(index + 1, -6);
+      if (!sessionIds.has(id)) continue;
+      if (files.has(id)) throw new Error(`Session ID collision detected: ${id}`);
+      files.set(id, join(directory, entry.name));
+    }
+  }
+  if (shared && files.size > 0) {
+    const allowed = await piSessionIdsForWorkingDirectory(
+      input.workingDirectory,
+      directory,
+      signal,
+    );
+    for (const id of files.keys()) if (!allowed.has(id)) files.delete(id);
   }
   return files;
 }

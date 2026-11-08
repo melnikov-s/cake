@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { Effect, Stream } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  findSessionFilesByIds,
   streamSessionFileIds,
   streamSessionFiles,
   workingDirectorySessionPath,
@@ -249,6 +250,32 @@ describe("shared-directory Pi discovery", () => {
     vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", f.shared);
     expect(await collect(streamSessionFileIds(otherInput))).toEqual(["global-other"]);
     expect(io.list).toHaveBeenCalledTimes(3);
+  });
+
+  it("batches recovery discovery with cwd authority and collision checks before filtering", async () => {
+    const f = await fixture();
+    const own = await session(f.shared, "own", f.cwd);
+    await session(f.shared, "other", join(f.root, "other"));
+    const io = observeIO(f.shared);
+    expect(
+      await findSessionFilesByIds(
+        new Set(["own", "other", "missing"]),
+        f.input,
+        new AbortController().signal,
+      ),
+    ).toEqual(new Map([["own", own]]));
+    expect(io.list).toHaveBeenCalledTimes(1);
+    expect(io.lookup).not.toHaveBeenCalled();
+    expect(io.counts()).toMatchObject({
+      syncScans: 0,
+      headerOpens: 0,
+      asyncScans: 2,
+      bodyStreams: 2,
+    });
+    await fsp.writeFile(join(f.shared, "malformed_other.jsonl"), "");
+    await expect(
+      findSessionFilesByIds(new Set(["other"]), f.input, new AbortController().signal),
+    ).rejects.toThrow("Session ID collision detected: other");
   });
 
   it("matches SDK empty results for a missing shared directory", async () => {

@@ -517,6 +517,24 @@ export const makeSessionArchiveStorageLive = (
           effect.pipe(Effect.mapError((cause) => archiveError("locate", sessionId, cause))),
       );
 
+      const locateMany = Effect.fn("SessionArchiveStorage.locateMany")(
+        function* (sessionIds: ReadonlyArray<string>, location: SessionArchiveLocation) {
+          if (sessionIds.length === 0) return new Set<string>();
+          // Preserve interrupted-migration repair before observing active originals.
+          yield* migrateLocation(location);
+          const files = yield* Effect.tryPromise({
+            try: (signal) =>
+              findSessionFilesByIds(new Set(sessionIds), directoryInput(location, false), signal),
+            catch: (cause) => archiveError("locateMany", "", cause),
+          });
+          // Exact locate also validates the resolution authority for present files.
+          // Keep that corruption behavior, but read it once for the whole batch.
+          if (files.size > 0) yield* readResolvedIds(location);
+          return new Set(files.keys());
+        },
+        (effect) => effect.pipe(Effect.mapError((cause) => archiveError("locateMany", "", cause))),
+      );
+
       const resolved = (location: SessionArchiveLocation) =>
         Stream.unwrap(
           resolvedIds(location).pipe(
@@ -1083,6 +1101,7 @@ export const makeSessionArchiveStorageLive = (
           ),
         ),
         locate,
+        locateMany,
         resolutionSnapshot: readIndex,
         resolvedIds,
         recordedResolvedIds: readResolvedIds,

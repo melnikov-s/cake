@@ -14,6 +14,7 @@ import { ApplicationState } from "../services/storage/ApplicationState";
 import { VsCodeViews } from "../services/vscode/VsCodeViews";
 import { handleInlineWidgetScheme } from "../services/electron/inline-widget-protocol";
 import { handleExtensionCompanionScheme } from "../services/electron/extension-companion-protocol";
+import { startupDiagnostics } from "../services/diagnostics/startup-diagnostics";
 
 interface MainApplicationElectron {
   on(event: "before-quit", listener: (event: Event) => void): void;
@@ -140,24 +141,27 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
           Effect.withSpan("MainApplication.initializeDeveloperTools"),
         );
       yield* Effect.sync(initializeNativeProtocols);
-      yield* electron.start({
-        flushWindowState: rendererRequests.requestWindowStateFlush,
-        onWindowCloseRequested: (connectionId) => {
-          Queue.offerUnsafe(windowCloseRequests, connectionId);
-        },
-        backToAgentForWindow: (id) =>
-          Option.isSome(vscodeViews) && vscodeViews.value.backToAgentForWindow(id),
-        onWindowClosed: (ownerId, workingDirectory, nativeId) => {
-          Queue.offerUnsafe(windowClosed, { ownerId, workingDirectory, nativeId });
-        },
-        allowProjectPath: (path) =>
-          Option.isSome(access) ? access.value.allow(path) : Effect.void,
-        // A remote native host has no application-state authority. Keep the action available;
-        // the actual backend reword operation validates its own utility-model configuration.
-        canRewordSelection: () =>
-          Option.isNone(applicationState) ||
-          Boolean(applicationState.value.snapshot().utilityModel),
-      });
+      yield* startupDiagnostics.measure(
+        "electron-window-start",
+        electron.start({
+          flushWindowState: rendererRequests.requestWindowStateFlush,
+          onWindowCloseRequested: (connectionId) => {
+            Queue.offerUnsafe(windowCloseRequests, connectionId);
+          },
+          backToAgentForWindow: (id) =>
+            Option.isSome(vscodeViews) && vscodeViews.value.backToAgentForWindow(id),
+          onWindowClosed: (ownerId, workingDirectory, nativeId) => {
+            Queue.offerUnsafe(windowClosed, { ownerId, workingDirectory, nativeId });
+          },
+          allowProjectPath: (path) =>
+            Option.isSome(access) ? access.value.allow(path) : Effect.void,
+          // A remote native host has no application-state authority. Keep the action available;
+          // the actual backend reword operation validates its own utility-model configuration.
+          canRewordSelection: () =>
+            Option.isNone(applicationState) ||
+            Boolean(applicationState.value.snapshot().utilityModel),
+        }),
+      );
       // Electron emits `second-instance` synchronously from a native callback; queue it and
       // let this Scope own the consumer so window work cannot outlive the application.
       const secondInstances = yield* Queue.unbounded<void>();

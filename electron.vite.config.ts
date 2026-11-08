@@ -45,9 +45,11 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: {
-          main: resolve(import.meta.dirname, "src/main/main.ts"),
+          main: resolve(import.meta.dirname, "src/main/main-bootstrap.ts"),
         },
-        output: { entryFileNames: "[name].js" },
+        // The dynamic desktop entry uses import.meta.dirname for native/preload assets.
+        // Keep it beside the bootstrap, not in Rollup's default chunks/ directory.
+        output: { entryFileNames: "[name].js", chunkFileNames: "[name]-[hash].js" },
       },
     },
   },

@@ -85,6 +85,38 @@ const adapter = (
 });
 
 describe("CakeSessionRuntimes", () => {
+  it.effect("checks transcript authority without catalog titles or runtime construction", () =>
+    Effect.gen(function* () {
+      const directory = yield* Effect.acquireRelease(
+        Effect.sync(() => mkdtempSync(join(tmpdir(), "cake-recovery-presence-"))),
+        (path) => Effect.sync(() => rmSync(path, { recursive: true, force: true })),
+      );
+      const constructions = yield* Ref.make(0);
+      const finalizations = yield* Ref.make(0);
+      const sessionsLayer = makeCakeSessionRuntimesLayer({
+        ...adapter(constructions, finalizations),
+        catalogEntry: () => Effect.die("Recovery must not load catalog titles"),
+      }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
+      yield* Effect.gen(function* () {
+        const sessions = yield* CakeSessionRuntimes;
+        const target = {
+          workingDirectory: "/project",
+          sessionDirectory: directory,
+          sessionId: "session-1",
+          direct: true,
+        };
+        assert.equal(yield* sessions.hasTranscript(target), false);
+        // An unreadable-as-transcript body is irrelevant to existence. Pi opens it once on acquisition.
+        const file = join(directory, "2026-01-01T00-00-00-000Z_session-1.jsonl");
+        writeFileSync(file, "not a transcript");
+        assert.equal(yield* sessions.hasTranscript(target), true);
+        writeFileSync(join(directory, "malformed_session-1.jsonl"), "");
+        const failure = yield* sessions.hasTranscript(target).pipe(Effect.flip);
+        assert.match(failure.message, /Session ID collision detected/);
+        assert.equal(yield* Ref.get(constructions), 0);
+      }).pipe(Effect.provide(sessionsLayer));
+    }),
+  );
   for (const operationName of ["compactIfIdle", "toolCompactIfIdle"] as const) {
     it.effect(
       `retains a ${operationName} runtime until Pi settles even when its caller is interrupted`,

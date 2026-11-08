@@ -4,7 +4,10 @@ import { Cause, Effect, Schedule } from "effect";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { deliver } from "./sessionFamilyCompletion";
-import { NOTICE_DELIVERY_MAX_FAILURES } from "../../contracts/session-families/session-family-document";
+import {
+  NOTICE_DELIVERY_MAX_FAILURES,
+  type SessionFamilyChild,
+} from "../../contracts/session-families/session-family-document";
 
 export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, R>(
   activeRoot: string,
@@ -13,26 +16,29 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
 ) {
   const storage = yield* SessionFamilyStorage;
   const archive = yield* SessionArchiveStorage;
-  for (const family of yield* storage.list()) {
+  // Reconcile before family delivery workers or host endpoints are admitted.
+  // Index the protecting obligations once, not one freshness check per retained child.
+  const initial = yield* storage.state();
+  const protectedSessions = new Set(initial.turns.map((turn) => turn.sessionId));
+  const candidates = new Map<string, Array<{ child: SessionFamilyChild; familyId: string }>>();
+  for (const family of initial.families) {
     for (const child of family.children) {
-      // Durable admission can precede Pi's first transcript write. Recovery, not
-      // transcript presence, decides whether this reservation is still live.
+      // Existing reports and assignment-first handoffs protect routing even when
+      // neither a transcript nor recoverable input has been materialized yet.
+      if (protectedSessions.has(child.sessionId) || child.assignmentTopic) continue;
       if (yield* isRecoverable(child.sessionId)) continue;
-      if (
-        yield* archive.locate(child.sessionId, {
-          cwd: child.workingDirectory,
-          activeRoot,
-          resolvedRoot,
-        })
-      )
-        continue;
-      // An existing obligation (including a settled report awaiting delivery)
-      // must retain its member routing and must not gain a second failure notice.
-      if ((yield* storage.state()).turns.some((turn) => turn.sessionId === child.sessionId))
-        continue;
-      // Assignment-first reservations are explicit retryable handoffs, not orphaned
-      // bootstrap sessions. Never erase their request identity or restart them here.
-      if (child.assignmentTopic) continue;
+      const group = candidates.get(child.workingDirectory) ?? [];
+      group.push({ child, familyId: family.familyId });
+      candidates.set(child.workingDirectory, group);
+    }
+  }
+  for (const [cwd, children] of candidates) {
+    const present = yield* archive.locateMany(
+      children.map(({ child }) => child.sessionId),
+      { cwd, activeRoot, resolvedRoot },
+    );
+    for (const { child, familyId } of children) {
+      if (present.has(child.sessionId)) continue;
       if (child.resultDelivery === "ignore") {
         yield* storage.removeUnmaterializedChild(child.sessionId);
         continue;
@@ -44,7 +50,7 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
         senderSessionId: child.parentSessionId,
         turnId: child.sessionId,
         requestMessageId: child.sessionId,
-        threadId: family.familyId,
+        threadId: familyId,
         reported: false,
         resultDelivery: child.resultDelivery ?? "notification",
         outcome: "failed",
@@ -53,11 +59,12 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
     }
   }
   const state = yield* storage.state();
+  const sessionsWithTurns = new Set(state.turns.map((turn) => turn.sessionId));
   for (const spawn of state.spawnedSessions) {
     if (
       spawn.resultDelivery === "ignore" ||
       spawn.handoffSettled ||
-      state.turns.some((turn) => turn.sessionId === spawn.sessionId)
+      sessionsWithTurns.has(spawn.sessionId)
     )
       continue;
     if (yield* isRecoverable(spawn.sessionId)) continue;

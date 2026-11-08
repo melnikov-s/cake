@@ -100,6 +100,59 @@ const testIoError = (method: string) =>
 describe("SessionArchiveStorage", () => {
   afterEach(() => vi.restoreAllMocks());
 
+  it.effect("batches recovery presence after legacy migration and observes later deletions", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const fs = yield* FileSystem.FileSystem;
+        const legacy = cakeWorkspaceSessionDirectory(location.cwd, location.resolvedRoot);
+        yield* fs.makeDirectory(legacy, { recursive: true });
+        yield* fs.writeFileString(`${legacy}/2026-01-01T00-00-00-000Z_legacy.jsonl`, "");
+        const batches = vi.spyOn(sessionFiles, "findSessionFilesByIds");
+        yield* runArchive(
+          metadataRoot,
+          (storage) =>
+            Effect.gen(function* () {
+              expect(
+                yield* storage.locateMany(["session-1", "legacy", "missing"], location),
+              ).toEqual(new Set(["session-1", "legacy"]));
+              expect(batches).toHaveBeenCalledTimes(1);
+              expect(yield* storage.locate("legacy", location)).toBe("resolved");
+              yield* fs.remove(location.sessionFile);
+              expect(yield* storage.locateMany(["session-1", "legacy"], location)).toEqual(
+                new Set(["legacy"]),
+              );
+              expect(batches).toHaveBeenCalledTimes(2);
+            }),
+          location,
+        );
+      }),
+    ),
+  );
+
+  it.effect(
+    "batch presence preserves corrupt resolution metadata instead of treating it as absent",
+    () =>
+      withPlatform(
+        Effect.gen(function* () {
+          const metadataRoot = yield* makeMetadataRoot();
+          const location = yield* makeFixture();
+          const fs = yield* FileSystem.FileSystem;
+          yield* fs.makeDirectory(metadataRoot, { recursive: true });
+          const index = `${metadataRoot}/resolution.json`;
+          yield* fs.writeFileString(index, "{bad json");
+          const result = yield* runArchive(
+            metadataRoot,
+            (storage) => storage.locateMany(["session-1"], location).pipe(Effect.result),
+            location,
+          );
+          expect(result._tag).toBe("Failure");
+          expect(yield* fs.readFileString(index)).toBe("{bad json");
+        }),
+      ),
+  );
+
   it.effect("retains only unchanged decoded metadata and skips repeated legacy scans", () =>
     withPlatform(
       Effect.gen(function* () {

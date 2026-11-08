@@ -164,6 +164,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
     Layer.mock(SessionArchiveStorage, {
       resolvedProjectEntry: () => Effect.succeed(undefined),
       locate: (id) => Effect.succeed(materialized.has(id) ? ("active" as const) : undefined),
+      locateMany: (ids) => Effect.succeed(new Set(ids.filter((id) => materialized.has(id)))),
       resolved: () => Stream.empty,
       resolvedProjects: () => Stream.empty,
     }),

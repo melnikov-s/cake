@@ -44,7 +44,7 @@ import {
 import { shutdownDiagnostics } from "../services/diagnostics/shutdown-diagnostics";
 import { installLandingSmokeFixture } from "./landing-smoke-fixture";
 import { startupDiagnostics } from "../services/diagnostics/startup-diagnostics";
-import { installStdioErrorHandlers } from "./stdio-errors";
+import { bootstrapTiming } from "../services/diagnostics/bootstrap-timing";
 import { reportMainFailure } from "./report-main-failure";
 import { installProcessErrorHandlers } from "./process-errors";
 import { installParentProcessWatchdog } from "./parent-watchdog";
@@ -52,7 +52,7 @@ import cakeIconPath from "../assets/cake.png?asset";
 import annotationMenuIconPath from "../assets/menu-annotation.png?asset";
 import chatMenuIconPath from "../assets/menu-chat.png?asset";
 
-installStdioErrorHandlers(process.stdout, process.stderr);
+bootstrapTiming.mark("importsCompletedMs");
 installProcessErrorHandlers(process, reportMainFailure, () => app.exit(1));
 
 // Test-launched Cake must not outlive a killed test runner.
@@ -78,6 +78,7 @@ function startMain() {
     return;
   }
 
+  bootstrapTiming.mark("profileClaimedMs");
   const paths = resolveCakePaths({ piAgentDirectory: piAgentDirectory() });
   const selectedHost = loadDesktopHost(app.getPath("userData"));
   const mainOptions = {
@@ -109,11 +110,24 @@ function startMain() {
         }
       : undefined;
 
-  const LoggingLive = makeBackendLoggingLive(paths.logs, "desktop").pipe(
-    Layer.provide(BootstrapLive),
+  bootstrapTiming.mark("graphConstructedMs");
+  const LoggingLive = Layer.unwrap(
+    Effect.sync(() => {
+      bootstrapTiming.mark("loggingStartedMs");
+      return makeBackendLoggingLive(paths.logs, "desktop").pipe(
+        Layer.provide(BootstrapLive),
+        Layer.tap(() => Effect.sync(() => bootstrapTiming.mark("loggingCompletedMs"))),
+      );
+    }),
   );
   const mainRuntime = ManagedRuntime.make(
-    startupDiagnostics.layer("desktop-graph", MainLive).pipe(Layer.provideMerge(LoggingLive)),
+    Layer.unwrap(
+      Effect.suspend(() =>
+        startupDiagnostics.mark("desktop-bootstrap", bootstrapTiming.snapshot()),
+      ).pipe(
+        Effect.andThen(Effect.sync(() => startupDiagnostics.layer("desktop-graph", MainLive))),
+      ),
+    ).pipe(Layer.provideMerge(LoggingLive)),
   );
   const mainProgram = startupDiagnostics
     .measure(

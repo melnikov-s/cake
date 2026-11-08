@@ -14,6 +14,7 @@ import {
   Stream,
 } from "effect";
 import { shutdownDiagnostics, shutdownResource } from "../diagnostics/shutdown-diagnostics";
+import { startupDiagnostics } from "../diagnostics/startup-diagnostics";
 import type { RuntimeRecoveryStorage } from "../storage/RuntimeRecoveryStorage";
 import type { PiTurnResult } from "../../contracts/pi/turn-result-data";
 import {
@@ -181,35 +182,45 @@ export const makeSessionRuntimeRegistry = Effect.fn("CakeSessionRuntimes.makeReg
                 Effect.forkScoped,
               );
             let currentRuntime: CakeSessionRuntime | undefined = undefined;
-            const runtime = yield* adapter.createRuntime({
-              ...key.options.runtime,
-              onInitialTranscriptPersisted() {
-                Deferred.doneUnsafe(initialTranscriptPersisted, Effect.void);
-              },
-              onTurnResult(turnId, result) {
-                turnResults.set(turnId, result);
-              },
-              onEvent(event) {
-                if (event.type === "streaming") {
-                  if (event.streaming) activityTiming.startedAt ??= clock.currentTimeMillisUnsafe();
-                  else {
-                    for (const id of currentRuntime?.executingTurnIds?.() ?? [])
-                      settledInputIds.add(id);
-                    if (
-                      ![...Ref.getUnsafe(activeTurns)].some(
-                        ([id, delivery]) => delivery !== "follow-up" && !settledInputIds.has(id),
+            const runtime = yield* adapter
+              .createRuntime({
+                ...key.options.runtime,
+                onInitialTranscriptPersisted() {
+                  Deferred.doneUnsafe(initialTranscriptPersisted, Effect.void);
+                },
+                onTurnResult(turnId, result) {
+                  turnResults.set(turnId, result);
+                },
+                onEvent(event) {
+                  if (event.type === "streaming") {
+                    if (event.streaming)
+                      activityTiming.startedAt ??= clock.currentTimeMillisUnsafe();
+                    else {
+                      for (const id of currentRuntime?.executingTurnIds?.() ?? [])
+                        settledInputIds.add(id);
+                      if (
+                        ![...Ref.getUnsafe(activeTurns)].some(
+                          ([id, delivery]) => delivery !== "follow-up" && !settledInputIds.has(id),
+                        )
                       )
-                    )
-                      activityTiming.startedAt = undefined;
+                        activityTiming.startedAt = undefined;
+                    }
                   }
-                }
-                const projected: PiSessionEvent =
-                  event.type === "snapshot"
-                    ? { type: "snapshot-updated", snapshot: event.snapshot }
-                    : event;
-                PubSub.publishUnsafe(events, projected);
-              },
-            });
+                  const projected: PiSessionEvent =
+                    event.type === "snapshot"
+                      ? { type: "snapshot-updated", snapshot: event.snapshot }
+                      : event;
+                  PubSub.publishUnsafe(events, projected);
+                },
+              })
+              .pipe((effect) =>
+                startupDiagnostics.measure("session-runtime-construct", effect).pipe(
+                  Effect.annotateLogs({
+                    sessionId: key.options.runtime.sessionId,
+                    profile: key.options.profile._tag,
+                  }),
+                ),
+              );
             currentRuntime = runtime;
             if (key.options.runtime.newSession && key.options.profile._tag !== "DiscussionSession")
               yield* Deferred.await(initialTranscriptPersisted).pipe(

@@ -674,7 +674,7 @@ describe("Session Family outcome delivery", () => {
           environment,
           Layer.mock(CakeSessionRuntimes, { currentStatus: () => Effect.succeed(undefined) }),
           Layer.mock(SessionArchiveStorage, {
-            locate: (id) => Effect.succeed(id === childId ? undefined : ("active" as const)),
+            locateMany: (ids) => Effect.succeed(new Set(ids.filter((id) => id !== childId))),
           }),
         ),
       ),

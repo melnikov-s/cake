@@ -27,7 +27,76 @@ const turn = (turnId: string, overrides: Partial<FamilyTurn> = {}): FamilyTurn =
   reported: false,
   ...overrides,
 });
-const archive = Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed(undefined) });
+const archive = Layer.mock(SessionArchiveStorage, {
+  locateMany: () => Effect.succeed(new Set<string>()),
+});
+
+it.effect("indexes protecting turns once and batches only unprotected children by location", () =>
+  Effect.gen(function* () {
+    const original = yield* SessionFamilyStorage;
+    for (let index = 0; index < 80; index++) {
+      const sessionId = `protected-${index}`;
+      yield* original.addChild({ ...child, childSessionId: sessionId, requestId: sessionId });
+      yield* original.recordTurn(turn(`turn-${index}`, { sessionId, outcome: "complete" }));
+    }
+    for (const sessionId of ["present", "missing", "admitted", "assignment"]) {
+      yield* original.addChild({
+        ...child,
+        childSessionId: sessionId,
+        requestId: sessionId,
+        ...(sessionId === "assignment" ? { assignmentTopic: "topic" } : {}),
+      });
+    }
+    for (const sessionId of ["other-present", "other-missing"]) {
+      yield* original.addChild({
+        ...child,
+        childSessionId: sessionId,
+        childWorkingDirectory: "/other",
+        requestId: sessionId,
+      });
+    }
+    let stateChecks = 0;
+    const lookups: Array<{ ids: ReadonlyArray<string>; cwd: string }> = [];
+    const recoverableChecks: string[] = [];
+    yield* initialize("/sessions", "/resolved", (id) => {
+      recoverableChecks.push(id);
+      return Effect.succeed(id === "admitted");
+    }).pipe(
+      Effect.provideService(SessionFamilyStorage, {
+        ...original,
+        state: () => {
+          stateChecks++;
+          return original.state();
+        },
+      }),
+      Effect.provide(
+        Layer.mock(SessionArchiveStorage, {
+          locateMany: (ids, location) => {
+            lookups.push({ ids, cwd: location.cwd });
+            return Effect.succeed(new Set(["present", "other-present"]));
+          },
+        }),
+      ),
+    );
+    assert.equal(stateChecks, 3);
+    assert.deepEqual(lookups, [
+      { ids: ["present", "missing"], cwd: "/project" },
+      { ids: ["other-present", "other-missing"], cwd: "/other" },
+    ]);
+    assert.deepEqual(recoverableChecks, [
+      "present",
+      "missing",
+      "admitted",
+      "other-present",
+      "other-missing",
+    ]);
+    const state = yield* original.state();
+    assert.equal(state.turns.length, 82);
+    assert.equal(state.turns.at(-1)?.sessionId, "other-missing");
+    assert.equal(state.turns.at(-1)?.outcome, "failed");
+    assert.equal(state.families[0]?.children.length, 84);
+  }).pipe(Effect.provide(familyStorageHarness().layer)),
+);
 
 it.effect.each(["notification", "reply", "ignore"] as const)(
   "retains %s resultDelivery through pre-admission family and chat-launch crash recovery",

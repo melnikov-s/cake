@@ -7,6 +7,7 @@ import {
   type RuntimeRecoveryInput,
 } from "../storage/RuntimeRecoveryStorage";
 import { stat } from "node:fs/promises";
+import { hasSessionFileById } from "../storage/session-files";
 import type { CakeOperationOptions } from "../../contracts/agent/cake-operation-options";
 import type { CakeOperationInvocation } from "../../contracts/agent/cake-operation";
 import type { Scope } from "effect";
@@ -343,6 +344,14 @@ export class CakeSessionRuntimes extends Context.Service<
       query: PiSessionQuery,
       sessionId: string,
     ) => Effect.Effect<PiSessionSummary | undefined, PiSessionError>;
+    /** Recovery authority only: exact filename/collision checks and shared-root cwd discovery,
+     * without title/transcript projection. Permanent Cake Chat uses its Durable owner. */
+    readonly hasTranscript: (
+      target: Pick<
+        PiSessionTarget,
+        "workingDirectory" | "sessionDirectory" | "sessionId" | "direct"
+      >,
+    ) => Effect.Effect<boolean, PiSessionError>;
     readonly inspect: (
       target: PiSessionTarget,
       options?: { readonly includeParts?: boolean; readonly sessionFile?: string },
@@ -519,6 +528,26 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         return yield* new PiSessionError({
           operation: "inspect",
           message: `Pi Session ${decoded.sessionId} was not found`,
+        });
+      });
+
+      const hasTranscript = Effect.fn("CakeSessionRuntimes.hasTranscript")(function* (
+        target: Pick<
+          PiSessionTarget,
+          "workingDirectory" | "sessionDirectory" | "sessionId" | "direct"
+        >,
+      ) {
+        const decoded = yield* Schema.decodeUnknownEffect(PiSessionTarget)(target).pipe(
+          sessionError("hasTranscript"),
+        );
+        return yield* Effect.tryPromise({
+          try: () =>
+            hasSessionFileById(decoded.sessionId, {
+              workingDirectory: decoded.workingDirectory,
+              root: decoded.sessionDirectory,
+              direct: decoded.direct,
+            }),
+          catch: sessionErrorValue("hasTranscript"),
         });
       });
 
@@ -802,6 +831,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         sessionIds,
         catalog,
         catalogEntry,
+        hasTranscript,
         inspect,
         acquire,
         acquireCurrent,
