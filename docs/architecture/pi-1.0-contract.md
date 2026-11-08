@@ -204,7 +204,7 @@ caller scope and ProjectAccess authorization before acquiring the target's share
 regular-Pi runtime. Bulk targets are bounded to 100, deduplicated by canonical
 identity within the call, and return ordered outcomes even after individual failures.
 The assistant can collect to-do associations through existing `todos.list/read`;
-to-do completion never schedules compaction or changes session resolution.
+to-do completion never schedules compaction. Human Mark done resolves required linked sessions through the backend lifecycle first; agent to-do edits do not change session resolution.
 
 The regular-Pi adapter exposes `compactIfIdle` separately from existing
 self-compaction. Pi's public `AgentSession.compact(customInstructions)` aborts

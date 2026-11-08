@@ -100,7 +100,9 @@ const assertResolvable = Effect.fn("ProjectSessions.assertResolvable")(function*
   workingDirectory: string,
   sessionDirectory: string,
   operation: string,
+  preserveWork = false,
 ) {
+  if (preserveWork) yield* subagentLifetime.assertParentIdle(sessionId).pipe(asError(operation));
   const status = yield* (yield* CakeSessionRuntimes)
     .currentStatus({ sessionId, workingDirectory, sessionDirectory })
     .pipe(asError(operation));
@@ -178,6 +180,7 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
   family: SessionFamily,
   resolved: boolean,
   operation: string,
+  preserveWork = false,
 ) {
   const storage = yield* SessionFamilyStorage;
   yield* storage
@@ -200,6 +203,7 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
               location.workingDirectory,
               location.sessionDirectory,
               operation,
+              preserveWork,
             );
           const memberIds = new Set(members.map(({ sessionId }) => sessionId));
           if (state.turns.some((turn) => memberIds.has(turn.sessionId) && !turn.reported))
@@ -239,6 +243,7 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
             false,
             publishResolution,
           );
+          if (preserveWork) return;
           for (const location of [...members]
             .reverse()
             .filter(
@@ -281,6 +286,7 @@ const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(f
   resolved: boolean,
   operation: string,
   publish = true,
+  preserveWork = false,
 ) {
   const storage = yield* SessionFamilyStorage;
   yield* storage
@@ -312,9 +318,10 @@ const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(f
               location.workingDirectory,
               location.sessionDirectory,
               operation,
+              preserveWork,
             );
           yield* archiveAuthority(target.sessionId, location, operation, publish);
-          yield* cleanupResolved(location, [target.sessionId], operation);
+          if (!preserveWork) yield* cleanupResolved(location, [target.sessionId], operation);
         } else {
           if (!namespace)
             return yield* error(operation, "Only a resolved Project Session can be restored");
@@ -333,10 +340,12 @@ const transition = Effect.fn("ProjectSessions.transitionLifecycle")(function* (
   resolved: boolean,
   operation: string,
   publish = true,
+  preserveWork = false,
 ) {
   const storage = yield* SessionFamilyStorage;
   const family = yield* storage.familyForMember(target.sessionId).pipe(asError(operation));
-  if (!family) return yield* transitionStandalone(target, resolved, operation, publish);
+  if (!family)
+    return yield* transitionStandalone(target, resolved, operation, publish, preserveWork);
   if (target.sessionId !== family.parentSessionId) {
     const message = `Only Session Family parent ${family.parentSessionId} can be ${resolved ? "resolved" : "restored"}`;
     return yield* resolved
@@ -352,11 +361,14 @@ const transition = Effect.fn("ProjectSessions.transitionLifecycle")(function* (
     return yield* resolved
       ? rejected(operation, familyMembers(family), "Activate a Draft before resolving it")
       : error(operation, "Only a resolved Project Session can be restored");
-  yield* transitionFamily(family, resolved, operation);
+  yield* transitionFamily(family, resolved, operation, preserveWork);
 });
 
-export const resolve = Effect.fn("ProjectSessions.resolve")((target: ProjectSessionTarget) =>
-  transition(target, true, "resolve"),
+/** To-do Done preserves work: reject active workers and retain checkouts, using the same
+ * session resolution authority and safety checks. Other resolution entry points are unchanged. */
+export const resolve = Effect.fn("ProjectSessions.resolve")(
+  (target: ProjectSessionTarget, options?: { readonly preserveWork?: boolean }) =>
+    transition(target, true, "resolve", true, options?.preserveWork),
 );
 
 export const restore = Effect.fn("ProjectSessions.restore")((target: ProjectSessionTarget) =>

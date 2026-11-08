@@ -496,8 +496,13 @@ is a refactoring signal, not precedent.
   existing worker chat/report and use a distinct type icon. Subagents have no resolve lifecycle:
   reports, execution completion, abort and resource release do not close a subagent-only item;
   explicitly mark it done after review. Mixed items retain the all-Project-Sessions-resolved rule.
-  Session restore never reopens items,
-  and to-do completion never resolves, stops, deletes or merges sessions. Each open item may
+  Session restore never reopens items. Human Mark done, from lists or linked chat controls,
+  resolves all required session associations through the backend lifecycle before committing Done.
+  Children use their family root once, preserving whole-family safety checks; already-resolved
+  links are skipped. Unknown links, active turns/workers, pending input and other lifecycle blockers
+  surface errors without falsely completing the item. Partial resolution is retained for retry.
+  This path does not merge, delete, retire checkouts or abort turns. Agent to-do edits and
+  attention dismissal, hiding, snoozing or pill deletion never resolve sessions. Each open item may
   persist one explicit UTC `snoozedUntil` deadline, a `needsAttention` flag and a separate
   bounded, nonempty `attentionReason`. Older saved items may omit attention fields (off);
   no reason is invented. Four exclusive sections, in order: Needs attention (open, unsnoozed,

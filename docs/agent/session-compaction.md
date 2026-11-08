@@ -21,4 +21,4 @@ Same scope/checkout/busy rules apply. Repeated explicit calls create another bra
 ## To-do-associated request
 
 For "compact sessions associated with these completed to-dos", inspect exact item state/associations with todos.list/read. Collect session associations and session IDs in cake://session source/message/report links; call compact-batch.
-Report items without sessions and every busy/failed/unavailable target. Done is not session resolution: do not change to-do state, resolve work or compact automatically merely because an item is done.
+Report items without sessions and every busy/failed/unavailable target. Done never triggers compaction. Human Mark done resolves required linked sessions first; agent to-do edits do not. Do not change to-do state, resolve work or compact automatically merely because an item is done.

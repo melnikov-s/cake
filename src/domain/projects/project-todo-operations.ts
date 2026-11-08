@@ -30,9 +30,9 @@ export function createProjectTodoOperations(
     `${PROJECT_TODO_CREATION_RULE} No polling/wakes merely for open items.`,
     "Default list is title/id/state/revision, needsAttention and retained attentionReason, plus snoozedUntil when snoozed. Filter category=attention|active|snoozed|done; state=open includes Needs attention, Active and Snoozed. For reconciliation use ONE todos.list with state=open, view=reconciliation (max 50), then ONE todos.update-many with expectedRevision per item. Page with nextOffset. No transcript reads or per-session inspection needed.",
     "Reconciliation sessions contain canonical required session IDs and authoritative effective resolved (null means unknown), not execution done/stopped. All actual session associations must resolve before automatic closure, including historical items and late associations. Source/report links are context: they never veto completion and source-only discussion items remain open. Reports/run completion never close items.",
-    `${PROJECT_TODO_CLOSING_RULE} Restore never reopens items. Explicit user done is preserved. To-do edits never resolve/restore, stop, delete or merge sessions. Cake reconciles linked Open items automatically; no assistant update, report acknowledgment, polling or wake is required.`,
+    `${PROJECT_TODO_CLOSING_RULE} Restore never reopens items. Explicit user done is preserved. Agent to-do edits never resolve/restore, stop, delete or merge sessions. Human Mark done resolves required linked sessions first and exposes blockers without claiming Done. Cake reconciles linked Open items automatically; no assistant update, report acknowledgment, polling or wake is required.`,
     "Read details by ID only when needed. Pass expectedRevision; on revision conflict reread; preserve explicit user closure/reopen. state=done on an already-done item is a no-op for state: alone it commits nothing; other edits still apply, including when the only change since your revision was that completion (for example by sessions.resolve). The receipt note says why it was already done; any other intervening change is a conflict. Association updates replace the complete merged list. Mutations return compact committed receipts; detail=true opts into content.",
-    "Only on a user compaction request, collect the requested items’ session associations (including session IDs in cake://session source/message/report links) and use sessions.compact-batch. Report unlinked items and per-session outcomes. Done is not session resolution and never automatically triggers compaction.",
+    "Only on a user compaction request, collect the requested items’ session associations (including session IDs in cake://session source/message/report links) and use sessions.compact-batch. Report unlinked items and per-session outcomes. Agent Done is not session resolution; no to-do completion automatically triggers compaction.",
   ] as const;
   const detail = Schema.optionalKey(Schema.Boolean);
   // Was the item already done before this call? It was completed by this call only if an
@@ -271,7 +271,7 @@ export function createProjectTodoOperations(
         PROJECT_TODO_ATTENTION_GUIDANCE,
         PROJECT_TODO_DESCRIPTION_GUIDANCE,
         PROJECT_TODO_LINK_GUIDANCE,
-        "All linked sessions resolved closes items. Already-done state is a no-op; restore never reopens; to-do done never resolves sessions.",
+        "All linked sessions resolved closes items. Already-done state is a no-op; restore never reopens; agent to-do edits never resolve sessions. Human Mark done resolves required linked sessions first.",
       ],
       inputSchema: Schema.Struct({ updates: ProjectTodoUpdates }),
       outputSchema: Schema.Struct({ receipts: Schema.Array(ProjectTodoReceipt) }),

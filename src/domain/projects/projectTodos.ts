@@ -463,6 +463,8 @@ function enqueue(value: ProjectTodos, entry: ProjectTodoUserChange): ProjectTodo
   };
 }
 
+/** Storage mutations. The renderer RPC routes human Done through projectTodoUserCompletion
+ * before reaching this commit path; automatic session completion never calls that workflow. */
 export const mutateUser = Effect.fn("ProjectTodos.mutateUser")(function* (
   scope: string,
   request: ProjectTodoUserMutation,

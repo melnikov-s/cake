@@ -32,6 +32,8 @@ import * as projectSessionOperations from "../../../src/domain/project-sessions/
 import * as projectSessionContinuations from "../../../src/domain/project-sessions/projectSessionContinuations";
 import * as projectSessionUserLifecycle from "../../../src/domain/project-sessions/projectSessionUserLifecycle";
 import { projectSessionHandlers } from "../../../src/ipc/server/ProjectSessionHandlers";
+import { projectTodoHandlers } from "../../../src/ipc/server/ProjectTodoHandlers";
+import { DiscussionSessionEnvironment } from "../../../src/services/discussion-sessions/DiscussionSessionEnvironment";
 import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import * as projectTodoResolution from "../../../src/domain/projects/projectTodoResolution";
 import * as projectTodoAssociations from "../../../src/domain/projects/projectTodoAssociations";
@@ -462,6 +464,7 @@ const makeLayer = (
       )
     : SessionCatalogChanges.layer;
   return Layer.mergeAll(
+    Layer.mock(DiscussionSessionEnvironment, {}),
     Layer.mock(TaskInputStorage, {
       resolve: (_sessionId, attachments) => Effect.succeed(attachments),
       isRecipient: () => Effect.succeed(false),
@@ -2154,8 +2157,284 @@ describe("Project Sessions domain", () => {
       }).pipe(Effect.provide(makeLayer())),
   );
 
+  it.effect.each(["/project", CAKE_CHAT_TODO_SCOPE])(
+    "human Done in %s commits real session resolution before completion and retries are idempotent",
+    (scope) => {
+      const archived: string[] = [];
+      let resolved = false;
+      return Effect.gen(function* () {
+        const item = yield* projectTodos.create(scope, {
+          title: "Review implementation",
+          description: "Review implementation.",
+          associations: [{ kind: "session", sessionId: "session-1", title: "Implementation" }],
+        });
+        const request = {
+          scope,
+          mutation: {
+            _tag: "SetState" as const,
+            id: item.id,
+            expectedRevision: 0,
+            state: "done" as const,
+          },
+        };
+        yield* projectTodoHandlers["projectTodos.mutateUser"](request);
+        assert.equal(
+          yield* (yield* SessionArchiveStorage).locate("session-1", {
+            cwd: "/tree",
+            activeRoot: "/sessions",
+            resolvedRoot: "/resolved-sessions",
+          }),
+          "resolved",
+        );
+        const done = yield* projectTodos.read(scope, item.id);
+        assert.equal(done.state, "done");
+        assert.equal(done.revision, 1);
+        yield* projectTodoHandlers["projectTodos.mutateUser"](request);
+        assert.equal((yield* projectTodos.read(scope, item.id)).revision, done.revision);
+        assert.deepEqual(archived, ["session-1"]);
+        // A retry of an already-done item must not undo a later explicit session restore.
+        yield* projectSessionLifecycle.restore({ sessionId: "session-1" });
+        yield* projectTodoHandlers["projectTodos.mutateUser"](request);
+        assert.deepEqual(archived, ["session-1"]);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            onArchive: (id) => {
+              archived.push(id);
+              resolved = true;
+            },
+            onRestore: () => {
+              resolved = false;
+            },
+            locate: (_id, location) =>
+              Effect.succeed(
+                location.cwd === "/tree"
+                  ? resolved
+                    ? ("resolved" as const)
+                    : ("active" as const)
+                  : undefined,
+              ),
+            onCreateRuntime: () => assert.fail("Done must not start an agent"),
+            onDeleteArchive: () => assert.fail("Done must not delete sessions"),
+            onCleanupResolved: () => assert.fail("Done must not retire checkouts"),
+            sessionIds: (cwd) => (cwd === "/tree" ? Stream.make("session-1") : Stream.empty),
+            locations: [
+              {
+                projectPath: "/project",
+                projectName: "Project",
+                workingDirectory: "/tree",
+                sessionDirectory: "/sessions",
+                resolvedSessionDirectory: "/resolved-sessions",
+              },
+            ],
+            worktreeRecords: [
+              {
+                projectPath: "/project",
+                worktreePath: "/tree",
+                branch: "agent/test",
+                baseBranch: "main",
+                state: "landed",
+                createdAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          }),
+        ),
+      );
+    },
+  );
+
+  it.effect("human Done on unlinked or already-resolved work remains idempotent", () =>
+    Effect.gen(function* () {
+      for (const associations of [
+        [],
+        [{ kind: "session" as const, sessionId: "session-1", title: "Resolved" }],
+      ]) {
+        const item = yield* projectTodos.create("/project", {
+          title: "Reviewed",
+          description: "Reviewed.",
+          associations,
+        });
+        const request = {
+          scope: "/project",
+          mutation: {
+            _tag: "SetState" as const,
+            id: item.id,
+            expectedRevision: 0,
+            state: "done" as const,
+          },
+        };
+        yield* projectTodoHandlers["projectTodos.mutateUser"](request);
+        yield* projectTodoHandlers["projectTodos.mutateUser"](request);
+        const done = yield* projectTodos.read("/project", item.id);
+        assert.equal(done.state, "done");
+        assert.equal(done.revision, 1);
+      }
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          resolvedOnDisk: true,
+          onArchive: () => assert.fail("Already resolved links must be skipped"),
+        }),
+      ),
+    ),
+  );
+
+  it.effect.each([
+    { streaming: true, pending: false, persisted: true },
+    { streaming: false, pending: true, persisted: true },
+    { streaming: false, pending: false, persisted: false },
+  ])("human Done exposes lifecycle blockers and leaves linked work open (%j)", (status) =>
+    Effect.gen(function* () {
+      const item = yield* projectTodos.create("/project", {
+        title: "Blocked",
+        description: "Blocked.",
+        associations: [{ kind: "session", sessionId: "session-1", title: "Busy" }],
+      });
+      const sessions = yield* CakeSessionRuntimes;
+      const failure = yield* projectTodoHandlers["projectTodos.mutateUser"]({
+        scope: "/project",
+        mutation: { _tag: "SetState", id: item.id, expectedRevision: 0, state: "done" },
+      }).pipe(
+        Effect.provideService(CakeSessionRuntimes, {
+          ...sessions,
+          currentStatus: () => Effect.succeed(status),
+        }),
+        Effect.flip,
+      );
+      assert.match(failure.message, /active|pending|empty/);
+      assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
+      assert.equal(
+        (yield* projectSessionMetadata.lookup({ sessionId: "session-1" })).resolved,
+        false,
+      );
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, { onArchive: () => assert.fail("Blocked work must not resolve") }),
+      ),
+    ),
+  );
+
   it.effect(
-    "done does not resolve a family; root resolution completes linked parent and child work",
+    "human Done retains honest partial resolution across multiple links and retry completes the remainder",
+    () => {
+      const archived: string[] = [];
+      return Effect.gen(function* () {
+        const item = yield* projectTodos.create("/project", {
+          title: "Combined",
+          description: "Combined.",
+          associations: [
+            { kind: "session", sessionId: "session-1", title: "First" },
+            { kind: "session", sessionId: "session-2", title: "Second" },
+            { kind: "source", ref: "https://example.com/findings", title: "Context only" },
+          ],
+        });
+        const sessions = yield* CakeSessionRuntimes;
+        const request = {
+          scope: "/project",
+          mutation: {
+            _tag: "SetState" as const,
+            id: item.id,
+            expectedRevision: 0,
+            state: "done" as const,
+          },
+        };
+        const failure = yield* projectTodoHandlers["projectTodos.mutateUser"](request).pipe(
+          Effect.provideService(CakeSessionRuntimes, {
+            ...sessions,
+            currentStatus: ({ sessionId }) =>
+              Effect.succeed({
+                streaming: sessionId === "session-2",
+                pending: false,
+                persisted: true,
+              }),
+          }),
+          Effect.flip,
+        );
+        assert.match(failure.message, /active/);
+        assert.deepEqual(archived, ["session-1"]);
+        assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
+        yield* projectTodoHandlers["projectTodos.mutateUser"](request);
+        assert.deepEqual(archived, ["session-1", "session-2"]);
+        assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            sessionIds: () => Stream.make("session-1", "session-2"),
+            onArchive: (id) => archived.push(id),
+          }),
+        ),
+      );
+    },
+  );
+
+  it.effect(
+    "human Done exposes archive failures, unknown links and stale revisions without false completion",
+    () =>
+      Effect.gen(function* () {
+        for (const sessionId of ["session-1", "unknown-session"]) {
+          const item = yield* projectTodos.create("/project", {
+            title: "Blocked",
+            description: "Blocked.",
+            associations: [{ kind: "session", sessionId, title: "Work" }],
+          });
+          const failure = yield* projectTodoHandlers["projectTodos.mutateUser"]({
+            scope: "/project",
+            mutation: { _tag: "SetState", id: item.id, expectedRevision: 0, state: "done" },
+          }).pipe(Effect.flip);
+          assert.match(failure.message, /Cannot archive|Unknown or ambiguous/);
+          assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
+          yield* projectTodos.update("/project", {
+            id: item.id,
+            expectedRevision: 0,
+            title: "Edited",
+          });
+          const stale = yield* projectTodoHandlers["projectTodos.mutateUser"]({
+            scope: "/project",
+            mutation: { _tag: "SetState", id: item.id, expectedRevision: 0, state: "done" },
+          }).pipe(Effect.flip);
+          assert.match(stale.message, /current revision 1/);
+        }
+      }).pipe(Effect.provide(makeLayer(undefined, { archiveErrorSessionId: "session-1" }))),
+  );
+
+  it.effect("attention dismissal and snooze are not Done and never resolve linked sessions", () =>
+    Effect.gen(function* () {
+      const item = yield* projectTodos.create("/project", {
+        title: "Review",
+        description: "Review.",
+        needsAttention: true,
+        attentionReason: "Please review",
+        associations: [{ kind: "session", sessionId: "session-1", title: "Work" }],
+      });
+      yield* projectTodoHandlers["projectTodos.mutateUser"]({
+        scope: "/project",
+        mutation: { _tag: "SetAttention", id: item.id, expectedRevision: 0, needsAttention: false },
+      });
+      yield* projectTodoHandlers["projectTodos.mutateUser"]({
+        scope: "/project",
+        mutation: {
+          _tag: "Snooze",
+          id: item.id,
+          expectedRevision: 1,
+          until: "2099-01-01T00:00:00.000Z",
+        },
+      });
+      assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
+      assert.equal(
+        (yield* projectSessionMetadata.lookup({ sessionId: "session-1" })).resolved,
+        false,
+      );
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          onArchive: () => assert.fail("Dismissal must not resolve sessions"),
+        }),
+      ),
+    ),
+  );
+
+  it.effect(
+    "human Done resolves a family root once for linked parent and child work; restore preserves Done",
     () => {
       const family = {
         familyId: "linked-family",
@@ -2167,6 +2446,7 @@ describe("Project Sessions domain", () => {
           { sessionId: "session-1", requestId: "child-1", createdAt: "2026-01-01T00:00:00.000Z" },
         ],
       };
+      const archived: string[] = [];
       return Effect.gen(function* () {
         const item = yield* projectTodos.create("/project", {
           title: "Family implementation",
@@ -2177,27 +2457,40 @@ describe("Project Sessions domain", () => {
             { kind: "session", sessionId: "session-1", title: "Child implementation" },
           ],
         });
-        yield* projectTodos.mutateUser("/project", {
-          _tag: "SetState",
-          id: item.id,
-          expectedRevision: 0,
-          state: "done",
+        const sessions = yield* CakeSessionRuntimes;
+        const blocked = yield* projectTodoHandlers["projectTodos.mutateUser"]({
+          scope: "/project",
+          mutation: { _tag: "SetState", id: item.id, expectedRevision: 0, state: "done" },
+        }).pipe(
+          Effect.provideService(CakeSessionRuntimes, {
+            ...sessions,
+            currentStatus: ({ sessionId }) =>
+              Effect.succeed({
+                streaming: sessionId === "session-1",
+                pending: false,
+                persisted: true,
+              }),
+          }),
+          Effect.flip,
+        );
+        assert.match(blocked.message, /active/);
+        assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
+        assert.deepEqual(archived, []);
+        yield* projectTodoHandlers["projectTodos.mutateUser"]({
+          scope: "/project",
+          mutation: { _tag: "SetState", id: item.id, expectedRevision: 0, state: "done" },
         });
+        assert.deepEqual(archived, ["parent-1"]);
         assert.equal(
           (yield* projectSessionMetadata.lookup({ sessionId: "parent-1" })).resolved,
-          false,
+          true,
         );
-        yield* projectTodos.mutateUser("/project", {
-          _tag: "SetState",
-          id: item.id,
-          expectedRevision: 1,
-          state: "open",
-        });
-        yield* projectSessionLifecycle.resolve({ sessionId: "parent-1" });
         assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
         yield* projectSessionLifecycle.restore({ sessionId: "parent-1" });
         assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
-      }).pipe(Effect.provide(makeLayer(undefined, { family })));
+      }).pipe(
+        Effect.provide(makeLayer(undefined, { family, onArchive: (id) => archived.push(id) })),
+      );
     },
   );
 

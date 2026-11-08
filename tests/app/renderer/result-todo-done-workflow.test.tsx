@@ -512,6 +512,26 @@ it("shows Done after session-driven completion and clicking it reopens through t
 });
 
 it.each(["Project Chat"] as const)(
+  "shows a resolution blocker at linked Done controls without claiming completion in %s",
+  async (kind) => {
+    await using f = await renderChat(kind);
+    f.mutateUser.mockRejectedValueOnce(
+      new Error(
+        "Cake cannot resolve a Project Session while its turn is active or input is pending",
+      ),
+    );
+    const group = f.groupFor("session-reply")!;
+    await f.user.click(within(group).getByRole("button", { name: "Mark done: Fix the build" }));
+    await waitFor(() =>
+      expect(within(group).getByRole("alert").textContent).toContain("turn is active"),
+    );
+    expect(within(group).getByRole("button", { name: "Mark done: Fix the build" })).toBeDefined();
+    expect((await f.read(f.items.sessionTodo.id)).state).toBe("open");
+    expect(await f.paneState("Fix the build")).toBe("open");
+  },
+);
+
+it.each(["Project Chat"] as const)(
   "disables all linked footer actions during a pending mutation in %s",
   async (kind) => {
     await using f = await renderChat(kind);

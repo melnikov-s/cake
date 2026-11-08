@@ -2784,6 +2784,50 @@ describe("Subagents", () => {
       }),
   );
 
+  it.effect("to-do resolution rejects active descendant work without canceling it", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      yield* Effect.gen(function* () {
+        const ancestor = yield* subagents.start({ task: "Ancestor" }, parent(fixture));
+        const ancestorId = yield* Queue.take(fixture.childStarted);
+        const descendant = yield* subagents.start(
+          { task: "Descendant" },
+          parent(fixture, ancestorId),
+        );
+        const descendantId = yield* Queue.take(fixture.childStarted);
+        yield* completeChild(fixture, ancestorId);
+        const coordinator = yield* SubagentCoordinator;
+        yield* SubscriptionRef.changes(coordinator.state).pipe(
+          Stream.filter(
+            (state) =>
+              state.handles.get(ancestor.handleId)?.status === "complete" &&
+              state.handles.get(ancestor.handleId)?.completionDisposition !== "notifying",
+          ),
+          Stream.runHead,
+        );
+        const failure = yield* subagentLifetime.assertParentIdle("parent").pipe(Effect.flip);
+        assert.match(failure.message, /active work/);
+        assert.match(failure.message, new RegExp(descendant.handleId));
+        assert.equal(
+          (yield* SubscriptionRef.get(coordinator.state)).handles.get(descendant.handleId)?.status,
+          "running",
+        );
+        yield* completeChild(fixture, descendantId);
+        yield* SubscriptionRef.changes(coordinator.state).pipe(
+          Stream.filter((state) =>
+            [...state.handles.values()].every(
+              (handle) =>
+                handle.status === "complete" && handle.completionDisposition !== "notifying",
+            ),
+          ),
+          Stream.runHead,
+        );
+        yield* subagentLifetime.assertParentIdle("parent");
+        assert.equal((yield* SubscriptionRef.get(coordinator.state)).handles.size, 2);
+      }).pipe(Effect.provide(fixture.layer));
+    }),
+  );
+
   it.effect("parent release closes subagents", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();

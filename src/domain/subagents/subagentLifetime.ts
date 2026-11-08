@@ -155,6 +155,31 @@ const turnActive = (handle: SubagentHandleState) =>
   handle.status === "running" ||
   handle.completionDisposition === "notifying";
 
+/** To-do Done must reject rather than cancel a worker turn during session release. */
+export const assertParentIdle = Effect.fn("Subagents.assertParentIdle")(function* (
+  parentSessionId: string,
+) {
+  const coordinator = yield* SubagentCoordinator;
+  const handles = [...(yield* SubscriptionRef.get(coordinator.state)).handles.values()];
+  const parents = new Set([parentSessionId]);
+  let expanded = true;
+  while (expanded) {
+    expanded = false;
+    for (const handle of handles) {
+      if (!parents.has(handle.parentSessionId)) continue;
+      if (turnActive(handle))
+        return yield* new SubagentError({
+          operation: "resolve",
+          message: `Cannot resolve session ${parentSessionId} while subagent ${handle.handleId} has active work or an outcome being delivered`,
+        });
+      if (handle.privateSessionId && !parents.has(handle.privateSessionId)) {
+        parents.add(handle.privateSessionId);
+        expanded = true;
+      }
+    }
+  }
+});
+
 /**
  * Releases an expired worker only once it has no active turn. The idle check and removal are
  * one atomic state transition, so a follow-up cannot be claimed and then torn down mid-turn.

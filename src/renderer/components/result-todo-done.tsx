@@ -23,6 +23,11 @@ export const ResultTodoDone = observer(function ResultTodoDone({ origin, todos }
       data-slot="result-todo-done"
       className="flex min-w-0 flex-1 flex-col gap-2"
     >
+      {todos.error && (
+        <p role="alert" className="text-sm text-destructive">
+          {todos.error}
+        </p>
+      )}
       {items.map((item) => {
         const done = item.state === "done";
         const action = done ? "Done" : "Mark done";

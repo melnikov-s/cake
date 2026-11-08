@@ -180,7 +180,7 @@ it("keeps specialist detail behind discoverable task-specific doors", async () =
       "duplicateOf",
       "not aborted or queued",
       "inspectable tree/history",
-      "Done is not session resolution",
+      "Done never triggers compaction",
     ],
     "session-prompt-files": [
       "20 UTF-8",
