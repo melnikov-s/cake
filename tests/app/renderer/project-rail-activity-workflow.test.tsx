@@ -45,7 +45,16 @@ it("exposes default-off Auto-merge in the activity rail and follows authoritativ
       screen.getByRole("button", { name: "Auto-merge: on" }).getAttribute("aria-pressed"),
     ).toBe("true"),
   );
-  await user.click(screen.getByRole("button", { name: "Auto-merge: on" }));
+  const enabled = screen.getByRole("button", { name: "Auto-merge: on" });
+  expect(enabled.className).toContain("aria-pressed:text-worktree-merged");
+  expect(enabled.className).toContain("aria-pressed:hover:text-worktree-merged");
+  expect(enabled.className).not.toContain("aria-pressed:text-accent");
+  await user.hover(enabled);
+  expect(await screen.findByRole("tooltip")).toHaveProperty(
+    "textContent",
+    "Auto-merge on — Waiting for fresh validated completion",
+  );
+  await user.click(enabled);
   await waitFor(() => expect(screen.getByRole("button", { name: "Auto-merge: off" })).toBeTruthy());
   expect(setAutoMerge.mock.calls).toEqual([[true], [false]]);
   // A second surface consumes the same authoritative opt-in, never local settings.
@@ -54,7 +63,10 @@ it("exposes default-off Auto-merge in the activity rail and follows authoritativ
       <AutoMergeToggle />
     </StoreProvider>,
   );
-  await user.click(screen.getByRole("button", { name: "Auto-merge: off" }));
+  const iconOnly = screen.getByRole("button", { name: "Auto-merge: off" });
+  expect(iconOnly.textContent).toBe("");
+  expect(iconOnly.className).toContain("text-muted-foreground");
+  await user.click(iconOnly);
   await waitFor(() => expect(screen.getByRole("button", { name: "Auto-merge: on" })).toBeTruthy());
   act(() =>
     applyWorktreeOperationCatalogUpdate(fixture.models.worktreeOperations, {

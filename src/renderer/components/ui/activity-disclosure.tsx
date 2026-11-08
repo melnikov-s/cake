@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type ReactNode } from "react";
 import { Button } from "./button";
 import { ChevronIcon } from "./icons";
+import { IconButton } from "./icon-button";
 import { StatusDot, type StatusDotProps } from "./status-dot";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +36,10 @@ export function ActivityDisclosure({
   const [open, setOpen] = useState(false);
   const contentId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const toggle = () => {
+    if (!open) onOpen?.();
+    setOpen(!open);
+  };
   return (
     <div
       data-slot="activity-disclosure"
@@ -67,10 +72,7 @@ export function ActivityDisclosure({
           aria-label={`Activity · ${summary}`}
           aria-expanded={open}
           aria-controls={contentId}
-          onClick={() => {
-            if (!open) onOpen?.();
-            setOpen(!open);
-          }}
+          onClick={toggle}
         >
           <StatusDot status={status} />
           <span
@@ -79,11 +81,19 @@ export function ActivityDisclosure({
             Activity ·
           </span>
           <span>{summary}</span>
-          <ChevronIcon
-            className={cn(presentation === "strip" && "ml-auto", open && "rotate-180")}
-          />
+          {presentation === "pill" && <ChevronIcon className={cn(open && "rotate-180")} />}
         </Button>
         {actions}
+        {presentation === "strip" && (
+          <IconButton
+            tooltip="Toggle conversation activity"
+            aria-expanded={open}
+            aria-controls={contentId}
+            onClick={toggle}
+          >
+            <ChevronIcon className={cn(open && "rotate-180")} />
+          </IconButton>
+        )}
       </div>
       <div
         id={contentId}

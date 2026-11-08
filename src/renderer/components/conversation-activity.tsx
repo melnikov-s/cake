@@ -34,7 +34,7 @@ export const ConversationActivity = observer(function ConversationActivity({
       summary={`${running} running`}
       status="running"
       onOpen={onOpen}
-      actions={<AutoMergeToggle showLabel />}
+      actions={<AutoMergeToggle />}
       items={[
         ...sessions.map((session) => ({
           id: `session:${session.sessionId}`,

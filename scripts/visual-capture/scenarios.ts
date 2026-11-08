@@ -5347,7 +5347,7 @@ const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
 const activityWorktreeScenario: VisualCaptureScenario = {
   name: "activity-worktree-cap",
   description: "Attached activity band above real worktree tools and the shared composer",
-  states: ["default", "open"],
+  states: ["default", "open", "auto-merge-on"],
   async seed(paths, theme) {
     const cleanup = await cakeChatSessionUpdatesScenario.seed(paths, theme);
     if (cleanup) await cleanup();
@@ -5415,6 +5415,12 @@ const activityWorktreeScenario: VisualCaptureScenario = {
     await expect(cap.getByRole("button", { name: "Rebase", exact: true })).toBeVisible();
     const activity = cap.getByRole("button", { name: "Activity · 1 running" });
     await expect(activity).toBeVisible();
+    if (state === "auto-merge-on") {
+      await cap.getByRole("button", { name: "Auto-merge: off", exact: true }).click();
+      await expect(
+        cap.getByRole("button", { name: "Auto-merge: on", exact: true }),
+      ).toHaveAttribute("aria-pressed", "true");
+    }
     if (state === "open") {
       await activity.click();
       await expect(page.getByRole("region", { name: "Conversation activity" })).toBeVisible();

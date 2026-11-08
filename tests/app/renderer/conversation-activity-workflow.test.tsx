@@ -243,7 +243,15 @@ it.each(["project", "cake-chat"] as const)(
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();
 
-    await view.user.click(trigger.querySelector("svg")!);
+    const bar = within(trigger.parentElement!);
+    const autoMerge = bar.getByRole("button", { name: "Auto-merge: off" });
+    const chevron = bar.getByRole("button", { name: "Toggle conversation activity" });
+    expect(bar.getAllByRole("button")).toEqual([trigger, autoMerge, chevron]);
+    expect(autoMerge.textContent).toBe("");
+    expect(chevron.getAttribute("aria-controls")).toBe(detailsId);
+    expect(chevron.getAttribute("aria-expanded")).toBe("false");
+    await view.user.click(chevron);
+    expect(chevron.getAttribute("aria-expanded")).toBe("true");
     const details = screen.getByRole("region", { name: "Conversation activity" });
     expect(details.id).toBe(detailsId);
     expect(dock.contains(details)).toBe(true);
@@ -260,6 +268,10 @@ it.each(["project", "cake-chat"] as const)(
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     await view.user.keyboard(" ");
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    await view.user.click(chevron);
+    await view.user.keyboard("{Escape}");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(trigger);
     expect((input as HTMLTextAreaElement).value).toBe("Keep this draft");
   },
 );

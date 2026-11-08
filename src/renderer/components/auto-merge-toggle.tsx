@@ -7,10 +7,8 @@ import { MergeResolveIcon } from "./ui/icons";
 /** All surfaces share the backend-owned, user-authorized opt-in. */
 export const AutoMergeToggle = observer(function AutoMergeToggle({
   rail = false,
-  showLabel = false,
 }: {
   rail?: boolean;
-  showLabel?: boolean;
 }) {
   const root = useStore(RootStore);
   return (
@@ -21,11 +19,13 @@ export const AutoMergeToggle = observer(function AutoMergeToggle({
       aria-pressed={root.autoMergeEnabled}
       pressedAppearance="subtle"
       wrapTooltip
-      className={cn(rail && "h-9 shrink-0", showLabel && "flex w-auto gap-1.5 px-2 text-xs")}
+      className={cn(
+        "aria-pressed:text-worktree-merged aria-pressed:hover:text-worktree-merged aria-pressed:hover:bg-worktree-merged/10",
+        rail && "h-9 shrink-0",
+      )}
       onClick={() => void root.toggleAutoMerge()}
     >
       <MergeResolveIcon />
-      {showLabel && <span>Auto-merge {root.autoMergeEnabled ? "on" : "off"}</span>}
     </IconButton>
   );
 });

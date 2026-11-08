@@ -403,7 +403,8 @@ it("Activity and Ready to Merge share auto-merge state without confirmation or c
     within(screen.getByRole("complementary", { name: "Workspace" })).getByRole("button", {
       name: /Auto-merge/,
     });
-  expect(bar.getByText("Auto-merge off")).toBeDefined();
+  expect(bar.queryByText("Auto-merge off")).toBeNull();
+  expect(bar.getByRole("button", { name: "Auto-merge: off" }).textContent).toBe("");
   await fixture.user.click(activity);
   await fixture.user.click(bar.getByRole("button", { name: "Auto-merge: off" }));
   expect(fixture.autoMergeChanges).toEqual([true]);
