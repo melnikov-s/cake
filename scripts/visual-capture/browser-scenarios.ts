@@ -478,7 +478,7 @@ async function prepareSidebarDefaults(page: Page, state: string) {
   // Selecting a conversation retains the existing narrow-drawer close behavior.
   if (phone) await expect(sidebar).toBeHidden();
   else await expect(sidebar).toBeVisible();
-  const editor = page.getByRole("button", { name: "Open VS Code", exact: true });
+  const editor = page.getByRole("button", { name: "VS Code", exact: true });
   const terminal = page.getByRole("button", { name: "Terminal", exact: true });
   if (phone) {
     await expect(editor).toBeHidden();

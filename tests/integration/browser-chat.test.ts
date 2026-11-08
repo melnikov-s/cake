@@ -455,7 +455,7 @@ it("real Chromium uses the shared sidebar, project chat and Cake Chat without re
               "52px",
             );
             await browserExpect(
-              page.getByRole("button", { name: "Open VS Code", exact: true }),
+              page.getByRole("button", { name: "VS Code", exact: true }),
             ).not.toHaveCSS("display", "none");
             await browserExpect(
               page.getByRole("button", { name: "Terminal", exact: true }),

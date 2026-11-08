@@ -108,7 +108,7 @@ test("capture handoff reveals and focuses Chat without leaving Browser or VS Cod
     for (const mode of ["Browser", "VS Code"] as const) {
       await page
         .getByRole("button", {
-          name: mode === "Browser" ? "Open Browser Mode" : "Open VS Code",
+          name: mode === "Browser" ? "Browser" : "VS Code",
           exact: true,
         })
         .click();

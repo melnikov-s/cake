@@ -160,7 +160,7 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByRole("button", { name: "Open Browser Mode" })).toBeVisible({
+    await expect(page.getByRole("button", { name: "Browser", exact: true })).toBeVisible({
       timeout: 20_000,
     });
     await expect(page.getByText("main#seeded", { exact: true })).toBeVisible();
@@ -182,7 +182,7 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(defaultUrl).toHaveValue(origin);
     await page.getByRole("button", { name: "Save settings" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await page.getByRole("button", { name: "Open Browser Mode" }).click();
+    await page.getByRole("button", { name: "Browser", exact: true }).click();
     const addressInput = page.getByLabel("Browser address");
     await expect(addressInput).toBeVisible();
     await expect(addressInput).toHaveValue(`${origin}/`);
@@ -227,13 +227,13 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await addressInput.fill(`${origin}/second`);
     await addressInput.press("Enter");
     await expect.poll(browserState(`${origin}/second`)).toMatchObject({ title: "Second page" });
-    await page.getByRole("button", { name: "Back to agent" }).click();
+    await page.getByRole("button", { name: "Main", exact: true }).click();
     await openProjectSettings(application, page, /^Open Project Chat for project$/);
     await expect(defaultUrl).toHaveValue(origin);
     await defaultUrl.fill(`${origin}/changed-default`);
     await page.getByRole("button", { name: "Save settings" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await page.getByRole("button", { name: "Open Browser Mode" }).click();
+    await page.getByRole("button", { name: "Browser", exact: true }).click();
     await expect(addressInput).toHaveValue(`${origin}/second`);
     await expect.poll(browserState(`${origin}/second`)).toMatchObject({ title: "Second page" });
 
@@ -441,7 +441,7 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     const restoredPage = await application.firstWindow();
     const restoredAddress = restoredPage.getByLabel("Browser address");
     await expect(restoredAddress).toHaveValue(`${origin}/changed-default`, { timeout: 20_000 });
-    await restoredPage.getByRole("button", { name: "Back to agent" }).click();
+    await restoredPage.getByRole("button", { name: "Main", exact: true }).click();
     await openProjectSettings(application, restoredPage, /^Open Project Chat for project$/);
     await expect(restoredPage.getByRole("textbox", { name: "Browser default URL" })).toHaveValue(
       `${origin}/changed-default`,

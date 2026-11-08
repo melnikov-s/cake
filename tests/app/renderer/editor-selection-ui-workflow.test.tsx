@@ -55,7 +55,7 @@ describe("Editor selection pills workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
     await fixture.user.click(screen.getByRole("option", { name: /^other-tour / }));
     expect(screen.queryByRole("button", { name: /^Reveal src\// })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() =>
       expect(fixture.highlights).toHaveBeenLastCalledWith(
         selectionWorkspace,
@@ -96,13 +96,13 @@ describe("Editor selection pills workflow", () => {
     const tour = listed.selections.find(({ location }) => location.path === "src/tour.ts");
     expect(tour).toBeDefined();
     if (!tour) throw new Error("Missing tour selection");
-    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Main" }));
     const sends = fixture.highlights.mock.calls.length;
     await act(async () => {
       await fixture.invoke("vscode.selections.remove", { id: tour.id });
     });
     expect(fixture.highlights).toHaveBeenCalledTimes(sends);
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     expect(screen.queryByRole("button", { name: /^Reveal src\/tour.ts/ })).toBeNull();
     expect(revealNext()).toBeDefined();
     await waitFor(() =>
@@ -112,11 +112,11 @@ describe("Editor selection pills workflow", () => {
         expect.any(Object),
       ),
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Main" }));
     await act(async () => {
       await fixture.invoke("vscode.selections.clear");
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     expect(screen.queryByLabelText("Editor selections")).toBeNull();
     await waitFor(() =>
       expect(fixture.highlights).toHaveBeenLastCalledWith(

@@ -2324,7 +2324,7 @@ const browserSharingScenario: VisualCaptureScenario = {
   async prepare(page, state) {
     await page.locator('[data-streamdown="code-block-body"] code').waitFor({ timeout: 20_000 });
     await expect(page.getByText("Opening session", { exact: true })).not.toBeVisible();
-    await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+    await page.getByRole("button", { name: "Browser", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Browser address", exact: true })).toBeVisible();
     if (state.startsWith("workspace-closed"))
       await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
@@ -3273,7 +3273,7 @@ const cakeChatScenario: VisualCaptureScenario = {
       await expect(terminal.locator(".xterm-rows:visible")).toContainText("/project");
     }
     if (state === "browser") {
-      await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+      await page.getByRole("button", { name: "Browser", exact: true }).click();
       await expect(page.getByRole("textbox", { name: "Browser address" })).toBeVisible();
       await expect(
         page.getByText("Will I still see my original conversation history?", { exact: true }),
@@ -3318,12 +3318,12 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
   async prepare(page, state, application) {
     await cakeChatScenario.prepare(page, "project", application);
     if (state.startsWith("browser")) {
-      await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+      await page.getByRole("button", { name: "Browser", exact: true }).click();
       await expect(page.getByRole("textbox", { name: "Browser address" })).toBeVisible();
     }
     if (state.startsWith("vscode")) {
       if (!application) throw new Error("The VS Code title bar state requires Electron");
-      await page.getByRole("button", { name: "Open VS Code", exact: true }).click();
+      await page.getByRole("button", { name: "VS Code", exact: true }).click();
       await page.getByRole("region", { name: "VS Code workspace" }).waitFor({ state: "visible" });
       await expect
         .poll(

@@ -57,7 +57,7 @@ for (const initialTheme of ["dark", "light"] as const) {
       await application.evaluate(({ nativeTheme }, theme) => {
         nativeTheme.themeSource = theme;
       }, opposite);
-      const open = page.getByRole("button", { name: "Open VS Code", exact: true });
+      const open = page.getByRole("button", { name: "VS Code", exact: true });
       await expect(open).toBeVisible({ timeout: 20_000 });
       await open.click();
       const editorState = () =>

@@ -306,7 +306,7 @@ it.each(
     if (mode !== "normal") {
       await f.user.click(
         screen.getByRole("button", {
-          name: mode === "browser" ? "Open Browser Mode" : "Open VS Code",
+          name: mode === "browser" ? "Browser" : "VS Code",
         }),
       );
       expect(
@@ -796,10 +796,10 @@ it("opens Project Chat from its project rail with VS Code and Terminal at the re
     ),
   );
   act(() => f.root.terminalStore.hide());
-  await f.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+  await f.user.click(screen.getByRole("button", { name: "VS Code" }));
   await waitFor(() => expect(f.editorOpen).toHaveBeenCalledWith("/zombies", expect.anything()));
   expect(screen.getByRole("region", { name: "VS Code workspace" })).toBeTruthy();
-  await f.user.click(screen.getByRole("button", { name: "Back to agent" }));
+  await f.user.click(screen.getByRole("button", { name: "Main" }));
   expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
 });
 
@@ -852,8 +852,8 @@ it("keeps own Project Chat and Session running/error states distinct while switc
 
 it("gives global and project chats their own Browser destinations and returns to the same composer", async () => {
   using f = await fixture();
-  expect(screen.queryByRole("button", { name: "Open VS Code" })).toBeNull();
-  await f.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+  expect(screen.queryByRole("button", { name: "VS Code" })).toBeNull();
+  await f.user.click(screen.getByRole("button", { name: "Browser" }));
   await waitFor(() =>
     expect(screen.getByRole("textbox", { name: "Browser address" })).toHaveProperty(
       "value",
@@ -861,10 +861,10 @@ it("gives global and project chats their own Browser destinations and returns to
     ),
   );
   expect(f.browserOpen).toHaveBeenCalledWith(CAKE_CHAT_SESSION_ID, undefined, expect.anything());
-  await f.user.click(screen.getByRole("button", { name: "Back to agent" }));
+  await f.user.click(screen.getByRole("button", { name: "Main" }));
   expect(screen.getByRole("combobox", { name: "Message Cake Chat" })).toBeTruthy();
   await act(async () => f.root.navigationStore.openCakeChat(projectId));
-  await f.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+  await f.user.click(screen.getByRole("button", { name: "Browser" }));
   await waitFor(() =>
     expect(f.browserOpen).toHaveBeenLastCalledWith(projectId, undefined, expect.anything()),
   );

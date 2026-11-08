@@ -230,7 +230,7 @@ describe("Workbench conversation lifecycle", () => {
     using fixture = renderCachedWorkbench(async () => undefined, true, {
       sessionChats: { prompt },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     expect(screen.getByRole("region", { name: "VS Code workspace" })).toBeDefined();
     expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Close Workspace" }));

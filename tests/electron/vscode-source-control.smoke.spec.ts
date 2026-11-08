@@ -194,7 +194,7 @@ test("workspace changes use Source Control, committed files fall back to the fil
         }
         return undefined;
       });
-    await expect(page.getByRole("button", { name: "Open VS Code" })).toBeVisible({
+    await expect(page.getByRole("button", { name: "VS Code", exact: true })).toBeVisible({
       timeout: 20_000,
     });
     // Real RPC authorization and fullscreen reader, before any editor is started.
@@ -266,7 +266,7 @@ test("workspace changes use Source Control, committed files fall back to the fil
 
     // Unclaimed Escape in Cake must not exit VS Code mode.
     const workspace = page.getByRole("region", { name: "VS Code workspace" });
-    await page.getByRole("button", { name: "Back to agent", exact: true }).first().focus();
+    await page.getByRole("button", { name: "Main", exact: true }).first().focus();
     await page.keyboard.press("Escape");
     await expect(workspace).toBeVisible();
     await expect.poll(activeVsCodeTab).toMatch(/app\.ts.+/);

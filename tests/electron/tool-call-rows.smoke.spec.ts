@@ -143,7 +143,7 @@ for (const { theme, width } of [
         .poll(() => page.evaluate(() => window.getSelection()?.toString()))
         .toBe("~/.pi/agent/example.md");
       await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-      await expect(page.getByRole("button", { name: "Back to agent", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Main", exact: true })).toHaveCount(0);
       await page.keyboard.press(process.platform === "darwin" ? "Meta+c" : "Control+c");
       expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(
         "~/.pi/agent/example.md",
@@ -183,7 +183,7 @@ for (const { theme, width } of [
         .toBe(join(homedir(), ".pi/agent/example.md"));
       const projectLink = row("project").getByRole("button", { name: "example.ts", exact: true });
       await projectLink.click();
-      await expect(page.getByRole("button", { name: "Back to agent", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Main", exact: true })).toBeVisible();
       expect(
         await app.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows().every((window) => !window.isVisible()),

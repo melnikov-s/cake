@@ -387,7 +387,7 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
         });
       };
       if (entry === "tool") await invoke("vscode.enter");
-      else await f.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+      else await f.user.click(screen.getByRole("button", { name: "VS Code" }));
       const companion = screen.getByRole("complementary", {
         name: "Current conversation companion",
       });
@@ -437,7 +437,7 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
       using f = renderWorkspace(kind, mode, false, true);
       await f.user.click(
         screen.getByRole("button", {
-          name: mode === "browser" ? "Open Browser Mode" : "Open VS Code",
+          name: mode === "browser" ? "Browser" : "VS Code",
         }),
       );
       const navigator = f.root.workspaceNavigatorStore;
@@ -473,7 +473,7 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
       using f = renderWorkspace(kind, mode, false, true);
       await f.user.click(
         screen.getByRole("button", {
-          name: mode === "browser" ? "Open Browser Mode" : "Open VS Code",
+          name: mode === "browser" ? "Browser" : "VS Code",
         }),
       );
       const navigator = f.root.workspaceNavigatorStore;
@@ -493,7 +493,7 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
       expect(restored.root.workspaceNavigatorStore.paneVisible).toBe(true);
       expect(restored.root.workspaceNavigatorStore.companionTab).toBe("sessions");
 
-      await f.user.click(screen.getByRole("button", { name: "Back to agent" }));
+      await f.user.click(screen.getByRole("button", { name: "Main" }));
       expect(
         screen.getByRole("combobox", {
           name: kind === "project" ? "Message" : "Message Project Chat",
@@ -512,7 +512,7 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
       expect(f.session.presentationMode).toBe("normal");
       await f.user.click(
         screen.getByRole("button", {
-          name: mode === "browser" ? "Open VS Code" : "Open Browser Mode",
+          name: mode === "browser" ? "VS Code" : "Browser",
         }),
       );
       // Explicit VS Code entry reveals Chat; Browser entry preserves a manual
@@ -525,7 +525,7 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
       await f.user.click(screen.getByRole("button", { name: "Close Workspace" }));
       await f.user.click(
         screen.getByRole("button", {
-          name: mode === "browser" ? "Open Browser Mode" : "Open VS Code",
+          name: mode === "browser" ? "Browser" : "VS Code",
         }),
       );
       if (!navigator.paneVisible)
@@ -590,7 +590,7 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
       ).toBeDefined();
       expect(
         screen.getByRole("button", {
-          name: mode === "browser" ? "Open VS Code" : "Open Browser Mode",
+          name: mode === "browser" ? "VS Code" : "Browser",
         }),
       ).toBeDefined();
       expect(

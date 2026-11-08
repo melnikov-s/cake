@@ -94,7 +94,7 @@ describe("IDE conversation workflows", () => {
         }),
       );
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
     await fixture.user.click(screen.getByRole("button", { name: "Side chats and subagents, 1" }));
     const menu = within(screen.getByRole("dialog", { name: "Open side chats" }));
@@ -121,7 +121,7 @@ describe("IDE conversation workflows", () => {
     // The same selection side chat remains available beside the real workspace.
     await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     await fixture.user.click(screen.getByRole("button", { name: /important detail/ }));
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
     expect(screen.getAllByText("Editor conversation")).toHaveLength(2);
     expect(screen.queryByLabelText("Open side chats")).toBeNull();
@@ -149,7 +149,7 @@ describe("IDE conversation workflows", () => {
       vscode: { open: async () => editorLease("a"), reveal },
       sessionChats: { prompt },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
     fixture.nativeEvent({
       type: "embedded-editor-selection",
@@ -193,7 +193,7 @@ describe("IDE conversation workflows", () => {
         threads: [discussion("file")],
       },
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
     const opened = {
       type: "embedded-editor-annotation-opened" as const,

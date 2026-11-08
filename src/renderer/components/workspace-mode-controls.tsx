@@ -1,9 +1,7 @@
 import { observer } from "r-state-tree/react";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
-import { ToolbarGroup } from "./ui/toolbar-group";
 import { IconButton } from "./ui/icon-button";
-import { TerminalIcon } from "./ui/icons";
-import { SegmentedControlButton, SegmentedControlGroup } from "./ui/segmented-control";
+import { BrowserIcon, SidebarIcon, TerminalIcon, VsCodeIcon } from "./ui/icons";
 
 export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   mode,
@@ -27,42 +25,43 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   onToggleTerminal(): void;
 }) {
   return (
-    <ToolbarGroup label="Workspace tools">
-      <SegmentedControlGroup size="sm" aria-label="Conversation workspace">
-        <SegmentedControlButton
-          size="sm"
-          active={mode === "normal"}
-          aria-label={mode === "normal" ? "Main" : "Back to agent"}
+    <div role="group" aria-label="Workspace tools" className="flex shrink-0 items-center gap-1">
+      <div
+        role="group"
+        aria-label="Conversation workspace"
+        className="flex shrink-0 items-center gap-0.5 [&_button>svg]:size-5 [&_button[aria-pressed=true]]:bg-accent/10"
+      >
+        <IconButton
+          tooltip="Main"
+          pressedAppearance="subtle"
+          aria-pressed={mode === "normal"}
           onClick={onBackToAgent}
         >
-          Main
-        </SegmentedControlButton>
+          <SidebarIcon />
+        </IconButton>
         {ideAvailable && (
-          <SegmentedControlButton
-            size="sm"
-            active={mode === "vscode"}
-            aria-label="Open VS Code"
+          <IconButton
+            tooltip="VS Code"
+            pressedAppearance="subtle"
+            aria-pressed={mode === "vscode"}
             className="phone:hidden"
             onClick={onOpenIde}
           >
-            VS Code
-          </SegmentedControlButton>
+            <VsCodeIcon />
+          </IconButton>
         )}
         {!browserHost && (
-          <SegmentedControlButton
-            size="sm"
-            active={mode === "browser"}
-            aria-label="Open Browser Mode"
+          <IconButton
+            tooltip="Browser"
+            pressedAppearance="subtle"
+            aria-pressed={mode === "browser"}
             onClick={onOpenBrowser}
           >
-            Browser
-          </SegmentedControlButton>
+            <BrowserIcon />
+          </IconButton>
         )}
-      </SegmentedControlGroup>
-      <span
-        aria-hidden="true"
-        className="grid size-7 shrink-0 place-items-center [@media(pointer:coarse)]:size-11"
-      />
+      </div>
+      <span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-border/60 phone:hidden" />
       <IconButton
         data-cake-hint-key="t"
         className="phone:hidden"
@@ -74,6 +73,6 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
       >
         <TerminalIcon />
       </IconButton>
-    </ToolbarGroup>
+    </div>
   );
 });

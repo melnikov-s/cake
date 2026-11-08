@@ -147,7 +147,7 @@ it("embeds only an isolated editor origin, supports editor resources and revokes
           .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
           .last()
           .click();
-        await page.getByRole("button", { name: "Open VS Code" }).click();
+        await page.getByRole("button", { name: "VS Code", exact: true }).click();
         const frame = page.locator('iframe[title="VS Code workspace"]');
         try {
           await browserExpect(frame).toHaveAttribute("src", new RegExp(`^${editor}/editor/`));
@@ -180,7 +180,7 @@ it("embeds only an isolated editor origin, supports editor resources and revokes
           document.documentElement.dataset.theme = "light";
         });
         await browserExpect.poll(() => themes.at(-1)).toBe("light");
-        await page.getByRole("button", { name: "Back to agent" }).first().click();
+        await page.getByRole("button", { name: "Main", exact: true }).first().click();
         await browserExpect(frame).toHaveCount(0);
         expect((await page.request.get(src)).status()).toBe(403);
         expect(acquisitions).toBe(1);
@@ -243,7 +243,7 @@ it("embeds only an isolated editor origin, supports editor resources and revokes
               .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
               .last()
               .click();
-            await page.getByRole("button", { name: "Open VS Code" }).click();
+            await page.getByRole("button", { name: "VS Code", exact: true }).click();
             const realFrame = page.locator('iframe[title="VS Code workspace"]');
             await browserExpect(realFrame).toHaveAttribute("src", new RegExp(`^${editor}/editor/`));
             await browserExpect(realFrame.contentFrame().locator(".monaco-workbench")).toBeVisible({
@@ -297,7 +297,7 @@ it("embeds only an isolated editor origin, supports editor resources and revokes
               throw new Error(`Real code-server diagnostics:\n${unexpected.join("\n")}`);
             const realSrc = await realFrame.getAttribute("src");
             assert.ok(realSrc);
-            await page.getByRole("button", { name: "Back to agent" }).first().click();
+            await page.getByRole("button", { name: "Main", exact: true }).first().click();
             await browserExpect(realFrame).toHaveCount(0);
             expect((await page.request.get(realSrc)).status()).toBe(403);
           } finally {

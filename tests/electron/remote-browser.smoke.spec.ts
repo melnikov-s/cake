@@ -368,7 +368,7 @@ test("remote Pi Browser Mode controls desktop Chromium and previews backend loca
       ).toBeVisible();
       const secondAddress = second.getByLabel("Browser address");
       if (!(await secondAddress.isVisible()))
-        await second.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+        await second.getByRole("button", { name: "Browser", exact: true }).click();
       await expect(secondAddress).toBeVisible();
       await secondAddress.fill(`http://[::1]:${sourcePort}/`);
       await secondAddress.press("Enter");

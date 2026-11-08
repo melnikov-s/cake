@@ -84,11 +84,7 @@ it.each(
       expect(header.getByRole("button", { name: "0 artifacts" })).toBeDefined();
       expect(header.getByRole("button", { name: /^Side chats/ })).toBeDefined();
       expect(header.getByRole("group", { name: "Conversation workspace" })).toBeDefined();
-      for (const name of [
-        mode === "normal" ? "Main" : "Back to agent",
-        "Open VS Code",
-        "Open Browser Mode",
-      ]) {
+      for (const name of [mode === "normal" ? "Main" : "Main", "VS Code", "Browser"]) {
         expect(header.getByRole("button", { name })).toBeDefined();
       }
 

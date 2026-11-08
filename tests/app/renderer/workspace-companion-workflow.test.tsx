@@ -95,7 +95,7 @@ it.each(["browser", "vscode"] as const)(
     });
     await fixture.user.click(
       screen.getByRole("button", {
-        name: mode === "browser" ? "Open Browser Mode" : "Open VS Code",
+        name: mode === "browser" ? "Browser" : "VS Code",
       }),
     );
     const workspace =
@@ -160,7 +160,7 @@ it.each(["browser", "vscode"] as const)(
       expect(openEditor).toHaveBeenCalledTimes(1);
       expect(releaseEditor).not.toHaveBeenCalled();
     }
-    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Main" }));
     act(() => fixture.root.navigationStore.selectCakeChat("project-chat:/project"));
     const navigator = within(screen.getByRole("complementary", { name: "Workspace" }));
     await fixture.user.click(navigator.getByRole("button", { name: /^To-dos/ }));

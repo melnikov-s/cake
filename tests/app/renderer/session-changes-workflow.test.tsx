@@ -157,7 +157,7 @@ describe("Session Changes review", () => {
     "VS Code Changes replaces $tab (shown=$shown) and restores its exact visibility",
     async ({ tab, shown }) => {
       using fixture = renderChanges();
-      await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+      await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
       const navigator = fixture.root.workspaceNavigatorStore;
       act(() => (tab === "chat" ? navigator.showChat() : navigator.show(tab)));
       const companion = () =>

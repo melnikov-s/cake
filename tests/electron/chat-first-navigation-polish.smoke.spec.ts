@@ -93,9 +93,9 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
       return Promise.all(
         [
           tools,
-          tools.getByRole("button", { name: /^(Main|Back to agent)$/ }),
-          tools.getByRole("button", { name: "Open VS Code", exact: true }),
-          tools.getByRole("button", { name: "Open Browser Mode", exact: true }),
+          tools.getByRole("button", { name: "Main", exact: true }),
+          tools.getByRole("button", { name: "VS Code", exact: true }),
+          tools.getByRole("button", { name: "Browser", exact: true }),
           tools.getByRole("button", { name: "Terminal", exact: true }),
         ].map(async (control) => {
           const box = await control.boundingBox();
@@ -177,7 +177,7 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
       .getByRole("separator", { name: "Resize current session sidebar", exact: true })
       .boundingBox())!;
     const toolControl = (await page
-      .getByRole("button", { name: "Open VS Code", exact: true })
+      .getByRole("button", { name: "VS Code", exact: true })
       .boundingBox())!;
     expect(splitter.y).toBeGreaterThanOrEqual(toolControl.y + toolControl.height);
     await page.getByRole("combobox", { name: "Message", exact: true }).click();
@@ -212,9 +212,10 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
     await expect(page.getByRole("heading", { name: "Automations", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await expect(workerInput).toHaveValue("Keep the Browser conversation draft");
-    await expect(
-      page.getByRole("button", { name: "Open Browser Mode", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "Browser", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
     const touchMedia = await page.evaluate(() => matchMedia("(hover: none)").matches);

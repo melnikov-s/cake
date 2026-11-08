@@ -197,15 +197,15 @@ describe("nested rich capabilities across production hosts", () => {
       { sessionId: "rich-sidecar", reference: reference.id },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
     await assertRichPanel();
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     await waitFor(() =>
       expect(screen.getByRole("textbox", { name: "Browser address" })).toBeDefined(),
     );
     await assertRichPanel();
-    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Main" }));
     await assertRichPanel();
     expect(readAttachment).toHaveBeenCalledTimes(1);
     expect(stateRead.mock.calls.length).toBeGreaterThan(0);

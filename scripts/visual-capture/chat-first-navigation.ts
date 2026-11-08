@@ -771,7 +771,7 @@ export function createChatFirstNavigationScenario(
           } else {
             await page
               .getByRole("button", {
-                name: browserState ? "Open Browser Mode" : "Open VS Code",
+                name: browserState ? "Browser" : "VS Code",
                 exact: true,
               })
               .click();

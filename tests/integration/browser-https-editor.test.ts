@@ -270,7 +270,7 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
               .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
               .last()
               .click();
-            await page.getByRole("button", { name: "Open VS Code" }).click();
+            await page.getByRole("button", { name: "VS Code", exact: true }).click();
             const frame = page.locator('iframe[title="VS Code workspace"]');
             await browserExpect(frame).toHaveAttribute(
               "src",
@@ -299,7 +299,7 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
               ws: "secure-editor",
             });
             expect(await page.evaluate(() => sessionStorage.getItem("editor-only"))).toBeNull();
-            await page.getByRole("button", { name: "Back to agent" }).first().click();
+            await page.getByRole("button", { name: "Main", exact: true }).first().click();
             await browserExpect(frame).toHaveCount(0);
             await browserExpect
               .poll(async () => (await context.request.get(src)).status())
@@ -310,7 +310,7 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
               new RegExp(`^${proxy.editor}/editor/`),
             );
             await browserExpect.poll(() => reveals).toContain("qualification.ts:0");
-            await page.getByRole("button", { name: "Back to agent" }).first().click();
+            await page.getByRole("button", { name: "Main", exact: true }).first().click();
             await browserExpect(frame).toHaveCount(0);
             if (existsSync("/opt/homebrew/bin/code-server")) {
               const port = await freeLocalPort();
@@ -345,7 +345,7 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
                   .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
                   .last()
                   .click();
-                await page.getByRole("button", { name: "Open VS Code" }).click();
+                await page.getByRole("button", { name: "VS Code", exact: true }).click();
                 const realFrame = page.locator('iframe[title="VS Code workspace"]');
                 await browserExpect(realFrame).toHaveAttribute(
                   "src",
@@ -385,7 +385,7 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
                   "qualification.ts",
                 );
                 expect(editorSockets).toBeGreaterThanOrEqual(2);
-                await page.getByRole("button", { name: "Back to agent" }).first().click();
+                await page.getByRole("button", { name: "Main", exact: true }).first().click();
                 await browserExpect
                   .poll(async () => (await context.request.get(realSrc)).status())
                   .toBe(403);

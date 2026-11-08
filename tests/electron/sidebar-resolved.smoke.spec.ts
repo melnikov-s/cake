@@ -137,7 +137,7 @@ test("resolves and restores the selected session through the project Sessions ac
     await expect(page.getByTestId("resolved-session-notice")).toContainText(
       "Send a message to restore this session",
     );
-    await expect(page.getByRole("button", { name: "Open VS Code" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "VS Code", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Terminal/ })).toHaveCount(0);
 
     const restoreAction = resolvedSession.getByRole("button", { name: /^Restore / });

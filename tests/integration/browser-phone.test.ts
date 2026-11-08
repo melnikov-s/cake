@@ -104,7 +104,7 @@ it.each([320, 360, 384, 390, 412])(
               page.getByRole("button", { name: "Open settings", exact: true }),
             ).toHaveCount(0);
             await browserExpect(
-              page.getByRole("button", { name: "Open VS Code", exact: true }),
+              page.getByRole("button", { name: "VS Code", exact: true }),
             ).toBeHidden();
             await browserExpect(
               page.getByRole("button", { name: "Terminal", exact: true }),
@@ -152,7 +152,7 @@ it.each([320, 360, 384, 390, 412])(
                 page.getByRole("button", { name: "Open settings", exact: true }),
               ).toHaveCount(0);
               await browserExpect(
-                page.getByRole("button", { name: "Open VS Code", exact: true }),
+                page.getByRole("button", { name: "VS Code", exact: true }),
               ).toBeHidden();
               await browserExpect(
                 page.getByRole("button", { name: "Terminal", exact: true }),
@@ -171,7 +171,7 @@ it.each([320, 360, 384, 390, 412])(
             }
             await page.setViewportSize({ width: 1280, height: 900 });
             await browserExpect(
-              page.getByRole("button", { name: "Open VS Code", exact: true }),
+              page.getByRole("button", { name: "VS Code", exact: true }),
             ).toBeVisible();
             await browserExpect(
               page.getByRole("button", { name: "Terminal", exact: true }),

@@ -100,7 +100,7 @@ for (const mode of ["Browser Mode", "VS Code"] as const) {
       await expect(composer).toHaveValue("Continue reviewing");
       await expect(composer).toBeFocused();
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-      await page.getByRole("button", { name: "Back to agent", exact: true }).first().click();
+      await page.getByRole("button", { name: "Main", exact: true }).first().click();
       await expect(panel).toBeVisible();
       await expect(selected).toHaveAttribute("aria-pressed", "true");
       expect(await readTodos()).toMatchObject({

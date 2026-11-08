@@ -138,7 +138,7 @@ test("project home and native Browser keep conversation drafts, companion identi
       }),
     ).toBeVisible();
     await expect(workerDraft).toHaveValue("Keep the worker conversation draft");
-    await page.getByRole("button", { name: "Back to agent", exact: true }).click();
+    await page.getByRole("button", { name: "Main", exact: true }).click();
     await expect(workerDraft).toHaveValue("Keep the worker conversation draft");
     await expect(
       page.getByRole("button", {

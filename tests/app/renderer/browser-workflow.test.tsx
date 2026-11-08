@@ -132,15 +132,15 @@ describe("Browser workspace workflow", () => {
   ])("passes %j as startup only, never as a navigation request", async (configured, expected) => {
     const open = vi.fn<Client["browser"]["open"]>(async () => ready);
     using fixture = renderBrowser({ browser: { open } }, false, configured);
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     await waitFor(() => expect(address().value).toBe(ready.url));
     expect(open).toHaveBeenLastCalledWith(
       sessionId,
       undefined,
       expect.objectContaining({ startupUrl: expected }),
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Main" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     await waitFor(() => expect(address().value).toBe(ready.url));
     expect(open).toHaveBeenCalledTimes(2);
     expect(open.mock.calls.every(([, url]) => url === undefined)).toBe(true);
@@ -154,7 +154,7 @@ describe("Browser workspace workflow", () => {
       "https://primary.example/",
       "/other",
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
     expect(open).toHaveBeenLastCalledWith(
       sessionId,
@@ -163,7 +163,7 @@ describe("Browser workspace workflow", () => {
     );
     await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
     await fixture.user.click(screen.getByRole("option", { name: /^Other task / }));
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
     expect(open).toHaveBeenLastCalledWith(
       "other-session",
@@ -182,7 +182,7 @@ describe("Browser workspace workflow", () => {
       .mockReturnValueOnce(pending)
       .mockResolvedValueOnce(ready);
     using fixture = renderBrowser({ browser: { open } }, true);
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
     await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
     await fixture.user.click(screen.getByRole("option", { name: /^Other task / }));
@@ -198,7 +198,7 @@ describe("Browser workspace workflow", () => {
     await waitFor(() => expect(address().value).toBe(ready.url));
     expect(open).toHaveBeenCalledTimes(2);
     expect(open.mock.calls.map(([id]) => id)).toEqual([sessionId, sessionId]);
-    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Main" }));
     expect(screen.queryByRole("textbox", { name: "Browser address" })).toBeNull();
   });
 
@@ -215,7 +215,7 @@ describe("Browser workspace workflow", () => {
       })
       .mockResolvedValueOnce({ ...ready, canGoBack: true });
     using fixture = renderBrowser({ browser: { open, action } });
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     await waitFor(() => expect(address().value).toBe(ready.url));
     expect(open).toHaveBeenCalledWith(
       sessionId,
@@ -236,7 +236,7 @@ describe("Browser workspace workflow", () => {
       [sessionId, "back"],
       [sessionId, "forward"],
     ]);
-    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Main" }));
     expect(screen.queryByRole("textbox", { name: "Browser address" })).toBeNull();
     expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
   });
@@ -250,7 +250,7 @@ describe("Browser workspace workflow", () => {
       TurnId.make("10000000-0000-4000-8000-000000000001"),
     );
     using fixture = renderBrowser({ browser: { inspect }, sessionChats: { prompt } });
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     await fixture.user.click(screen.getByRole("button", { name: "Select an element" }));
     expect(
       screen.getByRole("button", { name: "Select an element" }).getAttribute("aria-pressed"),
@@ -306,10 +306,10 @@ describe("Browser workspace workflow", () => {
       .mockRejectedValueOnce(new Error("Native browser unavailable"))
       .mockResolvedValueOnce(ready);
     using fixture = renderBrowser({ browser: { open } });
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     expect(await screen.findByText("Native browser unavailable")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Main" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     await waitFor(() => expect(address().value).toBe(ready.url));
     expect(screen.queryByText("Native browser unavailable")).toBeNull();
     expect(open).toHaveBeenCalledTimes(2);
@@ -323,7 +323,7 @@ describe("Browser workspace workflow", () => {
     }));
     const preview = vi.fn<Client["browser"]["preview"]>(async () => "http://127.0.0.1:4500/proxy/");
     using fixture = renderBrowser({ browser: { navigate, preview } });
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     await fixture.user.clear(address());
     await fixture.user.type(address(), "http://localhost:5173/settings{Enter}");
     await waitFor(() =>
@@ -357,7 +357,7 @@ describe("Browser workspace workflow", () => {
     });
     const preview = vi.fn<Client["browser"]["preview"]>();
     using fixture = renderBrowser({ browser: { navigate, preview } });
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     await fixture.user.clear(address());
     await fixture.user.type(address(), "http://localhost:5173/{Enter}");
     expect(await screen.findByText("Preview server refused connection")).toBeDefined();

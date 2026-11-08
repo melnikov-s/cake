@@ -232,7 +232,7 @@ describe("Workbench workflow", () => {
       () => pending.promise,
     );
     using fixture = renderWorkbench({ projectSessions: { resolveWorkingDirectory } });
-    expect(screen.getByRole("button", { name: "Open VS Code" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "VS Code" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));
     await waitFor(() => expect(resolveWorkingDirectory).toHaveBeenCalledOnce());
     await openSessionFromSearch(fixture.user, /^two conversation /);
@@ -262,7 +262,7 @@ describe("Workbench workflow", () => {
       }),
     );
     await waitFor(() => expect(screen.getAllByText("two conversation").length).toBeGreaterThan(1));
-    expect(screen.queryByRole("button", { name: "Open VS Code" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "VS Code" })).toBeNull();
     expect(open).not.toHaveBeenCalled();
     expect(openSourceControl).not.toHaveBeenCalled();
   });

@@ -85,7 +85,7 @@ for (const { mode, chatSidebarVisible, width } of [
       if (mode !== "normal") {
         await page
           .getByRole("button", {
-            name: mode === "browser" ? "Open Browser Mode" : "Open VS Code",
+            name: mode === "browser" ? "Browser" : "VS Code",
             exact: true,
           })
           .click();

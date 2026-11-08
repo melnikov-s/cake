@@ -63,7 +63,7 @@ describe("app.state visible workspace metadata", () => {
       browser: { open, navigate, updateBounds: async () => currentBrowserState },
       vscode: { performEditorAction: editorStatus },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     fixture.measureWorkspace();
     await fixture.user.clear(screen.getByRole("textbox", { name: "Browser address" }));
     await fixture.user.type(
@@ -85,7 +85,7 @@ describe("app.state visible workspace metadata", () => {
     expect(editorStatus).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
     expect(open).toHaveBeenCalledOnce();
-    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Main" }));
     expect(await fixture.appState()).not.toHaveProperty("state.workspaceView");
   });
 
@@ -100,7 +100,7 @@ describe("app.state visible workspace metadata", () => {
         updateBounds: async () => currentBrowserState,
       },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     fixture.measureWorkspace();
     const result = await fixture.appState();
     expect(result).toHaveProperty("state.workspaceView.status", "loading");
@@ -116,7 +116,7 @@ describe("app.state visible workspace metadata", () => {
         },
       },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     fixture.measureWorkspace();
     const result = await fixture.appState();
     expect(result).toHaveProperty("state.workspaceView.status", "unavailable");
@@ -135,7 +135,7 @@ describe("app.state visible workspace metadata", () => {
     using fixture = renderEmbeddedEditor({
       vscode: { open: async () => editorLease("b"), performEditorAction: status },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
     fixture.measureWorkspace();
     const result = await fixture.appState();
@@ -189,7 +189,7 @@ describe("app.state visible workspace metadata", () => {
         },
       },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
     fixture.measureWorkspace();
     const request = fixture.appState();
@@ -207,7 +207,7 @@ describe("app.state visible workspace metadata", () => {
     using fixture = renderEmbeddedEditor({
       vscode: { open: () => pending.promise, performEditorAction: status },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     fixture.measureWorkspace();
     expect(await fixture.appState()).toMatchObject({
       state: {
@@ -226,7 +226,7 @@ describe("app.state visible workspace metadata", () => {
     using fixture = renderEmbeddedEditor({
       vscode: { open: async () => editorLease("d"), performEditorAction: status },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
     fixture.measureWorkspace();
     vi.useFakeTimers();
@@ -265,7 +265,7 @@ describe("app.state visible workspace metadata", () => {
           },
         },
       });
-      await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+      await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
       await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
       fixture.measureWorkspace();
       const result = await fixture.appState();
@@ -297,14 +297,21 @@ describe("Workspace mode navigation", () => {
       expect(
         within(modes)
           .getAllByRole("button")
-          .map((button) => button.textContent),
+          .map((button) => button.getAttribute("aria-label")),
       ).toEqual(["Main", "VS Code", "Browser"]);
+      for (const button of within(modes).getAllByRole("button")) {
+        expect(button.textContent).toBe("");
+        expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+      }
+      expect(tools.classList.contains("border")).toBe(false);
+      expect(modes.classList.contains("border")).toBe(false);
       const header = tools.closest("header")!;
       const actions = header.querySelector('[data-slot="workspace-actions"]')!;
       const terminal = within(tools).getByRole("button", { name: "Terminal" });
-      const chatSlot = terminal.previousElementSibling!;
-      expect(chatSlot.classList.contains("size-7")).toBe(true);
-      expect(chatSlot.classList.contains("[@media(pointer:coarse)]:size-11")).toBe(true);
+      expect(modes.contains(terminal)).toBe(false);
+      const separator = terminal.previousElementSibling!;
+      expect(separator.getAttribute("aria-hidden")).toBe("true");
+      expect(separator.classList.contains("w-px")).toBe(true);
       expect(actions.classList.contains("overflow-x-auto")).toBe(true);
       expect(actions.classList.contains("shrink-0")).toBe(true);
       expect(header.classList.contains("h-title-bar")).toBe(true);
@@ -328,17 +335,17 @@ describe("Workspace mode navigation", () => {
       screen.getByRole("button", { name: "Main", exact: true }).getAttribute("aria-pressed"),
     ).toBe("true");
     const chatLayout = layout();
-    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     expect(await screen.findByRole("textbox", { name: "Browser address" })).toBeDefined();
     expect(layout()).toEqual(chatLayout);
     await fixture.user.click(screen.getByRole("button", { name: "Close Workspace" }));
     expect(layout()).toEqual(chatLayout);
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await screen.findByTitle("VS Code workspace");
     fixture.measureWorkspace();
     await waitFor(() => expect(document.documentElement.dataset.titleBar).toBe("vscode"));
     expect(layout()).toEqual(chatLayout);
-    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Main" }));
     expect(
       screen.getByRole("button", { name: "Main", exact: true }).getAttribute("aria-pressed"),
     ).toBe("true");
@@ -369,7 +376,7 @@ describe("Workspace mode navigation", () => {
       screen.getByRole("combobox", { name: "Message" }),
       "Keep this worker draft",
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() =>
       expect(open).toHaveBeenCalledWith(
         "/project-worktree",
@@ -386,12 +393,12 @@ describe("Workspace mode navigation", () => {
     expect(screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" }).value).toBe(
       "Keep this worker draft",
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Main" }));
     expect(screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" }).value).toBe(
       "Keep this worker draft",
     );
   });
-  it.each(["Open Browser Mode", "Open VS Code"] as const)(
+  it.each(["Browser", "VS Code"] as const)(
     "selects %s without changing the conversation and keeps all workspace modes available",
     async (action) => {
       const browserState = {
@@ -414,7 +421,7 @@ describe("Workspace mode navigation", () => {
         browser: { open: openBrowser, updateBounds: async () => browserState },
       });
       await fixture.user.click(screen.getByRole("button", { name: action }));
-      if (action === "Open VS Code") {
+      if (action === "VS Code") {
         await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
         expect(openEditor).toHaveBeenCalledOnce();
       } else {
@@ -428,7 +435,7 @@ describe("Workspace mode navigation", () => {
       expect(screen.getByRole("button", { name: action }).getAttribute("aria-pressed")).toBe(
         "true",
       );
-      const other = action === "Open VS Code" ? "Open Browser Mode" : "Open VS Code";
+      const other = action === "VS Code" ? "Browser" : "VS Code";
       expect(screen.getByRole("button", { name: other })).toBeDefined();
       expect(screen.getByRole("button", { name: "Terminal" })).toBeDefined();
       await fixture.user.type(
@@ -441,15 +448,17 @@ describe("Workspace mode navigation", () => {
           expect.objectContaining({
             sessionId: editorSessionId,
             text: "Continue in this workspace",
-            presentationMode: action === "Open Browser Mode" ? "browser" : "vscode",
+            presentationMode: action === "Browser" ? "browser" : "vscode",
             responseMode: "text",
           }),
           expect.objectContaining({ signal: expect.any(AbortSignal) }),
         ),
       );
-      await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Main" }));
       await waitFor(() =>
-        expect(screen.queryByRole("button", { name: "Back to agent" })).toBeNull(),
+        expect(screen.getByRole("button", { name: "Main" }).getAttribute("aria-pressed")).toBe(
+          "true",
+        ),
       );
       expect(screen.queryByTitle("VS Code workspace")).toBeNull();
       expect(screen.queryByRole("textbox", { name: "Browser address" })).toBeNull();

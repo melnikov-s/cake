@@ -337,7 +337,7 @@ test("separate Node backend serves a real leased code-server workbench to remote
     await expect.poll(async () => (await fetch(state.url)).status).toBe(403);
     await observerPage
       .getByRole("alert")
-      .getByRole("button", { name: "Back to agent", exact: true })
+      .getByRole("button", { name: "Main", exact: true })
       .click();
     await observerPage.getByRole("link", { name: "hello.ts", exact: true }).click();
     const second = observer;

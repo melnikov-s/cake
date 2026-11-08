@@ -287,7 +287,7 @@ it.skipIf(!existsSync("/opt/homebrew/bin/code-server"))(
         );
         if (unexpected.length)
           throw new Error(`Unexpected code-server responses: ${unexpected.join("\n")}`);
-        await page.getByRole("button", { name: "Back to agent" }).first().click();
+        await page.getByRole("button", { name: "Main", exact: true }).first().click();
         await expect(frame).toHaveCount(0);
         await expect.poll(async () => (await page.request.get(src)).status()).toBe(403);
       } finally {

@@ -50,8 +50,7 @@ function workspaceFrame() {
   return screen.queryByTitle<HTMLIFrameElement>("VS Code workspace");
 }
 function backToAgentButton() {
-  // The workspace toolbar and error card both expose the production return action.
-  return screen.getAllByRole("button", { name: "Back to agent" })[0]!;
+  return screen.getByRole("button", { name: "Main" });
 }
 
 function deferredCompletion<Value>() {
@@ -106,7 +105,7 @@ describe("Embedded editor workflow", () => {
     using fixture = renderEmbeddedEditor({
       vscode: { open: async () => lease, release },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(workspaceFrame()?.getAttribute("src")).toBe(lease.endpoint));
     await fixture.user.click(screen.getByRole("combobox", { name: "Message" }));
     await fixture.user.keyboard("{Escape}");
@@ -445,7 +444,7 @@ describe("Embedded editor workflow", () => {
       expect(workspaceFrame()).toBeNull();
       if (cancellation === "disconnect")
         expect(screen.getByText(/Connection lost\. Return to agent/)).toBeDefined();
-      else expect(screen.getByRole("button", { name: "Open VS Code" })).toBeDefined();
+      else expect(screen.getByRole("button", { name: "VS Code" })).toBeDefined();
     },
   );
 
@@ -470,7 +469,7 @@ describe("Embedded editor workflow", () => {
       await fixture.user.keyboard("{Control>}{Shift>}g{/Shift}{/Control}");
       if (cancellation === "disconnect") fixture.disconnected();
       await fixture.user.click(backToAgentButton());
-      await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+      await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
       expect(open).toHaveBeenCalledTimes(2);
       await boundary.accept();
       await hydrateBootstrap(boundary, fixture);
@@ -541,7 +540,7 @@ describe("Embedded editor workflow", () => {
         cakeChats: { start },
       });
       fixture.state({ status: "missing" });
-      await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+      await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
       await fixture.user.click(screen.getByRole("button", { name: "Ask Cake to set this up" }));
       await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
       const request = start.mock.calls[0]![0];
@@ -561,7 +560,7 @@ describe("Embedded editor workflow", () => {
       vscode: { open },
       sessionChats: { prompt },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(workspaceFrame()).not.toBeNull());
     fixture.nativeEvent({
       type: "embedded-editor-selection",
@@ -611,7 +610,7 @@ describe("Embedded editor workflow", () => {
     );
     await fixture.user.click(backToAgentButton());
     expect(workspaceFrame()).toBeNull();
-    expect(screen.getByRole("button", { name: "Open VS Code" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "VS Code" })).toBeDefined();
   });
 
   it("replaces diff-side context, preserves the document snapshot on send and clears it on editor changes", async () => {
@@ -622,7 +621,7 @@ describe("Embedded editor workflow", () => {
       vscode: { open: async () => editorLease("a") },
       sessionChats: { prompt },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(workspaceFrame()).not.toBeNull());
     const before = {
       document: {
@@ -733,7 +732,7 @@ describe("Embedded editor workflow", () => {
         ],
       },
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(workspaceFrame()).not.toBeNull());
     await waitFor(() =>
       expect(updateAnnotations).toHaveBeenCalledWith(
@@ -784,7 +783,7 @@ describe("Embedded editor workflow", () => {
     using fixture = renderEmbeddedEditor({ vscode: { open, install } });
     fixture.state({ status: "missing" });
 
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     expect(screen.getByText("Full VS Code editing")).toBeDefined();
     expect(screen.getByText(/The editor runs on Cake’s backend/)).toBeDefined();
     expect(screen.getByRole("button", { name: "Ask Cake to set this up" })).toBeDefined();
@@ -808,7 +807,7 @@ describe("Embedded editor workflow", () => {
     await waitFor(() => expect(screen.queryByText("Installing VS Code")).toBeNull());
     expect(open).toHaveBeenCalledTimes(1);
     await fixture.user.click(backToAgentButton());
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(workspaceFrame()?.getAttribute("src")).toBe(lease.endpoint));
     expect(open).toHaveBeenCalledTimes(2);
   });
@@ -833,7 +832,7 @@ describe("Embedded editor workflow", () => {
       vscode: { open, release, setTheme, updateAnnotations },
     });
 
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(workspaceFrame()?.getAttribute("src")).toBe(first.endpoint));
     expect(open).toHaveBeenCalledWith(
       editorWorkingDirectory,
@@ -863,8 +862,8 @@ describe("Embedded editor workflow", () => {
     expect(workspaceFrame()).toBeNull();
 
     await fixture.user.click(backToAgentButton());
-    expect(screen.getByRole("button", { name: "Open VS Code" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    expect(screen.getByRole("button", { name: "VS Code" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(workspaceFrame()?.getAttribute("src")).toBe(second.endpoint));
     expect(open).toHaveBeenCalledTimes(2);
     await waitFor(() => expect(updateAnnotations).toHaveBeenCalledTimes(2));
@@ -931,7 +930,7 @@ describe("Embedded editor workflow", () => {
       const release = vi.fn<Client["vscode"]["release"]>(async () => undefined);
       using fixture = renderEmbeddedEditor({ vscode: { open, release } });
 
-      await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+      await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
       const message =
         failure === "rejected open"
           ? "Editor service unavailable"
@@ -946,7 +945,7 @@ describe("Embedded editor workflow", () => {
         within(screen.getByRole("alert")).getByRole("button", { name: "Back to agent" }),
       );
       expect(screen.queryByText("VS Code could not open")).toBeNull();
-      await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+      await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
       await waitFor(() => expect(workspaceFrame()?.getAttribute("src")).toBe(good.endpoint));
       expect(screen.queryByText(message)).toBeNull();
       expect(open).toHaveBeenCalledTimes(2);
@@ -964,12 +963,12 @@ describe("Embedded editor workflow", () => {
     const release = vi.fn<Client["vscode"]["release"]>(async () => undefined);
     using fixture = renderEmbeddedEditor({ vscode: { open, release } });
 
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
     expect(workspaceFrame()).toBeNull();
     fixture.disconnected();
     await fixture.user.click(backToAgentButton());
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(workspaceFrame()?.getAttribute("src")).toBe(current.endpoint));
     await act(async () => {
       pending.resolve(stale);
@@ -989,11 +988,11 @@ describe("Embedded editor workflow", () => {
       .mockResolvedValueOnce(current);
     using fixture = renderEmbeddedEditor({ vscode: { open } });
 
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
     fixture.disconnected();
     await fixture.user.click(backToAgentButton());
-    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(workspaceFrame()?.getAttribute("src")).toBe(current.endpoint));
     await act(async () => {
       pending.reject(new Error("stale transport rejection"));

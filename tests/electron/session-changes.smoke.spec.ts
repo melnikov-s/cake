@@ -33,7 +33,7 @@ test("VS Code Changes replaces shown and hidden companions outside the native ed
     const application = app;
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.getByRole("button", { name: "Open VS Code", exact: true }).click();
+    await page.getByRole("button", { name: "VS Code", exact: true }).click();
     const nativeEditor = () =>
       application.evaluate(({ BrowserWindow }) => {
         const view = BrowserWindow.getAllWindows()[0]?.contentView.children.find((child) =>
@@ -190,7 +190,7 @@ test("Changes shares responsive panels: wide split, narrow and Browser Mode repl
     // even when the overall window is wide.
     await page.setViewportSize({ width: 1440, height: 900 });
     await toggle.click();
-    await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+    await page.getByRole("button", { name: "Browser", exact: true }).click();
     await expect(
       page.getByRole("region", { name: "Browser workspace", exact: true }),
     ).toBeVisible();

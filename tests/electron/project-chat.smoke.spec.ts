@@ -381,7 +381,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await page.getByRole("button", { name: "Terminal", exact: true }).click();
     await expect(page.getByRole("button", { name: "Hide terminal", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Hide terminal", exact: true }).click();
-    await page.getByRole("button", { name: "Open VS Code", exact: true }).click();
+    await page.getByRole("button", { name: "VS Code", exact: true }).click();
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
     if (existsSync(codeServerPath))
       await expect
@@ -397,9 +397,9 @@ test("Project Chat isolates history and restores its root workspace, while globa
           { timeout: 30_000 },
         )
         .toBe(true);
-    await page.getByRole("button", { name: "Back to agent", exact: true }).click();
+    await page.getByRole("button", { name: "Main", exact: true }).click();
 
-    await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+    await page.getByRole("button", { name: "Browser", exact: true }).click();
     await page.getByRole("textbox", { name: "Browser address" }).fill(`${origin}/project`);
     await page.getByRole("textbox", { name: "Browser address" }).press("Enter");
     await expect
@@ -411,14 +411,14 @@ test("Project Chat isolates history and restores its root workspace, while globa
         ),
       )
       .toBe(true);
-    await page.getByRole("button", { name: "Back to agent", exact: true }).click();
+    await page.getByRole("button", { name: "Main", exact: true }).click();
     await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
     await expect(transcript()).toContainText("GLOBAL_PRIVATE");
     await expect(transcript()).not.toContainText("PROJECT_PRIVATE");
-    await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+    await page.getByRole("button", { name: "Browser", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Browser address" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Open VS Code", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Back to agent", exact: true }).click();
+    await expect(page.getByRole("button", { name: "VS Code", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Main", exact: true }).click();
     await openProject();
     await input.fill("Keep this project draft");
     await expect
@@ -535,16 +535,16 @@ test("Project Chat isolates history and restores its root workspace, while globa
       await expect(input).toHaveValue("");
     };
     for (const [button, reminder] of [
-      ["Open Browser Mode", "The user has entered Browser Mode."],
-      ["Open VS Code", "The user has entered embedded VS Code."],
+      ["Browser", "The user has entered Browser Mode."],
+      ["VS Code", "The user has entered embedded VS Code."],
     ]) {
       const before = requests.length;
       await page.getByRole("button", { name: button, exact: true }).click();
-      await expect(page.getByRole("button", { name: "Back to agent", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Main", exact: true })).toBeVisible();
       expect(requests).toHaveLength(before);
       await sendInMode(`First message in ${button}`, reminder);
       await sendInMode(`Still in ${button}`);
-      await page.getByRole("button", { name: "Back to agent", exact: true }).click();
+      await page.getByRole("button", { name: "Main", exact: true }).click();
       expect(requests).toHaveLength(before + 2);
       await sendInMode(
         `Back from ${button}`,
@@ -553,12 +553,12 @@ test("Project Chat isolates history and restores its root workspace, while globa
     }
     // Browser -> VS Code before sending reports only the current editor, then
     // switching directly back to Browser reports the new current workspace.
-    await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
-    await page.getByRole("button", { name: "Open VS Code", exact: true }).click();
+    await page.getByRole("button", { name: "Browser", exact: true }).click();
+    await page.getByRole("button", { name: "VS Code", exact: true }).click();
     await sendInMode("Switched to code before sending", "The user has entered embedded VS Code.");
-    await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+    await page.getByRole("button", { name: "Browser", exact: true }).click();
     await sendInMode("Switched directly to browser", "The user has entered Browser Mode.");
-    await page.getByRole("button", { name: "Back to agent", exact: true }).click();
+    await page.getByRole("button", { name: "Main", exact: true }).click();
     await sendInMode(
       "Returned from the workspace switch",
       "The user has returned to the normal conversation view",
@@ -566,9 +566,9 @@ test("Project Chat isolates history and restores its root workspace, while globa
 
     // Unsent mode changes must not leak stale enter notices into a chat message.
     const before = requests.length;
-    await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
-    await page.getByRole("button", { name: "Open VS Code", exact: true }).click();
-    await page.getByRole("button", { name: "Back to agent", exact: true }).click();
+    await page.getByRole("button", { name: "Browser", exact: true }).click();
+    await page.getByRole("button", { name: "VS Code", exact: true }).click();
+    await page.getByRole("button", { name: "Main", exact: true }).click();
     expect(requests).toHaveLength(before);
     await sendInMode("Only the current chat view matters");
 

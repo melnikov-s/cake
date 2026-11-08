@@ -140,7 +140,7 @@ inherited by a parent. Inherited working does not make an idle parent count agai
 The tab tooltip gives exact running, unread and total counts. No new observations,
 polling or transcript/history reads are introduced.
 
-[`ToolbarGroup`](../../src/renderer/components/ui/toolbar-group.tsx) frames related workspace header actions with a leading hairline separator.
+Workspace mode controls use borderless `IconButton`s with a subtle selected fill; a single hairline separates the Terminal action from the three modes.
 
 [`FloatingToolbar`](../../src/renderer/components/ui/floating-toolbar.tsx) provides a
 content-sized, draggable toolbar with viewport-clamped transient geometry and keyboard movement.
