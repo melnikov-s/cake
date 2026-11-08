@@ -450,6 +450,16 @@ export const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         delivery: "prompt",
         attachments: [],
         markdown: false,
+        ...(prepared.initializeContext
+          ? {
+              internal: {
+                _tag: "UserWithReminders" as const,
+                text: assignment,
+                userText: prepared.input.task,
+                notices: [],
+              },
+            }
+          : null),
       },
     ];
     const hydrate = lazy

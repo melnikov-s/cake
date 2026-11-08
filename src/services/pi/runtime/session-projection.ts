@@ -23,6 +23,7 @@ import { partsFromMessage, type AbortPresentation } from "./message-projection";
 import { boundedProjectionKey, formatUnknown, textFromContent } from "./tool-projection";
 import { visibleUserMessageText } from "./user-message-transport";
 import { splitContextReminders } from "./session-context-reminders";
+import { inheritedContextEntryIds } from "./agent-context-fork";
 
 export const reviewRunEntryType = "cake.review-run/v1";
 export const userMessagePresentationEntryType = "cake.user-message-presentation/v1";
@@ -182,7 +183,27 @@ export function projectSessionEntries(
 
   const projectSystem = createSystemContextProjector();
   const internalInputs = internalInputOrigins(entries);
+  const inheritedIds = inheritedContextEntryIds(branchEntries);
+  const inherited = entries.filter((entry) => inheritedIds.has(entry.id));
+  if (inherited.length)
+    append({
+      id: `entry-${inherited[0]!.id}-inherited-context`,
+      kind: "context",
+      title: "Inherited context",
+      text: inherited
+        .map((entry) =>
+          entry.type === "message"
+            ? "content" in entry.message
+              ? textFromContent(entry.message.content)
+              : formatUnknown(entry.message)
+            : entry.type === "custom_message"
+              ? textFromContent(entry.content)
+              : "",
+        )
+        .join("\n\n"),
+    });
   for (const entry of entries) {
+    if (inheritedIds.has(entry.id)) continue;
     if (entry.type === "message") {
       const internal = internalInputs.get(entry.id);
       if (internal?._tag === "WorkboardDelivery") {

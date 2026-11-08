@@ -10,6 +10,7 @@ import { createDurableSideChats } from "../../src/services/pi-durable/durable-si
 import { makeSubagentEnvironmentLive } from "../../src/layers/SubagentEnvironmentLive";
 import { SubagentEnvironment } from "../../src/services/subagents/SubagentEnvironment";
 import { workingDirectorySessionPath } from "../../src/services/storage/session-files";
+import { projectConversationDisplay } from "../../src/services/pi/runtime/conversation-display-projection";
 import { durableAnswer, durableModel, durableModels } from "../fixtures/durable-chat";
 
 it("smoke: settled Durable context becomes private Pi history, survives reload, and never forks a human Side Chat", async () => {
@@ -77,6 +78,21 @@ it("smoke: settled Durable context becomes private Pi history, survives reload, 
     ).toBe(true);
     const secondReload = SessionManager.open(saved.path, sessionDirectory, directory);
     expect(secondReload.buildSessionContext().messages).toEqual(messages);
+    secondReload.appendMessage({
+      role: "user",
+      content: "Investigate the new task only",
+      timestamp: 10,
+    });
+    const display = projectConversationDisplay(secondReload);
+    expect(display.filter((part) => part.kind === "text")).toEqual([
+      expect.objectContaining({ role: "user", text: "Investigate the new task only" }),
+    ]);
+    expect(display).toContainEqual(
+      expect.objectContaining({ kind: "context", title: "Inherited context" }),
+    );
+    const finalReload = SessionManager.open(saved.path, sessionDirectory, directory);
+    expect(finalReload.buildSessionContext().messages.slice(0, messages.length)).toEqual(messages);
+    expect(projectConversationDisplay(finalReload)).toEqual(display);
   } finally {
     await harness.close(context);
     await rm(directory, { recursive: true, force: true });

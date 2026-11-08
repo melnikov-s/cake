@@ -436,9 +436,18 @@ export class NavigationStore extends Store<{
   }
 
   /** Direct conversation home, independent of visit history and Session Family ancestry. */
-  get sessionChatHome(): { projectPath: string | undefined } | undefined {
+  get sessionChatHome(): { projectPath: string | undefined; sourceSessionId?: string } | undefined {
     const active = this.props.shell.activeConversation;
     if (!active || this.props.shell.applicationSurface) return undefined;
+    const secondary = this.props.activeSecondaryTarget();
+    if (secondary?.kind === "subagent")
+      return {
+        projectPath:
+          this.props.catalog.find(secondary.sessionId)?.projectPath ??
+          this.props.cakeChat().summaries.find((chat) => chat.sessionId === secondary.sessionId)
+            ?.projectPath,
+        sourceSessionId: secondary.sessionId,
+      };
     if (active.kind === "cake-chat") return undefined;
     if (active.kind === "automation-session") {
       const context = this.props.automationSessions().selectedSession?.identity.context;
@@ -458,6 +467,7 @@ export class NavigationStore extends Store<{
   async returnToChatHome() {
     const home = this.sessionChatHome;
     if (!home) return;
+    if (home.sourceSessionId && (await this.openImmediateOwner(home.sourceSessionId))) return;
     if (home.projectPath) await this.openProjectChat(home.projectPath);
     else await this.openSessionLink(CAKE_CHAT_SESSION_ID);
   }

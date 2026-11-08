@@ -180,7 +180,13 @@ interface Fixture {
   readonly parentMessages: Ref.Ref<ReadonlyArray<string>>;
   readonly parentOrigins: Ref.Ref<ReadonlyArray<InternalInput | undefined>>;
   readonly childPrompts: Ref.Ref<
-    ReadonlyArray<{ sessionId: string; text: string; delivery?: string; markdown?: boolean }>
+    ReadonlyArray<{
+      sessionId: string;
+      text: string;
+      delivery?: string;
+      markdown?: boolean;
+      internal?: InternalInput;
+    }>
   >;
 }
 
@@ -211,7 +217,13 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
   const parentMessages = yield* Ref.make<ReadonlyArray<string>>([]);
   const parentOrigins = yield* Ref.make<ReadonlyArray<InternalInput | undefined>>([]);
   const childPrompts = yield* Ref.make<
-    ReadonlyArray<{ sessionId: string; text: string; delivery?: string; markdown?: boolean }>
+    ReadonlyArray<{
+      sessionId: string;
+      text: string;
+      delivery?: string;
+      markdown?: boolean;
+      internal?: InternalInput;
+    }>
   >([]);
 
   const runtime = (options: CakeSessionRuntimeSetup): CakeSessionRuntime => {
@@ -325,7 +337,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
         await Effect.runPromise(
           Ref.update(childPrompts, (values) => [
             ...values,
-            { sessionId, text, delivery, markdown },
+            { sessionId, text, delivery, markdown, ...(internal ? { internal } : {}) },
           ]),
         );
         if (turnId) activeTurnIds = [...activeTurnIds, turnId];
@@ -1088,9 +1100,15 @@ describe("agent-owned context forks", () => {
                 assert.equal(options?.allowMutations, false);
                 assert.equal(options?.newSession, false);
                 assert.equal(options?.cwd, "/managed/research");
-                assert.ok(
-                  (yield* Ref.get(fixture.childPrompts))[0]?.text.includes("unfinished exchange"),
+                const initialInput = (yield* Ref.get(fixture.childPrompts))[0];
+                assert.ok(initialInput?.text.includes("unfinished exchange"));
+                assert.ok(initialInput?.text.includes("Assignment guidance"));
+                assert.ok(initialInput?.internal?._tag === "UserWithReminders");
+                assert.equal(
+                  initialInput.internal.userText,
+                  "Explicit details from the unfinished exchange",
                 );
+                assert.ok(initialInput.internal.text.includes("Assignment guidance"));
                 yield* completeChild(fixture, child);
                 while (
                   (yield* coordinator.storage.get(started.handleId))?.status !== "complete" ||
