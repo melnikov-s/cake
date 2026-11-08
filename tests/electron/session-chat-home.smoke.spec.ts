@@ -98,22 +98,31 @@ for (const theme of ["light", "dark"] as const) {
       await expect(back).toBeVisible({ timeout: 20_000 });
       const breadcrumb = page.getByRole("navigation", { name: "Conversation breadcrumb" });
       await expect(breadcrumb).toContainText("Session navigation");
+      await expect(page.locator('[data-slot="context-group"]').first()).toBeVisible();
+      await mkdir(join(repository, ".visual-captures"), { recursive: true });
+      await page.screenshot({
+        path: join(repository, `.visual-captures/session-chat-home-${theme}.png`),
+      });
       const workspace = page.locator('[data-slot="workspace"]');
       const before = await workspace.boundingBox();
       const button = (await back.boundingBox())!;
       const breadcrumbBounds = (await breadcrumb.boundingBox())!;
-      expect(button.x + button.width / 2).toBe(84);
-      expect(button.y + button.height / 2).toBe(86);
+      const cakeChat = page.getByRole("button", { name: "Open Cake Chat", exact: true });
+      const cakeChatBounds = (await cakeChat.boundingBox())!;
+      await expect(back).toHaveCount(1);
+      expect(button.x - before!.x).toBe(16);
+      // The header's bottom rule accounts for at most one pixel of difference.
+      expect(
+        Math.abs(button.y + button.height / 2 - (cakeChatBounds.y + cakeChatBounds.height / 2)),
+      ).toBeLessThanOrEqual(1);
       expect(button.y).toBeGreaterThan(breadcrumbBounds.y + breadcrumbBounds.height);
+      const transcript = page.locator(".transcript").first();
+      expect((await transcript.boundingBox())!.y).toBeGreaterThan(button.y + button.height);
       expect(button.width).toBe(28);
       expect(button.height).toBe(28);
       expect(
         await back.evaluate((element) => parseFloat(getComputedStyle(element).borderRadius)),
       ).toBeGreaterThanOrEqual(button.width / 2);
-      await mkdir(join(repository, ".visual-captures"), { recursive: true });
-      await page.screenshot({
-        path: join(repository, `.visual-captures/session-chat-home-${theme}.png`),
-      });
       await back.hover();
       await expect(
         page.getByRole("tooltip", { name: "Back to Project Chat for Home fixture", exact: true }),
@@ -132,12 +141,44 @@ for (const theme of ["light", "dark"] as const) {
       await page.screenshot({
         path: join(repository, `.visual-captures/session-chat-home-${theme}-focused.png`),
       });
+      // Keep the target reachable when the Workspace becomes a narrow overlay.
+      await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
+      await application.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0]!;
+        window.setMinimumSize(360, 600);
+        window.setContentSize(480, 900);
+      });
+      expect(await page.evaluate(() => window.innerWidth)).toBe(480);
+      await expect(back).toHaveCount(1);
+      await expect(back).toBeVisible();
+      const narrow = (await back.boundingBox())!;
+      const narrowCakeChat = (await cakeChat.boundingBox())!;
+      const narrowWorkspace = await workspace.boundingBox();
+      expect((await transcript.boundingBox())!.y).toBeGreaterThan(narrow.y + narrow.height);
+      expect(narrow.x - narrowWorkspace!.x).toBe(16);
+      expect(narrow.x + narrow.width).toBeLessThan(480);
+      expect(
+        Math.abs(narrow.y + narrow.height / 2 - (narrowCakeChat.y + narrowCakeChat.height / 2)),
+      ).toBeLessThanOrEqual(1);
+      expect(
+        await back.evaluate((element) => {
+          const bounds = element.getBoundingClientRect();
+          return element.contains(
+            document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2),
+          );
+        }),
+      ).toBe(true);
+      await back.focus();
+      await expect(back).toBeFocused();
+      await page.screenshot({
+        path: join(repository, `.visual-captures/session-chat-home-${theme}-narrow.png`),
+      });
       await page.keyboard.press("Enter");
       await expect(
         page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
       ).toBeVisible();
       await expect(back).toHaveCount(0);
-      expect(await workspace.boundingBox()).toEqual(before);
+      expect(await workspace.boundingBox()).toEqual(narrowWorkspace);
       await page
         .getByRole("navigation", { name: "Projects and global utilities" })
         .getByRole("button", { name: "Open Cake Chat", exact: true })

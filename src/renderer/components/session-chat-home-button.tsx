@@ -13,13 +13,19 @@ export const SessionChatHomeButton = observer(function SessionChatHomeButton() {
     ? `Project Chat for ${root.projectCatalogStore.nameForPath(home.projectPath)}`
     : "Cake Chat";
   return (
-    <IconButton
-      data-slot="session-chat-home"
-      className="absolute left-4 top-[calc(var(--spacing-title-bar)+1.75rem)] z-20 rounded-full bg-sidebar/80 ring-1 ring-border/65"
-      tooltip={`Back to ${destination}`}
-      onClick={() => void navigation.returnToChatHome()}
+    // Match the rail's pt-2 / h-9 top action row, below the shared titlebar.
+    <nav
+      aria-label="Session home"
+      className="order-first box-content flex h-9 shrink-0 items-center py-2 pl-4"
     >
-      <ArrowLeftIcon />
-    </IconButton>
+      <IconButton
+        data-slot="session-chat-home"
+        className="rounded-full bg-sidebar/80 ring-1 ring-border/65"
+        tooltip={`Back to ${destination}`}
+        onClick={() => void navigation.returnToChatHome()}
+      >
+        <ArrowLeftIcon />
+      </IconButton>
+    </nav>
   );
 });
