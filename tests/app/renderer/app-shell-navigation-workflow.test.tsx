@@ -34,15 +34,12 @@ afterEach(() => {
 
 const settings = () => screen.getByRole("button", { name: "Settings" });
 const openLibrary = async (user: ReturnType<typeof renderAppShellNavigation>["user"]) => {
-  if (!screen.queryByRole("button", { name: "Browse all artifacts" })) {
-    await user.click(
-      within(screen.getByRole("navigation", { name: "Projects and global utilities" })).getByRole(
-        "button",
-        { name: /^(?:\d+ artifacts|Artifacts)$/ },
-      ),
-    );
-  }
-  await user.click(await screen.findByRole("button", { name: "Browse all artifacts" }));
+  await user.click(
+    within(screen.getByRole("navigation", { name: "Projects and global utilities" })).getByRole(
+      "button",
+      { name: "Artifacts" },
+    ),
+  );
 };
 const sessionButton = (name: string) =>
   screen.getByRole("button", { name: new RegExp(`^${name} conversation `) });
@@ -505,7 +502,7 @@ describe("App shell navigation workflow", () => {
     );
     await fixture.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
     await expectProjectChat("alpha");
-    // The artifact popover closes when browsing; reopen it from the same session.
+    // Reopen the library from the same conversation through the persistent rail.
     await openLibrary(fixture.user);
     await fixture.user.click(settings());
     expect(await screen.findByText("Model configuration")).toBeDefined();

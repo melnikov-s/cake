@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdtemp, rm, readFile, readdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -14,6 +15,7 @@ const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 for (const theme of ["light", "dark"] as const) {
   test(`Cake Chat artifact opens in the shared pane, expands and returns without losing scroll or chat (${theme})`, async () => {
+    test.setTimeout(120_000);
     const root = await mkdtemp(join(tmpdir(), "cake-artifact-menu-"));
     const paths = {
       cakeHome: join(root, "cake-home"),
@@ -133,17 +135,86 @@ for (const theme of ["light", "dark"] as const) {
       );
       await expect(input).toHaveValue("Use this report");
 
-      // A global selection retains the existing standalone fullscreen behavior over Settings.
+      // Sidebar navigation opens the existing library, not a popup over native views.
       await page.setViewportSize({ width: 1600, height: 1000 });
-      await page.getByRole("button", { name: "Open settings", exact: true }).click();
-      await page.getByRole("button", { name: "Artifacts", exact: true }).click();
-      await menu.getByRole("button", { name: /Coordinator report/ }).click();
-      await expect(surface.getByRole("heading", { name: "Session artifact" })).toBeVisible();
-      await expect(page.locator('[data-slot="project-rail"]')).toHaveCount(0);
-      await expectPresentationFitsRail(page, surface);
-      await expect(page.getByLabel("Search artifact library")).not.toBeAttached();
-      await surface.getByRole("button", { name: "Exit fullscreen Coordinator report" }).click();
-      await expect(page.getByRole("button", { name: "Back to chat", exact: true })).toBeVisible();
+      const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
+      const artifacts = rail.getByRole("button", { name: "Artifacts", exact: true });
+      const nativeToolVisible = () =>
+        app.evaluate(({ BrowserWindow, WebContentsView }) => {
+          const window = BrowserWindow.getAllWindows()[0]!;
+          return window.contentView.children.some(
+            (view) =>
+              view instanceof WebContentsView &&
+              view.webContents.id !== window.webContents.id &&
+              view.getVisible(),
+          );
+        });
+      for (const mode of ["Main", "Browser", "VS Code"] as const) {
+        if (mode === "VS Code" && !existsSync("/opt/homebrew/bin/code-server")) {
+          test.info().annotations.push({
+            type: "coverage-limit",
+            description: "Native VS Code coverage requires a local code-server installation.",
+          });
+          continue;
+        }
+        if (mode !== "Main") {
+          await page
+            .getByRole("button", {
+              name: mode === "Browser" ? "Open Browser Mode" : "Open VS Code",
+              exact: true,
+            })
+            .click();
+          await expect(
+            page.getByRole("region", { name: `${mode} workspace`, exact: true }),
+          ).toBeVisible();
+          await expect.poll(nativeToolVisible, { timeout: 30_000 }).toBe(true);
+        }
+        // The ordinary button remains keyboard reachable and supports Enter and Space.
+        await artifacts.focus();
+        await page.keyboard.press("Shift+Tab");
+        await page.keyboard.press("Tab");
+        await expect(artifacts).toBeFocused();
+        await page.keyboard.press(mode === "Browser" ? "Space" : "Enter");
+        const search = page.getByRole("textbox", { name: "Search artifact library" });
+        await expect(search).toBeVisible();
+        await expect(menu).not.toBeAttached();
+        await expect(page.getByRole("button", { name: "Browse all artifacts" })).not.toBeAttached();
+        await expect.poll(nativeToolVisible).toBe(false);
+        await search.fill("Coordinator");
+        await search.press("Enter");
+        await page
+          .getByRole("combobox", { name: "Filter artifacts by kind" })
+          .selectOption("markdown");
+        await page
+          .getByRole("navigation", { name: "Artifact lineages" })
+          .getByRole("button", { name: /Coordinator report/ })
+          .click();
+        await expect(
+          page.getByRole("heading", { name: "Session artifact", exact: true }),
+        ).toBeVisible();
+        // Library selections retain fullscreen viewing within the available shell space.
+        await page.getByRole("button", { name: "View Coordinator report fullscreen" }).click();
+        await expect(surface.getByRole("heading", { name: "Session artifact" })).toBeVisible();
+        await expect(page.locator('[data-slot="project-rail"]')).toHaveCount(1);
+        await expectPresentationFitsRail(page, surface);
+        await surface.getByRole("button", { name: "Exit fullscreen Coordinator report" }).click();
+        await expect(search).toBeVisible();
+        await page.getByRole("button", { name: "Close all artifacts", exact: true }).click();
+        await expect(search).not.toBeAttached();
+        if (mode !== "Main") {
+          await expect(
+            page.getByRole("region", { name: `${mode} workspace`, exact: true }),
+          ).toBeVisible();
+          await expect.poll(nativeToolVisible).toBe(true);
+        }
+      }
+      expect(
+        await app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows().every(
+            (window) => !window.isVisible() && !window.isFocused(),
+          ),
+        ),
+      ).toBe(true);
     } finally {
       await app.close();
       await promisify(execFile)("chmod", ["-R", "u+w", root]);

@@ -471,7 +471,7 @@ describe("Artifact accessory workflow", () => {
     },
   );
 
-  it("returns from Settings to open a global artifact fullscreen above the retained conversation, and still browses explicitly", async () => {
+  it("opens the library directly from the rail, preserving filters, artifact selection and the retained conversation", async () => {
     using fixture = renderArtifacts();
     const original = fixture.root.appShellStore.activeConversation;
     await fixture.user.click(
@@ -487,12 +487,18 @@ describe("Artifact accessory workflow", () => {
         { name: "Artifacts" },
       ),
     );
-    const menu = screen.getByRole("dialog", { name: "Artifacts" });
-    await fixture.user.click(within(menu).getByRole("button", { name: /Report unrelated/ }));
-    const surface = await screen.findByRole("dialog", { name: "Report unrelated" });
-    expect(await within(surface).findByText("unrelated body revision 2")).toBeDefined();
-    expect(screen.queryByRole("textbox", { name: "Search artifact library" })).toBeNull();
-    await fixture.user.keyboard("{Escape}");
+    const search = await screen.findByRole("textbox", { name: "Search artifact library" });
+    expect(screen.queryByRole("dialog", { name: "Artifacts" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Browse all artifacts" })).toBeNull();
+    await fixture.user.type(search, "unrelated{Enter}");
+    await fixture.user.selectOptions(
+      screen.getByRole("combobox", { name: "Filter artifacts by kind" }),
+      "markdown",
+    );
+    await fixture.user.click(await screen.findByRole("button", { name: /Report unrelated/ }));
+    expect(await screen.findByText("unrelated body revision 2")).toBeDefined();
+    expect(fixture.readExact).toHaveBeenCalledWith("unrelated", 2, expect.anything());
+    await fixture.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
     expect(fixture.root.appShellStore.activeConversation).toEqual(original);
     await fixture.user.click(
       within(screen.getByRole("navigation", { name: "Projects and global utilities" })).getByRole(
@@ -500,12 +506,15 @@ describe("Artifact accessory workflow", () => {
         { name: "Artifacts" },
       ),
     );
-    await fixture.user.click(
-      within(screen.getByRole("dialog", { name: "Artifacts" })).getByRole("button", {
-        name: "Browse all artifacts",
-      }),
+    expect(await screen.findByRole("textbox", { name: "Search artifact library" })).toHaveProperty(
+      "value",
+      "unrelated",
     );
-    expect(await screen.findByRole("textbox", { name: "Search artifact library" })).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "Filter artifacts by kind" })).toHaveProperty(
+      "value",
+      "markdown",
+    );
+    expect(await screen.findByText("unrelated body revision 2")).toBeDefined();
   });
 
   it("closes the artifact pane on conversation navigation without carrying selection into another session", async () => {

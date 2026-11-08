@@ -188,14 +188,12 @@ it.each(["alpha", CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
 
     await fixture.selectSession("beta");
     // The artifact cover exposes shell history; workbench Back traverses pane-local history first.
-    if (!screen.queryByRole("button", { name: "Browse all artifacts" }))
-      await fixture.user.click(
-        within(screen.getByRole("navigation", { name: "Projects and global utilities" })).getByRole(
-          "button",
-          { name: /^(?:\d+ artifacts|Artifacts)$/ },
-        ),
-      );
-    await fixture.user.click(await screen.findByRole("button", { name: "Browse all artifacts" }));
+    await fixture.user.click(
+      within(screen.getByRole("navigation", { name: "Projects and global utilities" })).getByRole(
+        "button",
+        { name: "Artifacts" },
+      ),
+    );
     await fixture.pressHistory("back");
     panel = await assertSplit();
     expect(within(panel).getByRole("combobox")).toHaveProperty("value", "Only the side draft");

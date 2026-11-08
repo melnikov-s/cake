@@ -7,6 +7,7 @@ import { describeError } from "../lib/error-details";
 import { Avatar } from "./ui/avatar";
 import { IconButton } from "./ui/icon-button";
 import {
+  ArtifactIcon,
   CakeIcon,
   FolderPlusIcon,
   LightningIcon,
@@ -15,7 +16,6 @@ import {
   SettingsIcon,
 } from "./ui/icons";
 import { ProjectSettingsDialog } from "./project-settings-dialog";
-import { ArtifactCatalogMenu } from "./artifact-catalog-menu";
 import { BrowserSharingMenu } from "./browser-sharing-menu";
 import { SortableItem } from "./ui/sortable-item";
 import { NavigationRail } from "./ui/navigation-rail";
@@ -109,16 +109,15 @@ export const ProjectRail = observer(function ProjectRail() {
                 <BrowserSharingMenu rail />
               </div>
             )}
-            <div className="w-full shrink-0">
-              <ArtifactCatalogMenu
-                railLabel="Artifacts"
-                store={root.artifactLibraryStore}
-                onOpenArtifact={(lineageId) =>
-                  root.navigationStore.openArtifact(undefined, lineageId)
-                }
-                onOpenLibrary={() => root.navigationStore.showArtifactLibrary()}
-              />
-            </div>
+            <IconButton
+              tooltip="Artifacts"
+              label="Artifacts"
+              className="h-9 shrink-0"
+              data-cake-hint-key="a"
+              onClick={() => root.navigationStore.showArtifactLibrary()}
+            >
+              <ArtifactIcon />
+            </IconButton>
             <IconButton
               tooltip="Automations"
               label="Automations"

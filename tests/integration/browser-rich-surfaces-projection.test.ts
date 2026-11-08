@@ -136,7 +136,6 @@ it("selects published widget and HTML artifacts through the real library project
           page.setDefaultTimeout(15_000);
           await page.goto(`http://127.0.0.1:${port}`);
           await page.getByRole("button", { name: "Artifacts", exact: true }).click();
-          await page.getByRole("button", { name: "Browse all artifacts" }).click();
           await page.getByRole("button", { name: /Browser widget fixture/ }).click();
           const widget = page.frameLocator('iframe[title="Browser widget fixture"]');
           await browserExpect(
