@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Schema } from "effect";
 import { StoreProvider } from "r-state-tree/react";
+import { VirtuosoMockContext } from "react-virtuoso";
 import {
   TurnId,
   type ConversationSnapshot,
@@ -78,6 +79,7 @@ function renderSideChats(
     streamingThreads?: readonly string[];
     commands?: ConversationSnapshot["commands"];
     setResolved?: Client["discussionSessions"]["setResolved"];
+    transcriptViewport?: boolean;
   } = {},
 ) {
   const fixture = createRendererStoreFixture({
@@ -160,30 +162,35 @@ function renderSideChats(
   }
   const view = render(
     <StoreProvider store={fixture.root}>
-      <ConversationFocusContext.Provider value>
-        <SideChatLayout
-          store={session.conversationSessionStore.sideChatStore}
-          renderChat={(chat, composerHeader) => (
+      <VirtuosoMockContext.Provider
+        value={options.transcriptViewport ? { viewportHeight: 1200, itemHeight: 100 } : undefined}
+      >
+        <ConversationFocusContext.Provider value>
+          <SideChatLayout
+            store={session.conversationSessionStore.sideChatStore}
+            renderChat={(chat, composerHeader) => (
+              <Chat
+                store={chat}
+                composerHeader={composerHeader}
+                embedded
+                composerFocusEnabled={false}
+              />
+            )}
+          >
+            <SideChatsMenu store={session} />
             <Chat
-              store={chat}
-              composerHeader={composerHeader}
+              store={session.conversationSessionStore.chatStore}
               embedded
               composerFocusEnabled={false}
             />
-          )}
-        >
-          <SideChatsMenu store={session} />
-          <Chat
-            store={session.conversationSessionStore.chatStore}
-            embedded
-            composerFocusEnabled={false}
-          />
-        </SideChatLayout>
-      </ConversationFocusContext.Provider>
+          </SideChatLayout>
+        </ConversationFocusContext.Provider>
+      </VirtuosoMockContext.Provider>
     </StoreProvider>,
   );
   return {
     user: userEvent.setup(),
+    root: fixture.root,
     session,
     resolutions,
     publish(threads: DiscussionThread[]) {
@@ -231,6 +238,96 @@ afterEach(() => {
 });
 
 describe("Secondary conversation workflows", () => {
+  it.each([416, 1200])(
+    "switches side chat tabs without resolving or losing drafts/transcripts at %ipx",
+    async (width) => {
+      availableWidth = width;
+      const withTranscript = (id: string, title: string, text: string): DiscussionThread => {
+        const base = thread(id, title);
+        return {
+          ...base,
+          parts: [
+            ...base.parts,
+            { id: `${id}-answer`, kind: "text", role: "assistant", text, status: "complete" },
+          ],
+        };
+      };
+      const first = withTranscript("first", "First discussion", "First transcript");
+      const second = withTranscript("second", "Second discussion", "Second transcript");
+      using fixture = renderSideChats(vi.fn<Client["discussionSessions"]["start"]>(), {
+        threads: [first, second],
+        transcriptViewport: true,
+      });
+      // Establish a reading position before each virtual transcript mounts in jsdom.
+      act(() => {
+        for (const id of ["first", "second"])
+          fixture.root.reviewsStore
+            .chatStore(id)!
+            .transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
+      });
+      const mainInput = screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
+      await fixture.user.type(mainInput, "Main draft");
+      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 2 open" }));
+      await fixture.user.click(screen.getByRole("button", { name: "First discussion" }));
+      const sideChatStore = fixture.session.conversationSessionStore.sideChatStore;
+      const firstChat = sideChatStore.target!.chatStore!;
+      act(() => firstChat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" }));
+      const tabs = within(screen.getByRole("tablist", { name: "Side chats" }));
+      expect(tabs.getAllByRole("tab")).toHaveLength(2);
+      expect(
+        tabs.getByRole("tab", { name: "First discussion" }).getAttribute("aria-selected"),
+      ).toBe("true");
+      let content = screen.getByRole("tabpanel", { name: "First discussion" });
+      expect(firstChat.parts.map((part) => (part.kind === "text" ? part.text : ""))).toContain(
+        "First transcript",
+      );
+      expect(await within(content).findByText("First transcript")).toBeDefined();
+      await fixture.user.type(within(content).getByRole("combobox"), "First draft");
+      await fixture.user.click(tabs.getByRole("tab", { name: "Second discussion" }));
+      content = screen.getByRole("tabpanel", { name: "Second discussion" });
+      const secondChat = sideChatStore.target!.chatStore!;
+      act(() => secondChat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" }));
+      expect(await within(content).findByText("Second transcript")).toBeDefined();
+      expect(within(content).queryByText("First transcript")).toBeNull();
+      expect(within(content).getByRole("combobox")).toHaveProperty("value", "");
+      await fixture.user.type(within(content).getByRole("combobox"), "Second draft");
+      expect(screen.getAllByRole("complementary", { name: "Side chat" })).toHaveLength(1);
+      expect(fixture.resolutions).not.toHaveBeenCalled();
+      await fixture.user.click(tabs.getByRole("tab", { name: "First discussion" }));
+      content = screen.getByRole("tabpanel", { name: "First discussion" });
+      expect(await within(content).findByText("First transcript")).toBeDefined();
+      expect(within(content).getByRole("combobox")).toHaveProperty("value", "First draft");
+      expect(firstChat.transcriptInteraction.transcriptScrollPosition).toEqual({ kind: "top" });
+      const layout = content.closest('[data-slot="side-chat-layout"]')!;
+      act(() => {
+        availableWidth = width === 416 ? 1200 : 416;
+        resizeLayout();
+      });
+      expect(
+        screen.getByRole("tab", { name: "First discussion" }).getAttribute("aria-selected"),
+      ).toBe("true");
+      expect(layout.getAttribute("data-presentation")).toBe(
+        width === 416 ? "side-by-side" : "replacement",
+      );
+      await fixture.user.click(screen.getByRole("button", { name: "Close side chat" }));
+      expect(screen.queryByRole("tablist", { name: "Side chats" })).toBeNull();
+      expect(mainInput.value).toBe("Main draft");
+      expect(fixture.resolutions).not.toHaveBeenCalled();
+      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 2 open" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Second discussion" }));
+      expect(screen.getByRole("tabpanel", { name: "Second discussion" })).toBeDefined();
+      expect(screen.getByRole("combobox", { name: "Reply to side chat" })).toHaveProperty(
+        "value",
+        "Second draft",
+      );
+      expect(secondChat.transcriptInteraction.transcriptScrollPosition).toEqual({ kind: "top" });
+      await fixture.user.click(screen.getByRole("button", { name: "Close and resolve" }));
+      expect(fixture.resolutions).toHaveBeenCalledTimes(1);
+      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+      await fixture.user.click(screen.getByRole("button", { name: "First discussion" }));
+      expect(screen.queryByRole("tablist", { name: "Side chats" })).toBeNull();
+    },
+  );
   it.each([416, 700, 1200])(
     "dismisses without resolving and preserves drafts across resize (initial area: %ipx)",
     async (width) => {
@@ -247,6 +344,7 @@ describe("Secondary conversation workflows", () => {
         return screen.getByRole("complementary", { name: "Side chat" });
       };
       let panel = await openSideChat();
+      expect(screen.queryByRole("tablist", { name: "Side chats" })).toBeNull();
       const layout = panel.closest('[data-slot="side-chat-layout"]')!;
       const origin = layout.firstElementChild!;
       const sideInput = within(panel).getByRole<HTMLTextAreaElement>("combobox");

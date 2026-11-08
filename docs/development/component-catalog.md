@@ -144,6 +144,8 @@ counts move below both labels rather than widening Sessions or truncating either
 The tab tooltip gives exact running, unread and total counts. No new observations,
 polling or transcript/history reads are introduced.
 
+[`PaneTabs`](../../src/renderer/components/ui/pane-tabs.tsx) presents manually activated tabs for a single pane. The strip scrolls within its pane, truncates long labels, and reveals focused/selected tabs without scrolling the workspace. Arrow keys and Home/End move focus; Enter/Space activate. Callers own selection and the associated tabpanel. Side Chat omits the strip for a single conversation and keeps dismissal separate from resolution.
+
 Workspace mode controls use borderless `IconButton`s with a subtle selected fill; a single hairline separates the Terminal action from the three modes.
 
 [`FloatingToolbar`](../../src/renderer/components/ui/floating-toolbar.tsx) provides a

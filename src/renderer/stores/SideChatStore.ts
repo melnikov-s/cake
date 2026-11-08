@@ -48,7 +48,19 @@ export type SideChatTarget = SidePanelTarget &
       }
   );
 
+export interface SideChatTab {
+  readonly id: string;
+  readonly title: string;
+}
+
+export interface SideChatTabNavigation {
+  entries(): readonly SideChatTab[];
+  select(threadId: string): void;
+}
+
 export interface SideChatStoreProps {
+  sessionId?: string;
+  tabs?: SideChatTabNavigation;
   onClose?(): void;
 }
 
@@ -58,6 +70,29 @@ export class SideChatStore extends Store<SideChatStoreProps> {
   width = 416;
   resolving = false;
   resolutionError: string | undefined;
+
+  /** Direct siblings of the selected chat; artifacts, drafts and private workers are not tabs. */
+  get tabs(): readonly SideChatTab[] {
+    const target = this.target;
+    const navigation = target?.navigationTarget;
+    if (
+      !target ||
+      navigation?.kind !== "side-chat" ||
+      navigation.parentSessionId !== this.props.sessionId
+    )
+      return [];
+    const entries = this.props.tabs?.entries() ?? [];
+    // An explicitly merged/archived chat can remain open for inspection.
+    return entries.some((entry) => entry.id === navigation.threadId)
+      ? entries
+      : [...entries, { id: navigation.threadId, title: target.currentTitle?.() ?? target.title }];
+  }
+
+  selectTab(threadId: string) {
+    const navigation = this.target?.navigationTarget;
+    if (navigation?.kind !== "side-chat" || navigation.threadId === threadId) return;
+    if (this.tabs.some((entry) => entry.id === threadId)) this.props.tabs?.select(threadId);
+  }
 
   open(target: SideChatTarget) {
     this.resolutionError = undefined;

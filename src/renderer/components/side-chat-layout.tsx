@@ -1,8 +1,9 @@
-import { useContext, type ReactNode } from "react";
+import { useContext, useId, type ReactNode } from "react";
 import { ConversationFocusContext } from "../lib/conversation-focus-context";
 import { observer } from "r-state-tree/react";
 import { AccessoryPanelLayout } from "@/components/ui/accessory-panel-layout";
 import { SidePanel } from "@/components/ui/side-panel";
+import { PaneTabs } from "@/components/ui/pane-tabs";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import type { ChatStore } from "../stores/ChatStore";
@@ -29,6 +30,12 @@ export const SideChatLayout = observer(function SideChatLayout({
 }) {
   const focusConversation = useContext(ConversationFocusContext);
   const target = hideArtifact && store.target?.artifact ? undefined : store.target;
+  const tabId = useId();
+  const panelId = `${tabId}-panel`;
+  const tabs = store.tabs;
+  const selectedTab =
+    target?.navigationTarget?.kind === "side-chat" ? target.navigationTarget.threadId : undefined;
+  const showTabs = tabs.length > 1 && selectedTab !== undefined;
   const model = target?.model?.();
   const title = target?.currentTitle?.() ?? target?.title ?? "";
   const isSideChat = Boolean(target?.chatStore && !target.key.startsWith("subagent:"));
@@ -125,13 +132,29 @@ export const SideChatLayout = observer(function SideChatLayout({
                 )
               }
             >
-              <div className="flex h-full min-h-0 flex-col">
+              <div className="flex h-full min-h-0 min-w-0 flex-col">
+                {showTabs && (
+                  <PaneTabs
+                    id={tabId}
+                    label="Side chats"
+                    items={tabs}
+                    value={selectedTab}
+                    panelId={panelId}
+                    onValueChange={(threadId) => store.selectTab(threadId)}
+                  />
+                )}
                 {showExitActions && !dockActions && actions}
                 {store.resolutionError && (
                   <Callout variant="error">{store.resolutionError}</Callout>
                 )}
                 {target.merge?.error && <Callout variant="error">{target.merge.error}</Callout>}
-                <div className="min-h-0 flex-1">
+                <div
+                  key={target.key}
+                  id={panelId}
+                  role={showTabs ? "tabpanel" : undefined}
+                  aria-labelledby={showTabs ? `${tabId}-${selectedTab}` : undefined}
+                  className="min-h-0 min-w-0 flex-1"
+                >
                   {target.changes ? (
                     <SessionChangesPanel store={target.changes} />
                   ) : (

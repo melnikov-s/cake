@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { applySnapshot } from "r-state-tree";
+import { applySnapshot, toSnapshot } from "r-state-tree";
 import { observer, StoreProvider } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -24,6 +24,7 @@ import { applyConversationSnapshot } from "../../../src/renderer/reducers/Conver
 import { applyDiscussionCatalogUpdate } from "../../../src/renderer/reducers/DiscussionReducer";
 import type { CakeChatSessionStore } from "../../../src/renderer/stores/CakeChatSessionStore";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { ReviewThread } from "../../../src/renderer/models/ReviewThread";
 
 /** The Cake Chat pane's side chat composition, as `cake-chat-surface` assembles it. */
 const Surface = observer(function Surface({
@@ -203,6 +204,70 @@ function mergeFixture(
   chat.openSideChat("merge-thread");
   return Object.assign(fixture, { chat, side, setResolved });
 }
+
+it("switches Cake Chat side tabs through the existing owner without resolving", async () => {
+  const merge = vi.fn(async () => ({ importedMessages: 0 }));
+  using fixture = mergeFixture(merge);
+  const catalog = fixture.models.discussionCatalog(CAKE_CHAT_SESSION_ID);
+  catalog.threads[0]!.title = "First chat";
+  catalog.threads.push(
+    ReviewThread.create({
+      ...toSnapshot(catalog.threads[0]!),
+      id: "second-thread",
+      title: "Second chat",
+      sidecarSessionId: "second-side",
+      parts: [],
+    }),
+  );
+  catalog.threads.push(
+    ReviewThread.create({
+      ...toSnapshot(catalog.threads[0]!),
+      id: "resolved-thread",
+      sidecarSessionId: "resolved-side",
+      title: "Resolved chat",
+      status: "resolved",
+    }),
+    ReviewThread.create({
+      ...toSnapshot(catalog.threads[0]!),
+      id: "code-thread",
+      sidecarSessionId: "code-side",
+      title: "Code discussion",
+      anchor: { ...catalog.threads[0]!.anchor, view: "file" },
+    }),
+  );
+  applyConversationSnapshot(
+    fixture.models.discussionConversation("second-side", "/home", CAKE_CHAT_SESSION_ID),
+    snapshot("second-side", []),
+  );
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <Surface chat={fixture.chat} />
+    </StoreProvider>,
+  );
+  const user = userEvent.setup();
+  expect(screen.getAllByRole("tab")).toHaveLength(2);
+  expect(screen.queryByRole("tab", { name: "Resolved chat" })).toBeNull();
+  expect(screen.queryByRole("tab", { name: "Code discussion" })).toBeNull();
+  const input = screen.getByRole("combobox", { name: "Reply to side chat" });
+  await user.type(input, "First draft");
+  await user.click(screen.getByRole("tab", { name: "Second chat" }));
+  expect(
+    fixture.chat.conversationSessionStore.sideChatStore.target?.navigationTarget,
+  ).toMatchObject({ kind: "side-chat", threadId: "second-thread" });
+  expect(screen.getByRole("combobox", { name: "Reply to side chat" })).toHaveProperty("value", "");
+  await user.type(screen.getByRole("combobox", { name: "Reply to side chat" }), "Second draft");
+  await user.click(screen.getByRole("tab", { name: "First chat" }));
+  expect(screen.getByRole("combobox", { name: "Reply to side chat" })).toHaveProperty(
+    "value",
+    "First draft",
+  );
+  await user.click(screen.getByRole("button", { name: "Close side chat" }));
+  expect(fixture.setResolved).not.toHaveBeenCalled();
+  expect(merge).not.toHaveBeenCalled();
+  expect(catalog.threads.find((thread) => thread.id === "merge-thread")?.status).toBe("open");
+  expect(catalog.threads.find((thread) => thread.id === "second-thread")?.status).toBe("open");
+  view.unmount();
+});
 
 it("merges an idle side chat explicitly, keeps it usable, and reports repeated imports", async () => {
   let finish!: (result: { importedMessages: number }) => void;

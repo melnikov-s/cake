@@ -381,6 +381,26 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       model: this.model,
       operations: this.props.operations,
       canSubmit: () => this.canSubmit(),
+      sideChatTabs: {
+        entries: () =>
+          this.sideChatThreads
+            .filter((thread) => Boolean(thread.sidecarSessionId))
+            .toSorted(
+              (left, right) =>
+                left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+            )
+            .map((thread) => ({
+              id: thread.id,
+              title:
+                thread.title ||
+                thread.anchor.selectedText ||
+                thread.textParts.find((part) => part.role === "user")?.text ||
+                "Side chat",
+            })),
+        select: (threadId) => {
+          this.openSideChat(threadId);
+        },
+      },
       startSession: (input) => creation.start(this.sessionId, input),
       ensureSessionActive: () => management.ensureSessionActive(this.sessionId),
       composer: {

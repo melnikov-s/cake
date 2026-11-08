@@ -311,6 +311,30 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       model: this.model,
       operations: this.props.operations,
       canSubmit: () => true,
+      sideChatTabs: {
+        entries: () =>
+          this.sideChatThreads
+            .filter(
+              (thread) =>
+                Boolean(thread.sidecarSessionId) &&
+                ["message", "artifact", "session"].includes(thread.anchor.view ?? ""),
+            )
+            .toSorted(
+              (left, right) =>
+                left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+            )
+            .map((thread) => ({
+              id: thread.id,
+              title:
+                thread.title ||
+                thread.anchor.selectedText ||
+                thread.textParts.find((part) => part.role === "user")?.text ||
+                "Side chat",
+            })),
+        select: (threadId) => {
+          this.openSideChat(threadId);
+        },
+      },
       startSession: (input) => this.startSession(input),
       ensureSessionActive: () => true,
       composer: {

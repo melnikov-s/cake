@@ -142,11 +142,22 @@ describe("IDE conversation workflows", () => {
           discussionSessions: { setResolved },
         },
         {
-          threads: [discussion("message")],
+          threads: [
+            discussion("message"),
+            {
+              ...discussion("message"),
+              id: "other-thread",
+              sidecarSessionId: "other-sidecar",
+              anchor: {
+                ...discussion("message").anchor,
+                selectedText: "Another selection with a very long title ".repeat(12),
+              },
+            },
+          ],
         },
       );
       await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "Main draft");
-      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 2 open" }));
       await fixture.user.click(screen.getByRole("button", { name: /important detail/ }));
       await fixture.user.click(
         screen.getByRole("button", { name: mode === "browser" ? "Browser" : "VS Code" }),
@@ -165,6 +176,13 @@ describe("IDE conversation workflows", () => {
       expect(layout.getAttribute("data-presentation")).toBe("replacement");
       expect(layout.firstElementChild!.hasAttribute("inert")).toBe(true);
       expect(screen.queryByRole("separator", { name: "Resize side chat" })).toBeNull();
+      const tabs = within(within(panel).getByRole("tablist", { name: "Side chats" }));
+      expect(tabs.getAllByRole("tab")).toHaveLength(2);
+      await fixture.user.type(within(panel).getByRole("combobox"), "First side draft");
+      await fixture.user.click(tabs.getByRole("tab", { name: /Another selection/ }));
+      expect(within(panel).getByRole("combobox")).toHaveProperty("value", "");
+      await fixture.user.click(tabs.getByRole("tab", { name: "important detail" }));
+      expect(within(panel).getByRole("combobox")).toHaveProperty("value", "First side draft");
       await fixture.user.click(within(panel).getByRole("button", { name: "Close side chat" }));
       expect(layout.getAttribute("data-presentation")).toBe("closed");
       expect(layout.firstElementChild!.hasAttribute("inert")).toBe(false);
@@ -179,7 +197,7 @@ describe("IDE conversation workflows", () => {
           : screen.getByTitle("VS Code workspace"),
       ).toBe(workspace);
       // Existing origin navigation still returns to the main chat without leaving the tool.
-      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 2 open" }));
       await fixture.user.click(screen.getByRole("button", { name: /important detail/ }));
       await fixture.user.click(
         within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByRole(
