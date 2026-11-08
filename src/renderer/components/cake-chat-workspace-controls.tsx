@@ -42,7 +42,7 @@ export const CakeChatWorkspaceControls = observer(function CakeChatWorkspaceCont
         onOpenIde={() => void presentation.openIde()}
         onToggleTerminal={() => void terminal.toggle()}
       />
-      <WorkLogControls store={session.conversationSessionStore.chatStore} />
+      {mode !== "vscode" && <WorkLogControls store={session.conversationSessionStore.chatStore} />}
     </>
   );
 });

@@ -260,6 +260,70 @@ it.each<Mode>(["browser", "vscode"])(
 // Real workflow Stores, Models, controls, Chat and side-chat composition.
 // These assertions cover rendered wiring, not pixel layout, native input or focus.
 describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
+  it("places one VS Code work-log trigger immediately before the shell pane toggle and preserves its behavior", async () => {
+    using f = renderWorkspace(kind, "vscode", false, true);
+    const shellControls = document.querySelector('[data-slot="shell-workspace-controls"]')!;
+    const trigger = () => screen.getByRole("button", { name: "Work log display options" });
+    const expectToolbarPlacement = () => {
+      const buttons = screen.getAllByRole("button");
+      expect(buttons[buttons.indexOf(trigger()) - 1]).toBe(
+        screen.getByRole("button", { name: "Terminal" }),
+      );
+      expect(shellControls.contains(trigger())).toBe(false);
+    };
+    // A saved VS Code preference is not enough: the editor must actually be shown.
+    expectToolbarPlacement();
+    await f.user.click(screen.getByRole("button", { name: "VS Code" }));
+    const expectShellPlacement = () => {
+      expect(screen.getAllByRole("button", { name: "Work log display options" })).toHaveLength(1);
+      expect(shellControls.contains(trigger())).toBe(true);
+      const buttons = within(shellControls as HTMLElement).getAllByRole("button");
+      expect(buttons).toEqual([
+        trigger(),
+        document.querySelector('[data-slot="shell-workspace-toggle"]'),
+      ]);
+      expect(trigger().querySelectorAll("svg")).toHaveLength(2);
+    };
+    expectShellPlacement();
+    const presentation = f.session.conversationSessionStore.chatStore.workLogPresentation;
+    const setViewMode = vi.spyOn(presentation, "setViewMode");
+    const setExpansion = vi.spyOn(presentation, "setExpansion");
+    await f.user.click(trigger());
+    for (const [name, value] of [
+      ["Auto view mode", "auto"],
+      ["Diff view mode", "diff"],
+      ["Log view mode", "log"],
+    ] as const) {
+      await f.user.click(screen.getByRole("button", { name }));
+      expect(setViewMode).toHaveBeenLastCalledWith(value);
+      expect(screen.getByRole("button", { name }).getAttribute("aria-pressed")).toBe("true");
+    }
+    for (const [name, value] of [
+      ["Collapsed work logs", "collapsed"],
+      ["Compact work logs", "expanded"],
+      ["Full work logs", "fully-expanded"],
+    ] as const) {
+      await f.user.click(screen.getByRole("button", { name }));
+      expect(setExpansion).toHaveBeenLastCalledWith(value);
+      expect(screen.getByRole("button", { name }).getAttribute("aria-pressed")).toBe("true");
+    }
+    await f.user.click(trigger());
+    await f.user.click(screen.getByRole("button", { name: "Close Workspace" }));
+    expectShellPlacement();
+    await f.user.click(screen.getByRole("button", { name: "Open Workspace" }));
+    expectShellPlacement();
+    await f.user.click(screen.getByRole("button", { name: "Main" }));
+    expectToolbarPlacement();
+    await f.user.click(screen.getByRole("button", { name: "Browser", exact: true }));
+    expectToolbarPlacement();
+    await f.user.click(screen.getByRole("button", { name: "VS Code" }));
+    expectShellPlacement();
+    await f.user.click(trigger());
+    for (const name of ["Log view mode", "Full work logs"]) {
+      expect(screen.getByRole("button", { name }).getAttribute("aria-pressed")).toBe("true");
+    }
+  });
+
   it.each(
     (["browser", "vscode"] as const).flatMap((mode) =>
       (["todos", "sessions"] as const).flatMap((tab) =>

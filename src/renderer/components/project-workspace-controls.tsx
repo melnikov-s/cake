@@ -43,7 +43,7 @@ export const ProjectWorkspaceControls = observer(function ProjectWorkspaceContro
         onOpenIde={() => void store.presentationStore.openIde()}
         onToggleTerminal={() => void terminal.toggle()}
       />
-      <WorkLogControls store={session.conversationSessionStore.chatStore} />
+      {mode !== "vscode" && <WorkLogControls store={session.conversationSessionStore.chatStore} />}
     </>
   );
 });

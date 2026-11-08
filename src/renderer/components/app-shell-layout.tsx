@@ -16,11 +16,13 @@ import { SessionChatHomeButton } from "./session-chat-home-button";
 export const AppShellLayout = observer(function AppShellLayout({
   children,
   overlays,
+  workspaceControls,
   commandPaneWidth,
   onCommandPaneWidthChange,
 }: {
   children: ReactNode;
   overlays: ReactNode;
+  workspaceControls?: ReactNode;
   commandPaneWidth: number;
   onCommandPaneWidthChange(width: number): void;
 }) {
@@ -125,8 +127,9 @@ export const AppShellLayout = observer(function AppShellLayout({
       {!applicationView && !shell.applicationSurface && (
         <div
           data-slot="shell-workspace-controls"
-          className="absolute right-2 top-0 z-40 flex h-title-bar items-center [app-region:no-drag]"
+          className="absolute right-2 top-0 z-40 flex h-title-bar items-center gap-1 [app-region:no-drag]"
         >
+          {workspaceControls}
           <SidebarNavigationControls />
         </div>
       )}
