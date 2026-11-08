@@ -6,7 +6,7 @@ const usage = "Usage: pnpm validation:queue status | capacity <positive-integer>
 const [command = "status", value, ...extra] = process.argv.slice(2);
 if (command === "--help" || command === "help") {
   console.log(usage);
-  console.log("One shared Cake validation lane by default. Reductions never stop running work.");
+  console.log("Three shared Cake validation slots by default. Reductions never stop running work.");
 } else {
   if (
     extra.length ||

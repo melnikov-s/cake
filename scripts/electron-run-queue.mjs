@@ -139,7 +139,7 @@ function database(path, validation = false) {
     id INTEGER PRIMARY KEY CHECK (id = 1),
     capacity INTEGER NOT NULL CHECK (capacity > 0)
   );
-  INSERT OR IGNORE INTO queue_control(id, capacity) VALUES (1, ${validation ? 1 : 3})`);
+  INSERT OR IGNORE INTO queue_control(id, capacity) VALUES (1, 3)`);
   if (validation)
     db.exec(`CREATE TABLE IF NOT EXISTS validation_waiting (
       request_id INTEGER PRIMARY KEY,

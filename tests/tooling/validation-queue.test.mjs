@@ -35,9 +35,12 @@ async function eventually(probe, message) {
   }
   assert.fail(message);
 }
-function fixture(t) {
+function fixture(t, { capacity = 1 } = {}) {
   const root = realpathSync(mkdtempSync("/tmp/cake-validation-test-"));
   const path = join(root, "queue.sqlite");
+  // Saturate a single slot for semantics tests without adding more fake processes.
+  // null leaves initialization to the callers, exercising the production default.
+  if (capacity !== null) setValidationQueueCapacity(capacity, path);
   const clients = [];
   const registries = new Set();
   t.after(async () => {
@@ -146,40 +149,46 @@ async function success(client, code = 0) {
 // These tests intentionally use independent processes and real Git worktrees:
 // the process/registry boundary IS the behavior under test. All children are fake.
 test(
-  "first use initializes once; independent worktrees share one lane",
+  "first use shares three slots across worktrees; a fourth waits until a slot releases",
   { timeout: 30_000 },
   async (t) => {
-    const f = fixture(t);
+    const f = fixture(t, { capacity: null });
     const first = repo(f.root, "repo");
     const second = join(f.root, "worktree");
-    git(first, "worktree", "add", "--quiet", "--detach", second, "HEAD");
+    const third = join(f.root, "third-worktree");
+    for (const cwd of [second, third])
+      git(first, "worktree", "add", "--quiet", "--detach", cwd, "HEAD");
     const path = validationQueuePath(first);
     f.registries.add(path);
     assert.equal(validationQueuePath(second), path);
-    // Neither process initializes capacity first: concurrent first-use must be safe.
+    assert.equal(validationQueuePath(third), path);
+    // No caller initializes capacity first: concurrent first-use must be safe.
     const a = f.start("a", { cwd: first, queuePath: undefined });
     const b = f.start("b", { cwd: second, queuePath: undefined });
+    const c = f.start("c", { cwd: third, queuePath: undefined });
+    for (const [name, cwd] of [
+      ["a", first],
+      ["b", second],
+      ["c", third],
+    ])
+      assert.equal((await f.started(name)).cwd, cwd);
+    assert.deepEqual(validationQueueState(path), { capacity: 3, running: 3, queued: 0 });
+
+    const d = f.start("d", { cwd: first, queuePath: undefined });
+    await f.event(d, "queued");
+    f.absent("d");
+    assert.deepEqual(validationQueueState(path), { capacity: 3, running: 3, queued: 1 });
     await eventually(
-      () =>
-        a.events.some((e) => e.type === "running") || b.events.some((e) => e.type === "running"),
-      "No admission",
-    );
-    const [running, queued, runningName, queuedName] = a.events.some((e) => e.type === "running")
-      ? [a, b, "a", "b"]
-      : [b, a, "b", "a"];
-    await f.started(runningName);
-    await f.event(queued, "queued");
-    f.absent(queuedName);
-    assert.deepEqual(validationQueueState(path), { capacity: 1, running: 1, queued: 1 });
-    await eventually(
-      () => /position 1 \(1\/1 running\); Ctrl-C cancels/.test(queued.stderr()),
+      () => /position 1 \(3\/3 running\); Ctrl-C cancels/.test(d.stderr()),
       "Waiting caller never reported the updated queue position",
     );
-    f.release(runningName);
-    await success(running);
-    assert.equal((await f.started(queuedName)).cwd, queuedName === "a" ? first : second);
-    f.release(queuedName);
-    await success(queued);
+    f.release("b");
+    await success(b);
+    assert.equal((await f.started("d")).cwd, first);
+    assert.deepEqual(validationQueueState(path), { capacity: 3, running: 3, queued: 0 });
+    for (const name of ["a", "c", "d"]) f.release(name);
+    await Promise.all([a, c, d].map((client) => success(client)));
+    assert.deepEqual(validationQueueState(path), { capacity: 3, running: 0, queued: 0 });
   },
 );
 
@@ -448,6 +457,7 @@ test(
     const cwd = repo(f.root, "repo");
     const path = validationQueuePath(cwd);
     f.registries.add(path);
+    setValidationQueueCapacity(1, path);
     const exported = join(f.root, "exported-without-git");
     mkdirSync(exported);
     writeFileSync(
@@ -472,10 +482,10 @@ test(
     assert.deepEqual(validationQueueState(path), { capacity: 1, running: 1, queued: 0 });
     f.release("inner");
     await success(outer);
-    for (const args of [["capacity", "3"], ["status"]]) {
+    for (const args of [["capacity", "2"], ["status"]]) {
       const result = spawnSync(process.execPath, [controlPath, ...args], { cwd, encoding: "utf8" });
       assert.equal(result.status, 0, result.stderr);
-      assert.equal(JSON.parse(result.stdout).capacity, 3);
+      assert.equal(JSON.parse(result.stdout).capacity, 2);
     }
   },
 );
@@ -492,6 +502,7 @@ test(
     f.registries.add(firstPath);
     f.registries.add(secondPath);
     assert.notEqual(firstPath, secondPath);
+    setValidationQueueCapacity(1, firstPath);
     const a = f.start("a", { cwd: first, queuePath: undefined });
     await f.started("a");
     const b = f.start("b", { cwd: second, queuePath: undefined });

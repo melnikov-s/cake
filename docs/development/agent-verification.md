@@ -29,7 +29,7 @@ tests, builds or Electron checks.
 
 ### Shared local validation lane
 
-Cake's repository tooling admits **one validation workflow total by default**
+Cake's repository tooling admits **three validation workflows total by default**
 across this checkout and all linked worktrees on the same user account. This is
 not a scheduler in the Cake application. Canonical `pnpm` scripts wait before
 starting validators, stream output normally, and return the child's status.
@@ -39,8 +39,8 @@ liveness probes are shared across waiters at most once every five seconds.
 
 ```sh
 pnpm validation:queue status
-pnpm validation:queue capacity 2  # allow two concurrent workflows
-pnpm validation:queue capacity 1  # conservative default
+pnpm validation:queue capacity 3  # default; also updates existing queues live
+pnpm validation:queue capacity 1  # optional conservative limit
 pnpm test tests/app/example.test.ts
 pnpm test:electron:run tests/electron/example.smoke.spec.ts  # reuse built output
 pnpm validation:run -- oxfmt path/to/changed-file.ts
@@ -48,9 +48,11 @@ pnpm validation:run -- oxfmt path/to/changed-file.ts
 
 Capacity is a positive integer stored in SQLite under
 `/tmp/cake-validation-<uid>/<hash-of-real-git-common-directory>.sqlite`, outside
-all worktrees. First use creates the registry with capacity one; later commands
-never reset it. Changing capacity affects all waiting callers within one admission
-tick. Lowering it never interrupts running work. Do not delete a live registry:
+all worktrees. First use creates the registry with capacity three; later commands
+never reset it, including registries created with the former default of one. Use
+`pnpm validation:queue capacity 3` to update an existing registry without restarting
+Cake or waiting supervisors. Changing capacity affects all waiting callers within
+one admission tick. Lowering it never interrupts running work. Do not delete a live registry:
 removing it can split admission between old and new database handles. OS temp
 cleanup resets capacity on next use. A shared filesystem across different hosts
 is not supported.
