@@ -35,7 +35,7 @@ export type SessionHistoryEntry =
   | { kind: "project-session"; sessionId: string }
   | { kind: "cake-chat"; sessionId: string };
 
-/** Owns workspace/cover selection and window visits, never the layouts' session identities. */
+/** Owns the exclusive window destination and visits, never the layouts' retained sessions. */
 export interface AppShellStoreProps {
   focusedSessionId(
     workspace: "project-sessions" | "cake-chat" | "automation-sessions",
@@ -58,11 +58,27 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   }
 
   @snapshot readonly navigationVersion = 4;
-  workspace: ConversationWorkspace = "cake-chat";
-  coveringSurface: "settings" | "artifact-library" | "automations" | undefined;
+  workspace: ConversationWorkspace | "settings" | "artifact-library" | "automations" = "cake-chat";
+  /** Back navigation memory only; never an active selection in an application view. */
+  private returnWorkspace: ConversationWorkspace = "cake-chat";
+
+  get applicationSurface() {
+    const workspace = this.workspace;
+    return workspace === "settings" ||
+      workspace === "artifact-library" ||
+      workspace === "automations"
+      ? workspace
+      : undefined;
+  }
 
   get activeConversation(): WindowConversationSelection | undefined {
-    if (this.workspace === "home") return undefined;
+    if (
+      this.workspace === "home" ||
+      this.workspace === "settings" ||
+      this.workspace === "artifact-library" ||
+      this.workspace === "automations"
+    )
+      return undefined;
     const sessionId = this.props.focusedSessionId(this.workspace);
     return sessionId
       ? {
@@ -78,7 +94,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   }
 
   get selection(): AppSelection {
-    if (this.coveringSurface) return { kind: this.coveringSurface };
+    if (this.applicationSurface) return { kind: this.applicationSurface };
     return (
       this.activeConversation ?? {
         kind: this.workspace === "cake-chat" ? "cake-chat" : "workbench",
@@ -256,23 +272,23 @@ export class AppShellStore extends Store<AppShellStoreProps> {
 
   selectWorkspace(workspace: ConversationWorkspace) {
     this.workspace = workspace;
-    this.coveringSurface = undefined;
+    this.returnWorkspace = workspace;
   }
 
-  dismissCoveringSurface() {
-    this.coveringSurface = undefined;
+  returnToConversation() {
+    if (this.applicationSurface) this.selectWorkspace(this.returnWorkspace);
   }
 
   showAutomations() {
-    this.coveringSurface = "automations";
+    this.workspace = "automations";
   }
 
   showArtifactLibrary() {
-    this.coveringSurface = "artifact-library";
+    this.workspace = "artifact-library";
   }
 
   showSettings() {
-    this.coveringSurface = "settings";
+    this.workspace = "settings";
   }
 
   /** Records the landed layout selection, excluding archived Project Session previews. */

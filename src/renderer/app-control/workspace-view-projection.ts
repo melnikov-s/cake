@@ -43,7 +43,7 @@ export async function inspectWorkspaceView(
   if (mode !== "browser" && mode !== "vscode") return undefined;
   const identity = { sessionId: active.sessionId };
   const covered =
-    capabilities.appShellStore.coveringSurface !== undefined ||
+    capabilities.appShellStore.applicationSurface !== undefined ||
     capabilities.projectWorkbenchStore.activeSessionResolved;
   if (mode === "browser") {
     const browser = presentation.browserStore;
@@ -119,7 +119,7 @@ export async function inspectWorkspaceView(
     if (
       capabilities.appShellStore.selection.kind !== active.kind ||
       capabilities.appShellStore.activeConversation?.sessionId !== active.sessionId ||
-      capabilities.appShellStore.coveringSurface ||
+      capabilities.appShellStore.applicationSurface ||
       !editor.nativeViewBounds.visible ||
       presentation.props.projectPath() !== workspacePath
     )

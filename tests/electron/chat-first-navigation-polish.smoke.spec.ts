@@ -150,6 +150,14 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
       await rail.getByRole("button", { name, exact: true }).click();
       await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
       await expect(rail).toHaveCount(0);
+      await expect(workspace).not.toHaveAttribute("data-session-id");
+      await expect(page.locator('[data-slot="session-pane"]')).toHaveCount(0);
+      await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toHaveCount(
+        0,
+      );
+      await expect(page.getByRole("complementary", { name: "Workspace", exact: true })).toHaveCount(
+        0,
+      );
       expect((await workspace.boundingBox())!.x).toBe(0);
       await expect(page.locator('[data-slot="shell-workspace-toggle"]')).toHaveCount(0);
       expect(
@@ -159,6 +167,23 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
       await expect(input).toHaveValue("Preserve this conversation draft");
       await expect(workspace).toHaveAttribute("data-session-id", /^project-chat:/);
     }
+    await rail.getByRole("button", { name: "Artifacts", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Search artifact library" })).toBeVisible();
+    await expect(workspace).not.toHaveAttribute("data-session-id");
+    await expect(page.locator('[data-slot="session-pane"]')).toHaveCount(0);
+    await expect(
+      rail.locator('[aria-label^="Open Project Chat for"][aria-current="page"]'),
+    ).toHaveCount(0);
+    await expect(rail.getByRole("button", { name: "Artifacts", exact: true })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await page.getByRole("button", { name: "Close all artifacts", exact: true }).click();
+    await expect(input).toHaveValue("Preserve this conversation draft");
+    await expect(workspace).toHaveAttribute("data-session-id", /^project-chat:/);
+    await expect(
+      rail.locator('[aria-label^="Open Project Chat for"][aria-current="page"]'),
+    ).toHaveCount(1);
     const accessory = page.getByRole("complementary", { name: "Workspace", exact: true });
     await accessory.getByRole("button", { name: /^Sessions / }).click();
     await expect(

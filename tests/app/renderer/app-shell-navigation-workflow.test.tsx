@@ -69,6 +69,131 @@ async function selectProjectSession(
 // first traverses pane-local history (covered by project-navigation/workbench workflows).
 describe("App shell navigation workflow", () => {
   it.each(
+    (["project-session", "project-chat"] as const).flatMap((initial) =>
+      (["settings", "automations", "artifact-library"] as const).map((destination) => ({
+        initial,
+        destination,
+      })),
+    ),
+  )(
+    "leaves $initial for exclusive $destination and reselects only the requested project",
+    async ({ initial, destination }) => {
+      using fixture = renderAppShellNavigation();
+      const global = toSnapshot(fixture.models.cakeChatCatalog).sessions![0]!;
+      const projectChats = ["alpha", "beta"].map((name, index) => ({
+        ...global,
+        sessionId: `project-chat:${(index === 0 ? "a" : "b").repeat(64)}`,
+        title: name,
+        projectPath: `/${name}`,
+      }));
+      act(() =>
+        applySnapshot(fixture.models.cakeChatCatalog, {
+          loaded: true,
+          sessions: [global, ...projectChats],
+        }),
+      );
+      for (const chat of projectChats) {
+        act(() => fixture.root.cakeChatCollectionStore.registry.load(chat.sessionId));
+        await fixture.publishCakeChatProjection(chat.sessionId, [], "Snapshot");
+      }
+      const projectButton = (name: string) =>
+        screen.getByRole("button", { name: `Open Project Chat for ${name}` });
+      const expectProject = (name: string) => {
+        expect(fixture.root.workspaceProjectPath).toBe(`/${name}`);
+        expect(projectButton(name).getAttribute("aria-current")).toBe("page");
+        expect(
+          document.querySelectorAll('[data-slot="project-rail"] [aria-current="page"]'),
+        ).toHaveLength(1);
+      };
+      if (initial === "project-session") await selectProjectSession(fixture, "alpha");
+      else await fixture.user.click(projectButton("alpha"));
+      expectProject("alpha");
+      if (destination === "artifact-library") await openLibrary(fixture.user);
+      else
+        await fixture.user.click(
+          screen.getByRole("button", {
+            name: destination === "settings" ? "Settings" : "Automations",
+          }),
+        );
+
+      expect(fixture.root.appShellStore.workspace).toBe(destination);
+      expect(fixture.root.appShellStore.selection).toEqual({ kind: destination });
+      expect(fixture.root.appShellStore.activeConversation).toBeUndefined();
+      expect(fixture.root.workspaceProjectPath).toBeUndefined();
+      expect(fixture.root.workspaceSession).toBeUndefined();
+      expect(fixture.root.terminalStore.activeTarget).toBeUndefined();
+      expect(
+        document.querySelector('[data-slot="workspace"]')?.getAttribute("data-session-id"),
+      ).toBeNull();
+      expect(document.querySelector('[data-slot="session-pane"]')).toBeNull();
+      expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
+      expect(screen.queryByRole("navigation", { name: "Conversation breadcrumb" })).toBeNull();
+      expect(
+        document.querySelector('[aria-label^="Open Project Chat for"][aria-current="page"]'),
+      ).toBeNull();
+      if (destination === "artifact-library") {
+        expect(screen.getByRole("textbox", { name: "Search artifact library" })).toBeDefined();
+        expect(screen.getByRole("button", { name: "Artifacts" }).getAttribute("aria-current")).toBe(
+          "page",
+        );
+        // Unlike full-window application views, the library keeps the rail reachable.
+        await fixture.user.click(projectButton("beta"));
+      } else {
+        expect(
+          screen.getByRole("heading", {
+            name: destination === "settings" ? "Settings" : "Automations",
+          }),
+        ).toBeDefined();
+        await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
+        expectProject("alpha");
+        await fixture.user.click(projectButton("beta"));
+      }
+      await waitFor(() => expectProject("beta"));
+      expect(projectButton("alpha").getAttribute("aria-current")).toBeNull();
+      expect(fixture.root.appShellStore.applicationSurface).toBeUndefined();
+      expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(
+        projectChats[1]!.sessionId,
+      );
+      await fixture.user.click(cakeChatButton());
+      await expectCakeChat();
+      expect(fixture.root.workspaceProjectPath).toBeUndefined();
+      expect(cakeChatButton().getAttribute("aria-current")).toBe("page");
+      expect(projectButton("beta").getAttribute("aria-current")).toBeNull();
+    },
+  );
+
+  it("switches non-project routes without reactivating a retained project, then returns to it", async () => {
+    using fixture = renderAppShellNavigation();
+    await selectProjectSession(fixture, "alpha");
+    // These public routing intents also serve callers outside the (hidden) project rail.
+    for (const destination of [
+      "settings",
+      "automations",
+      "artifact-library",
+      "automations",
+      "settings",
+    ] as const) {
+      act(() => {
+        if (destination === "settings") fixture.root.navigationStore.showSettings();
+        else if (destination === "automations") fixture.root.navigationStore.showAutomations();
+        else fixture.root.navigationStore.showArtifactLibrary();
+      });
+      expect(fixture.root.appShellStore.selection).toEqual({ kind: destination });
+      expect(fixture.root.appShellStore.activeConversation).toBeUndefined();
+      expect(fixture.root.workspaceProjectPath).toBeUndefined();
+      expect(fixture.root.workspaceSession).toBeUndefined();
+      expect(document.querySelector('[data-slot="session-pane"]')).toBeNull();
+    }
+    await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
+    expect(fixture.root.appShellStore.activeConversation).toEqual({
+      kind: "project-session",
+      sessionId: "alpha",
+    });
+    expect(fixture.root.workspaceProjectPath).toBe("/alpha");
+    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
+  });
+
+  it.each(
     (["project", "cake-chat"] as const).flatMap((workspace) =>
       (["settings", "artifact-library"] as const).map((cover) => ({ workspace, cover })),
     ),
@@ -478,7 +603,7 @@ describe("App shell navigation workflow", () => {
     },
   );
 
-  it("returns from Settings and the artifact browser to the same project or Cake Chat and retains current-chat settings", async () => {
+  it("returns from global Settings and the artifact browser to the remembered project or Cake Chat", async () => {
     const catalog = vi.fn<Client["artifacts"]["catalog"]>(async (request) => ({
       offset: request.offset ?? 0,
       limit: request.limit ?? 50,
@@ -490,7 +615,13 @@ describe("App shell navigation workflow", () => {
     await fixture.selectSession("alpha");
     await expectProjectChat("alpha");
     await fixture.user.click(settings());
-    expect(await screen.findByText("Model configuration")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeDefined();
+    expect(
+      screen.getByText(
+        "Open a project or start a one-off chat to choose a model and reasoning level.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText("Model configuration")).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
     await expectProjectChat("alpha");
     await openLibrary(fixture.user);
@@ -502,16 +633,29 @@ describe("App shell navigation workflow", () => {
     );
     await fixture.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
     await expectProjectChat("alpha");
-    // Reopen the library from the same conversation through the persistent rail.
+    // Reopen through the persistent rail; switching global destinations preserves
+    // return memory, not current selection.
     await openLibrary(fixture.user);
     await fixture.user.click(settings());
-    expect(await screen.findByText("Model configuration")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeDefined();
+    expect(
+      screen.getByText(
+        "Open a project or start a one-off chat to choose a model and reasoning level.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText("Model configuration")).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
     await expectProjectChat("alpha");
 
     await fixture.user.click(cakeChatButton());
     await fixture.user.click(settings());
-    expect(await screen.findByText("Model configuration")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeDefined();
+    expect(
+      screen.getByText(
+        "Open a project or start a one-off chat to choose a model and reasoning level.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText("Model configuration")).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
     await expectCakeChat();
     await openLibrary(fixture.user);

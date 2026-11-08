@@ -28,13 +28,13 @@ export const AppShellLayout = observer(function AppShellLayout({
   const shell = root.appShellStore;
   const navigator = root.workspaceNavigatorStore;
   const terminal = root.terminalStore;
-  const conversationPaneVisible = Boolean(root.workspaceSession) && !shell.coveringSurface;
-  const navigatorVisible = navigator.visible && !navigator.inCompanion && !shell.coveringSurface;
+  const conversationPaneVisible = Boolean(root.workspaceSession) && !shell.applicationSurface;
+  const navigatorVisible = navigator.visible && !navigator.inCompanion && !shell.applicationSurface;
   const applicationView = shell.surface === "settings" || shell.surface === "automations";
   const shellRef = useRef<HTMLElement>(null);
   const [resizingPanel, setResizingPanel] = useState(false);
   const [fullscreenViewport, setFullscreenViewport] = useState<HTMLDivElement | null>(null);
-  const commandVisible = Boolean(store.commandPaneStore.pane) && !applicationView;
+  const commandVisible = Boolean(store.commandPaneStore.pane) && !shell.applicationSurface;
   const accessoryWidth = Math.min(navigator.width, Math.max(240, window.innerWidth - 414));
   const commandMax = Math.max(
     320,
@@ -104,7 +104,9 @@ export const AppShellLayout = observer(function AppShellLayout({
           onResizeEnd={() => setResizingPanel(false)}
         />
       )}
-      {!applicationView && <CommandPane store={store} extensionUi={root.extensionUiStore} />}
+      {!shell.applicationSurface && (
+        <CommandPane store={store} extensionUi={root.extensionUiStore} />
+      )}
       {commandVisible && (
         <ResizeHandle
           className="right-[calc(var(--command-width)-5px)] max-[700px]:hidden"
@@ -118,7 +120,7 @@ export const AppShellLayout = observer(function AppShellLayout({
           onResizeEnd={() => setResizingPanel(false)}
         />
       )}
-      {!applicationView && !shell.coveringSurface && (
+      {!applicationView && !shell.applicationSurface && (
         <div
           data-slot="shell-workspace-controls"
           className="absolute right-2 top-0 z-40 flex h-title-bar items-center [app-region:no-drag]"

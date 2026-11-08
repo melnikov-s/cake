@@ -70,6 +70,9 @@ export const ProjectRail = observer(function ProjectRail() {
                   root.appShellStore.surface === "cake-chat" &&
                   "bg-sidebar-active text-foreground",
               )}
+              aria-current={
+                !activeProject && root.appShellStore.surface === "cake-chat" ? "page" : undefined
+              }
               onClick={() => {
                 root.appShellStore.recordConversationInteraction({
                   kind: "cake-chat",
@@ -117,7 +120,12 @@ export const ProjectRail = observer(function ProjectRail() {
             <IconButton
               tooltip="Artifacts"
               label="Artifacts"
-              className="h-9 shrink-0"
+              className={cn(
+                "h-9 shrink-0",
+                root.appShellStore.surface === "artifact-library" &&
+                  "bg-sidebar-active text-foreground",
+              )}
+              aria-current={root.appShellStore.surface === "artifact-library" ? "page" : undefined}
               data-cake-hint-key="a"
               onClick={() => root.navigationStore.showArtifactLibrary()}
             >

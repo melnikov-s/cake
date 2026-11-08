@@ -170,6 +170,7 @@ export class NavigationStore extends Store<{
   }
 
   showAutomations() {
+    this.workbench.dismissSecondarySurfaces();
     this.props.shell.showAutomations();
   }
 
@@ -498,7 +499,7 @@ export class NavigationStore extends Store<{
     // Traverse focused conversation visits; covered surfaces use window-wide history.
     const sessionId =
       this.props.shell.workspace === "project-sessions" &&
-      !this.props.shell.coveringSurface &&
+      !this.props.shell.applicationSurface &&
       this.props.layout.goBack();
     if (sessionId) {
       this.props.shell.prepareProjectSessionTraversal(sessionId, -1);
@@ -509,7 +510,7 @@ export class NavigationStore extends Store<{
   navigateForward() {
     const sessionId =
       this.props.shell.workspace === "project-sessions" &&
-      !this.props.shell.coveringSurface &&
+      !this.props.shell.applicationSurface &&
       this.props.layout.goForward();
     if (sessionId) {
       this.props.shell.prepareProjectSessionTraversal(sessionId, 1);
@@ -541,7 +542,7 @@ export class NavigationStore extends Store<{
   }
 
   returnToWorkbench() {
-    this.props.shell.dismissCoveringSurface();
+    this.props.shell.returnToConversation();
     this.presentation.restore();
     if (this.props.shell.workspace === "project-sessions") this.workbench.requestComposerFocus();
   }
@@ -606,7 +607,7 @@ export class NavigationStore extends Store<{
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       if (
         this.props.shell.activeConversation?.sessionId === sessionId &&
-        !this.props.shell.coveringSurface
+        !this.props.shell.applicationSurface
       )
         collection.registry
           .find(sessionId)

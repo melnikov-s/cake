@@ -67,11 +67,7 @@ it("separates first commit from a committed live selected-chat projection and re
 it("does not attribute a different selection's readiness to the initial selected chat", async () => {
   using f = fixture();
   await act(async () => {
-    f.root.appShellStore.coveringSurface = "settings";
-  });
-  // A cover does not change activeConversation, but leaving that workspace does.
-  await act(async () => {
-    f.root.appShellStore.workspace = "home";
+    f.root.appShellStore.showSettings();
   });
   expect(rendererStartupTiming).toHaveBeenCalledWith("selected-chat-changed");
   await act(async () => {

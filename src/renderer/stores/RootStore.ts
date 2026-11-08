@@ -316,6 +316,7 @@ export class RootStore extends Store<{
   }
 
   [ActiveProjectSessionContext.provide]() {
+    if (this.appShellStore.applicationSurface) return undefined;
     const context = this.projectWorkbenchStore.sessionContext();
     return context
       ? { sessionId: context.sessionId, workingDirectory: context.workspacePath }
@@ -341,7 +342,10 @@ export class RootStore extends Store<{
       } else if (active?.kind === "automation-session") {
         const context = this.automationSessionsStore.selectedSession?.identity.context;
         projectPath = context?._tag === "Project" ? context.projectPath : undefined;
-      } else {
+      } else if (
+        this.appShellStore.workspace === "project-sessions" ||
+        this.appShellStore.workspace === "home"
+      ) {
         const selectedDirectory = this.projectWorkbenchStore.projectOpenStore.projectPath;
         projectPath = selectedDirectory
           ? this.sessionCatalogStore.projectPathFor(selectedDirectory)
@@ -633,7 +637,7 @@ export class RootStore extends Store<{
     return createStore(SessionAssistantStore, {
       session: () => this.cakeChatCollectionStore.registry.load(SESSION_ASSISTANT_ID),
       context: () => {
-        if (this.appShellStore.coveringSurface || !this.appShellStore.activeConversation)
+        if (this.appShellStore.applicationSurface || !this.appShellStore.activeConversation)
           return null;
         const session = this.workspaceSession;
         if (!session) return null;
@@ -684,10 +688,14 @@ export class RootStore extends Store<{
 
   get workspaceSession() {
     const active = this.appShellStore.activeConversation;
-    if (active?.kind === "automation-session") return undefined;
+    if (this.appShellStore.applicationSurface || active?.kind === "automation-session")
+      return undefined;
     return active?.kind === "cake-chat"
       ? this.cakeChatCollectionStore.registry.find(active.sessionId)
-      : this.projectWorkbenchStore.activeSession;
+      : this.appShellStore.workspace === "project-sessions" ||
+          this.appShellStore.workspace === "home"
+        ? this.projectWorkbenchStore.activeSession
+        : undefined;
   }
 
   get workspaceProjectPath() {
@@ -696,6 +704,11 @@ export class RootStore extends Store<{
       return this.cakeChatCollectionStore.summaries.find(
         (chat) => chat.sessionId === active.sessionId,
       )?.projectPath;
+    if (
+      this.appShellStore.workspace !== "project-sessions" &&
+      this.appShellStore.workspace !== "home"
+    )
+      return undefined;
     const workingDirectory =
       this.projectWorkbenchStore.activeSession?.workspacePath ??
       this.projectWorkbenchStore.projectOpenStore.projectPath;
@@ -1016,7 +1029,7 @@ export class RootStore extends Store<{
   @child
   get settingsStore(): SettingsStore {
     return createStore(SettingsStore, {
-      visible: () => this.appShellStore.coveringSurface === "settings",
+      visible: () => this.appShellStore.applicationSurface === "settings",
       browserHost: this.props.browserHost,
       dictation: this.dictationStore,
       speech: this.speechSettingsStore,
@@ -1088,7 +1101,7 @@ export class RootStore extends Store<{
       startCakeChat: (prompt) => this.navigationStore.startCakeChat(prompt),
       presentationSession: () =>
         this.projectWorkbenchStore.activeSession?.isForkPreview ? undefined : this.workspaceSession,
-      canRestorePresentation: () => !this.appShellStore.coveringSurface,
+      canRestorePresentation: () => !this.appShellStore.applicationSurface,
       presentationProjectPath: () =>
         this.appShellStore.activeConversation?.kind === "project-session"
           ? this.projectWorkbenchStore.activeSession?.workspacePath
