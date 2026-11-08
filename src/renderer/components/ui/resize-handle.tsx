@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type PointerEvent } from "react";
 import { cn } from "@/lib/utils";
 
 export interface ResizeHandleProps {
@@ -38,46 +38,94 @@ export function ResizeHandle({
 }: ResizeHandleProps) {
   const horizontal = edge === "top" || edge === "bottom";
   const direction = edge === "left" || edge === "top" ? 1 : -1;
-  const drag = useRef<
-    | {
-        pointerId: number;
-        position: number;
-        value: number;
-        previewValue: number;
-        previewedValue?: number;
-        moved: boolean;
+  const endDrag = useRef<(() => void) | undefined>(undefined);
+  const live = useRef({ min, max, onChange, onDrag, onResizeEnd });
+  useLayoutEffect(() => {
+    live.current = { min, max, onChange, onDrag, onResizeEnd };
+  });
+
+  useEffect(() => () => endDrag.current?.(), []);
+
+  const start = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || endDrag.current) return;
+    const handle = event.currentTarget;
+    const pointerId = event.pointerId;
+    const position = horizontal ? event.clientY : event.clientX;
+    let previewValue = value;
+    let previewedValue: number | undefined;
+    let moved = false;
+    let previewFrame: number | undefined;
+
+    const flushPreview = () => {
+      if (previewFrame !== undefined) {
+        cancelAnimationFrame(previewFrame);
+        previewFrame = undefined;
       }
-    | undefined
-  >(undefined);
-  const previewFrame = useRef<number | undefined>(undefined);
+      if (moved && previewedValue !== previewValue) {
+        live.current.onDrag?.(previewValue);
+        previewedValue = previewValue;
+      }
+    };
+    const finish = () => {
+      if (endDrag.current !== finish) return;
+      // Clear ownership/listeners before releasing capture: that can itself
+      // dispatch lostpointercapture. Every exit must commit/end exactly once.
+      endDrag.current = undefined;
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", release, true);
+      window.removeEventListener("pointercancel", release, true);
+      window.removeEventListener("blur", finish);
+      document.removeEventListener("visibilitychange", visibilityChange);
+      handle.removeEventListener("lostpointercapture", release);
+      flushPreview();
+      if (handle.hasPointerCapture?.(pointerId)) handle.releasePointerCapture(pointerId);
+      if (live.current.onDrag && moved) live.current.onChange(previewValue);
+      live.current.onResizeEnd?.();
+    };
+    const release = (event: globalThis.PointerEvent) => {
+      if (event.pointerId === pointerId) finish();
+    };
+    const visibilityChange = () => {
+      if (document.hidden) finish();
+    };
+    const move = (event: globalThis.PointerEvent) => {
+      if (event.pointerId !== pointerId) return;
+      // Recover if the OS/browser swallowed the release during an interruption.
+      if ((event.buttons & 1) === 0) {
+        finish();
+        return;
+      }
+      const nextPosition = horizontal ? event.clientY : event.clientX;
+      previewValue = clamp(
+        value + (nextPosition - position) * direction,
+        live.current.min,
+        live.current.max,
+      );
+      moved = true;
+      handle.setAttribute("aria-valuenow", String(Math.round(previewValue)));
+      if (!live.current.onDrag) {
+        live.current.onChange(previewValue);
+        return;
+      }
+      if (previewFrame !== undefined) return;
+      previewFrame = requestAnimationFrame(() => {
+        previewFrame = undefined;
+        flushPreview();
+      });
+    };
 
-  useEffect(
-    () => () => {
-      if (previewFrame.current !== undefined) cancelAnimationFrame(previewFrame.current);
-    },
-    [],
-  );
-
-  const flushPreview = () => {
-    if (previewFrame.current !== undefined) {
-      cancelAnimationFrame(previewFrame.current);
-      previewFrame.current = undefined;
-    }
-    const current = drag.current;
-    if (current?.moved && current.previewedValue !== current.previewValue) {
-      onDrag?.(current.previewValue);
-      current.previewedValue = current.previewValue;
-    }
-  };
-
-  const finish = (event: PointerEvent<HTMLDivElement>) => {
-    const current = drag.current;
-    if (current?.pointerId !== event.pointerId) return;
-    flushPreview();
-    drag.current = undefined;
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-    if (onDrag && current.moved) onChange(current.previewValue);
-    onResizeEnd?.();
+    endDrag.current = finish;
+    // Window capture listeners also see release outside the handle (or when
+    // another surface stops propagation); pointer capture is not our only exit.
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", release, true);
+    window.addEventListener("pointercancel", release, true);
+    window.addEventListener("blur", finish);
+    document.addEventListener("visibilitychange", visibilityChange);
+    handle.addEventListener("lostpointercapture", release);
+    handle.setPointerCapture?.(pointerId);
+    onResizeStart?.();
+    event.preventDefault();
   };
 
   const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -114,43 +162,7 @@ export function ResizeHandle({
       aria-valuenow={Math.round(value)}
       tabIndex={0}
       onKeyDown={keyDown}
-      onPointerDown={(event) => {
-        if (event.button !== 0) return;
-        drag.current = {
-          pointerId: event.pointerId,
-          position: horizontal ? event.clientY : event.clientX,
-          value,
-          previewValue: value,
-          moved: false,
-        };
-        event.currentTarget.setPointerCapture?.(event.pointerId);
-        onResizeStart?.();
-        event.preventDefault();
-      }}
-      onPointerMove={(event) => {
-        const current = drag.current;
-        if (current?.pointerId !== event.pointerId) return;
-        const position = horizontal ? event.clientY : event.clientX;
-        const next = clamp(current.value + (position - current.position) * direction, min, max);
-        current.previewValue = next;
-        current.moved = true;
-        event.currentTarget.setAttribute("aria-valuenow", String(Math.round(next)));
-        if (!onDrag) {
-          onChange(next);
-          return;
-        }
-        if (previewFrame.current !== undefined) return;
-        previewFrame.current = requestAnimationFrame(() => {
-          previewFrame.current = undefined;
-          const pending = drag.current;
-          if (pending?.moved) {
-            onDrag(pending.previewValue);
-            pending.previewedValue = pending.previewValue;
-          }
-        });
-      }}
-      onPointerUp={finish}
-      onPointerCancel={finish}
+      onPointerDown={start}
     />
   );
 }
