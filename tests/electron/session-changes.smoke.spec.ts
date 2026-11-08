@@ -3,9 +3,111 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
-import { seedSessionChanges } from "../fixtures/session-changes";
+import { sessionChangesScenario } from "../../scripts/visual-capture/session-changes";
+import { seedSessionChanges, sessionChangesComparisonBranch } from "../fixtures/session-changes";
 
 const repository = resolve(import.meta.dirname, "../..");
+
+for (const theme of ["dark", "light"] as const) {
+  test(`comparison selector stays compact and supports keyboard selection (${theme})`, async () => {
+    test.setTimeout(90_000);
+    const directory = await mkdtemp(join(tmpdir(), "cake-changes-comparison-"));
+    const paths = {
+      project: join(directory, "project"),
+      cakeHome: join(directory, "cake"),
+      userData: join(directory, "user-data"),
+    };
+    let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
+    try {
+      await seedSessionChanges(paths, theme);
+      app = await electron.launch({
+        args: [repository],
+        cwd: repository,
+        env: {
+          ...process.env,
+          CAKE_ELECTRON_SMOKE: "1",
+          CAKE_HOME: paths.cakeHome,
+          CAKE_ELECTRON_USER_DATA: paths.userData,
+          PI_CODING_AGENT_DIR: join(paths.cakeHome, "pi"),
+          PI_CODING_AGENT_SESSION_DIR: "",
+        },
+      });
+      const page = await app.firstWindow();
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await sessionChangesScenario.prepare(page, "closed");
+      await page.getByRole("button", { name: "Review changes · 3 commits", exact: true }).click();
+      const panel = page.getByRole("complementary", { name: "Changes", exact: true });
+      const picker = panel.getByRole("combobox", { name: "Compare with" });
+      await expect(picker).toHaveValue(sessionChangesComparisonBranch);
+      await page.getByRole("separator", { name: "Resize changes", exact: true }).press("Home");
+
+      const assertContained = async () => {
+        const geometry = await picker.evaluate((element) => {
+          const header = element.parentElement!;
+          const bounds = header.getBoundingClientRect();
+          const children = Array.from(header.children).map((child) =>
+            child.getBoundingClientRect(),
+          );
+          return {
+            overflow: header.scrollWidth > header.clientWidth,
+            contained: children.every(
+              (child) => child.left >= bounds.left && child.right <= bounds.right,
+            ),
+            centers: children.map((child) => child.y + child.height / 2),
+            selectWidth: element.getBoundingClientRect().width,
+            selectHeight: element.getBoundingClientRect().height,
+            headerWidth: header.clientWidth,
+          };
+        });
+        expect(geometry.overflow).toBe(false);
+        expect(geometry.contained).toBe(true);
+        expect(Math.max(...geometry.centers) - Math.min(...geometry.centers)).toBeLessThan(1);
+        expect(geometry.selectHeight).toBe(28);
+        expect(geometry.selectWidth).toBeLessThanOrEqual(geometry.headerWidth / 2);
+        return geometry;
+      };
+      await assertContained();
+      await expect(picker).toHaveAttribute("title", sessionChangesComparisonBranch);
+      await picker.focus();
+      await expect(picker).toBeFocused();
+      await picker.press("Space");
+      await picker.press("ArrowDown");
+      await picker.press("Enter");
+      await expect(picker).toHaveValue("main");
+      await expect(picker).toBeFocused();
+      expect(await picker.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+      expect(await picker.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe(
+        "none",
+      );
+      expect((await assertContained()).selectWidth).toBeLessThan(100);
+      await expect(picker).toHaveAttribute("title", "main");
+      await expect(
+        panel.getByRole("button", { name: "Refresh changes", exact: true }),
+      ).toBeEnabled();
+      await page.mouse.move(1, 1);
+      const background = await picker.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      );
+      await picker.hover();
+      await expect
+        .poll(() => picker.evaluate((element) => getComputedStyle(element).backgroundColor))
+        .not.toBe(background);
+      await picker.selectOption(sessionChangesComparisonBranch);
+      await expect(picker).toHaveValue(sessionChangesComparisonBranch);
+      await assertContained();
+      await page.setViewportSize({ width: 700, height: 800 });
+      await expect(page.locator('[data-slot="side-chat-layout"]')).toHaveAttribute(
+        "data-presentation",
+        "replacement",
+      );
+      await assertContained();
+      await expect(panel.getByText("agent/changes-review", { exact: true })).toBeVisible();
+    } finally {
+      await app?.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}
 
 test("VS Code Changes replaces shown and hidden companions outside the native editor bounds", async () => {
   test.setTimeout(90_000);
@@ -33,6 +135,7 @@ test("VS Code Changes replaces shown and hidden companions outside the native ed
     const application = app;
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1440, height: 900 });
+    await sessionChangesScenario.prepare(page, "closed");
     await page.getByRole("button", { name: "VS Code", exact: true }).click();
     const nativeEditor = () =>
       application.evaluate(({ BrowserWindow }) => {
@@ -141,6 +244,7 @@ test("Changes shares responsive panels: wide split, narrow and Browser Mode repl
     });
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1440, height: 900 });
+    await sessionChangesScenario.prepare(page, "closed");
     const toggle = page.getByRole("button", { name: "Review changes · 3 commits", exact: true });
     await expect(toggle).toBeVisible();
     await expect(toggle).toHaveText("3");

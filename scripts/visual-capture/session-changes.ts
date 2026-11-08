@@ -1,10 +1,23 @@
 import { expect, type Page } from "@playwright/test";
-import { seedSessionChanges } from "../../tests/fixtures/session-changes";
+import {
+  seedSessionChanges,
+  sessionChangesComparisonBranch,
+} from "../../tests/fixtures/session-changes";
 
 export const sessionChangesScenario = {
   name: "session-changes",
   description: "Session commit badge and Changes accessory pane backed by real Git history",
-  states: ["closed", "open", "expanded", "sessions", "todos"],
+  states: [
+    "closed",
+    "open",
+    "expanded",
+    "sessions",
+    "todos",
+    "compare",
+    "compare-hover",
+    "compare-focus",
+    "compare-long",
+  ],
   async seed(
     paths: { project: string; cakeHome: string; userData: string },
     theme: "light" | "dark",
@@ -12,6 +25,10 @@ export const sessionChangesScenario = {
     await seedSessionChanges(paths, theme);
   },
   async prepare(page: Page, state: string) {
+    await page.getByRole("button", { name: "Search sessions", exact: true }).click();
+    const search = page.getByRole("dialog", { name: "Search sessions", exact: true });
+    await search.getByRole("combobox", { name: "Search session titles" }).fill("Review changes");
+    await search.getByRole("option").filter({ hasText: "Review changes" }).click();
     if (state === "sessions" || state === "todos") {
       await page
         .getByRole("button", { name: /^Open Project Chat for / })
@@ -57,6 +74,25 @@ export const sessionChangesScenario = {
       await expect(
         panel.getByRole("button", { name: "Refresh changes", exact: true }),
       ).toBeEnabled();
+      if (state.startsWith("compare")) {
+        const picker = panel.getByRole("combobox", { name: "Compare with" });
+        await picker.selectOption(
+          state === "compare-long" ? sessionChangesComparisonBranch : "main",
+        );
+        await expect(picker).toHaveValue(
+          state === "compare-long" ? sessionChangesComparisonBranch : "main",
+        );
+        if (state === "compare-hover") {
+          await picker.hover();
+          return;
+        }
+        if (state === "compare-focus") {
+          await page.keyboard.press("Shift");
+          await picker.focus();
+          await expect(picker).toBeFocused();
+          return;
+        }
+      }
       if (state === "expanded")
         await panel
           .getByRole("button", { name: /Show commit history in the changes pane/ })
@@ -64,5 +100,8 @@ export const sessionChangesScenario = {
     }
     await page.mouse.move(1, 1);
   },
-  region: (page: Page) => page.locator("body"),
+  region: (page: Page, state: string) =>
+    state.startsWith("compare")
+      ? page.getByRole("complementary", { name: "Changes", exact: true })
+      : page.locator("body"),
 };

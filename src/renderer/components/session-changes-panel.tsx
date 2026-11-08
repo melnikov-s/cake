@@ -32,14 +32,15 @@ export const SessionChangesPanel = observer(function SessionChangesPanel({
             <span className="truncate font-medium text-foreground" title={data.branch}>
               {data.branch}
             </span>
-            <span>→</span>
+            <span className="shrink-0">→</span>
             {data.base === null ? (
               <span className="truncate">No parent branch</span>
             ) : data.baseAlternatives.length > 1 ? (
               <Select
                 size="sm"
                 aria-label="Compare with"
-                className="h-6 w-auto min-w-0 truncate"
+                className="h-7 w-auto max-w-1/2 shrink-0 field-sizing-content truncate border-border/50 bg-muted/35 font-medium shadow-none enabled:hover:border-border enabled:hover:bg-muted/70"
+                title={data.base}
                 value={data.base}
                 onChange={(event) => store.selectBase(event.target.value)}
               >

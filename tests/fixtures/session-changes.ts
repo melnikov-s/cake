@@ -10,6 +10,8 @@ import {
 } from "../../src/contracts/application/application-data";
 
 const changesSessionId = "session-changes-review";
+export const sessionChangesComparisonBranch =
+  "feature/a-long-comparison-branch-that-must-not-stretch-the-header";
 
 /** Real Git facts behind the production review pane, shared by smoke and visual checks. */
 export async function seedSessionChanges(
@@ -32,6 +34,7 @@ export async function seedSessionChanges(
   await git(paths.project, "add", "-A");
   await git(paths.project, "commit", "-m", "Initial fixture");
   const baseCommit = (await git(paths.project, "rev-parse", "HEAD")).stdout.trim();
+  await git(paths.project, "branch", sessionChangesComparisonBranch);
   await git(paths.project, "worktree", "add", "-b", "agent/changes-review", worktree);
   await mkdir(join(worktree, "src"), { recursive: true });
   await writeFile(
