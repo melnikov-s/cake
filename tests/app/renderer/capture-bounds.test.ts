@@ -14,7 +14,7 @@ describe("automatic capture bounds in screenshot pixels", () => {
       height: 1200,
     });
   });
-  it("unions all arrow endpoints and freehand points with 150px padding", () => {
+  it("unions centered arrow endpoints and freehand points with 300px padding on each side", () => {
     expect(
       automaticCaptureBounds(
         [
@@ -23,7 +23,7 @@ describe("automatic capture bounds in screenshot pixels", () => {
             kind: "freehand",
             points: [
               { x: 700, y: 500 },
-              { x: 900, y: 300 },
+              { x: 900, y: 400 },
               { x: 800, y: 700 },
             ],
             label: "Curve",
@@ -32,7 +32,7 @@ describe("automatic capture bounds in screenshot pixels", () => {
         2400,
         1200,
       ),
-    ).toEqual({ x: 250, y: 150, width: 800, height: 700 });
+    ).toEqual({ x: 100, y: 100, width: 1100, height: 900 });
   });
   it("clamps padding at every display boundary", () => {
     expect(
@@ -41,8 +41,8 @@ describe("automatic capture bounds in screenshot pixels", () => {
           {
             kind: "freehand",
             points: [
-              { x: 20, y: 10 },
-              { x: 2380, y: 1190 },
+              { x: 200, y: 200 },
+              { x: 2200, y: 1000 },
             ],
             label: "",
           },

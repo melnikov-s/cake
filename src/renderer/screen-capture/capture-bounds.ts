@@ -26,10 +26,10 @@ export function automaticCaptureBounds(
     right = Math.max(right, point.x);
     bottom = Math.max(bottom, point.y);
   }
-  left = Math.max(0, left - 150);
-  top = Math.max(0, top - 150);
-  right = Math.min(width, right + 150);
-  bottom = Math.min(height, bottom + 150);
+  left = Math.max(0, left - 300);
+  top = Math.max(0, top - 300);
+  right = Math.min(width, right + 300);
+  bottom = Math.min(height, bottom + 300);
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
