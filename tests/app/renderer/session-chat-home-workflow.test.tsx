@@ -5,9 +5,22 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
 import { automationRun } from "./fixtures/automation-fixtures";
+import {
+  editorLease,
+  editorSessionId,
+  renderEmbeddedEditor,
+} from "./embedded-editor-workflow-fixture";
 
 beforeEach(() => {
   vi.stubGlobal("PointerEvent", MouseEvent);
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   Object.defineProperty(SVGElement.prototype, "getBBox", {
     configurable: true,
     value: () => ({ x: 0, y: 0, width: 24, height: 24 }),
@@ -110,6 +123,39 @@ it.each(["Project", "Global"] as const)(
       ),
     );
     expect(screen.queryByRole("button", { name: /^Back to / })).toBeNull();
+  },
+);
+
+it.each(["browser", "vscode"] as const)(
+  "removes the floating session home control in %s mode and restores it in Main",
+  async (mode) => {
+    const browserState = {
+      sessionId: editorSessionId,
+      url: "about:blank",
+      title: "",
+      loading: false,
+      canGoBack: false,
+      canGoForward: false,
+      inspecting: false,
+    };
+    using fixture = renderEmbeddedEditor({
+      vscode: { open: async () => editorLease("a") },
+      browser: { open: async () => browserState, updateBounds: async () => browserState },
+    });
+    const homeButton = () =>
+      screen.queryByRole("button", { name: "Back to Project Chat for Project" });
+    expect(homeButton()).not.toBeNull();
+    await fixture.user.click(
+      screen.getByRole("button", { name: mode === "browser" ? "Browser" : "VS Code" }),
+    );
+    if (mode === "browser") await screen.findByLabelText("Browser viewport");
+    else await screen.findByTitle("VS Code workspace");
+    expect(homeButton()).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Session home" })).toBeNull();
+    // Mode changes must not discard the selected session or its valid home target.
+    expect(fixture.root.navigationStore.sessionChatHome).toEqual({ projectPath: "/project" });
+    await fixture.user.click(screen.getByRole("button", { name: "Main" }));
+    expect(homeButton()).not.toBeNull();
   },
 );
 

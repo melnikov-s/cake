@@ -13,10 +13,10 @@ export const SessionChatHomeButton = observer(function SessionChatHomeButton() {
     ? `Project Chat for ${root.projectCatalogStore.nameForPath(home.projectPath)}`
     : "Cake Chat";
   return (
-    // Match the rail's pt-2 / h-9 top action row, below the shared titlebar.
+    // Float over content, aligned with the rail's pt-2 / h-9 top action.
     <nav
       aria-label="Session home"
-      className="order-first box-content flex h-9 shrink-0 items-center py-2 pl-4"
+      className="absolute left-4 top-2 z-20 flex h-9 items-center"
     >
       <IconButton
         data-slot="session-chat-home"

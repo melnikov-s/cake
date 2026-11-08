@@ -117,7 +117,30 @@ for (const theme of ["light", "dark"] as const) {
       ).toBeLessThanOrEqual(1);
       expect(button.y).toBeGreaterThan(breadcrumbBounds.y + breadcrumbBounds.height);
       const transcript = page.locator(".transcript").first();
-      expect((await transcript.boundingBox())!.y).toBeGreaterThan(button.y + button.height);
+      // Content runs underneath the overlay: no button row or compensating spacer.
+      expect((await transcript.boundingBox())!.y).toBeLessThan(button.y + button.height);
+      const layoutWithAndWithoutButton = await back.evaluate((element) => {
+        const nav = element.closest("nav")!;
+        const workspace = element.closest('[data-slot="workspace"]')!;
+        const measure = () =>
+          [
+            workspace,
+            workspace.querySelector(".transcript")!,
+            workspace.querySelector('[role="combobox"]')!,
+          ].map((node) => node.getBoundingClientRect().toJSON());
+        const visible = measure();
+        const previousDisplay = nav.style.display;
+        try {
+          nav.style.display = "none";
+          return { visible, hidden: measure() };
+        } finally {
+          nav.style.display = previousDisplay;
+        }
+      });
+      expect(layoutWithAndWithoutButton.hidden).toEqual(layoutWithAndWithoutButton.visible);
+      expect(
+        await back.evaluate((element) => getComputedStyle(element.closest("nav")!).position),
+      ).toBe("absolute");
       expect(button.width).toBe(28);
       expect(button.height).toBe(28);
       expect(
@@ -154,7 +177,7 @@ for (const theme of ["light", "dark"] as const) {
       const narrow = (await back.boundingBox())!;
       const narrowCakeChat = (await cakeChat.boundingBox())!;
       const narrowWorkspace = await workspace.boundingBox();
-      expect((await transcript.boundingBox())!.y).toBeGreaterThan(narrow.y + narrow.height);
+      expect((await transcript.boundingBox())!.y).toBeLessThan(narrow.y + narrow.height);
       expect(narrow.x - narrowWorkspace!.x).toBe(16);
       expect(narrow.x + narrow.width).toBeLessThan(480);
       expect(
