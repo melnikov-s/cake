@@ -30,6 +30,31 @@ it.each([
   expect(JSON.parse(response.text)).toEqual(result);
 });
 
+it("exposes scoped validation and unchanged authorization in readiness help", async () => {
+  const registry = new CakeOperationRegistry(
+    createCakeWorktreeOperations({
+      reportReadiness: async () => ({ eligible: true }),
+      proposeSquashMessage: async () => undefined,
+    }),
+  );
+  const response = await registry.invoke(
+    { command: "worktrees.reportReadiness.help" },
+    { signal: new AbortController().signal, toolCallId: "readiness-help", runtime: {} },
+  );
+  for (const rule of [
+    "Scope complete + relevant checks passed = ready",
+    "validationPassed means task-scoped validation, not repo-wide green",
+    "Choose checks by changed behavior/risk",
+    "Unrelated baseline failures or broad-suite timeouts alone do not block readiness",
+    "Unfinished acceptance criteria, known relevant failures and uncommitted/unvalidated task changes block readiness",
+    "Never relabel failed task checks as passed",
+    "exact HEAD as validatedCommit",
+    "user-owned project Auto-merge toggle",
+    "Do not call worktrees.merge to force automatic landing",
+  ])
+    expect(response.text).toContain(rule);
+});
+
 it("requires an explanation for ineligible readiness in the output contract", () => {
   expect(Schema.is(MergeReadinessResult)({ eligible: false })).toBe(false);
 });

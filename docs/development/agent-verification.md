@@ -119,12 +119,12 @@ cross-process boundary without compiling Cake or launching Electron.
 
 ### Verification scope and cadence
 
-- Actual behavior changes require final full `pnpm typecheck && pnpm test`
-  verification (about 1 minute and 2-5 minutes locally). This includes changes to
-  feature behavior, state or logic in stores/domain/services/shared components,
-  contracts or export signatures, and config/dependency/test-infrastructure
-  behavior. Focused tests alone do not catch tests elsewhere that encode the old
-  behavior.
+- Behavior/state/contract/config changes need checks chosen by affected behavior
+  and risk. Include relevant callers and cross-boundary contracts, not just the
+  edited file. Use `pnpm typecheck` and broader `pnpm test` when their coverage
+  adds necessary evidence; neither is an unconditional readiness gate. A globally
+  clean baseline or completed full suite is not required when task scope is
+  complete and relevant checks pass.
 - Presentation-only styling, layout, spacing, icon or copy changes may span files
   and components without triggering the full suite, provided they do not change
   behavior, state or contracts. Keep format/lint, affected focused tests and
@@ -138,20 +138,22 @@ cross-process boundary without compiling Cake or launching Electron.
 
 `AGENTS.md` defines the repository baseline. CI runs `format:check`, `lint`,
 `typecheck` and the sharded `test` suite on every PR and push to main as a backstop,
-not a substitute for required final local verification.
+not a substitute for relevant task validation or a globally-green local merge gate.
 
 ### Failures, checkpoints and readiness
 
 A failed check is not permission to expand scope. Fix attributable regressions
-within the authorized scope. Other failures may be reported as
-unresolved/unclassified blockers without automatically investigating or fixing
-them. Identify the failing check/test and available evidence; do not dismiss
-failures by count or presume that unclassified failures are pre-existing.
+within the authorized scope. Report unrelated baseline failures and infrastructure
+timeouts as separate validation debt, not automatic readiness blockers. Identify
+the failing check/test and evidence; triage unclassified failures enough to assess
+task relevance, without presuming they are pre-existing or dismissing them by count.
+An incomplete broad run alone does not require another full-suite run.
 
 Call a failure pre-existing only after reproducing the same test failure on the
 base commit, and report the test file, test name and base commit checked. That
 reproduction is necessary for the claim, not a mandatory detour for every
-unclassified failure. Never weaken tests or claim readiness with known failures.
+unclassified failure. Never weaken tests, relabel a failed check as passed, or
+claim readiness with known task-relevant failures.
 
 After two unsuccessful repair/verification cycles on the same blocker, stop
 expanding work. Report the evidence, exact blocker and smallest next experiment
@@ -159,11 +161,16 @@ or decision; do not automatically widen into architectural work. See the
 two-failed-hypothesis rule under Debugging discipline below. These are bounded
 investigation rules, not a global wall-clock timeout.
 
-Distinguish implementation complete, focused verification passed, broad
-verification blocked and ready to land in the final report, as applicable. A
-clearly labeled checkpoint commit may preserve useful work despite unresolved
-broader failures, but is not a ready/green claim. Ready to land requires all
-required checks to pass; never merge with unresolved required checks.
+Report implementation, scoped validation, unrelated validation debt and readiness
+separately. Scope complete + relevant checks passed = ready. `validationPassed`
+asserts sufficient task-scoped evidence, not that every repository check passed.
+Unfinished acceptance criteria, known relevant failures and uncommitted/unvalidated
+task changes still block readiness. Checkpoints with unfinished task work are not
+ready; unrelated broad failures alone do not demote completed, validated work to a
+checkpoint. Commit validated work and bind readiness to that exact HEAD. Readiness
+does not authorize landing or resolution: explicit merge authorization or the
+user's actual Auto-merge opt-in, managed-worktree ownership, clean landing state,
+conflict checks and lifecycle rules remain unchanged.
 
 ### Workflow and feature test depth
 

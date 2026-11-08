@@ -32,8 +32,11 @@ describe("compact Cake Chat guidance", () => {
       "Launch asynchronously",
       "reply for owed answers/dependencies",
       "notification for background review",
+      "task done + scoped checks passed = ready, not repo-wide green",
     ])
       expect(prompt).toContain(rule);
+    expect(prompt).not.toContain("Cake development");
+    expect(prompt).not.toContain("pnpm typecheck");
   });
 
   it.each([

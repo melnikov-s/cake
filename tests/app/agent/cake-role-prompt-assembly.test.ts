@@ -63,6 +63,9 @@ describe("role-specific prompt assembly", () => {
     expect(append).toContain("worktrees.merge without sessionId");
     expect(append).toContain("no fallback");
     expect(append).toContain("Reports/completion grant no merge/resolve approval");
+    expect(append).toContain("task done + scoped checks passed = ready, not repo-wide green");
+    expect(append).not.toContain("Cake development");
+    expect(append).not.toContain("pnpm typecheck");
     expect(append.match(/Pi owns execution\/history/g)).toHaveLength(1);
     expect(capabilities.resourceLoader.getAgentsFiles().agentsFiles).toEqual(
       expect.arrayContaining([expect.objectContaining({ content: instructions })]),
@@ -154,7 +157,12 @@ describe("role-specific prompt assembly", () => {
       }
     }
     expect(await readFile(join(docs, "cake-chat.md"), "utf8")).toContain("no prerequisite reads");
-    expect(await readFile(join(docs, "reports.md"), "utf8")).toContain("sessions.completions");
+    const reports = await readFile(join(docs, "reports.md"), "utf8");
+    expect(reports).toContain("sessions.completions");
+    expect(reports).toContain("Scope complete + relevant checks passed = ready");
+    expect(reports).toContain(
+      "known relevant failures and uncommitted/unvalidated task changes block readiness",
+    );
     expect(await readFile(join(docs, "artifacts.md"), "utf8")).toContain(
       "exact @rN preview pixels",
     );
