@@ -311,6 +311,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
       },
     },
     managedWorktrees: {
+      setAutoMerge: (enabled, options) =>
+        execute(
+          "managedWorktrees.setAutoMerge",
+          (client) => client.managedWorktrees.setAutoMerge({ enabled }),
+          options,
+        ),
       inspectChanges: (input, options) =>
         execute(
           "managedWorktrees.inspectChanges",

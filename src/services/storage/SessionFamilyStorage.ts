@@ -1,3 +1,4 @@
+import type { AutoMergeOutcome, AutoMergeRequest } from "../../contracts/worktrees/auto-merge";
 import type { StoredPassiveNotice } from "../../contracts/conversations/passive-notice";
 import type {
   PendingReport,
@@ -12,6 +13,7 @@ import type { ResultDelivery } from "../../contracts/conversations/result-delive
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import {
   Context,
+  DateTime,
   Effect,
   FileSystem,
   Layer,
@@ -55,6 +57,23 @@ export class SessionFamilyStorage extends Context.Service<
   SessionFamilyStorage,
   {
     readonly state: () => Effect.Effect<SessionFamilyDocument, SessionFamilyStorageError>;
+    readonly authorizeAutoMerge: (
+      runId: string,
+      epoch: string,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly recordAutoMerge: (
+      request: AutoMergeRequest,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly updateAutoMerge: (
+      id: string,
+      state: AutoMergeRequest["state"],
+      message?: string,
+      outcome?: AutoMergeOutcome,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly invalidateAutoMerge: (
+      workspacePath: string,
+      id?: string,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly advanceBoardDelivery: (
       familyId: string,
       through: number,
@@ -513,6 +532,115 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                 : item,
             ),
           })),
+      );
+      const authorizeAutoMerge = Effect.fn("SessionFamilyStorage.authorizeAutoMerge")(
+        (runId: string, epoch: string) =>
+          update((document) => ({
+            ...document,
+            autoMergeRequests: (document.autoMergeRequests ?? []).map((item) => {
+              if (
+                !item.readyToMerge ||
+                item.runId !== runId ||
+                item.state === "landing" ||
+                item.state === "landed"
+              )
+                return item;
+              const next = { ...Struct.omit(item, ["outcome"]), epoch };
+              if (item.state === "failed" || item.state === "canceled")
+                Object.assign(next, { state: "ready", attempt: (item.attempt ?? 0) + 1 });
+              return next;
+            }),
+          })),
+      );
+      const recordAutoMerge = Effect.fn("SessionFamilyStorage.recordAutoMerge")(
+        (request: AutoMergeRequest) =>
+          update((document) =>
+            (document.autoMergeRequests ?? []).some((item) => item.id === request.id)
+              ? document
+              : {
+                  ...document,
+                  autoMergeRequests: [...(document.autoMergeRequests ?? []), request],
+                },
+          ),
+      );
+      const updateAutoMerge = Effect.fn("SessionFamilyStorage.updateAutoMerge")(function* (
+        id: string,
+        state: AutoMergeRequest["state"],
+        message?: string,
+        outcome?: AutoMergeOutcome,
+      ) {
+        const reportedAt = DateTime.formatIso(yield* DateTime.now);
+        yield* update((document) => {
+          const request = document.autoMergeRequests?.find((item) => item.id === id);
+          if (
+            !request ||
+            (request.state === state &&
+              request.message === message &&
+              (!outcome || request.outcome))
+          )
+            return document;
+          const changed = { ...request, state };
+          if (message) Object.assign(changed, { message });
+          if (outcome) Object.assign(changed, { outcome });
+          const next = {
+            ...document,
+            autoMergeRequests: document.autoMergeRequests?.map((item) =>
+              item.id === id ? changed : item,
+            ),
+          };
+          // Persist the backend result and its outbox atomically. The original report is
+          // untouched; this single quiet system reminder survives source-session resolution.
+          if (outcome && !request.outcome && request.coordinatorSessionId) {
+            const digest = document.coordinatorDigest ?? [];
+            const digestId = `auto-merge:${id}${request.attempt ? `:${request.attempt}` : ""}`;
+            if (!digest.some((item) => item.id === digestId))
+              next.coordinatorDigest = [
+                ...digest,
+                {
+                  id: digestId,
+                  coordinatorSessionId: request.coordinatorSessionId,
+                  sessionId: request.sessionId,
+                  title:
+                    document.spawnedSessions.find((item) => item.sessionId === request.sessionId)
+                      ?.title ?? `Session ${request.sessionId}`,
+                  status: outcome.resolutionSucceeded ? "completed" : "blocked",
+                  summary: `Auto-merge backend outcome: merged=${outcome.merged}; resolutionSucceeded=${outcome.resolutionSucceeded}; targetBranch=${outcome.targetBranch}; landedCommit=${outcome.landedCommit ?? "none"}. ${outcome.message.slice(0, 500)}`,
+                  reportedAt,
+                  userInputOnly: true,
+                },
+              ];
+          }
+          return next;
+        });
+      });
+      const invalidateAutoMerge = Effect.fn("SessionFamilyStorage.invalidateAutoMerge")(
+        (workspacePath: string, id?: string) =>
+          update((document) =>
+            !(document.autoMergeRequests ?? []).some(
+              (item) =>
+                item.workspacePath === workspacePath &&
+                (!id || item.id === id) &&
+                item.readyToMerge &&
+                item.state !== "landed",
+            )
+              ? document
+              : {
+                  ...document,
+                  autoMergeRequests: document.autoMergeRequests?.map((item) =>
+                    item.workspacePath === workspacePath &&
+                    (!id || item.id === id) &&
+                    item.readyToMerge &&
+                    item.state !== "landed"
+                      ? {
+                          ...item,
+                          readyToMerge: false,
+                          state: "canceled" as const,
+                          message: "New input invalidated merge readiness",
+                        }
+                      : item,
+                  ),
+                },
+          ),
       );
       const recordCompletion = Effect.fn("SessionFamilyStorage.recordCompletion")(
         (item: CompletionInboxItem, digest?: CoordinatorDigestItem) =>
@@ -997,6 +1125,10 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         recordBoardDelivery,
         updateBoardDelivery,
         setBoardDeliveryPaused,
+        authorizeAutoMerge,
+        recordAutoMerge,
+        updateAutoMerge,
+        invalidateAutoMerge,
         recordCompletion,
         updateCompletion,
         list,

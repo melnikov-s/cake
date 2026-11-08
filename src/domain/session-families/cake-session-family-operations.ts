@@ -209,6 +209,7 @@ export function createSessionFamilyOperations(
         resultDeliveryGuidance,
         sessionMessageDeliveryGuidance,
         "Set replyToMessageId when this message answers a specific request. A different or unrelated message never clears that request's response obligation.",
+        "Merge readiness is separate structured metadata: worktrees.reportReadiness only after the entire task and necessary validation pass and the validated work is committed. resultKind ready or completed prose alone never triggers auto-merge.",
         "Send one substantive completion report. Never send acknowledgment-only messages or duplicate lifecycle reports; receiving a report or notification does not require a response.",
         "Delivery receipts are informational tool results. Never acknowledge a receipt; send another message only for substantive coordination.",
       ],

@@ -195,6 +195,45 @@ const makeLayer = (
 };
 
 describe("ManagedWorktrees Effect service", () => {
+  it.effect("rejects stale validated HEAD before any landing mutation", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const temporary = yield* fileSystem.makeTempDirectoryScoped();
+        const repository = `${temporary}/repo`;
+        const worktreePath = `${temporary}/source`;
+        yield* fileSystem.makeDirectory(`${repository}/.git`, { recursive: true });
+        yield* fileSystem.makeDirectory(worktreePath);
+        const mutations: string[] = [];
+        const layer = ManagedWorktreesLive.pipe(
+          Layer.provide(
+            makeLayer([record(repository, worktreePath, "agent/source")], {
+              commonDirectory: () => repository,
+              run: (_cwd, args) => {
+                if (["rebase", "merge", "commit"].includes(args[0] ?? ""))
+                  mutations.push(args[0] ?? "");
+                return undefined;
+              },
+            }),
+          ),
+        );
+        yield* Effect.gen(function* () {
+          const result = yield* (yield* ManagedWorktrees)
+            .land(worktreePath, "auto", {
+              strategy: "preserve",
+              expectedSourceCommit: "old-validated-head",
+            })
+            .pipe(Effect.result);
+          expect(result).toMatchObject({
+            _tag: "Failure",
+            failure: { message: expect.stringContaining("HEAD changed") },
+          });
+          expect(mutations).toEqual([]);
+        }).pipe(Effect.provide(layer));
+      }),
+    ).pipe(Effect.provide(BootstrapLive)),
+  );
+
   it.effect.each([
     "origin-default",
     "current-fallback",

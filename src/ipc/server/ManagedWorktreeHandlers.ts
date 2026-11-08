@@ -1,12 +1,20 @@
+import { WorktreeLandingError } from "../../contracts/worktrees/worktree-landing-data";
 import { Effect, Stream } from "effect";
 import * as managedWorktrees from "../../domain/worktrees/managedWorktrees";
 import * as worktreeChanges from "../../domain/worktrees/worktreeChanges";
 import * as worktreeCatalog from "../../domain/worktrees/worktreeCatalog";
+import * as autoMergeReadiness from "../../domain/worktrees/autoMergeReadiness";
 import * as worktreeLandings from "../../domain/worktrees/worktreeLandings";
 import { ManagedWorktreeRpc } from "../protocol/ManagedWorktreeRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 
 export const managedWorktreeHandlers = ManagedWorktreeRpc.of({
+  "managedWorktrees.setAutoMerge": ({ enabled }) =>
+    Effect.flatMap(RendererConnection, () => autoMergeReadiness.setEnabled(enabled)).pipe(
+      Effect.mapError(
+        (error) => new WorktreeLandingError({ operation: "setAutoMerge", message: error.message }),
+      ),
+    ),
   "managedWorktrees.inspectChanges": ({ workspacePath, base }) =>
     Effect.flatMap(RendererConnection, () => worktreeChanges.inspect(workspacePath, { base })),
   "managedWorktrees.observeCatalog": () => worktreeCatalog.observe(),

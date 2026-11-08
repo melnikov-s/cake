@@ -285,6 +285,53 @@ describe("updateBatchDueAt", () => {
 
 describe("timed batch delivery", () => {
   it.effect(
+    "keeps backend auto-merge outcomes quiet until user input and deduplicates their receipts",
+    () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(START);
+        const f = yield* fixture();
+        yield* f.provide(
+          Effect.gen(function* () {
+            yield* f.storage.recordAutoMerge({
+              id: "auto",
+              sessionId: "child",
+              coordinatorSessionId: "parent",
+              workspacePath: "/project",
+              epoch: "enabled",
+              runId: "run",
+              commit: "a".repeat(40),
+              state: "landing",
+              readyToMerge: true,
+            });
+            const outcome = {
+              targetBranch: "main",
+              landedCommit: "b".repeat(40),
+              merged: true,
+              resolutionSucceeded: true,
+              message: "Confirmed merge and resolution",
+            };
+            yield* f.storage.updateAutoMerge("auto", "landed", outcome.message, outcome);
+            yield* f.storage.discardUpdates("child");
+          }),
+        );
+        yield* f.pass();
+        yield* advance(10 * 60_000);
+        yield* f.pass();
+        assert.equal(f.admitted.length, 0);
+        assert.equal(yield* f.batch(), undefined);
+        yield* f.userMessage("What changed?");
+        assert.equal(f.admitted.length, 1);
+        assert.match(f.admitted[0]?.text ?? "", /<system-reminder>/);
+        assert.match(f.admitted[0]?.text ?? "", /cake:\/\/session\/child/);
+        assert.match(f.admitted[0]?.text ?? "", /targetBranch=main/);
+        assert.match(f.admitted[0]?.text ?? "", /landedCommit=bbbb/);
+        assert.match(f.admitted[0]?.text ?? "", /resolutionSucceeded=true/);
+        yield* f.pass();
+        assert.equal((yield* f.state()).coordinatorDigest?.length, 0);
+      }),
+  );
+
+  it.effect(
     "delivers a passive message to an open side chat without looking it up as a Project Session",
     () =>
       Effect.gen(function* () {

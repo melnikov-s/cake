@@ -126,7 +126,9 @@ export const makeTurnLifecycle = Effect.fn("ProjectSessions.makeTurnLifecycle")(
                 resolvedRoot: configuration.resolvedSessionDirectory,
               },
               input,
-              admit.pipe(Effect.andThen(sourceEvent)),
+              families
+                .invalidateAutoMerge(location.workingDirectory)
+                .pipe(Effect.andThen(admit), Effect.andThen(sourceEvent)),
             )
             .pipe(
               Effect.provideService(SessionFamilyStorage, families),
@@ -198,6 +200,22 @@ export const makeTurnLifecycle = Effect.fn("ProjectSessions.makeTurnLifecycle")(
             : text
               ? { outcome: "result" as const, text }
               : undefined;
+        const mergeRequest = (yield* families.state()).autoMergeRequests?.find(
+          (item) => item.id === event.turnId && item.state === "pending",
+        );
+        if (mergeRequest) {
+          const ready =
+            outcome === "complete" &&
+            Boolean(substantiveTurnResult(event.result)) &&
+            familyTurn?.report?.outcome !== "blocked" &&
+            familyTurn?.report?.outcome !== "failed";
+          if (!ready) yield* families.invalidateAutoMerge(location.workingDirectory);
+          yield* families.updateAutoMerge(
+            mergeRequest.id,
+            ready ? "ready" : "canceled",
+            ready ? undefined : "Task turn did not complete successfully",
+          );
+        }
         const resultMessageRef = event.result?.entryId
           ? messageReference(sessionId, event.result.entryId)
           : undefined;

@@ -47,11 +47,19 @@ export const list = Effect.fn("CompletionInbox.list")(function* (
   sessionId: string,
   input: AgentListInput = {},
 ) {
-  const items = ((yield* (yield* SessionFamilyStorage).state()).completionInbox ?? []).filter(
-    (item) =>
-      item.coordinatorSessionId === sessionId &&
-      (item.state === "pending" || item.state === "deferred"),
-  );
+  const document = yield* (yield* SessionFamilyStorage).state();
+  const items = (document.completionInbox ?? [])
+    .map((item) => {
+      const autoMerge = [...(document.autoMergeRequests ?? [])]
+        .reverse()
+        .find((request) => request.sessionId === item.sessionId);
+      return autoMerge ? { ...item, autoMerge } : item;
+    })
+    .filter(
+      (item) =>
+        item.coordinatorSessionId === sessionId &&
+        (item.state === "pending" || item.state === "deferred"),
+    );
   const query = input.query?.toLowerCase();
   return agentListPage(
     query

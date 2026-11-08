@@ -464,6 +464,10 @@ const makeLayer = (
     hooks.applicationLayer ?? application,
     catalogChanges,
     Layer.succeed(SessionFamilyStorage, {
+      authorizeAutoMerge: () => Effect.void,
+      recordAutoMerge: () => Effect.void,
+      updateAutoMerge: () => Effect.void,
+      invalidateAutoMerge: () => Effect.void,
       deferPassiveNotice: () => Effect.void,
       markPassiveNoticeAdmission: () => Effect.void,
       advanceBoardDelivery: () => Effect.void,

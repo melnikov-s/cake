@@ -412,7 +412,7 @@ export const ManagedWorktreesLive: Layer.Layer<
             yield* publish(worktreePath);
           }),
         ),
-      land: (worktreePath, operationId, request, onProgress) =>
+      land: (worktreePath, operationId, request, onProgress, authorize) =>
         mapError(
           "ManagedWorktrees.land",
           Effect.gen(function* () {
@@ -426,10 +426,15 @@ export const ManagedWorktreesLive: Layer.Layer<
             return yield* Effect.gen(function* () {
               // Waiting entries may replay and request owner repairs without taking the
               // repository lock or waiting for the head's commit/conflict turn.
-              if ((yield* landingState(record))?.state === "queued") {
+              if (
+                (yield* landingState(record))?.state === "queued" &&
+                !(request.strategy === "preserve" && request.expectedSourceCommit)
+              ) {
                 const prepared = yield* withWorktreeLock(
                   record.worktreePath,
-                  landRecord(record, request, true),
+                  (authorize ?? Effect.void).pipe(
+                    Effect.andThen(landRecord(record, request, true)),
+                  ),
                 );
                 if (prepared.outcome !== "ready") {
                   yield* publish(worktreePath);
@@ -443,7 +448,10 @@ export const ManagedWorktreesLive: Layer.Layer<
                 record.worktreePath,
                 withWorktreeLock(
                   record.parentWorktreePath ?? record.projectPath,
-                  withRepositoryLock(record.projectPath, landRecord(record, request)),
+                  withRepositoryLock(
+                    record.projectPath,
+                    (authorize ?? Effect.void).pipe(Effect.andThen(landRecord(record, request))),
+                  ),
                 ),
               );
               // landRecord refreshes source, checkpoint and target under the final locks.

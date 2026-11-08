@@ -1,3 +1,4 @@
+import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 import { Cause, Effect, FiberMap, Stream, SubscriptionRef } from "effect";
 import type {
   WorktreeLandRequest,
@@ -37,7 +38,15 @@ const normalizeOperation = (operation: WorktreeLandingOperation): WorktreeLandin
 export const observeOperations = Effect.fn("WorktreeLandings.observeOperations")(function* () {
   const coordinator = yield* WorktreeLandingCoordinator;
   return SubscriptionRef.changes(coordinator.state).pipe(
-    Stream.map((state) => ({ operations: [...state.operations.values()] })),
+    Stream.map((state) => {
+      const update = {
+        operations: [...state.operations.values()],
+        autoMergeEnabled: state.autoMergeEnabled ?? false,
+        autoMergeRequests: state.autoMergeRequests ?? [],
+      };
+      if (state.autoMergeStatus) Object.assign(update, { autoMergeStatus: state.autoMergeStatus });
+      return update;
+    }),
   );
 });
 const asError = (operation: string) =>
@@ -59,7 +68,7 @@ const update = Effect.fn("WorktreeLandings.update")(function* (
     if (!current || current.operationId !== operationId) return state;
     const operations = new Map(state.operations);
     operations.set(workspacePath, normalizeOperation(change(current)));
-    return { operations };
+    return { ...state, operations };
   });
 });
 
@@ -151,13 +160,19 @@ const completeLanding = Effect.fn("WorktreeLandings.completeLanding")(function* 
       // Publish resolution evidence only with the terminal phase, never before cleanup.
       const operations = new Map(state.operations);
       operations.set(operation.workspacePath, normalizeOperation(completed));
-      return [undefined, { operations }] as const;
+      return [undefined, { ...state, operations }] as const;
     }),
   );
 });
 
+interface AutomaticLanding {
+  readonly commit: string;
+  readonly authorize: Effect.Effect<void, WorktreeLandingError>;
+}
+
 const performLanding: (
   operation: WorktreeLandingOperation,
+  automatic?: AutomaticLanding,
 ) => Effect.Effect<
   void,
   WorktreeLandingError,
@@ -166,7 +181,7 @@ const performLanding: (
   | WorktreeLandingCoordinator
   | WorktreeLandingCompletion
   | ApplicationState
-> = Effect.fn("WorktreeLandings.performLanding")(function* (operation) {
+> = Effect.fn("WorktreeLandings.performLanding")(function* (operation, automatic) {
   const worktrees = yield* ManagedWorktrees;
   const application = yield* ApplicationState;
   yield* update(operation.workspacePath, operation.operationId, (current) => ({
@@ -175,20 +190,46 @@ const performLanding: (
     pauseReason: undefined,
     conflictFiles: undefined,
   }));
-  const request: WorktreeLandRequest = {
-    strategy: operation.strategy ?? "preserve",
-    allowDirtyTarget: operation.allowDirtyTarget || undefined,
-  };
+  const request: WorktreeLandRequest = automatic
+    ? { strategy: "preserve", expectedSourceCommit: automatic.commit }
+    : {
+        strategy: operation.strategy ?? "preserve",
+        allowDirtyTarget: operation.allowDirtyTarget || undefined,
+      };
   const coordinator = yield* WorktreeLandingCoordinator;
   const outcome = yield* worktrees
-    .land(operation.workspacePath, operation.operationId, request, (phase) =>
-      update(operation.workspacePath, operation.operationId, (current) => ({
-        ...current,
-        phase,
-      })).pipe(Effect.provideService(WorktreeLandingCoordinator, coordinator)),
+    .land(
+      operation.workspacePath,
+      operation.operationId,
+      request,
+      (phase) =>
+        update(operation.workspacePath, operation.operationId, (current) => ({
+          ...current,
+          phase,
+        })).pipe(Effect.provideService(WorktreeLandingCoordinator, coordinator)),
+      automatic?.authorize.pipe(
+        Effect.mapError(
+          (error) => new ManagedWorktreeError({ operation: "autoMerge", message: error.message }),
+        ),
+      ),
     )
     .pipe(asError("land"));
-  if (outcome.outcome === "landed") return yield* completeLanding(operation, outcome.commit);
+  if (outcome.outcome === "landed") {
+    if (automatic) {
+      // Retain the confirmed Git outcome even if authorization or resolution now fails.
+      if (outcome.commit)
+        yield* update(operation.workspacePath, operation.operationId, (current) => ({
+          ...current,
+          landedCommit: outcome.commit,
+        }));
+      yield* automatic.authorize;
+      if (operation.resolveAfterLanding)
+        yield* worktrees
+          .setResolveAfterLanding(operation.workspacePath, true)
+          .pipe(asError("resolveWorkingDirectory"));
+    }
+    return yield* completeLanding(operation, outcome.commit);
+  }
   const status = yield* requireStatus(operation.workspacePath);
   const reason = outcome.outcome === "proposal" ? "squash-message" : "conflict";
   yield* update(operation.workspacePath, operation.operationId, (current) => ({
@@ -197,6 +238,15 @@ const performLanding: (
     pauseReason: reason,
     conflictFiles: outcome.outcome === "resolving" ? outcome.files : undefined,
   }));
+  if (automatic) {
+    yield* update(operation.workspacePath, operation.operationId, (current) => ({
+      ...current,
+      phase: "stalled",
+      resolveAfterLanding: undefined,
+      error: "Auto-merge needs conflict resolution and fresh validation before retrying.",
+    }));
+    return;
+  }
   yield* prompt(
     operation,
     outcome.outcome === "proposal"
@@ -263,9 +313,10 @@ const prepareCommitAndLand = Effect.fn("WorktreeLandings.prepareCommitAndLand")(
 
 const prepareAndLand = Effect.fn("WorktreeLandings.prepareAndLand")(function* (
   operation: WorktreeLandingOperation,
+  automatic?: AutomaticLanding,
 ) {
   yield* reserveLanding(operation);
-  yield* performLanding(operation);
+  yield* performLanding(operation, automatic);
 });
 
 const adoptLanding = Effect.fn("WorktreeLandings.adoptLanding")(function* (
@@ -391,7 +442,7 @@ const insert = Effect.fn("WorktreeLandings.insert")(function* (
     if (current && !isTerminal(current)) return [false, state] as const;
     const operations = new Map(state.operations);
     operations.set(operation.workspacePath, normalizeOperation(operation));
-    return [true, { operations }] as const;
+    return [true, { ...state, operations }] as const;
   });
   if (!inserted)
     return yield* new WorktreeLandingError({
@@ -408,6 +459,7 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
   readonly allowDirtyTarget: boolean;
   readonly commitBeforeLanding: boolean;
   readonly resolveAfterLanding?: boolean;
+  readonly automatic?: AutomaticLanding;
 }) {
   const status = yield* requireStatus(input.workspacePath);
   if ((yield* worktreeLifecycle.forProject(status.record.projectPath)).landsThroughPullRequests)
@@ -430,13 +482,13 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
   yield* run(
     operation,
     Effect.gen(function* () {
-      if (input.resolveAfterLanding)
+      if (input.resolveAfterLanding && !input.automatic)
         yield* (yield* ManagedWorktrees)
           .setResolveAfterLanding(input.workspacePath, true)
           .pipe(asError("start"));
       yield* input.commitBeforeLanding
         ? prepareCommitAndLand(operation)
-        : prepareAndLand(operation);
+        : prepareAndLand(operation, input.automatic);
     }),
   );
   return operation;
@@ -504,7 +556,10 @@ export const mergeAndResolve = Effect.fn("WorktreeLandings.mergeAndResolve")(fun
       );
       const operations = new Map(state.operations);
       operations.set(input.workspacePath, operation);
-      return [{ operation, start: !joining, alreadyLanded }, { operations }] as const;
+      return [
+        { operation, start: !joining, alreadyLanded },
+        { ...state, operations },
+      ] as const;
     }),
   );
   if (claimed.start)
@@ -562,7 +617,7 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
     });
     const operations = new Map(state.operations);
     operations.set(input.workspacePath, claimed);
-    return [claimed, { operations }] as const;
+    return [claimed, { ...state, operations }] as const;
   });
   if (!operation)
     return yield* new WorktreeLandingError({
@@ -636,7 +691,7 @@ export const acknowledge = Effect.fn("WorktreeLandings.acknowledge")(function* (
     if (!current || current.operationId !== operationId || !isTerminal(current)) return state;
     const operations = new Map(state.operations);
     operations.delete(workspacePath);
-    return { operations };
+    return { ...state, operations };
   });
 });
 
@@ -673,7 +728,7 @@ export const cancel = Effect.fn("WorktreeLandings.cancel")(function* (
     if (!latest || latest.operationId !== operationId) return state;
     const operations = new Map(state.operations);
     operations.delete(workspacePath);
-    return { operations };
+    return { ...state, operations };
   });
 });
 

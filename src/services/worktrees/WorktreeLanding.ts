@@ -266,6 +266,12 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
     record =
       (yield* Ref.get(recordsRef)).find((entry) => entry.worktreePath === record.worktreePath) ??
       record;
+    if (
+      request.strategy === "preserve" &&
+      request.expectedSourceCommit &&
+      (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim() !== request.expectedSourceCommit
+    )
+      return yield* internalError("Merge readiness is stale: HEAD changed after validation");
     if (!(yield* exists(record.worktreePath))) {
       yield* closeRecord(record, "missing");
       return yield* internalError("The worktree no longer exists on disk");

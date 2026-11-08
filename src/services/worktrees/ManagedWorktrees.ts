@@ -89,6 +89,7 @@ export interface ManagedWorktreesService {
     request: WorktreeLandRequest,
     /** Source preparation runs first; only ready entries wait for their landing turn. */
     onProgress?: (phase: "queued" | "landing") => Effect.Effect<void>,
+    authorize?: Effect.Effect<void, ManagedWorktreeError>,
   ) => Effect.Effect<WorktreeLandOutcome, ManagedWorktreeError>;
   readonly cancelLanding: (
     worktreePath: string,

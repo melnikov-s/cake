@@ -22,7 +22,11 @@ export const worktreeStatusSchema = Schema.Struct({
 });
 export type WorktreeStatus = typeof worktreeStatusSchema.Type;
 export type WorktreeLandRequest =
-  | { readonly strategy: "preserve"; readonly allowDirtyTarget?: true }
+  | {
+      readonly strategy: "preserve";
+      readonly allowDirtyTarget?: true;
+      readonly expectedSourceCommit?: string;
+    }
   | {
       readonly strategy: "squash";
       readonly message?: string;

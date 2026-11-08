@@ -13,7 +13,7 @@ import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorag
  * The caller removes `digestIds` only after admission, so a failed send keeps the items.
  */
 export const prepareUserMessage = Effect.fn("CakeChatDigest.prepareUserMessage")(function* (
-  handle: CakeSessionHandle,
+  handle: Pick<CakeSessionHandle, "snapshot" | "admittedDigestIds">,
   text: string,
 ) {
   const snapshot = yield* handle.snapshot();

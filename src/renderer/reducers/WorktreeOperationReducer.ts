@@ -9,6 +9,13 @@ export function applyWorktreeOperationCatalogUpdate(
 ) {
   const incomingPaths = new Set(update.operations.map((operation) => operation.workspacePath));
   batch(() => {
+    model.autoMergeEnabled = update.autoMergeEnabled ?? false;
+    model.autoMergeStatus = update.autoMergeStatus;
+    model.autoMergeRequests.splice(
+      0,
+      model.autoMergeRequests.length,
+      ...(update.autoMergeRequests ?? []),
+    );
     for (let index = model.operations.length - 1; index >= 0; index -= 1)
       if (!incomingPaths.has(model.operations[index]!.workspacePath))
         model.operations.splice(index, 1);

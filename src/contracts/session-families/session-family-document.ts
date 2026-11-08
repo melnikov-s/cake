@@ -3,6 +3,7 @@ import { MessageReference } from "../conversations/message-reference";
 import { StoredPassiveNotice } from "../conversations/passive-notice";
 import { PendingReport, ReportHandlingReceipt } from "../conversations/pending-report";
 import { BoardDelivery } from "../artifacts/board-delivery";
+import { AutoMergeRequest } from "../worktrees/auto-merge";
 import { CompletionInboxItem } from "../conversations/completion-inbox";
 import { ResultDelivery } from "../conversations/result-delivery";
 import { TurnStop } from "../conversations/turn-stop";
@@ -133,13 +134,15 @@ export interface FamilyTurn extends Schema.Schema.Type<typeof FamilyTurn> {}
 export const CoordinatorDigestItem = Schema.Struct({
   /** Absent denotes the global chat, including existing persisted inbox items. */
   coordinatorSessionId: Schema.optionalKey(BoundedId),
+  /** Backend outcomes may wait for real user input without scheduling a wake. */
+  userInputOnly: Schema.optionalKey(Schema.Boolean),
   /** The settled obligation's turn ID; digesting is idempotent per turn. */
   id: BoundedId,
   sessionId: BoundedId,
   title: Schema.String.check(Schema.isMaxLength(500)),
   resultMessageRef: Schema.optionalKey(MessageReference),
   status: CakeChatLaunchStatus,
-  summary: Schema.String.check(Schema.isMaxLength(500)),
+  summary: Schema.String.check(Schema.isMaxLength(2000)),
   reportedAt: Schema.String,
 });
 export interface CoordinatorDigestItem extends Schema.Schema.Type<typeof CoordinatorDigestItem> {}
@@ -167,6 +170,7 @@ export const SessionFamilyDocument = Schema.Struct({
   boardDeliveries: Schema.optionalKey(Schema.Array(BoardDelivery)),
   boardDeliveryPaused: Schema.optionalKey(Schema.Array(BoundedId)),
   completionInbox: Schema.optionalKey(Schema.Array(CompletionInboxItem)),
+  autoMergeRequests: Schema.optionalKey(Schema.Array(AutoMergeRequest)),
   updateBatches: Schema.optionalKey(Schema.Array(UpdateBatch)),
 });
 export interface SessionFamilyDocument extends Schema.Schema.Type<typeof SessionFamilyDocument> {}

@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   applyProjectCatalogUpdate,
@@ -14,7 +15,93 @@ import { SubagentHandleId } from "../../../src/contracts/subagents/subagent-data
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 
+import { applyWorktreeOperationCatalogUpdate } from "../../../src/renderer/reducers/WorktreeOperationReducer";
+import { AutoMergeToggle } from "../../../src/renderer/components/auto-merge-toggle";
+import { ToastHost } from "../../../src/renderer/components/toast-host";
+
 afterEach(cleanup);
+
+it("exposes default-off Auto-merge in the activity rail and follows authoritative on/off updates", async () => {
+  const setAutoMerge = vi.fn(async (enabled: boolean) => {
+    applyWorktreeOperationCatalogUpdate(fixture.models.worktreeOperations, {
+      operations: [],
+      autoMergeEnabled: enabled,
+      autoMergeStatus: enabled ? "Waiting for fresh validated completion" : "Off",
+    });
+  });
+  using fixture = createRendererStoreFixture({ client: { managedWorktrees: { setAutoMerge } } });
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <ProjectRail />
+    </StoreProvider>,
+  );
+  const user = userEvent.setup();
+  expect(screen.getByRole("button", { name: "Auto-merge: off" }).getAttribute("aria-pressed")).toBe(
+    "false",
+  );
+  await user.click(screen.getByRole("button", { name: "Auto-merge: off" }));
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Auto-merge: on" }).getAttribute("aria-pressed"),
+    ).toBe("true"),
+  );
+  await user.click(screen.getByRole("button", { name: "Auto-merge: on" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Auto-merge: off" })).toBeTruthy());
+  expect(setAutoMerge.mock.calls).toEqual([[true], [false]]);
+  // A second surface consumes the same authoritative opt-in, never local settings.
+  view.rerender(
+    <StoreProvider store={fixture.root}>
+      <AutoMergeToggle />
+    </StoreProvider>,
+  );
+  await user.click(screen.getByRole("button", { name: "Auto-merge: off" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Auto-merge: on" })).toBeTruthy());
+  act(() =>
+    applyWorktreeOperationCatalogUpdate(fixture.models.worktreeOperations, {
+      operations: [],
+      autoMergeEnabled: true,
+      autoMergeRequests: [
+        {
+          id: "ready-task",
+          sessionId: "owner",
+          workspacePath: "/tree",
+          epoch: "enabled",
+          runId: "run",
+          commit: "a".repeat(40),
+          readyToMerge: true,
+          state: "failed",
+          message: "Target dirty",
+        },
+      ],
+    }),
+  );
+  expect(fixture.root.autoMergeRequests[0]?.message).toBe("Target dirty");
+  view.unmount();
+});
+
+it("keeps Auto-merge off and shows a failed authorization update", async () => {
+  using fixture = createRendererStoreFixture({
+    client: {
+      managedWorktrees: {
+        setAutoMerge: async () => {
+          throw new Error("Connection unavailable");
+        },
+      },
+    },
+  });
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <ProjectRail />
+      <ToastHost store={fixture.root.toastStore} />
+    </StoreProvider>,
+  );
+  await userEvent.setup().click(screen.getByRole("button", { name: "Auto-merge: off" }));
+  expect(await screen.findByText("Could not change auto-merge")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Auto-merge: off" }).getAttribute("aria-pressed")).toBe(
+    "false",
+  );
+  view.unmount();
+});
 
 it("shows unselected-project activity from the project catalog without discovering descendants", () => {
   using fixture = createRendererStoreFixture({

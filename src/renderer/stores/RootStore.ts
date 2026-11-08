@@ -476,6 +476,27 @@ export class RootStore extends Store<{
     return this.props.client;
   }
 
+  get autoMergeRequests() {
+    return this.props.projection.worktreeOperations.autoMergeRequests;
+  }
+  get autoMergeEnabled() {
+    return this.props.projection.worktreeOperations.autoMergeEnabled;
+  }
+  get autoMergeStatus() {
+    return this.props.projection.worktreeOperations.autoMergeStatus;
+  }
+  async toggleAutoMerge() {
+    try {
+      await this.client.managedWorktrees.setAutoMerge(!this.autoMergeEnabled);
+    } catch (error) {
+      this.toastStore.show({
+        tone: "error",
+        title: "Could not change auto-merge",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   private worktreeOperation(workspacePath: string) {
     const operation = this.props.projection.worktreeOperations.find(workspacePath);
     if (!operation) return undefined;

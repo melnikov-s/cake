@@ -14,6 +14,8 @@ import {
 } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 
+import { familyStorageHarness } from "../helpers/familyStorageHarness";
+
 const location = {
   projectPath: "/project",
   projectName: "Project",
@@ -25,6 +27,7 @@ const location = {
 const fixture = Effect.fn("ProjectSessionTurnLifecycleTest.fixture")((options: {
   readonly locate?: ReturnType<SessionArchiveStorage["Service"]["locate"]>;
   readonly save?: ReturnType<ApplicationStorage["Service"]["save"]>;
+  readonly familyLayer?: Layer.Layer<SessionFamilyStorage>;
 }) => {
   const publish =
     vi.fn<(change: Parameters<SessionCatalogChanges["Service"]["publish"]>[0]) => void>();
@@ -41,16 +44,62 @@ const fixture = Effect.fn("ProjectSessionTurnLifecycleTest.fixture")((options: {
     Layer.mock(SessionArchiveStorage, {
       locate: () => options.locate ?? Effect.succeed("active"),
     }),
-    Layer.mock(SessionFamilyStorage, {
-      familyForMember: () => Effect.succeed(undefined),
-      state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
-      settleTurn: settle,
-    }),
+    options.familyLayer ??
+      Layer.mock(SessionFamilyStorage, {
+        familyForMember: () => Effect.succeed(undefined),
+        state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
+        settleTurn: settle,
+      }),
     Layer.mock(SessionCatalogChanges, { publish: (change) => Effect.sync(() => publish(change)) }),
     Layer.mock(SessionCoordination, { settleTurn: coordinate }),
   );
   return Effect.succeed({ dependencies, publish, settle, coordinate, save });
 });
+
+it.effect.each([
+  {
+    outcome: "complete" as const,
+    text: "Implemented the requested fix; focused validation passed.",
+    expected: "ready",
+  },
+  { outcome: "complete" as const, text: "Done", expected: "canceled" },
+  {
+    outcome: "failed" as const,
+    text: "Implemented the requested fix; focused validation passed.",
+    expected: "canceled",
+  },
+  {
+    outcome: "aborted" as const,
+    text: "Implemented the requested fix; focused validation passed.",
+    expected: "canceled",
+  },
+])("settles explicit readiness only with successful substantive task completion (%j)", (scenario) =>
+  Effect.gen(function* () {
+    const test = yield* fixture({ familyLayer: familyStorageHarness().layer });
+    yield* Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      yield* storage.recordAutoMerge({
+        id: "turn",
+        sessionId: "session",
+        workspacePath: "/project",
+        epoch: "enabled",
+        runId: "run",
+        commit: "a".repeat(40),
+        state: "pending",
+        readyToMerge: true,
+      });
+      const hooks = yield* makeTurnLifecycle({ sessionId: "session", location });
+      yield* hooks.onTurnSettled({
+        sessionId: "session",
+        turnId: "turn",
+        outcome: scenario.outcome,
+        result: { stopReason: "stop", text: scenario.text },
+      });
+      expect((yield* storage.state()).autoMergeRequests?.[0]?.state).toBe(scenario.expected);
+      expect(test.coordinate).toHaveBeenCalledWith("turn", scenario.outcome);
+    }).pipe(Effect.provide(test.dependencies));
+  }),
+);
 
 it.effect.each([
   { outcome: "complete" as const, resolved: false, unread: true },

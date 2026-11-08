@@ -332,6 +332,7 @@ interface WorkspaceCommands {
 }
 
 interface ManagedWorktreeCommands {
+  setAutoMerge(enabled: boolean, options?: ClientCommandOptions): Promise<void>;
   /** `base` is the user's comparison choice; otherwise the backend infers it. */
   inspectChanges(
     input: { workspacePath: string; base: string | undefined },

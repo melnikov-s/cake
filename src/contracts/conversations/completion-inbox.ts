@@ -1,3 +1,4 @@
+import { AutoMergeRequest } from "../worktrees/auto-merge";
 import { MessageReference } from "./message-reference";
 import { Schema } from "effect";
 
@@ -22,6 +23,7 @@ export const CompletionInboxItem = Schema.Struct({
   kind: CompletionKind,
   decisions: Schema.Array(CompletionDecision),
   state: CompletionDecisionState,
+  autoMerge: Schema.optionalKey(AutoMergeRequest),
 });
 export interface CompletionInboxItem extends Schema.Schema.Type<typeof CompletionInboxItem> {}
 export const CompletionInboxUpdate = Schema.Struct({

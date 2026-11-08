@@ -1,3 +1,5 @@
+import type { MergeReadiness } from "../../contracts/worktrees/auto-merge";
+import * as autoMergeReadiness from "../worktrees/autoMergeReadiness";
 import { makeTurnLifecycle } from "./projectSessionTurnLifecycle";
 import type { invokeGlobalArtifactCommand } from "../artifacts/globalArtifacts";
 import type { AutomationRecords } from "../../services/automations/AutomationRecords";
@@ -887,6 +889,23 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         ),
       worktreeLandingControl: location.managedWorktree
         ? {
+            reportReadiness: Option.isSome(landingCoordinator)
+              ? (readiness: MergeReadiness) =>
+                  run(
+                    autoMergeReadiness
+                      .report(
+                        {
+                          sessionId,
+                          workingDirectory: location.workingDirectory,
+                          sessionDirectory: location.sessionDirectory,
+                        },
+                        readiness,
+                      )
+                      .pipe(
+                        Effect.provideService(WorktreeLandingCoordinator, landingCoordinator.value),
+                      ),
+                  )
+              : undefined,
             proposeSquashMessage: (message) =>
               run(
                 worktrees.proposeSquashMessage({

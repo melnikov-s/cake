@@ -45,7 +45,7 @@ function pendingUpdateRecipients(document: SessionFamilyDocument): ReadonlySet<s
   for (const report of document.deferredReferences ?? [])
     if (!report.admissions) recipients.add(report.recipientSessionId);
   for (const item of document.coordinatorDigest ?? [])
-    recipients.add(item.coordinatorSessionId ?? CAKE_CHAT_SESSION_ID);
+    if (!item.userInputOnly) recipients.add(item.coordinatorSessionId ?? CAKE_CHAT_SESSION_ID);
   return recipients;
 }
 

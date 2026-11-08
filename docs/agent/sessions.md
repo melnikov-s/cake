@@ -34,5 +34,7 @@ Use pending/cancel-queued/clear-queue for queued inputs; these are lifecycle con
 
 Project Session to Cake Chat: sessions.send without sessionId. Complete once; automatic transport needs no duplicate report. Blockers can use sessions.reply outcome: blocked.
 Cake Chat must provide a target and cannot message itself; projectChatId routes to permanent Project Chat. Sender label cake-chat is not a routing reference.
+For optional user-enabled auto-merge, declare validated completion with worktrees.reportReadiness before the final answer; see [readiness](reports.md#auto-merge-readiness). Never declare checkpoints or pending validation ready.
+
 When assigned by Cake Chat, lead final answer with one-line outcome; contact separately for blocker/user decision, not duplicate completion.
 [Delivery](communication.md) covers result modes; [discovery](session-discovery.md) covers identity; [settings](settings.md) covers lasting instructions. Omit model overrides unless requested.
