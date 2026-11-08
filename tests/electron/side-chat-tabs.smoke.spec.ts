@@ -55,6 +55,69 @@ test("a single Side Chat keeps its heading and pane close action without a redun
   }
 });
 
+for (const action of ["Merge into main chat", "Close and resolve"] as const) {
+  test(`${action} selects another Side Chat and closes the pane only after the last tab`, async () => {
+    test.setTimeout(120_000);
+    const root = await mkdtemp(join(tmpdir(), "cake-remove-side-chat-tab-"));
+    const paths = {
+      cakeHome: join(root, "cake"),
+      userData: join(root, "user-data"),
+      project: join(root, "project"),
+    };
+    await seedSideChatTabs(paths.cakeHome, paths.userData, paths.project, "light", 3);
+    const application = await electron.launch({
+      args: [repositoryRoot],
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        CAKE_ELECTRON_SMOKE: "1",
+        CAKE_ELECTRON_USER_DATA: paths.userData,
+        CAKE_HOME: paths.cakeHome,
+        PI_CODING_AGENT_DIR: join(paths.cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
+      },
+    });
+    try {
+      const page = await application.firstWindow();
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      await page
+        .getByRole("button", { name: "Open Project Chat for Tab fixture", exact: true })
+        .click();
+      await page.getByRole("button", { name: "Side chats, 3 open", exact: true }).click();
+      await page
+        .getByRole("dialog", { name: "Open side chats" })
+        .getByRole("button", { name: sideChatTabTitles[1], exact: true })
+        .click();
+      const strip = page.getByRole("tablist", { name: "Side chats", exact: true });
+      await expect(strip.getByRole("tab")).toHaveCount(3);
+      await page.getByRole("button", { name: action, exact: true }).click();
+      await expect(strip.getByRole("tab")).toHaveCount(2);
+      await expect(
+        strip.getByRole("tab", { name: sideChatTabTitles[0], exact: true }),
+      ).toHaveAttribute("aria-selected", "true");
+      await expect(strip.getByRole("tab", { name: sideChatTabTitles[1], exact: true })).toHaveCount(
+        0,
+      );
+      await page.getByRole("button", { name: action, exact: true }).click();
+      const lastPane = page.getByRole("complementary", { name: sideChatTabTitles[2], exact: true });
+      await expect(lastPane).toBeVisible();
+      await expect(strip).toHaveCount(0);
+      await expect(lastPane.getByRole("combobox")).toBeFocused();
+      await lastPane.getByRole("button", { name: action, exact: true }).click();
+      await expect(lastPane).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /^Side chats,/ })).toHaveCount(0);
+      await expect(
+        page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
+      ).toBeFocused();
+      expect(errors).toEqual([]);
+    } finally {
+      await application.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
+
 for (const theme of ["dark", "light"] as const) {
   test(`Side Chat tab surfaces, overflow and terminal close targets (${theme})`, async () => {
     test.setTimeout(120_000);

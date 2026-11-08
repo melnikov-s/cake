@@ -54,7 +54,7 @@ export const SideChatLayout = observer(function SideChatLayout({
       aria-busy={target.merge.pending}
       onClick={async () => {
         const merged = await target.merge?.run();
-        if (merged && store.target === target) store.close();
+        if (merged && store.target === target) store.closeRemovedTab();
       }}
     >
       <MergeResolveIcon />

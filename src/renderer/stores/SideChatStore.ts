@@ -116,7 +116,7 @@ export class SideChatStore extends Store<SideChatStoreProps> {
     try {
       const resolved = await target.resolve();
       if (this.signal.aborted || this.target !== target) return;
-      if (resolved) this.close();
+      if (resolved) this.closeRemovedTab();
       else this.resolutionError = "Could not resolve side chat. Try again.";
     } catch (error) {
       if (!this.signal.aborted && this.target === target)
@@ -124,6 +124,19 @@ export class SideChatStore extends Store<SideChatStoreProps> {
     } finally {
       this.resolving = false;
     }
+  }
+
+  /** A successful merge/resolve removes this tab, not the whole accessory pane. */
+  closeRemovedTab() {
+    const navigation = this.target?.navigationTarget;
+    if (navigation?.kind === "side-chat") {
+      const next = this.tabs.find((tab) => tab.id !== navigation.threadId);
+      if (next) {
+        this.props.tabs?.select(next.id);
+        return;
+      }
+    }
+    this.close();
   }
 
   close() {

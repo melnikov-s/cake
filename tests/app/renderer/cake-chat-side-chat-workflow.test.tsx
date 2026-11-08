@@ -104,8 +104,10 @@ afterEach(() => {
 function mergeFixture(
   merge: (input: DiscussionSessionTarget) => Promise<{ importedMessages: number }>,
 ) {
-  const setResolved = vi.fn<Client["discussionSessions"]["setResolved"]>(async () => {
-    const thread = fixture.models.discussionCatalog(CAKE_CHAT_SESSION_ID).threads[0];
+  const setResolved = vi.fn<Client["discussionSessions"]["setResolved"]>(async (input) => {
+    const thread = fixture.models
+      .discussionCatalog(CAKE_CHAT_SESSION_ID)
+      .threads.find((thread) => thread.id === input.threadId);
     if (!thread) throw new Error("Missing side chat");
     act(() => {
       thread.status = "resolved";
@@ -120,7 +122,7 @@ function mergeFixture(
           const result = await merge(input);
           const catalog = fixture.models.discussionCatalog(CAKE_CHAT_SESSION_ID);
           act(() => {
-            const thread = catalog.threads[0];
+            const thread = catalog.threads.find((thread) => thread.id === input.threadId);
             if (thread) thread.status = "resolved";
           });
           return result;
@@ -204,6 +206,132 @@ function mergeFixture(
   chat.openSideChat("merge-thread");
   return Object.assign(fixture, { chat, side, setResolved });
 }
+
+function addMergeSibling(fixture: ReturnType<typeof mergeFixture>, id: string, title: string) {
+  const catalog = fixture.models.discussionCatalog(CAKE_CHAT_SESSION_ID);
+  catalog.threads.push(
+    ReviewThread.create({
+      ...toSnapshot(catalog.threads[0]!),
+      id,
+      title,
+      sidecarSessionId: `${id}-side`,
+      parts: [],
+    }),
+  );
+  applyConversationSnapshot(
+    fixture.models.discussionConversation(`${id}-side`, "/home", CAKE_CHAT_SESSION_ID),
+    snapshot(`${id}-side`, []),
+  );
+}
+
+it.each(["Merge into main chat", "Close and resolve"])(
+  "%s activates a remaining tab until the last tab is removed",
+  async (action) => {
+    const merge = vi.fn(async () => ({ importedMessages: 2 }));
+    using fixture = mergeFixture(merge);
+    addMergeSibling(fixture, "second-thread", "Second chat");
+    addMergeSibling(fixture, "third-thread", "Third chat");
+    const panel = fixture.chat.conversationSessionStore.sideChatStore;
+    fixture.chat.openSideChat("second-thread");
+    fixture.chat.sideChats.chatStore("third-thread")!.setDraft("Preserved draft");
+    const view = render(
+      <StoreProvider store={fixture.root}>
+        <Surface chat={fixture.chat} />
+      </StoreProvider>,
+    );
+    const user = userEvent.setup();
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+    await user.click(screen.getByRole("button", { name: action }));
+    expect(panel.target?.navigationTarget).toMatchObject({ threadId: "merge-thread" });
+    expect(screen.getByRole("tab", { name: "Side chat" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(screen.queryByRole("tab", { name: "Second chat" })).toBeNull();
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: action }));
+    expect(panel.target?.navigationTarget).toMatchObject({ threadId: "third-thread" });
+    expect(screen.getByRole("complementary", { name: "Third chat" })).toBeDefined();
+    expect(screen.queryByRole("tablist", { name: "Side chats" })).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Reply to side chat" })).toHaveProperty(
+      "value",
+      "Preserved draft",
+    );
+    await user.click(screen.getByRole("button", { name: action }));
+    expect(panel.target).toBeUndefined();
+    expect(screen.queryByRole("complementary")).toBeNull();
+    expect(
+      fixture.models
+        .discussionCatalog(CAKE_CHAT_SESSION_ID)
+        .threads.every((thread) => thread.status === "resolved"),
+    ).toBe(true);
+    expect(merge).toHaveBeenCalledTimes(action === "Merge into main chat" ? 3 : 0);
+    expect(fixture.setResolved).toHaveBeenCalledTimes(action === "Close and resolve" ? 3 : 0);
+    view.unmount();
+  },
+);
+
+it.each(["Merge into main chat", "Close and resolve"])(
+  "%s keeps both tabs and the active selection while pending or failed",
+  async (action) => {
+    let fail!: (error: Error) => void;
+    const pending = new Promise<void>((_resolve, reject) => {
+      fail = reject;
+    });
+    const merge = vi.fn(async () => ({ importedMessages: 2 }));
+    using fixture = mergeFixture(merge);
+    addMergeSibling(fixture, "second-thread", "Second chat");
+    if (action === "Merge into main chat") {
+      merge.mockImplementationOnce(async () => {
+        await pending;
+        return { importedMessages: 2 };
+      });
+    } else {
+      fixture.setResolved.mockImplementationOnce(async () => {
+        await pending;
+        throw new Error("Expected rejection");
+      });
+    }
+    const panel = fixture.chat.conversationSessionStore.sideChatStore;
+    const original = panel.target;
+    const view = render(
+      <StoreProvider store={fixture.root}>
+        <Surface chat={fixture.chat} />
+      </StoreProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: action }));
+    expect(panel.target).toBe(original);
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(screen.getByRole("tab", { name: "Side chat" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Close and resolve" }).disabled,
+    ).toBe(true);
+    await act(async () => fail(new Error("Action failed")));
+    expect(panel.target).toBe(original);
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(screen.getByRole("tab", { name: "Side chat" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(
+      fixture.models
+        .discussionCatalog(CAKE_CHAT_SESSION_ID)
+        .threads.every((thread) => thread.status === "open"),
+    ).toBe(true);
+    expect(
+      screen.getByText(
+        action === "Merge into main chat"
+          ? "Action failed"
+          : "Could not resolve side chat. Try again.",
+      ),
+    ).toBeDefined();
+    await user.click(screen.getByRole("button", { name: action }));
+    expect(panel.target?.navigationTarget).toMatchObject({ threadId: "second-thread" });
+    expect(screen.getByRole("complementary", { name: "Second chat" })).toBeDefined();
+    view.unmount();
+  },
+);
 
 it("switches Cake Chat side tabs through the existing owner without resolving", async () => {
   const merge = vi.fn(async () => ({ importedMessages: 0 }));

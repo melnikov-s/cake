@@ -589,8 +589,11 @@ describe("Secondary conversation workflows", () => {
       expect(secondChat.transcriptInteraction.transcriptScrollPosition).toEqual({ kind: "top" });
       await fixture.user.click(screen.getByRole("button", { name: "Close and resolve" }));
       expect(fixture.resolutions).toHaveBeenCalledTimes(1);
-      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
-      await fixture.user.click(screen.getByRole("button", { name: "First discussion" }));
+      expect(sideChatStore.target?.chatStore).toBe(firstChat);
+      expect(screen.getByRole("combobox", { name: "Reply to side chat" })).toHaveProperty(
+        "value",
+        "First draft",
+      );
       expect(screen.queryByRole("tablist", { name: "Side chats" })).toBeNull();
     },
   );
@@ -778,7 +781,7 @@ describe("Secondary conversation workflows", () => {
     expect(start).toHaveBeenCalledTimes(1);
   });
 
-  it("replaces the open side chat and closes/resolves only the selected thread", async () => {
+  it("resolves only the selected thread and activates the remaining side chat", async () => {
     const start = vi.fn<Client["discussionSessions"]["start"]>();
     const first = thread("first", "First discussion");
     const second = {
@@ -813,10 +816,15 @@ describe("Secondary conversation workflows", () => {
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
-    await fixture.user.click(screen.getByRole("button", { name: /First discussion/ }));
+    expect(screen.getByRole("complementary", { name: "Side chat" })).toBeDefined();
+    expect(
+      fixture.session.conversationSessionStore.sideChatStore.target?.navigationTarget,
+    ).toMatchObject({
+      threadId: "first",
+    });
     expect(screen.getByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Close and resolve" }));
+    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
     expect(start).not.toHaveBeenCalled();
   });
 
