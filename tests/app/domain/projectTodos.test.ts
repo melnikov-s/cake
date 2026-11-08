@@ -566,7 +566,7 @@ it.effect(
 );
 
 it.effect(
-  "keeps automatic descriptions to the first paragraph, at most two sentences and 320 characters",
+  "keeps automatic titles concise and uses safe task fallbacks instead of raw instructions",
   () => {
     const f = fixture();
     return Effect.gen(function* () {
@@ -578,16 +578,16 @@ it.effect(
       yield* todos.ensureSession(
         project,
         "session-long",
-        "Measurements",
+        "Measurements ".repeat(80),
         "Measure startup latency ".repeat(80) + "\n\nDetailed instructions.",
       );
       yield* todos.ensureSession(project, "session-empty", "Follow up", "  \n  ");
       const items = (yield* todos.list(project)).items;
-      expect(items[0]?.description).toBe("Investigate startup latency. Recommend a measured fix.");
+      expect(items[0]?.description).toBe("Continue work on Startup.");
+      expect(Array.from(items[1]?.title ?? "")).toHaveLength(80);
       expect(items[1]?.description.length).toBeLessThanOrEqual(320);
-      expect(items[1]?.description.endsWith("…")).toBe(true);
       expect(items[1]?.description).not.toContain("Detailed instructions");
-      expect(items[2]?.description).toBe("Continue work in Follow up.");
+      expect(items[2]?.description).toBe("Continue work on Follow up.");
     }).pipe(Effect.provide(f.layer));
   },
 );
@@ -622,7 +622,7 @@ it.effect(
       expect(items).toHaveLength(1);
       expect(items[0]).toMatchObject({
         title: "Startup",
-        description: "Find the bottleneck.",
+        description: "Continue work on Startup.",
         state: "done",
         revision: 1,
       });

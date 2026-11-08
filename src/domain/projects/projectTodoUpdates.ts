@@ -3,6 +3,7 @@ import { ApplicationState } from "../../services/storage/ApplicationState";
 import {
   ProjectTodoReports,
   type ProjectTodoReport,
+  type ProjectTodoInitialDescription,
 } from "../../services/projects/ProjectTodoReports";
 import {
   CAKE_CHAT_TODO_SCOPE,
@@ -11,7 +12,11 @@ import {
 } from "../../contracts/projects/project-todos";
 import type { ApplicationState as State } from "../../contracts/application/application-data";
 import { parseSubagentLink } from "../../contracts/subagents/subagent-reference";
-import { summarizeTodoReport, utilityModelSelection } from "../utility-work/utilityWork";
+import {
+  summarizeTodoReport,
+  summarizeInitialTodoDescription,
+  utilityModelSelection,
+} from "../utility-work/utilityWork";
 import * as todos from "./projectTodos";
 
 const lists = (state: State) => [
@@ -75,7 +80,46 @@ export const processReports = Effect.fn("ProjectTodoUpdates.processReports")(fun
   }
 });
 
+/** Queued only on creation, never on restore. Skip already-edited/removed items before
+ * spending model work, then recheck the same revision in the authoritative transaction. */
+export const processInitialDescription = Effect.fn("ProjectTodoUpdates.processInitialDescription")(
+  function* (request: ProjectTodoInitialDescription) {
+    const application = yield* ApplicationState;
+    const state = application.snapshot();
+    const model = state.utilityModel;
+    const item = lists(state)
+      .find(({ scope }) => scope === request.scope)
+      ?.value.items.find((item) => item.id === request.id);
+    if (
+      !model ||
+      !request.brief.trim() ||
+      !item ||
+      item.state !== "open" ||
+      item.revision !== request.revision
+    )
+      return;
+    const description = yield* summarizeInitialTodoDescription({
+      selection: utilityModelSelection(model),
+      title: item.title,
+      brief: request.brief,
+    });
+    if (description !== item.description)
+      yield* todos.applyReportDescription(request.scope, item, description);
+  },
+  (effect, request) =>
+    effect.pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("Initial to-do summary failed; keeping fallback", error).pipe(
+          Effect.annotateLogs({ scope: request.scope, id: request.id }),
+        ),
+      ),
+    ),
+);
+
 export const initialize = Effect.fn("ProjectTodoUpdates.initialize")(function* () {
   const reports = yield* ProjectTodoReports;
   yield* reports.reports().pipe(Stream.runForEach(processReports), Effect.forkScoped);
+  yield* reports
+    .initialDescriptions()
+    .pipe(Stream.runForEach(processInitialDescription), Effect.forkScoped);
 });

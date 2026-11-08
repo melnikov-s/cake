@@ -22,6 +22,8 @@ import { Logger } from "effect";
 import { fullProjectTodos, projectTodoLayer } from "../helpers/projectTodoHarness";
 import { createPrompted } from "../../../src/domain/project-sessions/projectSessionCreation";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
+import { CAKE_CHAT_TODO_SCOPE } from "../../../src/contracts/projects/project-todos";
 import { Deferred, Effect, Fiber, Layer, Queue, Schema, Stream, SubscriptionRef } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, vi } from "vitest";
@@ -34,7 +36,10 @@ import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import * as projectTodoResolution from "../../../src/domain/projects/projectTodoResolution";
 import * as projectTodoAssociations from "../../../src/domain/projects/projectTodoAssociations";
 import * as projectSessionLifecycle from "../../../src/domain/project-sessions/projectSessionLifecycle";
-import { ProjectTodoReports } from "../../../src/services/projects/ProjectTodoReports";
+import {
+  ProjectTodoReports,
+  type ProjectTodoInitialDescription,
+} from "../../../src/services/projects/ProjectTodoReports";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import { createCakeSessionRuntimeContinuations } from "../../../src/services/pi/runtime/cake-session-runtime-continuations";
@@ -3711,6 +3716,72 @@ describe("Project Sessions domain", () => {
     );
   }
 
+  it.effect.each(["global chat", "project chat", "user"] as const)(
+    "sessions.create from %s creates exactly one Project-owned to-do and queues the original task once",
+    (source) => {
+      const requests: ProjectTodoInitialDescription[] = [];
+      let launches = 0;
+      return Effect.gen(function* () {
+        const started = yield* Deferred.make<void>();
+        yield* Effect.gen(function* () {
+          const result = yield* createPrompted({
+            projectPath: "/project",
+            name: "Startup improvement",
+            initialPrompt: "Reduce startup latency without changing behavior.",
+            model: { provider: "test", modelId: "test", thinkingLevel: "off", fastMode: false },
+            ...(source === "user"
+              ? {}
+              : {
+                  requester: {
+                    kind: "cake-chat" as const,
+                    sessionId:
+                      source === "global chat"
+                        ? CAKE_CHAT_SESSION_ID
+                        : projectChatSessionId("/project"),
+                    title: "Chat",
+                  },
+                }),
+          });
+          const items = (yield* projectTodos.list("/project")).items;
+          assert.equal(items.length, 1);
+          assert.deepEqual(items[0]?.associations, [
+            { kind: "session", sessionId: result.sessionId, title: "Startup improvement" },
+          ]);
+          assert.equal((yield* projectTodos.list(CAKE_CHAT_TODO_SCOPE)).items.length, 0);
+          assert.equal(requests.length, 1);
+          assert.equal(requests[0]?.scope, "/project");
+          assert.equal(requests[0]?.id, items[0]?.id);
+          assert.equal(requests[0]?.brief, "Reduce startup latency without changing behavior.");
+          assert.equal(result.status, "started");
+          // The accepted runtime turn starts independently of description work.
+          const record = yield* (yield* RuntimeRecoveryStorage).get(result.sessionId);
+          assert.ok(record);
+          yield* Deferred.await(started);
+          assert.equal(launches, 1);
+        }).pipe(
+          Effect.provide(
+            Layer.merge(
+              makeLayer(undefined, {
+                applicationLayer: projectTodoLayer(),
+                runtime: (options) =>
+                  fakeRuntime(options, async () => {
+                    launches++;
+                    await Effect.runPromise(Deferred.succeed(started, undefined));
+                  }),
+              }),
+              Layer.mock(ProjectTodoReports, {
+                offerInitial: (request) =>
+                  Effect.sync(() => {
+                    requests.push(request);
+                  }),
+              }),
+            ),
+          ),
+        );
+      });
+    },
+  );
+
   it.effect("preserves ordinary pre-admission configuration failure without starting work", () => {
     let starts = 0;
     return Effect.gen(function* () {
@@ -3835,18 +3906,39 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("uses the agent fork title and continuation prompt for its linked to-do", () =>
-    Effect.gen(function* () {
-      yield* projectSessionContinuations.fork({
-        target: { sessionId: "session-1", workingDirectory: "/project" },
-        entryId: "assistant-entry",
-        title: "Implement startup fix",
-        prompt: "Implement the measured startup improvement and verify it.",
-      });
-      const [item] = (yield* projectTodos.list("/project")).items;
-      assert.equal(item?.title, "Implement startup fix");
-      assert.equal(item?.description, "Implement the measured startup improvement and verify it.");
-    }).pipe(Effect.provide(makeLayer())),
+  it.effect(
+    "uses the agent fork title for its linked to-do fallback and queues its continuation brief",
+    () => {
+      const requests: ProjectTodoInitialDescription[] = [];
+      return Effect.gen(function* () {
+        yield* projectSessionContinuations.fork({
+          target: { sessionId: "session-1", workingDirectory: "/project" },
+          entryId: "assistant-entry",
+          title: "Implement startup fix",
+          prompt: "Implement the measured startup improvement and verify it.",
+        });
+        const [item] = (yield* projectTodos.list("/project")).items;
+        assert.equal(item?.title, "Implement startup fix");
+        assert.equal(item?.description, "Continue work on Implement startup fix.");
+        assert.equal(requests.length, 1);
+        assert.equal(
+          requests[0]?.brief,
+          "Implement the measured startup improvement and verify it.",
+        );
+      }).pipe(
+        Effect.provide(
+          Layer.merge(
+            makeLayer(),
+            Layer.mock(ProjectTodoReports, {
+              offerInitial: (request) =>
+                Effect.sync(() => {
+                  requests.push(request);
+                }),
+            }),
+          ),
+        ),
+      );
+    },
   );
 
   it.effect("associates only the fork runtime's reachable artifact revisions", () => {
@@ -5533,7 +5625,7 @@ describe("Project Sessions domain", () => {
       );
       assert.equal(project?.todos?.items.length, 1);
       assert.equal(project?.todos?.items[0]?.title, "First message");
-      assert.equal(project?.todos?.items[0]?.description, "First message");
+      assert.equal(project?.todos?.items[0]?.description, "Continue work on First message.");
       assert.deepEqual(project?.todos?.items[0]?.associations, [
         { kind: "session", sessionId: "session-1", title: "First message" },
       ]);

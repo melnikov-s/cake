@@ -16,6 +16,10 @@ import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { projectTodoLayer } from "../helpers/projectTodoHarness";
 import * as todos from "../../../src/domain/projects/projectTodos";
 import {
+  ProjectTodoReports,
+  type ProjectTodoInitialDescription,
+} from "../../../src/services/projects/ProjectTodoReports";
+import {
   makeRuntimeRecoveryStorageTestLayer,
   fakeRuntime,
   options,
@@ -223,6 +227,7 @@ describe("Session Family creation", () => {
       let launches = 0;
       let disposed = false;
       let initialMessage: string | undefined;
+      const requests: ProjectTodoInitialDescription[] = [];
       const pi = makeCakeSessionRuntimesLayer({
         sessionIds: () => Stream.empty,
         catalog: () => Stream.empty,
@@ -263,7 +268,9 @@ describe("Session Family creation", () => {
         const items = (yield* todos.list("/project")).items;
         assert.equal(items.length, 1);
         assert.equal(items[0]?.title, input.title);
-        assert.equal(items[0]?.description, input.assignment.description);
+        assert.equal(items[0]?.description, `Continue work on ${input.title}.`);
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.brief, input.assignment.description);
         assert.deepEqual(items[0]?.associations, [
           { kind: "session", sessionId: first.childSessionId, title: input.title },
         ]);
@@ -287,6 +294,14 @@ describe("Session Family creation", () => {
           },
         });
       }).pipe(
+        Effect.provide(
+          Layer.mock(ProjectTodoReports, {
+            offerInitial: (request) =>
+              Effect.sync(() => {
+                requests.push(request);
+              }),
+          }),
+        ),
         Effect.provide(messageBoardHarness().layer),
         Effect.provide(projectTodoLayer()),
         Effect.provide(

@@ -268,6 +268,8 @@ for (const destination of ["family", "coordinator"] as const) {
               offers.push(report.text);
             }),
           reports: () => Stream.empty,
+          offerInitial: () => Effect.void,
+          initialDescriptions: () => Stream.empty,
         }),
         Effect.provide(f.layer),
       );

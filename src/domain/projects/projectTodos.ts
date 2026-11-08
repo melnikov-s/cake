@@ -2,7 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { clearCompletedProjectTodoSelection } from "../../utils/project-todo-selection";
 import type { ProjectTodoContextReceipt } from "../../contracts/projects/project-todo-context";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
-import { DateTime, Effect, Schema } from "effect";
+import { DateTime, Effect, Option, Schema } from "effect";
+import { ProjectTodoReports } from "../../services/projects/ProjectTodoReports";
+import { normalizeSessionTitle } from "../utility-work/utilityWork";
 import {
   addSessionDigestReminder,
   splitSessionDigestReminder,
@@ -512,13 +514,6 @@ export const mutateUser = Effect.fn("ProjectTodos.mutateUser")(function* (
   });
 });
 
-/** Keep automatic rows brief; the complete creation prompt remains in Pi. */
-function sessionDescription(brief: string, title: string): string {
-  const paragraph = (brief.trim().split(/\r?\n\s*\r?\n/, 1)[0] ?? "").replace(/\s+/g, " ");
-  const text = paragraph.split(/(?<=[.!?])\s+/, 2).join(" ") || `Continue work in ${title}.`;
-  return text.length > 320 ? `${text.slice(0, 319).trimEnd()}…` : text;
-}
-
 /** Creation bookkeeping, serialized by the same authority as manual edits.
  * Stable identity keeps retries idempotent even after an agent edits the links. */
 export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
@@ -529,13 +524,16 @@ export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
 ) {
   const hash = createHash("sha256").update(`cake:session-todo:${sessionId}`).digest("hex");
   const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
-  const name = title.trim().slice(0, 512).trim() || "New Project Session";
-  const description = sessionDescription(brief, name);
-  yield* change(scope, (value, current) => {
+  const name = normalizeSessionTitle(title) || "New Project Session";
+  // Never copy launch instructions/bookkeeping into the visible task description.
+  const description = `Continue work on ${name}.`;
+  let created = false;
+  const next = yield* change(scope, (value, current) => {
     const existing = owners(current, sessionId);
     if (existing.length > 1) return Effect.fail(ownershipError(sessionId, existing));
     if (existing.length || value.items.some((item) => item.id === id)) return Effect.succeed(value);
     if (value.items.length >= 1000) return Effect.fail(error("To-do list is full"));
+    created = true;
     return Effect.succeed({
       ...value,
       items: [
@@ -553,6 +551,19 @@ export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
       ],
     });
   });
+  // Only the transaction that created the durable item queues advisory work. Retries,
+  // restores and concurrent admission paths reuse the owner without resummarizing it.
+  const candidate = created ? next.items.find((item) => item.id === id) : undefined;
+  if (candidate && brief.trim()) {
+    const reports = yield* Effect.serviceOption(ProjectTodoReports);
+    if (Option.isSome(reports))
+      yield* reports.value.offerInitial({
+        scope,
+        id: candidate.id,
+        revision: candidate.revision,
+        brief,
+      });
+  }
 });
 
 /** Once a session/turn is admitted (or a fork exists), secondary to-do storage must not
