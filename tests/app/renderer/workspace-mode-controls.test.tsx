@@ -338,9 +338,7 @@ describe("Workspace mode navigation", () => {
         slots: [...tools.children].map((child) => child.className),
       };
     };
-    expect(
-      screen.getByRole("button", { name: "Main", exact: true }).getAttribute("aria-pressed"),
-    ).toBe("true");
+    expect(screen.getByRole("button", { name: "Main" }).getAttribute("aria-pressed")).toBe("true");
     const chatLayout = layout();
     await fixture.user.click(screen.getByRole("button", { name: "Browser" }));
     expect(await screen.findByRole("textbox", { name: "Browser address" })).toBeDefined();
@@ -353,9 +351,7 @@ describe("Workspace mode navigation", () => {
     await waitFor(() => expect(document.documentElement.dataset.titleBar).toBe("vscode"));
     expect(layout()).toEqual(chatLayout);
     await fixture.user.click(screen.getByRole("button", { name: "Main" }));
-    expect(
-      screen.getByRole("button", { name: "Main", exact: true }).getAttribute("aria-pressed"),
-    ).toBe("true");
+    expect(screen.getByRole("button", { name: "Main" }).getAttribute("aria-pressed")).toBe("true");
     expect(layout()).toEqual(chatLayout);
   });
   it("opens the worker CWD while retaining its owning project and draft across tool companions", async () => {

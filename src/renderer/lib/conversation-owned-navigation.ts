@@ -32,7 +32,7 @@ export function conversationOwnedNavigation(
     )
       continue;
     const full = discussions?.threads.find((candidate) => candidate.id === thread.id);
-    if (full && !["message", "artifact", "session"].includes(full.anchor.view)) continue;
+    if (full && !["message", "artifact", "session"].includes(full.anchor.view ?? "")) continue;
     const running = ownRunning(thread.sidecarSessionId) || ("running" in thread && thread.running);
     nodes.push({
       key: conversationNavigationKey(thread.sidecarSessionId),

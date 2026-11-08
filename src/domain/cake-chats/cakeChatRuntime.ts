@@ -2,6 +2,7 @@ import { SideSessionFork } from "../../contracts/cake-chats/side-session-fork";
 import { cakeChatControlTools } from "../../contracts/application/window-control-definitions";
 import { startTaskSideSession } from "../discussion-sessions/discussionSessions";
 import { DiscussionSessionEnvironment } from "../../services/discussion-sessions/DiscussionSessionEnvironment";
+import type { DiscussionTitleRequests } from "../../services/discussion-sessions/DiscussionTitleRequests";
 import { ReviewStorage } from "../../services/storage/ReviewStorage";
 import { messageReference } from "../../contracts/conversations/message-reference";
 import { globalArtifactOperationContracts } from "../../contracts/artifacts/global-artifact-control";
@@ -239,6 +240,7 @@ export type CakeChatRuntimeServices =
   | Path.Path
   | Effect.Services<ReturnType<typeof invokeGlobalArtifactCommand>>
   | ApplicationState
+  | DiscussionTitleRequests
   | ModelPresetPrompts
   | ProjectSessionRuntimeHost
   | PiModels

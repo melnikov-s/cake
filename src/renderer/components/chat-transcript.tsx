@@ -17,7 +17,7 @@ import {
   type VirtualizedConversationHandle,
 } from "@/components/ai-elements/conversation";
 import { AnnotationDraftPopover } from "@/components/annotation-draft-popover";
-import { ChatTranscriptFooter } from "./chat-transcript-footer";
+import { ChatTranscriptFooter, type ChatTranscriptFooterContext } from "./chat-transcript-footer";
 import { ConversationMarkdownProvider } from "./conversation-markdown-provider";
 import { FullscreenTranscriptContext } from "./fullscreen-transcript-context";
 import { TranscriptScroller } from "./transcript-scroller";
@@ -421,7 +421,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       commitScrollPosition();
     };
   }, [scroller, store]);
-  const error = errorOverride ?? store.error;
+  const error: ChatTranscriptFooterContext["error"] = errorOverride ?? store.error;
   // Right-clicking any selection inside this conversation keeps the native
   // Electron edit menu. The capture is held until that menu sends its
   // "Chat about this" action back to this transcript.

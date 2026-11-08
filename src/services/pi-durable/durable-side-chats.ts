@@ -350,7 +350,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           const preset = (await tx.doc(PresetContextDoc, conversation.id)).preset;
           // tx.doc values are revocable drafts, even in read-only commits. Detach
           // the preset before the transaction settles and the snapshot reaches RPC.
-          const presetSnapshot = preset === undefined ? undefined : copyJson(preset);
+          const presetSnapshot = preset === undefined ? undefined : { ...preset };
           const items = (await tx.doc(InboxDoc, conversation.id)).items;
           streaming = live?.run !== undefined;
           activeTurnIds = await Promise.all(

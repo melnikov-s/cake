@@ -1,4 +1,5 @@
 import type { MergeReadiness } from "../../contracts/worktrees/auto-merge";
+import type { DiscussionTitleRequests } from "../../services/discussion-sessions/DiscussionTitleRequests";
 import * as autoMergeReadiness from "../worktrees/autoMergeReadiness";
 import { makeTurnLifecycle } from "./projectSessionTurnLifecycle";
 import type { invokeGlobalArtifactCommand } from "../artifacts/globalArtifacts";
@@ -131,6 +132,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   | ChildProcessSpawner.ChildProcessSpawner
   | ModelPresetPrompts
   | ApplicationState
+  | DiscussionTitleRequests
   | PiModels
   | CakeSessionRuntimes
   | ProjectAccess
@@ -178,6 +180,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     | ChildProcessSpawner.ChildProcessSpawner
     | ModelPresetPrompts
     | ApplicationState
+    | DiscussionTitleRequests
     | PiModels
     | CakeSessionRuntimes
     | ProjectAccess

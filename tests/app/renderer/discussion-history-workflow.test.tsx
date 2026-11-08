@@ -216,7 +216,7 @@ it.each(scopes)(
     await user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     const menu = within(screen.getByRole("dialog", { name: "Open side chats" }));
     expect(menu.getByText("Working…")).toBeTruthy();
-    await user.click(menu.getByRole("button", { name: "Side chat", exact: true }));
+    await user.click(menu.getByRole("button", { name: "Side chat" }));
     const reopened = within(screen.getByRole("complementary", { name: "Side chat" }));
     expect(reopened.getByRole("img", { name: "Context usage" }).textContent).toContain("≈32k/64k");
     expect(reopened.getByText("50%")).toBeDefined();

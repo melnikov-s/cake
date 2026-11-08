@@ -1,4 +1,5 @@
 import { Layer } from "effect";
+import { DiscussionTitleRequests } from "../../../src/services/discussion-sessions/DiscussionTitleRequests";
 import { globalArtifactTestLayer } from "./globalArtifactTestLayer";
 import { unusedAutomationEndpointCapabilities } from "./automationEndpointCapabilities";
 import { PiSettings } from "../../../src/services/pi/PiSettings";
@@ -10,6 +11,7 @@ import { modelPresetPromptsTestLayer } from "./modelPresetPrompts";
 
 /** Shared agent controls for session tests; unexpected external calls fail loudly. */
 export const AgentControlTestLive = Layer.mergeAll(
+  DiscussionTitleRequests.layer,
   modelPresetPromptsTestLayer,
   globalArtifactTestLayer,
   unusedAutomationEndpointCapabilities,

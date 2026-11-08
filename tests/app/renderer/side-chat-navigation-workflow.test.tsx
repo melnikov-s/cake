@@ -224,7 +224,7 @@ it.each(["alpha", CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
           ],
         },
       });
-      catalog.metadata[0]!.title = paneTitle;
+      catalog.metadata.splice(0, 1, { ...catalog.metadata[0]!, title: paneTitle });
     });
     panel = await assertSplit();
     expect(within(panel).getByRole("combobox")).toHaveProperty("value", "Only the side draft");

@@ -347,7 +347,7 @@ describe("Sessions navigator workflow", () => {
       expect(
         within(rowFor("Project Chat")).getByRole("img", { name: "Ready, unread" }),
       ).toBeTruthy();
-      await fixture.user.click(screen.getByRole("button", { name: "cake", exact: true }));
+      await fixture.user.click(screen.getByRole("button", { name: "cake" }));
       await waitFor(() =>
         expect(within(rowFor("Project Chat")).getByLabelText("Idle")).toBeTruthy(),
       );

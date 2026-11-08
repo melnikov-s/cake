@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { SubagentHandleId } from "../../../src/contracts/subagents/subagent-data";
 import { WorkspaceNavigator } from "../../../src/renderer/components/workspace-navigator";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { applySubagentUpdate } from "../../../src/renderer/reducers/SubagentReducer";
@@ -75,7 +76,7 @@ describe("Workspace Sessions running count", () => {
       const runningLabel = sessionsTab().getAttribute("aria-label");
       const runningTitle = sessionsTab().getAttribute("title");
       await fixture.user.click(sessionsTab());
-      const panel = screen.getByRole("region", { name: "Sessions", exact: true });
+      const panel = screen.getByRole("region", { name: "Sessions" });
       const search = within(panel).getByRole("searchbox", { name: "Search sessions" });
       const list = within(panel).getByLabelText("Session conversations");
       expect(within(panel).queryByText(/^\d+ (total|running)$/)).toBeNull();
@@ -135,7 +136,7 @@ describe("Workspace Sessions running count", () => {
         _tag: "Removed",
         revision: 3,
         parentSessionId: "layout",
-        handleId: catalog.activities[0]!.handleId,
+        handleId: SubagentHandleId.make(catalog.activities[0]!.handleId),
       });
     });
     expectCount(5);

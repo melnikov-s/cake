@@ -935,8 +935,8 @@ it("uses each registered project name for its breadcrumb, header and home naviga
     if (open) await f.user.click(open);
     const workspace = within(screen.getByRole("complementary", { name: "Workspace" }));
     await f.user.click(workspace.getByRole("button", { name: /^Sessions/ }));
-    expect(workspace.getByRole("button", { name, exact: true })).toBeTruthy();
-    expect(workspace.queryByRole("button", { name: "Project Chat", exact: true })).toBeNull();
+    expect(workspace.getByRole("button", { name })).toBeTruthy();
+    expect(workspace.queryByRole("button", { name: "Project Chat" })).toBeNull();
   }
   await act(async () => {
     await f.root.navigationStore.openSession("task");

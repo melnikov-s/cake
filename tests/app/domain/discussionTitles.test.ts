@@ -45,6 +45,15 @@ const application = (configured = true) =>
     snapshot: () => ({ ...defaultApplicationState(), ...(configured ? { utilityModel } : {}) }),
   });
 
+const unexpectedPath = () => {
+  throw new Error("Unexpected review path access");
+};
+const reviewPaths = {
+  agentSessionDirectory: unexpectedPath,
+  reviewContextPath: unexpectedPath,
+  discussionParentContextPath: unexpectedPath,
+};
+
 describe("side-chat utility naming", () => {
   it.effect(
     "accepts naming without waiting for the model and saves a short first-message title",
@@ -66,6 +75,7 @@ describe("side-chat utility naming", () => {
               DiscussionTitleRequests.layer,
               application(),
               Layer.mock(ReviewStorage, {
+                ...reviewPaths,
                 get: () => Effect.succeed(record),
                 setDiscussionTitle: (cwd, parent, thread, title) =>
                   Effect.gen(function* () {
@@ -98,6 +108,7 @@ describe("side-chat utility naming", () => {
         Layer.mergeAll(
           application(),
           Layer.mock(ReviewStorage, {
+            ...reviewPaths,
             get: () => Effect.succeed({ ...record, title: "Saved title" }),
           }),
           Layer.mock(PiModels, {}),
@@ -113,7 +124,7 @@ describe("side-chat utility naming", () => {
         Effect.provide(
           Layer.mergeAll(
             application(false),
-            Layer.mock(ReviewStorage, {}),
+            Layer.mock(ReviewStorage, reviewPaths),
             Layer.mock(PiModels, {}),
           ),
         ),
@@ -135,6 +146,7 @@ describe("side-chat utility naming", () => {
             DiscussionTitleRequests.layer,
             application(),
             Layer.mock(ReviewStorage, {
+              ...reviewPaths,
               get: () => Effect.succeed(record),
               setDiscussionTitle: (_cwd, _parent, _thread, title) =>
                 Deferred.succeed(saved, title).pipe(Effect.asVoid),
