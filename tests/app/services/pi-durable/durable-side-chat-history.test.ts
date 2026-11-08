@@ -191,6 +191,65 @@ it("exports only native fork dialogue, stripping inherited prefix, side-chat/con
   );
 });
 
+it("defers stale or newly busy source history atomically, then imports all late dialogue once", async () => {
+  const f = await fixture();
+  const inherited = await f.append("Parent");
+  const side = await f.root.fork(inherited.id, { ownership: { kind: "ownerless" } }, context);
+  const append = (text: string) =>
+    side.commit(
+      (tx) =>
+        tx.appendEntry(UserEntry, side.id, {
+          model: [{ role: "user", content: text, timestamp: 2 }],
+        }),
+      context,
+    );
+  await append("First");
+  const exported = await exportDurableSideChatHistory(side, "native-side", inherited.id);
+  const source = { conversation: side, after: inherited.id };
+  const importing = { ...exported, threadId: "thread", title: "Side chat" };
+  await side.commit(async (tx) => {
+    const submission = await tx.createSubmission({
+      conversationId: side.id,
+      type: "input",
+      status: "queued",
+    });
+    (await tx.doc(InboxDoc, side.id)).items.push({
+      mode: "followUp",
+      id: submission.id,
+      content: "New input",
+    });
+  }, context);
+  await expect(importDurableSideChatHistory(f.root, importing, source)).rejects.toMatchObject({
+    _tag: "SideChatHistoryBusy",
+  });
+  await side.commit(async (tx) => {
+    (await tx.doc(InboxDoc, side.id)).items.length = 0;
+  }, context);
+  await append("Late dialogue");
+  await expect(importDurableSideChatHistory(f.root, importing, source)).rejects.toMatchObject({
+    _tag: "SideChatHistoryBusy",
+  });
+  expect(
+    (await f.root.entries({}, 100, undefined, context)).items.some(
+      (entry) => entry.kind === DURABLE_SIDE_CHAT_IMPORT,
+    ),
+  ).toBe(false);
+  const latest = {
+    ...(await exportDurableSideChatHistory(side, "native-side", inherited.id)),
+    threadId: "thread",
+    title: "Side chat",
+  };
+  expect(await importDurableSideChatHistory(f.root, latest, source)).toEqual({
+    importedMessages: 2,
+  });
+  expect(await importDurableSideChatHistory(f.root, latest, source)).toEqual({
+    importedMessages: 0,
+  });
+  const page = await f.root.entries({}, 100, undefined, context);
+  const group = page.items.map(durableSideChatImport).find(Boolean);
+  expect(group?.messages).toEqual(latest.messages);
+});
+
 it("exports copied-context Pi sidecars with original dialogue and typed user prose, not opening system context", async () => {
   const manager = SessionManager.inMemory();
   manager.appendMessage({

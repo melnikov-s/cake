@@ -31,7 +31,10 @@ import {
   type CakeSessionRuntimeSetup,
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import type { CakeSessionRuntime } from "../../../src/services/pi/runtime/cake-session-runtime";
-import type { SideChatHistoryMessage } from "../../../src/services/pi/side-chat-history";
+import {
+  SideChatHistoryBusy,
+  type SideChatHistoryMessage,
+} from "../../../src/services/pi/side-chat-history";
 import { makeProjectSessionRuntimeTestLayer } from "./projectSessionRuntimeTestLayer";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
@@ -112,10 +115,12 @@ const makeLayer = (
     readonly forkFailure?: string;
     readonly forkSessionId?: string;
     readonly backendControl?: boolean;
-    readonly mergeBusy?: "parent" | "source";
+    readonly mergeBusy?: "parent" | "source" | "both";
+    readonly mergeCheck?: Deferred.Deferred<void>;
     readonly mergeQueued?: "parent" | "source";
     readonly mergeReferences?: readonly string[];
     readonly mergeFailure?: boolean;
+    readonly lateImportDialogue?: boolean;
     readonly mergeGate?: { entered: Deferred.Deferred<void>; complete: Deferred.Deferred<void> };
     readonly activityGate?: { entered: Deferred.Deferred<void>; complete: Deferred.Deferred<void> };
   } = {},
@@ -126,6 +131,14 @@ const makeLayer = (
   const importedHistories: unknown[] = [];
   const grantedInputs: unknown[] = [];
   const mergeOptions = options;
+  const busyChats = new Set(
+    options.mergeBusy === "both"
+      ? ["parent", "source"]
+      : options.mergeBusy
+        ? [options.mergeBusy]
+        : [],
+  );
+  const queuedChats = new Set(options.mergeQueued ? [options.mergeQueued] : []);
   const historyMessages: SideChatHistoryMessage[] = [
     {
       sourceEntryId: "side-user-1",
@@ -188,6 +201,7 @@ const makeLayer = (
   let preparedContexts = 0;
   let parentIndexRefreshes = 0;
   let inspections = 0;
+  let lateImportDialogue = options.lateImportDialogue;
   const createdRecords: Array<{ workingDirectory: string; parentSessionId: string }> = [];
   const linkedSidecars: string[] = [];
   const runtime = (options: CakeSessionRuntimeSetup): CakeSessionRuntime => {
@@ -198,14 +212,21 @@ const makeLayer = (
     return {
       sessionId,
       sessionFile,
-      streaming:
-        mergeOptions.mergeBusy === (sessionId === CAKE_CHAT_SESSION_ID ? "parent" : "source"),
+      get streaming() {
+        return busyChats.has(sessionId === CAKE_CHAT_SESSION_ID ? "parent" : "source");
+      },
       exportSideChatHistory: async () => ({
         sourceSessionId: sessionId,
         inputReferenceIds: [...(mergeOptions.mergeReferences ?? [])],
         messages: historyMessages,
       }),
       importSideChatHistory: async (history) => {
+        if (lateImportDialogue) {
+          lateImportDialogue = false;
+          historyMessages.push({ ...historyMessages[1]!, sourceEntryId: "during-import" });
+          options.onEvent({ type: "streaming", sessionId, streaming: false });
+          throw new SideChatHistoryBusy({ message: "Source changed during import" });
+        }
         if (mergeOptions.mergeGate) {
           await Effect.runPromise(Deferred.succeed(mergeOptions.mergeGate.entered, undefined));
           await Effect.runPromise(Deferred.await(mergeOptions.mergeGate.complete));
@@ -244,13 +265,14 @@ const makeLayer = (
               ],
             }
           : {}),
-        streaming:
-          mergeOptions.mergeBusy === (sessionId === CAKE_CHAT_SESSION_ID ? "parent" : "source"),
+        streaming: busyChats.has(sessionId === CAKE_CHAT_SESSION_ID ? "parent" : "source"),
       }),
       listQueuedMessages: async () => ({ steering: [], followUp: [] }),
-      pendingMessages: async () => ({
-        items:
-          mergeOptions.mergeQueued === (sessionId === CAKE_CHAT_SESSION_ID ? "parent" : "source")
+      pendingMessages: async () => {
+        if (mergeOptions.mergeCheck)
+          await Effect.runPromise(Deferred.succeed(mergeOptions.mergeCheck, undefined));
+        return {
+          items: queuedChats.has(sessionId === CAKE_CHAT_SESSION_ID ? "parent" : "source")
             ? [
                 {
                   itemId: "00000000-0000-4000-8000-000000000001",
@@ -261,7 +283,8 @@ const makeLayer = (
                 },
               ]
             : [],
-      }),
+        };
+      },
       reorderPendingMessage: async () => ({ items: [] }),
       clearQueue: async () => ({ steering: [], followUp: [] }),
       cancelSteering: async () => {
@@ -534,6 +557,14 @@ const makeLayer = (
     isolatedInputs,
     importedHistories,
     historyMessages,
+    settleChat: (chat: "parent" | "source") => {
+      busyChats.delete(chat);
+      queuedChats.delete(chat);
+      const sessionId = chat === "parent" ? CAKE_CHAT_SESSION_ID : cakeChatSideChatSessionId(7);
+      runtimeOptions
+        .find((options) => options.sessionId === sessionId)
+        ?.onEvent({ type: "streaming", sessionId, streaming: false });
+    },
     grantedInputs,
     modelSelections,
     controlInvocations,
@@ -592,33 +623,86 @@ describe("Cake Chat side-chat merge", () => {
     }).pipe(Effect.provide(fixture.layer), Effect.scoped);
   });
 
-  for (const mergeBusy of ["parent", "source"] as const) {
-    it.effect(`rejects merging while the ${mergeBusy} is working`, () => {
-      const fixture = makeLayer({ cakeChat: true, persistedSidecar: true, mergeBusy });
-      return Effect.gen(function* () {
-        yield* assembleCakeChat;
-        const error = yield* discussionSessions.merge(target).pipe(Effect.flip);
-        assert.match(error.message, /both chats to finish/);
-        assert.deepEqual(fixture.importedHistories, []);
-        assert.deepEqual(fixture.prompts, []);
-        assert.equal(fixture.record().status, "open");
-      }).pipe(Effect.provide(fixture.layer), Effect.scoped);
-    });
+  for (const activity of ["parent", "source", "both", "queued-parent", "queued-source"] as const) {
+    it.effect(
+      `queues merging during ${activity} activity without interrupting or losing late dialogue`,
+      () =>
+        Effect.gen(function* () {
+          const mergeCheck = yield* Deferred.make<void>();
+          const fixture = makeLayer({
+            cakeChat: true,
+            persistedSidecar: true,
+            mergeCheck,
+            ...(activity === "queued-parent"
+              ? { mergeQueued: "parent" as const }
+              : activity === "queued-source"
+                ? { mergeQueued: "source" as const }
+                : { mergeBusy: activity }),
+          });
+          yield* Effect.gen(function* () {
+            yield* assembleCakeChat;
+            const merging = yield* discussionSessions.merge(target).pipe(Effect.forkChild);
+            yield* Deferred.await(mergeCheck);
+            assert.deepEqual(fixture.importedHistories, []);
+            assert.equal(fixture.record().status, "open");
+            fixture.historyMessages.push({
+              ...fixture.historyMessages[1]!,
+              sourceEntryId: "late-answer",
+            });
+            fixture.settleChat("parent");
+            fixture.settleChat("source");
+            yield* Fiber.join(merging);
+            assert.equal(fixture.importedHistories.length, 1);
+            assert.deepEqual(fixture.importedHistories[0], {
+              sourceSessionId: cakeChatSideChatSessionId(7),
+              inputReferenceIds: [],
+              messages: fixture.historyMessages,
+              threadId: "thread-1",
+              title: "Side chat",
+            });
+            assert.deepEqual(fixture.prompts, []);
+            assert.deepEqual(fixture.queueOperations, []);
+            assert.equal(fixture.record().status, "resolved");
+          }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+        }),
+    );
   }
 
-  for (const mergeQueued of ["parent", "source"] as const) {
-    it.effect(`rejects merging while the ${mergeQueued} has a queued request`, () => {
-      const fixture = makeLayer({ cakeChat: true, persistedSidecar: true, mergeQueued });
-      return Effect.gen(function* () {
+  it.effect("cancels a queued merge without resolving or consuming dialogue", () =>
+    Effect.gen(function* () {
+      const mergeCheck = yield* Deferred.make<void>();
+      const fixture = makeLayer({
+        cakeChat: true,
+        persistedSidecar: true,
+        mergeBusy: "source",
+        mergeCheck,
+      });
+      yield* Effect.gen(function* () {
         yield* assembleCakeChat;
-        const error = yield* discussionSessions.merge(target).pipe(Effect.flip);
-        assert.match(error.message, /both chats to finish/);
-        assert.deepEqual(fixture.importedHistories, []);
-        assert.deepEqual(fixture.prompts, []);
+        const merging = yield* discussionSessions.merge(target).pipe(Effect.forkChild);
+        yield* Deferred.await(mergeCheck);
+        yield* Fiber.interrupt(merging);
+        fixture.settleChat("source");
         assert.equal(fixture.record().status, "open");
+        assert.equal(fixture.importedHistories.length, 0);
+        assert.equal(fixture.historyMessages.length, 2);
+        yield* discussionSessions.merge(target);
+        assert.equal(fixture.importedHistories.length, 1);
       }).pipe(Effect.provide(fixture.layer), Effect.scoped);
-    });
-  }
+    }),
+  );
+
+  it.effect("retries a safe-boundary race using buffered activity and fresh dialogue", () => {
+    const fixture = makeLayer({ cakeChat: true, persistedSidecar: true, lateImportDialogue: true });
+    return Effect.gen(function* () {
+      yield* assembleCakeChat;
+      yield* discussionSessions.merge(target);
+      assert.equal(fixture.importedHistories.length, 1);
+      assert.equal(fixture.historyMessages.at(-1)?.sourceEntryId, "during-import");
+      assert.deepEqual(fixture.prompts, []);
+      assert.equal(fixture.record().status, "resolved");
+    }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+  });
 
   it.effect("grants retained attachments to the actual parent before importing", () => {
     const mergeReferences = Array.from(

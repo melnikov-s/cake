@@ -1,6 +1,12 @@
 import { Schema } from "effect";
 import { attachmentSchema } from "../../contracts/conversations/session-contract";
 
+/** A safe-boundary race; callers may wait for activity updates and retry. */
+export class SideChatHistoryBusy extends Schema.TaggedError<SideChatHistoryBusy>()(
+  "SideChatHistoryBusy",
+  { message: Schema.String },
+) {}
+
 /** Service-to-service historical dialogue, never an executable input. */
 export const SideChatHistoryMessage = Schema.Struct({
   sourceEntryId: Schema.NonEmptyString,

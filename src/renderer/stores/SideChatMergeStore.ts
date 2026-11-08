@@ -24,23 +24,26 @@ export class SideChatMergeStore extends Store<SideChatMergeStoreProps> {
   }
   error: string | undefined;
 
-  get disabled() {
+  private get busy() {
     const side = this.props.sideChat();
-    return this.pending || this.props.parentBusy() || side.loading || side.queuedPrompts.length > 0;
+    return this.props.parentBusy() || side.loading || side.queuedPrompts.length > 0;
   }
 
   get label() {
     return this.pending
-      ? "Merging…"
+      ? this.busy
+        ? "Merge queued…"
+        : "Merging…"
       : this.alreadyMerged
         ? "Already merged"
         : "Merge into main chat";
   }
 
   async run() {
-    if (this.disabled) return;
+    if (this.pending || this.signal.aborted) return false;
     this.pending = true;
     this.error = undefined;
+    const sourceTail = this.sourceTail;
     try {
       const thread = this.props.thread;
       const result = await ClientContext.consume(this)!.discussionSessions.merge(
@@ -51,10 +54,12 @@ export class SideChatMergeStore extends Store<SideChatMergeStoreProps> {
         },
         { signal: this.signal },
       );
-      if (!this.signal.aborted)
-        this.alreadyMergedThrough = result.importedMessages === 0 ? this.sourceTail : undefined;
+      if (this.signal.aborted) return false;
+      this.alreadyMergedThrough = result.importedMessages === 0 ? sourceTail : undefined;
+      return true;
     } catch (error) {
       if (!this.signal.aborted) this.error = describeError(error).message;
+      return false;
     } finally {
       this.pending = false;
     }

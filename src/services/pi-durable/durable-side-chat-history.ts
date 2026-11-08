@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-durable-ai";
 import {
@@ -13,6 +14,7 @@ import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import {
   SideChatHistoryImport,
+  SideChatHistoryBusy,
   sideChatInputReferenceIds,
   type SideChatHistoryMessage,
 } from "../pi/side-chat-history";
@@ -37,7 +39,9 @@ async function assertDurableHistoryIdle(tx: Pick<Tx, "doc">, conversation: Conve
   const live = await tx.doc(LiveDoc, conversation.id);
   const inbox = await tx.doc(InboxDoc, conversation.id);
   if (live.run || live.compactions?.length || inbox.items.length)
-    throw new Error("Wait for both chats to be idle before merging side-chat history");
+    throw new SideChatHistoryBusy({
+      message: "Wait for both chats to be idle before merging side-chat history",
+    });
 }
 
 /** Read the native fork's own retained originals, even if its active context was compacted. */
@@ -46,65 +50,75 @@ export function exportDurableSideChatHistory(
   sourceSessionId: string,
   after: EntryId,
 ) {
-  return conversation.commit(async (tx) => {
-    await assertDurableHistoryIdle(tx, conversation);
-    const messages: SideChatHistoryMessage[] = [];
-    let cursor;
-    do {
-      const page = await tx.scanEntries(
-        { conversationId: conversation.id, order: "ascending" },
-        200,
-        cursor,
-      );
-      for (const entry of page.items) {
-        if (entry.id <= after || (entry.kind !== "pi.user" && entry.kind !== "pi.assistant"))
-          continue;
-        for (const original of entry.model ?? []) {
-          const message = withoutDurableSideChatNote(original);
-          if (message.role !== "user" && message.role !== "assistant") continue;
-          const raw =
-            typeof message.content === "string"
-              ? message.content
-              : message.content
-                  .flatMap((block) => (block.type === "text" ? [block.text] : []))
-                  .join("\n");
-          const presentation = message.role === "user" ? durableInputPresentation(raw) : undefined;
-          if (isAutomaticInput(presentation?.internal)) continue;
-          const text =
-            presentation?.internal?._tag === "UserWithReminders" &&
-            presentation.internal.userText !== undefined
-              ? presentation.internal.userText
-              : (presentation?.text ?? raw);
-          const parsed = parseContextAttachmentBlocks(presentation?.body ?? text);
-          const attachments = [...parsed.attachments, ...(presentation?.files ?? [])];
-          const content: SideChatHistoryMessage["content"] = [
-            ...(text
-              ? [
-                  {
-                    type: "text" as const,
-                    text,
-                  },
-                ]
-              : []),
-            ...(message.role === "user" && Array.isArray(message.content)
-              ? message.content.filter((block) => block.type === "image")
-              : []),
-          ];
-          if (!content.length && !attachments.length) continue;
-          messages.push({
-            sourceEntryId: String(entry.id),
-            timestamp: message.timestamp,
-            role: message.role,
-            content,
-            attachments,
-            markdown: presentation?.markdown ?? false,
-          });
-        }
+  return conversation.commit(
+    (tx) => readDurableSideChatHistory(tx, conversation, sourceSessionId, after),
+    BACKGROUND_CONTEXT,
+  );
+}
+
+async function readDurableSideChatHistory(
+  tx: Tx,
+  conversation: Conversation,
+  sourceSessionId: string,
+  after: EntryId,
+) {
+  await assertDurableHistoryIdle(tx, conversation);
+  const messages: SideChatHistoryMessage[] = [];
+  let cursor;
+  do {
+    const page = await tx.scanEntries(
+      { conversationId: conversation.id, order: "ascending" },
+      200,
+      cursor,
+    );
+    for (const entry of page.items) {
+      if (entry.id <= after || (entry.kind !== "pi.user" && entry.kind !== "pi.assistant"))
+        continue;
+      for (const original of entry.model ?? []) {
+        const message = withoutDurableSideChatNote(original);
+        if (message.role !== "user" && message.role !== "assistant") continue;
+        const raw =
+          typeof message.content === "string"
+            ? message.content
+            : message.content
+                .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                .join("\n");
+        const presentation = message.role === "user" ? durableInputPresentation(raw) : undefined;
+        if (isAutomaticInput(presentation?.internal)) continue;
+        const text =
+          presentation?.internal?._tag === "UserWithReminders" &&
+          presentation.internal.userText !== undefined
+            ? presentation.internal.userText
+            : (presentation?.text ?? raw);
+        const parsed = parseContextAttachmentBlocks(presentation?.body ?? text);
+        const attachments = [...parsed.attachments, ...(presentation?.files ?? [])];
+        const content: SideChatHistoryMessage["content"] = [
+          ...(text
+            ? [
+                {
+                  type: "text" as const,
+                  text,
+                },
+              ]
+            : []),
+          ...(message.role === "user" && Array.isArray(message.content)
+            ? message.content.filter((block) => block.type === "image")
+            : []),
+        ];
+        if (!content.length && !attachments.length) continue;
+        messages.push({
+          sourceEntryId: String(entry.id),
+          timestamp: message.timestamp,
+          role: message.role,
+          content,
+          attachments,
+          markdown: presentation?.markdown ?? false,
+        });
       }
-      cursor = page.next;
-    } while (cursor !== undefined);
-    return { sourceSessionId, messages, inputReferenceIds: sideChatInputReferenceIds(messages) };
-  }, BACKGROUND_CONTEXT);
+    }
+    cursor = page.next;
+  } while (cursor !== undefined);
+  return { sourceSessionId, messages, inputReferenceIds: sideChatInputReferenceIds(messages) };
 }
 
 /** Exact dialogue originals are retained once, in Pi storage, with an attributed model-only envelope. */
@@ -130,10 +144,23 @@ function importedHistoryModel(group: ImportedHistory): Message[] {
 export async function importDurableSideChatHistory(
   conversation: Conversation,
   input: SideChatHistoryImport,
+  source?: { conversation: Conversation; after: EntryId },
 ) {
   const parsed = await Schema.decodeUnknownPromise(SideChatHistoryImport)(input);
   return conversation.commit(async (tx) => {
     await assertDurableHistoryIdle(tx, conversation);
+    // Both idle checks and the source freshness check share the import transaction.
+    // A reply or new queued input after export must defer, never resolve a stale merge.
+    if (source) {
+      const latest = await readDurableSideChatHistory(
+        tx,
+        source.conversation,
+        parsed.sourceSessionId,
+        source.after,
+      );
+      if (!isDeepStrictEqual(latest.messages, parsed.messages))
+        throw new SideChatHistoryBusy({ message: "Side-chat dialogue changed before import" });
+    }
     const imported = new Set<string>();
     let cursor;
     do {

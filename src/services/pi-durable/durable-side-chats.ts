@@ -72,7 +72,11 @@ import {
 } from "./durable-input-presentation";
 
 import { transferDurableQueuedToSideChat } from "./durable-queued-side-chat";
-import { exportDurableSideChatHistory } from "./durable-side-chat-history";
+import {
+  exportDurableSideChatHistory,
+  importDurableSideChatHistory,
+} from "./durable-side-chat-history";
+import type { SideChatHistoryImport } from "../pi/side-chat-history";
 
 import { inspectDurableSideChatMessages } from "./durable-side-chat-messages";
 import type { SessionInspectionQuery } from "../../contracts/conversations/session-query-data";
@@ -97,6 +101,7 @@ export interface DurableSideChatHost {
 }
 
 export interface DurableSideChats {
+  importHistory(input: SideChatHistoryImport): Promise<{ importedMessages: number }>;
   /** Forks the main conversation after an anchored exchange, or its latest settled reply when omitted. */
   fork(entryId?: string): Promise<string>;
   transferQueued(sourceSessionId: string, targetSessionId: string, partId: string): Promise<string>;
@@ -221,6 +226,11 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       };
     },
   });
+
+  const importHistory = async (input: SideChatHistoryImport) => {
+    const { conversation, after } = await resolve(input.sourceSessionId);
+    return importDurableSideChatHistory(root, input, { conversation, after });
+  };
 
   const open = async (options: CakeSessionRuntimeOptions): Promise<CakeSessionRuntime> => {
     const { conversation, after } = await resolve(options.sessionId);
@@ -758,6 +768,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       return cakeChatSideChatSessionId(fork.id, host.parentSessionId);
     },
     open,
+    importHistory,
     async preview(sessionId) {
       const { conversation, after } = await resolve(sessionId);
       const page = await conversation.commit(

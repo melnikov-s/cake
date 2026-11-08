@@ -789,37 +789,57 @@ export const merge = Effect.fn("DiscussionSessions.merge")(function* (
       message: "This side chat has no conversation to merge",
     });
   const sessions = yield* CakeSessionRuntimes;
+  const sourceSessionId = record.sidecarSessionId;
   const parent = yield* sessions.acquireSession(record.parentSessionId).pipe(asError("merge"));
   const { handle: source } = yield* prepare(record);
-  for (const handle of [parent, source]) {
-    const snapshot = yield* handle.snapshot().pipe(asError("merge"));
-    const turns = yield* handle.currentTurnIds();
-    const pending = yield* handle.pendingMessages().pipe(asError("merge"));
-    if (snapshot.streaming || turns.length > 0 || pending.items.length > 0)
-      return yield* new DiscussionSessionError({
-        operation: "merge",
-        message: "Wait for both chats to finish before merging",
-      });
-  }
-  const history = yield* source.exportSideChatHistory().pipe(asError("merge"));
-  if (history.inputReferenceIds.length > 0) {
-    const inputs = yield* TaskInputStorage;
-    for (let offset = 0; offset < history.inputReferenceIds.length; offset += 20) {
-      const grants = yield* inputs
-        .authorizeForward(
-          record.sidecarSessionId,
-          history.inputReferenceIds.slice(offset, offset + 20),
-          record.parentSessionId,
-        )
-        .pipe(asError("merge"));
-      yield* inputs.grant(record.parentSessionId, grants).pipe(asError("merge"));
+  // Runtime updates already provide a snapshot followed by buffered activity events.
+  // Keep this request scoped/cancellable; do not enqueue a prompt or interrupt either turn.
+  const attempt = Effect.gen(function* () {
+    for (const handle of [parent, source]) {
+      const snapshot = yield* handle.snapshot();
+      const turns = yield* handle.currentTurnIds();
+      const pending = yield* handle.pendingMessages();
+      if (snapshot.streaming || turns.length > 0 || pending.items.length > 0) return undefined;
     }
-  }
-  const result = yield* parent
-    .importSideChatHistory({ ...history, threadId: record.id, title: "Side chat" })
-    .pipe(asError("merge"));
+    const history = yield* source.exportSideChatHistory();
+    if (history.inputReferenceIds.length > 0) {
+      const inputs = yield* TaskInputStorage;
+      for (let offset = 0; offset < history.inputReferenceIds.length; offset += 20) {
+        const grants = yield* inputs
+          .authorizeForward(
+            sourceSessionId,
+            history.inputReferenceIds.slice(offset, offset + 20),
+            record.parentSessionId,
+          )
+          .pipe(asError("merge"));
+        yield* inputs.grant(record.parentSessionId, grants).pipe(asError("merge"));
+      }
+    }
+    return yield* parent.importSideChatHistory({
+      ...history,
+      threadId: record.id,
+      title: "Side chat",
+    });
+  }).pipe(
+    Effect.catch((error) =>
+      error instanceof PiSessionError && error.reason === "side-chat-busy"
+        ? Effect.succeed(undefined)
+        : Effect.fail(error),
+    ),
+  );
+  const result = yield* Stream.merge(parent.updates, source.updates).pipe(
+    Stream.mapEffect(() => attempt),
+    Stream.filter((result) => result !== undefined),
+    Stream.runHead,
+    asError("merge"),
+  );
+  if (Option.isNone(result))
+    return yield* new DiscussionSessionError({
+      operation: "merge",
+      message: "Chats closed before merging. Try again.",
+    });
   yield* setResolved(target, true);
-  return result;
+  return result.value;
 }, Effect.scoped);
 
 export const setResolved = Effect.fn("DiscussionSessions.setResolved")(function* (

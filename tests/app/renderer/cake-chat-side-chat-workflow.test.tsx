@@ -269,7 +269,7 @@ it("switches Cake Chat side tabs through the existing owner without resolving", 
   view.unmount();
 });
 
-it("merges an idle side chat explicitly, keeps it usable, and reports repeated imports", async () => {
+it("merges an idle side chat explicitly and closes only after successful resolution", async () => {
   let finish!: (result: { importedMessages: number }) => void;
   const merge = vi
     .fn<(input: DiscussionSessionTarget) => Promise<{ importedMessages: number }>>()
@@ -315,8 +315,10 @@ it("merges an idle side chat explicitly, keeps it usable, and reports repeated i
     threadId: "merge-thread",
   });
   expect((screen.getByRole("button", { name: "Merging…" }) as HTMLButtonElement).disabled).toBe(
-    true,
+    false,
   );
+  await user.click(screen.getByRole("button", { name: "Merging…" }));
+  expect(merge).toHaveBeenCalledTimes(1);
   expect(close.disabled).toBe(true);
   await user.click(close);
   expect(fixture.setResolved).not.toHaveBeenCalled();
@@ -326,40 +328,28 @@ it("merges an idle side chat explicitly, keeps it usable, and reports repeated i
     "resolved",
   );
   expect(screen.queryByRole("button", { name: /^Side chats/ })).toBeNull();
-  expect(screen.getByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
-  await user.click(screen.getByRole("button", { name: "Merge into main chat" }));
-  expect(await screen.findByRole("button", { name: "Already merged" })).toBeDefined();
-  expect(merge).toHaveBeenCalledTimes(2);
-  act(() =>
-    applyConversationSnapshot(
-      fixture.side,
-      snapshot("merge-side", [
-        {
-          id: "side-question",
-          kind: "text",
-          role: "user",
-          text: "Side question",
-          status: "complete",
-        },
-        {
-          id: "side-answer",
-          kind: "text",
-          role: "assistant",
-          text: "Side answer",
-          status: "complete",
-        },
-        {
-          id: "new-side-answer",
-          kind: "text",
-          role: "assistant",
-          text: "Another answer",
-          status: "complete",
-        },
-      ]),
-    ),
+  expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
+  expect(fixture.chat.conversationSessionStore.sideChatStore.target).toBeUndefined();
+  expect(
+    fixture.side.parts.some((part) => part.kind === "text" && part.text === "Side answer"),
+  ).toBe(true);
+  view.unmount();
+});
+
+it("resolves and closes a successful no-new-dialogue merge too", async () => {
+  const merge = vi.fn(async () => ({ importedMessages: 0 }));
+  using fixture = mergeFixture(merge);
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <Surface chat={fixture.chat} />
+    </StoreProvider>,
   );
-  await user.click(await screen.findByRole("button", { name: "Merge into main chat" }));
-  expect(merge).toHaveBeenCalledTimes(3);
+  await userEvent.setup().click(screen.getByRole("button", { name: "Merge into main chat" }));
+  expect(fixture.models.discussionCatalog(CAKE_CHAT_SESSION_ID).threads[0]?.status).toBe(
+    "resolved",
+  );
+  expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
+  expect(fixture.side.parts).toHaveLength(2);
   view.unmount();
 });
 
@@ -468,7 +458,7 @@ it("appends collapsed attributed history with attachments and reopens its preser
   );
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "Merge into main chat" }));
-  await user.click(screen.getByRole("button", { name: "Close and resolve" }));
+  expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
   const disclosure = await screen.findByRole("button", {
     name: "Merged from Side chat 2 messages",
   });
@@ -495,7 +485,53 @@ it("appends collapsed attributed history with attachments and reopens its preser
   view.unmount();
 });
 
-it("disables merge while either conversation is busy and permits retry after failure", async () => {
+it.each(["parent", "source", "both"] as const)(
+  "queues merge during %s activity, coalesces repeated clicks, then resolves and closes",
+  async (activity) => {
+    let finish!: (result: { importedMessages: number }) => void;
+    const merge = vi.fn(
+      () =>
+        new Promise<{ importedMessages: number }>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    using fixture = mergeFixture(merge);
+    act(() => {
+      fixture.chat.model.streaming = activity !== "source";
+      if (activity !== "parent") fixture.side.activeTurnIds.push("side-turn");
+    });
+    const view = render(
+      <StoreProvider store={fixture.root}>
+        <Surface chat={fixture.chat} />
+      </StoreProvider>,
+    );
+    const user = userEvent.setup();
+    const button = screen.getByRole<HTMLButtonElement>("button", { name: "Merge into main chat" });
+    expect(button.disabled).toBe(false);
+    await user.click(button);
+    const queued = screen.getByRole<HTMLButtonElement>("button", { name: "Merge queued…" });
+    expect(queued.disabled).toBe(false);
+    expect(queued.getAttribute("aria-busy")).toBe("true");
+    await user.click(queued);
+    expect(merge).toHaveBeenCalledTimes(1);
+    expect(fixture.models.discussionCatalog(CAKE_CHAT_SESSION_ID).threads[0]?.status).toBe("open");
+    expect(screen.getByRole("complementary", { name: "Side chat" })).toBeDefined();
+    act(() => {
+      fixture.chat.model.streaming = false;
+      fixture.side.activeTurnIds.length = 0;
+    });
+    expect(await screen.findByRole("button", { name: "Merging…" })).toBeDefined();
+    await act(async () => finish({ importedMessages: 2 }));
+    expect(fixture.models.discussionCatalog(CAKE_CHAT_SESSION_ID).threads[0]?.status).toBe(
+      "resolved",
+    );
+    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
+    expect(merge).toHaveBeenCalledTimes(1);
+    view.unmount();
+  },
+);
+
+it("keeps merge available while busy and permits retry after failure without closing", async () => {
   const merge = vi
     .fn<(input: DiscussionSessionTarget) => Promise<{ importedMessages: number }>>()
     .mockRejectedValueOnce(new Error("Import failed"))
@@ -512,14 +548,12 @@ it("disables merge while either conversation is busy and permits retry after fai
   act(() => {
     fixture.chat.model.streaming = true;
   });
-  await waitFor(() => expect(button().disabled).toBe(true));
-  await user.click(button());
-  expect(merge).not.toHaveBeenCalled();
+  await waitFor(() => expect(button().disabled).toBe(false));
   act(() => {
     fixture.chat.model.streaming = false;
     fixture.side.activeTurnIds.push("accepted-side-turn");
   });
-  await waitFor(() => expect(button().disabled).toBe(true));
+  await waitFor(() => expect(button().disabled).toBe(false));
   act(() => {
     fixture.side.activeTurnIds.length = 0;
   });
@@ -534,7 +568,7 @@ it("disables merge while either conversation is busy and permits retry after fai
   await user.click(button());
   await waitFor(() => expect(screen.queryByText("Import failed")).toBeNull());
   expect(merge).toHaveBeenCalledTimes(2);
-  expect(screen.getByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
+  expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
   view.unmount();
 });
 

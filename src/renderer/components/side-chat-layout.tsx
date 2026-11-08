@@ -48,8 +48,12 @@ export const SideChatLayout = observer(function SideChatLayout({
       variant={showExitActions ? "default" : "outline"}
       size="sm"
       className={showExitActions ? "flex-1 gap-1.5" : "gap-1.5"}
-      disabled={target.merge.disabled || store.resolving}
-      onClick={() => void target.merge?.run()}
+      disabled={store.resolving}
+      aria-busy={target.merge.pending}
+      onClick={async () => {
+        const merged = await target.merge?.run();
+        if (merged && store.target === target) store.close();
+      }}
     >
       <MergeResolveIcon />
       {target.merge.label}

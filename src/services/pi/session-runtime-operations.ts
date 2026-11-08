@@ -1,11 +1,17 @@
 import { Effect } from "effect";
 import { PiSessionError } from "./CakeSessionRuntimes";
+import { SideChatHistoryBusy } from "./side-chat-history";
 
 export const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
 
 export const sessionError = (operation: string) =>
-  Effect.mapError((cause: unknown) => new PiSessionError({ operation, message: messageOf(cause) }));
+  Effect.mapError((cause: unknown) => {
+    const details = { operation, message: messageOf(cause) };
+    return cause instanceof SideChatHistoryBusy
+      ? new PiSessionError({ ...details, reason: "side-chat-busy" })
+      : new PiSessionError(details);
+  });
 
 export const sessionErrorValue = (operation: string) => (cause: unknown) =>
   new PiSessionError({ operation, message: messageOf(cause) });

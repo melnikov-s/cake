@@ -113,7 +113,6 @@ import {
 import { applyArtifactExitTransition } from "../../contracts/artifacts/artifact-presentation-context";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
-import { importDurableSideChatHistory } from "./durable-side-chat-history";
 
 const unsupported = async () => {
   throw new Error(
@@ -680,7 +679,7 @@ export async function createDurableCakeChatRuntime(
     assistantContextSessionId: async () =>
       (await engine.harness.snapshot(AssistantContextDoc, engine.root.id, BACKGROUND_CONTEXT))
         ?.context?.sessionId,
-    importSideChatHistory: (input) => importDurableSideChatHistory(engine.root, input),
+    importSideChatHistory: (input) => sideChats.importHistory(input),
     get streaming() {
       return !turnStop.stopped() && streaming;
     },

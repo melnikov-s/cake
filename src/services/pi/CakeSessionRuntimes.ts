@@ -88,6 +88,7 @@ export interface PiSessionTarget extends Schema.Schema.Type<typeof PiSessionTarg
 export class PiSessionError extends Schema.TaggedError<PiSessionError>()("PiSessionError", {
   operation: Schema.String,
   message: Schema.String,
+  reason: Schema.optionalKey(Schema.Literal("side-chat-busy")),
 }) {}
 
 export type PiSessionEvent =
