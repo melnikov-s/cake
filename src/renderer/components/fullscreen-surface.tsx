@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { FullscreenSurfaceStore } from "../stores/FullscreenSurfaceStore";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
 import { FullscreenTranscriptContext } from "./fullscreen-transcript-context";
+import { FullscreenViewportContext } from "./fullscreen-viewport-context";
 
 export function FullscreenSurface({
   children,
@@ -38,6 +39,7 @@ export function FullscreenSurface({
 }) {
   const fullscreenSurfaces = useStore(FullscreenSurfaceStore);
   const transcript = useContext(FullscreenTranscriptContext);
+  const viewport = useContext(FullscreenViewportContext);
   useLayoutEffect(() => transcript?.retain(), [transcript]);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -111,7 +113,8 @@ export function FullscreenSurface({
     <div
       ref={surfaceRef}
       className={cn(
-        "fixed inset-0 z-45 flex flex-col bg-background text-foreground motion-safe:animate-fade-in",
+        "inset-0 z-45 flex flex-col bg-background text-foreground motion-safe:animate-fade-in",
+        viewport ? "absolute" : "fixed",
         mode === "dialog" && "bg-background/85 backdrop-blur-md",
       )}
       role="dialog"
@@ -171,6 +174,6 @@ export function FullscreenSurface({
         content
       )}
     </div>,
-    document.body,
+    viewport ?? document.body,
   );
 }

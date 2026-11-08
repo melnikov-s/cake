@@ -10,6 +10,7 @@ import { SidebarNavigationControls } from "./sidebar-navigation-controls";
 import { WorkspaceNavigator } from "./workspace-navigator";
 import { AppSurfaceHeader } from "./app-surface-header";
 import { ConversationFocusContext } from "../lib/conversation-focus-context";
+import { FullscreenViewportContext } from "./fullscreen-viewport-context";
 
 export const AppShellLayout = observer(function AppShellLayout({
   children,
@@ -32,6 +33,7 @@ export const AppShellLayout = observer(function AppShellLayout({
   const applicationView = shell.surface === "settings" || shell.surface === "automations";
   const shellRef = useRef<HTMLElement>(null);
   const [resizingPanel, setResizingPanel] = useState(false);
+  const [fullscreenViewport, setFullscreenViewport] = useState<HTMLDivElement | null>(null);
   const commandVisible = Boolean(store.commandPaneStore.pane) && !applicationView;
   const accessoryWidth = Math.min(navigator.width, Math.max(240, window.innerWidth - 414));
   const commandMax = Math.max(
@@ -50,9 +52,9 @@ export const AppShellLayout = observer(function AppShellLayout({
     <main
       ref={shellRef}
       className={cn(
-        "relative grid h-full w-full max-w-[100vw] grid-cols-[54px_minmax(0,1fr)_var(--navigator-width)_var(--command-width)] overflow-hidden bg-background text-foreground max-[700px]:grid-cols-[44px_minmax(0,1fr)_0px_0px]",
+        "relative grid h-full w-full max-w-[100vw] grid-cols-[var(--project-rail-width)_minmax(0,1fr)_var(--navigator-width)_var(--command-width)] overflow-hidden bg-background text-foreground [--project-rail-width:54px] max-[700px]:grid-cols-[var(--project-rail-width)_minmax(0,1fr)_0px_0px] max-[700px]:[--project-rail-width:44px]",
         applicationView &&
-          "grid-cols-[0px_minmax(0,1fr)_0px_var(--command-width)] max-[700px]:grid-cols-[0px_minmax(0,1fr)_0px_0px]",
+          "grid-cols-[0px_minmax(0,1fr)_0px_var(--command-width)] [--project-rail-width:0px] max-[700px]:grid-cols-[0px_minmax(0,1fr)_0px_0px] max-[700px]:[--project-rail-width:0px]",
         resizingPanel && "cursor-col-resize select-none",
       )}
       style={shellStyle}
@@ -74,9 +76,11 @@ export const AppShellLayout = observer(function AppShellLayout({
         data-session-id={shell.activeConversation?.sessionId}
       >
         {!conversationPaneVisible && <AppSurfaceHeader />}
-        <ConversationFocusContext.Provider value={true}>
-          {children}
-        </ConversationFocusContext.Provider>
+        <FullscreenViewportContext value={fullscreenViewport}>
+          <ConversationFocusContext.Provider value={true}>
+            {children}
+          </ConversationFocusContext.Provider>
+        </FullscreenViewportContext>
         {terminal.docked && (
           <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
         )}
@@ -122,7 +126,20 @@ export const AppShellLayout = observer(function AppShellLayout({
           <SidebarNavigationControls />
         </div>
       )}
-      {overlays}
+      {/* Use the shell's real grid tracks, including a hidden or narrow rail.
+          Expanded navigation labels remain an overlay in ordinary workspaces,
+          but presentations must also fit to their currently visible edge. */}
+      <div
+        ref={setFullscreenViewport}
+        data-slot="fullscreen-viewport"
+        className="pointer-events-none absolute inset-0 col-start-2 col-end-5 z-45 [&>*]:pointer-events-auto"
+        style={{
+          marginLeft: applicationView
+            ? 0
+            : `max(0px, calc(${root.projectRailStore.overlayRight}px - var(--project-rail-width)))`,
+        }}
+      />
+      <FullscreenViewportContext value={fullscreenViewport}>{overlays}</FullscreenViewportContext>
     </main>
   );
 });

@@ -43,6 +43,9 @@ describe("FullscreenSurface", () => {
     );
 
     expect(document.body.querySelector("header")?.classList).toContain("pl-[84px]");
+    const surface = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(surface.parentElement).toBe(document.body);
+    expect(surface.classList.contains("fixed")).toBe(true);
   });
 
   it("ignores Escape while a higher overlay owns the viewport center", () => {

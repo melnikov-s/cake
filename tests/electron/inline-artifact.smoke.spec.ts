@@ -9,6 +9,7 @@ import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { ArtifactStorage } from "../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../src/services/storage/ArtifactStorageLive";
 import { addHistoricalWidgetToCatalog } from "../fixtures/historical-widget-catalog";
+import { expectPresentationFitsRail } from "./artifact-layout-assertions";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -226,10 +227,14 @@ for (const theme of ["light", "dark"] as const) {
       await expect(fullContent.locator("main")).toHaveAttribute("data-unsaved", "retained");
       expect(await fullFrame.getAttribute("src")).toBe(originalSrc);
       const assertFilled = async () => {
+        await expectPresentationFitsRail(page, fullscreen);
+        const surface = (await fullscreen.boundingBox())!;
         const header = (await fullscreen.locator("header").boundingBox())!;
         const bounds = (await fullFrame.boundingBox())!;
         const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-        expect(bounds.width).toBe(viewport.width);
+        expect(bounds.x).toBe(surface.x);
+        expect(bounds.width).toBe(surface.width);
+        expect(bounds.x + bounds.width).toBe(viewport.width);
         expect(bounds.height).toBeCloseTo(viewport.height - header.height, 0);
         expect(bounds.y).toBeCloseTo(header.height, 0);
         expect(
@@ -244,6 +249,20 @@ for (const theme of ["light", "dark"] as const) {
         ).toBeGreaterThan(bounds.height - 250);
       };
       await assertFilled();
+      // Expanded labels must reduce the presentation, not cover its left controls.
+      const rail = page.locator('[data-slot="project-rail"]');
+      await rail.hover();
+      await expect(rail).toHaveCSS("width", "240px");
+      await assertFilled();
+      await rail.getByRole("button", { name: "Open Cake Chat", exact: true }).focus();
+      await page.mouse.move(600, 10);
+      await assertFilled();
+      await fullscreen
+        .getByRole("button", { name: "Exit fullscreen Inline visualization" })
+        .focus();
+      await expect(rail).toHaveCSS("width", "54px");
+      await assertFilled();
+      await expect(fullContent.locator("main")).toHaveAttribute("data-unsaved", "retained");
       await fullscreen.getByRole("button", { name: "Open chat" }).click();
       const chatInput = fullscreen.getByRole("combobox", { name: "Message" });
       await chatInput.focus();
@@ -261,6 +280,11 @@ for (const theme of ["light", "dark"] as const) {
       await page.mouse.move(divider.x + divider.width / 2 - 64, divider.y + divider.height / 2);
       await page.mouse.up();
       await expect(split).toHaveAttribute("aria-valuenow", "480");
+      await expectPresentationFitsRail(page, fullscreen);
+      const canvasBounds = (await fullFrame.boundingBox())!;
+      const chatBounds = (await fullscreen.locator("aside").first().boundingBox())!;
+      expect(canvasBounds.x + canvasBounds.width).toBeCloseTo(chatBounds.x, 0);
+      expect(chatBounds.width).toBe(480);
       await expect(fullFrame).toHaveCSS("pointer-events", "auto");
       await expect(fullContent.getByRole("button", { name: "Hide detail" })).toBeVisible();
       await expect(fullContent.locator("main")).toHaveAttribute("data-unsaved", "retained");
@@ -300,7 +324,15 @@ for (const theme of ["light", "dark"] as const) {
       );
       await expect
         .poll(() => fullFrame.evaluate((element) => element.getBoundingClientRect().width))
-        .toBe(1000);
+        .toBe(946);
+      await assertFilled();
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]!.setContentSize(680, 760),
+      );
+      await expect(page.locator('[data-slot="project-rail"]')).toHaveCSS("width", "44px");
+      await expect
+        .poll(() => fullFrame.evaluate((element) => element.getBoundingClientRect().width))
+        .toBe(636);
       await assertFilled();
       if (theme === "dark") {
         await fullscreen

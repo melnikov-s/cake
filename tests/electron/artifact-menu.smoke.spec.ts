@@ -8,6 +8,7 @@ import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario, seedArtifact } from "../../scripts/visual-capture/scenarios";
 import type { CakeArtifactV1 } from "../../src/contracts/artifacts/artifact-contract";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
+import { expectPresentationFitsRail } from "./artifact-layout-assertions";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -80,7 +81,7 @@ for (const theme of ["light", "dark"] as const) {
       expect(scroll).toBeGreaterThan(0);
       await pane.getByRole("button", { name: "View Coordinator report fullscreen" }).click();
       const surface = page.getByRole("dialog", { name: "Coordinator report", exact: true });
-      expect(await surface.boundingBox()).toEqual({ x: 0, y: 0, width: 1600, height: 1000 });
+      await expectPresentationFitsRail(page, surface);
       expect(
         await surface
           .locator('[data-artifact-id="coordinator-report"]')
@@ -117,7 +118,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(layout).toHaveAttribute("data-presentation", "replacement");
       await expectHeaderAlignment();
       await pane.getByRole("button", { name: "View Coordinator report fullscreen" }).click();
-      expect(await surface.boundingBox()).toEqual({ x: 0, y: 0, width: 700, height: 900 });
+      await expectPresentationFitsRail(page, surface);
       await surface.getByRole("button", { name: "Exit fullscreen Coordinator report" }).click();
       await expect(pane).toBeVisible();
       await pane.getByRole("button", { name: "Close Coordinator report" }).click();
@@ -138,6 +139,8 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Artifacts", exact: true }).click();
       await menu.getByRole("button", { name: /Coordinator report/ }).click();
       await expect(surface.getByRole("heading", { name: "Session artifact" })).toBeVisible();
+      await expect(page.locator('[data-slot="project-rail"]')).toHaveCount(0);
+      await expectPresentationFitsRail(page, surface);
       await expect(page.getByLabel("Search artifact library")).not.toBeAttached();
       await surface.getByRole("button", { name: "Exit fullscreen Coordinator report" }).click();
       await expect(page.getByRole("button", { name: "Back to chat", exact: true })).toBeVisible();
