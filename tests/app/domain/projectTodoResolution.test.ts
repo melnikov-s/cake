@@ -12,6 +12,7 @@ import type {
   SubagentHistory,
 } from "../../../src/services/storage/SubagentStorage";
 import { it } from "@effect/vitest";
+import { seedHistoricalTodo } from "../helpers/projectTodoHarness";
 import { TestClock } from "effect/testing";
 import * as snoozes from "../../../src/domain/projects/projectTodoSnoozes";
 import { expect } from "vitest";
@@ -74,6 +75,9 @@ function fixture(
     app,
     makeSubagentStorageTestLayer(workers, history),
     Layer.mock(SessionArchiveStorage, {
+      resolvedProjectEntry: () => Effect.succeed(undefined),
+      locate: (sessionId) =>
+        Effect.succeed(resolved.has(sessionId) ? ("resolved" as const) : ("active" as const)),
       resolvedProjects: () => Stream.empty,
       resolutionSnapshot: () =>
         Effect.sync(() => {
@@ -111,6 +115,16 @@ function fixture(
         }),
     }),
     Layer.mock(CakeSessionRuntimes, {
+      currentStatus: () => Effect.succeed(undefined),
+      catalogEntry: (_query, sessionId) =>
+        Effect.succeed({
+          id: sessionId,
+          title: "Work",
+          created: "2026-01-01",
+          modified: "2026-01-01",
+          messageCount: 1,
+          resolved: resolved.has(sessionId),
+        }),
       sessionIds: () =>
         Stream.fromEffect(
           Effect.sync(() => {
@@ -159,6 +173,52 @@ const worker: SubagentRecord = {
   status: "complete",
   pendingInputs: [],
 };
+
+it.effect(
+  "agent mutations canonicalize suffixes before enforcing ownership, including resolved owners",
+  () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      f.resolved.add(a);
+      const owner = yield* controls.create(project, {
+        title: "Owner",
+        description: "Resolved work.",
+        associations: [link("00000011")],
+      });
+      expect(owner.state).toBe("done");
+      expect(owner.associations).toEqual([link(a)]);
+      const duplicate = yield* controls
+        .create(CAKE_CHAT_TODO_SCOPE, {
+          title: "Duplicate",
+          description: "Must not be saved.",
+          associations: [link("00000011")],
+        })
+        .pipe(Effect.flip);
+      expect(duplicate.message).toContain(owner.id);
+      const target = yield* todos.create(project, {
+        title: "Other",
+        description: "Keep unrelated work.",
+      });
+      const conflict = yield* controls
+        .update(project, {
+          id: target.id,
+          expectedRevision: 0,
+          associations: [link("00000011")],
+        })
+        .pipe(Effect.flip);
+      expect(conflict.message).toContain(owner.id);
+      expect((yield* todos.read(project, target.id)).associations).toEqual([]);
+      yield* controls.update(project, {
+        id: owner.id,
+        expectedRevision: owner.revision,
+        associations: [link("00000011")],
+      });
+      expect((yield* todos.read(project, owner.id)).revision).toBe(owner.revision);
+      expect((yield* todos.list(CAKE_CHAT_TODO_SCOPE)).items).toEqual([]);
+    }).pipe(Effect.provide(f.layer));
+  },
+);
 
 it.effect("linked session resolution clears selection without selecting other open work", () => {
   const f = fixture();
@@ -312,8 +372,9 @@ it.effect(
     const f = fixture();
     return Effect.gen(function* () {
       yield* upsertProject(project, "Project");
+      // A legacy list may contain repeated links; reads must remain bounded and usable.
       for (let n = 0; n < 30; n++)
-        yield* todos.create(project, {
+        yield* seedHistoricalTodo(project, {
           title: `Task ${n}`,
           description: "PRIVATE_BRIEF",
           status: "PRIVATE_PROGRESS",
@@ -783,7 +844,8 @@ it.effect(
         description: "Finish the child session.",
         associations: [link(b)],
       });
-      const elsewhere = yield* todos.create("/other", {
+      // Historical cross-list duplicates still reconcile without discarding data.
+      const elsewhere = yield* seedHistoricalTodo("/other", {
         title: "Not this project's family",
         description: "A Project list only counts its own families.",
         associations: [link(b)],

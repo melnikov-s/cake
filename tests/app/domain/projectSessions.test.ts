@@ -17,6 +17,7 @@ import {
   streamWorkspaceSessions,
 } from "../../../src/services/pi/runtime/session-discovery";
 import { it } from "@effect/vitest";
+import { seedHistoricalTodo } from "../helpers/projectTodoHarness";
 import { Logger } from "effect";
 import { fullProjectTodos, projectTodoLayer } from "../helpers/projectTodoHarness";
 import { createPrompted } from "../../../src/domain/project-sessions/projectSessionCreation";
@@ -2113,7 +2114,8 @@ describe("Project Sessions domain", () => {
           status: "In progress",
           associations,
         });
-        const mixed = yield* projectTodos.create("/project", {
+        // Historical duplicate owners must still close safely on native resolution.
+        const mixed = yield* seedHistoricalTodo("/project", {
           title: "Discuss report",
           description: "Discuss report.",
           status: "Awaiting review",
@@ -2219,9 +2221,10 @@ describe("Project Sessions domain", () => {
   );
 
   it.effect(
-    "late creation/association to resolved sessions persists done immediately and returns the current revision",
+    "late creation/association to distinct resolved sessions persists done immediately and returns the current revision",
     () => {
       const sessionId = "86778ccd-a805-4ff4-8767-93b5a558842c";
+      const otherSessionId = "86778ccd-a805-4ff4-8767-93b5a558843d";
       return Effect.gen(function* () {
         const created = yield* projectTodoAssociations.create("/project", {
           title: "Already implemented",
@@ -2240,7 +2243,7 @@ describe("Project Sessions domain", () => {
         const updated = yield* projectTodoAssociations.update("/project", {
           id: unlinked.id,
           expectedRevision: 0,
-          associations: [{ kind: "session", sessionId, title: "Work" }],
+          associations: [{ kind: "session", sessionId: otherSessionId, title: "Work" }],
         });
         assert.equal(updated.state, "done");
         assert.equal(updated.revision, 1);
@@ -2252,8 +2255,8 @@ describe("Project Sessions domain", () => {
       }).pipe(
         Effect.provide(
           makeLayer(undefined, {
-            initialResolvedSessionIds: [sessionId],
-            sessionIds: () => Stream.make(sessionId),
+            initialResolvedSessionIds: [sessionId, otherSessionId],
+            sessionIds: () => Stream.make(sessionId, otherSessionId),
           }),
         ),
       );

@@ -1,4 +1,5 @@
 import { it } from "@effect/vitest";
+import { seedHistoricalTodo } from "../helpers/projectTodoHarness";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
@@ -93,7 +94,11 @@ it.effect(
       const ids = yield* Effect.gen(function* () {
         yield* upsertProject(project, "Project");
         const canonical = yield* create([a]);
-        const suffix = yield* create(["00000011"]);
+        const suffix = yield* seedHistoricalTodo(project, {
+          title: "Legacy work",
+          description: "Historical suffix link.",
+          associations: [link("00000011")],
+        });
         const source = yield* todos.create(project, {
           title: "Discuss design",
           description: "Review the design, not implementation.",
@@ -193,9 +198,17 @@ it.effect(
     return Effect.gen(function* () {
       yield* upsertProject(project, "Project");
       const multiple = yield* create([a, b]);
-      const missing = yield* create([a, "00000099"]);
-      const ambiguous = yield* create(["00000011"]);
-      const mixed = yield* todos.create(project, {
+      const missing = yield* seedHistoricalTodo(project, {
+        title: "Legacy missing",
+        description: "Historical links.",
+        associations: [link(a), link("00000099")],
+      });
+      const ambiguous = yield* seedHistoricalTodo(project, {
+        title: "Legacy ambiguous",
+        description: "Historical suffix.",
+        associations: [link("00000011")],
+      });
+      const mixed = yield* seedHistoricalTodo(project, {
         title: "Implementation",
         description: "Deliver implementation.",
         status: "Success; report delivered; stopped",

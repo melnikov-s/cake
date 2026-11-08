@@ -1756,9 +1756,10 @@ describe("automatic spawned-session reporting", () => {
             assert.equal(state.spawnedSessions[0]?.requester.sessionId, CAKE_CHAT_SESSION_ID);
             assert.equal(state.spawnedSessions[0]?.title, createArgs.name);
             assert.equal(state.turns.length, 1);
-            // Global Cake Chat tracks its launch in its own list; the Project keeps its own item.
+            // The Project owns the session; global bookkeeping must not duplicate it.
+            assert.equal((yield* projectTodos.list(CAKE_CHAT_TODO_SCOPE)).items.length, 0);
             assert.deepEqual(
-              (yield* projectTodos.list(CAKE_CHAT_TODO_SCOPE)).items.map((item) => [
+              (yield* projectTodos.list("/project")).items.map((item) => [
                 item.title,
                 item.associations,
               ]),

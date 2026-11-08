@@ -12,7 +12,10 @@ import type { ApplicationState as ApplicationStateValue } from "../../contracts/
 import {
   CAKE_CHAT_SESSION_ID,
   isProjectChatSessionId,
+  isCakeChatSessionId,
+  cakeChatSideChatParentId,
 } from "../../contracts/cake-chats/cake-chat-identity";
+import { resolveSessionReference } from "../../contracts/project-sessions/session-reference";
 import { ProjectError } from "../../contracts/projects/project-error";
 import {
   CAKE_CHAT_TODO_SCOPE,
@@ -22,6 +25,7 @@ import {
   ProjectTodoUpdates,
   type ProjectTodo,
   projectTodoReminder,
+  projectTodoSessionIds,
   ProjectTodoCreate,
   projectTodoCompletionSummary,
   type ProjectTodoCompletion,
@@ -93,11 +97,74 @@ function stored(state: ApplicationStateValue, scope: string) {
   return state.projects.find((item) => item.path === scope)?.todos;
 }
 
+/** Source/report links are citations, not ownership. Permanent/side chats and subagents
+ * retain their existing many-to-many representation. Old suffixes conservatively reserve
+ * matching canonical identities too; never guess which historical task should lose a link. */
+const ownedSessions = (item: ProjectTodo) =>
+  projectTodoSessionIds(item).filter(
+    (id) => !isCakeChatSessionId(id) && !cakeChatSideChatParentId(id),
+  );
+const sameSession = (a: string, b: string) => {
+  const match = resolveSessionReference(a, [b]);
+  const reverse = resolveSessionReference(b, [a]);
+  return (match.ok && match.sessionId === b) || (reverse.ok && reverse.sessionId === a);
+};
+function owners(state: ApplicationStateValue, sessionId: string) {
+  const lists = [
+    { scope: CAKE_CHAT_TODO_SCOPE, todos: state.cakeChatTodos },
+    ...state.projects.map((project) => ({ scope: project.path, todos: project.todos })),
+  ];
+  return lists.flatMap(({ scope, todos }) =>
+    (todos?.items ?? []).flatMap((item) =>
+      ownedSessions(item).some((id) => sameSession(id, sessionId)) ? [{ scope, item }] : [],
+    ),
+  );
+}
+const ownershipError = (sessionId: string, existing: ReturnType<typeof owners>) =>
+  error(
+    `Project Session ${sessionId} already belongs to ${existing
+      .map(({ scope, item }) => `to-do ${item.id} (${JSON.stringify(item.title)}, scope ${scope})`)
+      .join(
+        "; ",
+      )}. Read/update the existing to-do in its scope instead; no items committed. Historical duplicates require an explicit choice of owner before linking new work.`,
+  );
+
+/** Grandfather saved duplicate links, not new ones. Validate the final batch so deliberate
+ * atomic transfers are possible. Unrelated edits/completion never make legacy data unloadable. */
+const validateOwnership = Effect.fn("ProjectTodos.validateOwnership")(function* (
+  current: ApplicationStateValue,
+  scope: string,
+  previous: ProjectTodos,
+  updated: ProjectTodos,
+) {
+  const finalState = isCakeChatTodoScope(scope)
+    ? { ...current, cakeChatTodos: updated }
+    : {
+        ...current,
+        projects: current.projects.map((project) =>
+          project.path === scope ? { ...project, todos: updated } : project,
+        ),
+      };
+  for (const item of updated.items) {
+    const old = previous.items.find((candidate) => candidate.id === item.id);
+    for (const sessionId of ownedSessions(item)) {
+      if (old && ownedSessions(old).includes(sessionId)) continue;
+      const existing = owners(finalState, sessionId).filter(
+        (owner) => owner.scope !== scope || owner.item.id !== item.id,
+      );
+      if (existing.length) return yield* ownershipError(sessionId, existing);
+    }
+  }
+});
+
 /** All edits serialize against the existing ApplicationStorage authority; no parallel queue/file.
  * `scope` is a registered Project path or CAKE_CHAT_TODO_SCOPE for global Cake Chat. */
 const change = Effect.fn("ProjectTodos.change")(function* (
   scope: string,
-  transition: (todos: ProjectTodos) => Effect.Effect<ProjectTodos, ProjectError>,
+  transition: (
+    todos: ProjectTodos,
+    current: ApplicationStateValue,
+  ) => Effect.Effect<ProjectTodos, ProjectError>,
 ) {
   const application = yield* ApplicationState;
   const next = yield* application
@@ -107,7 +174,8 @@ const change = Effect.fn("ProjectTodos.change")(function* (
         if (!global && !current.projects.some((item) => item.path === scope))
           return yield* error("Unknown registered project");
         const previous = stored(current, scope) ?? emptyProjectTodos();
-        const updated = yield* transition(previous);
+        const updated = yield* transition(previous, current);
+        yield* validateOwnership(current, scope, previous, updated);
         const modifiedAt = DateTime.formatIso(yield* DateTime.now);
         const revisions = new Map(previous.items.map((item) => [item.id, item.revision]));
         const todos = clearCompletedProjectTodoSelection({
@@ -263,6 +331,14 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
           input.needsAttention !== undefined ||
           input.attentionReason !== undefined ||
           input.snoozedUntil !== undefined;
+        // Retrying the exact same link replacement is a no-op, including stale retries.
+        const { id: _id, expectedRevision: _revision, associations, ...other } = input;
+        if (
+          associations !== undefined &&
+          Object.keys(other).length === 0 &&
+          JSON.stringify(associations) === JSON.stringify(item.associations)
+        )
+          continue;
         // Already done and nothing else changes: idempotent, no new revision.
         if (alreadyDone && !edits) continue;
         // A completion changes only state. A stale "done" edit that raced exactly that completion
@@ -455,15 +531,10 @@ export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
   const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
   const name = title.trim().slice(0, 512).trim() || "New Project Session";
   const description = sessionDescription(brief, name);
-  yield* change(scope, (value) => {
-    if (
-      value.items.some(
-        (item) =>
-          item.id === id ||
-          item.associations.some((link) => link.kind === "session" && link.sessionId === sessionId),
-      )
-    )
-      return Effect.succeed(value);
+  yield* change(scope, (value, current) => {
+    const existing = owners(current, sessionId);
+    if (existing.length > 1) return Effect.fail(ownershipError(sessionId, existing));
+    if (existing.length || value.items.some((item) => item.id === id)) return Effect.succeed(value);
     if (value.items.length >= 1000) return Effect.fail(error("To-do list is full"));
     return Effect.succeed({
       ...value,

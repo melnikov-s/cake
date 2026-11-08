@@ -154,8 +154,8 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
             }),
       ),
     );
-  // Global Cake Chat tracks the sessions it launches in its own list too; the Project's list
-  // keeps its automatic item. Bookkeeping never fails an already-admitted launch.
+  // Reuse the Project's automatic owner (or an explicit owner that won admission).
+  // Global fallback bookkeeping must never create a second owner for the same session.
   if (requester?.sessionId === CAKE_CHAT_SESSION_ID)
     yield* ensureSessionTodo(CAKE_CHAT_TODO_SCOPE, sessionId, input.name, input.initialPrompt);
   return {

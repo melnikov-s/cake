@@ -1,4 +1,5 @@
 import { it } from "@effect/vitest";
+import { seedHistoricalTodo } from "../helpers/projectTodoHarness";
 import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
 import { expect } from "vitest";
 import { TestClock } from "effect/testing";
@@ -68,7 +69,7 @@ const setup = Effect.fn("Test.setup")(function* () {
 });
 
 it.effect(
-  "updates linked project and global items without touching lifecycle, links or pending delivery",
+  "updates historical duplicate project/global owners without touching lifecycle, links or pending delivery",
   () => {
     const inputs: BoundedCompletionInput[] = [];
     const f = fixture((input) =>
@@ -79,7 +80,7 @@ it.effect(
     );
     return Effect.gen(function* () {
       const item = yield* setup();
-      const global = yield* todos.create(CAKE_CHAT_TODO_SCOPE, {
+      const global = yield* seedHistoricalTodo(CAKE_CHAT_TODO_SCOPE, {
         title: item.title,
         description: item.description,
         associations: work,

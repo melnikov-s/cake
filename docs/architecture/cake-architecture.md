@@ -629,8 +629,15 @@ is a refactoring signal, not precedent.
   separate application-level list (`cakeChatTodos`, scope `CAKE_CHAT_TODO_SCOPE`) rather
   than inside any Project. Its links may target sessions, workers and messages in any
   registered Project; its resolution join uses each family's root regardless of Project.
-  Sessions it creates get one linked item in its list in addition to their Project's
-  automatic item. Session resolution reconciles both the session's Project list and this
+  Project Session ownership is unique across all lists, including done items; one to-do
+  may own many sessions. Automatic creation reuses an existing owner, normally the
+  Project's automatic item, rather than also adding a global item. Create/update/batch
+  ownership checks share the serialized application transaction; conflicts name existing
+  IDs and scopes. Sources are citations, not ownership; side chats/subagents are unchanged.
+  Historical duplicate links remain readable/editable without destructive migration:
+  additions that conflict are rejected, ambiguous automatic bookkeeping reports every owner,
+  and only intentional association edits resolve duplicates. Session resolution reconciles
+  both the session's Project list and this
   list; lifecycle user-change reminders reach it only for sessions it links. The renderer
   projects it from the application-state stream into `CakeChatTodoList`.
 - **Conversation navigation**: `SessionLayoutStore` owns one focused conversation and
