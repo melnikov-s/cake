@@ -93,8 +93,8 @@ export const ProjectRail = observer(function ProjectRail() {
         footer={
           <>
             <IconButton
-              tooltip="New session in any project"
-              label="New session in any project"
+              tooltip="New session"
+              label="New session"
               hotkey="new-session"
               className="h-9 shrink-0"
               onClick={() => root.newSessionStore.show()}
