@@ -3,6 +3,9 @@ import manifest from "../../../package.json";
 import compiler from "typescript/package.json";
 import tsconfig from "../../../tsconfig.json";
 import { validationCommands } from "../../../scripts/validation-run.mjs";
+import knip from "../../../knip";
+import { resolve } from "node:path";
+import { existsSync } from "node:fs";
 
 describe("native validation tooling", () => {
   it("pins a stable native TypeScript release without shipping a runtime compiler API", () => {
@@ -17,6 +20,44 @@ describe("native validation tooling", () => {
     expect(validationCommands.typecheck?.steps).toEqual([["tsc", "--noEmit"]]);
     expect(tsconfig.compilerOptions).not.toHaveProperty("baseUrl");
     expect(tsconfig.compilerOptions.paths["@/*"]).toEqual(["./src/renderer/*"]);
+  });
+
+  it("exposes queued validation commands to unused-code analysis without executing them", () => {
+    expect(knip.vite.config).toContain("vite.browser.config.ts");
+    expect(knip.vitest.config).toContain("vitest.integration.config.ts");
+    expect(knip.entry).toEqual(
+      expect.arrayContaining([
+        "tests/fixtures/validation-queue-client.mjs",
+        "tests/fixtures/validation-queue-job.mjs",
+      ]),
+    );
+    const source = "// validation registry";
+    const compile = knip.compilers[".mjs"];
+    const path = resolve(import.meta.dirname, "../../../scripts/validation-run.mjs");
+    const compiled = compile(source, path);
+
+    expect(compiled).toContain(source);
+    expect(compiled).toContain('import { spawnSync } from "node:child_process";');
+    for (const { steps } of Object.values(validationCommands)) {
+      for (const [command, ...args] of steps) {
+        const rootedArgs = args.map((arg) => {
+          const absolute = resolve(import.meta.dirname, "../../..", arg);
+          return existsSync(absolute) ? absolute : arg;
+        });
+        expect(compiled).toContain(
+          `spawnSync(${JSON.stringify(command)}, ${JSON.stringify(rootedArgs)});`,
+        );
+      }
+    }
+    expect(compiled).toContain(
+      `spawnSync("node", [${JSON.stringify(resolve(import.meta.dirname, "../../../scripts/build.mjs"))},"full"]);`,
+    );
+    expect(compile(source, resolve(import.meta.dirname, "../../../scripts/build.mjs"))).toBe(
+      source,
+    );
+    expect(compile(source, resolve(import.meta.dirname, "../../../other/validation-run.mjs"))).toBe(
+      source,
+    );
   });
 
   it("runs Oxlint and unused-code checks without an ESLint pipeline or dependencies", () => {
