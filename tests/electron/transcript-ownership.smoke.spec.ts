@@ -1892,6 +1892,199 @@ test.describe("media content anchoring diagnosis", () => {
 
 test.describe("viewport-aware message actions", () => {
   test.use({ messageCount: 2, chatMode: "full" });
+  for (const width of [1200, 400]) {
+    test(`reserves top actions between Work log and message cards at ${width}px`, async ({
+      fixturePage: page,
+    }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.evaluate(() => {
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).partsUpdated([
+          {
+            kind: "text",
+            id: "before-clearance",
+            role: "user",
+            status: "complete",
+            text: "Earlier context. ".repeat(150),
+          },
+          { kind: "reasoning", id: "clearance-reasoning", status: "complete", text: "Reasoning" },
+          {
+            kind: "text",
+            id: "clearance-body",
+            role: "assistant",
+            status: "streaming",
+            text: "Reserved action body\n\n" + "Long paragraph.\n\n".repeat(100),
+          },
+          {
+            kind: "text",
+            id: "after-clearance",
+            role: "user",
+            status: "complete",
+            text: "Following card. ".repeat(100),
+          },
+        ]);
+      });
+      const message = page
+        .locator('[data-slot="message"]')
+        .filter({ hasText: "Reserved action body" });
+      const toolbar = message.locator('[data-slot="message-action-toolbar"]');
+      const clearance = message.locator('[data-slot="message-action-clearance"]');
+      const workLog = page.locator('[data-slot="activity-group"]').filter({ hasText: "Reasoning" });
+      const alignWorkLog = async () => {
+        await workLog.evaluate((node) => {
+          const scroller = node.closest<HTMLElement>(".transcript")!;
+          scroller.scrollTop +=
+            node.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 45;
+        });
+      };
+      const transcript = page.locator(".transcript");
+      await transcript.focus();
+      await page.keyboard.press("Home");
+      for (
+        let step = 0;
+        step < 40 && (!(await workLog.count()) || !(await message.count()));
+        step++
+      ) {
+        await transcript.evaluate((node) => {
+          node.scrollTop += 200;
+        });
+        await settle(page);
+      }
+      await expect(workLog).toHaveCount(1);
+      await expect(toolbar).toHaveCount(1);
+      const copy = toolbar.getByRole("button", { name: "Copy response", exact: true });
+      await copy.evaluate((node) => {
+        node.dataset.identity = "retained";
+      });
+      const geometry = async () =>
+        toolbar.evaluate((node) => {
+          const article = node.closest("article")!;
+          const scroller = article.closest<HTMLElement>(".transcript")!;
+          const actions = node.getBoundingClientRect();
+          const body = article
+            .querySelector('[data-slot="message-content"]')!
+            .getBoundingClientRect();
+          const reserved = article
+            .querySelector('[data-slot="message-action-clearance"]')!
+            .getBoundingClientRect();
+          const log = scroller
+            .querySelector('[data-slot="activity-group"]')!
+            .getBoundingClientRect();
+          const viewport = scroller.getBoundingClientRect();
+          return {
+            inReservedRow: actions.top >= reserved.top && actions.bottom <= reserved.bottom,
+            aboveBody: actions.bottom <= body.top - 8,
+            afterWorkLog: actions.top >= log.bottom + 8,
+            inViewport:
+              actions.top >= viewport.top &&
+              actions.bottom <= viewport.bottom &&
+              actions.left >= viewport.left &&
+              actions.right <= viewport.right,
+            intersectsWorkLog: actions.top < log.bottom && actions.bottom > log.top,
+            height: article.getBoundingClientRect().height,
+            scrollTop: scroller.scrollTop,
+          };
+        });
+      // Recreate the pre-fix layout in the isolated fixture: without an in-flow
+      // top row the absolute toolbar straddles the preceding Work log border.
+      await clearance.evaluate((node) => {
+        node.style.display = "none";
+      });
+      await alignWorkLog();
+      await expect(toolbar).toHaveAttribute("data-placement", "above");
+      await expect.poll(async () => (await geometry()).intersectsWorkLog).toBe(true);
+      await copy.focus();
+      await mkdir(join(repositoryRoot, ".visual-captures"), { recursive: true });
+      await page.screenshot({
+        path: join(repositoryRoot, `.visual-captures/message-actions-${width}-before.png`),
+      });
+      await clearance.evaluate((node) => {
+        node.style.display = "";
+      });
+      await alignWorkLog();
+      const assertReserved = async () => {
+        await expect(toolbar).toHaveAttribute("data-placement", "above");
+        await expect
+          .poll(async () => {
+            const { height: _height, scrollTop: _scrollTop, ...bounds } = await geometry();
+            return bounds;
+          })
+          .toEqual({
+            inReservedRow: true,
+            aboveBody: true,
+            afterWorkLog: true,
+            inViewport: true,
+            intersectsWorkLog: false,
+          });
+        await expect(copy).toHaveAttribute("data-identity", "retained");
+        await expect(copy).toBeFocused();
+        await expect(message.locator('[data-slot="message-action-toolbar"]')).toHaveCount(1);
+      };
+      await assertReserved();
+      await page.screenshot({
+        path: join(repositoryRoot, `.visual-captures/message-actions-${width}-after.png`),
+      });
+      const before = await geometry();
+      // A streaming update must not move the reserved row or the reading position.
+      await page.evaluate(() => {
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).partsUpdated([
+          {
+            kind: "text",
+            id: "clearance-body",
+            role: "assistant",
+            status: "streaming",
+            text: "Reserved action body\n\n" + "Long paragraph.\n\n".repeat(110),
+          },
+        ]);
+      });
+      await assertReserved();
+      expect(Math.abs((await geometry()).scrollTop - before.scrollTop)).toBeLessThanOrEqual(1);
+      const scrollTo = async (boundary: "middle" | "bottom") => {
+        await message.evaluate((node, boundary) => {
+          const scroller = node.closest<HTMLElement>(".transcript")!;
+          const viewport = scroller.getBoundingClientRect();
+          const body = node.querySelector('[data-slot="message-content"]')!.getBoundingClientRect();
+          scroller.scrollTop +=
+            boundary === "middle"
+              ? body.top - viewport.top + 250
+              : body.bottom - viewport.bottom + 64;
+        }, boundary);
+      };
+      const messageHeight = () => message.evaluate((node) => node.getBoundingClientRect().height);
+      const stableHeight = await messageHeight();
+      await scrollTo("middle");
+      await expect(toolbar).toHaveAttribute("data-placement", width === 400 ? "hidden" : "side");
+      if (width === 400) {
+        await expect(copy).toBeHidden();
+        await expect(toolbar).toHaveAttribute("inert", "");
+      }
+      expect(await messageHeight()).toBe(stableHeight);
+      await scrollTo("bottom");
+      await expect(toolbar).toHaveAttribute("data-placement", "footer");
+      const footer = await toolbar.evaluate((node) => ({
+        position: getComputedStyle(node).position,
+        top: node.getBoundingClientRect().top,
+        bottom: node
+          .closest("article")!
+          .querySelector('[data-slot="message-content"]')!
+          .getBoundingClientRect().bottom,
+      }));
+      expect(footer.position).toBe("static");
+      expect(footer.top).toBeGreaterThan(footer.bottom);
+      expect(await messageHeight()).toBe(stableHeight);
+      // At the bottom the following virtual row is mounted, so measure its
+      // actual card as well as the unchanged in-flow footer.
+      const following = page.locator(
+        '[data-transcript-anchor-id="after-clearance"] [data-slot="message-content"]',
+      );
+      await expect(following).toHaveCount(1);
+      expect(
+        (await toolbar.boundingBox())!.y + (await toolbar.boundingBox())!.height,
+      ).toBeLessThanOrEqual((await following.boundingBox())!.y);
+      await expect(copy).toHaveAttribute("data-identity", "retained");
+      await expect(toolbar.getByRole("button")).toHaveCount(1);
+    });
+  }
+
   test("keeps one external toolbar through boundary transitions and hides a cramped side rail", async ({
     fixturePage: page,
   }) => {
@@ -1926,6 +2119,8 @@ test.describe("viewport-aware message actions", () => {
       .filter({ hasText: "Viewport action body" });
     const toolbar = message.locator('[data-slot="message-action-toolbar"]');
     const copy = toolbar.locator('button[aria-label="Copy response"]');
+    for (let step = 0; step < 20 && !(await message.count()); step++)
+      await wheel(page, page.locator(".transcript"), 300);
     await expect(toolbar).toHaveCount(1);
     await copy.evaluate((button) => {
       button.dataset.identity = "original";

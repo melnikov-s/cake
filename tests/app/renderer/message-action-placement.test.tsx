@@ -101,6 +101,9 @@ describe("message action placement", () => {
     expect(reply).not.toHaveBeenCalled();
     const body = screen.getByText("Message body");
     expect(body.querySelector("button")).toBeNull();
+    const clearance = body.parentElement?.querySelector('[data-slot="message-action-clearance"]');
+    expect(clearance?.getAttribute("aria-hidden")).toBe("true");
+    expect(clearance?.querySelector("button")).toBeNull();
     expect(
       body.parentElement?.querySelectorAll('[data-slot="message-action-toolbar"]'),
     ).toHaveLength(1);

@@ -116,7 +116,7 @@ export const SessionAssistant = observer(function SessionAssistant({
                 parkComposerFocusWhileDictating={false}
                 inlineComposer
                 className={cn(
-                  "h-auto max-h-[min(18rem,60vh)] [&_.transcript]:max-h-[min(18rem,60vh)] [&_[data-slot=message]]:w-fit [&_[data-slot=message-content]]:max-w-[min(22rem,calc(100vw-24px))] [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2.5 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-actions]]:hidden",
+                  "h-auto max-h-[min(18rem,60vh)] [&_.transcript]:max-h-[min(18rem,60vh)] [&_[data-slot=message]]:w-fit [&_[data-slot=message-content]]:max-w-[min(22rem,calc(100vw-24px))] [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2.5 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-actions]]:hidden [&_[data-slot=message-action-clearance]]:hidden",
                   !quickResponse && "[&_.transcript]:hidden",
                   quickResponse &&
                     "[&_[data-slot=message-content]]:rounded-2xl [&_[data-slot=message-content]]:rounded-br-md [&_[data-slot=message-content]]:border-border/70 [&_[data-slot=message-content]]:bg-card/95 [&_[data-slot=message-content]]:shadow-lg",
