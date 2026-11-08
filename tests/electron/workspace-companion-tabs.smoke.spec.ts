@@ -202,6 +202,16 @@ for (const theme of ["dark", "light"] as const) {
         expect(await paneToggle.boundingBox()).toEqual(narrowTogglePosition);
       };
       const toggle = page.locator('[data-slot="shell-workspace-toggle"]');
+      await page.mouse.move(500, 700);
+      const neutralColor = await toggle.evaluate((element) => getComputedStyle(element).color);
+      const toggleBounds = await toggle.boundingBox();
+      const expectNeutralFixedToggle = async () => {
+        await page.mouse.move(500, 700);
+        await expect(toggle).toHaveCSS("color", neutralColor);
+        await expect(toggle).not.toHaveAttribute("aria-pressed");
+        await expect(toggle.locator("svg path")).toHaveAttribute("d", "M15 4v16");
+        expect(await toggle.boundingBox()).toEqual(toggleBounds);
+      };
       const companion = page.getByRole("complementary", {
         name: "Current conversation companion",
         exact: true,
@@ -222,17 +232,20 @@ for (const theme of ["dark", "light"] as const) {
         for (const tab of [chat, todos, sessions]) {
           await tab.click();
           await expect(toggle).toHaveAttribute("aria-expanded", "true");
+          await expectNeutralFixedToggle();
           await toggle.click();
           await expect(companion).toBeHidden();
           await expect(workspace).toBeVisible();
           await expect(toggle).toBeVisible();
           await expect(toggle).toHaveAccessibleName("Open Workspace");
           await expect(toggle).toHaveAttribute("aria-expanded", "false");
+          await expectNeutralFixedToggle();
           await expectStableNarrowSelector();
           // Restore from the retained right-hand control using the keyboard too.
           await toggle.focus();
           await toggle.press("Enter");
           await expect(companion).toBeVisible();
+          await expectNeutralFixedToggle();
           await expect(tab).toHaveAttribute("aria-pressed", "true");
           await expectStableNarrowSelector();
           await expect(workspace).toBeVisible();
@@ -247,11 +260,13 @@ for (const theme of ["dark", "light"] as const) {
       await expect(accessory).toBeVisible();
       await toggle.click();
       await expect(accessory).toBeHidden();
+      await expectNeutralFixedToggle();
       await expectStableNarrowSelector();
       await expect(input).toBeVisible();
       await expect(input).toHaveValue("Keep this companion draft");
       await toggle.click();
       await expect(accessory).toBeVisible();
+      await expectNeutralFixedToggle();
       await page.getByRole("button", { name: "Browser", exact: true }).click();
       // Browser preserves manual collapse; explicit VS Code entry reveals Chat.
       await expect(companion).toBeHidden();

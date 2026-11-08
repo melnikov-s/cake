@@ -237,27 +237,6 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
         }
         return false;
       }, label);
-    const areVsCodeTitleActionsOrdered = (leftLabel: string, rightLabel: string) =>
-      application.evaluate(
-        async ({ webContents }, [left, right]) => {
-          for (const contents of webContents.getAllWebContents()) {
-            if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
-            const ordered = await contents.executeJavaScript(`(() => {
-            const left = document.querySelector(
-              '[aria-label*="${left}"], [title*="${left}"]',
-            );
-            const right = document.querySelector(
-              '[aria-label*="${right}"], [title*="${right}"]',
-            );
-            return left instanceof HTMLElement && right instanceof HTMLElement &&
-              left.getBoundingClientRect().x < right.getBoundingClientRect().x;
-          })()`);
-            if (ordered) return true;
-          }
-          return false;
-        },
-        [leftLabel, rightLabel],
-      );
     const toggleIdeViaMenu = () =>
       application.evaluate(({ Menu }) => {
         const item = Menu.getApplicationMenu()
@@ -328,9 +307,9 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(projectSidebarResize).not.toHaveAttribute("aria-valuenow", workspaceWidth!);
     await expect
       .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
-      .toBe(true);
-    await expect.poll(() => hasVsCodeTitleAction("Back to Agent"), { timeout: 20_000 }).toBe(true);
-    // A healthy editor has no status/error placeholder; the toolbar's Back action is separate.
+      .toBe(false);
+    await expect.poll(() => hasVsCodeTitleAction("Back to Agent"), { timeout: 20_000 }).toBe(false);
+    // A healthy editor has no status/error placeholder; navigation lives in the shell.
     await expect(page.locator(".embedded-editor-pane")).toBeEmpty();
     await expect(page.getByRole("button", { name: "Main", exact: true })).toBeVisible();
     await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
@@ -340,31 +319,14 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
         .locator('[aria-label="Editor selections"]')
         .getByRole("button", { name: /Remove src\/modelMeta\.ts/ }),
     ).toHaveCount(1);
-    await expect
-      .poll(() =>
-        application.evaluate(async ({ webContents }) => {
-          for (const contents of webContents.getAllWebContents()) {
-            if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
-            const hasCakeIcon = await contents.executeJavaScript(
-              'Boolean(document.querySelector("#cake-back-to-agent svg")) && !document.querySelector("#cake-back-to-agent .codicon-arrow-left")',
-            );
-            if (hasCakeIcon) return true;
-          }
-          return false;
-        }),
-      )
-      .toBe(true);
     await expect.poll(() => hasVsCodeTitleAction("Toggle Secondary Side Bar")).toBe(false);
     await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
     await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
     await expect
-      .poll(() => areVsCodeTitleActionsOrdered("Toggle Sessions Sidebar", "Back to Agent"))
-      .toBe(true);
-    await expect
       .poll(() => isVsCodeTitleActionPinnedToNavigation("Toggle Sessions Sidebar"))
       .toBe(true);
 
-    expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
+    await page.getByRole("button", { name: "Back to agent", exact: true }).click();
     await expect(vscodeWorkspace).toBeHidden();
     await expect(page.locator('[data-slot="workspace-navigator"]')).toBeHidden();
     await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
@@ -411,15 +373,15 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     };
     await expectSelectionHeader();
     await page.getByRole("button", { name: "Project chat", exact: true }).click();
-    expect(await clickVsCodeTitleAction("Toggle Chat Sidebar")).toBe(true);
-    await expect.poll(() => hasVsCodeTitleAction("Back to Agent")).toBe(true);
+    await page.locator('[data-slot="shell-workspace-toggle"]').click();
+    await expect.poll(() => hasVsCodeTitleAction("Back to Agent")).toBe(false);
     await toggleIdeViaMenu();
     await expect(vscodeWorkspace).toBeHidden();
     await expect(page.getByText("Phase 4 — Model references")).toBeVisible();
     await expect(agentInput).toHaveValue("Keep this IDE draft");
     await toggleIdeViaMenu();
     await expect(vscodeWorkspace).toBeVisible();
-    expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
+    await page.getByRole("button", { name: "Back to agent", exact: true }).click();
 
     await emitRendererEvent(application, {
       type: "project-session-control-requested",
@@ -428,14 +390,14 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       invocation: { _tag: "InvokeAppControl", command: "vscode.enter", input: {} },
     });
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
-    expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
+    await page.getByRole("button", { name: "Back to agent", exact: true }).click();
 
     await link.click();
 
     await expect(vscodeWorkspace).toBeVisible();
     await expect
       .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
-      .toBe(true);
+      .toBe(false);
     const toggleChatSidebar = () =>
       emitRendererEvent(application, {
         type: "embedded-editor-toggle-chat",
@@ -485,7 +447,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     }, originalContentSize);
     await expect.poll(vscodeFillsWindow).toBe(true);
     await toggleChatSidebar();
-    await expect.poll(() => hasVsCodeTitleAction("Back to Agent")).toBe(true);
+    await expect.poll(() => hasVsCodeTitleAction("Back to Agent")).toBe(false);
 
     await expect(page.locator(".transcript").getByText(/Phase 4 — Model references/)).toBeVisible();
 

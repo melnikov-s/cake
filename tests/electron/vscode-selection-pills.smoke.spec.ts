@@ -223,7 +223,7 @@ async function editorState(application: ElectronApplication) {
     for (const contents of webContents.getAllWebContents()) {
       if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
       return contents.executeJavaScript(
-        `({ ready: !!document.getElementById('cake-back-to-agent'), tabs: [...document.querySelectorAll('.tab.active')].map(tab => tab.textContent.trim()), text: [...document.querySelectorAll('.view-lines')].map(lines => lines.textContent).join(' ') })`,
+        `({ ready: !!document.getElementById('cake-toggle-project-sidebar'), tabs: [...document.querySelectorAll('.tab.active')].map(tab => tab.textContent.trim()), text: [...document.querySelectorAll('.view-lines')].map(lines => lines.textContent).join(' ') })`,
       );
     }
     return undefined;

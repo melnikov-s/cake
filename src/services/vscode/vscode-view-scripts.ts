@@ -1,4 +1,3 @@
-import cakeIconMarkup from "../../assets/cake-icon.svg?raw";
 import scrollbarStyles from "../../utils/scrollbars.css?raw";
 
 export const VSCODE_BACKGROUND = { dark: "#121519", light: "#f5f7f9" } as const;
@@ -61,25 +60,15 @@ export function vscodeShellControlsScript(workspacePath: string, projectSidebarV
       style.textContent = ${JSON.stringify(scrollbarStyles)};
       document.head.append(style);
     }
-    const cakeIconMarkup = ${JSON.stringify(cakeIconMarkup)};
     const controlPrefix = ${JSON.stringify(VSCODE_SHELL_CONTROL_PREFIX)};
     const workspace = ${JSON.stringify(workspacePath)};
     window.__cakeProjectSidebarVisible = ${JSON.stringify(projectSidebarVisible)};
     const controls = [
-      ["cake-back-to-agent", "Cake: Back to Agent", "cake", "back-to-agent", "start"],
       [
         "cake-toggle-project-sidebar",
         "Cake: Toggle Sessions Sidebar",
         "layout-sidebar-left",
         "toggle-project-sidebar",
-        "start",
-      ],
-      [
-        "cake-toggle-chat-sidebar",
-        "Cake: Toggle Chat Sidebar",
-        "layout-sidebar-right",
-        "toggle-chat-sidebar",
-        "end",
       ],
     ];
     const install = () => {
@@ -97,7 +86,7 @@ export function vscodeShellControlsScript(workspacePath: string, projectSidebarV
         '[aria-label*="Toggle Secondary Side Bar"], [title*="Toggle Secondary Side Bar"]',
       );
       secondarySidebarAction?.closest(".action-item")?.remove();
-      for (const [id, label, icon, type, placement] of controls) {
+      for (const [id, label, icon, type] of controls) {
         const existing = document.getElementById(id);
         if (existing) {
           if (id === "cake-toggle-project-sidebar") {
@@ -118,14 +107,7 @@ export function vscodeShellControlsScript(workspacePath: string, projectSidebarV
           item.style.display = window.__cakeProjectSidebarVisible ? "none" : "flex";
         }
         const action = document.createElement("a");
-        action.className = icon === "cake" ? "action-label" : "action-label codicon codicon-" + icon;
-        if (icon === "cake") {
-          action.innerHTML = cakeIconMarkup + "<span>Back to Agent</span>";
-          action.style.alignItems = "center";
-          action.style.color = "var(--vscode-titleBar-activeForeground)";
-          action.style.gap = "6px";
-          action.style.padding = "0 8px";
-        }
+        action.className = "action-label codicon codicon-" + icon;
         action.href = "#";
         action.addEventListener("click", (event) => {
           event.preventDefault();
@@ -136,9 +118,7 @@ export function vscodeShellControlsScript(workspacePath: string, projectSidebarV
         action.setAttribute("aria-label", label);
         action.title = label;
         item.append(action);
-        if (id === "cake-toggle-project-sidebar") projectSidebarActions.prepend(item);
-        else if (placement === "start") actions.prepend(item);
-        else actions.append(item);
+        projectSidebarActions.prepend(item);
       }
     };
     install();

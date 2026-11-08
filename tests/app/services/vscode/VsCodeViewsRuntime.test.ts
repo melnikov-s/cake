@@ -95,7 +95,7 @@ describe("VsCodeViewsRuntime native presentation", () => {
     expect(view.setVisible).toHaveBeenLastCalledWith(true);
     expect(view.setBackgroundColor).toHaveBeenCalledWith("#121519");
     expect(view.webContents.executeJavaScript.mock.calls.flat().join("\n")).toContain(
-      "Back to Agent",
+      "cake-toggle-project-sidebar",
     );
   });
 
