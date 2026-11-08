@@ -86,9 +86,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       timeout: 20_000,
     });
     await showSessions(page);
-    await expect(
-      page.getByRole("button", { name: "New session in any project", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "New session", exact: true })).toBeVisible();
     const configuration = page.getByRole("button", { name: "Model configuration" });
     await expect(configuration).toBeVisible();
     await configuration.click();

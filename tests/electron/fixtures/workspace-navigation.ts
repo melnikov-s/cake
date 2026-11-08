@@ -33,7 +33,7 @@ export async function createSessionInProject(page: Page, name: RegExp) {
   await showSessions(page);
   await page
     .getByRole("navigation", { name: "Projects and global utilities" })
-    .getByRole("button", { name: "New session in any project", exact: true })
+    .getByRole("button", { name: "New session", exact: true })
     .click();
   await page
     .getByRole("dialog", { name: "New session", exact: true })

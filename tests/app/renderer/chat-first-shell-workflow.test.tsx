@@ -62,7 +62,7 @@ it("keeps one shell toggle mounted through close and reopen, outside the project
   const host = toggle.closest('[data-slot="shell-workspace-controls"]');
   expect(host).toBeTruthy();
   expect(rail.queryByRole("button", { name: /^(Close|Open) Workspace$/ })).toBeNull();
-  const globalPlus = rail.getByRole("button", { name: "New session in any project" });
+  const globalPlus = rail.getByRole("button", { name: "New session" });
   expect(screen.getAllByRole("button", { name: /^(Close|Open) Workspace$/ })).toHaveLength(1);
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
   expect(toggle.hasAttribute("aria-pressed")).toBe(false);
@@ -71,7 +71,7 @@ it("keeps one shell toggle mounted through close and reopen, outside the project
   await fixture.user.click(toggle);
   expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
   expect(screen.getByRole("button", { name: "Open Workspace" })).toBe(toggle);
-  expect(rail.getByRole("button", { name: "New session in any project" })).toBe(globalPlus);
+  expect(rail.getByRole("button", { name: "New session" })).toBe(globalPlus);
   expect(toggle.closest('[data-slot="shell-workspace-controls"]')).toBe(host);
   expect(toggle.getAttribute("aria-expanded")).toBe("false");
   expect(toggle.hasAttribute("aria-pressed")).toBe(false);

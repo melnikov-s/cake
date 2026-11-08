@@ -73,9 +73,7 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
   try {
     const page = await application.firstWindow();
     await showSessions(page);
-    await expect(
-      page.getByRole("button", { name: "New session in any project", exact: true }),
-    ).toBeVisible({
+    await expect(page.getByRole("button", { name: "New session", exact: true })).toBeVisible({
       timeout: 20_000,
     });
     await createSessionInProject(page, /^project(?: |$)/i);
@@ -279,7 +277,7 @@ test("filters existing worktrees from the keyboard in the new-chat composer", as
   try {
     const page = await application.firstWindow();
     await showSessions(page);
-    const newChat = page.getByRole("button", { name: "New session in any project", exact: true });
+    const newChat = page.getByRole("button", { name: "New session", exact: true });
     await expect(newChat).toBeVisible({ timeout: 20_000 });
     await createSessionInProject(page, /^project(?: |$)/i);
     const trigger = page.getByRole("button", { name: "Choose existing worktree" });

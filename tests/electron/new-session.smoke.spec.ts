@@ -223,7 +223,7 @@ test("new session dialog supports filtering, keyboard, mouse and cancellation", 
 
     await page.keyboard.press(`${modifier}+B`);
     await showSessions(page);
-    await page.getByRole("button", { name: "New session in any project", exact: true }).click();
+    await page.getByRole("button", { name: "New session", exact: true }).click();
     await expect(filter).toBeFocused();
     await dialog.getByRole("option", { name: /Beta/ }).click();
     await expect(dialog).toBeHidden();
