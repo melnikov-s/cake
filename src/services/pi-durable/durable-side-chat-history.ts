@@ -159,7 +159,7 @@ export async function importDurableSideChatHistory(
         source.after,
       );
       if (!isDeepStrictEqual(latest.messages, parsed.messages))
-        throw new SideChatHistoryBusy({ message: "Side-chat dialogue changed before import" });
+        throw new SideChatHistoryBusy({ message: "Side-chat dialogue changed before merging" });
     }
     const imported = new Set<string>();
     let cursor;
