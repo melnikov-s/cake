@@ -174,7 +174,7 @@
    rule sits outside it (box-content), so the rule never shifts that center line. Embedded
    VS Code fixes its own title bar, so Cake matches it while that view is shown. */
 :root {
-  --title-bar-height: 52px;
+  --title-bar-height: 44px;
 }
 
 :root[data-title-bar="vscode"] {

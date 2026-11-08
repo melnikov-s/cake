@@ -7,6 +7,12 @@ import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
+async function expectSearchGap(search: Locator, header: Locator) {
+  const searchBox = (await search.boundingBox())!;
+  const headerBox = (await header.boundingBox())!;
+  expect(searchBox.y - (headerBox.y + headerBox.height)).toBe(8);
+}
+
 async function expectAlignedTabs(strip: Locator) {
   const geometry = await strip.evaluate((element) => {
     const header = element.parentElement!;
@@ -91,6 +97,45 @@ for (const theme of ["dark", "light"] as const) {
         .click();
       const modeSelector = page.getByRole("group", { name: "Conversation workspace", exact: true });
       await expect(modeSelector).toBeVisible();
+      const windowHeader = page.locator('[data-slot="workspace-header"]');
+      const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+      const workspaceHeader = workspace.locator("header");
+      const workspaceTabs = workspace.getByRole("group", { name: "Workspace content" });
+      const expectTopBarGeometry = async () => {
+        const header = (await windowHeader.boundingBox())!;
+        // 52px content height + its bottom rule is now 44px + the same rule.
+        expect(header.height).toBe(45);
+        for (const control of [
+          ...(await modeSelector.getByRole("button").all()),
+          page.locator('[data-slot="shell-workspace-toggle"]'),
+        ]) {
+          const box = (await control.boundingBox())!;
+          expect(box.height).toBeGreaterThanOrEqual(28);
+          expect(box.y).toBeGreaterThanOrEqual(header.y);
+          expect(box.y + box.height).toBeLessThanOrEqual(header.y + header.height - 1);
+        }
+        for (const tab of await workspaceTabs.getByRole("button").all()) {
+          const box = (await tab.boundingBox())!;
+          expect(box.height).toBeGreaterThanOrEqual(24);
+          expect(box.y).toBeGreaterThanOrEqual(header.y);
+          expect(box.y + box.height).toBeLessThanOrEqual(header.y + header.height - 1);
+        }
+        expect(await workspaceHeader.boundingBox()).toMatchObject({
+          y: header.y,
+          height: header.height,
+        });
+      };
+      await expectTopBarGeometry();
+      await workspaceTabs.getByRole("button", { name: /^To-dos/ }).click();
+      await expectSearchGap(
+        page.getByRole("searchbox", { name: "Search to-dos" }),
+        workspaceHeader,
+      );
+      await workspaceTabs.getByRole("button", { name: /^Sessions/ }).click();
+      await expectSearchGap(
+        page.getByRole("searchbox", { name: "Search sessions" }),
+        workspaceHeader,
+      );
       const modes = modeSelector.getByRole("button");
       await expect(modes).toHaveCount(3);
       for (const name of ["Main", "VS Code", "Browser"]) {
@@ -156,6 +201,8 @@ for (const theme of ["dark", "light"] as const) {
         expect(header.height).toBe(browser.height);
       };
       await checkAlignment();
+      // Selecting Sessions in Main also selects it in the tool companion.
+      await chat.click();
       const input = page.getByRole("combobox", { name: "Message Project Chat", exact: true });
       await input.fill("Keep this companion draft");
       await expect(input).toHaveValue("Keep this companion draft");
@@ -172,6 +219,11 @@ for (const theme of ["dark", "light"] as const) {
       await expect(sessions).toBeFocused();
       await page.keyboard.press("Space");
       await expect(sessions).toHaveAttribute("aria-pressed", "true");
+      await expectSearchGap(
+        page.getByRole("searchbox", { name: "Search sessions" }),
+        strip.locator(".."),
+      );
+      await page.screenshot({ path: testInfo.outputPath(`browser-sessions-${theme}.png`) });
       await chat.click();
       await expect(input).toHaveValue("Keep this companion draft");
       const resize = page.getByRole("separator", { name: "Resize current session sidebar" });
@@ -231,6 +283,14 @@ for (const theme of ["dark", "light"] as const) {
         ).toHaveCount(0);
         for (const tab of [chat, todos, sessions]) {
           await tab.click();
+          if (tab !== chat) {
+            await expectSearchGap(
+              page.getByRole("searchbox", {
+                name: tab === sessions ? "Search sessions" : "Search to-dos",
+              }),
+              strip.locator(".."),
+            );
+          }
           await expect(toggle).toHaveAttribute("aria-expanded", "true");
           await expectNeutralFixedToggle();
           await toggle.click();
@@ -258,6 +318,13 @@ for (const theme of ["dark", "light"] as const) {
       await expectStableNarrowSelector();
       const accessory = page.getByRole("complementary", { name: "Workspace", exact: true });
       await expect(accessory).toBeVisible();
+      await expectTopBarGeometry();
+      await workspaceTabs.getByRole("button", { name: /^Sessions/ }).click();
+      await expectSearchGap(
+        page.getByRole("searchbox", { name: "Search sessions" }),
+        workspaceHeader,
+      );
+      await page.screenshot({ path: testInfo.outputPath(`narrow-main-sessions-${theme}.png`) });
       await toggle.click();
       await expect(accessory).toBeHidden();
       await expectNeutralFixedToggle();

@@ -178,7 +178,7 @@ it.each([320, 360, 384, 390, 412])(
             ).toBeVisible();
             await browserExpect(page.locator('[data-slot="workspace-header"]')).toHaveCSS(
               "height",
-              "52px",
+              "44px",
             );
             await page.setViewportSize({ width, height: 844 });
             // Tree navigation is a composer command, not a dedicated toolbar action.

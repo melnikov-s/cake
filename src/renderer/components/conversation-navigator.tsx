@@ -31,7 +31,7 @@ export const ConversationNavigator = observer(function ConversationNavigator({
     : list.hasMoreResolvedCakeChatSessions;
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Sessions">
-      <div className="mx-2 mb-2 flex min-w-0 items-center gap-1">
+      <div className="mx-2 my-2 flex min-w-0 items-center gap-1">
         <ConversationNavigatorSearch key={scope} projectPath={projectPath} />
         <IconButton
           tooltip={

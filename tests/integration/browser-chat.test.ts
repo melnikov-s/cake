@@ -452,7 +452,7 @@ it("real Chromium uses the shared sidebar, project chat and Cake Chat without re
             await page.setViewportSize({ width, height: 900 });
             await browserExpect(page.locator('[data-slot="workspace-header"]')).toHaveCSS(
               "height",
-              "52px",
+              "44px",
             );
             await browserExpect(
               page.getByRole("button", { name: "VS Code", exact: true }),
