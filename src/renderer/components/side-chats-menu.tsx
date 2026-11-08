@@ -37,10 +37,11 @@ export const SideChatsMenu = observer(function SideChatsMenu({
       </PopoverNumberedIconTrigger>
       <PopoverContent
         align="end"
-        className="w-[min(22rem,calc(100vw-24px))] overflow-hidden p-0"
+        boundary="nearest-ancestor"
+        className="flex w-[min(22rem,calc(100vw-24px))] flex-col overflow-hidden p-0"
         aria-label="Open side chats"
       >
-        <section aria-label="Side chats" className="max-h-96 overflow-y-auto">
+        <section aria-label="Side chats" className="min-h-0 max-h-96 overflow-y-auto">
           <div className="flex items-center justify-between gap-2 border-b border-border/65 bg-sidebar/30 px-3 py-2">
             <h2 className="text-xs font-semibold text-foreground">Side chats</h2>
             <span className="font-mono text-xs tabular-nums text-muted-foreground">

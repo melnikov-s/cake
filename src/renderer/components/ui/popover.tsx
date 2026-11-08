@@ -30,6 +30,9 @@ interface PopoverContextValue {
 
 const PopoverContext = createContext<PopoverContextValue | null>(null);
 
+/** A tool workspace's toolbar can anchor popovers outside its visible Cake pane. */
+export const PopoverBoundaryContext = createContext<RefObject<HTMLElement | null> | null>(null);
+
 function usePopoverContext(component: string) {
   const context = useContext(PopoverContext);
   if (!context) throw new Error(`${component} must be rendered inside Popover`);
@@ -138,7 +141,7 @@ export interface PopoverContentProps extends HTMLAttributes<HTMLDivElement> {
   anchorRef?: RefObject<HTMLElement | null>;
   /** Pointer location for a context menu; keyboard menus remain anchored to their trigger. */
   anchorPoint?: { x: number; y: number };
-  /** Constrain the surface to the nearest ancestor marked as a popover boundary. */
+  /** Constrain to the nearest marked ancestor, or the workspace's supplied Cake pane. */
   boundary?: "viewport" | "nearest-ancestor";
   offset?: number;
   side?: PopoverSide;
@@ -166,25 +169,35 @@ export function PopoverContent({
 }: PopoverContentProps) {
   const { contentId, open, setOpen, triggerRef } = usePopoverContext("PopoverContent");
   const effectiveAnchorRef = anchorRef ?? triggerRef;
+  const inheritedBoundaryRef = useContext(PopoverBoundaryContext);
   const contentRef = useRef<HTMLDivElement>(null);
   // DOM presence only: dismissal remains immediate while the visual shell collapses.
   const [exiting, setExiting] = useState(false);
   const interruptedFrame = useRef<Keyframe | null>(null);
-  const [position, setPosition] = useState({
-    left: 0,
-    top: 0,
-    originX: 0,
-    originY: 0,
-    ready: false,
-  });
+  const [position, setPosition] = useState<{
+    left: number;
+    top: number;
+    originX: number;
+    originY: number;
+    ready: boolean;
+    maxWidth?: number;
+    maxHeight?: number;
+  }>({ left: 0, top: 0, originX: 0, originY: 0, ready: false });
   const updatePosition = useCallback(() => {
     const anchor = effectiveAnchorRef.current;
     const content = contentRef.current;
     if (!anchor || !content) return;
     const boundaryElement =
       boundary === "nearest-ancestor"
-        ? anchor.closest<HTMLElement>("[data-popover-boundary]")
+        ? (anchor.closest<HTMLElement>("[data-popover-boundary]") ?? inheritedBoundaryRef?.current)
         : null;
+    const rect = boundaryElement?.getBoundingClientRect();
+    const bounds = {
+      left: Math.max(0, rect?.left ?? 0),
+      top: Math.max(0, rect?.top ?? 0),
+      right: Math.min(window.innerWidth, rect?.right ?? window.innerWidth),
+      bottom: Math.min(window.innerHeight, rect?.bottom ?? window.innerHeight),
+    };
     const next = calculatePopoverPosition(
       anchorPoint
         ? {
@@ -197,12 +210,7 @@ export function PopoverContent({
           }
         : anchor.getBoundingClientRect(),
       { width: content.offsetWidth, height: content.offsetHeight },
-      boundaryElement?.getBoundingClientRect() ?? {
-        left: 0,
-        top: 0,
-        right: window.innerWidth,
-        bottom: window.innerHeight,
-      },
+      bounds,
       side,
       align,
       offset,
@@ -219,13 +227,15 @@ export function PopoverContent({
         Math.min(content.offsetHeight, anchorRect.top + anchorRect.height / 2 - next.top),
       ),
       ready: true,
+      maxWidth: boundaryElement ? Math.max(0, bounds.right - bounds.left - 16) : undefined,
+      maxHeight: boundaryElement ? Math.max(0, bounds.bottom - bounds.top - 16) : undefined,
     });
-  }, [align, anchorPoint, boundary, effectiveAnchorRef, offset, side]);
+  }, [align, anchorPoint, boundary, effectiveAnchorRef, inheritedBoundaryRef, offset, side]);
 
   useLayoutEffect(() => {
     if (!open) return;
     updatePosition();
-  }, [open, updatePosition, children]);
+  }, [open, updatePosition, children, position.maxWidth, position.maxHeight]);
 
   useLayoutEffect(() => {
     const content = contentRef.current;
@@ -325,6 +335,12 @@ export function PopoverContent({
       "ResizeObserver" in globalThis ? new globalThis.ResizeObserver(reposition) : undefined;
     if (contentRef.current) observer?.observe(contentRef.current);
     if (effectiveAnchorRef.current) observer?.observe(effectiveAnchorRef.current);
+    const boundaryElement =
+      boundary === "nearest-ancestor"
+        ? (effectiveAnchorRef.current?.closest<HTMLElement>("[data-popover-boundary]") ??
+          inheritedBoundaryRef?.current)
+        : null;
+    if (boundaryElement) observer?.observe(boundaryElement);
     return () => {
       document.removeEventListener("pointerdown", dismiss, true);
       document.removeEventListener("keydown", escape, dismissOnEscapeCapture);
@@ -332,7 +348,7 @@ export function PopoverContent({
       window.removeEventListener("resize", reposition);
       observer?.disconnect();
     };
-  }, [dismissOnEscapeCapture, effectiveAnchorRef, open]);
+  }, [boundary, dismissOnEscapeCapture, effectiveAnchorRef, inheritedBoundaryRef, open]);
 
   if ((!open && !exiting) || !("document" in globalThis)) return null;
   return createPortal(
@@ -384,6 +400,8 @@ export function PopoverContent({
         ...style,
         left: position.left,
         top: position.top,
+        maxWidth: position.maxWidth ?? style?.maxWidth,
+        maxHeight: position.maxHeight ?? style?.maxHeight,
         transformOrigin:
           motion === "bouncy" ? `${position.originX}px ${position.originY}px` : undefined,
         visibility: position.ready ? "visible" : "hidden",

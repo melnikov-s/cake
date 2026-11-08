@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode }
 import { cn } from "../lib/utils";
 import { ResizeHandle } from "./ui/resize-handle";
 import { WorkspaceCompanion } from "./workspace-companion";
+import { PopoverBoundaryContext } from "./ui/popover";
 
 /** Primary tool surface and its authoritative same-conversation companion. */
 export function WorkspaceChatLayout({
@@ -29,6 +30,7 @@ export function WorkspaceChatLayout({
   terminalDock?: ReactNode;
 }) {
   const workspaceRef = useRef<HTMLElement>(null);
+  const companionRef = useRef<HTMLElement>(null);
   const [resizing, setResizing] = useState(false);
   const [width, setWidth] = useState(0);
   useLayoutEffect(() => {
@@ -59,7 +61,9 @@ export function WorkspaceChatLayout({
       style={workspaceStyle}
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {workspaceHeader}
+        <PopoverBoundaryContext.Provider value={companionRef}>
+          {workspaceHeader}
+        </PopoverBoundaryContext.Provider>
         <div className="relative flex min-h-0 min-w-0 flex-1">
           <section className="min-w-0 flex-1" aria-label={workspaceLabel}>
             {workspace}
@@ -85,6 +89,7 @@ export function WorkspaceChatLayout({
               />
               <aside
                 id="workspace-companion"
+                ref={companionRef}
                 data-popover-boundary
                 aria-label="Current conversation companion"
                 className="@container/session-pane flex w-[var(--workspace-chat-sidebar-width)] min-w-0 shrink-0 flex-col border-l border-border/65 bg-background"

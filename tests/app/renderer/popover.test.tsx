@@ -1,9 +1,10 @@
 /** @vitest-environment jsdom */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   Popover,
+  PopoverBoundaryContext,
   PopoverContent,
   PopoverTrigger,
   calculatePopoverPosition,
@@ -23,6 +24,8 @@ describe("Cake Popover", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("portals intentional overlap and dismisses it with Escape", () => {
@@ -95,6 +98,72 @@ describe("Cake Popover", () => {
     act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(document.activeElement).toBe(trigger);
+  });
+
+  it("sizes a toolbar popup to its supplied Cake pane and follows split resizing", () => {
+    const pane = document.createElement("aside");
+    container.append(pane);
+    let left = 680;
+    vi.spyOn(pane, "getBoundingClientRect").mockImplementation(
+      () => ({ left, top: 45, right: 1000, bottom: 700 }) as DOMRect,
+    );
+    const observed: Element[] = [];
+    let resize = () => {};
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resize = callback;
+        }
+        observe(element: Element) {
+          observed.push(element);
+        }
+        disconnect() {}
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (this: HTMLElement) {
+      const cap = Number.parseFloat(this.style.maxWidth.replace("min(", ""));
+      return Math.min(352, Number.isFinite(cap) ? cap : 352);
+    });
+    act(() =>
+      root.render(
+        <PopoverBoundaryContext.Provider value={{ current: pane }}>
+          <Popover defaultOpen>
+            <PopoverTrigger>Side chats</PopoverTrigger>
+            <PopoverContent boundary="nearest-ancestor" align="end" aria-label="Picker">
+              <button>A readable label</button>
+            </PopoverContent>
+          </Popover>
+        </PopoverBoundaryContext.Provider>,
+      ),
+    );
+    const popup = document.querySelector<HTMLElement>('[aria-label="Picker"]')!;
+    expect(popup.style.maxWidth).toContain("304px");
+    expect(popup.style.maxHeight).toContain("639px");
+    expect(popup.style.left).toBe("688px");
+    expect(observed).toContain(pane);
+    // The toolbar trigger has not resized: only the companion's left edge moved.
+    left = 580;
+    act(() => resize());
+    expect(popup.style.maxWidth).toContain("404px");
+    expect(popup.style.left).toBe("588px");
+  });
+
+  it("leaves viewport popovers unconstrained even when a pane is supplied", () => {
+    const pane = document.createElement("aside");
+    act(() =>
+      root.render(
+        <PopoverBoundaryContext.Provider value={{ current: pane }}>
+          <Popover defaultOpen>
+            <PopoverTrigger>Details</PopoverTrigger>
+            <PopoverContent aria-label="Unbounded">Details</PopoverContent>
+          </Popover>
+        </PopoverBoundaryContext.Provider>,
+      ),
+    );
+    const popup = document.querySelector<HTMLElement>('[aria-label="Unbounded"]')!;
+    expect(popup.style.maxWidth).toBe("");
+    expect(popup.style.maxHeight).toBe("");
   });
 
   it("flips and clamps a surface that would overflow the viewport", () => {
