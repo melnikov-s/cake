@@ -11,6 +11,7 @@ interface RosterRow {
   readonly sessionId: string;
   readonly title: string;
   readonly projectName?: string;
+  readonly projectPath?: string;
   readonly status: AgentSessionStatus;
   readonly resolved?: boolean;
   readonly outcome?: string;
@@ -62,7 +63,7 @@ export function sessionRoster(
     const tokens =
       context.estimatedTokens === undefined ? "?" : compactNumber.format(context.estimatedTokens);
     lines.push(
-      `${row.sessionId === CAKE_CHAT_SESSION_ID ? CAKE_CHAT_REFERENCE : row.sessionId} ${row.status} ${row.resolved || row.status === "resolved" ? "resolved" : row.status === "draft" ? "draft" : "active"} ${row.outcome ?? "-"} ${tokens} ${cache} ${age} ${ttl} | ${showProject ? `${label(row.projectName ?? "—")} | ` : ""}${label(row.title)}`,
+      `${row.sessionId === CAKE_CHAT_SESSION_ID ? CAKE_CHAT_REFERENCE : row.sessionId} ${row.status} ${row.resolved || row.status === "resolved" ? "resolved" : row.status === "draft" ? "draft" : "active"} ${row.outcome ?? "-"} ${tokens} ${cache} ${age} ${ttl} | ${showProject ? `${label(row.projectPath ?? row.projectName ?? "—")} | ` : ""}${label(row.title)}`,
     );
   }
   return lines.join("\n");

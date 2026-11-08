@@ -11,14 +11,14 @@ Details/bounded reads/errors/declared typed results keep their own contracts; li
 ## Workflow roster
 
 sessions.list projection:workflow joins the invoking chat's retained launches, linked to-dos, latest results, resolution and worktree facts without runtime wake or transcript access.
-Groups: working (including idle/unknown), waiting-for-input, ready-for-review/merge, blocked/stopped, resolved. includeResolved:true adds history; providing includeResolved even false requires workflow projection.
-Project scope still applies. query/status/attentionOnly filters apply before paging (default 20, maximum 50), nextOffset becomes offset.
+Groups: working (including idle/unknown execution), waiting-for-input, ready-for-review/merge, blocked/stopped. Both listings exclude resolved history; neither includeResolved nor status:resolved is supported. Resolution-index failures fail the workflow request rather than listing potentially resolved launches.
+Project callers default to their current project; Global Cake Chat defaults to all projects. Explicit projectPath overrides either default. query/status/attentionOnly filters apply before paging (default 20, maximum 50), nextOffset becomes offset.
 Execution completion, resolution and result-decision state are separate. An explicit ready report permits review, not proof of merge readiness. Git dirty/head is unverified; landing checkpoints are recorded facts.
 Missing old task labels use a worktree label or explicitly unknown task name; do not infer a title from private history.
 
 ## Context/cache fields
 
-Compact sessions rows include id/status/lifecycle/outcome/tokens/cache/age/ttl and title; global results add project. Returned identities are canonical; use them without enumerating directories to expand suffixes.
+Compact sessions rows include id/status/lifecycle/outcome/tokens/cache/age/ttl and title; every row includes its canonical project path. Workflow rows also include project path. Returned identities are canonical; use them without enumerating directories to expand suffixes.
 tokens (K/M) estimates active model-visible context, including summaries but not originals hidden behind them, never lifetime history/billing.
 age is recorded model activity, not mtime. cache is warm, expired? (estimated window elapsed) or ?; ttl is estimated remaining time when creation-token evidence exists, negative after expiry, ? when unknown.
 No field proves cache hit/miss; only a prefix may be reusable. Size/activity may lag. Never wake a session to ask size.

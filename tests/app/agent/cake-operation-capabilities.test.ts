@@ -230,13 +230,12 @@ describe("Project Session operation capabilities", () => {
     expect(registry.operationHelp("sessions.open")).toContain("Enabled by default");
   });
 
-  it("accepts scoped listings and workflow history in the shared session-list contract", () => {
+  it("accepts scoped non-resolved listings in the shared session-list contract", () => {
     for (const input of [
       {},
       { projectPath: "/project", query: "task", status: "running", limit: 10 },
       { projection: "workflow" },
-      { projection: "workflow", includeResolved: true },
-      { projection: "workflow", includeResolved: false },
+      { projection: "workflow", projectPath: "/project", status: "done" },
     ]) {
       expect(Schema.decodeUnknownSync(AgentSessionListInput)(input)).toEqual(input);
       expect(
@@ -248,22 +247,24 @@ describe("Project Session operation capabilities", () => {
     }
   });
 
-  it.each([true, false])(
-    "rejects includeResolved=%s without workflow with actionable guidance",
-    (includeResolved) => {
-      for (const decode of [
-        () => Schema.decodeUnknownSync(AgentSessionListInput)({ includeResolved }),
-        () =>
-          Schema.decodeUnknownSync(BackendAgentInvocation)({
-            name: "sessions.list",
-            arguments: { includeResolved },
-          }),
-      ]) {
-        expect(decode).toThrow('includeResolved requires projection: "workflow"');
-        expect(decode).toThrow("omit includeResolved for a normal session listing");
-      }
-    },
-  );
+  it.each([
+    { includeResolved: true },
+    { includeResolved: false },
+    { status: "resolved" },
+    { projection: "workflow", includeResolved: true },
+    { projection: "workflow", includeResolved: false },
+    { projection: "workflow", status: "resolved" },
+  ])("rejects historical listing options: %j", (input) => {
+    expect(() =>
+      Schema.decodeUnknownSync(AgentSessionListInput)(input, { onExcessProperty: "error" }),
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(BackendAgentInvocation)(
+        { name: "sessions.list", arguments: input },
+        { onExcessProperty: "error" },
+      ),
+    ).toThrow();
+  });
 
   it("rejects invalid session-list input before invoking the app gateway", async () => {
     const invokeAppControl = vi.fn(async () => null);
@@ -275,11 +276,11 @@ describe("Project Session operation capabilities", () => {
         { command: "sessions.list", input: { includeResolved: true } },
         { signal: new AbortController().signal, toolCallId: "session-list", runtime: {} },
       ),
-    ).rejects.toThrow('includeResolved requires projection: "workflow"');
+    ).rejects.toThrow();
     expect(invokeAppControl).not.toHaveBeenCalled();
   });
 
-  it("advertises the workflow dependency in generated session-list schemas and help", () => {
+  it("advertises only non-resolved project-scoped listings in generated schemas and help", () => {
     const definitions = operations({
       currentSessionControl: control({ invokeAppControl: async () => null }),
     });
@@ -295,26 +296,22 @@ describe("Project Session operation capabilities", () => {
       properties: {
         projection: {
           enum: ["workflow"],
-          description: expect.stringContaining("required with includeResolved"),
-        },
-        includeResolved: {
-          type: "boolean",
-          description: expect.stringContaining('Requires projection: "workflow", even when false'),
+          description: expect.stringContaining("non-resolved launches"),
         },
       },
       additionalProperties: false,
     });
     const help = new CakeOperationRegistry(definitions).operationHelp("sessions.list");
-    expect(help).toContain('requires projection: "workflow"');
-    expect(listing.examples).toContainEqual({
-      input: { projection: "workflow", includeResolved: true },
-    });
+    expect(help).toContain("Only non-resolved sessions");
+    expect(help).toContain("Any caller can supply projectPath");
+    expect(help).toContain("Resolved history is never listed");
+    expect(JSON.stringify(parameters)).not.toContain("includeResolved");
+    expect(JSON.stringify(parameters)).not.toContain('"resolved"');
+    expect(listing.examples).toContainEqual({ input: { projection: "workflow" } });
     expect(backendListing.guidance).toEqual(
-      expect.arrayContaining([expect.stringContaining('requires projection: "workflow"')]),
+      expect.arrayContaining([expect.stringContaining("Only non-resolved sessions")]),
     );
-    expect(backendListing.examples).toContainEqual({
-      input: { projection: "workflow", includeResolved: true },
-    });
+    expect(backendListing.examples).toContainEqual({ input: { projection: "workflow" } });
   });
 
   it.each([undefined, true, false])(

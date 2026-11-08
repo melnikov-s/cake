@@ -219,10 +219,10 @@ export const invoke: (
           caller,
         );
       if (!backendAgentCommands.has(command)) return undefined;
-      const invocation = yield* Schema.decodeUnknownEffect(BackendAgentInvocation)({
-        name: command,
-        arguments: input,
-      });
+      const invocation = yield* Schema.decodeUnknownEffect(BackendAgentInvocation)(
+        { name: command, arguments: input },
+        command === "sessions.list" ? { onExcessProperty: "error" } : undefined,
+      );
       const fail = (error: string) => toJsonValue({ ok: false, command, error });
       switch (invocation.name) {
         case "automations.list":
@@ -475,21 +475,21 @@ export const invoke: (
           const startedAt = yield* Clock.currentTimeMillis;
           const global =
             !caller || (caller.kind === "cake-chat" && caller.sessionId === CAKE_CHAT_SESSION_ID);
-          const scope = global
-            ? undefined
-            : caller?.kind === "cake-chat"
-              ? (yield* ApplicationState)
-                  .snapshot()
-                  .projects.find(
-                    (project) => projectChatSessionId(project.path) === caller.sessionId,
-                  )?.path
-              : (caller?.projectPath ??
-                (caller ? (yield* lookupSession(caller.sessionId)).projectPath : undefined));
-          if (!global && !scope) return fail("The caller has no registered project scope.");
           const input = invocation.arguments;
-          const inScope = (projectPath: string) =>
-            (!scope || projectPath === scope) &&
-            (!input.projectPath || projectPath === input.projectPath);
+          const scope =
+            input.projectPath ??
+            (global
+              ? undefined
+              : caller?.kind === "cake-chat"
+                ? (yield* ApplicationState)
+                    .snapshot()
+                    .projects.find(
+                      (project) => projectChatSessionId(project.path) === caller.sessionId,
+                    )?.path
+                : (caller?.projectPath ??
+                  (caller ? (yield* lookupSession(caller.sessionId)).projectPath : undefined)));
+          if (!global && !scope) return fail("The caller has no registered project scope.");
+          const inScope = (projectPath: string) => !scope || projectPath === scope;
           const discovery = yield* sessionReferences
             .discover()
             .pipe(Effect.withSpan("sessions.list.discovery"));
@@ -507,11 +507,11 @@ export const invoke: (
           const projectEntries = listing.sessions
             .filter(
               (session) =>
-                !input.launchedByCakeChat ||
-                (!session.resolved &&
-                  session.cakeChatLaunch !== undefined &&
-                  (caller?.kind !== "cake-chat" ||
-                    session.cakeChatLaunch.requesterSessionId === caller.sessionId)),
+                !session.resolved &&
+                (!input.launchedByCakeChat ||
+                  (session.cakeChatLaunch !== undefined &&
+                    (caller?.kind !== "cake-chat" ||
+                      session.cakeChatLaunch.requesterSessionId === caller.sessionId))),
             )
             .map((session) => ({
               sessionId: session.sessionId,
@@ -555,7 +555,6 @@ export const invoke: (
             .filter(
               (session) =>
                 (!scope || session.projectPath === scope) &&
-                (!input.projectPath || session.projectPath === input.projectPath) &&
                 (!query || session.title.toLowerCase().includes(query)) &&
                 (!input.status || session.status === input.status) &&
                 (!input.attentionOnly ||
@@ -602,7 +601,7 @@ export const invoke: (
             matched: selected.length,
             returned: listed.length,
           });
-          return sessionRoster(listed, page, now, global && !input.projectPath);
+          return sessionRoster(listed, page, now, true);
         }
         case "sessions.reports":
           if (!caller) return fail("Reports require an actual calling Session.");

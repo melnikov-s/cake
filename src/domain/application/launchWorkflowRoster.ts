@@ -20,7 +20,6 @@ const groups = [
   "waiting-for-input",
   "ready-for-review/merge",
   "blocked/stopped",
-  "resolved",
 ] as const;
 const brief = (text: string, max = 160) => {
   const line = text.replace(/\s+/g, " ").trim();
@@ -93,15 +92,14 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
   const project = application.projects.find(
     (item) => projectChatSessionId(item.path) === caller.sessionId,
   );
-  if (!global && !project) return fail("The caller has no registered project scope.");
+  const scope = input.projectPath ?? (global ? undefined : project?.path);
+  if (!global && !scope) return fail("The caller has no registered project scope.");
   enter("state");
   const state = yield* (yield* SessionFamilyStorage).state();
   enter("metadata");
   const launches = state.spawnedSessions.filter(
     (spawn) =>
-      spawn.requester.sessionId === caller.sessionId &&
-      (global || spawn.projectPath === project?.path) &&
-      (!input.projectPath || spawn.projectPath === input.projectPath),
+      spawn.requester.sessionId === caller.sessionId && (!scope || spawn.projectPath === scope),
   );
   launchCount = launches.length;
   const latest = new Map<string, CompletionInboxItem>();
@@ -120,7 +118,7 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
   const runtimes = yield* CakeSessionRuntimes;
   const worktrees = yield* (yield* ManagedWorktrees).records();
   const waits = yield* (yield* RendererRequestCoordinator).pendingUserInputs();
-  const resolvedByDirectory = new Map<string, ReadonlySet<string> | undefined>();
+  const resolvedByDirectory = new Map<string, ReadonlySet<string>>();
   enter("rows");
   const rows = yield* Effect.forEach(launches, (spawn) =>
     Effect.gen(function* () {
@@ -135,13 +133,11 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
         directoryCount++;
         resolvedByDirectory.set(
           directory,
-          yield* archive
-            .recordedResolvedIds({
-              cwd: directory,
-              activeRoot: configuration.sessionDirectory,
-              resolvedRoot: configuration.resolvedSessionDirectory,
-            })
-            .pipe(Effect.catch(() => Effect.succeed(undefined))),
+          yield* archive.recordedResolvedIds({
+            cwd: directory,
+            activeRoot: configuration.sessionDirectory,
+            resolvedRoot: configuration.resolvedSessionDirectory,
+          }),
         );
         enter("rows");
       }
@@ -197,17 +193,15 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
         runtime?.recoveryIssue || currentOutcome === "blocked" || currentResult?.kind === "blocked";
       const busy = runtime?.streaming || runtime?.pending;
       const ready = currentResult?.kind === "ready" && !failed && !stopped && !blocked;
-      const group: (typeof groups)[number] = resolved
-        ? "resolved"
-        : wait
-          ? "waiting-for-input"
-          : busy
-            ? "working"
-            : blocked || failed || stopped
-              ? "blocked/stopped"
-              : ready
-                ? "ready-for-review/merge"
-                : "working";
+      const group: (typeof groups)[number] = wait
+        ? "waiting-for-input"
+        : busy
+          ? "working"
+          : blocked || failed || stopped
+            ? "blocked/stopped"
+            : ready
+              ? "ready-for-review/merge"
+              : "working";
       const execution = wait
         ? "waiting"
         : runtime?.streaming
@@ -255,10 +249,11 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
                     : "inspect; readiness unknown";
       return {
         sessionId: spawn.sessionId,
+        projectPath: spawn.projectPath,
         title,
         group,
         execution,
-        lifecycle: resolved === undefined ? "unknown" : resolved ? "resolved" : "open",
+        lifecycle: resolved ? "resolved" : "open",
         reason: reason ? brief(reason) : "-",
         result: completion?.resultMessageRef ?? "-",
         outcome: outcome ? brief(outcome) : "unknown",
@@ -277,17 +272,15 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
   const selected = rows
     .filter(
       (row) =>
-        (input.includeResolved || input.status === "resolved" || row.lifecycle !== "resolved") &&
+        row.lifecycle === "open" &&
         (!input.query ||
           `${row.title} ${row.sessionId}`.toLowerCase().includes(input.query.toLowerCase())) &&
         (!input.status ||
-          (input.status === "resolved"
-            ? row.lifecycle === "resolved"
-            : input.status === "done"
-              ? ["completed", "complete"].includes(row.execution)
-              : input.status === "needs-you"
-                ? ["waiting-for-input", "blocked/stopped"].includes(row.group)
-                : row.execution === input.status)) &&
+          (input.status === "done"
+            ? ["completed", "complete"].includes(row.execution)
+            : input.status === "needs-you"
+              ? ["waiting-for-input", "blocked/stopped"].includes(row.group)
+              : row.execution === input.status)) &&
         (!input.attentionOnly ||
           ["waiting-for-input", "ready-for-review/merge", "blocked/stopped"].includes(row.group)),
     )
@@ -310,7 +303,7 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
   ];
   if (page.items.length)
     lines.push(
-      "group\ttask\tsession\tlifecycle\texecution\treason\tresult\toutcome\tdecision\tworktree\tmerge\tnext",
+      "group\ttask\tsession\tlifecycle\texecution\treason\tresult\toutcome\tdecision\tworktree\tmerge\tnext\tproject",
     );
   for (const row of page.items)
     lines.push(
@@ -327,6 +320,7 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
         row.worktree,
         row.merge,
         row.next,
+        row.projectPath,
       ]
         .map(cell)
         .join("\t"),

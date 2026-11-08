@@ -8,8 +8,8 @@ Navigation needs user permission. Send/open receipts do not prove execution or v
 
 ## List selectively
 
-sessions.list: scoped metadata; projection:"workflow" adds launch/result/lifecycle groups. includeResolved requires workflow projection. Page with nextOffset/offset.
-Project callers see their project; global Cake Chat can span registered projects. projectPath narrows, never expands scope. Workflow projection describes the invoking chat's launches, not every session.
+sessions.list: only non-resolved sessions, including idle, Draft and done-but-unresolved sessions; never resolved history. Every row includes project identity. projection:"workflow" adds launch/result/lifecycle groups. Page with nextOffset/offset.
+Project callers default to their current project; Global Cake Chat defaults to all projects. Any caller can supply projectPath to target a project instead. Discover projects with projects.list. Workflow projection describes the invoking chat's non-resolved launches in that project, not every session. Use sessions.info for known historical IDs or the UI history/search surfaces for resolved history.
 Listings do not read bodies or acknowledge reports. sessions.info provides metadata/deepLink, not transcript/context inspection.
 Compact listings use tab-separated rows: 1/0 booleans, - absent, JSON-quoted special cells. next=N means offset=N; attachments use after=ID. Child input rows belong to the preceding message.
 

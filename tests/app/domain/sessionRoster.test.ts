@@ -24,6 +24,7 @@ const row = {
   title: "Implement search",
   status: "idle" as const,
   projectName: "My App",
+  projectPath: "/projects/my-app",
   contextMetadata: metadata,
 };
 const page = { total: 1, nextOffset: null };
@@ -52,9 +53,9 @@ describe("LLM session roster", () => {
     ).toContain("idle active - 0 ? ? ?");
   });
 
-  it("shows project names only for cross-project discovery and preserves canonical references", () => {
+  it("shows canonical project paths when requested and preserves canonical references", () => {
     expect(sessionRoster([row], { total: 2, nextOffset: 1 }, at, true)).toBe(
-      `2 sessions; next=1\nid status lifecycle outcome tokens cache age ttl | project | title\n${a} idle active - 18K warm 0s 5m | My App | Implement search`,
+      `2 sessions; next=1\nid status lifecycle outcome tokens cache age ttl | project | title\n${a} idle active - 18K warm 0s 5m | /projects/my-app | Implement search`,
     );
     expect(sessionRoster([], { total: 0, nextOffset: null }, at, false)).toBe("0 sessions");
   });

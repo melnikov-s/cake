@@ -110,7 +110,7 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "List sessions/workflow/cache hints",
+      summary: "List non-resolved sessions and project identity",
       guidance: sessionListGuidance,
       result: sessionListResult,
       examples: [
@@ -120,7 +120,6 @@ const definitions = [
         {
           input: {
             projection: "workflow",
-            includeResolved: true,
           },
         },
       ],
