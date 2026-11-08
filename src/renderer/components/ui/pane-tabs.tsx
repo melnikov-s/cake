@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { Button } from "./button";
 import { cn } from "@/lib/utils";
+import { tabFocusClassName, tabSurfaceClassName } from "./tab-styles";
 
 /** Manually activated tabs, bounded by their pane rather than the window viewport. */
 export function PaneTabs({
@@ -38,7 +39,7 @@ export function PaneTabs({
       role="tablist"
       aria-label={label}
       aria-orientation="horizontal"
-      className="flex w-full min-w-0 max-w-full shrink-0 gap-1 overflow-x-auto overflow-y-hidden border-b border-border/65 bg-sidebar/30 p-1"
+      className="flex w-full min-w-0 max-w-full shrink-0 gap-1.5 overflow-x-auto overflow-y-hidden border-b border-border/65 bg-sidebar/30 px-2 py-1.5"
       onKeyDown={(event) => {
         const tabs = Array.from(
           event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
@@ -73,9 +74,10 @@ export function PaneTabs({
           variant="ghost"
           size="sm"
           className={cn(
-            "h-7 min-w-0 max-w-48 shrink-0 justify-start px-2 text-xs text-muted-foreground",
-            item.id === value &&
-              "bg-card text-foreground shadow-xs ring-1 ring-border/50 hover:bg-card",
+            "h-8 min-w-0 max-w-[min(13rem,100%)] shrink-0 justify-start px-2.5 text-xs active:scale-100",
+            tabSurfaceClassName(item.id === value),
+            tabFocusClassName,
+            item.id === value && "font-semibold",
           )}
           onFocus={(event) => reveal(event.currentTarget)}
           onClick={() => onValueChange(item.id)}

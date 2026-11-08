@@ -24,6 +24,43 @@ function Surface() {
   );
 }
 
+it("keeps a single tab labeled and associated with its panel", () => {
+  render(
+    <PaneTabs
+      id="single"
+      label="Side chats"
+      panelId="single-panel"
+      items={items.slice(0, 1)}
+      value="0"
+      onValueChange={vi.fn()}
+    />,
+  );
+  const tab = screen.getByRole("tab", { name: items[0]!.title.trim() });
+  expect(tab.title).toBe(items[0]!.title);
+  expect(tab.getAttribute("aria-selected")).toBe("true");
+  expect(tab.getAttribute("aria-controls")).toBe("single-panel");
+  expect(tab.tabIndex).toBe(0);
+});
+
+it("reveals an externally selected tab without moving focus", () => {
+  const props = {
+    id: "external",
+    label: "Side chats",
+    panelId: "panel",
+    items,
+    onValueChange: vi.fn(),
+  };
+  const { rerender } = render(<PaneTabs {...props} value="0" />);
+  const strip = screen.getByRole("tablist");
+  const last = screen.getAllByRole("tab").at(-1)!;
+  vi.spyOn(strip, "getBoundingClientRect").mockReturnValue({ left: 0, right: 320 } as DOMRect);
+  vi.spyOn(last, "getBoundingClientRect").mockReturnValue({ left: 980, right: 1120 } as DOMRect);
+  rerender(<PaneTabs {...props} value="7" />);
+  expect(strip.scrollLeft).toBe(800);
+  expect(last.getAttribute("aria-selected")).toBe("true");
+  expect(document.activeElement).not.toBe(last);
+});
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();

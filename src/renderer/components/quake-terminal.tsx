@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ResizeHandle } from "@/components/ui/resize-handle";
+import { tabFocusClassName, tabSurfaceClassName } from "@/components/ui/tab-styles";
 import { cn } from "@/lib/utils";
 import type { TerminalStore } from "../stores/TerminalStore";
 import type { WorkingDirectoryRetirementStore } from "../stores/WorkingDirectoryRetirementStore";
@@ -115,7 +116,7 @@ export const QuakeTerminal = observer(function QuakeTerminal({
             </span>
           )}
           <div
-            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [app-region:no-drag]"
+            className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1 [app-region:no-drag]"
             role="tablist"
             aria-label="Terminal tabs"
           >
@@ -123,20 +124,30 @@ export const QuakeTerminal = observer(function QuakeTerminal({
               const isActive = entry.key === active?.key;
               const label = entry.shell ?? (entry.opening ? "Starting…" : "Terminal");
               return (
-                <div key={entry.key} className="flex shrink-0 items-center rounded-md bg-muted/35">
+                <div
+                  key={entry.key}
+                  className={cn(
+                    "flex min-w-0 max-w-56 shrink-0 items-center",
+                    tabSurfaceClassName(isActive),
+                  )}
+                >
                   <Button
                     className={cn(
-                      "h-7 rounded-md px-2 font-mono text-xs font-medium",
-                      isActive && "bg-muted text-foreground",
+                      "h-7 min-w-0 rounded-sm px-2 font-mono text-xs text-inherit hover:bg-transparent hover:text-inherit active:scale-100",
+                      tabFocusClassName,
+                      isActive && "font-semibold",
                     )}
                     variant="ghost"
                     size="sm"
                     role="tab"
                     aria-selected={isActive}
+                    title={label}
                     onClick={() => store.activate(entry.key)}
                   >
-                    {label}
-                    {store.activeEntries.length > 1 ? ` ${index + 1}` : ""}
+                    <span className="truncate">
+                      {label}
+                      {store.activeEntries.length > 1 ? ` ${index + 1}` : ""}
+                    </span>
                   </Button>
                   {isActive && store.activeEntries.length > 1 && (
                     <IconButton
