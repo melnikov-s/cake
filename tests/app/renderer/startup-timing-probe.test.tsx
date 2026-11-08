@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
 import { StartupTimingProbe } from "../../../src/renderer/components/startup-timing-probe";
 import { rendererStartupTiming } from "../../../src/renderer/lib/startup-timing";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -10,21 +11,29 @@ vi.mock("../../../src/renderer/lib/startup-timing", () => ({ rendererStartupTimi
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
-function fixture() {
+function fixture(withComposer = false) {
   const f = createRendererStoreFixture({
     projects: [projectRecord({ path: "/cake" })],
     sessions: [sessionSummary({ sessionId: "restored", projectPath: "/cake" })],
   });
-  f.root.sessionRegistry.load("restored", "/cake");
+  const session = f.root.sessionRegistry.load("restored", "/cake");
   f.root.navigationStore.selectProjectSession("restored");
   f.root.projectWorkbenchStore.showLoadedSession("restored");
   f.root.sessionLayoutStore.ensureSession("restored");
   const view = render(
-    <StartupTimingProbe rootStore={f.root}>
-      <div>Committed child</div>
-    </StartupTimingProbe>,
+    <StrictMode>
+      <StartupTimingProbe rootStore={f.root}>
+        <div>Committed child</div>
+        {withComposer && (
+          <textarea
+            data-dictation-submission-owner={session.conversationSessionStore.chatStore.id}
+          />
+        )}
+      </StartupTimingProbe>
+    </StrictMode>,
   );
   return {
     ...f,
@@ -62,6 +71,51 @@ it("separates first commit from a committed live selected-chat projection and re
       .mocked(rendererStartupTiming)
       .mock.calls.filter(([phase]) => phase === "selected-chat-projection-commit"),
   ).toHaveLength(1);
+});
+
+it("reports the selected editable composer before live transcript readiness, once under StrictMode", async () => {
+  using f = fixture(true);
+  expect(rendererStartupTiming).toHaveBeenCalledWith("selected-chat-composer-editable-commit");
+  expect(rendererStartupTiming).not.toHaveBeenCalledWith("selected-chat-projection-commit");
+  await act(async () => {
+    f.model.observedSnapshotRevision = 1;
+  });
+  expect(
+    vi
+      .mocked(rendererStartupTiming)
+      .mock.calls.filter(([phase]) => phase === "selected-chat-composer-editable-commit"),
+  ).toHaveLength(1);
+  expect(
+    vi
+      .mocked(rendererStartupTiming)
+      .mock.calls.filter(([phase]) => phase === "selected-chat-projection-commit"),
+  ).toHaveLength(1);
+});
+
+it("uses Chromium's buffered paint timestamp rather than observer receipt time and cleans up", () => {
+  const disconnect = vi.fn();
+  const observe = vi.fn();
+  vi.stubGlobal(
+    "PerformanceObserver",
+    class {
+      static supportedEntryTypes = ["paint"];
+      constructor(
+        readonly callback: (list: {
+          getEntries(): Array<{ name: string; startTime: number }>;
+        }) => void,
+      ) {}
+      observe(options: unknown) {
+        observe(options);
+        this.callback({ getEntries: () => [{ name: "first-contentful-paint", startTime: 123.4 }] });
+      }
+      disconnect = disconnect;
+    },
+  );
+  const f = fixture();
+  expect(rendererStartupTiming).toHaveBeenCalledWith("first-contentful-paint", 123.4);
+  expect(observe).toHaveBeenCalledWith({ type: "paint", buffered: true });
+  f[Symbol.dispose]();
+  expect(disconnect).toHaveBeenCalled();
 });
 
 it("does not attribute a different selection's readiness to the initial selected chat", async () => {

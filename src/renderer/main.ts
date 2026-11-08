@@ -190,6 +190,7 @@ async function mountDesktop(
     connection,
   );
   rendererStartupTiming("window-state-hydrated");
+  rendererStartupTiming("renderer-observers-start");
   const stopObservingConnection = reactiveEffect(() => {
     if (connection.remote && !connection.connected)
       untracked(() => {
@@ -209,6 +210,8 @@ async function mountDesktop(
     void rootStore.conversationModeStore.exit();
   };
   window.addEventListener("blur", stopVoiceOnBlur);
+  rendererStartupTiming("renderer-observers-end");
+  rendererStartupTiming("window-persistence-start");
   const persistence = overlay
     ? undefined
     : new WindowStatePersistence(
@@ -223,15 +226,24 @@ async function mountDesktop(
       );
   persistenceRef.current = persistence;
   persistence?.observe(rootStore);
+  rendererStartupTiming("window-persistence-end");
+  rendererStartupTiming("capture-overlays-setup-start");
   if (!overlay) {
     void rootStore.screenCaptureStore.configure();
     void rootStore.settingsStore.cakeChatOverlay.configure();
   }
+  rendererStartupTiming("capture-overlays-setup-end");
+  rendererStartupTiming("model-observers-start");
   const stopObservingModels = observeModels(runtime, projection, rootStore);
   const stopObservingEvents = observeEvents(runtime, projection, rootStore);
+  rendererStartupTiming("model-observers-end");
+  rendererStartupTiming("saved-drafts-observe-start");
   const stopObservingSavedDrafts = observeSavedDrafts(
     runtime,
-    (records) => rootStore.sessionRegistry.pendingSessions.applySavedDraftSnapshot(records),
+    (records) => {
+      rootStore.sessionRegistry.pendingSessions.applySavedDraftSnapshot(records);
+      rendererStartupTiming("saved-drafts-initial-received");
+    },
     (error) =>
       rootStore.toastStore.show({
         tone: "warning",
@@ -239,25 +251,25 @@ async function mountDesktop(
         message: error instanceof Error ? error.message : String(error),
       }),
   );
-  void rootStore.modelCatalogStore.ensureLoaded();
-  void rootStore.settingsStore.providers.hydrate();
-  rendererStartupTiming("navigation-restore-start");
-  void rootStore.sessionRegistry.pendingSessions
-    .refreshSavedDrafts()
-    .catch((error: unknown) =>
-      rootStore.toastStore.show({
-        tone: "warning",
-        title: "Saved Drafts could not be loaded",
-        message: error instanceof Error ? error.message : String(error),
-      }),
-    )
-    .then(() => (overlay ? startCakeChatOverlay(rootStore) : rootStore.initialize()))
-    .then(() => rendererStartupTiming("navigation-restore-end"))
+  rendererStartupTiming("model-provider-hydration-start");
+  void Promise.allSettled([
+    rootStore.modelCatalogStore.ensureLoaded(),
+    rootStore.settingsStore.providers.hydrate(),
+  ]).then(() => {
+    if (!rootStore.signal.aborted) rendererStartupTiming("model-provider-hydration-settled");
+  });
+  rendererStartupTiming("model-provider-hydration-scheduled");
+  // Saved Draft observation is current-first and already reconciles interrupted claims.
+  // A second startup list duplicated that work and unnecessarily gated app controls.
+  // Navigation and persisted composer drafts were hydrated before mounting the Store.
+  rendererStartupTiming("app-controls-start");
+  void (overlay ? startCakeChatOverlay(rootStore) : rootStore.initialize())
+    .then(() => rendererStartupTiming("app-controls-end"))
     .catch((error: unknown) => {
-      rendererStartupTiming("navigation-restore-failed");
+      rendererStartupTiming("app-controls-failed");
       rootStore.toastStore.show({
         tone: "error",
-        title: "Could not restore navigation",
+        title: "Could not start app controls",
         message: error instanceof Error ? error.message : String(error),
       });
     });

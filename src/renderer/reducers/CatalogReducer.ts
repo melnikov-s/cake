@@ -8,7 +8,10 @@ import type {
   SessionCatalogUpdate,
 } from "../../contracts/application/catalog-data";
 import type { ProjectSessionCatalogQuery } from "../../contracts/project-sessions/project-session-data";
-import type { CakeChatCatalogQuery } from "../../contracts/cake-chats/cake-chat-data";
+import type {
+  CakeChatCatalogQuery,
+  CakeChatSummary as CakeChatSummaryValue,
+} from "../../contracts/cake-chats/cake-chat-data";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";
 import type { ProjectCatalog } from "../models/ProjectCatalog";
 import type { SessionCatalog } from "../models/SessionCatalog";
@@ -190,6 +193,20 @@ export function applySessionCatalogGroupUpdate(
   });
 }
 
+/** Exact metadata is not proof that the passive catalog has finished its initial scan. */
+export function applyCakeChatLookup(model: CakeChatCatalog, session: CakeChatSummaryValue) {
+  batch(() => {
+    upsertCakeChatSummary(model, session);
+    model.sessions.sort(compareSessionSummaries);
+  });
+}
+
+function upsertCakeChatSummary(model: CakeChatCatalog, session: CakeChatSummaryValue) {
+  const existing = model.find(session.sessionId);
+  if (existing) applySnapshot(existing, session);
+  else model.sessions.push(CakeChatSummary.create(session));
+}
+
 export function applyCakeChatCatalogGroupUpdate(
   model: CakeChatCatalog,
   query: CakeChatCatalogQuery,
@@ -224,9 +241,7 @@ export function applyCakeChatCatalogGroupUpdate(
   const event = change;
   batch(() => {
     if (event._tag === "Upserted") {
-      const existing = model.find(event.session.sessionId);
-      if (existing) applySnapshot(existing, event.session);
-      else model.sessions.push(CakeChatSummary.create(event.session));
+      upsertCakeChatSummary(model, event.session);
     } else if (event._tag === "Removed") {
       const index = model.sessions.findIndex((session) => session.sessionId === event.sessionId);
       if (index >= 0) model.sessions.splice(index, 1);

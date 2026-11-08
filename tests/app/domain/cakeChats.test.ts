@@ -91,7 +91,7 @@ function fixture(runtimeOverrides: Partial<CakeSessionRuntimes["Service"]> = {})
     Layer.mock(ApplicationState, {
       snapshot: () => state,
       current: () => Effect.succeed(state),
-      changes: () => Stream.empty,
+      changes: () => Stream.succeed({ revision: 0, state }),
       transact: (transition) =>
         transition(state).pipe(
           Effect.tap((next) =>

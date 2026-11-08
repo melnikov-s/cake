@@ -1,4 +1,5 @@
 import { applySnapshot, updateStore, type StoreSnapshot } from "r-state-tree";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { Microphone } from "../../../src/renderer/dictation/microphone";
 import type { SpeechPlayback } from "../../../src/renderer/speech/playback";
 import type { ProjectRecord } from "../../../src/contracts/application/application-data";
@@ -36,6 +37,29 @@ export function createRendererStoreFixture(options: RendererStoreFixtureOptions 
         return session;
       },
       ...options.client?.projectSessions,
+    },
+    // The real Root Store starts its selected chat independently of passive catalog tests.
+    cakeChats: {
+      open: async () => {},
+      lookup: async ({ sessionId }) => {
+        const existing = models.cakeChatCatalog.sessions.find(
+          (item) => item.sessionId === sessionId,
+        );
+        if (existing) return existing;
+        if (sessionId !== CAKE_CHAT_SESSION_ID) throw new Error("Chat is not registered");
+        return {
+          sessionId,
+          title: "Cake Chat",
+          createdAt: "2026-01-01T00:00:00Z",
+          modifiedAt: "2026-01-01T00:00:00Z",
+          messageCount: 0,
+          unstarted: true,
+          resolved: false,
+          unread: false,
+          running: false,
+        };
+      },
+      ...options.client?.cakeChats,
     },
     // Most UI workflows use a static to-do authority; reconciliation is exercised separately.
     projectTodos: { reconcile: async () => {}, ...options.client?.projectTodos },

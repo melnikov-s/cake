@@ -20,7 +20,7 @@ const cleanups: (() => void)[] = [];
 // Visible save/reopen journeys live in persistence-finish-workflow.test.tsx. Retain this real
 // Root composition for resource contracts without UI controls: debounce, ordered snapshot capture,
 // teardown, normalization, and the migration-readiness gate. Replace only external persistence I/O.
-function harness({
+async function harness({
   savedDraftsReady = false,
   loaded = { state: {}, children: {} },
 }: {
@@ -52,6 +52,9 @@ function harness({
   if (!root.sessionLayoutStore.focusedSessionId)
     root.navigationStore.selectProjectSession(sessionId);
   root.projectWorkbenchStore.showLoadedSession(sessionId);
+  // Observe persistence after selected-chat startup establishes its baseline; exact
+  // metadata lookup is asynchronous and independent of passive catalog hydration.
+  await root.cakeChatCollectionStore.initialize();
   persistence.observe(root);
   cleanups.push(() => {
     persistence[Symbol.dispose]();
@@ -91,7 +94,7 @@ afterEach(() => {
 
 describe("WindowStatePersistence", () => {
   it("persists an unfinished fork's source rather than a made-up backend identity", async () => {
-    const h = harness();
+    const h = await harness();
     const preview = h.root.sessionRegistry.prepareForkPreview(sessionId, "entry", "Source");
     h.root.navigationStore.selectProjectSession(preview.sessionId);
     h.root.projectWorkbenchStore.showLoadedSession(preview.sessionId);
@@ -112,7 +115,7 @@ describe("WindowStatePersistence", () => {
 
   it("hydrates once, ignores transient changes, and saves the unchanged JSON-encodable Root payload", async () => {
     vi.useFakeTimers();
-    const h = harness({
+    const h = await harness({
       loaded: {
         state: {},
         children: {
@@ -168,7 +171,7 @@ describe("WindowStatePersistence", () => {
 
   it("debounces to the latest payload and flushes a later burst without a duplicate timer save", async () => {
     vi.useFakeTimers();
-    const h = harness();
+    const h = await harness();
     h.draft.setText("first");
     await vi.advanceTimersByTimeAsync(179);
     expect(h.save).not.toHaveBeenCalled();
@@ -195,7 +198,7 @@ describe("WindowStatePersistence", () => {
 
   it("captures queued snapshots before earlier saves finish and writes them in order despite a failure", async () => {
     vi.useFakeTimers();
-    const h = harness();
+    const h = await harness();
     const firstSave = deferredSave();
     h.save.mockImplementationOnce(() => firstSave.promise);
     h.draft.setText("first");
@@ -228,7 +231,7 @@ describe("WindowStatePersistence", () => {
 
   it("disposal stops timer and queued saves without canceling an already-started save", async () => {
     vi.useFakeTimers();
-    const h = harness();
+    const h = await harness();
     const firstSave = deferredSave();
     h.save.mockImplementationOnce(() => firstSave.promise);
     h.draft.setText("first");
@@ -250,7 +253,7 @@ describe("WindowStatePersistence", () => {
 
   it("reports save failures and preserves later queued saves", async () => {
     vi.useFakeTimers();
-    const h = harness();
+    const h = await harness();
     const firstSave = deferredSave();
     h.save.mockImplementationOnce(() => firstSave.promise);
     h.draft.setText("first");
@@ -268,7 +271,7 @@ describe("WindowStatePersistence", () => {
   });
 
   it("persists focused conversation visits and unsent data while saved facts remain backend-owned", async () => {
-    const h = harness({ savedDraftsReady: true });
+    const h = await harness({ savedDraftsReady: true });
     const saved = {
       sessionId: savedId,
       projectPath: workspace,
@@ -302,7 +305,7 @@ describe("WindowStatePersistence", () => {
       },
     });
     const snapshot = toSnapshot(h.root);
-    const restored = harness({ savedDraftsReady: true, loaded: snapshot });
+    const restored = await harness({ savedDraftsReady: true, loaded: snapshot });
     restored.drafts.records.set(savedId, saved);
     await restored.root.sessionRegistry.pendingSessions.refreshSavedDrafts();
     expect(restored.root.sessionLayoutStore.focusedSessionId).toBe(savedId);
@@ -313,7 +316,7 @@ describe("WindowStatePersistence", () => {
 
   it("restores every window settings owner from the saved JSON without overwriting preferences with defaults", async () => {
     vi.useFakeTimers();
-    const h = harness();
+    const h = await harness();
     const settings = h.root.settingsStore;
     settings.appearance.setTheme("dark");
     settings.appearance.setProjectAvatarsEnabled(false);
@@ -354,7 +357,9 @@ describe("WindowStatePersistence", () => {
     });
     await h.persistence.flush();
     const saved = h.save.mock.calls.at(-1)![0];
-    const restored = harness({ loaded: Schema.decodeUnknownSync(storeSnapshotSchema)(saved) });
+    const restored = await harness({
+      loaded: Schema.decodeUnknownSync(storeSnapshotSchema)(saved),
+    });
     const restoredSettings = restored.root.settingsStore;
     expect(toSnapshot(restoredSettings)).toEqual(toSnapshot(settings));
     expect(restored.root.speechInputSettingsStore.values).toEqual(preferences.values);
@@ -373,7 +378,7 @@ describe("WindowStatePersistence", () => {
     preferences.reset();
     settings.hotkeys.resetAll();
     await h.persistence.flush();
-    const reset = harness({
+    const reset = await harness({
       loaded: Schema.decodeUnknownSync(storeSnapshotSchema)(h.save.mock.calls.at(-1)![0]),
     });
     expect(reset.root.speechInputSettingsStore.values).toEqual(defaultSpeechInputPreferences);

@@ -84,7 +84,12 @@ export const catalog = Effect.fn("CakeChats.catalog")(function* (
     const item = yield* sessions
       .catalogEntry(queryFor(scope.location, scope.sessionId), scope.sessionId)
       .pipe(asError("catalog"));
-    const createdAt = item?.created ?? scope.addedAt;
+    // The permanent global address exists even before its first database. Exact startup
+    // lookup may initialize it; passive discovery still omits absent global storage.
+    const createdAt =
+      item?.created ??
+      scope.addedAt ??
+      (sessionId === CAKE_CHAT_SESSION_ID ? new Date().toISOString() : undefined);
     if (!createdAt) continue;
     const activity = yield* sessions.currentStatus({
       workingDirectory: scope.location.workingDirectory,
@@ -99,6 +104,7 @@ export const catalog = Effect.fn("CakeChats.catalog")(function* (
       createdAt,
       modifiedAt: item?.modified ?? createdAt,
       messageCount: item?.messageCount ?? 0,
+      ...(!item && scope.sessionId === CAKE_CHAT_SESSION_ID ? { unstarted: true } : null),
       ...(item?.contextMetadata ? { contextMetadata: item.contextMetadata } : null),
       resolved: false,
       unread: state.unreadSessionIds.includes(scope.sessionId),
@@ -129,28 +135,27 @@ export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
   const application = yield* ApplicationState;
   const snapshot = () =>
     query.resolved ? Effect.succeed<CakeChatSummary[]>([]) : catalog(location);
-  const initial = Stream.fromEffect(
-    snapshot().pipe(Effect.map((sessions) => ({ _tag: "CatalogInitial" as const, sessions }))),
-  );
-  return Stream.merge(
-    changes
-      .initialThenChanges(initial)
-      .pipe(
-        Stream.filter((item) => item._tag === "CatalogInitial" || item._tag.startsWith("CakeChat")),
-      ),
-    application.changes().pipe(
-      Stream.map((item) =>
-        JSON.stringify(
-          item.state.projects.map(({ path, name, addedAt }) => ({ path, name, addedAt })),
-        ),
-      ),
-      Stream.changes,
-      Stream.map(() => ({ _tag: "ProjectsChanged" as const })),
+  // Acquire the catalog subscription before starting the current-first project stream.
+  // Its first value is the sole initial scan. Both sources stay subscribed during reads,
+  // so project/catalog mutations in flight enqueue a subsequent authoritative snapshot.
+  return changes.initialThenChanges(Stream.succeed({ _tag: "ObserveProjects" as const })).pipe(
+    Stream.filter((item) => item._tag === "ObserveProjects" || item._tag.startsWith("CakeChat")),
+    Stream.flatMap(
+      (item): Stream.Stream<void> =>
+        item._tag === "ObserveProjects"
+          ? application.changes().pipe(
+              Stream.map((item) =>
+                JSON.stringify(
+                  item.state.projects.map(({ path, name, addedAt }) => ({ path, name, addedAt })),
+                ),
+              ),
+              Stream.changes,
+              Stream.map(() => undefined),
+            )
+          : Stream.succeed(undefined),
+      { concurrency: 2 },
     ),
-  ).pipe(
-    Stream.mapEffect((item) =>
-      item._tag === "CatalogInitial" ? Effect.succeed(item.sessions) : snapshot(),
-    ),
+    Stream.mapEffect(() => snapshot()),
     Stream.mapAccum(
       () => 0,
       (revision, sessions) =>

@@ -1,5 +1,5 @@
 import type { Project } from "../models/Project";
-import { applyCakeChatCatalogGroupUpdate } from "../reducers/CatalogReducer";
+import { applyCakeChatLookup } from "../reducers/CatalogReducer";
 import type { CakeChatTodoList } from "../models/CakeChatTodoList";
 import { Store, child, createStore, observable } from "r-state-tree";
 import { settledSessionActivity, type SessionActivity } from "../lib/session-activity";
@@ -62,8 +62,6 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   error: string | undefined;
   errorDetails: string | undefined;
   private initialization: Promise<void> | undefined;
-  private resolveInitialization: (() => void) | undefined;
-  private initializing = false;
   private selectionRevision = 0;
   /** Same window-local completion acknowledgement as Project Sessions, not transcript storage. */
   private readonly readSettledTurnRevisions: Map<string, number> = observable(new Map());
@@ -233,48 +231,42 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     }
   }
 
-  /** Explicit application startup. Repeated callers share one catalog-synchronized promise. */
+  /** Startup owns one exact lookup; passive catalog hydration never gates the selected chat. */
   initialize() {
-    if (!this.initialization)
-      this.initialization = new Promise<void>((resolve) => {
-        this.resolveInitialization = resolve;
-      });
-    if (this.props.catalog.loaded) void this.performInitialization();
+    this.initialization ??= this.performInitialization();
     return this.initialization;
   }
 
   private async performInitialization() {
-    if (this.initializing || this.hydrated || !this.props.catalog.loaded) return;
-    this.initializing = true;
+    const sessionId = this.sessionId ?? CAKE_CHAT_SESSION_ID;
+    const revision = this.selectionRevision;
     try {
-      this.reconcileAuthoritativeSessions();
-      this.hydrated = true;
-      const restoredSessionId = this.sessionId ?? CAKE_CHAT_SESSION_ID;
-      const restored = restoredSessionId
-        ? this.summaries.find(
-            (summary) => summary.sessionId === restoredSessionId && !summary.resolved,
-          )
-        : undefined;
-      if (restored) {
-        if (this.pendingSessions.isPending(restored.sessionId))
-          this.selectSession(restored.sessionId);
-        else await this.open(restored.sessionId);
-      } else {
-        // A missing catalog entry must not redirect startup to another unsent conversation.
-        const sessionId = CAKE_CHAT_SESSION_ID;
-        if (this.summaries.some((summary) => summary.sessionId === sessionId))
-          await this.open(sessionId);
-        else {
-          if (!this.pendingSessions.isPending(sessionId)) this.createPendingSession(sessionId);
-          this.selectSession(sessionId);
-        }
+      if (!this.pendingSessions.isPending(sessionId) || sessionId === CAKE_CHAT_SESSION_ID) {
+        const summary = await this.lookup(sessionId);
+        // Preserve the fresh global chat's pending configuration, but reconcile an
+        // already materialized identity using exact evidence, not the whole catalog.
+        const model = this.props.sessionModel(sessionId);
+        const live =
+          !model.historyOnly &&
+          (model.observedSnapshotRevision > 0 || model.sessionFile.length > 0);
+        // A restored observation can materialize the runtime while lookup is in flight.
+        if (summary.unstarted && !live) this.createPendingSession(sessionId);
+        else this.registry.reconcile(new Set([sessionId]));
       }
+      // Exact metadata can arrive after explicit navigation or terminal disposal.
+      if (
+        this.signal.aborted ||
+        revision !== this.selectionRevision ||
+        (this.sessionId ?? CAKE_CHAT_SESSION_ID) !== sessionId
+      )
+        return;
+      if (this.pendingSessions.isPending(sessionId)) this.selectSession(sessionId);
+      else await this.open(sessionId);
     } catch (error) {
-      if (!this.signal.aborted) this.reportError(error, "Cake Chat could not load sessions");
+      if (!this.signal.aborted && revision === this.selectionRevision)
+        this.reportError(error, "Cake Chat could not load the selected chat");
     } finally {
-      this.initializing = false;
-      this.resolveInitialization?.();
-      this.resolveInitialization = undefined;
+      if (!this.signal.aborted) this.hydrated = true;
     }
   }
 
@@ -282,15 +274,11 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   async lookup(sessionId: string) {
     const session = await this.client.cakeChats.lookup({ sessionId }, { signal: this.signal });
     this.signal.throwIfAborted();
-    applyCakeChatCatalogGroupUpdate(
-      this.props.catalog,
-      session.resolved ? { resolved: true, limit: 1 } : { resolved: false },
-      {
-        _tag: "Event",
-        revision: 0,
-        event: { _tag: "Upserted", session },
-      },
-    );
+    // A current-first catalog snapshot/event received during this request is newer
+    // evidence than the in-flight exact read. Do not overwrite unread/configuration facts.
+    const observed = this.props.catalog.find(sessionId);
+    if (observed) return observed;
+    applyCakeChatLookup(this.props.catalog, session);
     return session;
   }
 
@@ -376,7 +364,11 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
 
   private reconcileAuthoritativeSessions() {
     this.registry.reconcile(
-      new Set(this.props.catalog.sessions.map((session) => session.sessionId)),
+      new Set(
+        this.props.catalog.sessions
+          .filter((session) => !session.unstarted)
+          .map((session) => session.sessionId),
+      ),
     );
   }
 
@@ -402,7 +394,6 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     this.effect(() => {
       if (this.props.catalog.loaded) {
         this.reconcileAuthoritativeSessions();
-        void this.performInitialization();
       }
     });
   }

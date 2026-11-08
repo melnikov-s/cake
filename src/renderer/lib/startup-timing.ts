@@ -10,10 +10,9 @@ export const makeRendererStartupTiming = (
   mark: (name: string) => void,
 ) => {
   const seen = new Set<RendererStartupPhase>();
-  return (phase: RendererStartupPhase) => {
+  return (phase: RendererStartupPhase, rendererElapsedMs = now()) => {
     if (seen.has(phase)) return;
     seen.add(phase);
-    const rendererElapsedMs = now();
     mark(`cake.startup.${phase}`);
     emit(STARTUP_TIMING_PREFIX + JSON.stringify({ phase, rendererElapsedMs }));
   };

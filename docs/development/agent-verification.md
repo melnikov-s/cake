@@ -349,7 +349,12 @@ run cannot measure that server's startup.
 - Renderer records include `rendererElapsedMs`, measured from that document's
   navigation performance origin. They cover renderer entry (after imports),
   window-state loading, hydration (including draft migration/decode/Store mount),
-  navigation restoration, render scheduling and `first-commit`. The main-process
+  observer setup, persistence setup, capture/overlay configuration scheduling,
+  model/provider hydration scheduling and settlement (including handled failures),
+  Saved Draft observation, app-control startup,
+  render scheduling and `first-commit`. Navigation is established before Store mount;
+  app-control startup does not restore it. Saved Draft observation is current-first,
+  without a redundant startup list/reconciliation. The main-process
   `elapsedMs` on these records is **console-event receipt time**, including IPC
   delay; renderer and main clocks are not interchangeable. Local renderer marks
   are also available as `cake.startup.<phase>` in the Performance timeline.
@@ -359,18 +364,38 @@ run cannot measure that server's startup.
   input/focus, Markdown completion, provider readiness or usable chat. No selected
   conversation means no such milestone; changing selection before it settles
   emits `selected-chat-changed` instead. A covering Settings/Library surface does
-  not change the underlying conversation. `navigation-restore-end` alone does not
-  imply a live conversation, and hydration completion may include existing error
-  fallbacks.
+  not change the underlying conversation. Hydration completion may include existing
+  error fallbacks.
+- `first-contentful-paint` uses Chromium's buffered Paint Timing entry's timestamp,
+  not observer receipt time. It is document paint, not selected transcript paint.
+  `selected-chat-composer-editable-commit` requires the selected chat's actual input
+  element to be connected, enabled and writable in a React commit. It does not
+  assert focus, successful submission or provider readiness. Both are independent
+  of live transcript readiness. `cake-chat-catalog-initial-received` tracks the
+  passive catalog separately; selected startup uses an independent exact lookup.
+  An exact global address with no database stays an unstarted, writable chat with
+  its pending configuration intact; it has no live transcript until materialized.
+  Catalog/live snapshots received during lookup take precedence over the older read.
+- Global Cake Chat's observer-start/received/reduced markers separate renderer-side
+  transport wait and reduction from React commit. Backend `durable-chat-runtime-created`
+  and `durable-chat-initial-projection` record runtime construction and the first
+  snapshot transaction/advisory accounting durations once per runtime, without
+  identity. They are not necessarily the selected observation; do not subtract
+  backend receipt times from renderer-local markers or add overlapping work.
+  Advisory accounting still completes before publication; these measurements do
+  not change model context or claim counts have settled earlier.
 
-Records are bounded to fixed startup stages (no polling or per-session/file
+Records are bounded to fixed startup stages and initial runtime projections (no polling or per-file
 records). Renderer input is main-frame-only, size-limited, decoded against fixed
 phase/numeric fields and retained once per phase. No transcript, prompt, session
 identity or error bodies are included. Normal operational log retention/flush
 limits apply; missing records after an abrupt kill are not proof a stage was
 never reached. In-process tests verify instrumentation, not launch latency or a
-startup improvement. Validate the real process boundary and timings on the next
-user-controlled launch before choosing an optimization.
+startup improvement. The isolated SQLite critical-path fixture compares the prior
+catalog-gated path with exact lookup for empty and multi-project histories; its
+connections reopen but OS caches are warm. It is not an end-to-end launch benchmark.
+Validate paint, editable composer, selected live transcript and catalog settlement
+in an isolated app with the integrated backend workstream before claiming launch savings.
 
 ### Shutdown diagnostics
 

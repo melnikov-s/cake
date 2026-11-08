@@ -12,4 +12,5 @@ export class CakeChatSummary extends Model {
   resolved = false;
   unread = false;
   running = false;
+  unstarted = false;
 }

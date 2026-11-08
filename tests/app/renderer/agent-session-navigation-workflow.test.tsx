@@ -259,7 +259,11 @@ describe("Agent session navigation workflow", () => {
       resolved: false,
       unread: false,
     };
-    const lookup = vi.fn(async () => summary);
+    const lookup = vi.fn<Client["cakeChats"]["lookup"]>(async ({ sessionId: requested }) =>
+      requested === sessionId
+        ? summary
+        : { ...summary, sessionId: requested, projectPath: undefined, unstarted: true },
+    );
     const open = vi.fn<Client["cakeChats"]["open"]>(async () => undefined);
     const respondControl = vi.fn<Client["projectSessions"]["respondControl"]>(
       async () => undefined,
@@ -274,6 +278,8 @@ describe("Agent session navigation workflow", () => {
     await expectChat("alpha");
     await fixture.publishCakeChatProjection(sessionId);
     expect(fixture.models.cakeChatCatalog.find(sessionId)).toBeUndefined();
+    await fixture.root.cakeChatCollectionStore.initialize();
+    lookup.mockClear();
     open.mockClear();
     await requestOpen(fixture, { sessionId });
     expect(respondControl).toHaveBeenLastCalledWith(

@@ -1,4 +1,6 @@
 import { Schema, type Stream } from "effect";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import { rendererStartupTiming } from "../lib/startup-timing";
 import { batch, effect as reactiveEffect, reaction, type Model } from "r-state-tree";
 import type {
   CakeChatCatalogQuery,
@@ -338,8 +340,11 @@ export const createModelObserver = (
         key,
         input.cakeChatCatalog,
         (client) => client.cakeChats.observeCatalog(query),
-        (update: CakeChatCatalogUpdate) =>
-          applyCakeChatCatalogGroupUpdate(input.cakeChatCatalog, query, update),
+        (update: CakeChatCatalogUpdate) => {
+          applyCakeChatCatalogGroupUpdate(input.cakeChatCatalog, query, update);
+          if (!query.resolved && update._tag === "Snapshot")
+            rendererStartupTiming("cake-chat-catalog-initial-received");
+        },
         {
           replacementGroup: `cake-chat-catalog:${query.resolved ? "resolved" : "active"}`,
           clear: () =>
@@ -498,8 +503,17 @@ export const createModelObserver = (
       observe(
         `conversation:${target.sessionId}`,
         conversation,
-        (client) => client.conversations.observe({ _tag: "CakeChatSession", ...target }),
-        (update) => applyConversationUpdate(conversation, update),
+        (client) => {
+          if (target.sessionId === CAKE_CHAT_SESSION_ID)
+            rendererStartupTiming("cake-chat-projection-observe-start");
+          return client.conversations.observe({ _tag: "CakeChatSession", ...target });
+        },
+        (update) => {
+          const initial = target.sessionId === CAKE_CHAT_SESSION_ID && update._tag === "Snapshot";
+          if (initial) rendererStartupTiming("cake-chat-projection-received");
+          applyConversationUpdate(conversation, update);
+          if (initial) rendererStartupTiming("cake-chat-projection-reduced");
+        },
         {
           // Loaded chats retain their last history projection when hidden. The registry
           // owns its lifetime; closing an observation must not make a warm switch cold.

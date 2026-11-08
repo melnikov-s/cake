@@ -38,6 +38,8 @@ export const CakeChatSummary = Schema.Struct({
   parentSessionId: Schema.optionalKey(boundedId),
   resolved: Schema.Boolean,
   unread: Schema.Boolean,
+  /** Exact global-address lookup found no storage; zero message count alone is not this evidence. */
+  unstarted: Schema.optionalKey(Schema.Boolean),
   /** Lightweight runtime-owned activity, without opening the conversation. */
   running: Schema.optionalKey(Schema.Boolean),
 });

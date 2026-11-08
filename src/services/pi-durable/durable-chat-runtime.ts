@@ -18,7 +18,8 @@ import {
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { Type, type TSchema } from "@earendil-works/pi-durable-ai";
 import { estimateContextTokens } from "@earendil-works/pi-durable-ai/utils/estimate";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
+import { startupDiagnostics } from "../diagnostics/startup-diagnostics";
 import { durableAssistantEntryId } from "./durable-operation-context";
 import { randomUUID } from "node:crypto";
 import { copyJson } from "@earendil-works/chord";
@@ -135,6 +136,7 @@ export async function createDurableCakeChatRuntime(
   options: CakeSessionRuntimeOptions,
   inspection?: RequestInspection,
 ): Promise<DurableCakeChatRuntime> {
+  const acquisitionStartedAt = performance.now();
   if (
     !options.coordinator ||
     !options.cakeChatMemory ||
@@ -226,6 +228,7 @@ export async function createDurableCakeChatRuntime(
     );
   let modelOptions = await projectModels();
   let disposed = false;
+  let initialProjection = true;
   let streaming = false;
   let activeTurnIds: string[] = [];
   const diagnostics: string[] = [...agentExtensions.errors, ...mcpServers.errors];
@@ -729,6 +732,9 @@ export async function createDurableCakeChatRuntime(
       );
     },
     async snapshot() {
+      const measureInitial = initialProjection;
+      initialProjection = false;
+      const startedAt = performance.now();
       // One Session-line read prevents a completed original and its stale live
       // preview from appearing together, or model/inbox facts from different commits.
       const snapshot = await engine.root.commit(async (tx) => {
@@ -833,9 +839,18 @@ export async function createDurableCakeChatRuntime(
       }, BACKGROUND_CONTEXT);
       // Context reads acquire the Session line themselves: never nest one in
       // the transcript transaction. This accounting is an advisory projection.
+      const accountingStartedAt = performance.now();
+      const cakeChatContext = await engine.contextStatus(selected);
+      if (measureInitial)
+        Effect.runSync(
+          startupDiagnostics.mark("durable-chat-initial-projection", {
+            snapshotMs: accountingStartedAt - startedAt,
+            advisoryAccountingMs: performance.now() - accountingStartedAt,
+          }),
+        );
       return turnStop.project({
         ...snapshot,
-        usage: { ...snapshot.usage, cakeChatContext: await engine.contextStatus(selected) },
+        usage: { ...snapshot.usage, cakeChatContext },
       });
     },
     async prompt(
@@ -1052,5 +1067,10 @@ export async function createDurableCakeChatRuntime(
   await configureAgent();
   if (companion) await transitionAssistantContext(engine.root, null);
   engine.harness.resume();
+  Effect.runSync(
+    startupDiagnostics.mark("durable-chat-runtime-created", {
+      durationMs: performance.now() - acquisitionStartedAt,
+    }),
+  );
   return runtime;
 }
