@@ -330,6 +330,8 @@ export const uiPartSchema = Schema.Union([
     renderKey: Schema.optional(stringRange(1, 256)),
     /** Assistant message request time, shared by its live and settled projections. */
     requestedAt: Schema.optional(Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))),
+    /** Exact SDK input receipts this assistant response answers; not inferred from chronology. */
+    responseToTurnIds: Schema.optionalKey(Schema.Array(stringRange(1, 256))),
     text: boundedText,
     status: Schema.Literals(["streaming", "complete", "error"]),
     renderAs: Schema.optional(Schema.Literal("markdown")),

@@ -217,6 +217,13 @@ export const ChatTranscript = observer(function ChatTranscript({
     ("parts" in item
       ? item.parts.some((part) => matchedPartIds.has(part.id))
       : matchedPartIds.has(item.id));
+  const resultReveal = store.transcriptInteraction.resultReveal;
+  const resultMessage = store.transcriptInteraction.resultMessage;
+  const resultPartId = resultMessage?.id;
+  useLayoutEffect(() => {
+    if (resultReveal && resultMessage)
+      store.transcriptInteraction.bindResultMessage(resultReveal.revision, resultMessage);
+  }, [resultReveal, resultMessage, store]);
   const selectedMessageId = store.transcriptInteraction.selectedMessageId;
   const messageSelection = store.transcriptInteraction.messageSelection;
   // Each selection revision is revealed once. A keyboard selection that survives a
@@ -292,19 +299,20 @@ export const ChatTranscript = observer(function ChatTranscript({
       allItemKeys.map((key, index) => [key, sectionViews?.[index]?.expanded ?? true]),
     );
   });
-  const selectedHiddenSection = selectedMessageId
+  const revealMessageId = resultPartId ?? selectedMessageId;
+  const selectedHiddenSection = revealMessageId
     ? sectionViews?.[
         allItems.findIndex((item) =>
           "parts" in item
-            ? item.parts.some((part) => part.id === selectedMessageId)
-            : item.id === selectedMessageId,
+            ? item.parts.some((part) => part.id === revealMessageId)
+            : item.id === revealMessageId,
         )
       ]
     : undefined;
   const revealSectionKey =
     selectedHiddenSection &&
     !selectedHiddenSection.expanded &&
-    revealedSelectionRevision.current !== messageSelection?.revision
+    (resultPartId !== undefined || revealedSelectionRevision.current !== messageSelection?.revision)
       ? selectedHiddenSection.key
       : undefined;
   // Message links and keyboard navigation must still reveal folded messages.
@@ -365,6 +373,47 @@ export const ChatTranscript = observer(function ChatTranscript({
         : undefined,
     );
   }, [lastItemKey, scroller, sentMessageRevision, virtualized, presentedFullscreens]);
+  const resultItemIndex = resultPartId
+    ? items.findIndex((item) =>
+        "parts" in item
+          ? item.parts.some((part) => part.id === resultPartId)
+          : item.id === resultPartId,
+      )
+    : -1;
+  const resultItemKey = resultItemIndex < 0 ? undefined : itemKeys[resultItemIndex];
+  useLayoutEffect(() => {
+    const owner = scrollOwner.current;
+    if (!owner) return;
+    if (!resultReveal) {
+      owner.cancelResultReveal();
+      return;
+    }
+    if (virtualized && resultItemKey !== undefined && !virtuosoRef.current) return;
+    owner.revealResult(
+      resultItemKey,
+      () => {
+        if (resultItemKey !== undefined) scrollToItem(resultItemKey);
+      },
+      () => store.transcriptInteraction.cancelResultReveal(resultReveal.revision),
+    );
+  }, [resultReveal, resultItemKey, scroller, scrollToItem, store, virtualized]);
+  // Exact originals or an already-bound explanation can leave the current
+  // history page. Page only for explicit navigation, stopping on resolution/cancel.
+  const history = store.history;
+  const historyLoading = history?.loading;
+  const historyHasMore = history?.hasMore;
+  const historyError = history?.error;
+  useEffect(() => {
+    if (
+      !(resultReveal?.partIds?.length || resultReveal?.messageId) ||
+      resultPartId ||
+      !historyHasMore ||
+      historyLoading ||
+      historyError
+    )
+      return;
+    void history?.load();
+  }, [resultReveal, resultPartId, history, historyLoading, historyHasMore, historyError]);
   const isArriving = useArrivals(itemKeys, store.id);
   const transcriptBehavior = useMemo<CanonicalTranscriptBehavior>(
     () => ({

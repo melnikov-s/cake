@@ -8,8 +8,10 @@ import { CloseIcon } from "./ui/icons";
 
 export const ConversationAttention = observer(function ConversationAttention({
   todos,
+  activate,
 }: {
   todos: ProjectTodosStore;
+  activate(item: Parameters<ProjectTodosStore["activateAttention"]>[0]): Promise<void>;
 }) {
   const items = todos.attentionItems;
   const listRef = useRef<HTMLDivElement>(null);
@@ -72,7 +74,7 @@ export const ConversationAttention = observer(function ConversationAttention({
               aria-label={`Open attention: ${item.title}`}
               title={item.title}
               className="h-auto min-h-9 min-w-0 flex-1 justify-start rounded-full px-3 py-2 text-left text-sm font-normal text-foreground"
-              onClick={() => void todos.activateAttention(item)}
+              onClick={() => void activate(item)}
             >
               <span className="min-w-0 whitespace-normal break-words">{item.attentionReason}</span>
             </Button>

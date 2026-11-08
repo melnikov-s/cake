@@ -187,7 +187,19 @@ export const activate = Effect.fn("ProjectTodoAttention.activate")(
             expectedRevision: current.revision,
             needsAttention: false,
           });
-        return yield* todos.list(scope);
+        // Include already-admitted originals on a retried click too. Their presentation
+        // identities are stable across replay; never substitute the latest chat row.
+        const originals = pendingReportPresentation(
+          reports.map((report) => ({ ...report, admissions: 0 })),
+        );
+        return {
+          todos: yield* todos.list(scope),
+          responseTurnId: turnId,
+          resultPartIds: [
+            ...originals.updates.map((update) => `agent-update-${update.id}`),
+            ...originals.notices.map((notice) => `passive-${notice.id}`),
+          ],
+        };
       }),
     );
   },

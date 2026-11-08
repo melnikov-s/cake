@@ -1,3 +1,4 @@
+import { projectDurableResponseOrigins } from "../../../../src/services/pi-durable/durable-response-origin";
 import type { AssistantContext } from "../../../../src/contracts/cake-chats/assistant-context";
 import {
   AssistantContextDoc,
@@ -181,6 +182,49 @@ async function fixture(
     },
   };
 }
+
+it("projects exact SDK response receipts for completed answers and the active streamed response", async () => {
+  const f = await fixture();
+  const attentionTurn = "c47760a4-ad81-49e0-bb14-a7d6c021d180";
+  const otherTurn = "0357f6bd-b446-47b7-be3f-fb0aa69c5b06";
+  await f.send("Explain attention", attentionTurn);
+  await f.send("A different human request", otherTurn);
+  const page = await readDurableOriginalPage(f.engine.root);
+  const submissions = (
+    await f.storage.scanSubmissions(
+      { conversationId: f.engine.root.id, status: "done" },
+      200,
+      undefined,
+      BACKGROUND_CONTEXT,
+    )
+  ).items;
+  const parts = projectDurableResponseOrigins(page.parts, [], submissions);
+  for (const turnId of [attentionTurn, otherTurn]) {
+    const receipt = await f.storage.submissionByRequest(
+      f.engine.root.id,
+      turnId,
+      BACKGROUND_CONTEXT,
+    );
+    expect(receipt?.status).toBe("done");
+    const answer = parts.find(
+      (part) =>
+        part.kind === "text" &&
+        part.role === "assistant" &&
+        part.responseToTurnIds?.includes(turnId),
+    );
+    expect(answer).toMatchObject({ entryId: String(receipt?.answer) });
+  }
+  const live: UiPart = {
+    kind: "text",
+    id: "live",
+    role: "assistant",
+    text: "Explanation start",
+    status: "streaming",
+  };
+  expect(projectDurableResponseOrigins([live], [attentionTurn], [])[0]).toMatchObject({
+    responseToTurnIds: [attentionTurn],
+  });
+});
 
 it("acknowledges scheduled input at the generation boundary, not placement or response completion", async () => {
   const preparing = Promise.withResolvers<void>();

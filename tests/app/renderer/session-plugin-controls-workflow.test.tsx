@@ -18,6 +18,10 @@ import { SessionPluginSlot } from "../../../src/renderer/components/session-plug
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
+import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 
 afterEach(cleanup);
 
@@ -121,6 +125,68 @@ async function renderPlugins(authority: ReturnType<typeof createAuthority>) {
     },
   };
 }
+
+it.each(["session-1", CAKE_CHAT_SESSION_ID])(
+  "plugin button sends in %s request bottom without consuming the draft",
+  async (sessionId) => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000001"),
+    );
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project" })],
+      sessions: [sessionSummary({ sessionId: "session-1", projectPath: "/project" })],
+      client: { sessionChats: { prompt } },
+    });
+    const session =
+      sessionId === CAKE_CHAT_SESSION_ID
+        ? fixture.root.cakeChatCollectionStore.registry.load(sessionId)
+        : fixture.root.sessionRegistry.load(sessionId, "/project");
+    applyConversationUpdate(session.model, {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: {
+        sessionId,
+        sessionFile: "/project/session.jsonl",
+        parts: [],
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      },
+    });
+    const chat = session.conversationSessionStore.chatStore;
+    chat.setDraft("Keep my unfinished draft");
+    const reveal = chat.transcriptInteraction.beginResultReveal();
+    chat.transcriptInteraction.completeResultReveal(reveal, ["older-report"]);
+    fixture.root.sessionPluginStore.applyApplicationState(1, {
+      ...defaultApplicationState(),
+      sessionPlugins: [plugin("tour", "Tour", sessionId)],
+    });
+    const view = render(
+      <SessionPluginSlot
+        sessionId={sessionId}
+        slot="composer.above"
+        plugins={fixture.root.sessionPluginStore}
+        inlineWidgets={fixture.root.inlineWidgetStore}
+        call={(pluginId, command, input) =>
+          fixture.root.sessionPluginOperations.invoke(sessionId, pluginId, command, input)
+        }
+      />,
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    expect(chat.transcriptInteraction.sentMessageRevision).toBe(1);
+    expect(chat.transcriptInteraction.resultReveal).toBeUndefined();
+    expect(chat.draft).toBe("Keep my unfinished draft");
+    expect(prompt.mock.calls[0]?.[0]).toMatchObject({ sessionId, text: "Next", attachments: [] });
+    view.unmount();
+  },
+);
 
 it("keeps Hide/Show non-destructive and closes only the selected plugin durably", async () => {
   const authority = createAuthority();

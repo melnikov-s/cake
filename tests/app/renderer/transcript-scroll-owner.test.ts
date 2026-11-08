@@ -400,6 +400,129 @@ describe("transcript scroll owner measurement boundaries", () => {
     },
   );
 
+  it("keeps an ordinary send at the actual bottom after a measured row, footer clamp, then virtual growth", () => {
+    addRow("last", 3_000, 300);
+    scroller.style.setProperty("--composer-dock-height", "600px");
+    owner.scrollToBottomForSentMessage({ itemKey: "last", scrollToIndex: vi.fn() });
+    owner.reconcile();
+    // The browser clamps while the attention/composer header shrinks; the
+    // virtualizer publishes its larger measured total before our next callback.
+    contentHeight -= 600;
+    scroller.scrollTop = scroller.scrollTop;
+    scroller.style.setProperty("--composer-dock-height", "0px");
+    contentHeight += 600;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(3_400);
+    contentHeight += 100;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(3_500);
+  });
+
+  it("respects native reader movement without a local input event after the send row measures", () => {
+    addRow("last", 3_000, 300);
+    owner.scrollToBottomForSentMessage({ itemKey: "last", scrollToIndex: vi.fn() });
+    owner.reconcile();
+    scroller.scrollTop -= 100;
+    scroller.dispatchEvent(new Event("scroll"));
+    contentHeight += 400;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(3_300);
+  });
+
+  it.each([100, 1_400])(
+    "reveals the START of an already-rendered %i-pixel result and holds it through expansion",
+    (height) => {
+      addRow("result", 1_700, height);
+      owner.revealResult("result", vi.fn(), vi.fn());
+      expect(scroller.scrollTop).toBe(1_684);
+      contentHeight += 1_000;
+      owner.reconcile();
+      expect(scroller.scrollTop).toBe(1_684);
+      shift = 120;
+      owner.reconcile();
+      expect(scroller.scrollTop).toBe(1_804);
+    },
+  );
+
+  it("waits for a delayed virtual result's real measurement, not an unrelated latest row", () => {
+    const navigate = vi.fn();
+    owner.revealResult(undefined, navigate, vi.fn());
+    contentHeight += 500;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_000);
+    owner.revealResult("result", navigate, vi.fn());
+    expect(navigate).toHaveBeenCalledOnce();
+    const wrapper = addRow("result", 2_000, 1_200, 200);
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_000);
+    wrapper.dataset.knownSize = "1200";
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_984);
+  });
+
+  it("keeps a short end result's start readable as it grows beyond a viewport", () => {
+    contentHeight = 2_000;
+    addRow("result", 1_900, 100);
+    owner.revealResult("result", vi.fn(), vi.fn());
+    expect(scroller.scrollTop).toBe(1_400); // Native bottom clamp.
+    contentHeight += 1_000;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_884);
+    contentHeight += 1_000;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_884);
+  });
+
+  it.each(["wheel", "pointerdown", "keydown"])(
+    "lets %s cancel a delayed result reveal",
+    (input) => {
+      const cancel = vi.fn();
+      owner.revealResult("result", vi.fn(), cancel);
+      scroller.dispatchEvent(
+        input === "wheel"
+          ? new WheelEvent("wheel", { deltaY: -100 })
+          : input === "keydown"
+            ? new KeyboardEvent("keydown", { key: "PageUp" })
+            : new Event("pointerdown"),
+      );
+      expect(cancel).toHaveBeenCalledOnce();
+      scroller.scrollTop = 900;
+      scroller.dispatchEvent(new Event("scroll"));
+      addRow("result", 2_000, 1_000);
+      contentHeight += 1_000;
+      owner.reconcile();
+      expect(scroller.scrollTop).toBe(900);
+    },
+  );
+
+  it("a newer ordinary send supersedes a result reveal, including later materialization and growth", () => {
+    const cancel = vi.fn();
+    owner.revealResult("result", vi.fn(), cancel);
+    owner.scrollToBottomForSentMessage();
+    expect(cancel).toHaveBeenCalledOnce();
+    addRow("result", 2_000, 1_000);
+    contentHeight += 1_000;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(4_400);
+  });
+
+  it("a late earlier-history read cannot override a newer send even after its row measured", () => {
+    let beforePrepend: (() => void) | undefined;
+    pagingOwner((before) => {
+      beforePrepend = before;
+      return true;
+    });
+    scroll(150);
+    addRow("last", 3_000, 300);
+    owner.scrollToBottomForSentMessage({ itemKey: "last", scrollToIndex: vi.fn() });
+    owner.reconcile();
+    beforePrepend?.();
+    shift = 500;
+    contentHeight += 500;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(3_900);
+  });
+
   it("continues following tail growth even while new rows await measurement", () => {
     owner.scrollToBottomForSentMessage();
     addRow("tail", 3_000, 300, 100);

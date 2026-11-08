@@ -269,10 +269,11 @@ export class ProjectTodosStore extends Store<{
     this.busy = true;
     this.error = undefined;
     try {
-      await ClientContext.consume(this)!.projectTodos.activateAttention(
+      const receipt = await ClientContext.consume(this)!.projectTodos.activateAttention(
         { scope, id: item.id, expectedRevision: item.revision },
         { signal: this.signal },
       );
+      if (!this.signal.aborted) return receipt;
     } catch (error) {
       if (!this.signal.aborted) this.error = describeError(error).message;
     } finally {

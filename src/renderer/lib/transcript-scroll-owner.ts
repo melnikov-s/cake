@@ -12,8 +12,8 @@
  *
  * Only the reader may start following again, by scrolling back to the bottom.
  * The one programmatic jump to the bottom is sending a message. Revealing a
- * message the reader selected with the keyboard (or a link) is the only other
- * movement, and it stops following.
+ * message selected with the keyboard, a link, or an explicit attention click
+ * stops following. Attention reveals hold the exact result's start until input.
  *
  * Any upward movement that leaves the very end is the reader, whatever caused
  * it: wheel, keys, touch, a scrollbar drag, find-in-page, or a gesture over an
@@ -52,6 +52,9 @@ export interface TranscriptScrollOwner {
    * reached through `scrollToIndex`; the reveal completes once it renders.
    */
   reveal(itemKey: string, scrollToIndex: () => void): void;
+  /** An explicit attention click waits for an exact result, then holds its start until reader input. */
+  revealResult(itemKey: string | undefined, scrollToIndex: () => void, cancel: () => void): void;
+  cancelResultReveal(): void;
   /** A keyboard/linked message selection pauses following until the reader is at the bottom again. */
   setSelecting(selecting: boolean): void;
   /** A fullscreen artifact still belongs to a virtual row in this covered transcript. */
@@ -96,7 +99,18 @@ export function createTranscriptScrollOwner(
   let covered = false;
   let anchor: Anchor | undefined;
   let pendingReveal: string | undefined;
+  // Row measurement settles virtual navigation, not bottom-following. Keep
+  // classifying dock/footer clamps through subsequent virtual measurements.
   let pendingBottom: string | undefined;
+  let bottomNavigationSettled = false;
+  const bottomLayout = () => ({
+    content: scroller.scrollHeight,
+    viewport: scroller.clientHeight,
+    dock: getComputedStyle(scroller).getPropertyValue("--composer-dock-height"),
+  });
+  let sentLayout: ReturnType<typeof bottomLayout> | undefined;
+  let resultReveal: { key?: string; cancel(): void; navigating: boolean } | undefined;
+  let intentRevision = 0;
   let pendingRestore = options.restore;
   // The last scrollTop this owner wrote or observed. Any other position was
   // caused by someone else: the reader, or the browser clamping.
@@ -273,12 +287,16 @@ export function createTranscriptScrollOwner(
     const top = viewport.top + revealMargin;
     const bottom = viewport.bottom - dockInset - revealMargin;
     const rect = element.getBoundingClientRect();
+    const rowTop = layoutTop(element);
+    // Arrival animation is paint, not layout. Aligning its translated rectangle
+    // would leave the result displaced when the animation finishes.
+    const rowBottom = rowTop + rect.height;
     // Tall rows align their top; rows that fit move the minimum distance.
     const delta =
-      align === "start" || rect.top < top || rect.height > bottom - top
-        ? rect.top - top
-        : rect.bottom > bottom
-          ? rect.bottom - bottom
+      align === "start" || rowTop < top || rect.height > bottom - top
+        ? rowTop - top
+        : rowBottom > bottom
+          ? rowBottom - bottom
           : 0;
     if (Math.abs(delta) >= 1) write(scroller.scrollTop + delta);
     // Hold the selected row itself still until the reader scrolls.
@@ -286,8 +304,18 @@ export function createTranscriptScrollOwner(
     anchor = key ? { key, top: contentTop(element) } : findAnchor();
   };
 
-  const cancelReveal = () => {
-    if (pendingReveal === undefined && pendingBottom === undefined && !pendingRestore && !prepend)
+  const cancelReveal = (notifyResult = true) => {
+    intentRevision++;
+    const result = resultReveal;
+    resultReveal = undefined;
+    if (notifyResult) result?.cancel();
+    if (
+      pendingReveal === undefined &&
+      pendingBottom === undefined &&
+      !pendingRestore &&
+      !prepend &&
+      !result
+    )
       return;
     prepend = undefined;
     pendingReveal = undefined;
@@ -310,7 +338,7 @@ export function createTranscriptScrollOwner(
     // Virtuoso's scrollToIndex moves for a pending reveal; that is not the reader.
     // An upward browser clamp can preserve following, never restart it after
     // the reader paused it (for example by opening a response).
-    if (pendingReveal === undefined)
+    if (pendingReveal === undefined && !resultReveal)
       following = movedDown ? following || atBottom() : following && atEnd();
     if (!pendingMeasurements) anchor = findAnchor();
     // Own writes, streaming/layout and duplicate scroll events never enter here
@@ -326,8 +354,10 @@ export function createTranscriptScrollOwner(
       covered ||
       !measurable() ||
       positioning() ||
-      pendingReveal ||
-      pendingBottom ||
+      following ||
+      pendingReveal !== undefined ||
+      pendingBottom !== undefined ||
+      resultReveal ||
       pendingRestore
     )
       return;
@@ -348,7 +378,13 @@ export function createTranscriptScrollOwner(
   const requestEarlier = () => {
     if (earlierRequested || covered || !measurable() || positioning()) return;
     if (getComputedStyle(scroller).visibility === "hidden") return;
-    if (options.loadEarlier?.(() => preserveForPrepend((key) => options.scrollToItem?.(key)))) {
+    const requestedAt = intentRevision;
+    if (
+      options.loadEarlier?.(() => {
+        if (requestedAt === intentRevision)
+          preserveForPrepend((key) => options.scrollToItem?.(key));
+      })
+    ) {
       earlierRequested = true;
       lastUpwardInput = performance.now();
     }
@@ -367,6 +403,21 @@ export function createTranscriptScrollOwner(
     if (covered || !measurable()) return;
     observeViewport();
     const pendingMeasurements = measuring();
+    if (pendingBottom !== undefined) {
+      const layout = bottomLayout();
+      // Once virtual navigation is measured, movement in unchanged geometry is
+      // the reader's (including iframe gestures with no input event here).
+      if (
+        bottomNavigationSettled &&
+        sentLayout &&
+        layout.content === sentLayout.content &&
+        layout.viewport === sentLayout.viewport &&
+        layout.dock === sentLayout.dock &&
+        scroller.scrollTop !== knownTop
+      )
+        pendingBottom = undefined;
+      sentLayout = layout;
+    }
     if (positioning()) {
       knownTop = scroller.scrollTop;
       if (following) pin();
@@ -428,8 +479,17 @@ export function createTranscriptScrollOwner(
     // ResizeObservers can run first) must not be pinned over.
     // A sent-message jump is virtual navigation until the destination has real
     // measurements. Estimate corrections/clamps during that jump are not input.
-    if (scroller.scrollTop !== knownTop && pendingBottom === undefined)
+    if (scroller.scrollTop !== knownTop && pendingBottom === undefined && !resultReveal)
       observeMovement(pendingMeasurements);
+    if (resultReveal) {
+      const element = resultReveal.key === undefined ? undefined : row(resultReveal.key);
+      if (element && !pendingMeasurements) {
+        options.cancelVirtualNavigation();
+        revealRow(element, "start");
+      } else if (!pendingMeasurements) holdAnchor();
+      knownTop = scroller.scrollTop;
+      return;
+    }
     if (!following && pendingMeasurements) return;
     if (following) pin();
     else holdAnchor();
@@ -443,8 +503,13 @@ export function createTranscriptScrollOwner(
         revealRow(element, "start");
       }
     }
-    if (pendingBottom !== undefined && !pendingMeasurements && row(pendingBottom)) {
-      pendingBottom = undefined;
+    if (
+      pendingBottom !== undefined &&
+      !bottomNavigationSettled &&
+      !pendingMeasurements &&
+      row(pendingBottom)
+    ) {
+      bottomNavigationSettled = true;
       options.cancelVirtualNavigation();
       pin();
     }
@@ -461,6 +526,7 @@ export function createTranscriptScrollOwner(
       scroller.scrollTop === knownTop ||
       positioning() ||
       pendingBottom !== undefined ||
+      resultReveal ||
       prepend
     ) {
       reconcile();
@@ -505,7 +571,12 @@ export function createTranscriptScrollOwner(
       nestedScrollerConsumes(target, direction)
     )
       return;
+    const navigating = pendingBottom !== undefined || resultReveal || pendingReveal !== undefined;
     cancelReveal();
+    if (navigating) {
+      following = false;
+      anchor = findAnchor();
+    }
     if (direction < 0) {
       const now = performance.now();
       // At the absolute top there may be no native movement. Only a new
@@ -578,7 +649,18 @@ export function createTranscriptScrollOwner(
     signal: abort.signal,
     capture: true,
   });
-  scroller.addEventListener("pointerdown", cancelReveal, listen);
+  scroller.addEventListener(
+    "pointerdown",
+    () => {
+      const navigating = pendingBottom !== undefined || resultReveal || pendingReveal !== undefined;
+      cancelReveal();
+      if (navigating) {
+        following = false;
+        anchor = findAnchor();
+      }
+    },
+    listen,
+  );
   scroller.addEventListener("scroll", handleScroll, listen);
   scroller.addEventListener("wheel", handleWheel, listen);
   scroller.addEventListener("keydown", handleKeyDown, { signal: abort.signal });
@@ -599,7 +681,9 @@ export function createTranscriptScrollOwner(
       cancelReveal();
       options.cancelVirtualNavigation();
       following = true;
-      pendingBottom = navigation?.itemKey;
+      pendingBottom = navigation?.itemKey ?? "";
+      bottomNavigationSettled = !navigation;
+      sentLayout = bottomLayout();
       pin();
       navigation?.scrollToIndex();
     },
@@ -614,6 +698,23 @@ export function createTranscriptScrollOwner(
       }
       pendingReveal = itemKey;
       scrollToIndex();
+    },
+    revealResult(itemKey, scrollToIndex, cancel) {
+      if (covered) return;
+      const navigating = resultReveal && resultReveal.key === itemKey && resultReveal.navigating;
+      cancelReveal(false);
+      following = false;
+      anchor = findAnchor();
+      resultReveal = { key: itemKey, cancel, navigating: Boolean(navigating) };
+      const element = itemKey === undefined ? undefined : row(itemKey);
+      if (element) reconcile();
+      else if (itemKey !== undefined && !navigating) {
+        resultReveal.navigating = true;
+        scrollToIndex();
+      }
+    },
+    cancelResultReveal() {
+      if (resultReveal) cancelReveal(false);
     },
     setSelecting(next) {
       if (next === selecting) return;

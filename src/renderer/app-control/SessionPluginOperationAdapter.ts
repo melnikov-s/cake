@@ -8,8 +8,7 @@ export interface SessionPluginOperationCapabilities {
   signal: AbortSignal;
   plugins: SessionPluginStore;
   workingDirectory(sessionId: string): string;
-  prepareChat(sessionId: string): Promise<void>;
-  promptCakeChat(sessionId: string, text: string): Promise<void>;
+  prompt(sessionId: string, text: string): Promise<void>;
 }
 
 /** Interprets plugin commands at the plugin/application boundary. */
@@ -26,19 +25,7 @@ export function createSessionPluginOperationAdapter(
       if (command === "session.prompt") {
         const text = String(input.text ?? "").trim();
         if (!text) throw new Error("session.prompt requires non-empty text");
-        if (isCakeChatSessionId(sessionId)) await capabilities.promptCakeChat(sessionId, text);
-        else {
-          await capabilities.prepareChat(sessionId);
-          await capabilities.client.sessionChats.prompt(
-            {
-              sessionId,
-              text,
-              attachments: [],
-              renderUserMessageAsMarkdown: false,
-            },
-            { signal: capabilities.signal },
-          );
-        }
+        await capabilities.prompt(sessionId, text);
         return { accepted: true };
       }
       if (command === "plugins.set-state") {

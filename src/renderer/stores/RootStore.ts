@@ -5,6 +5,7 @@ import { AutomationsStore } from "./AutomationsStore";
 import { AutomationSessionsStore } from "./AutomationSessionsStore";
 import {
   SESSION_ASSISTANT_ID,
+  isCakeChatSessionId,
   isProjectChatSessionId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { DictationStore } from "./DictationStore";
@@ -1333,10 +1334,14 @@ export class RootStore extends Store<{
       signal: this.signal,
       plugins: this.sessionPluginStore,
       workingDirectory: (sessionId) => this.requireProjectSessionWorkingDirectory(sessionId),
-      prepareChat: (sessionId) => this.prepareSessionChat(sessionId),
-      promptCakeChat: async (sessionId, text) => {
-        const session = this.cakeChatCollectionStore.registry.load(sessionId);
-        if (!(await session.conversationSessionStore.sendMessage(text)))
+      prompt: async (sessionId, text) => {
+        if (!isCakeChatSessionId(sessionId)) await this.prepareSessionChat(sessionId);
+        const session = isCakeChatSessionId(sessionId)
+          ? this.cakeChatCollectionStore.registry.load(sessionId)
+          : this.automationSessionsStore.hasSession(sessionId)
+            ? this.automationSessionsStore.loadSession(sessionId)
+            : this.sessionRegistry.findSession(sessionId);
+        if (!session || !(await session.conversationSessionStore.sendMessage(text)))
           throw new Error("Cake could not send that chat message");
       },
     });

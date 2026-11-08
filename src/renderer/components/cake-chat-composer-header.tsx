@@ -17,7 +17,10 @@ export const CakeChatComposerHeader = observer(function CakeChatComposerHeader({
       sideChat={session.conversationSessionStore.sideChatStore}
       composerFooter={
         session.todos.attentionItems.length ? (
-          <ConversationAttention todos={session.todos} />
+          <ConversationAttention
+            todos={session.todos}
+            activate={(item) => session.activateAttention(item)}
+          />
         ) : undefined
       }
     />

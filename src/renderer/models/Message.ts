@@ -32,6 +32,7 @@ export class Message extends Model {
   piId: string | undefined;
   renderKey: string | undefined;
   requestedAt: number | undefined;
+  responseToTurnIds: readonly string[] | undefined;
   text: string | undefined;
   content: string | undefined;
   status: PartStatus | undefined;
@@ -114,6 +115,7 @@ export class Message extends Model {
         this.scheduled = part.scheduled;
         this.queuedInput = part.queuedInput;
         this.response = part.response;
+        this.responseToTurnIds = part.responseToTurnIds;
         this.taskTodoId = part.taskTodoId;
         this.taskAttributionPending = part.taskAttributionPending;
         return true;
@@ -230,6 +232,7 @@ export class Message extends Model {
           entryId: this.piId,
           renderKey: this.renderKey,
           requestedAt: this.requestedAt,
+          ...(this.responseToTurnIds ? { responseToTurnIds: this.responseToTurnIds } : null),
           text: this.text!,
           status: this.status as TextStatus,
           deliveryState: this.deliveryState,

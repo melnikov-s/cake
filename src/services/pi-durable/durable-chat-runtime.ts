@@ -63,6 +63,7 @@ import { parseCrossSessionMessage } from "../../contracts/conversations/cross-se
 import { taskAttributionOperations } from "./durable-task-attribution-operations";
 import { createDurableSideChats, type DurableSideChats } from "./durable-side-chats";
 import { readDurableActiveTools, readDurableOriginalPage } from "./durable-chat-history";
+import { projectDurableResponseOrigins } from "./durable-response-origin";
 import {
   listDurableMessageReferences,
   readDurableMessageReference,
@@ -811,7 +812,22 @@ export async function createDurableCakeChatRuntime(
           sessionId,
           sessionFile,
           sessionListed: true,
-          parts,
+          // Streaming causality is already in LiveDoc. Only idle snapshots read
+          // settled SDK receipts, so live text updates never rescan submissions.
+          parts: projectDurableResponseOrigins(
+            parts,
+            activeTurnIds,
+            streaming
+              ? []
+              : (
+                  await storage.scanSubmissions(
+                    { conversationId: engine.root.id, status: "done", order: "descending" },
+                    200,
+                    undefined,
+                    BACKGROUND_CONTEXT,
+                  )
+                ).items,
+          ),
           historyCursor: page.cursor,
           model: {
             provider: unavailableModel?.provider ?? selected.provider,

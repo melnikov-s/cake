@@ -53,6 +53,7 @@ const widgetRevision: ArtifactRevision = {
 const withUpdates = parameters.get("updates") === "true";
 const withHistory = parameters.get("history") === "true";
 const historyRequests: string[] = [];
+const archivedParts = new Map<string, UiPart>();
 let releaseHistory: (() => void) | undefined;
 let releaseReport: (() => void) | undefined;
 const reportReady = new Promise<void>((resolve) => {
@@ -137,7 +138,7 @@ const fixture = createRendererStoreFixture({
             role: index % 2 ? "assistant" : "user",
             status: "complete",
             text: `Older page ${page} message ${index}.\n\n${"Variable height Markdown. ".repeat(5 + (index % 20))}\n\n${index % 3 ? "" : "```ts\nconst earlier = true;\n```"}`,
-          })),
+          })).map((part) => archivedParts.get(part.id) ?? part),
           cursor: page < 2 ? String(page + 1) : undefined,
         };
       },
@@ -242,6 +243,7 @@ function publish(streaming = false) {
 publish();
 const root = createRoot(document.getElementById("root")!);
 let liveTimer: ReturnType<typeof setInterval> | undefined;
+let dockHeight = 0;
 function render() {
   flushSync(() =>
     root.render(
@@ -258,6 +260,11 @@ function render() {
                       inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
                     }
                   : undefined
+              }
+              composerHeader={
+                dockHeight ? (
+                  <div style={{ height: dockHeight }}>Attention header fixture</div>
+                ) : undefined
               }
               compact={chatMode === "compact"}
               embedded={withUpdates && chatMode === "compact"}
@@ -287,6 +294,11 @@ render();
 // These entry points control only external projection delivery / React commit
 // ordering. DOM scrolling, measurements, Virtuoso and transcript policy are real.
 export interface TranscriptOwnershipFixture {
+  openAttention(partId?: string): number;
+  openAttentionResponse(turnId: string): number;
+  archivePart(partId: string): void;
+  admitAttention(revision: number, partIds: string[]): void;
+  setDockHeight(height: number): void;
   historyRequests(): string[];
   releaseHistory(): void;
   /** Release the external original-report read after opening its disclosure. */
@@ -313,6 +325,38 @@ export interface TranscriptOwnershipFixture {
   newestId(): string | undefined;
 }
 Reflect.set(window, "transcriptFixture", {
+  openAttention(partId) {
+    const revision = store.transcriptInteraction.beginResultReveal();
+    if (partId) store.transcriptInteraction.completeResultReveal(revision, [partId]);
+    render();
+    return revision;
+  },
+  openAttentionResponse(turnId) {
+    const revision = store.transcriptInteraction.beginResultReveal();
+    store.transcriptInteraction.completeResultReveal(revision, [], turnId);
+    render();
+    return revision;
+  },
+  archivePart(partId) {
+    const part = parts.find((part) => part.id === partId);
+    if (part)
+      archivedParts.set(partId, part.kind === "text" ? { ...part, status: "complete" } : part);
+    parts = parts.filter((part) => part.id !== partId);
+    applyConversationUpdate(session.model, {
+      _tag: "Event",
+      revision: ++revision,
+      event: { _tag: "PartRemoved", sessionId: "ownership", partId },
+    });
+    render();
+  },
+  admitAttention(revision, partIds) {
+    store.transcriptInteraction.completeResultReveal(revision, partIds);
+    render();
+  },
+  setDockHeight(height) {
+    dockHeight = height;
+    render();
+  },
   historyRequests() {
     return [...historyRequests];
   },

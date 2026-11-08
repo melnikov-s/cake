@@ -98,8 +98,11 @@ it.each([
                 attention.activate(input.scope, input.id, input.expectedRevision),
               );
               applySnapshot(fixture.models.projects, {
-                projects: [{ ...projection(), todos: result }],
+                projects: [{ ...projection(), todos: result.todos }],
               });
+              expect(result.resultPartIds).toEqual(
+                passiveNoticeParts(backend.submissions.at(-1)?.internal).map((part) => part.id),
+              );
               return result;
             },
           },
@@ -156,6 +159,10 @@ it.each([
         expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull(),
       );
       expect(backend.submissions).toHaveLength(1);
+      expect(
+        session.conversationSessionStore.chatStore.transcriptInteraction.resultReveal?.partIds ??
+          [],
+      ).toEqual(passiveNoticeParts(backend.submissions[0]?.internal).map((part) => part.id));
       expect(backend.submissions[0]?.delivery).toBe("follow-up");
       expect(backend.submissions[0]?.text).toContain(item.title);
       expect(backend.submissions[0]?.text).toContain("not approval to merge");

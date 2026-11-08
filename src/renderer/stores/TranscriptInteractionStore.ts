@@ -83,6 +83,71 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
    */
   sentMessageRevision = 0;
   private messageSelectionRevision = 0;
+  /** Explicit attention navigation only; late receipts cannot revive a superseded request. */
+  resultReveal:
+    | {
+        revision: number;
+        partIds?: readonly string[];
+        responseTurnId?: string;
+        messageId?: string;
+        renderKey?: string;
+      }
+    | undefined;
+  private resultRevealRevision = 0;
+
+  beginResultReveal() {
+    this.clearMessageSelection();
+    const revision = ++this.resultRevealRevision;
+    this.resultReveal = { revision };
+    return revision;
+  }
+
+  completeResultReveal(revision: number, partIds: readonly string[], responseTurnId?: string) {
+    if (this.resultReveal?.revision !== revision) return;
+    this.resultReveal =
+      partIds.length || responseTurnId ? { revision, partIds, responseTurnId } : undefined;
+  }
+
+  @computed
+  get resultMessage() {
+    const reveal = this.resultReveal;
+    if (!reveal) return undefined;
+    const parts = this.props.parts();
+    if (reveal.partIds?.length) return parts.find((part) => part.id === reveal.partIds?.[0]);
+    if (reveal.messageId)
+      return parts.find(
+        (part) =>
+          part.id === reveal.messageId ||
+          (part.kind === "text" &&
+            part.renderKey === reveal.renderKey &&
+            reveal.renderKey !== undefined),
+      );
+    const turnId = reveal.responseTurnId;
+    return turnId
+      ? parts.find(
+          (part) =>
+            part.kind === "text" &&
+            part.role === "assistant" &&
+            Boolean(part.text.trim()) &&
+            part.responseToTurnIds?.includes(turnId),
+        )
+      : undefined;
+  }
+
+  bindResultMessage(revision: number, part: UiPart) {
+    const reveal = this.resultReveal;
+    if (!reveal || reveal.revision !== revision || reveal.partIds?.length || reveal.messageId)
+      return;
+    this.resultReveal = {
+      ...reveal,
+      messageId: part.id,
+      renderKey: part.kind === "text" ? part.renderKey : undefined,
+    };
+  }
+
+  cancelResultReveal(revision = this.resultReveal?.revision) {
+    if (this.resultReveal?.revision === revision) this.resultReveal = undefined;
+  }
 
   constructor(props: TranscriptInteractionStore["props"]) {
     super(props);
@@ -166,6 +231,8 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
 
   /** The reader sent a message from the composer (typed or voice conversation mode). */
   noteSentMessage() {
+    this.cancelResultReveal();
+    this.clearMessageSelection();
     this.sentMessageRevision++;
     // A transcript mounted later opens at the bottom too.
     this.transcriptScrollPosition = { kind: "bottom" };
@@ -173,6 +240,7 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
 
   /** Selects and reveals a linked message, superseding any saved scroll anchor. */
   navigateToMessage(messageId: string) {
+    this.cancelResultReveal();
     this.transcriptScrollPosition = undefined;
     this.selectMessage(messageId, "navigation");
   }
@@ -232,6 +300,7 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
   }
 
   private selectMessage(messageId: string, origin: MessageSelection["origin"]) {
+    this.cancelResultReveal();
     const part = this.props.parts().find((candidate) => candidate.id === messageId);
     if (part?.sideChatImport) this.setSideChatImportOpen(part.sideChatImport.groupId, true);
     this.messageSelection = {

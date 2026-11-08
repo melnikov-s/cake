@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
 import { ProjectTodoUserMutation, ProjectTodos } from "../../contracts/projects/project-todos";
 import { ProjectError } from "../../contracts/projects/project-error";
+import { AttentionActivation } from "../../contracts/projects/attention-activation";
 
 export const ProjectTodoRpc = RpcGroup.make(
   Rpc.make("projectTodos.reconcile", {
@@ -17,7 +18,7 @@ export const ProjectTodoRpc = RpcGroup.make(
       id: Schema.String.check(Schema.isUUID(4)),
       expectedRevision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
     }),
-    success: ProjectTodos,
+    success: AttentionActivation,
     error: ProjectError,
   }),
   Rpc.make("projectTodos.mutateUser", {

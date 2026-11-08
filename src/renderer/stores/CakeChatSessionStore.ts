@@ -1,7 +1,7 @@
 import type { Project } from "../models/Project";
 import type { CakeChatTodoList } from "../models/CakeChatTodoList";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
-import { CAKE_CHAT_TODO_SCOPE } from "../../contracts/projects/project-todos";
+import { CAKE_CHAT_TODO_SCOPE, type ProjectTodo } from "../../contracts/projects/project-todos";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ProjectTodosStore } from "./ProjectTodosStore";
 import { WorkspaceNavigatorContext } from "./context/WorkspaceNavigatorContext";
@@ -278,6 +278,19 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       chatStore: this.messageCommentsStore.draftChatStore,
     });
     return true;
+  }
+
+  async activateAttention(item: ProjectTodo) {
+    if (this.todos.busy) return;
+    const interaction = this.conversationSessionStore.chatStore.transcriptInteraction;
+    const revision = interaction.beginResultReveal();
+    // Result navigation must not remain hidden behind an unrelated view-only filter.
+    this.todos.clearFocus();
+    const receipt = await this.todos.activateAttention(item);
+    if (this.signal.aborted) return;
+    if (receipt)
+      interaction.completeResultReveal(revision, receipt.resultPartIds, receipt.responseTurnId);
+    else interaction.cancelResultReveal(revision);
   }
 
   @child

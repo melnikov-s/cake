@@ -371,6 +371,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
 
   /** External session controls share ordinary delivery, including deferred first input. */
   async sendMessage(text: string) {
+    this.chatStore.transcriptInteraction.noteSentMessage();
     return this.deliver({
       sessionId: this.sessionId,
       text,

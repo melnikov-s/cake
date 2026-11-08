@@ -3,6 +3,9 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, expect, it } from "vitest";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
+import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
+import type { AttentionActivation } from "../../../src/contracts/projects/attention-activation";
 import { ManagedRuntime } from "effect";
 import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import { projectTodoLayer } from "../helpers/projectTodoHarness";
@@ -26,6 +29,125 @@ const item: ProjectTodo = {
   attentionReason: "Which shortcut should open Quick switcher?",
 };
 const chat = `project-chat:${"a".repeat(64)}`;
+
+it.each(["send", "reader", "navigation", "none"])(
+  "an attention receipt after %s cannot resurrect an older reveal",
+  async (superseding) => {
+    let admit: ((receipt: AttentionActivation) => void) | undefined;
+    using fixture = createRendererStoreFixture({
+      projects: [
+        {
+          ...projectRecord({ path: "/cake" }),
+          todos: { ...emptyProjectTodos(), items: [item] },
+        },
+      ],
+      client: {
+        projectTodos: {
+          activateAttention: async () =>
+            new Promise<AttentionActivation>((resolve) => {
+              admit = resolve;
+            }),
+        },
+      },
+    });
+    applySnapshot(fixture.models.cakeChatCatalog, {
+      loaded: true,
+      sessions: [{ sessionId: chat, title: "Project Chat", projectPath: "/cake" }],
+    });
+    const session = fixture.root.cakeChatCollectionStore.registry.load(chat);
+    const interaction = session.conversationSessionStore.chatStore.transcriptInteraction;
+    const activation = session.activateAttention(item);
+    const revision = interaction.resultReveal?.revision;
+    expect(revision).toBeDefined();
+    if (superseding === "send") interaction.noteSentMessage();
+    if (superseding === "reader") interaction.cancelResultReveal(revision);
+    if (superseding === "navigation") interaction.navigateToMessage("other");
+    admit?.({
+      todos: emptyProjectTodos(),
+      resultPartIds: ["passive-exact-report"],
+      responseTurnId: "attention-turn",
+    });
+    await activation;
+    expect(interaction.resultReveal).toEqual(
+      superseding === "none"
+        ? { revision, partIds: ["passive-exact-report"], responseTurnId: "attention-turn" }
+        : undefined,
+    );
+    if (superseding === "send") expect(interaction.sentMessageRevision).toBe(1);
+  },
+);
+
+it("no-original attention binds only its causal explanation and retains its render identity when settled", async () => {
+  using fixture = createRendererStoreFixture({
+    projects: [
+      { ...projectRecord({ path: "/cake" }), todos: { ...emptyProjectTodos(), items: [item] } },
+    ],
+    client: {
+      projectTodos: {
+        activateAttention: async () => ({
+          todos: emptyProjectTodos(),
+          resultPartIds: [],
+          responseTurnId: "attention-turn",
+        }),
+      },
+    },
+  });
+  applySnapshot(fixture.models.cakeChatCatalog, {
+    loaded: true,
+    sessions: [{ sessionId: chat, title: "Project Chat", projectPath: "/cake" }],
+  });
+  const session = fixture.root.cakeChatCollectionStore.registry.load(chat);
+  const interaction = session.conversationSessionStore.chatStore.transcriptInteraction;
+  await session.activateAttention(item);
+  const part = (id: string, turn: string): UiPart => ({
+    kind: "text",
+    id,
+    renderKey: id,
+    role: "assistant",
+    text: "Explanation start",
+    status: "streaming",
+    responseToTurnIds: [turn],
+  });
+  for (const next of [part("unrelated", "other-turn"), part("correct", "attention-turn")])
+    applyConversationUpdate(session.model, {
+      _tag: "Event",
+      revision: 1,
+      event: {
+        _tag: "PartUpdated",
+        sessionId: chat,
+        part: next,
+      },
+    });
+  expect(interaction.resultMessage?.id).toBe("correct");
+  if (!interaction.resultReveal || !interaction.resultMessage)
+    throw new Error("Missing causal result");
+  interaction.bindResultMessage(interaction.resultReveal.revision, interaction.resultMessage);
+  applyConversationUpdate(session.model, {
+    _tag: "Event",
+    revision: 2,
+    event: {
+      _tag: "PartRemoved",
+      sessionId: chat,
+      partId: "correct",
+    },
+  });
+  applyConversationUpdate(session.model, {
+    _tag: "Event",
+    revision: 3,
+    event: {
+      _tag: "PartUpdated",
+      sessionId: chat,
+      part: {
+        ...part("settled-entry", "different-turn"),
+        renderKey: "correct",
+        status: "complete",
+      },
+    },
+  });
+  expect(interaction.resultMessage?.id).toBe("settled-entry");
+  interaction.noteSentMessage();
+  expect(interaction.resultMessage).toBeUndefined();
+});
 
 it("shows every own attention item even when focused or filtered; X never activates a report", async () => {
   const calls: unknown[] = [];
@@ -52,7 +174,7 @@ it("shows every own attention item even when focused or filtered; X never activa
             todo.id === input.id ? { ...todo, needsAttention: false, revision: 1 } : todo,
           );
           applySnapshot(fixture.models.projects, { projects: [project()] });
-          return project().todos;
+          return { todos: project().todos, resultPartIds: [], responseTurnId: "attention-turn" };
         },
         mutateUser: async (input) => {
           calls.push(["mutate", input]);

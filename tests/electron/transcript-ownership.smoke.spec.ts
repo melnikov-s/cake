@@ -146,8 +146,328 @@ export default function Widget() {
   },
 });
 
+test.describe("attention result navigation boundary", () => {
+  test.use({ chatMode: "full", messageCount: 200 });
+
+  const result = (text: string): UiPart => ({
+    kind: "text",
+    id: "passive-exact-result",
+    renderKey: "passive-exact-result",
+    role: "user",
+    status: "complete",
+    text,
+  });
+  const offset = (page: Page) =>
+    page
+      .locator('[data-transcript-anchor-id="passive-exact-result"]')
+      .evaluate(
+        (node) =>
+          node.getBoundingClientRect().top -
+          node.closest(".transcript")!.getBoundingClientRect().top,
+      );
+
+  for (const delayed of [false, true]) {
+    test(`reveals exact ${delayed ? "delayed" : "rendered"} result start and holds it through streaming expansion`, async ({
+      fixturePage: page,
+    }) => {
+      const transcript = page.locator(".transcript");
+      const revision = await page.evaluate((delayed) => {
+        const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+        if (!delayed)
+          fixture.partsUpdated([
+            {
+              kind: "text",
+              id: "passive-exact-result",
+              role: "user",
+              status: "complete",
+              text: "Result start\n\n" + "Detailed paragraph.\n\n".repeat(100),
+            },
+          ]);
+        return fixture.openAttention("passive-exact-result");
+      }, delayed);
+      if (delayed)
+        await page.evaluate(
+          ({ revision, part }) => {
+            const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+            fixture.admitAttention(revision, ["passive-exact-result"]);
+            fixture.partsUpdated([part]);
+          },
+          { revision, part: result("Result start\n\n" + "Detailed paragraph.\n\n".repeat(100)) },
+        );
+      await expect.poll(() => offset(page)).toBeCloseTo(16, 0);
+      for (let step = 0; step < 3; step++) {
+        await page.evaluate(() => {
+          const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+          fixture.grow("passive-exact-result");
+          fixture.arrive(); // Unrelated newer output must not become the destination.
+        });
+        await expect.poll(() => offset(page)).toBeCloseTo(16, 0);
+      }
+      expect(await gap(transcript)).toBeGreaterThan(500);
+      await wheel(page, transcript, 350);
+      const readOffset = await offset(page);
+      await page.evaluate(() =>
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).grow(
+          "passive-exact-result",
+        ),
+      );
+      await settle(page);
+      expect(await offset(page)).toBeCloseTo(readOffset, 0);
+    });
+  }
+
+  for (const status of ["streaming", "complete"] as const) {
+    test(`no-original attention reveals its causal ${status} explanation; Enter then wins`, async ({
+      fixturePage: page,
+    }) => {
+      const transcript = page.locator(".transcript");
+      await page.evaluate(() => {
+        const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+        fixture.openAttentionResponse("attention-turn");
+        fixture.partsUpdated([
+          {
+            kind: "text",
+            id: "unrelated-explanation",
+            role: "assistant",
+            status: "streaming",
+            responseToTurnIds: ["unrelated-turn"],
+            text: "Unrelated explanation. ".repeat(400),
+          },
+        ]);
+      });
+      const saved = await top(transcript);
+      await page.evaluate((status) => {
+        const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+        fixture.partsUpdated([
+          {
+            kind: "text",
+            id: "causal-explanation",
+            renderKey: "explanation-render",
+            role: "assistant",
+            status,
+            responseToTurnIds: ["attention-turn"],
+            text: "Causal explanation start\n\n" + "Explanation paragraph.\n\n".repeat(100),
+          },
+        ]);
+      }, status);
+      const row = transcript.locator('[data-transcript-anchor-id="causal-explanation"]');
+      const explanationOffset = () =>
+        row.evaluate(
+          (node) =>
+            node.getBoundingClientRect().top -
+            node.closest(".transcript")!.getBoundingClientRect().top,
+        );
+      await expect.poll(explanationOffset).toBeCloseTo(16, 0);
+      expect(await top(transcript)).toBeGreaterThan(saved);
+      await page.evaluate(() => {
+        const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+        fixture.grow("causal-explanation");
+        fixture.arrive();
+      });
+      await expect.poll(explanationOffset).toBeCloseTo(16, 0);
+      const composer = page.getByRole("combobox", { name: "Message", exact: true });
+      await composer.fill("New ordinary message");
+      await expect(composer).toBeFocused();
+      await composer.press("Enter");
+      await expect(composer).toHaveValue("");
+      await command(page, "stream");
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    });
+  }
+
+  test("reaches an exact older result outside the virtual range", async ({ fixturePage: page }) => {
+    const transcript = page.locator(".transcript");
+    await expect(transcript.locator('[data-transcript-anchor-id="message-5"]')).toHaveCount(0);
+    await page.evaluate(() =>
+      (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).openAttention(
+        "message-5",
+      ),
+    );
+    const row = transcript.locator('[data-transcript-anchor-id="message-5"]');
+    await expect(row).toBeAttached();
+    await expect
+      .poll(() =>
+        row.evaluate(
+          (node) =>
+            node.getBoundingClientRect().top -
+            node.closest(".transcript")!.getBoundingClientRect().top,
+        ),
+      )
+      .toBeCloseTo(16, 0);
+    expect(await transcript.locator('[data-slot="transcript-item"]').count()).toBeLessThan(40);
+  });
+
+  test("a short result grows from a clamped end into a start-aligned long result", async ({
+    fixturePage: page,
+  }) => {
+    await page.evaluate((part) => {
+      const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+      fixture.partsUpdated([part]);
+      fixture.openAttention("passive-exact-result");
+    }, result("Short result start"));
+    await expect.poll(() => offset(page)).toBeGreaterThanOrEqual(16);
+    await page.evaluate(
+      (part) =>
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).partsUpdated([
+          part,
+        ]),
+      result("Short result start\n\n" + "Growing paragraph.\n\n".repeat(120)),
+    );
+    await expect.poll(() => offset(page)).toBeCloseTo(16, 0);
+  });
+
+  test("Enter overrides an attention reveal and its late receipt through dock shrink and virtual growth", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    await page.evaluate(
+      (part) => {
+        const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+        fixture.partsUpdated([part]);
+        fixture.openAttention("passive-exact-result");
+        fixture.setDockHeight(150);
+      },
+      result("Result start\n\n" + "Long result.\n\n".repeat(100)),
+    );
+    await expect.poll(() => offset(page)).toBeCloseTo(16, 0);
+    // Leave an older activation receipt in flight while the human submits.
+    const revision = await page.evaluate(() =>
+      (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).openAttention(),
+    );
+    await composer.fill("New human message wins");
+    await expect(composer).toBeFocused();
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await composer.press("Enter");
+    await expect(composer).toHaveValue("");
+    await page.evaluate((revision) => {
+      const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+      fixture.setDockHeight(0);
+      fixture.admitAttention(revision, ["passive-late-result"]);
+      fixture.partsUpdated([
+        {
+          kind: "text",
+          id: "passive-late-result",
+          role: "user",
+          status: "complete",
+          text: "Late attention result start\n\n" + "Large delayed result.\n\n".repeat(120),
+        },
+      ]);
+      fixture.grow("passive-exact-result");
+      fixture.stream();
+    }, revision);
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    await command(page, "arrive");
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+  });
+});
+
 test.describe("bounded scroll-up pagination", () => {
   test.use({ withHistory: true, chatMode: "full" });
+  test("result reveal waits for its exact unloaded history page", async ({ fixturePage: page }) => {
+    const transcript = page.locator(".transcript");
+    await page.evaluate(() =>
+      (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).openAttention(
+        "older-1-8",
+      ),
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          (
+            Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture
+          ).historyRequests(),
+        ),
+      )
+      .toEqual(["1"]);
+    await command(page, "releaseHistory");
+    const row = transcript.locator('[data-transcript-anchor-id="older-1-8"]');
+    await expect(row).toBeAttached();
+    await expect
+      .poll(() =>
+        row.evaluate(
+          (node) =>
+            node.getBoundingClientRect().top -
+            node.closest(".transcript")!.getBoundingClientRect().top,
+        ),
+      )
+      .toBeCloseTo(16, 0);
+  });
+
+  test("a bound no-original explanation survives moving into unloaded history", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    await page.evaluate(() => {
+      const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+      fixture.openAttentionResponse("attention-turn");
+      fixture.partsUpdated([
+        {
+          kind: "text",
+          id: "older-1-8",
+          renderKey: "explanation",
+          role: "assistant",
+          status: "streaming",
+          responseToTurnIds: ["attention-turn"],
+          text: "Explanation that becomes history\n\n" + "Detailed paragraph.\n\n".repeat(80),
+        },
+      ]);
+    });
+    const row = transcript.locator('[data-transcript-anchor-id="older-1-8"]');
+    const offset = () =>
+      row.evaluate(
+        (node) =>
+          node.getBoundingClientRect().top -
+          node.closest(".transcript")!.getBoundingClientRect().top,
+      );
+    await expect.poll(offset).toBeCloseTo(16, 0);
+    await page.evaluate(() =>
+      (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).archivePart(
+        "older-1-8",
+      ),
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          (
+            Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture
+          ).historyRequests(),
+        ),
+      )
+      .toEqual(["1"]);
+    await command(page, "releaseHistory");
+    await expect.poll(offset).toBeCloseTo(16, 0);
+  });
+
+  test("a late history page preserves a newer Enter's measured bottom", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    await transcript.evaluate((element) => {
+      element.scrollTop = 120;
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          (
+            Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture
+          ).historyRequests(),
+        ),
+      )
+      .toEqual(["1"]);
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    await composer.fill("Send before earlier history returns");
+    await expect(composer).toBeFocused();
+    await composer.press("Enter");
+    await expect(composer).toHaveValue("");
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    await command(page, "releaseHistory");
+    await expect(transcript.getByText("Earlier messages", { exact: true })).toBeAttached();
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    await command(page, "stream");
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+  });
+
   test("prepends one page without moving the reader and admits another upward approach", async ({
     fixturePage: page,
   }) => {
@@ -429,7 +749,16 @@ const gap = (transcript: Locator) =>
 const top = (transcript: Locator) => transcript.evaluate((element) => element.scrollTop);
 const command = (
   page: Page,
-  operation: Exclude<keyof TranscriptOwnershipFixture, "grow" | "newestId">,
+  operation: Exclude<
+    keyof TranscriptOwnershipFixture,
+    | "grow"
+    | "newestId"
+    | "openAttention"
+    | "openAttentionResponse"
+    | "archivePart"
+    | "admitAttention"
+    | "setDockHeight"
+  >,
 ) =>
   page.evaluate((operation) => {
     (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture)[operation]();
