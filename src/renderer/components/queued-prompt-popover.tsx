@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { observer } from "r-state-tree/react";
+import { observer, StoreProvider } from "r-state-tree/react";
+import { CaptureDestinationPicker } from "./capture-destination-picker";
 import { Markdown } from "./ai-elements/markdown";
 import { Button } from "./ui/button";
 import { CopyButton } from "./ui/copy-button";
@@ -14,19 +15,33 @@ export const QueuedPromptPopover = observer(function QueuedPromptPopover({
   entry,
   initiallyEditing,
   onClose,
+  onInteractionChange,
 }: {
   store: ChatStore;
   entry: QueuedPrompt;
   initiallyEditing: boolean;
   onClose(): void;
+  onInteractionChange(active: boolean): void;
 }) {
   const [editing, setEditing] = useState(initiallyEditing);
   const [draft, setDraft] = useState(entry.text);
   const [saving, setSaving] = useState(false);
+  const [forwarding, setForwarding] = useState(false);
+  const submitting = useRef(false);
+  const forwardButton = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState<string>();
+  const interactionCallback = useRef(onInteractionChange);
+  interactionCallback.current = onInteractionChange;
+  useEffect(() => {
+    interactionCallback.current(saving || forwarding);
+    return () => interactionCallback.current(false);
+  }, [saving, forwarding]);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const editButton = useRef<HTMLButtonElement>(null);
   const editable = entry.editable !== false && !entry.provenance && store.canEditQueuedPrompt;
+  const available = store.queuedPrompts.some((item) => item.id === entry.id);
+  const picker = store.draftMovePicker;
+  const canForward = store.canForwardQueuedPrompt(entry);
   useEffect(() => {
     if (editing) textarea.current?.focus();
     else editButton.current?.focus();
@@ -36,7 +51,8 @@ export const QueuedPromptPopover = observer(function QueuedPromptPopover({
     setError(undefined);
   };
   const save = async () => {
-    if (saving || (!draft.trim() && !entry.attachments.length)) return;
+    if (submitting.current || !available || (!draft.trim() && !entry.attachments.length)) return;
+    submitting.current = true;
     setSaving(true);
     setError(undefined);
     try {
@@ -45,6 +61,23 @@ export const QueuedPromptPopover = observer(function QueuedPromptPopover({
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
     } finally {
+      submitting.current = false;
+      setSaving(false);
+    }
+  };
+  const forward = async (destination: Parameters<ChatStore["forwardQueuedPrompt"]>[2]) => {
+    if (submitting.current) return;
+    submitting.current = true;
+    setForwarding(false);
+    setSaving(true);
+    setError(undefined);
+    try {
+      if (await store.forwardQueuedPrompt(entry.id, draft, destination)) onClose();
+      else setError("Another move is in progress. Try again.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      submitting.current = false;
       setSaving(false);
     }
   };
@@ -81,7 +114,12 @@ export const QueuedPromptPopover = observer(function QueuedPromptPopover({
             Edit
           </Button>
         )}
-        <IconButton tooltip="Close" ariaLabel="Close queued message" onClick={onClose}>
+        <IconButton
+          tooltip="Close"
+          ariaLabel="Close queued message"
+          disabled={saving}
+          onClick={onClose}
+        >
           <CloseIcon />
         </IconButton>
       </div>
@@ -109,6 +147,23 @@ export const QueuedPromptPopover = observer(function QueuedPromptPopover({
           )}
         </div>
       )}
+      {!available && (
+        <div role="status" className="text-xs text-muted-foreground">
+          This message is no longer queued. Your edits are kept here for copying.
+        </div>
+      )}
+      {forwarding && picker && (
+        <StoreProvider store={picker}>
+          <CaptureDestinationPicker
+            disabled={saving || !available}
+            ariaLabel="Forward to another session"
+            anchorRef={forwardButton}
+            open
+            onOpenChange={setForwarding}
+            onSelect={(destination) => void forward(destination)}
+          />
+        </StoreProvider>
+      )}
       {error && (
         <div role="alert" className="text-xs text-destructive">
           {error}
@@ -116,12 +171,26 @@ export const QueuedPromptPopover = observer(function QueuedPromptPopover({
       )}
       {editing && (
         <div className="flex shrink-0 justify-end gap-2">
+          {canForward && (
+            <Button
+              ref={forwardButton}
+              variant="ghost"
+              size="sm"
+              className="mr-auto"
+              disabled={saving || !available || (!draft.trim() && !entry.attachments.length)}
+              onClick={() => setForwarding(true)}
+            >
+              Forward to another session
+            </Button>
+          )}
           <Button variant="ghost" size="sm" disabled={saving} onClick={finishEdit}>
             Cancel
           </Button>
           <Button
             size="sm"
-            disabled={saving || entry.pending || (!draft.trim() && !entry.attachments.length)}
+            disabled={
+              saving || !available || entry.pending || (!draft.trim() && !entry.attachments.length)
+            }
             onClick={() => void save()}
           >
             {saving ? "Saving…" : "Save"}

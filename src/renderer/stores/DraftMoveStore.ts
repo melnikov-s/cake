@@ -48,6 +48,16 @@ const checkLimits = (attachments: readonly Attachment[]) => {
     );
 };
 
+const mergeAttachments = (combined: readonly Attachment[]): Attachment[] => {
+  const annotations = combined.flatMap((item) =>
+    item.kind === "annotation" ? item.annotations : [],
+  );
+  return [
+    ...combined.filter((item) => item.kind !== "annotation"),
+    ...(annotations.length ? [{ kind: "annotation" as const, annotations }] : []),
+  ];
+};
+
 /** One window's move/Undo workflow. Unsent content stays in the existing composer
  * snapshot; explicit Saved Drafts keep their existing revision-checked authority.
  * Every destructive step follows a successful save and rechecks both live drafts.
@@ -58,6 +68,7 @@ export class DraftMoveStore extends Store<{
   navigation(): NavigationStore;
   routing(): Omit<CapturePreferences, "defaultDestination">;
   persist(): Promise<void>;
+  workingDirectory(sessionId: string): string | undefined;
 }> {
   busy = false;
 
@@ -81,6 +92,91 @@ export class DraftMoveStore extends Store<{
       : routing.projects.some((project) =>
           project.sessions.some((item) => item.sessionId === destination.sessionId),
         );
+  }
+
+  private load(destination: CaptureDestination) {
+    if (destination.kind === "cake-chat")
+      return this.props.cakeChats().registry.load(destination.sessionId).conversationSessionStore;
+    const loaded = this.props.registry.findSession(destination.sessionId);
+    if (loaded) return loaded.conversationSessionStore;
+    const directory = this.props.workingDirectory(destination.sessionId);
+    if (!directory) throw new Error("The destination session is no longer editable.");
+    return this.props.registry.load(destination.sessionId, directory).conversationSessionStore;
+  }
+
+  /** Withdraw first: the runtime rejects a consumed item. Until that succeeds neither
+   * draft is touched. Afterwards the only copy belongs to the destination, even if
+   * saving it fails; never report a retryable failure that could forward it twice. */
+  async forwardQueued(
+    sourceId: string,
+    content: { text: string; attachments: readonly Attachment[] },
+    destination: CaptureDestination,
+    withdraw: () => Promise<void>,
+  ): Promise<boolean> {
+    if (this.busy) return false;
+    this.busy = true;
+    try {
+      if (!this.available(destination, sourceId))
+        throw new Error("Choose another editable session.");
+      const conversation = this.load(destination);
+      const composer = conversation.composerStore;
+      const target = composer.draftStore;
+      const pending = this.props.registry.pendingSessions;
+      const saved =
+        destination.kind === "project-session"
+          ? pending.savedRecord(destination.sessionId)
+          : undefined;
+      if (composer.editingMessage)
+        throw new Error("Finish editing the destination message before moving a draft.");
+      if (target.pendingImageImports)
+        throw new Error("Wait for the destination images to finish loading, then try again.");
+      if (saved && saved.status !== "saved")
+        throw new Error("The destination draft is being activated.");
+      checkLimits([
+        ...(saved?.attachments ?? []),
+        ...target.submissionAttachments,
+        ...content.attachments,
+      ]);
+      await withdraw();
+
+      // No await between confirmed withdrawal and retaining the edited payload.
+      // Append to the live draft, not a stale checkpoint or the source composer.
+      target.setText(joinText(target.text, content.text));
+      target.appendAttachments(content.attachments);
+      let warning: string | undefined;
+      try {
+        if (saved) {
+          // Saved Drafts retain their revision-checked persistence authority. Keep
+          // the live copy until that save succeeds, so rejection cannot lose input.
+          const after = capture(target);
+          await pending.updateDraft(
+            destination.sessionId,
+            joinText(saved.text, after.text),
+            mergeAttachments([...saved.attachments, ...after.attachments]),
+          );
+          if (unchanged(target, after)) target.clearForSubmit();
+        }
+        await this.props.persist();
+      } catch (error) {
+        warning = `Message removed from the source queue and kept in the destination draft, but could not be saved: ${error instanceof Error ? error.message : String(error)}. Keep this window open and save the draft before closing.`;
+      }
+      // Loading above deliberately did not navigate away from an unsaved editor.
+      // Ordinary moves still use the same navigation and destination draft owner.
+      try {
+        await this.open(destination);
+      } catch {
+        warning ??=
+          "Message removed from the source queue and kept in the destination draft. Open that session to review it. Nothing was sent.";
+      }
+      target.requestFocus({ explicit: true });
+      this.notify(
+        warning ?? "Open in the destination for review. Nothing was sent.",
+        warning ? "warning" : "info",
+      );
+      return true;
+    } finally {
+      this.busy = false;
+    }
   }
 
   private async open(destination: CaptureDestination) {
@@ -138,13 +234,7 @@ export class DraftMoveStore extends Store<{
         throw new Error("The destination draft is being activated.");
       const text = joinText(joinText(saved?.text ?? "", before.text), from.text);
       const combined = [...(saved?.attachments ?? []), ...before.attachments, ...from.attachments];
-      const annotations = combined.flatMap((item) =>
-        item.kind === "annotation" ? item.annotations : [],
-      );
-      const attachments: Attachment[] = [
-        ...combined.filter((item) => item.kind !== "annotation"),
-        ...(annotations.length ? [{ kind: "annotation" as const, annotations }] : []),
-      ];
+      const attachments = mergeAttachments(combined);
       checkLimits(attachments);
 
       // Saved Draft updates use their existing compare-and-swap revision. Ordinary

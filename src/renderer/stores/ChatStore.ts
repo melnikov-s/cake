@@ -125,6 +125,7 @@ export interface ChatStoreProps {
   reorderQueuedPrompt?(id: string, position: number): void | Promise<void>;
   editQueuedPrompt?(id: string, text: string): Promise<boolean>;
   removeQueuedPrompt?(id: string): void;
+  withdrawQueuedPrompt?(id: string): Promise<void>;
   scheduledMessages?: ScheduledMessageCapabilities;
   composerVisible?(): boolean;
   /**
@@ -577,11 +578,43 @@ export class ChatStore extends Store<ChatStoreProps> {
   @child get draftMovePicker(): CaptureDestinationPickerStore | undefined {
     const moves = DraftMoveContext.consume(this);
     const sourceId = this.id;
-    return moves && this.props.composerDraft
+    return moves
       ? createStore(CaptureDestinationPickerStore, {
           routing: () => moves.destinations(sourceId),
         })
       : undefined;
+  }
+
+  canForwardQueuedPrompt(entry: QueuedPrompt) {
+    return Boolean(
+      this.props.withdrawQueuedPrompt &&
+      this.draftMovePicker &&
+      !entry.pending &&
+      entry.editable !== false &&
+      !entry.command &&
+      !entry.provenance &&
+      !entry.automatic &&
+      !entry.scheduled &&
+      !entry.source,
+    );
+  }
+
+  async forwardQueuedPrompt(id: string, text: string, destination: CaptureDestination) {
+    const entry = this.queuedPrompts.find((entry) => entry.id === id);
+    if (!entry || !this.canForwardQueuedPrompt(entry))
+      throw new Error("That queued message is no longer available to forward.");
+    if (!text.trim() && !entry.attachments.length) return false;
+    return DraftMoveContext.consume(this)!.forwardQueued(
+      this.id,
+      { text, attachments: entry.attachments.slice() },
+      destination,
+      async () => {
+        const current = this.queuedPrompts.find((item) => item.id === id);
+        if (!current || !this.canForwardQueuedPrompt(current))
+          throw new Error("That queued message is no longer available to forward.");
+        await this.props.withdrawQueuedPrompt!(id);
+      },
+    );
   }
 
   moveDraft(destination: CaptureDestination) {

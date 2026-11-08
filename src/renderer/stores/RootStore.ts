@@ -184,6 +184,9 @@ export class RootStore extends Store<{
       navigation: () => this.navigationStore,
       routing: () => this.screenCaptureStore.destinations,
       persist: () => this.props.flushWindowState(),
+      workingDirectory: (id) =>
+        this.sessionCatalogStore.find(id)?.workingDirectory ??
+        this.sessionRegistry.pendingSessions.savedRecord(id)?.workingDirectory,
     });
   }
 

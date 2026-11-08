@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { QueuedPromptPopover } from "./queued-prompt-popover";
 import { QueuedAttachmentIndicator } from "./queued-attachment-indicator";
 import {
@@ -22,20 +22,30 @@ import { IconButton } from "@/components/ui/icon-button";
 import { ReorderControls } from "@/components/ui/reorder-controls";
 import { ScheduledGroup } from "@/components/scheduled-prompts";
 import { cn } from "@/lib/utils";
-import type { ChatStore } from "../stores/ChatStore";
+import type { ChatStore, QueuedPrompt } from "../stores/ChatStore";
 import { describeScheduledOrigin } from "../../utils/scheduled-message-time";
 
 /** One sender-neutral pending list above the composer: steering, then queued Pi delivery
  * lanes, then Cake-owned scheduled messages. */
 export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store: ChatStore }) {
-  const [openedPrompt, setOpenedPrompt] = useState<{ id: string; editing: boolean }>();
+  const [openedPrompt, setOpenedPrompt] = useState<{
+    id: string;
+    editing: boolean;
+    entry: QueuedPrompt;
+  }>();
+  // Keep an open editor alive when the runtime consumes/removes its row. Never
+  // turn the retained text into another queued item or the current composer draft.
+  const entries = [...store.queuedPrompts];
+  if (openedPrompt && !entries.some((entry) => (entry.itemId ?? entry.id) === openedPrompt.id))
+    entries.push(openedPrompt.entry);
+  const interaction = useRef(false);
   const scheduled = store.scheduledMessageInteraction;
   const showCategoryHeaders =
     Number(store.queuedPrompts.some((entry) => entry.state === "steering")) +
       Number(store.queuedPrompts.some((entry) => entry.state === "queued")) +
       Number(scheduled.messages.length > 0) >
     1;
-  if (store.queuedPrompts.length === 0 && scheduled.messages.length === 0) return null;
+  if (entries.length === 0 && scheduled.messages.length === 0) return null;
   return (
     <>
       <div
@@ -44,9 +54,9 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
         aria-label="Queued prompts"
       >
         {(["steering", "queued"] as const).map((state) => {
-          const entries = store.queuedPrompts.filter((entry) => entry.state === state);
-          if (!entries.length) return null;
-          const admittedCount = entries.filter((entry) => !entry.pending).length;
+          const laneEntries = entries.filter((entry) => entry.state === state);
+          if (!laneEntries.length) return null;
+          const admittedCount = laneEntries.filter((entry) => !entry.pending).length;
           return (
             <div
               key={state}
@@ -64,7 +74,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                   {state === "steering" ? "Steering" : "Queued"}
                 </div>
               )}
-              {entries.map((entry, index) => {
+              {laneEntries.map((entry, index) => {
                 const promptKey = entry.itemId ?? entry.id;
                 const label =
                   splitModelReferences(entry.text)
@@ -78,9 +88,12 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                   <Popover
                     key={promptKey}
                     open={openedPrompt?.id === promptKey}
-                    onOpenChange={(open) =>
-                      setOpenedPrompt(open ? { id: promptKey, editing: false } : undefined)
-                    }
+                    onOpenChange={(open) => {
+                      if (!interaction.current)
+                        setOpenedPrompt(
+                          open ? { id: promptKey, editing: false, entry } : undefined,
+                        );
+                    }}
                   >
                     <div
                       className="flex min-w-0 items-center gap-1 rounded-md bg-muted/40 px-2 py-1.5 text-xs motion-safe:animate-arrive"
@@ -131,7 +144,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                           </span>
                         )}
                         <div className="ml-auto flex shrink-0 items-center gap-0.5">
-                          {store.canReorderQueuedPrompt && entries.length > 1 && (
+                          {store.canReorderQueuedPrompt && laneEntries.length > 1 && (
                             <ReorderControls
                               label={label}
                               position={index + 1}
@@ -199,7 +212,9 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                               disabled={entry.pending}
                               tooltip="Edit"
                               ariaLabel={`Edit queued prompt: ${label}`}
-                              onClick={() => setOpenedPrompt({ id: promptKey, editing: true })}
+                              onClick={() =>
+                                setOpenedPrompt({ id: promptKey, editing: true, entry })
+                              }
                             >
                               <EditIcon />
                             </IconButton>
@@ -223,6 +238,9 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                         entry={entry}
                         initiallyEditing={openedPrompt.editing}
                         onClose={() => setOpenedPrompt(undefined)}
+                        onInteractionChange={(active) => {
+                          interaction.current = active;
+                        }}
                       />
                     )}
                   </Popover>

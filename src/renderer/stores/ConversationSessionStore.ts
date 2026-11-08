@@ -322,6 +322,12 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       removeQueuedPrompt: (id) => {
         void this.editRuntimeQueuedPrompt(id, "remove");
       },
+      withdrawQueuedPrompt: async (partId) => {
+        await this.client.sessionChats.removeQueuedMessage(
+          { sessionId: this.sessionId, partId },
+          { signal: this.signal },
+        );
+      },
       scheduledMessages: capabilities.scheduledMessages,
       conversationMode: capabilities.conversationMode,
       modelPickerVisible: capabilities.modelPickerVisible,

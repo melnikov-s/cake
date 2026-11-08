@@ -12,6 +12,7 @@ import { applyConversationUpdate } from "../../../src/renderer/reducers/Conversa
 import { configurationModel, configurationSnapshot } from "./chat-configuration-workflow-fixture";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { queuePart, type QueuePart } from "./prompt-queue-workflow-fixture";
 
 const sourceId = "10000000-0000-4000-8000-000000000001";
 const destinationId = "10000000-0000-4000-8000-000000000002";
@@ -26,7 +27,7 @@ const note: Attachment = {
   name: "Screenshot annotations",
   text: "1. Fix this button\n2. Keep the label",
 };
-const context: Attachment = {
+const context: Extract<Attachment, { kind: "source" }> = {
   kind: "source",
   name: "Selected code",
   location: { path: "/project/a.ts", range: { start: { line: 1 }, end: { line: 2 } } },
@@ -82,6 +83,8 @@ function setup(
     saved?: SavedDraft;
     update?: (record: SavedDraft) => Promise<SavedDraft>;
     attachments?: Attachment[];
+    queued?: boolean;
+    withdraw?: () => Promise<void>;
   } = {},
 ) {
   const snapshots: StoreSnapshot[] = [];
@@ -89,6 +92,24 @@ function setup(
     throw new Error("Moving must never send");
   });
   const showMenu = vi.fn(async () => "move-draft" as const);
+  const queued = queuePart(1, "Wrong queue", { attachments: [image, note, annotation, context] });
+  let revision = 1;
+  const publishQueued = (parts: QueuePart[]) => {
+    applyConversationUpdate(fixture.models.projectConversation(sourceId, "/project"), {
+      _tag: "Snapshot",
+      revision: ++revision,
+      snapshot: { ...configurationSnapshot(sourceId, [configurationModel()]), parts },
+    });
+  };
+  const withdraw = vi.fn(async () => {
+    await options.withdraw?.();
+    publishQueued([]);
+    return { steering: [], followUp: [] };
+  });
+  const updateQueued = vi.fn(async ({ text }: { text: string }) => {
+    publishQueued([{ ...queued, text, queuedInput: { ...queued.queuedInput!, text } }]);
+    return { steering: [], followUp: [text] };
+  });
   const fixture = createRendererStoreFixture({
     snapshot: options.snapshot,
     projects: [projectRecord({ path: "/project", name: "Project" })],
@@ -101,7 +122,7 @@ function setup(
     },
     client: {
       electron: { showComposerContextMenu: showMenu },
-      sessionChats: { prompt },
+      sessionChats: { prompt, removeQueuedMessage: withdraw, updateQueuedMessage: updateQueued },
       savedDrafts: {
         list: async () => (options.saved ? [options.saved] : []),
         update: async (record) =>
@@ -121,6 +142,7 @@ function setup(
       revision: 1,
       snapshot: configurationSnapshot(id, [configurationModel()]),
     });
+  if (options.queued) publishQueued([queued]);
   root.navigationStore.showLoadedProjectSession(sourceId);
   if (!options.snapshot) {
     source.composerStore.draftStore.restore(
@@ -145,7 +167,9 @@ function setup(
   );
   const user = userEvent.setup();
   const input = (label: string) =>
-    within(screen.getByRole("region", { name: label })).getByRole<HTMLTextAreaElement>("combobox");
+    within(screen.getByRole("region", { name: label })).getByRole(
+      "combobox",
+    ) as HTMLTextAreaElement;
   return {
     root,
     source,
@@ -153,7 +177,25 @@ function setup(
     snapshots,
     prompt,
     showMenu,
+    withdraw,
+    updateQueued,
+    queued,
+    publishQueued,
     user,
+    async editQueue() {
+      await user.click(screen.getByRole("button", { name: "Edit queued prompt: Wrong queue" }));
+      return screen.getByRole("textbox", { name: "Queued message text" }) as HTMLTextAreaElement;
+    },
+    async forwardQueue() {
+      await user.click(screen.getByRole("button", { name: "Forward to another session" }));
+      const picker = await screen.findByRole("dialog", { name: "Forward to another session" });
+      expect(picker.querySelector(`[data-session-id="${sourceId}"]`)).toBeNull();
+      await user.click(
+        within(
+          picker.querySelector<HTMLElement>(`[data-session-id="${destinationId}"]`)!,
+        ).getByRole("button"),
+      );
+    },
     input,
     async move() {
       fireEvent.contextMenu(input("Source"));
@@ -398,6 +440,203 @@ it("dismisses the destination picker without moving or saving anything", async (
   expect(fixture.input("Source").value).toContain("Move me");
   expect(fixture.input("Destination").value).toBe("Existing draft");
   expect(fixture.snapshots).toHaveLength(0);
+});
+
+describe("forward from the queued-message editor", () => {
+  it("reuses the move picker, carries edited text and every attachment, withdraws before moving, and leaves the source composer alone", async () => {
+    const gate = deferred();
+    using fixture = setup({ queued: true, withdraw: () => gate.promise });
+    const source = toSnapshot(fixture.source.composerStore.draftStore);
+    const editor = await fixture.editQueue();
+    fireEvent.change(editor, { target: { value: "Edited for the destination" } });
+    await fixture.forwardQueue();
+    expect(fixture.withdraw).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: sourceId, partId: "queued-1" },
+      expect.any(Object),
+    );
+    expect(fixture.input("Destination").value).toBe("Existing draft");
+    expect(
+      await fixture.source.chatStore.forwardQueuedPrompt("queued-1", "Duplicate", {
+        kind: "project-session",
+        sessionId: destinationId,
+      }),
+    ).toBe(false);
+    expect(screen.getByRole("button", { name: "Saving…" })).toHaveProperty("disabled", true);
+    fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
+    await act(async () => gate.resolve());
+    await screen.findByText("Open in the destination for review. Nothing was sent.");
+    expect(fixture.source.chatStore.queuedPrompts).toEqual([]);
+    expect(fixture.input("Destination").value).toBe("Existing draft\n\nEdited for the destination");
+    expect(fixture.destination.composerStore.draftStore.submissionAttachments).toEqual([
+      { kind: "text", name: "Existing context", text: "Keep me" },
+      image,
+      note,
+      context,
+      annotation,
+    ]);
+    expect(toSnapshot(fixture.source.composerStore.draftStore)).toEqual(source);
+    expect(fixture.withdraw).toHaveBeenCalledOnce();
+    expect(fixture.updateQueued).not.toHaveBeenCalled();
+    expect(fixture.prompt).not.toHaveBeenCalled();
+  });
+
+  it("cancels only the picker, retains edits and attachments, then saves through the unchanged edit path", async () => {
+    using fixture = setup({ queued: true });
+    const editor = await fixture.editQueue();
+    fireEvent.change(editor, { target: { value: "Still here" } });
+    await fixture.user.click(screen.getByRole("button", { name: "Forward to another session" }));
+    await fixture.user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Forward to another session" })).toBeNull();
+    expect(editor.value).toBe("Still here");
+    expect(fixture.withdraw).not.toHaveBeenCalled();
+    expect(fixture.snapshots).toHaveLength(0);
+    await fixture.user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fixture.updateQueued).toHaveBeenCalledOnce());
+    expect(fixture.source.chatStore.queuedPrompts[0]).toMatchObject({
+      text: "Still here",
+      attachments: [image, note, annotation, context],
+    });
+    expect(fixture.input("Destination").value).toBe("Existing draft");
+  });
+
+  it("keeps the original queue, edited text and both composers on withdrawal failure", async () => {
+    using fixture = setup({
+      queued: true,
+      withdraw: async () => {
+        throw new Error("Queue unavailable");
+      },
+    });
+    const source = toSnapshot(fixture.source.composerStore.draftStore);
+    const target = toSnapshot(fixture.destination.composerStore.draftStore);
+    const editor = await fixture.editQueue();
+    fireEvent.change(editor, { target: { value: "Retry these edits" } });
+    await fixture.forwardQueue();
+    await screen.findByRole("alert");
+    expect(editor.value).toBe("Retry these edits");
+    expect(fixture.source.chatStore.queuedPrompts[0]).toMatchObject({
+      text: "Wrong queue",
+      attachments: fixture.queued.queuedInput!.attachments,
+    });
+    expect(toSnapshot(fixture.source.composerStore.draftStore)).toEqual(source);
+    expect(toSnapshot(fixture.destination.composerStore.draftStore)).toEqual(target);
+    expect(fixture.snapshots).toHaveLength(0);
+  });
+
+  it("retains an editor whose source was consumed while the picker was open, without forwarding it", async () => {
+    using fixture = setup({ queued: true });
+    const editor = await fixture.editQueue();
+    fireEvent.change(editor, { target: { value: "Keep my edits" } });
+    await fixture.user.click(screen.getByRole("button", { name: "Forward to another session" }));
+    act(() => fixture.publishQueued([]));
+    expect(screen.getByText(/no longer queued/)).toBeDefined();
+    expect(editor.value).toBe("Keep my edits");
+    expect(screen.getByRole("button", { name: "Save" })).toHaveProperty("disabled", true);
+    await expect(
+      fixture.source.chatStore.forwardQueuedPrompt("queued-1", "Keep my edits", {
+        kind: "project-session",
+        sessionId: destinationId,
+      }),
+    ).rejects.toThrow("no longer available");
+    expect(fixture.withdraw).not.toHaveBeenCalled();
+    expect(fixture.input("Destination").value).toBe("Existing draft");
+  });
+
+  it("retains the editor when runtime consumption wins after withdrawal starts", async () => {
+    const gate = deferred();
+    using fixture = setup({ queued: true, withdraw: () => gate.promise });
+    const editor = await fixture.editQueue();
+    fireEvent.change(editor, { target: { value: "Race edits" } });
+    await fixture.forwardQueue();
+    act(() => fixture.publishQueued([]));
+    await act(async () => gate.reject(new Error("That message was already consumed")));
+    expect(await screen.findByRole("alert")).toHaveProperty(
+      "textContent",
+      "That message was already consumed",
+    );
+    expect(editor.value).toBe("Race edits");
+    expect(fixture.input("Destination").value).toBe("Existing draft");
+    expect(fixture.snapshots).toHaveLength(0);
+  });
+
+  it("rejects source/destination restrictions and attachment limits before withdrawal", async () => {
+    using fixture = setup({ queued: true });
+    const chat = fixture.source.chatStore;
+    await expect(
+      chat.forwardQueuedPrompt("queued-1", "Edited", {
+        kind: "project-session",
+        sessionId: sourceId,
+      }),
+    ).rejects.toThrow("another editable session");
+    fixture.destination.composerStore.draftStore.appendAttachments(
+      Array.from({ length: 20 }, (_, i) => ({ kind: "text", name: `Extra ${i}`, text: "Keep" })),
+    );
+    await expect(
+      chat.forwardQueuedPrompt("queued-1", "Edited", {
+        kind: "project-session",
+        sessionId: destinationId,
+      }),
+    ).rejects.toThrow("combined draft exceeds");
+    act(() =>
+      fixture.publishQueued([
+        { ...fixture.queued, queuedInput: { ...fixture.queued.queuedInput!, command: "help" } },
+      ]),
+    );
+    await expect(
+      chat.forwardQueuedPrompt("queued-1", "Edited", {
+        kind: "project-session",
+        sessionId: destinationId,
+      }),
+    ).rejects.toThrow("no longer available");
+    expect(fixture.withdraw).not.toHaveBeenCalled();
+  });
+
+  it("does not lose or requeue a withdrawn message when destination persistence fails", async () => {
+    using fixture = setup({
+      queued: true,
+      save: async () => {
+        throw new Error("Disk full");
+      },
+    });
+    await fixture.editQueue();
+    await fixture.forwardQueue();
+    await screen.findByText(/kept in the destination draft, but could not be saved: Disk full/);
+    expect(fixture.source.chatStore.queuedPrompts).toEqual([]);
+    expect(fixture.input("Destination").value).toBe("Existing draft\n\nWrong queue");
+    expect(fixture.destination.composerStore.draftStore.submissionAttachments).toContainEqual(
+      image,
+    );
+    expect(fixture.withdraw).toHaveBeenCalledOnce();
+    expect(fixture.prompt).not.toHaveBeenCalled();
+  });
+
+  it("forwards an attachments-only edit without substituting the composer draft", async () => {
+    using fixture = setup({ queued: true });
+    const editor = await fixture.editQueue();
+    fireEvent.change(editor, { target: { value: "" } });
+    await fixture.forwardQueue();
+    await screen.findByText("Open in the destination for review. Nothing was sent.");
+    expect(fixture.input("Destination").value).toBe("Existing draft");
+    expect(fixture.destination.composerStore.draftStore.submissionAttachments).toContainEqual(
+      image,
+    );
+    expect(fixture.source.chatStore.queuedPrompts).toEqual([]);
+  });
+
+  it("uses revision-checked Saved Draft destination persistence", async () => {
+    const update = vi.fn(async (record: SavedDraft) => ({
+      ...record,
+      revision: record.revision + 1,
+    }));
+    using fixture = setup({ queued: true, saved: savedDraft, update });
+    await fixture.editQueue();
+    await fixture.forwardQueue();
+    await waitFor(() => expect(update).toHaveBeenCalledOnce());
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Saved text\n\nExisting draft\n\nWrong queue", revision: 1 }),
+    );
+    expect(fixture.source.chatStore.queuedPrompts).toEqual([]);
+    expect(fixture.destination.composerStore.draftStore.text).toBe("");
+  });
 });
 
 it("rejects over-limit merges without truncating or clearing either draft", async () => {

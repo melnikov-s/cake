@@ -8,6 +8,7 @@ import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import { windowState } from "../fixtures/window-state";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -165,6 +166,11 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       ...(dictation ? { CAKE_SMOKE_DICTATION_HELPER: helper } : {}),
     },
   });
+  // Startup opens global Chat; choose the fixture conversation explicitly.
+  const page = await app.firstWindow();
+  await page.getByRole("button", { name: "Open Project Chat for project", exact: true }).click();
+  await showSessions(page);
+  await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
   return {
     app,
     responses,
@@ -566,6 +572,53 @@ test("multiline queue previews ellipsize responsively and open a bounded keyboar
   }
 });
 
+test("queued editor forwards edited input through the shared picker without sending or touching the current draft", async () => {
+  test.setTimeout(60_000);
+  const fixture = await queuedMessagesFixture();
+  try {
+    const page = await fixture.app.firstWindow();
+    await expect(page.getByText("Ready for queue testing.")).toBeVisible({ timeout: 20_000 });
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    await composer.fill("Hold the response");
+    await composer.press("Enter");
+    await expect.poll(() => fixture.responses.length).toBe(1);
+    await composer.fill("Wrong queue");
+    await composer.press("Enter");
+    await composer.fill("Unrelated source draft");
+    await page.getByRole("button", { name: "Edit queued prompt: Wrong queue" }).click();
+    const popup = page.getByRole("dialog", { name: "Queued message", exact: true });
+    const editor = popup.getByRole("textbox", { name: "Queued message text" });
+    await expect(editor).toBeFocused();
+    await editor.press("End");
+    await page.keyboard.type(" edited");
+    const forward = popup.getByRole("button", { name: "Forward to another session", exact: true });
+    await expect(forward).toBeEnabled();
+    await forward.click();
+    const picker = page.getByRole("dialog", { name: "Forward to another session", exact: true });
+    await expect(picker).toBeVisible();
+    await expect(picker.locator(`[data-session-id="${fixture.sessionId}"]`)).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(picker).toHaveCount(0);
+    await expect(editor).toHaveValue("Wrong queue edited");
+    await forward.click();
+    await picker.locator(`[data-session-id="${fixture.sourceId}"]`).getByRole("button").click();
+    await expect(page.getByText("Origin transcript.")).toBeVisible();
+    await expect(composer).toHaveValue("Wrong queue edited");
+    await expect(composer).toBeFocused();
+    await composer.press("End");
+    await page.keyboard.type(" retained");
+    await expect(composer).toHaveValue("Wrong queue edited retained");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    expect(fixture.responses).toHaveLength(1);
+    await page.locator(`[data-navigation-item][data-session-id="${fixture.sessionId}"]`).click();
+    await expect(composer).toHaveValue("Unrelated source draft");
+    await expect(page.getByRole("list", { name: "Queued prompts" })).toHaveCount(0);
+    expect(fixture.responses).toHaveLength(1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 for (const dictation of [false, true]) {
   test(`queued popup edits in place and preserves composer focus policy (dictation=${dictation})`, async () => {
     test.skip(dictation && (process.platform !== "darwin" || process.arch !== "arm64"));
@@ -584,7 +637,7 @@ for (const dictation of [false, true]) {
       const edit = page.getByRole("button", { name: `Edit queued prompt: ${queuedText}` });
       await expect(edit).toBeVisible();
       const openSettings = async () => {
-        await page.getByRole("button", { name: "Open settings", exact: true }).click();
+        await page.getByRole("button", { name: "Settings", exact: true }).click();
         await page.getByRole("button", { name: /Voice & Dictation/ }).click();
       };
       const suppression = page.getByRole("switch", {
