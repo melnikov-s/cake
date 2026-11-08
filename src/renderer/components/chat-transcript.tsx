@@ -41,6 +41,7 @@ import {
 import { ChatTranscriptItem } from "./chat-transcript-item";
 import { transcriptItemKeys } from "./chat-transcript-items";
 import { transcriptTaskSections } from "../lib/transcript-task-sections";
+import { todoMessageMatches } from "../lib/todo-message-matches";
 import { resultTodoOrigin, referenceTodoOrigin } from "../lib/result-todo-origin";
 import {
   isCakeChatSessionId,
@@ -148,6 +149,24 @@ export const ChatTranscript = observer(function ChatTranscript({
   // scrolls to the bottom for the reader.
   const sentMessageRevision = store.transcriptInteraction.sentMessageRevision;
   const scrolledForSentMessage = useRef(sentMessageRevision);
+  const supportsTodoFocus = Boolean(
+    (isCakeChatSessionId(store.id) || cakeChatSideChatParentId(store.id)) && behavior.todos,
+  );
+  const focusedTodos = supportsTodoFocus ? (behavior.todos?.focusedItems ?? []) : [];
+  const focused = focusedTodos.length > 0;
+  const matchingParts = focused
+    ? store.parts.filter((part) =>
+        focusedTodos.some((todo) => todoMessageMatches(part, store.id, todo)),
+      )
+    : store.parts;
+  // Keep the message owning an open fullscreen reader mounted until it closes.
+  const uncoveredParts = useRef(matchingParts);
+  const matchedPartIds = new Set(
+    (presentedFullscreens ? uncoveredParts.current : matchingParts).map((part) => part.id),
+  );
+  useLayoutEffect(() => {
+    if (!presentedFullscreens) uncoveredParts.current = matchingParts;
+  });
   const parts = store.parts;
   const loadingStartedAt = store.transcriptInteraction.loadingStartedAt;
   const loadingLabel = store.contextInspector?.activityLabel;
@@ -155,15 +174,16 @@ export const ChatTranscript = observer(function ChatTranscript({
     ? parts.filter((part) => part.kind !== "reasoning")
     : parts;
   const showAssistantLoading =
-    Boolean(loadingLabel) ||
-    chatWorkIsActive(
-      parts,
-      store.streaming,
-      store.submitting,
-      Boolean(
-        behavior.waitingForUser || behavior.interviews?.some((interview) => interview.requested),
-      ),
-    );
+    !focused &&
+    (Boolean(loadingLabel) ||
+      chatWorkIsActive(
+        parts,
+        store.streaming,
+        store.submitting,
+        Boolean(
+          behavior.waitingForUser || behavior.interviews?.some((interview) => interview.requested),
+        ),
+      ));
   const groupedParts = groupTranscriptParts(parts);
   const visibleGroupedParts = store.hideThinking
     ? groupedParts.flatMap((item): TranscriptItem[] => {
@@ -178,6 +198,11 @@ export const ChatTranscript = observer(function ChatTranscript({
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
   const allItemKeys = transcriptItemKeys(allItems);
+  const matchesFocus = (item: TranscriptItem) =>
+    !focused ||
+    ("parts" in item
+      ? item.parts.some((part) => matchedPartIds.has(part.id))
+      : matchedPartIds.has(item.id));
   const selectedMessageId = store.transcriptInteraction.selectedMessageId;
   const messageSelection = store.transcriptInteraction.messageSelection;
   // Each selection revision is revealed once. A keyboard selection that survives a
@@ -190,8 +215,15 @@ export const ChatTranscript = observer(function ChatTranscript({
     ),
   );
   const taskSections =
-    (isCakeChatSessionId(store.id) || cakeChatSideChatParentId(store.id)) && behavior.todos
+    supportsTodoFocus && behavior.todos
       ? transcriptTaskSections(allItems, (item) => {
+          if (focused) {
+            const parts =
+              "parts" in item ? item.parts : item.kind === "loading-state" ? [] : [item];
+            return focusedTodos.find((todo) =>
+              parts.some((part) => todoMessageMatches(part, store.id, todo)),
+            )?.id;
+          }
           const origin =
             item.kind === "tool" && item.messageReference
               ? referenceTodoOrigin(item.messageReference)
@@ -202,7 +234,7 @@ export const ChatTranscript = observer(function ChatTranscript({
           return linked?.length === 1 ? linked[0]?.id : undefined;
         })
       : undefined;
-  // Resolve explicit task focus from the same attribution used for filtering,
+  // Resolve explicit task focus only among exact matches,
   // after the focus change has committed. Message navigation owns expansion and
   // offscreen/virtualized reveals; background updates never create a request.
   useLayoutEffect(() => {
@@ -211,14 +243,19 @@ export const ChatTranscript = observer(function ChatTranscript({
     if (!request || !taskSections) return;
     const target = allItems.findLast(
       (item, index) =>
-        item.kind !== "loading-state" && taskSections.sections[index]?.todoId === request.todoId,
+        item.kind !== "loading-state" &&
+        matchesFocus(item) &&
+        (focused || taskSections.sections[index]?.todoId === request.todoId),
     );
     todos.completeTranscriptFocusRequest();
     if (!target) return;
-    const messageId = "parts" in target ? target.parts.at(-1)?.id : target.id;
+    const messageId =
+      "parts" in target
+        ? target.parts.findLast((part) => !focused || matchedPartIds.has(part.id))?.id
+        : target.id;
     if (messageId) store.transcriptInteraction.navigateToMessage(messageId);
   });
-  // Keep every section heading in chronology, even when its body is folded.
+  // Keep section chronology and manual folding; focus removes unrelated rows entirely.
   // Filtering the view avoids zero-height rows in the virtualizer.
   const sectionViews = taskSections?.sections.map((section, index) => {
     const todoId = section.todoId;
@@ -260,13 +297,32 @@ export const ChatTranscript = observer(function ChatTranscript({
   useLayoutEffect(() => {
     if (revealSectionKey) behavior.todos?.expandTranscriptSection(revealSectionKey);
   }, [behavior.todos, revealSectionKey]);
-  const visibleIndices = allItems.flatMap((_, index) => {
+  let previousFocusedSectionKey: string | undefined;
+  const visibleIndices = allItems.flatMap((item, index) => {
+    if (!matchesFocus(item)) return [];
     const section = sectionViews?.[index];
-    return !section || section.start || section.expanded ? [index] : [];
+    const firstMatch = focused && section && section.key !== previousFocusedSectionKey;
+    previousFocusedSectionKey = section?.key;
+    return !section || section.start || firstMatch || section.expanded ? [index] : [];
   });
-  const items = visibleIndices.map((index) => allItems[index]!);
+  const items = visibleIndices.map((index) => {
+    const item = allItems[index]!;
+    if (!focused || (item.kind !== "original-history" && item.kind !== "side-chat-import"))
+      return item;
+    // Group containers must not leak their untagged siblings into focused chat.
+    return { ...item, parts: item.parts.filter((part) => matchedPartIds.has(part.id)) };
+  });
   const itemKeys = visibleIndices.map((index) => allItemKeys[index]!);
-  const visibleSectionViews = visibleIndices.map((index) => sectionViews?.[index]);
+  const visibleSectionViews = visibleIndices.map((index, visibleIndex) => {
+    const section = sectionViews?.[index];
+    if (!focused || !section) return section;
+    const previous = visibleIndices[visibleIndex - 1];
+    // A hidden attachment may have owned the heading; move it to the first match.
+    return {
+      ...section,
+      start: previous === undefined || sectionViews?.[previous]?.key !== section.key,
+    };
+  });
   // Loading rows can disappear during submission. Use the last
   // content row as the durable destination while the virtual range settles.
   const lastItemKey =
@@ -533,9 +589,15 @@ export const ChatTranscript = observer(function ChatTranscript({
               {store.history.error && <Callout variant="error">{store.history.error}</Callout>}
             </div>
           )}
-          {visibleParts.length === 0 ? (
+          {visibleParts.length === 0 || (focused && items.length === 0) ? (
             <Conversation className="px-6 pt-[42px] pb-[210px] max-[620px]:px-4">
-              {empty}
+              {focused ? (
+                <p role="status" className="text-sm text-muted-foreground">
+                  No messages tagged to this to-do.
+                </p>
+              ) : (
+                empty
+              )}
               {showAssistantLoading && (
                 <LoadingState label={loadingLabel} startedAt={loadingStartedAt} />
               )}

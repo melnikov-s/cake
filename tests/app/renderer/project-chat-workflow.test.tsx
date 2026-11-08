@@ -675,11 +675,14 @@ it.each(["response", "table"] as const)(
     f.publish(projectId, [input, answer], false);
     await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
     await openTodos(f.user);
-    // Focus is window-local view state: focusing the other task folds sections attributed later.
-    await f.user.click(screen.getByRole("button", { name: `Task ${second}` }));
     const title = surface === "response" ? "Cake" : "Table";
     await f.user.click(await screen.findByRole("button", { name: `View ${surface} fullscreen` }));
     const reader = screen.getByRole("dialog", { name: title });
+    // A background focus change must not unmount the message owning the reader.
+    act(() => {
+      const todos = f.root.cakeChatCollectionStore.registry.load(projectId).todos;
+      todos.toggleFocus(todos.value!.items.find((item) => item.id === second)!);
+    });
     // Attribution arrives with a transcript refresh, not a user navigation or dismissal.
     f.publish(projectId, [{ ...input, taskTodoId: first }, answer], false);
     expect(screen.getByRole("dialog", { name: title })).toBe(reader);
@@ -732,7 +735,7 @@ it.each(["response", "table"] as const)(
     expect(f.setFullscreenSurfaceOpen.mock.calls.map(([, open]) => open)).toEqual([true]);
     await f.user.click(within(reader).getByRole("button", { name: `Exit fullscreen ${title}` }));
     expect(screen.queryByRole("dialog", { name: title })).toBeNull();
-    // Folding is deferred, not overridden: the attributed answer folds on exit.
+    // Filtering is deferred, not overridden: the untagged answer disappears on exit.
     expect(screen.queryByRole("button", { name: `View ${surface} fullscreen` })).toBeNull();
   },
 );

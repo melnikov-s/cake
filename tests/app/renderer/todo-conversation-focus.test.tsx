@@ -30,7 +30,7 @@ const todo = (id: string, title: string): ProjectTodo => ({
   revision: 0,
   associations: [],
 });
-const user = (id: string, taskTodoId?: string | null): UiPart => ({
+const user = (id: string, taskTodoId?: string | null): Extract<UiPart, { kind: "text" }> => ({
   id,
   entryId: id,
   kind: "text",
@@ -47,7 +47,7 @@ const image = (id: string): UiPart => ({
   mediaType: "image/png",
   data: "cGl4ZWxz",
 });
-const answer = (id: string): UiPart => ({
+const answer = (id: string): Extract<UiPart, { kind: "text" }> => ({
   id,
   kind: "text",
   role: "assistant",
@@ -136,60 +136,61 @@ for (const global of [false, true]) {
       await u.click(headingA()[0]!);
       expect(expanded()).toEqual(["false", "true", "true"]);
       await u.click(panel.getByRole("button", { name: "Task B" }));
-      expect(expanded()).toEqual(["false", "false", "true"]);
-      expect(transcript.queryByRole("button", { name: "Expand image: a1-shot.png" })).toBeNull();
-      expect(transcript.getByRole("img", { name: "b1-shot.png" })).toBeDefined();
-      expect(transcript.getByRole("img", { name: "b1-detail.png" })).toBeDefined();
-      expect(transcript.getByText("casual-answer")).toBeDefined();
-      await u.click(panel.getByRole("button", { name: "Task A" }));
-      expect(expanded()).toEqual(["true", "true", "false"]);
+      expect(transcript.getByText("b1")).toBeDefined();
+      expect(transcript.queryByText("a1")).toBeNull();
+      expect(transcript.queryByText("casual-answer")).toBeNull();
+      expect(transcript.queryByText("b1-answer")).toBeNull();
       expect(transcript.queryByRole("img", { name: "b1-shot.png" })).toBeNull();
-      expect(transcript.queryByRole("img", { name: "b1-detail.png" })).toBeNull();
-      // The manual image choice survives its task being unmounted and reopened.
-      await u.click(transcript.getByRole("button", { name: "Expand image: a1-shot.png" }));
-      expect(transcript.getByRole("img", { name: "a1-shot.png" })).toBeDefined();
+      await u.click(panel.getByRole("button", { name: "Task A" }));
+      expect(headingA().map((h) => h.getAttribute("aria-expanded"))).toEqual(["true", "true"]);
+      expect(transcript.queryByRole("button", { name: "Task B" })).toBeNull();
+      expect(transcript.queryByText("b1")).toBeNull();
+      expect(transcript.queryByText("a1-answer")).toBeNull();
       expect(store.focusedItems.map((item) => item.id)).toEqual([a]);
-      expect(screen.getByText("Focused to-do:")).toBeDefined();
-      await u.click(panel.getByRole("button", { name: "Task A" }));
-      expect(expanded()).toEqual(["true", "true", "true"]);
-      expect(store.focusedItems).toEqual([]);
-      expect(store.transcriptFocusRequest).toBeUndefined();
-      await u.click(panel.getByRole("button", { name: "Task A" }));
-      expect(expanded()).toEqual(["true", "true", "false"]);
-      // Explicit manual expansion and message navigation still work outside the focused set.
-      await u.click(headingB());
-      expect(transcript.getByText("b1-answer")).toBeDefined();
-      expect(transcript.getByRole("img", { name: "b1-shot.png" })).toBeDefined();
-      await u.click(transcript.getByRole("button", { name: "Collapse image: b1-shot.png" }));
-      expect(transcript.queryByRole("img", { name: "b1-shot.png" })).toBeNull();
-      expect(transcript.getByRole("img", { name: "b1-detail.png" })).toBeDefined();
-      await u.click(headingB());
+      const header = view.container.querySelector('[data-slot="selection-bar"]')!;
+      expect(header.textContent).toContain("Focused to-do:Task A");
+      expect(header.querySelector("svg")).not.toBeNull();
+      expect(
+        Array.from(view.container.querySelectorAll("[data-transcript-anchor-id]")).map((row) =>
+          row.getAttribute("data-transcript-anchor-id"),
+        ),
+      ).toEqual(["a1", "a2"]);
+      // A hidden attachment must not take the focused section’s disclosure with it.
+      await u.click(headingA()[0]!);
+      expect(headingA()[0]!.getAttribute("aria-expanded")).toBe("false");
+      expect(transcript.queryByText("a1")).toBeNull();
+      expect(transcript.getByText("a2")).toBeDefined();
+      await u.click(headingA()[0]!);
+      expect(transcript.getByText("a1")).toBeDefined();
+      // Neither direct navigation nor late untagged input can bypass focus.
       act(() =>
         session.conversationSessionStore.chatStore.transcriptInteraction.navigateToMessage(
           "b1-answer",
         ),
       );
-      expect(transcript.getByText("b1-answer")).toBeDefined();
-      expect(store.focusedItems.map((item) => item.id)).toEqual([a]);
-      act(() =>
-        session.conversationSessionStore.chatStore.transcriptInteraction.clearMessageSelection(),
-      );
+      expect(transcript.queryByText("b1-answer")).toBeNull();
       act(() => {
         applyPartUpdate(session.model.parts, user("pending"), sessionId);
         applyPartUpdate(session.model.parts, answer("pending-answer"), sessionId);
       });
-      expect(transcript.getByText("pending-answer")).toBeDefined();
-      expect(
-        transcript
-          .getByText("pending")
-          .closest('[data-slot="transcript-item"]')
-          ?.querySelector('[data-slot="margin-rail"]'),
-      ).toBeNull();
-      act(() => applyPartUpdate(session.model.parts, user("pending", b), sessionId));
+      expect(transcript.queryByText("pending")).toBeNull();
       expect(transcript.queryByText("pending-answer")).toBeNull();
-      await u.click(screen.getByRole("button", { name: "Clear to-do focus" }));
+      act(() => applyPartUpdate(session.model.parts, user("pending", b), sessionId));
+      expect(transcript.queryByText("pending")).toBeNull();
+      // The visible X is keyboard-accessible and restores the normal transcript.
+      const clear = screen.getByRole("button", { name: "Clear to-do focus" });
+      clear.focus();
+      await u.keyboard("{Enter}");
+      expect(screen.queryByText("Focused to-do:")).toBeNull();
       expect(transcript.getByText("pending-answer")).toBeDefined();
+      expect(transcript.getByText("casual-answer")).toBeDefined();
+      expect(transcript.getByText("b1-answer")).toBeDefined();
+      expect(store.focusedItems).toEqual([]);
+      expect(store.transcriptFocusRequest).toBeUndefined();
       expect(expanded()).toEqual(["true", "true", "true"]);
+      // The manual image choice survives filtering and clearing.
+      await u.click(transcript.getByRole("button", { name: "Expand image: a1-shot.png" }));
+      expect(transcript.getByRole("img", { name: "a1-shot.png" })).toBeDefined();
 
       // Focus survives lifecycle/attention changes; only removal invalidates it.
       await u.click(panel.getByRole("button", { name: "Task A" }));
@@ -205,7 +206,8 @@ for (const global of [false, true]) {
           publish();
         });
         expect(store.focusedItems.map((item) => item.id)).toEqual([a]);
-        expect(expanded()).toEqual(["true", "true", "false"]);
+        expect(headingA().map((h) => h.getAttribute("aria-expanded"))).toEqual(["true", "true"]);
+        expect(transcript.queryByRole("button", { name: "Task B" })).toBeNull();
       }
       await u.click(headingA()[0]!);
       act(() => {
@@ -266,7 +268,7 @@ for (const entry of ["pane", "message"] as const) {
           ? panel.getByRole("button", { name: "Task A" })
           : transcript.getByRole("button", { name: "Focus to-do: Task A" }),
       );
-      expect(selected()).toBe("a-last-answer");
+      expect(selected()).toBe("a-last");
       expect(panel.getByRole("button", { name: "Task A" }).getAttribute("aria-pressed")).toBe(
         "true",
       );
@@ -293,9 +295,11 @@ for (const entry of ["pane", "message"] as const) {
         applyPartUpdate(session.model.parts, user("a-new", a), session.sessionId);
         applyPartUpdate(session.model.parts, answer("a-new-answer"), session.sessionId);
       });
-      expect(selected()).toBe("a-last-answer");
+      expect(selected()).toBe("a-last");
       await u.click(panel.getByRole("button", { name: "Task B" }));
       expect(selected()).toBeUndefined();
+      expect(transcript.getByRole("status").textContent).toBe("No messages tagged to this to-do.");
+      expect(transcript.queryByText("casual-tail")).toBeNull();
       expect(panel.getByRole("button", { name: "Task B" }).getAttribute("aria-pressed")).toBe(
         "true",
       );
@@ -307,6 +311,59 @@ for (const entry of ["pane", "message"] as const) {
     }
   });
 }
+
+it("filters exact message associations inside grouped history without session or text inference", async () => {
+  using fixture = createRendererStoreFixture();
+  applySnapshot(fixture.models.cakeChatTodos, {
+    todos: {
+      ...emptyProjectTodos(),
+      items: [
+        {
+          ...todo(a, "Task A"),
+          associations: [
+            { kind: "session", sessionId: "source", title: "Source" },
+            {
+              kind: "source",
+              ref: `cake://session/${CAKE_CHAT_SESSION_ID}?message=exact`,
+              title: "Exact",
+            },
+          ],
+        },
+      ],
+    },
+  });
+  const session = fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID);
+  const parts: UiPart[] = [
+    { ...answer("exact"), entryId: "exact", originalHistory: true },
+    { ...answer("untagged-history"), originalHistory: true },
+    { ...user("Task A", null), agentSource: { title: "Source", href: "cake://session/source" } },
+    user("tagged", a),
+    answer("untagged-answer"),
+  ];
+  parts.forEach((part) => applyPartUpdate(session.model.parts, part, session.sessionId));
+  const view = render(
+    <ChatTranscript
+      store={session.conversationSessionStore.chatStore}
+      behavior={{ todos: session.todos }}
+      virtualized={false}
+    />,
+  );
+  try {
+    act(() => session.todos.toggleFocus(session.todos.value!.items[0]!));
+    expect(screen.getByText("tagged")).toBeDefined();
+    expect(screen.queryByText("untagged-answer")).toBeNull();
+    expect(screen.queryByText("Source")).toBeNull();
+    await userEvent.setup().click(screen.getByRole("button", { name: /Original history/ }));
+    expect(screen.getByText("exact")).toBeDefined();
+    expect(screen.queryByText("untagged-history")).toBeNull();
+    act(() => session.todos.clearFocus());
+    expect(screen.getByText("untagged-answer")).toBeDefined();
+    expect(screen.getByText("untagged-history")).toBeDefined();
+    expect(session.model.uiParts.map((part) => part.id)).toEqual(parts.map((part) => part.id));
+  } finally {
+    view.unmount();
+  }
+});
 
 it("interrupts source rows without changing the discussion or borrowing pane selection", async () => {
   const sourceA = "20000000-0000-4000-8000-000000000011";

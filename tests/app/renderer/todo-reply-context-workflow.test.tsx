@@ -92,6 +92,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
             role: "assistant",
             text: "Older answer",
             status: "complete",
+            taskTodoId: a.id,
           },
           {
             kind: "text",

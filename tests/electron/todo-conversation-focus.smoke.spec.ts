@@ -120,25 +120,24 @@ for (const global of [false, true])
       await expect(headingsA).toHaveCount(2);
       await expect(headingsA.nth(0)).toHaveAttribute("aria-expanded", "true");
       await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "true");
-      await expect(headingB).toHaveAttribute("aria-expanded", "false");
+      await expect(headingB).toHaveCount(0);
       const casual = transcript.getByText("Thanks. What does ⌘K open?", { exact: true });
-      await expect(casual).toBeVisible();
+      await expect(casual).toHaveCount(0);
+      await expect(transcript.getByText("The command menu.", { exact: true })).toHaveCount(0);
       await expect(
-        casual
-          .locator('xpath=ancestor::*[@data-slot="transcript-item"]')
-          .locator('[data-slot="margin-rail"]'),
+        transcript.getByText("I’ll trace project loading and compare the slow steps.", {
+          exact: true,
+        }),
       ).toHaveCount(0);
       // Headings are native keyboard disclosures; folding one repeat leaves the other alone.
       await headingsA.nth(1).press("Enter");
       await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "false");
       await expect(headingsA.nth(0)).toHaveAttribute("aria-expanded", "true");
-      await headingB.press("Space");
-      await expect(headingB).toHaveAttribute("aria-expanded", "true");
+      await expect(headingB).toHaveCount(0);
       await selectB.click();
       // A different row switches focus; clicking it again clears like the header.
       await expect(selectA).toHaveAttribute("aria-pressed", "false");
-      await expect(headingsA.nth(0)).toHaveAttribute("aria-expanded", "false");
-      await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "false");
+      await expect(headingsA).toHaveCount(0);
       await expect(headingB).toHaveAttribute("aria-expanded", "true");
       await selectB.click();
       await expect(selectB).toHaveAttribute("aria-pressed", "false");
@@ -213,24 +212,13 @@ for (const global of [false, true])
       await transcript.evaluate((element) => {
         element.scrollTop = element.scrollHeight;
       });
-      await expect(casual).toBeVisible();
-      await expect
-        .poll(() =>
-          transcript.evaluate(
-            (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
-          ),
-        )
-        .toBeLessThanOrEqual(1);
-      const casualY = (await casual.boundingBox())!.y;
-      const barY = (await bar.boundingBox())!.y;
+      await expect(casual).toHaveCount(0);
       await clear.click();
       await expect(bar).toHaveCount(0);
-      // The bottom-following reader stays with the unassigned tail when folded
-      // content above it expands and the header bar disappears.
-      await expect(async () => {
-        expect(Math.abs((await casual.boundingBox())!.y - casualY)).toBeLessThanOrEqual(2);
-      }).toPass();
-      expect(barY).toBeGreaterThan(0);
+      await transcript.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      await expect(casual).toBeVisible();
       await expect(removeContext).toBeVisible();
       await expect(headingB).toHaveAttribute("aria-expanded", "true");
       // Lifecycle changes preserve local view focus and the attached snapshot.

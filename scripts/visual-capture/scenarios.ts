@@ -3134,7 +3134,10 @@ const projectChatTaskRails: VisualCaptureScenario = {
         if (state === "focused-return") {
           await transcript.hover({ position: { x: 10, y: 100 } });
           await page.mouse.wheel(0, 10000);
-          await expect(transcript.getByText("The command menu.", { exact: true })).toBeVisible();
+          await expect(
+            transcript.getByText("Back to startup—compare a cold launch too.", { exact: true }),
+          ).toBeVisible();
+          await expect(transcript.getByText("The command menu.", { exact: true })).toHaveCount(0);
         }
       }
     }

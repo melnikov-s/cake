@@ -237,14 +237,16 @@ it.each<Mode>(["browser", "vscode"])(
     const expanded = () =>
       ["Task A", "Task B"].map((title) =>
         companion
-          .getAllByRole("button", { name: title })
+          .queryAllByRole("button", { name: title })
           .find((button) => button.hasAttribute("aria-expanded"))
           ?.getAttribute("aria-expanded"),
       );
     await f.user.click(focus("Task A"));
-    expect(expanded()).toEqual(["true", "false"]);
-    await f.user.click(focus("Task B"));
-    expect(expanded()).toEqual(["false", "true"]);
+    expect(expanded()).toEqual(["true", undefined]);
+    expect(companion.queryByText("Task A answer")).toBeNull();
+    expect(companion.queryByText("Task B prompt")).toBeNull();
+    act(() => session.todos.toggleFocus(items[1]!));
+    expect(expanded()).toEqual([undefined, "true"]);
     expect(session.todos.focusedItemIds).toEqual([items[1]!.id]);
     await f.user.click(focus("Task B"));
     expect(expanded()).toEqual(["true", "true"]);
