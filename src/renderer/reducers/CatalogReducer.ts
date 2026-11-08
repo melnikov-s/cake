@@ -1,4 +1,4 @@
-import { applySnapshot, batch, toSnapshot } from "r-state-tree";
+import { applySnapshot, batch, toSnapshot, type Snapshot } from "r-state-tree";
 import { Project } from "../models/Project";
 import { SessionSummary } from "../models/SessionSummary";
 import { CakeChatSummary } from "../models/CakeChatSummary";
@@ -78,42 +78,56 @@ export function applySessionCatalogGroupUpdate(
       "Session ID",
       `${query.resolved ? "resolved" : "active"} snapshot for ${query.projectPath}`,
     );
-    const incomingById = new Map(incoming.map((session) => [session.sessionId, session]));
-    const incomingIds = new Set(incomingById.keys());
-    const retained = model.sessions.filter((session) => !belongsToGroup(session));
-    for (const session of retained) {
-      const replacement = incomingById.get(session.sessionId);
-      if (!replacement) continue;
-      if (session.projectPath !== replacement.projectPath)
+    const incomingIds = new Set(incomingSessionIds);
+    // Capture membership once, before any structural writes invalidate derived lookups.
+    const existingById = new Map(model.sessions.map((session) => [session.sessionId, session]));
+    for (const session of incoming) {
+      const existing = existingById.get(session.sessionId);
+      if (existing && existing.projectPath !== session.projectPath)
         throw new CatalogIdentityCollisionError("Session ID", [session.sessionId], {
           context: `snapshot for ${query.projectPath}`,
         });
     }
-    // Active and resolved observers subscribe and scan independently. A resolve can
-    // therefore leave one lane's pre-transition Snapshot in the Model when the
-    // other lane's post-transition Snapshot arrives. They describe one identity,
-    // so the arriving lane observation supersedes the stale opposite-lane summary.
-    const sessions = [
-      ...retained
-        .filter((session) => !incomingIds.has(session.sessionId))
-        .map((session) => toSnapshot(session)),
-      ...incoming,
-    ];
-    assertUnique(
-      sessions
-        .map((session) => session.sessionId)
-        .filter((id): id is string => typeof id === "string"),
-      "Session ID",
-      `merged snapshot for ${query.projectPath}`,
-    );
-    sessions.sort(compareSessionSummaries);
+    // Active/resolved observations arrive independently. Reuse the same identity
+    // when the arriving lane supersedes an opposite-lane pre-transition summary.
+    // Consumers own ordering; metadata-only snapshots must not rewrite membership.
     batch(() => {
-      applySnapshot(model, {
-        sessions,
-        resolvedHasMoreByProject: { ...model.resolvedHasMoreByProject },
-      });
-      if (update._tag === "Snapshot" && query.resolved)
-        model.resolvedHasMoreByProject[query.projectPath] = update.hasMore ?? false;
+      const originalLength = model.sessions.length;
+      const updated: Array<{
+        session: SessionSummary;
+        snapshot: Snapshot<SessionSummary>;
+      }> = [];
+      const removed: Array<{ index: number; session: SessionSummary }> = [];
+      try {
+        for (const session of incoming) {
+          const existing = existingById.get(session.sessionId);
+          if (existing) {
+            updated.push({ session: existing, snapshot: toSnapshot(existing) });
+            applySnapshot(existing, session);
+          } else model.sessions.push(SessionSummary.create(session));
+        }
+        for (let index = originalLength - 1; index >= 0; index -= 1) {
+          const session = model.sessions[index]!;
+          if (belongsToGroup(session) && !incomingIds.has(session.sessionId)) {
+            removed.push({ index, session });
+            model.sessions.splice(index, 1);
+          }
+        }
+        if (update._tag === "Snapshot" && query.resolved)
+          model.resolvedHasMoreByProject[query.projectPath] = update.hasMore ?? false;
+      } catch (error) {
+        // batch is not a transaction. Keep rollback scoped to touched rows, not a
+        // serialized copy of every Project, and restore the original array/order.
+        for (const { index, session } of removed.reverse())
+          model.sessions.splice(index, 0, session);
+        const appended = model.sessions.splice(
+          originalLength,
+          model.sessions.length - originalLength,
+        );
+        for (const session of appended) session[Symbol.dispose]();
+        for (const { session, snapshot } of updated.reverse()) applySnapshot(session, snapshot);
+        throw error;
+      }
     });
     return;
   }
