@@ -74,11 +74,11 @@ const EXCERPT = "[excerpt; summary unavailable] ";
 const EXCERPT_JOIN = " … ";
 /** Deterministic fallback when the summarizer keeps failing: verbatim text from every
  * source (both children of a merge), bounded to one memory line. */
-const excerpt = (sources: readonly string[]) => {
+const excerpt = (sources: readonly string[], label = EXCERPT) => {
   const room =
-    MEMORY_NODE_BYTES - memoryBytes(EXCERPT) - memoryBytes(EXCERPT_JOIN) * (sources.length - 1);
+    MEMORY_NODE_BYTES - memoryBytes(label) - memoryBytes(EXCERPT_JOIN) * (sources.length - 1);
   const each = Math.floor(room / sources.length);
-  return `${EXCERPT}${sources.map((source) => utf8Slice(source.replace(/\s+/g, " ").trim(), each)).join(EXCERPT_JOIN)}`;
+  return `${label}${sources.map((source) => utf8Slice(source.replace(/\s+/g, " ").trim(), each)).join(EXCERPT_JOIN)}`;
 };
 
 export class MemoryRangeError extends Schema.TaggedError<MemoryRangeError>()("MemoryRangeError", {
@@ -169,6 +169,7 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
     const previous: { role: "user" | "assistant"; text: string }[] = [];
     let shortest: string | undefined;
     let failures = 0;
+    let deferred = false;
     for (let attempt = 0; attempt < 5; attempt += 1) {
       let answer: string;
       try {
@@ -188,6 +189,10 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
         // Cancellation propagates. A failed answer (provider error, tool call,
         // oversized or empty output) is retried, then replaced by an excerpt.
         if (!(error instanceof MemorySummaryError)) throw error;
+        if (error.reason === "completion-skipped") {
+          deferred = true;
+          break;
+        }
         failures += 1;
         if (failures < MEMORY_SUMMARY_FAILURES) continue;
         break;
@@ -207,8 +212,8 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
     // Public chat-memory spec: five attempts, retain the shortest, measure real
     // view bytes. It explicitly tolerates slight oversize, not arbitrary truncation.
     if (shortest !== undefined) return shortest;
-    options.onExcerpt?.(task);
-    return excerpt(sources);
+    if (!deferred) options.onExcerpt?.(task);
+    return excerpt(sources, deferred ? "[excerpt; summary deferred] " : EXCERPT);
   };
 
   const fit = async (current: MemoryTreeState, signal: AbortSignal, budget: number) => {

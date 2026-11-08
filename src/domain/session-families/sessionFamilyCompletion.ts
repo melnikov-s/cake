@@ -13,7 +13,7 @@ import type {
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import * as projectSessionMetadata from "../project-sessions/projectSessionMetadata";
-import { DateTime, Effect, Option } from "effect";
+import { DateTime, Effect, Option, Schema } from "effect";
 import { CakeChatComposerPresence } from "../../services/session-catalogs/CakeChatComposerPresence";
 import { CakeSessionRuntimes, type CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
 import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
@@ -29,6 +29,7 @@ import { SessionFamilyStorageError } from "../../contracts/storage/session-famil
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import {
   encodeCrossSessionMessage,
+  CrossSessionMessageMetadata,
   formatCrossSessionNoticeText,
   formatCrossSessionReportText,
   parseCrossSessionMessage,
@@ -45,6 +46,12 @@ const reportMessageId = (turnId: string) => {
   const hex = bytes.subarray(0, 16).toString("hex");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
+
+const isCorrelationId = Schema.is(CrossSessionMessageMetadata.fields.threadId);
+/** Saved recovery obligations can predate UUID message correlation (e.g. Durable
+ * side-chat addresses). Adapt only the envelope; retain journal/receipt identities. */
+const reportCorrelationId = (id: string) =>
+  isCorrelationId(id) ? id : reportMessageId(`legacy-correlation:${id}`);
 
 export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (turn: FamilyTurn) {
   const storage = yield* SessionFamilyStorage;
@@ -201,12 +208,12 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     {
       version: 1,
       messageId: reportMessageId(turn.turnId),
-      threadId: turn.threadId,
+      threadId: reportCorrelationId(turn.threadId),
       sequence: 1,
       expectsResponse: false,
       generatedNotice: !report,
       ...(report?.resultMessageRef ? { sourceMessageRef: report.resultMessageRef } : null),
-      ...(report ? { replyToMessageId: turn.requestMessageId } : null),
+      ...(report ? { replyToMessageId: reportCorrelationId(turn.requestMessageId) } : null),
       sender: {
         sessionId: turn.sessionId,
         title: childSummary?.title ?? `Session ${turn.sessionId}`,
@@ -460,12 +467,12 @@ const deliverRequesterNotice = Effect.fn("SessionFamilies.deliverRequesterNotice
     {
       version: 1,
       messageId: reportMessageId(turn.turnId),
-      threadId: turn.threadId,
+      threadId: reportCorrelationId(turn.threadId),
       sequence: 1,
       expectsResponse: false,
       generatedNotice: !report,
       ...(report?.resultMessageRef ? { sourceMessageRef: report.resultMessageRef } : null),
-      ...(report ? { replyToMessageId: turn.requestMessageId } : null),
+      ...(report ? { replyToMessageId: reportCorrelationId(turn.requestMessageId) } : null),
       sender: {
         sessionId: turn.sessionId,
         title: `Session ${turn.sessionId}`,

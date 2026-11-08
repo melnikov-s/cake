@@ -269,6 +269,28 @@ const definitions = [
     },
   },
   {
+    command: "sessions.deliveries",
+    scope: "global",
+    discovery: {
+      topic: "sessions",
+      summary: "List failed result deliveries",
+      result:
+        "Own failed handoffs with IDs, error, attempt count and retrying/paused status; no result bodies.",
+    },
+  },
+  {
+    command: "sessions.deliveries.retry",
+    scope: "global",
+    discovery: {
+      topic: "sessions",
+      summary: "Retry a failed result delivery",
+      guidance: [
+        "After fixing the reported cause, re-arm one own failed handoff. This retries delivery, never the original task; admission receipts still prevent duplicates.",
+      ],
+      examples: [{ input: { id: "delivery-id" } }],
+    },
+  },
+  {
     command: "sessions.completions",
     scope: "global",
     discovery: {

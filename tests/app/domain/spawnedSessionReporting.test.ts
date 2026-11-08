@@ -20,6 +20,8 @@ import { describe } from "vitest";
 import * as boards from "../../../src/domain/artifacts/messageBoards";
 import * as completionInbox from "../../../src/domain/conversations/completionInbox";
 import * as families from "../../../src/domain/session-families/sessionFamilies";
+import * as agentControl from "../../../src/domain/application/agentControl";
+import { NOTICE_DELIVERY_MAX_FAILURES } from "../../../src/contracts/session-families/session-family-document";
 import * as updateBatches from "../../../src/domain/session-families/updateBatches";
 import { acquireOptions as projectOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { acquireOptions as chatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
@@ -412,6 +414,140 @@ const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function
   );
   return yield* Schema.decodeUnknownEffect(Schema.Struct({ sessionId: Schema.String }))(result);
 });
+
+for (const legacy of [false, true]) {
+  it.effect.each(["notification", "reply", "aborted"] as const)(
+    `delivers ${legacy ? "saved side-chat" : "UUID"} %s handoffs without changing journal identities`,
+    (mode) =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            const recipient = projectChatSessionId("/project");
+            const sessionId = legacy ? `${recipient}:side-chat:44978` : parentId;
+            const turn = {
+              sessionId,
+              senderSessionId: recipient,
+              turnId: sessionId,
+              requestMessageId: sessionId,
+              threadId: sessionId,
+              reported: false,
+              outcome: mode === "aborted" ? ("aborted" as const) : ("complete" as const),
+              resultDelivery: mode === "reply" ? ("reply" as const) : ("notification" as const),
+              ...(mode !== "aborted"
+                ? { report: { outcome: "completed" as const, text: resultText } }
+                : null),
+            };
+            yield* f.storage.recordTurn(turn);
+            if (mode === "reply") yield* assembleCoordinator(recipient);
+            yield* families.runPass();
+            if (mode === "reply") {
+              yield* Deferred.await(f.received);
+              const message = parseCrossSessionMessage(f.chatTranscripts.get(recipient)?.[0] ?? "");
+              assert.ok(message);
+              assert.ok(message.text.includes(resultText));
+              assert.equal(message.metadata.sender.sessionId, sessionId);
+              assert.notEqual(message.metadata.messageId, message.metadata.replyToMessageId);
+              if (!legacy) {
+                assert.equal(message.metadata.threadId, turn.threadId);
+                assert.equal(message.metadata.replyToMessageId, turn.requestMessageId);
+              }
+              yield* families.runPass();
+              assert.equal(f.deliveries.length, 1);
+            } else {
+              assert.equal(f.deliveries.length, 0);
+              const state = yield* f.storage.state();
+              assert.equal(state.coordinatorDigest?.[0]?.id, turn.turnId);
+              assert.equal(state.completionInbox?.[0]?.resultText, turn.report?.text);
+            }
+            assert.deepEqual((yield* f.storage.state()).turns, []);
+          }),
+        );
+      }),
+  );
+}
+
+it.effect(
+  "pauses a failing handoff across restart while healthy deliveries proceed, then retries only its delivery",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.run(
+        Effect.gen(function* () {
+          const recipient = projectChatSessionId("/project");
+          yield* assembleCoordinator(recipient);
+          const turn = {
+            sessionId: parentId,
+            senderSessionId: recipient,
+            turnId: parentId,
+            threadId: parentId,
+            requestMessageId: parentId,
+            reported: false,
+            outcome: "complete" as const,
+            resultDelivery: "reply" as const,
+            report: { outcome: "completed" as const, text: resultText },
+          };
+          yield* f.storage.recordTurn(turn);
+          yield* f.storage.recordTurn({
+            ...turn,
+            turnId: "healthy-notification",
+            resultDelivery: "notification",
+          });
+          const sessions = yield* CakeSessionRuntimes;
+          let attempts = 0;
+          const unavailable = {
+            ...sessions,
+            acquireSession: () => {
+              attempts++;
+              return Effect.fail(
+                new PiSessionError({
+                  operation: "acquireSession",
+                  message: "Temporarily unavailable",
+                }),
+              );
+            },
+          };
+          for (let pass = 0; pass < NOTICE_DELIVERY_MAX_FAILURES + 2; pass++)
+            yield* families.runPass().pipe(Effect.provideService(CakeSessionRuntimes, unavailable));
+          assert.equal(attempts, NOTICE_DELIVERY_MAX_FAILURES);
+          const state = yield* f.storage.state();
+          assert.ok(state.completionInbox?.some((item) => item.id === "healthy-notification"));
+          assert.equal(state.turns[0]?.report?.text, resultText);
+          // Re-open the durable storage, retaining the actual conversation and its receipts.
+          yield* Effect.gen(function* () {
+            yield* families.initialize("/cake/sessions", "/cake/resolved", () =>
+              Effect.succeed(false),
+            );
+            yield* families.runPass().pipe(Effect.provideService(CakeSessionRuntimes, unavailable));
+            assert.equal(attempts, NOTICE_DELIVERY_MAX_FAILURES);
+            const caller = {
+              sessionId: recipient,
+              title: "Project Chat",
+              kind: "cake-chat" as const,
+            };
+            const listed = yield* agentControl.invoke("sessions.deliveries", {}, caller);
+            assert.ok(JSON.stringify(listed).includes('"status":"paused"'));
+            assert.ok(!JSON.stringify(listed).includes(resultText));
+            const other = { ...caller, sessionId: CAKE_CHAT_SESSION_ID };
+            const hidden = yield* agentControl.invoke("sessions.deliveries", {}, other);
+            assert.ok(JSON.stringify(hidden).includes('"total":0'));
+            const rejected = yield* agentControl
+              .invoke("sessions.deliveries.retry", { id: turn.turnId }, other)
+              .pipe(Effect.result);
+            assert.equal(rejected._tag, "Failure");
+            yield* agentControl.invoke("sessions.deliveries.retry", { id: turn.turnId }, caller);
+            yield* families.runPass();
+            yield* Deferred.await(f.received);
+            yield* families.runPass();
+            yield* families.runPass();
+            assert.equal(f.deliveries.length, 1);
+            assert.ok(f.chatTranscripts.get(recipient)?.[0]?.includes(resultText));
+            assert.deepEqual((yield* (yield* SessionFamilyStorage).state()).turns, []);
+          }).pipe(Effect.provide(familyStorageHarness(f.harness.files).layer));
+        }),
+      );
+    }),
+);
 
 it.effect(
   "a Project Chat with no open window launches a worker in another registered subfolder Project without any approval",

@@ -289,6 +289,15 @@ Reply admissions use the normal parent queue and stable automatic-report ID. Con
 cancellation receipts settle retries even after transcript compaction. Composer holds are bounded
 by the existing two-minute presence timeout. A user input retains priority over a report-started run.
 
+Each result handoff gets at most three failed automatic delivery attempts. Exhausted
+handoffs pause independently and retain their original result, journal IDs, admission
+receipts and last error across restart; healthy handoffs and other worker lanes continue.
+`sessions.deliveries` lists the calling conversation's failed handoffs and retrying/paused
+status. After fixing the cause, `sessions.deliveries.retry {id}` re-arms that handoff's
+delivery budget without restarting its original task or clearing admission receipts.
+Older recovery records may use session addresses for correlation. Delivery maps these
+to stable UUID envelope IDs while preserving valid correlation IDs and stored identities.
+
 Launch records retain launchedAt and lastReport for activity/status surfaces, independently of
 notification delivery. A lastReport describes only the turn that produced it: once a later turn
 starts, status surfaces show that turn (running, then its own outcome) and neither the report's

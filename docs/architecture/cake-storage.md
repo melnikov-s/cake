@@ -642,13 +642,22 @@ IDs. Ready queues permit up to eight independent requests; a leaf starts with fe
 eight preceding unbuilt leaves, and parents start only after both children are committed.
 The single persistence owner does not serialize HTTP requests. Each completed node and its
 DAG checkpoint commit atomically; the built-prefix cursor/view advances in order. Version
-four checkpoints discard earlier derived indexes (including pending jobs) and rebuild
-from dialogue and tool originals. Old immutable summaries remain stored but are no longer
-indexed; original entries and the active head are not rewritten. Range IDs are reassigned
-by the rebuilt index. A range in a retained pre-rebuild head cannot resolve to a
-newer node: zoom/inspection rejects that stale handle until the next memory handoff;
-original-history reads remain available. Subsequent reopen retries unfinished nodes,
-not their already committed children.
+six preserves older checkpoints and summaries. On upgrade it saves the end of the
+conversation as a fixed tool-inclusion boundary, before admitting new input; this is
+independent of the older indexing cursor and never moves on restart. Tool calls/results
+at or before that boundary are excluded from newly indexed sources, including mixed
+assistant text/tool messages. Unindexed historical dialogue uses labelled local excerpts,
+and previously planned historical slots settle locally without provider calls. Full
+originals remain retrievable. Future dialogue and tools use normal incremental summaries.
+Version four had reset indexes for a full historical rebuild. Its older immutable summary
+nodes remain available: a one-time recovery scans them for a complete chronological prefix
+whose original-entry coverage is ahead of the partial rebuild, validates child relationships,
+and restores that prefix without model requests. Current progress and pending jobs remain
+when no older complete prefix is ahead. Source entries, unused summary nodes and the active
+head are not rewritten. Zoom/inspection checks the retained head's original-entry bounds,
+including when recovery restored older nodes, so stale handles cannot silently resolve to
+different history. Original-history reads remain available. Subsequent reopen retries
+unfinished nodes, not their already committed children.
 The bounded working window limits live state; dependencies drain before admitting another
 source window. Reads and zoom lazily retrieve immutable entries, not a lifetime node cache.
 

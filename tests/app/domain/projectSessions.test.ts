@@ -475,6 +475,7 @@ const makeLayer = (
     Layer.succeed(SessionFamilyStorage, {
       authorizeAutoMerge: () => Effect.void,
       markNoticeFailure: () => Effect.void,
+      retryNoticeDelivery: () => Effect.void,
       recordAutoMerge: () => Effect.void,
       updateAutoMerge: () => Effect.void,
       invalidateAutoMerge: () => Effect.void,

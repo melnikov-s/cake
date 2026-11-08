@@ -564,13 +564,14 @@ describe("Session Family outcome delivery", () => {
     },
   );
 
-  it.effect(
-    "replays a substantive family result when a restart lost its explicitly queued reply",
-    () =>
+  it.effect.each([false, true])(
+    "replays a substantive family result when a restart lost its explicitly queued reply (legacy correlation: %s)",
+    (legacy) =>
       Effect.gen(function* () {
         const received = yield* Deferred.make<string>();
         const restored = {
           ...outcome,
+          ...(legacy ? { threadId: "legacy-family", requestMessageId: "legacy-request" } : null),
           replyMessageIds: ["803c90fa-d718-4ecd-97f4-31071609156b"],
           deliveryTurnId: "lost-queue-turn",
           report: {
@@ -584,7 +585,12 @@ describe("Session Family outcome delivery", () => {
           yield* storage.recordTurn(restored);
           yield* Effect.scoped(deliver(restored));
           const message = parseCrossSessionMessage(yield* Deferred.await(received));
+          assert.ok(message);
           assert.ok(message?.text.includes(restored.report.text));
+          if (!legacy) {
+            assert.equal(message.metadata.threadId, outcome.threadId);
+            assert.equal(message.metadata.replyToMessageId, outcome.requestMessageId);
+          }
           assert.equal(message?.metadata.expectsResponse, false);
           assert.equal(message?.metadata.generatedNotice, false);
         }).pipe(

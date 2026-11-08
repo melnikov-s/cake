@@ -16,7 +16,7 @@ export async function abortableMemoryTask<A>(task: Promise<A>, signal: AbortSign
 
 export class MemorySummaryError extends Schema.TaggedError<MemorySummaryError>()(
   "MemorySummaryError",
-  { reason: Schema.Literals(["completion-failed", "empty-summary"]) },
+  { reason: Schema.Literals(["completion-failed", "empty-summary", "completion-skipped"]) },
 ) {}
 
 /** Catch-up has no wall-clock or call-count deadline. Its lifecycle owner cancels

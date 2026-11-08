@@ -12,6 +12,7 @@ import {
   PendingReportRead,
 } from "../../contracts/conversations/pending-report";
 import { CompletionInboxUpdate } from "../../contracts/conversations/completion-inbox";
+import { NoticeDeliveryRetry } from "../../contracts/session-families/session-family-document";
 import { compactDiscoveryGuidance } from "../../contracts/agent/discovery-result-text";
 import { AgentListInput } from "../../contracts/agent/agent-list-data";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
@@ -45,6 +46,30 @@ export function createSessionFamilyOperations(
         : api().invokeAppControl(command, input as JsonObject, context.signal);
     };
   return [
+    {
+      command: "sessions.deliveries",
+      requires: "invokeAppControl",
+      topic: "sessions",
+      summary: "List failed result deliveries",
+      inputSchema: AgentListInput,
+      examples: [{ input: {} }],
+      result:
+        "Own failed handoff IDs, errors, attempt counts and retrying/paused status; no result bodies.",
+      execute: invokeAppControl("sessions.deliveries"),
+    },
+    {
+      command: "sessions.deliveries.retry",
+      requires: "invokeAppControl",
+      topic: "sessions",
+      summary: "Retry a failed result delivery",
+      guidance: [
+        "Fix the reported cause first. Retries only the handoff, preserving admission receipts; never restarts the original task.",
+      ],
+      inputSchema: NoticeDeliveryRetry,
+      examples: [{ input: { id: "delivery-id" } }],
+      result: "Queued for another bounded delivery attempt.",
+      execute: invokeAppControl("sessions.deliveries.retry"),
+    },
     {
       command: "sessions.reports",
       requires: "invokeAppControl",

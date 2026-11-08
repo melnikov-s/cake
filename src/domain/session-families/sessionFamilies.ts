@@ -4,6 +4,7 @@ import { Cause, Effect, Schedule } from "effect";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { deliver } from "./sessionFamilyCompletion";
+import { NOTICE_DELIVERY_MAX_FAILURES } from "../../contracts/session-families/session-family-document";
 
 export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, R>(
   activeRoot: string,
@@ -85,7 +86,12 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
  * report message IDs and durable receipts reconcile interrupted attempts on retry. */
 export const runPass = Effect.fn("SessionFamilies.deliverPendingNotices")(function* () {
   const storage = yield* SessionFamilyStorage;
-  const turns = (yield* storage.state()).turns.filter((turn) => turn.outcome && !turn.reported);
+  const turns = (yield* storage.state()).turns.filter(
+    (turn) =>
+      turn.outcome &&
+      !turn.reported &&
+      (turn.deliveryFailureCount ?? 0) < NOTICE_DELIVERY_MAX_FAILURES,
+  );
   yield* Effect.forEach(
     turns,
     (turn) =>
@@ -94,7 +100,12 @@ export const runPass = Effect.fn("SessionFamilies.deliverPendingNotices")(functi
         Effect.catchCauseIf(
           (cause) => !Cause.hasInterrupts(cause),
           (cause) =>
-            Effect.logError("Session result delivery will retry", cause).pipe(
+            Effect.logError(
+              (turn.deliveryFailureCount ?? 0) + 1 >= NOTICE_DELIVERY_MAX_FAILURES
+                ? "Session result delivery paused; inspect sessions.deliveries and retry with sessions.deliveries.retry"
+                : "Session result delivery will retry",
+              cause,
+            ).pipe(
               Effect.annotateLogs({ turnId: turn.turnId, sessionId: turn.sessionId }),
               Effect.andThen(storage.markNoticeFailure(turn.turnId, Cause.pretty(cause))),
             ),

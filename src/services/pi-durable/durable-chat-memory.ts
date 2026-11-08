@@ -40,21 +40,38 @@ import type { ContextInspection } from "../../contracts/conversations/context-in
 import { contextMessage } from "../pi/runtime/context-outline";
 import { splitContextReminders } from "../pi/runtime/session-context-reminders";
 import { withoutPassiveNotices } from "../../contracts/conversations/internal-input";
-import { memoryWork, type MemoryWork } from "../opt-memory/memory-work";
+import { MemorySummaryError, memoryWork, type MemoryWork } from "../opt-memory/memory-work";
 
 import { durableSideChatImport, importedHistoryText } from "./durable-side-chat-history";
+import { recoverRetainedMemory } from "./durable-memory-migration";
 
-const StateDoc = defineDoc<MemoryTreeState>({
+const ChatMemoryState = Schema.Struct({
+  ...MemoryTreeState.fields,
+  recoverRetained: Schema.mutableKey(Schema.optionalKey(Schema.Boolean)),
+  captureToolHistoryAfter: Schema.mutableKey(Schema.optionalKey(Schema.Boolean)),
+  toolHistoryAfter: Schema.mutableKey(
+    Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  ),
+});
+interface ChatMemoryState extends Schema.Schema.Type<typeof ChatMemoryState> {}
+const StateDoc = defineDoc<ChatMemoryState>({
   kind: "cake.chat-memory-state",
-  version: 4,
+  version: 6,
   scope: "conversation",
   checkpointWhen: () => false,
   history: "latest",
   fork: "initial",
-  initial: initialMemoryTreeState,
-  // Earlier indexes omitted tool traffic. Rebuild only the derived tree from
-  // authoritative originals; never reuse old summaries or pending merge jobs.
-  migrate: () => initialMemoryTreeState(),
+  initial: () => ({ ...initialMemoryTreeState(), toolHistoryAfter: 0 }),
+  // Capture the upgrade boundary, not the old indexing cursor. Preserve every
+  // completed node and keep historical tools out of newly admitted work.
+  migrate: (value, fromVersion) => {
+    const previous = Schema.decodeUnknownSync(ChatMemoryState)(value);
+    return {
+      ...previous,
+      ...(fromVersion === 4 ? { recoverRetained: true } : null),
+      ...(previous.toolHistoryAfter === undefined ? { captureToolHistoryAfter: true } : null),
+    };
+  },
 });
 // Immutable nodes use indexed entry reads, not document families: Durable retains loaded
 // document trackers for its lifetime. Only StateDoc (bounded views/DAG + logarithmic forest) is live.
@@ -77,9 +94,10 @@ export interface DurableMemoryOptions {
   }) => Promise<string>;
 }
 
-function durableMessageText(message: Message): string {
+function durableMessageText(message: Message, includeTools = true): string {
   if (message.role === "system") return "";
-  if (message.role === "toolResult")
+  if (message.role === "toolResult") {
+    if (!includeTools) return "";
     return `tool-result: ${JSON.stringify({
       ...message,
       content: message.content.map((block) =>
@@ -88,12 +106,13 @@ function durableMessageText(message: Message): string {
           : block,
       ),
     })}`;
+  }
   if (message.role === "assistant")
     return message.content
       .flatMap((block) =>
         block.type === "text" && block.text.trim()
           ? [`talk: ${block.text}`]
-          : block.type === "toolCall"
+          : includeTools && block.type === "toolCall"
             ? [
                 `tool-call: ${JSON.stringify({ type: block.type, id: block.id, name: block.name, arguments: block.arguments })}`,
               ]
@@ -153,7 +172,7 @@ function durableMessageText(message: Message): string {
   if (/^Background subagent\b/.test(text)) return `work: ${text}`;
   return `user: ${text}`;
 }
-const sourceText = (entry: EntryRecord) => {
+const sourceText = (entry: EntryRecord, includeTools = true) => {
   const imported = durableSideChatImport(entry);
   if (imported) return importedHistoryText(imported);
   // Only originals enter the tree. Reset handoffs, system declarations, emergency
@@ -163,7 +182,12 @@ const sourceText = (entry: EntryRecord) => {
       "work: " + Schema.decodeUnknownSync(Schema.Struct({ text: Schema.String }))(entry.data).text
     );
   if (!["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind)) return "";
-  return entry.model?.map(durableMessageText).filter(Boolean).join("\n") ?? "";
+  return (
+    entry.model
+      ?.map((message) => durableMessageText(message, includeTools))
+      .filter(Boolean)
+      .join("\n") ?? ""
+  );
 };
 const line = (node: AnchoredNode) =>
   `${node.id}+${node.n}|[originals=${node.fromEntryId}..${node.throughEntryId}] ${node.text.replace(/\s*\n\s*/g, " ")}`;
@@ -176,12 +200,27 @@ export function createDurableChatMemory(
   options: DurableMemoryOptions,
 ) {
   const contextFor = (signal: AbortSignal) => withAbortSignal(signal, BACKGROUND_CONTEXT);
-  const state = async (signal: AbortSignal) =>
-    structuredClone(
-      await Schema.decodeUnknownPromise(MemoryTreeState)(
-        (await harness.snapshot(StateDoc, root.id, contextFor(signal))) ?? initialMemoryTreeState(),
-      ),
+  let toolHistoryAfter = 0;
+  /** Runtime boot calls this before admitting new inputs, including for an old
+   * conversation that has no index yet. The saved boundary never moves on reopen. */
+  const initializeToolPolicy = async (signal: AbortSignal) => {
+    const snapshot = await harness.snapshot(StateDoc, root.id, contextFor(signal));
+    if (snapshot && !snapshot.captureToolHistoryAfter) return;
+    const through = (await root.entries({}, 1, undefined, contextFor(signal))).items[0]?.id ?? 0;
+    await root.commit(async (tx) => {
+      const doc = await tx.doc(StateDoc, root.id);
+      if (snapshot && !doc.captureToolHistoryAfter) return;
+      doc.toolHistoryAfter = through;
+      delete doc.captureToolHistoryAfter;
+    }, contextFor(signal));
+  };
+  const state = async (signal: AbortSignal) => {
+    const snapshot = await harness.snapshot(StateDoc, root.id, contextFor(signal));
+    toolHistoryAfter = snapshot?.toolHistoryAfter ?? 0;
+    return structuredClone(
+      await Schema.decodeUnknownPromise(MemoryTreeState)(snapshot ?? initialMemoryTreeState()),
     );
+  };
   const node = async (ref: number, signal: AbortSignal): Promise<StoredNode> => {
     const entry = (await storage.entry(root.id, entryId(ref), contextFor(signal)))?.entry;
     if (!NodeEntry.is(entry)) throw new Error(`Missing Cake Chat summary entry ${ref}`);
@@ -207,7 +246,10 @@ export function createDurableChatMemory(
       original: async (ref, signal) => {
         const original = (await storage.entry(root.id, entryId(ref), contextFor(signal)))?.entry;
         if (!original) throw new Error("Cake Chat original is missing");
-        return sourceText(original);
+        return (
+          sourceText(original, original.id > toolHistoryAfter) ||
+          "Historical tool traffic omitted from automatic memory; the original remains retrievable."
+        );
       },
       context: async (signal) => {
         const active = await root.context(contextFor(signal));
@@ -235,6 +277,24 @@ export function createDurableChatMemory(
   ): Promise<DurableChatMemoryView & { complete: boolean }> => {
     const work = batch.work ?? memoryWork(signal);
     signal = work.signal;
+    let snapshot = await harness.snapshot(StateDoc, root.id, contextFor(signal));
+    if (snapshot?.captureToolHistoryAfter) {
+      await initializeToolPolicy(signal);
+      snapshot = await harness.snapshot(StateDoc, root.id, contextFor(signal));
+    }
+    if (snapshot?.recoverRetained) {
+      const recovered = await recoverRetainedMemory(root, await state(signal), signal);
+      await root.commit(async (tx) => {
+        const doc = await tx.doc(StateDoc, root.id);
+        if (!doc.recoverRetained) return;
+        if (recovered) {
+          Object.assign(doc, recovered);
+          delete doc.pending;
+          delete doc.reference;
+        }
+        delete doc.recoverRetained;
+      }, contextFor(signal));
+    }
     const current = await state(signal);
     // Advisory cache refresh may only consume a complete persisted index. Never
     // wait on a pending DAG (including a serial merge chain) or launch providers.
@@ -246,13 +306,29 @@ export function createDurableChatMemory(
       partCount: current.parts.length,
     });
     let processed = 0;
+    const historicalWork: MemoryWork = {
+      ...work,
+      async complete() {
+        signal.throwIfAborted();
+        throw new MemorySummaryError({ reason: "completion-skipped" });
+      },
+    };
     if (current.pending) {
       if (batch.readyOnly) return incomplete();
       processed += current.pending.jobs.filter(
         (job) => job.n === 1 && job.id >= current.count,
       ).length;
-      await build(current, work, budget);
+      const historical = current.pending.jobs.every(
+        (job) => job.original === undefined || job.original <= toolHistoryAfter,
+      );
+      await build(current, historical ? historicalWork : work, budget);
     }
+    const buildOriginals = async (originals: readonly EntryRecord[]) => {
+      await plan(current, originals, signal);
+      const historical = originals.every((original) => original.id <= toolHistoryAfter);
+      await build(current, historical ? historicalWork : work, budget);
+      processed += originals.length;
+    };
     const newest =
       cutoff ?? (await root.entries({}, 1, undefined, contextFor(signal))).items[0]?.id;
     let complete = true;
@@ -267,12 +343,20 @@ export function createDurableChatMemory(
         let skipped: number | undefined;
         for (const original of page.items) {
           signal.throwIfAborted();
-          if (sourceText(original)) {
+          if (sourceText(original, original.id > toolHistoryAfter)) {
             if (batch.readyOnly) return incomplete();
+            const firstOriginal = originals[0];
+            if (
+              firstOriginal &&
+              firstOriginal.id <= toolHistoryAfter &&
+              original.id > toolHistoryAfter
+            ) {
+              await buildOriginals(originals);
+              originals.length = 0;
+            }
             if (processed + originals.length >= (batch.maxOriginals ?? Infinity)) {
               if (originals.length) {
-                await plan(current, originals, signal);
-                await build(current, work, budget);
+                await buildOriginals(originals);
               }
               complete = false;
               break scan;
@@ -281,9 +365,7 @@ export function createDurableChatMemory(
           } else skipped = original.id;
         }
         if (originals.length) {
-          await plan(current, originals, signal);
-          await build(current, work, budget);
-          processed += originals.length;
+          await buildOriginals(originals);
         }
         if (skipped !== undefined) current.through = Math.max(current.through ?? -1, skipped);
         cursor = page.next;
@@ -314,18 +396,36 @@ export function createDurableChatMemory(
       );
     });
     const { head } = await root.context(contextFor(signal));
-    // Rebuilding renumbers ranges without rewriting the live head. A line from
-    // that head must never silently resolve to a newly indexed, different source.
-    if (
-      head &&
-      found.entry > head.id &&
-      head.model?.some(
-        (message) =>
-          message.role === "user" &&
-          typeof message.content === "string" &&
-          message.content.startsWith("<chat>\n"),
-      )
-    )
+    const heads =
+      head?.model?.flatMap((message) =>
+        message.role === "user" &&
+        typeof message.content === "string" &&
+        message.content.startsWith("<chat>\n")
+          ? [message.content]
+          : [],
+      ) ?? [];
+    // Recovery can restore older nodes, so write order alone no longer proves
+    // the retained head's handles still name the same original history.
+    let stale = head !== undefined && found.entry > head.id && heads.length > 0;
+    for (const text of heads) {
+      for (const match of text.matchAll(/^(\d+)\+(\d+)\|\[originals=(\d+)\.\.(\d+)\]/gm)) {
+        const start = Number(match[1]);
+        const size = Number(match[2]);
+        if (id < start || id + n > start + size) continue;
+        const advertised = await lookupIndexed(start, size, signal).catch((error: unknown) => {
+          if (error instanceof MemoryRangeError) return undefined;
+          throw error;
+        });
+        const bounds = advertised && (await anchored(advertised, signal));
+        if (
+          !bounds ||
+          bounds.fromEntryId !== Number(match[3]) ||
+          bounds.throughEntryId !== Number(match[4])
+        )
+          stale = true;
+      }
+    }
+    if (stale)
       throw new Error(
         "The memory index was rebuilt; this id+n handle is stale and may now identify different history. Do not retry these coordinates. Use archive_search with [originals=A..B] from the old memory line (fromEntryId=A, throughEntryId=B), or a specific query if it has no bounds, then archive_read. Fresh Zoom handles arrive in <chat> at the next memory handoff; only then use those refreshed ranges.",
       );
@@ -413,5 +513,5 @@ export function createDurableChatMemory(
       })),
     };
   };
-  return { synchronize, zoom, inspect };
+  return { initializeToolPolicy, synchronize, zoom, inspect };
 }

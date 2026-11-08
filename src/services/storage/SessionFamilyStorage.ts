@@ -199,6 +199,10 @@ export class SessionFamilyStorage extends Context.Service<
       turnId: string,
       message: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly retryNoticeDelivery: (
+      recipientSessionId: string,
+      turnId: string,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
     /** Serializes retry admission with explicit queue withdrawal, not model execution. */
     readonly withNoticeDelivery: <A, E, R>(
       effect: Effect.Effect<A, E, R>,
@@ -876,9 +880,25 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             ...document,
             turns: document.turns.map((turn) =>
               turn.turnId === turnId && !turn.reported
-                ? { ...turn, deliveryError: message.slice(0, 2000) }
+                ? {
+                    ...turn,
+                    deliveryError: message.slice(0, 2000),
+                    deliveryFailureCount: (turn.deliveryFailureCount ?? 0) + 1,
+                  }
                 : turn,
             ),
+          })),
+      );
+      const retryNoticeDelivery = Effect.fn("SessionFamilyStorage.retryNoticeDelivery")(
+        (recipientSessionId: string, turnId: string) =>
+          update((document) => ({
+            ...document,
+            turns: document.turns.map((turn) => {
+              if (turn.turnId !== turnId || turn.senderSessionId !== recipientSessionId)
+                return turn;
+              const { deliveryError: _error, deliveryFailureCount: _failures, ...rest } = turn;
+              return rest;
+            }),
           })),
       );
       const withoutNotice = (
@@ -1220,6 +1240,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         closeUpdateBatch,
         discardUpdates,
         markNoticeFailure,
+        retryNoticeDelivery,
         withNoticeDelivery: (effect) => noticeDeliveryLock.withPermit(effect),
         withdrawNotices,
         removeUnmaterializedChild,

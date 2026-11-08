@@ -17,6 +17,10 @@ import {
 const BoundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const BoundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 
+export const NOTICE_DELIVERY_MAX_FAILURES = 3;
+export const NoticeDeliveryRetry = Schema.Struct({ id: BoundedId });
+export interface NoticeDeliveryRetry extends Schema.Schema.Type<typeof NoticeDeliveryRetry> {}
+
 export const SessionFamilyChild = Schema.Struct({
   sessionId: BoundedId,
   parentSessionId: BoundedId,
@@ -125,6 +129,8 @@ export const FamilyTurn = Schema.Struct({
   deliveryTurnId: Schema.optionalKey(BoundedId),
   /** Last failed handoff attempt; the obligation remains open for retry. */
   deliveryError: Schema.optionalKey(Schema.String),
+  /** Exhausted deliveries remain durable until explicitly retried. */
+  deliveryFailureCount: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   replyMessageIds: Schema.optionalKey(Schema.Array(BoundedId)),
   outcome: Schema.optionalKey(Schema.Literals(["complete", "failed", "aborted"])),
   resultDelivery: Schema.optionalKey(ResultDelivery),

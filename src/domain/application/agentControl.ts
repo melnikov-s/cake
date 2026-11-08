@@ -62,6 +62,7 @@ import { readProjectIconFile, summarizeProjectIconSettings } from "../projects/p
 import * as agentSettings from "./agentSettings";
 import * as pendingReports from "../conversations/pendingReports";
 import * as completionInbox from "../conversations/completionInbox";
+import * as noticeDeliveryRecovery from "../session-families/noticeDeliveryRecovery";
 import * as agentSessionMessaging from "./agentSessionMessaging";
 import * as scheduledMessageControl from "../scheduled-messages/scheduledMessageControl";
 import * as agentActionNotices from "./agentActionNotices";
@@ -630,6 +631,20 @@ export const invoke: (
             ok: true,
             command,
             ...(yield* pendingReports.acknowledge(caller.sessionId, invocation.arguments)),
+          });
+        case "sessions.deliveries":
+          if (!caller) return fail("Delivery recovery requires an actual calling Session.");
+          return toJsonValue({
+            ok: true,
+            command,
+            ...(yield* noticeDeliveryRecovery.list(caller.sessionId, invocation.arguments)),
+          });
+        case "sessions.deliveries.retry":
+          if (!caller) return fail("Delivery recovery requires an actual calling Session.");
+          return toJsonValue({
+            ok: true,
+            command,
+            ...(yield* noticeDeliveryRecovery.retry(caller.sessionId, invocation.arguments)),
           });
         case "sessions.completions":
           if (!caller) return fail("Completions require an actual calling Session.");

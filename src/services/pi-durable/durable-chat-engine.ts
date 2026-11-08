@@ -643,6 +643,7 @@ export async function openDurableChatEngine(options: {
           ),
         ),
     });
+    await memory.initializeToolPolicy(closing.signal);
     await root.commit(async (tx) => {
       await tx.doc(ChatMetadataDoc, root.id);
     }, BACKGROUND_CONTEXT);

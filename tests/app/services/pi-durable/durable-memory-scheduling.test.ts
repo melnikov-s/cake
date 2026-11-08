@@ -8,7 +8,9 @@ import {
   ResetEntry,
   ToolResultEntry,
   UserEntry,
+  AssistantEntry,
   type Storage,
+  type Conversation,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -20,8 +22,13 @@ import {
   createDurableChatMemory,
   type DurableMemoryOptions,
 } from "../../../../src/services/pi-durable/durable-chat-memory";
-import { durableModels } from "../../../fixtures/durable-chat";
+import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
 import { defaultCakeChatPreferences } from "../../../../src/contracts/cake-chats/cake-chat-preferences";
+import {
+  MemoryNode,
+  initialMemoryTreeState,
+  type MemoryTreeState,
+} from "../../../../src/services/opt-memory/memory-tree";
 
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
@@ -366,83 +373,62 @@ it.each([4_000, 40_000])(
   },
 );
 
-it.each([1, 2, 3])(
-  "rebuilds a version-%i derived index including tool originals, discarding old summaries and pending jobs",
-  async (version) => {
-    const NodeEntry = defineEntry<{ id: number; n: number; text: string; original: number }>(
-      "cake.chat-memory-node/v1",
-    );
-    const Legacy = defineDoc<{
-      through: number;
-      count: number;
-      budget: number;
-      shrinking: boolean;
-      forest: { id: number; n: number; entry: number }[];
-      parts: { id: number; n: number; entry: number; ancestors: number[] }[];
-    }>({
-      kind: "cake.chat-memory-state",
-      version,
-      scope: "conversation",
-      checkpointWhen: () => false,
-      history: "latest",
-      fork: "initial",
-      initial: () => ({
-        through: 0,
-        count: 0,
-        budget: 4_000,
-        shrinking: false,
-        forest: [],
-        parts: [],
+const legacyMemory = (version: number) =>
+  defineDoc<MemoryTreeState>({
+    kind: "cake.chat-memory-state",
+    version,
+    scope: "conversation",
+    checkpointWhen: () => false,
+    history: "latest",
+    fork: "initial",
+    initial: initialMemoryTreeState,
+  });
+const SavedNode = defineEntry<MemoryNode>("cake.chat-memory-node/v1");
+const appendTool = (root: Conversation, text: string) =>
+  root.commit(
+    (tx) =>
+      tx.appendEntry(ToolResultEntry, root.id, {
+        data: { diagnostics: [] },
+        model: [
+          {
+            role: "toolResult",
+            toolCallId: "inspect",
+            toolName: "inspect",
+            content: [{ type: "text", text }],
+            isError: false,
+            timestamp: 1,
+          },
+        ],
       }),
-    });
-    const directory = await mkdtemp(join(tmpdir(), "cake-memory-v1-"));
+    BACKGROUND_CONTEXT,
+  );
+
+it.each([1, 2, 3, 4, 5])(
+  "preserves a version-%i index and Zoom originals, indexing tools only after the upgrade boundary",
+  async (version) => {
+    const directory = await mkdtemp(join(tmpdir(), "cake-memory-preserve-"));
     cleanup.push(() => rm(directory, { recursive: true, force: true }));
     const database = join(directory, "memory.sqlite");
     const first = await fixture(async () => "unused", await openNodeSqliteStorage(database), 4_000);
-    const original = await first.append("Persisted original");
-    const tool = await first.root.commit(
-      (tx) =>
-        tx.appendEntry(ToolResultEntry, first.root.id, {
-          data: { diagnostics: [] },
-          model: [
-            {
-              role: "toolResult",
-              toolCallId: "old-call",
-              toolName: "inspect",
-              content: [{ type: "text", text: "OLD_TOOL_OUTPUT ".repeat(200) }],
-              isError: false,
-              timestamp: 1,
-            },
-          ],
-        }),
-      BACKGROUND_CONTEXT,
-    );
-    await first.root.commit(async (tx) => {
-      const stored = await tx.appendEntry(NodeEntry, first.root.id, {
-        data: {
-          id: 0,
-          n: 1,
-          text: "old summary contaminated with tool output",
-          original: original.id,
-        },
+    const original = await first.append("Persisted original ".repeat(100));
+    const oldTool = await appendTool(first.root, "OLD_TOOL_OUTPUT ".repeat(200));
+    const saved = await first.root.commit(async (tx) => {
+      const node = await tx.appendEntry(SavedNode, first.root.id, {
+        data: { id: 0, n: 1, text: "Saved summary: original decision", original: original.id },
       });
-      Object.assign(await tx.doc(Legacy, first.root.id), {
-        through: tool.id,
+      Object.assign(await tx.doc(legacyMemory(version), first.root.id), {
+        through: oldTool.id,
         count: 1,
         budget: 4_000,
         shrinking: false,
-        forest: [{ id: 0, n: 1, entry: stored.id }],
-        parts: [{ id: 0, n: 1, entry: stored.id, ancestors: [] }],
-        ...(version === 2
-          ? {
-              pending: {
-                jobs: [{ id: 1, n: 1, original: tool.id }],
-                forest: [{ id: 1, n: 1, link: { job: 0 } }],
-              },
-            }
-          : {}),
+        forest: [{ id: 0, n: 1, entry: node.id }],
+        parts: [{ id: 0, n: 1, entry: node.id, ancestors: [] }],
       });
+      return node;
     }, BACKGROUND_CONTEXT);
+    // These tools are newer than the saved cursor but older than the upgrade.
+    // Using the cursor as the policy boundary would incorrectly backfill them.
+    await appendTool(first.root, "UNINDEXED_HISTORICAL_TOOL ".repeat(200));
     await first.root.commit(
       (tx) =>
         tx.appendEntry(ResetEntry, first.root.id, {
@@ -450,7 +436,7 @@ it.each([1, 2, 3])(
           model: [
             {
               role: "user",
-              content: "<chat>\n0+1|old summary contaminated with tool output\n</chat>",
+              content: "<chat>\n0+1|Saved summary: original decision\n</chat>",
               timestamp: 1,
             },
           ],
@@ -460,32 +446,31 @@ it.each([1, 2, 3])(
     const active = await first.root.context(BACKGROUND_CONTEXT);
     await first.harness.close(BACKGROUND_CONTEXT);
     cleanup.pop();
-    const summarize = vi.fn(async () => "tool-result: inspect old-call returned OLD_TOOL_OUTPUT");
-    const reopened = await fixture(summarize, await openNodeSqliteStorage(database), 4_000);
-    expect(
-      await reopened.memory.synchronize(signal(), undefined, undefined, { readyOnly: true }),
-    ).toMatchObject({ complete: false, sourceCount: 0 });
+    const summarize = vi.fn(async () => "summary: NEW_TOOL_OUTPUT");
+    let reopened = await fixture(summarize, await openNodeSqliteStorage(database), 4_000);
+    const retained = await reopened.memory.synchronize(signal(), undefined, undefined, {
+      readyOnly: true,
+    });
+    expect(retained).toMatchObject({ complete: true, sourceCount: 1 });
+    expect(retained.text).toContain("Saved summary: original decision");
     expect(summarize).not.toHaveBeenCalled();
-    expect(await reopened.nodes()).toHaveLength(1); // No migrated work on a cache-only read.
+    expect((await reopened.nodes()).map((node) => node.id)).toEqual([saved.id]);
     expect((await reopened.root.context(BACKGROUND_CONTEXT)).messages).toEqual(active.messages);
-    const rebuilt = await reopened.memory.synchronize(signal());
-    expect(rebuilt).toMatchObject({ sourceCount: 2, complete: true });
-    expect(rebuilt.text).toContain(
-      `0+1|[originals=${original.id}..${original.id}] user: Persisted original`,
+    expect((await reopened.memory.zoom(0, 1, signal())).text).toContain(
+      "Persisted original ".repeat(100),
     );
-    expect(rebuilt.text).toContain(
-      `1+1|[originals=${tool.id}..${tool.id}] tool-result: inspect old-call`,
-    );
-    expect(summarize).toHaveBeenCalledOnce();
-    expect((await reopened.root.context(BACKGROUND_CONTEXT)).messages).toEqual(active.messages);
-    await expect(reopened.memory.zoom(0, 1, signal())).rejects.toThrow("handle is stale");
-    await expect(reopened.memory.zoom(0, 1, signal())).rejects.toThrow(
-      "fromEntryId=A, throughEntryId=B",
-    );
-    await expect(reopened.memory.inspect(0, 1, signal())).rejects.toThrow(
-      "Fresh Zoom handles arrive",
-    );
+    await appendTool(reopened.root, "NEW_TOOL_OUTPUT ".repeat(200));
+    // A restart must not move the saved boundary past newly recorded tools.
+    await reopened.harness.close(BACKGROUND_CONTEXT);
+    cleanup.pop();
+    reopened = await fixture(summarize, await openNodeSqliteStorage(database), 4_000);
+    await reopened.memory.initializeToolPolicy(signal());
     const view = await reopened.memory.synchronize(signal());
+    expect(view).toMatchObject({ complete: true, sourceCount: 2 });
+    expect(summarize.mock.calls.length).toBeGreaterThan(0);
+    expect(JSON.stringify(summarize.mock.calls)).not.toContain("OLD_TOOL_OUTPUT");
+    expect(JSON.stringify(summarize.mock.calls)).not.toContain("UNINDEXED_HISTORICAL_TOOL");
+    expect(view.text).toContain("Saved summary: original decision");
     await reopened.root.commit(
       (tx) =>
         tx.appendEntry(ResetEntry, reopened.root.id, {
@@ -494,12 +479,261 @@ it.each([1, 2, 3])(
         }),
       BACKGROUND_CONTEXT,
     );
-    expect((await reopened.memory.zoom(0, 1, signal())).text).toContain("Persisted original");
     expect((await reopened.memory.zoom(1, 1, signal())).text).toContain(
-      "OLD_TOOL_OUTPUT ".repeat(200),
+      "NEW_TOOL_OUTPUT ".repeat(200),
     );
-    expect(await reopened.nodes()).toHaveLength(4); // Old entry plus rebuilt leaves/parent; the old node is no longer indexed.
+    const nodes = await reopened.nodes();
+    const calls = summarize.mock.calls.length;
     await reopened.memory.synchronize(signal());
-    expect(await reopened.nodes()).toHaveLength(4); // The migrated checkpoint persists; no repeated rebuild.
+    expect(await reopened.nodes()).toEqual(nodes);
+    expect(summarize).toHaveBeenCalledTimes(calls);
   },
 );
+
+it("recovers an older completed tree after a partial v4 backfill reused its ranges, without backfilling old tools again", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-memory-v4-recovery-"));
+  cleanup.push(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "memory.sqlite");
+  const first = await fixture(async () => "unused", await openNodeSqliteStorage(database), 4_000);
+  const a = await first.append("ORIGINAL_A ".repeat(100));
+  const tool = await appendTool(first.root, "OLD_TOOL_OUTPUT ".repeat(200));
+  const b = await first.append("ORIGINAL_B ".repeat(100));
+  await first.root.commit(async (tx) => {
+    const leaf = async (id: number, original: number, text: string) =>
+      tx.appendEntry(SavedNode, first.root.id, { data: { id, n: 1, original, text } });
+    const left = await leaf(0, a.id, "Saved summary A");
+    const right = await leaf(1, b.id, "Saved summary B");
+    await tx.appendEntry(SavedNode, first.root.id, {
+      data: { id: 0, n: 2, text: "Saved merged summary A and B", children: [left.id, right.id] },
+    });
+    // Newer writes cover earlier originals: write order must not choose this tree.
+    const newLeft = await leaf(0, a.id, "Backfill A");
+    const newRight = await leaf(1, tool.id, "Backfill tool");
+    const partial = await tx.appendEntry(SavedNode, first.root.id, {
+      data: { id: 0, n: 2, text: "Backfill A and tool", children: [newLeft.id, newRight.id] },
+    });
+    // A later completed leaf beyond the contiguous prefix must not replace B or duplicate it.
+    await leaf(2, b.id, "Backfill B");
+    Object.assign(await tx.doc(legacyMemory(4), first.root.id), {
+      through: tool.id,
+      count: 2,
+      budget: 4_000,
+      shrinking: false,
+      forest: [{ id: 0, n: 2, entry: partial.id }],
+      parts: [{ id: 0, n: 2, entry: partial.id, ancestors: [] }],
+      pending: { jobs: [{ id: 2, n: 1, original: b.id }], forest: [] },
+    });
+  }, BACKGROUND_CONTEXT);
+  await first.root.commit(
+    (tx) =>
+      tx.appendEntry(ResetEntry, first.root.id, {
+        head: "self",
+        model: [
+          {
+            role: "user",
+            timestamp: 1,
+            content: `<chat>\n0+2|[originals=${a.id}..${tool.id}] Backfill A and tool\n</chat>`,
+          },
+        ],
+      }),
+    BACKGROUND_CONTEXT,
+  );
+  const stored = await first.nodes();
+  await first.harness.close(BACKGROUND_CONTEXT);
+  cleanup.pop();
+  const summarize = vi.fn(async () => "New tool summary");
+  const reopened = await fixture(summarize, await openNodeSqliteStorage(database), 4_000);
+  const recovered = await reopened.memory.synchronize(signal(), undefined, undefined, {
+    readyOnly: true,
+  });
+  expect(recovered).toMatchObject({ complete: true, sourceCount: 2 });
+  expect(recovered.text).toContain("Saved summary A");
+  expect(recovered.text).toContain("Saved summary B");
+  expect(recovered.text).not.toContain("Backfill");
+  expect(summarize).not.toHaveBeenCalled();
+  expect(await reopened.nodes()).toEqual(stored);
+  await expect(reopened.memory.zoom(0, 1, signal())).rejects.toThrow("handle is stale");
+  await reopened.root.commit(
+    (tx) =>
+      tx.appendEntry(ResetEntry, reopened.root.id, {
+        head: "self",
+        model: [{ role: "user", timestamp: 1, content: recovered.text }],
+      }),
+    BACKGROUND_CONTEXT,
+  );
+  expect((await reopened.memory.zoom(0, 1, signal())).text).toContain("ORIGINAL_A ".repeat(100));
+  expect((await reopened.memory.zoom(1, 1, signal())).text).toContain("ORIGINAL_B ".repeat(100));
+  await appendTool(reopened.root, "NEW_TOOL_OUTPUT ".repeat(200));
+  expect(await reopened.memory.synchronize(signal())).toMatchObject({
+    complete: true,
+    sourceCount: 3,
+  });
+  expect(JSON.stringify(summarize.mock.calls)).not.toContain("OLD_TOOL_OUTPUT");
+  expect(JSON.stringify(summarize.mock.calls)).not.toContain("ORIGINAL_B");
+  const after = await reopened.nodes();
+  await reopened.memory.synchronize(signal());
+  expect(await reopened.nodes()).toEqual(after);
+});
+
+it.each([3, 4, 5])(
+  "preserves unfinished version-%i jobs when no older completed prefix is ahead",
+  async (version) => {
+    const summarize = vi.fn(
+      async ({ context }: Parameters<DurableMemoryOptions["summarize"]>[0]) =>
+        `Resumed ${input(context).slice(0, 50)}`,
+    );
+    const f = await fixture(summarize);
+    const a = await f.append("ORIGINAL_A ".repeat(100));
+    const b = await f.append("ORIGINAL_B ".repeat(100));
+    await f.root.commit(async (tx) => {
+      const saved = await tx.appendEntry(SavedNode, f.root.id, {
+        data: { id: 0, n: 1, original: a.id, text: "Saved A" },
+      });
+      Object.assign(await tx.doc(legacyMemory(version), f.root.id), {
+        through: a.id,
+        count: 1,
+        budget: 4_000,
+        shrinking: false,
+        forest: [{ id: 0, n: 1, entry: saved.id }],
+        parts: [{ id: 0, n: 1, entry: saved.id, ancestors: [] }],
+        pending: {
+          jobs: [
+            { id: 1, n: 1, original: b.id },
+            { id: 0, n: 2, left: { entry: saved.id }, right: { job: 0 } },
+          ],
+          forest: [{ id: 0, n: 2, link: { job: 1 } }],
+        },
+      });
+    }, BACKGROUND_CONTEXT);
+    expect(
+      await f.memory.synchronize(signal(), undefined, undefined, { readyOnly: true }),
+    ).toMatchObject({ complete: false, sourceCount: 1 });
+    expect(await f.nodes()).toHaveLength(1);
+    expect(await f.memory.synchronize(signal())).toMatchObject({ complete: true, sourceCount: 2 });
+    expect((await f.memory.zoom(0, 1, signal())).text).toContain("ORIGINAL_A ".repeat(100));
+    expect(await f.nodes()).toHaveLength(3);
+    expect(summarize).not.toHaveBeenCalled();
+    expect(JSON.stringify(summarize.mock.calls)).not.toContain("ORIGINAL_A");
+  },
+);
+
+it("initializes an existing conversation without an index without model-backed historical catch-up", async () => {
+  const summarize = vi.fn<DurableMemoryOptions["summarize"]>(async () => "Future tool summary");
+  const f = await fixture(summarize);
+  const original = "HISTORICAL_DIALOGUE ".repeat(100);
+  await f.append(original);
+  await appendTool(f.root, "HISTORICAL_TOOL ".repeat(200));
+  await f.root.commit(
+    (tx) =>
+      tx.appendEntry(AssistantEntry, f.root.id, {
+        model: [
+          {
+            ...durableAnswer("HISTORICAL_ASSISTANT ".repeat(100)),
+            content: [
+              { type: "text", text: "HISTORICAL_ASSISTANT ".repeat(100) },
+              {
+                type: "toolCall",
+                id: "old-call",
+                name: "bash",
+                arguments: { command: "HISTORICAL_TOOL_CALL" },
+              },
+            ],
+          },
+        ],
+      }),
+    BACKGROUND_CONTEXT,
+  );
+  await f.memory.initializeToolPolicy(signal());
+  const view = await f.memory.synchronize(signal());
+  expect(view).toMatchObject({ complete: true, sourceCount: 2 });
+  expect(view.text).toContain("[excerpt; summary deferred]");
+  expect(view.text).toContain("HISTORICAL_DIALOGUE");
+  expect(view.text).not.toContain("HISTORICAL_TOOL");
+  expect(view.text).toContain("HISTORICAL_ASSISTANT");
+  expect(view.text).not.toContain("HISTORICAL_TOOL_CALL");
+  expect(summarize).not.toHaveBeenCalled();
+  expect((await f.memory.zoom(0, 1, signal())).text).toContain(original);
+  await appendTool(f.root, "FUTURE_TOOL ".repeat(200));
+  await f.memory.initializeToolPolicy(signal());
+  expect(await f.memory.synchronize(signal())).toMatchObject({ complete: true, sourceCount: 3 });
+  expect(summarize).toHaveBeenCalled();
+  expect(summarize.mock.calls.map(([request]) => input(request.context)).join(" ")).toContain(
+    "FUTURE_TOOL",
+  );
+});
+
+it("settles already-planned historical tool slots without provider calls while preserving their originals", async () => {
+  const summarize = vi.fn<DurableMemoryOptions["summarize"]>(
+    async () => "Unexpected provider call",
+  );
+  const f = await fixture(summarize);
+  const a = await f.append("Saved dialogue");
+  const tool = await appendTool(f.root, "PENDING_HISTORICAL_TOOL ".repeat(200));
+  await f.root.commit(async (tx) => {
+    const saved = await tx.appendEntry(SavedNode, f.root.id, {
+      data: { id: 0, n: 1, original: a.id, text: "Saved summary" },
+    });
+    Object.assign(await tx.doc(legacyMemory(5), f.root.id), {
+      through: a.id,
+      count: 1,
+      budget: 4_000,
+      shrinking: false,
+      forest: [{ id: 0, n: 1, entry: saved.id }],
+      parts: [{ id: 0, n: 1, entry: saved.id, ancestors: [] }],
+      pending: {
+        jobs: [
+          { id: 1, n: 1, original: tool.id },
+          { id: 0, n: 2, left: { entry: saved.id }, right: { job: 0 } },
+        ],
+        forest: [{ id: 0, n: 2, link: { job: 1 } }],
+      },
+    });
+  }, BACKGROUND_CONTEXT);
+  const view = await f.memory.synchronize(signal());
+  expect(view).toMatchObject({ complete: true, sourceCount: 2 });
+  expect(view.text).toContain("Saved summary");
+  expect(view.text).not.toContain("PENDING_HISTORICAL_TOOL");
+  expect(summarize).not.toHaveBeenCalled();
+  expect((await f.memory.zoom(1, 1, signal())).text).toContain(
+    "PENDING_HISTORICAL_TOOL ".repeat(200),
+  );
+});
+
+it("keeps upgrade cutoffs independent between projects", async () => {
+  const firstSummary = vi.fn(async () => "First project summary");
+  const secondSummary = vi.fn(async () => "Second project summary");
+  const first = await fixture(firstSummary);
+  const second = await fixture(secondSummary);
+  await appendTool(first.root, "FIRST_OLD_TOOL ".repeat(100));
+  await appendTool(second.root, "SECOND_OLD_TOOL ".repeat(100));
+  await first.memory.initializeToolPolicy(signal());
+  await appendTool(first.root, "FIRST_NEW_TOOL ".repeat(100));
+  await appendTool(second.root, "SECOND_STILL_OLD_TOOL ".repeat(100));
+  await second.memory.initializeToolPolicy(signal());
+  expect(await first.memory.synchronize(signal())).toMatchObject({ sourceCount: 1 });
+  expect(await second.memory.synchronize(signal())).toMatchObject({ sourceCount: 0 });
+  expect(firstSummary).toHaveBeenCalled();
+  expect(secondSummary).not.toHaveBeenCalled();
+  await appendTool(second.root, "SECOND_NEW_TOOL ".repeat(100));
+  expect(await second.memory.synchronize(signal())).toMatchObject({ sourceCount: 1 });
+  expect(secondSummary).toHaveBeenCalled();
+});
+
+it("preserves an already saved tool boundary through a memory schema upgrade", async () => {
+  const summarize = vi.fn<DurableMemoryOptions["summarize"]>(async () => "Future tool summary");
+  const f = await fixture(summarize);
+  const oldTool = await appendTool(f.root, "HISTORICAL_TOOL ".repeat(100));
+  await f.root.commit(async (tx) => {
+    Object.assign(await tx.doc(legacyMemory(5), f.root.id), {
+      ...initialMemoryTreeState(),
+      toolHistoryAfter: oldTool.id,
+    });
+  }, BACKGROUND_CONTEXT);
+  await appendTool(f.root, "FUTURE_TOOL ".repeat(100));
+  await f.memory.initializeToolPolicy(signal());
+  expect(await f.memory.synchronize(signal())).toMatchObject({ sourceCount: 1 });
+  expect(summarize).toHaveBeenCalled();
+  const inputs = summarize.mock.calls.map(([request]) => input(request.context)).join(" ");
+  expect(inputs).toContain("FUTURE_TOOL");
+  expect(inputs).not.toContain("HISTORICAL_TOOL");
+});

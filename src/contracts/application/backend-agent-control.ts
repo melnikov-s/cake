@@ -9,6 +9,7 @@ import {
 } from "../project-sessions/session-compaction";
 import { PendingReportAcknowledge, PendingReportRead } from "../conversations/pending-report";
 import { CompletionInboxUpdate } from "../conversations/completion-inbox";
+import { NoticeDeliveryRetry } from "../session-families/session-family-document";
 import { ResultDelivery } from "../conversations/result-delivery";
 import { Schema } from "effect";
 import {
@@ -147,6 +148,8 @@ export const BackendAgentInvocation = Schema.Union([
   operation("sessions.reports.acknowledge", PendingReportAcknowledge),
   operation("sessions.completions", AgentListInput),
   operation("sessions.completions.update", CompletionInboxUpdate),
+  operation("sessions.deliveries", AgentListInput),
+  operation("sessions.deliveries.retry", NoticeDeliveryRetry),
   operation("sessions.thread", Schema.Struct({ threadId: Schema.optionalKey(id) })),
   operation("sessions.close-thread", Schema.Struct({ threadId: Schema.optionalKey(id) })),
   operation("sessions.schedule", AgentScheduleInput),
@@ -194,6 +197,8 @@ export const backendAgentCommands: ReadonlySet<string> = new Set([
   "sessions.reports.acknowledge",
   "sessions.completions",
   "sessions.completions.update",
+  "sessions.deliveries",
+  "sessions.deliveries.retry",
   "sessions.schedule",
   "sessions.scheduled",
   "sessions.scheduled-info",
