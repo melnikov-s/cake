@@ -178,6 +178,8 @@ const catalogMetadata = Effect.fn("ProjectSessions.catalogMetadata")(function* (
 
 type CatalogMetadata = Effect.Success<ReturnType<typeof catalogMetadata>>;
 
+const FAMILY_CATALOG_MEMBER_CONCURRENCY = 8;
+
 const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
   family: SessionFamily,
   state: ApplicationState,
@@ -201,56 +203,61 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
   const unread = new Set(state.unreadSessionIds);
   const sessions = yield* CakeSessionRuntimes;
   const locations = yield* metadata.locations;
-  const summaries = yield* Effect.forEach(familyMemberIds(family), (sessionId) =>
-    Effect.gen(function* () {
-      const member = familyMember(family, sessionId);
-      if (!member) return undefined;
-      const entry = yield* archive.resolvedProjectEntry(sessionId).pipe(asError("catalog"));
-      if (entry) {
-        const item = yield* archive
-          .resolvedEntry(sessionId, archivedStorageLocation(entry))
-          .pipe(asError("catalog"));
-        return { ...archivedSummary(entry, item?.title ?? sessionId, unread, family), resolved };
-      }
-      // Family membership retains routing even after an isolated checkout is retired.
-      const location: ProjectSessionLocation = locations.find(
-        (candidate) =>
-          candidate.workingDirectory === member.workingDirectory &&
-          candidate.projectPath === family.projectPath,
-      ) ?? {
-        projectPath: family.projectPath,
-        projectName:
-          state.projects.find((project) => project.path === family.projectPath)?.name ??
-          family.projectPath,
-        workingDirectory: member.workingDirectory,
-        sessionDirectory: configuration.sessionDirectory,
-        resolvedSessionDirectory: configuration.resolvedSessionDirectory,
-      };
-      const item = yield* sessions
-        .catalogEntry(
-          {
-            workingDirectory: member.workingDirectory,
-            sessionDirectory: configuration.sessionDirectory,
-          },
-          sessionId,
-        )
-        .pipe(asError("catalog"));
-      const status = yield* sessions.currentStatus({ ...location, sessionId });
-      return item
-        ? summary(
-            item,
-            location,
-            resolved,
-            unread,
-            status?.streaming ?? false,
-            family,
-            metadata.spawns.get(sessionId),
-            status?.recoveryIssue,
-            status?.latestTurnOutcome,
-            status?.workingStartedAt,
+  const summaries = yield* Effect.forEach(
+    familyMemberIds(family),
+    (sessionId) =>
+      Effect.gen(function* () {
+        const member = familyMember(family, sessionId);
+        if (!member) return undefined;
+        const entry = yield* archive.resolvedProjectEntry(sessionId).pipe(asError("catalog"));
+        if (entry) {
+          const item = yield* archive
+            .resolvedEntry(sessionId, archivedStorageLocation(entry))
+            .pipe(asError("catalog"));
+          return { ...archivedSummary(entry, item?.title ?? sessionId, unread, family), resolved };
+        }
+        // Family membership retains routing even after an isolated checkout is retired.
+        const location: ProjectSessionLocation = locations.find(
+          (candidate) =>
+            candidate.workingDirectory === member.workingDirectory &&
+            candidate.projectPath === family.projectPath,
+        ) ?? {
+          projectPath: family.projectPath,
+          projectName:
+            state.projects.find((project) => project.path === family.projectPath)?.name ??
+            family.projectPath,
+          workingDirectory: member.workingDirectory,
+          sessionDirectory: configuration.sessionDirectory,
+          resolvedSessionDirectory: configuration.resolvedSessionDirectory,
+        };
+        const item = yield* sessions
+          .catalogEntry(
+            {
+              workingDirectory: member.workingDirectory,
+              sessionDirectory: configuration.sessionDirectory,
+            },
+            sessionId,
           )
-        : undefined;
-    }),
+          .pipe(asError("catalog"));
+        const status = yield* sessions.currentStatus({ ...location, sessionId });
+        return item
+          ? summary(
+              item,
+              location,
+              resolved,
+              unread,
+              status?.streaming ?? false,
+              family,
+              metadata.spawns.get(sessionId),
+              status?.recoveryIssue,
+              status?.latestTurnOutcome,
+              status?.workingStartedAt,
+            )
+          : undefined;
+      }),
+    // Members have independent storage routes. Bound their I/O without changing
+    // family order or allowing later catalog events to overtake this batch.
+    { concurrency: FAMILY_CATALOG_MEMBER_CONCURRENCY },
   );
   return {
     resolved,

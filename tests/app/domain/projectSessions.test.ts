@@ -2472,6 +2472,377 @@ describe("Project Sessions domain", () => {
     );
   });
 
+  it.effect("bounds family member reads while preserving batches across an event burst", () =>
+    Effect.gen(function* () {
+      const ids = Array.from({ length: 17 }, (_, index) => `member-${index}`);
+      const started = yield* Queue.unbounded<{ id: string; release: Deferred.Deferred<void> }>();
+      const received = yield* Queue.unbounded<SessionCatalogUpdate>();
+      let active = 0;
+      let peak = 0;
+      let reads = 0;
+      const completed: string[] = [];
+      const layer = makeLayer(undefined, {
+        family: {
+          familyId: "family",
+          parentSessionId: "member-0",
+          projectPath: "/project",
+          workingDirectory: "/project",
+          createdAt: "2026-01-01",
+          children: ids.slice(1).map((sessionId) => ({
+            sessionId,
+            requestId: sessionId,
+            workingDirectory: `/tree/${sessionId}`,
+            createdAt: "2026-01-01",
+          })),
+        },
+        catalog: () => Stream.empty,
+        catalogEntry: (query, id) =>
+          Effect.gen(function* () {
+            assert.equal(query.workingDirectory, id === "member-0" ? "/project" : `/tree/${id}`);
+            const release = yield* Deferred.make<void>();
+            active++;
+            reads++;
+            peak = Math.max(peak, active);
+            yield* Queue.offer(started, { id, release });
+            yield* Deferred.await(release).pipe(Effect.ensuring(Effect.sync(() => active--)));
+            completed.push(id);
+            // A missing transcript must not leave a hole or scramble later rows.
+            return id === "member-6"
+              ? undefined
+              : {
+                  id,
+                  title: `Title ${id}`,
+                  created: "2026-01-01",
+                  modified: "2026-01-02",
+                  messageCount: 0,
+                  resolved: false,
+                };
+          }),
+      });
+      yield* Effect.gen(function* () {
+        const catalogs = yield* SessionCatalogChanges;
+        const updates = yield* projectSessionMetadata.observeCatalog({
+          projectPath: "/project",
+          resolved: false,
+        });
+        const fiber = yield* updates.pipe(
+          Stream.take(4),
+          Stream.runForEach((update) => Queue.offer(received, update)),
+          Effect.forkChild,
+        );
+        const firstWave = yield* Effect.forEach(Array.from({ length: 8 }), () =>
+          Queue.take(started),
+        );
+        // Queue a burst behind the initial read. Catalog events must stay serial,
+        // even though the independent members within each batch run concurrently.
+        for (const change of [
+          { _tag: "ProjectSessionChanged", sessionId: "member-1", workingDirectory: "/project" },
+          {
+            _tag: "ProjectSessionStatusChanged",
+            sessionId: "member-2",
+            workingDirectory: "/project",
+            unread: false,
+          },
+          {
+            _tag: "ProjectSessionsTransitioned",
+            sessions: [{ sessionId: "member-0", workingDirectory: "/project" }],
+          },
+        ] as const) {
+          yield* catalogs.publish({
+            ...change,
+            projectPath: "/project",
+            resolved: false,
+          });
+        }
+        for (let batch = 0; batch < 4; batch++) {
+          for (const [waveIndex, size] of [8, 8, 1].entries()) {
+            const wave =
+              batch === 0 && waveIndex === 0
+                ? firstWave
+                : yield* Effect.forEach(Array.from({ length: size }), () => Queue.take(started));
+            assert.equal(active, size);
+            assert.equal(reads, batch * 17 + (completed.length % 17) + size);
+            for (const { release } of wave.reverse()) yield* Deferred.succeed(release, undefined);
+          }
+          const update = yield* Queue.take(received);
+          assert.equal(update.revision, batch + 1);
+          const rows =
+            update._tag === "Snapshot"
+              ? update.sessions
+              : update.event._tag === "UpsertedBatch"
+                ? update.event.sessions
+                : [];
+          assert.deepEqual(
+            rows.map((row) => row.sessionId),
+            ids.filter((id) => id !== "member-6"),
+          );
+          assert.equal(rows[1]?.familyParentSessionId, "member-0");
+          assert.equal(rows[1]?.workingDirectory, "/tree/member-1");
+          assert.equal(rows[1]?.title, "Title member-1");
+        }
+        yield* Fiber.join(fiber);
+        assert.equal(peak, 8);
+        assert.equal(active, 0);
+        assert.equal(reads, 68);
+        assert.notDeepEqual(completed.slice(0, 17), ids);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect("cancels in-flight family reads without retaining work in a later observer", () =>
+    Effect.gen(function* () {
+      const started = yield* Queue.unbounded<string>();
+      let active = 0;
+      let reads = 0;
+      let block = true;
+      yield* Effect.gen(function* () {
+        const observe = projectSessionMetadata.observeCatalog({
+          projectPath: "/project",
+          resolved: false,
+        });
+        const first = yield* observe.pipe(
+          Effect.flatMap((updates) => Stream.runDrain(updates)),
+          Effect.forkChild,
+        );
+        yield* Queue.take(started);
+        yield* Queue.take(started);
+        assert.equal(active, 2);
+        yield* Fiber.interrupt(first);
+        assert.equal(active, 0);
+        assert.equal(reads, 2);
+        block = false;
+        const snapshot = (yield* (yield* observe).pipe(Stream.take(1), Stream.runCollect))[0];
+        assert.equal(snapshot?._tag, "Snapshot");
+        assert.deepEqual(
+          snapshot?._tag === "Snapshot" && snapshot.sessions.map((row) => row.sessionId),
+          ["parent", "child"],
+        );
+        assert.equal(reads, 4);
+        assert.equal(active, 0);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            family: {
+              familyId: "family",
+              parentSessionId: "parent",
+              projectPath: "/project",
+              workingDirectory: "/project",
+              createdAt: "2026-01-01",
+              children: [{ sessionId: "child", requestId: "request", createdAt: "2026-01-01" }],
+            },
+            catalog: () => Stream.empty,
+            catalogEntry: (_query, id) =>
+              Effect.gen(function* () {
+                active++;
+                reads++;
+                yield* Queue.offer(started, id);
+                yield* (block ? Effect.never : Effect.void).pipe(
+                  Effect.ensuring(Effect.sync(() => active--)),
+                );
+                return {
+                  id,
+                  title: id,
+                  created: "2026-01-01",
+                  modified: "2026-01-02",
+                  messageCount: 0,
+                  resolved: false,
+                };
+              }),
+          }),
+        ),
+      );
+    }),
+  );
+
+  it.effect("refreshes family membership and lifecycle independently for each observer", () => {
+    const child = (id: string) => ({
+      sessionId: id,
+      parentSessionId: "parent",
+      requestId: id,
+      workingDirectory: "/project",
+      createdAt: "2026-01-01",
+    });
+    let family = {
+      familyId: "family",
+      parentSessionId: "parent",
+      projectPath: "/project",
+      workingDirectory: "/project",
+      createdAt: "2026-01-01",
+      children: [child("child")],
+    };
+    let resolved = false;
+    let title = "Initial";
+    let reads = 0;
+    return Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      yield* Effect.gen(function* () {
+        const catalogs = yield* SessionCatalogChanges;
+        const active = yield* Queue.unbounded<SessionCatalogUpdate>();
+        const archived = yield* Queue.unbounded<SessionCatalogUpdate>();
+        const open = Effect.fn("test.openFamilyCatalog")(function* (
+          resolved: boolean,
+          received: Queue.Queue<SessionCatalogUpdate>,
+        ) {
+          return yield* (yield* projectSessionMetadata.observeCatalog({
+            projectPath: "/project",
+            resolved,
+          })).pipe(
+            Stream.runForEach((update) => Queue.offer(received, update)),
+            Effect.forkChild,
+          );
+        });
+        const activeFiber = yield* open(false, active);
+        const resolvedFiber = yield* open(true, archived);
+        const initial = yield* Queue.take(active);
+        assert.deepEqual(
+          initial._tag === "Snapshot" && initial.sessions.map((row) => row.sessionId),
+          ["parent", "child"],
+        );
+        const empty = yield* Queue.take(archived);
+        assert.deepEqual(empty._tag === "Snapshot" && empty.sessions, []);
+        assert.equal(reads, 2);
+        const change = { projectPath: "/project", workingDirectory: "/project", resolved: false };
+        yield* catalogs.publish({
+          _tag: "ProjectSessionChanged",
+          ...change,
+          projectPath: "/other",
+          sessionId: "parent",
+        });
+        title = "Renamed";
+        yield* catalogs.publish({
+          _tag: "ProjectSessionTitleChanged",
+          projectPath: "/project",
+          sessionId: "child",
+          title,
+        });
+        const renamed = yield* Queue.take(active);
+        assert.deepEqual(renamed._tag === "Event" && renamed.event, {
+          _tag: "TitleChanged",
+          sessionId: "child",
+          title,
+        });
+        assert.equal(reads, 2, "title and foreign-project events must not rescan the family");
+
+        const expectBatch = Effect.fn("test.expectFamilyBatch")(function* (
+          queue: Queue.Queue<SessionCatalogUpdate>,
+          ids: string[],
+          removed = false,
+        ) {
+          const update = yield* Queue.take(queue);
+          assert.equal(update._tag, "Event");
+          if (update._tag !== "Event") return;
+          if (removed) assert.deepEqual(update.event, { _tag: "RemovedBatch", sessionIds: ids });
+          else {
+            assert.equal(update.event._tag, "UpsertedBatch");
+            if (update.event._tag !== "UpsertedBatch") return;
+            assert.deepEqual(
+              update.event.sessions.map((row) => row.sessionId),
+              ids,
+            );
+            assert.ok(
+              update.event.sessions.every(
+                (row) => row.title === title && row.resolved === resolved,
+              ),
+            );
+          }
+        });
+        family = { ...family, children: [...family.children, child("added")] };
+        yield* catalogs.publish({ _tag: "ProjectSessionChanged", ...change, sessionId: "added" });
+        yield* expectBatch(active, ["parent", "child", "added"]);
+        yield* expectBatch(archived, ["parent", "child", "added"], true);
+        family = {
+          ...family,
+          children: family.children.filter((member) => member.sessionId !== "child"),
+        };
+        yield* catalogs.publish({ _tag: "ProjectSessionRemoved", sessionId: "child" });
+        for (const queue of [active, archived]) {
+          const removed = yield* Queue.take(queue);
+          assert.deepEqual(removed._tag === "Event" && removed.event, {
+            _tag: "Removed",
+            sessionId: "child",
+          });
+        }
+        yield* catalogs.publish({ _tag: "ProjectSessionChanged", ...change, sessionId: "parent" });
+        yield* expectBatch(active, ["parent", "added"]);
+        yield* expectBatch(archived, ["parent", "added"], true);
+
+        const application = yield* ApplicationState;
+        yield* application.transact((state) =>
+          Effect.succeed({ ...state, unreadSessionIds: ["added"] }),
+        );
+        yield* catalogs.publish({
+          _tag: "ProjectSessionStatusChanged",
+          ...change,
+          sessionId: "added",
+          unread: true,
+        });
+        const status = yield* Queue.take(active);
+        assert.equal(
+          status._tag === "Event" &&
+            status.event._tag === "UpsertedBatch" &&
+            status.event.sessions.find((row) => row.sessionId === "added")?.unread,
+          true,
+        );
+        yield* expectBatch(archived, ["parent", "added"], true);
+        for (const next of [true, false]) {
+          resolved = next;
+          yield* catalogs.publish({
+            _tag: "ProjectSessionStatusChanged",
+            ...change,
+            sessionId: "parent",
+            resolved,
+            unread: false,
+          });
+          yield* expectBatch(active, ["parent", "added"], resolved);
+          yield* expectBatch(archived, ["parent", "added"], !resolved);
+        }
+        yield* Fiber.interrupt(activeFiber);
+        const before = reads;
+        title = "After close";
+        yield* catalogs.publish({ _tag: "ProjectSessionChanged", ...change, sessionId: "added" });
+        yield* expectBatch(archived, ["parent", "added"], true);
+        assert.equal(reads, before, "closing the active observer must stop its member reads");
+        const fresh = (yield* (yield* projectSessionMetadata.observeCatalog({
+          projectPath: "/project",
+          resolved: false,
+        })).pipe(Stream.take(1), Stream.runCollect))[0];
+        assert.deepEqual(
+          fresh?._tag === "Snapshot" && fresh.sessions.map((row) => [row.sessionId, row.title]),
+          [
+            ["parent", title],
+            ["added", title],
+          ],
+        );
+        yield* Fiber.interrupt(resolvedFiber);
+      }).pipe(
+        Effect.provideService(SessionFamilyStorage, {
+          ...storage,
+          state: () => Effect.sync(() => ({ families: [family], turns: [], spawnedSessions: [] })),
+        }),
+      );
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          family,
+          catalog: () => Stream.empty,
+          locate: () => Effect.sync(() => (resolved ? "resolved" : "active")),
+          catalogEntry: (_query, id) =>
+            Effect.sync(() => {
+              reads++;
+              return {
+                id,
+                title,
+                created: "2026-01-01",
+                modified: "2026-01-02",
+                messageCount: 0,
+                resolved: false,
+              };
+            }),
+        }),
+      ),
+    );
+  });
+
   it.effect("activeFamilyTitleOpenedOnce", () => {
     const titleReads: string[] = [];
     const item = (id: string): PiSessionSummary => ({
