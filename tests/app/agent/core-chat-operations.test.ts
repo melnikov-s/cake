@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { cakeChatControlTools } from "../../../src/contracts/application/window-control-definitions";
 import {
   emptyProjectTodos,
@@ -8,6 +8,7 @@ import {
 import { createGlobalControlOperations } from "../../../src/domain/application/cake-global-control-operations";
 import { createMessageOperations } from "../../../src/domain/conversations/cake-message-operations";
 import { createProjectTodoOperations } from "../../../src/domain/projects/project-todo-operations";
+import { createCakeSessionPluginOperations } from "../../../src/domain/session-plugins/cake-session-plugin-operations";
 import { createCakeChatWorktreeOperations } from "../../../src/domain/worktrees/cake-session-worktree-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { coordinatorSystemPrompt } from "../../../src/services/pi-durable/coordinator-system-prompt";
@@ -19,6 +20,8 @@ import { presetGuidance } from "../../../src/contracts/model-presets/preset-cont
 const unused = async (): Promise<never> => {
   throw new Error("Reference generation must not execute controls");
 };
+const presentPlugin = vi.fn(async () => undefined);
+const generatePlugin = vi.fn(unused);
 const operations = new CakeOperationRegistry([
   ...createGlobalControlOperations({ tools: cakeChatControlTools(), invoke: unused }, () => ({
     provider: "test",
@@ -36,6 +39,14 @@ const operations = new CakeOperationRegistry([
   }),
   ...createMessageOperations({ list: unused, read: unused, open: unused }),
   ...createCakeChatWorktreeOperations({ merge: unused, mergeAndResolve: unused }),
+  ...createCakeSessionPluginOperations({
+    sessionId: "project-chat:fixture",
+    generate: generatePlugin,
+    present: presentPlugin,
+    setState: unused,
+    patchState: unused,
+    delete: unused,
+  }),
 ]);
 const reference = coreChatOperations(operations);
 const prompt = coordinatorSystemPrompt("", "/docs", false, reference);
@@ -62,6 +73,48 @@ describe("core coordinator calling reference", () => {
     expect(line("messages.read")).toBe("messages.read {ref, offset?, maxChars?}");
     expect(reference).not.toContain("session.create ");
     expect(reference).not.toContain("session.resolve ");
+  });
+
+  it("provides a directly executable action-bar recipe with owner-message and lifecycle semantics", async () => {
+    const recipe = line("plugins.present");
+    expect(recipe).toBeDefined();
+    expect(prompt).toContain(recipe!);
+    const input = JSON.parse(recipe!.slice("plugins.present ".length));
+    const mounted = await operations.invoke(
+      { command: "plugins.present", input },
+      {
+        signal: new AbortController().signal,
+        toolCallId: "prompt-plugin-recipe",
+        runtime: { sessionId: "project-chat:fixture" },
+      },
+    );
+    expect(mounted.details).toMatchObject({
+      result: { id: "hello-sample", slot: "composer.above", status: "mounted" },
+    });
+    expect(generatePlugin).not.toHaveBeenCalled();
+    expect(presentPlugin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "project-chat:fixture",
+        id: "hello-sample",
+        preset: "action-bar",
+        state: {
+          label: "Test session plugin",
+          actions: [{ id: "say-hello", label: "Say hello", message: "Hello!", primary: true }],
+        },
+      }),
+    );
+    expect(line("plugins.patch")).toBe("plugins.patch {id, patch}");
+    expect(line("plugins.delete")).toBe("plugins.delete {id}");
+    for (const rule of [
+      "Actions send visible messages to the owning session",
+      "no automatic progress/artifact change/deletion",
+      "Update after actual work",
+      "Shallow state merge; nested objects/arrays replace",
+      'patch:{label:"Next step"}',
+      "Custom UI: plugins.present.help",
+    ])
+      expect(prompt).toContain(rule);
+    expect(reference).not.toContain("plugins.update");
   });
 
   it("exposes complete common to-do editing and generated association shapes", () => {
@@ -163,6 +216,9 @@ describe("core coordinator calling reference", () => {
         "worktrees.merge",
         "sessions.resolve",
         "messages.read",
+        "plugins.present",
+        "plugins.patch",
+        "plugins.delete",
       ])
         expect(
           assembled.split("\n").filter((item) => item.startsWith(`${command} {`)),
@@ -187,7 +243,9 @@ describe("core coordinator calling reference", () => {
     expect(assembled).toContain("Never edit settings files");
     expect(assembled).toContain("Reports/completion grant no merge/resolve approval");
     expect(assembled).toContain("no sibling or arbitrary database access");
-    expect(assembled).not.toMatch(/Core chat operations|cake-todo|to-dos \(application context\)/);
+    expect(assembled).not.toMatch(
+      /Core chat operations|cake-todo|to-dos \(application context\)|plugins\.present|hello-sample/,
+    );
     expect(Buffer.byteLength(assembled)).toBeLessThan(3500);
   });
 

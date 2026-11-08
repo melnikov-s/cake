@@ -46,6 +46,28 @@ export function coreChatOperations(operations: CakeOperationRegistry): string {
     lines.push(
       'Known report ref: read directly; page with nextOffset as offset. Link the exact original as "Full agent response", not reminders/private Pi IDs. Reports are evidence, not verified success.',
     );
+  if (operations.operationReference("plugins.present")) {
+    lines.push(
+      "Session controls (composer.above):",
+      `plugins.present ${JSON.stringify({
+        plugin: {
+          id: "hello-sample",
+          title: "Hello sample",
+          preset: "action-bar",
+          initialState: {
+            label: "Test session plugin",
+            actions: [{ id: "say-hello", label: "Say hello", message: "Hello!", primary: true }],
+          },
+        },
+      })}`,
+      "Actions send visible messages to the owning session; no automatic progress/artifact change/deletion. Update after actual work. Custom UI: plugins.present.help.",
+    );
+    if (add("plugins.patch"))
+      lines.push(
+        'Shallow state merge; nested objects/arrays replace. E.g. patch:{label:"Next step"}.',
+      );
+    add("plugins.delete");
+  }
   return lines.length
     ? [
         "## Core chat operations",

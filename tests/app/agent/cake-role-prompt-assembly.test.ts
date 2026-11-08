@@ -66,6 +66,8 @@ describe("role-specific prompt assembly", () => {
     expect(append).toContain("task done + scoped checks passed = ready, not repo-wide green");
     expect(append).not.toContain("Cake development");
     expect(append).not.toContain("pnpm typecheck");
+    expect(append).not.toContain("plugins.present");
+    expect(append).not.toContain("hello-sample");
     expect(append.match(/Pi owns execution\/history/g)).toHaveLength(1);
     expect(capabilities.resourceLoader.getAgentsFiles().agentsFiles).toEqual(
       expect.arrayContaining([expect.objectContaining({ content: instructions })]),
