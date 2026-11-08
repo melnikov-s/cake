@@ -51,6 +51,9 @@ const widgetRevision: ArtifactRevision = {
   },
 };
 const withUpdates = parameters.get("updates") === "true";
+const withHistory = parameters.get("history") === "true";
+const historyRequests: string[] = [];
+let releaseHistory: (() => void) | undefined;
 let releaseReport: (() => void) | undefined;
 const reportReady = new Promise<void>((resolve) => {
   releaseReport = resolve;
@@ -121,6 +124,23 @@ const fixture = createRendererStoreFixture({
     sessionChats: {
       ...client?.sessionChats,
       readAttachment: async () => attachmentReady,
+      history: async ({ cursor }) => {
+        historyRequests.push(cursor);
+        await new Promise<void>((resolve) => {
+          releaseHistory = resolve;
+        });
+        const page = Number(cursor);
+        return {
+          parts: Array.from({ length: 64 }, (_, index): UiPart => ({
+            kind: "text",
+            id: `older-${page}-${index}`,
+            role: index % 2 ? "assistant" : "user",
+            status: "complete",
+            text: `Older page ${page} message ${index}.\n\n${"Variable height Markdown. ".repeat(5 + (index % 20))}\n\n${index % 3 ? "" : "```ts\nconst earlier = true;\n```"}`,
+          })),
+          cursor: page < 2 ? String(page + 1) : undefined,
+        };
+      },
       prompt: async ({ text }) => {
         parts = [
           ...parts,
@@ -200,6 +220,7 @@ const snapshot: ConversationSnapshot = {
   sessionId: "ownership",
   workspacePath: "/project",
   sessionFile: "/project/ownership.jsonl",
+  ...(withHistory ? { historyCursor: "1" } : {}),
   parts,
   models: [],
   thinkingLevel: "off",
@@ -266,6 +287,8 @@ render();
 // These entry points control only external projection delivery / React commit
 // ordering. DOM scrolling, measurements, Virtuoso and transcript policy are real.
 export interface TranscriptOwnershipFixture {
+  historyRequests(): string[];
+  releaseHistory(): void;
   /** Release the external original-report read after opening its disclosure. */
   loadReport(): void;
   update(): void;
@@ -290,6 +313,12 @@ export interface TranscriptOwnershipFixture {
   newestId(): string | undefined;
 }
 Reflect.set(window, "transcriptFixture", {
+  historyRequests() {
+    return [...historyRequests];
+  },
+  releaseHistory() {
+    releaseHistory?.();
+  },
   loadReport() {
     releaseReport?.();
   },

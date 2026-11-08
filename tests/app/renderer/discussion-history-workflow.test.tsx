@@ -21,6 +21,7 @@ import { applyDiscussionCatalogUpdate } from "../../../src/renderer/reducers/Dis
 import type { CakeChatSessionStore } from "../../../src/renderer/stores/CakeChatSessionStore";
 import { projectRecord } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { scrollTranscriptEarlier } from "./scroll-transcript-earlier";
 
 const scopes = [
   ["global Cake Chat", CAKE_CHAT_SESSION_ID],
@@ -234,11 +235,14 @@ it.each(scopes)(
     using fixture = renderHistory(parentSessionId, history);
     const user = userEvent.setup();
     const panel = fixture.panel;
-    await user.click(panel.getByRole("button", { name: "Load earlier messages" }));
+    expect(history).not.toHaveBeenCalled();
+    scrollTranscriptEarlier(panel.getByText("Earlier messages"));
     expect(await panel.findByText("Read temporarily unavailable")).toBeTruthy();
-    await user.click(panel.getByRole("button", { name: "Load earlier messages" }));
+    scrollTranscriptEarlier(panel.getByText("Earlier messages"));
+    expect(history).toHaveBeenCalledTimes(1);
+    await user.click(panel.getByRole("button", { name: "Retry loading earlier messages" }));
     expect(await panel.findByText("Older side-chat original")).toBeTruthy();
-    await user.click(panel.getByRole("button", { name: "Load earlier messages" }));
+    scrollTranscriptEarlier(panel.getByText("Earlier messages"));
     expect(await panel.findByText("Oldest side-chat original")).toBeTruthy();
     expect(history.mock.calls.map(([input]) => input)).toEqual([
       { sessionId: fixture.sidecarSessionId, cursor },
@@ -275,7 +279,7 @@ it.each(scopes)(
     const history = vi.fn<Client["sessionChats"]["history"]>(() => pending.promise);
     using fixture = renderHistory(parentSessionId, history);
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Load earlier messages" }));
+    scrollTranscriptEarlier(fixture.panel.getByText("Earlier messages"));
     const signal = history.mock.calls[0]?.[1]?.signal;
     expect(signal).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Close and resolve" }));

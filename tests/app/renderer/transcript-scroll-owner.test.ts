@@ -176,6 +176,123 @@ describe("transcript scroll owner measurement boundaries", () => {
     expect(scroller.scrollTop).toBe(700);
   });
 
+  function pagingOwner(loadEarlier: (beforePrepend: () => void) => boolean) {
+    owner.dispose();
+    owner = createTranscriptScrollOwner(scroller, scroller.firstElementChild as HTMLElement, {
+      following: false,
+      cancelVirtualNavigation: vi.fn(),
+      loadEarlier,
+    });
+  }
+
+  function scroll(top: number) {
+    scroller.scrollTop = top;
+    scroller.dispatchEvent(new Event("scroll"));
+  }
+
+  it("admits one page per reader approach, not duplicate events or streaming/layout", () => {
+    const load = vi.fn(() => true);
+    pagingOwner(load);
+    owner.reconcile();
+    expect(load).not.toHaveBeenCalled();
+    scroll(150);
+    expect(load).toHaveBeenCalledOnce();
+    for (let i = 0; i < 20; i++) {
+      scroller.dispatchEvent(new Event("scroll"));
+      owner.reconcile();
+    }
+    scroll(120);
+    expect(load).toHaveBeenCalledOnce();
+    // A prepend retains the reader outside the threshold. Continued upward
+    // reading, rather than a click or another layout commit, admits page two.
+    scroll(800);
+    scroll(150);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not page initial bottom, hidden, covered, positioning or disposed views", () => {
+    const load = vi.fn(() => true);
+    pagingOwner(load);
+    scroll(3400);
+    owner.reconcile();
+    expect(load).not.toHaveBeenCalled();
+    list.style.visibility = "hidden";
+    scroll(150);
+    expect(load).not.toHaveBeenCalled();
+    list.style.visibility = "visible";
+    scroller.style.visibility = "hidden";
+    scroll(800);
+    scroll(150);
+    expect(load).not.toHaveBeenCalled();
+    scroller.style.visibility = "visible";
+    owner.setCovered(true);
+    scroll(800);
+    scroll(150);
+    expect(load).not.toHaveBeenCalled();
+    owner.dispose();
+    scroll(800);
+    scroll(150);
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it("requires a new gesture at absolute top rather than draining while the threshold stays visible", () => {
+    const load = vi.fn(() => true);
+    pagingOwner(load);
+    const clock = vi.spyOn(performance, "now").mockReturnValue(1000);
+    try {
+      scroll(0);
+      expect(load).toHaveBeenCalledOnce();
+      scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: -20 }));
+      expect(load).toHaveBeenCalledOnce();
+      for (let i = 0; i < 20; i++) {
+        clock.mockReturnValue(1000 + i * 10);
+        scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: -20 }));
+        owner.reconcile();
+      }
+      expect(load).toHaveBeenCalledOnce();
+      clock.mockReturnValue(2000);
+      scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: -20 }));
+      expect(load).toHaveBeenCalledTimes(2);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("retains a prepended anchor even when its old virtual range is evicted", () => {
+    const navigate = vi.fn();
+    owner.dispose();
+    let currentIndex = 0;
+    owner = createTranscriptScrollOwner(scroller, scroller.firstElementChild as HTMLElement, {
+      following: false,
+      cancelVirtualNavigation: vi.fn(),
+      itemIndex: () => currentIndex,
+    });
+    const reading = list.firstElementChild as HTMLElement;
+    reading.dataset.index = "0";
+    owner.reconcile();
+    owner.preserveForPrepend(navigate);
+    // React committed the new page, but Virtuoso still exposes the old range.
+    currentIndex = 64;
+    owner.reconcile();
+    reading.remove();
+    shift = 1200;
+    contentHeight += 1200;
+    owner.reconcile();
+    expect(navigate).toHaveBeenCalledExactlyOnceWith("reading");
+    owner.reconcile();
+    expect(navigate).toHaveBeenCalledOnce();
+    reading.dataset.index = "64";
+    list.prepend(reading);
+    // The virtualizer reaches an estimate first, then the owner restores the
+    // exact old -20px row offset and keeps compensating late image growth.
+    scroller.scrollTop = 2100;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(2200);
+    shift += 380;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(2580);
+  });
+
   it("preserves the anchor when measured older rows are prepended", () => {
     const older = addRow("older", 700, 300);
     list.prepend(older);

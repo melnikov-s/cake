@@ -34,12 +34,17 @@ const bottomThreshold = 2;
  */
 const endTolerance = 1;
 const revealMargin = 16;
+/** Native scroll coordinates, independent of virtual rows and their changing heights. */
+const earlierThreshold = 160;
+const gesturePause = 200;
 const rowSelector = "[data-transcript-item-key]";
 const readingSelector = "p, pre, h1, h2, h3, h4, h5, h6, li, td, th";
 
 export interface TranscriptScrollOwner {
   /** Layout changed: pin the bottom while following, otherwise hold the reader's anchor still. */
   reconcile(): void;
+  /** Capture immediately before older rows commit, including a virtual range replacement. */
+  preserveForPrepend(scrollToItem: (key: string) => void): void;
   /** The reader sent a message: the one programmatic jump to the bottom. */
   scrollToBottomForSentMessage(navigation?: { itemKey: string; scrollToIndex(): void }): void;
   /**
@@ -61,6 +66,11 @@ export interface TranscriptScrollOwnerOptions {
   restore?: { messageId: string; offset: number };
   /** Cancels the virtualizer's pending index-navigation retries without moving. */
   cancelVirtualNavigation(): void;
+  /** Admit one bounded page on reader input, never on layout/visibility changes. */
+  loadEarlier?(beforePrepend: () => void): boolean;
+  scrollToItem?(key: string): void;
+  /** Current page index: Virtuoso can briefly retain its previous range after a commit. */
+  itemIndex?(key: string): number;
 }
 
 /**
@@ -93,6 +103,11 @@ export function createTranscriptScrollOwner(
   let knownTop = scroller.scrollTop;
   let knownViewportHeight = scroller.clientHeight;
   let touchY: number | undefined;
+  let earlierRequested = false;
+  let lastUpwardInput = -Infinity;
+  let prepend:
+    | { anchor: Anchor; offset: number; navigate(key: string): void; navigating: boolean }
+    | undefined;
 
   const measurable = () => scroller.isConnected && scroller.clientHeight > 0;
   // Virtuoso hides the list while it settles the initial position. Its moves
@@ -272,7 +287,9 @@ export function createTranscriptScrollOwner(
   };
 
   const cancelReveal = () => {
-    if (pendingReveal === undefined && pendingBottom === undefined && !pendingRestore) return;
+    if (pendingReveal === undefined && pendingBottom === undefined && !pendingRestore && !prepend)
+      return;
+    prepend = undefined;
     pendingReveal = undefined;
     pendingBottom = undefined;
     pendingRestore = undefined;
@@ -284,6 +301,7 @@ export function createTranscriptScrollOwner(
    * a browser clamp. Classify it before anything can pin over it.
    */
   const observeMovement = (pendingMeasurements: boolean) => {
+    const movedUp = scroller.scrollTop < knownTop;
     const movedDown = scroller.scrollTop > knownTop;
     // First compensate any layout change that has not been reconciled yet
     // (content coordinates ignore the movement itself).
@@ -295,6 +313,45 @@ export function createTranscriptScrollOwner(
     if (pendingReveal === undefined)
       following = movedDown ? following || atBottom() : following && atEnd();
     if (!pendingMeasurements) anchor = findAnchor();
+    // Own writes, streaming/layout and duplicate scroll events never enter here
+    // as upward reading motion. A new page needs another reader approach.
+    if (pendingReveal === undefined && !pendingRestore && !prepend && !atEnd()) {
+      if (scroller.scrollTop > earlierThreshold) earlierRequested = false;
+      else if (movedUp) requestEarlier();
+    }
+  };
+
+  const preserveForPrepend = (navigate: (key: string) => void) => {
+    if (
+      covered ||
+      !measurable() ||
+      positioning() ||
+      pendingReveal ||
+      pendingBottom ||
+      pendingRestore
+    )
+      return;
+    // Reconcile native movement that may not have delivered its scroll event.
+    reconcile();
+    const saved = findAnchor();
+    if (!saved) return;
+    following = false;
+    anchor = saved;
+    prepend = {
+      anchor: saved,
+      offset: saved.top - scroller.scrollTop,
+      navigate,
+      navigating: false,
+    };
+  };
+
+  const requestEarlier = () => {
+    if (earlierRequested || covered || !measurable() || positioning()) return;
+    if (getComputedStyle(scroller).visibility === "hidden") return;
+    if (options.loadEarlier?.(() => preserveForPrepend((key) => options.scrollToItem?.(key)))) {
+      earlierRequested = true;
+      lastUpwardInput = performance.now();
+    }
   };
 
   // Removing selection chrome grows the viewport before Virtuoso publishes the
@@ -314,6 +371,39 @@ export function createTranscriptScrollOwner(
       knownTop = scroller.scrollTop;
       if (following) pin();
       return;
+    }
+    if (prepend) {
+      const saved = prepend;
+      const element = row(saved.anchor.key);
+      const renderedIndex = element?.closest<HTMLElement>("[data-index]")?.dataset.index;
+      if (
+        element &&
+        renderedIndex !== undefined &&
+        options.itemIndex &&
+        Number(renderedIndex) !== options.itemIndex(saved.anchor.key)
+      )
+        return;
+      if (!element) {
+        // Prepending can evict the old index range. Reveal the same stable key,
+        // not the top, then finish with measured geometry rather than estimates.
+        if (!saved.navigating) {
+          saved.navigating = true;
+          saved.navigate(saved.anchor.key);
+        }
+        return;
+      }
+      if (pendingMeasurements) return;
+      if (saved.navigating) {
+        options.cancelVirtualNavigation();
+        write(
+          scroller.scrollTop +
+            layoutTop(element) -
+            scroller.getBoundingClientRect().top -
+            saved.offset,
+        );
+        anchor = findAnchor();
+      } else holdAnchor();
+      prepend = undefined;
     }
     // Initial index navigation uses estimated row heights. Once the actual row
     // is revealed and measured, finish restoring its saved viewport offset.
@@ -367,7 +457,12 @@ export function createTranscriptScrollOwner(
   const handleScroll = () => {
     if (covered || !measurable()) return;
     observeViewport();
-    if (scroller.scrollTop === knownTop || positioning() || pendingBottom !== undefined) {
+    if (
+      scroller.scrollTop === knownTop ||
+      positioning() ||
+      pendingBottom !== undefined ||
+      prepend
+    ) {
       reconcile();
       return;
     }
@@ -402,9 +497,24 @@ export function createTranscriptScrollOwner(
    * without such input is classified by `observeMovement`.
    */
   const intent = (target: EventTarget | null, direction: number) => {
-    if (direction === 0 || positioning() || nestedScrollerConsumes(target, direction)) return;
+    if (
+      covered ||
+      !measurable() ||
+      direction === 0 ||
+      positioning() ||
+      nestedScrollerConsumes(target, direction)
+    )
+      return;
     cancelReveal();
     if (direction < 0) {
+      const now = performance.now();
+      // At the absolute top there may be no native movement. Only a new
+      // gesture after a pause can retry the approach; a visible threshold,
+      // momentum events and rerenders cannot drain successive pages.
+      if (scroller.scrollTop <= 1 && now - lastUpwardInput > gesturePause) earlierRequested = false;
+      lastUpwardInput = now;
+      if (scroller.scrollTop > earlierThreshold) earlierRequested = false;
+      else requestEarlier();
       if (following && scroller.scrollTop > 0) {
         following = false;
         anchor = findAnchor();
@@ -427,7 +537,8 @@ export function createTranscriptScrollOwner(
       intent(event.target, -1);
       event.preventDefault();
       write(0);
-      anchor = undefined;
+      anchor = findAnchor();
+      requestEarlier();
     } else if (["ArrowUp", "PageUp"].includes(event.key) || (event.key === " " && event.shiftKey))
       intent(event.target, -1);
     else if (["ArrowDown", "PageDown", "End", " "].includes(event.key)) intent(event.target, 1);
@@ -482,6 +593,7 @@ export function createTranscriptScrollOwner(
 
   return {
     reconcile,
+    preserveForPrepend,
     scrollToBottomForSentMessage(navigation) {
       if (covered) return;
       cancelReveal();

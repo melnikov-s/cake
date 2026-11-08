@@ -22,7 +22,7 @@ export class ConversationHistoryStore extends Store<{ model: Conversation }> {
     return (this.loaded ? this.cursor : this.props.model.historyCursor) !== undefined;
   }
 
-  async load() {
+  async load(beforePrepend?: () => void) {
     const cursor = this.loaded ? this.cursor : this.props.model.historyCursor;
     if (this.loading || cursor === undefined || this.signal.aborted) return;
     this.loading = true;
@@ -34,9 +34,12 @@ export class ConversationHistoryStore extends Store<{ model: Conversation }> {
         { signal: this.signal },
       );
       if (this.signal.aborted || model !== this.props.model) return;
+      const known = new Set([...model.earlierParts, ...model.uiParts].map((part) => part.id));
+      const older = page.parts.filter((part) => !known.has(part.id));
+      // Capture the current reader, not their position when the read started.
+      if (older.length) beforePrepend?.();
       batch(() => {
-        const known = new Set([...model.earlierParts, ...model.uiParts].map((part) => part.id));
-        model.earlierParts.unshift(...page.parts.filter((part) => !known.has(part.id)));
+        model.earlierParts.unshift(...older);
         this.cursor = page.cursor;
         this.loaded = true;
       });

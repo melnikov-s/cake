@@ -121,6 +121,11 @@ export const ChatTranscript = observer(function ChatTranscript({
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const renderedItemKeys = useRef<string[]>([]);
+  const scrollToItem = useCallback((key: string) => {
+    const index = renderedItemKeys.current.indexOf(key);
+    if (index >= 0) virtuosoRef.current?.scrollToIndex({ index, align: "start", behavior: "auto" });
+  }, []);
   const pendingSelectionRef = useRef<TranscriptSelectionCapture | undefined>(undefined);
   const restoredScrollPosition = useMemo(
     () => untracked(() => store.transcriptInteraction.transcriptScrollPosition),
@@ -137,14 +142,23 @@ export const ChatTranscript = observer(function ChatTranscript({
       following: initiallyFollowing,
       restore: restoredScrollPosition?.kind === "message" ? restoredScrollPosition : undefined,
       cancelVirtualNavigation: () => virtuosoRef.current?.cancelScrollToIndex(),
+      scrollToItem,
+      itemIndex: (key) => renderedItemKeys.current.indexOf(key),
+      loadEarlier: (beforePrepend) => {
+        const history = store.history;
+        if (!history?.hasMore || history.loading || history.error) return false;
+        void history.load(() => {
+          if (scrollOwner.current === owner) beforePrepend();
+        });
+        return true;
+      },
     });
     scrollOwner.current = owner;
     return () => {
       owner.dispose();
       scrollOwner.current = undefined;
     };
-  }, [initiallyFollowing, restoredScrollPosition, scroller]);
-  const reconcileScroll = useCallback(() => scrollOwner.current?.reconcile(), []);
+  }, [initiallyFollowing, restoredScrollPosition, scroller, scrollToItem, store]);
   // Sending a message (from any composer path) is the only time the transcript
   // scrolls to the bottom for the reader.
   const sentMessageRevision = store.transcriptInteraction.sentMessageRevision;
@@ -313,6 +327,12 @@ export const ChatTranscript = observer(function ChatTranscript({
     return { ...item, parts: item.parts.filter((part) => matchedPartIds.has(part.id)) };
   });
   const itemKeys = visibleIndices.map((index) => allItemKeys[index]!);
+  const reconcileScroll = useCallback(() => {
+    // Runs at the virtual range's layout boundary, before scroll reconciliation.
+    renderedItemKeys.current = itemKeys;
+    scrollOwner.current?.reconcile();
+  }, [itemKeys]);
+  useLayoutEffect(reconcileScroll);
   const visibleSectionViews = visibleIndices.map((index, visibleIndex) => {
     const section = sectionViews?.[index];
     if (!focused || !section) return section;
@@ -577,16 +597,29 @@ export const ChatTranscript = observer(function ChatTranscript({
       >
         <div ref={contentRef} className="min-w-0">
           {store.history?.hasMore && (
-            <div className="grid justify-items-center gap-2 px-6 py-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={store.history.loading}
-                onClick={() => void store.history?.load()}
-              >
-                {store.history.loading ? "Loading earlier messages…" : "Load earlier messages"}
-              </Button>
-              {store.history.error && <Callout variant="error">{store.history.error}</Callout>}
+            <div className="grid min-h-10 justify-items-center gap-2 px-6 py-2">
+              <span role="status" className="text-xs text-muted-foreground" aria-live="polite">
+                {store.history.loading ? "Loading earlier messages…" : "Earlier messages"}
+              </span>
+              {store.history.error && (
+                <>
+                  <Callout variant="error">{store.history.error}</Callout>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={store.history.loading}
+                    onClick={() => {
+                      const owner = scrollOwner.current;
+                      void store.history?.load(() => {
+                        if (owner && scrollOwner.current === owner)
+                          owner.preserveForPrepend(scrollToItem);
+                      });
+                    }}
+                  >
+                    Retry loading earlier messages
+                  </Button>
+                </>
+              )}
             </div>
           )}
           {visibleParts.length === 0 || (focused && items.length === 0) ? (

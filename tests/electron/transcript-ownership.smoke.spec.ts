@@ -18,13 +18,18 @@ const test = base.extend<{
   withWidget: boolean;
   withUpdates: boolean;
   withImages: boolean;
+  withHistory: boolean;
 }>({
+  withHistory: [false, { option: true }],
   withImages: [false, { option: true }],
   withUpdates: [false, { option: true }],
   withWidget: [false, { option: true }],
   messageCount: [48, { option: true }],
   chatMode: ["", { option: true }],
-  fixturePage: async ({ messageCount, chatMode, withWidget, withUpdates, withImages }, use) => {
+  fixturePage: async (
+    { messageCount, chatMode, withWidget, withUpdates, withImages, withHistory },
+    use,
+  ) => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-transcript-ownership-"));
     const cakeHome = join(temporaryRoot, "cake-home");
     await mkdir(cakeHome);
@@ -110,7 +115,7 @@ export default function Widget() {
       await application.evaluate(
         async (
           { BrowserWindow },
-          { html, messageCount, chatMode, widget, withUpdates, withImages },
+          { html, messageCount, chatMode, widget, withUpdates, withImages, withHistory },
         ) => {
           // Match the application window: a hidden window must not throttle
           // animation frames, or Virtuoso never finishes initial positioning.
@@ -119,10 +124,10 @@ export default function Widget() {
             webPreferences: { sandbox: true, backgroundThrottling: false },
           });
           await window.loadFile(html, {
-            search: `?count=${messageCount}&chatMode=${chatMode}&updates=${withUpdates}&images=${withImages}&widget=${encodeURIComponent(JSON.stringify(widget))}`,
+            search: `?count=${messageCount}&chatMode=${chatMode}&updates=${withUpdates}&images=${withImages}&history=${withHistory}&widget=${encodeURIComponent(JSON.stringify(widget))}`,
           });
         },
-        { html, messageCount, chatMode, widget, withUpdates, withImages },
+        { html, messageCount, chatMode, widget, withUpdates, withImages, withHistory },
       );
       const page = await opened;
       const transcript = page.locator(".transcript");
@@ -139,6 +144,61 @@ export default function Widget() {
       await rm(temporaryRoot, { recursive: true, force: true });
     }
   },
+});
+
+test.describe("bounded scroll-up pagination", () => {
+  test.use({ withHistory: true, chatMode: "full" });
+  test("prepends one page without moving the reader and admits another upward approach", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    const requests = () =>
+      page.evaluate(() =>
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).historyRequests(),
+      );
+    const release = () =>
+      page.evaluate(() =>
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).releaseHistory(),
+      );
+    expect(await requests()).toEqual([]);
+    await transcript.evaluate((element) => {
+      element.scrollTop = 120;
+    });
+    await expect.poll(requests).toEqual(["1"]);
+    await expect(transcript.getByRole("status")).toContainText("Loading earlier messages…");
+    // The reader can move while the read is pending; capture at commit, not
+    // request time. Streaming must neither admit another page nor repin.
+    await transcript.evaluate((element) => {
+      element.scrollTop = 300;
+    });
+    await expect.poll(() => anchor(transcript)).not.toBeNull();
+    const saved = await anchor(transcript);
+    await page.evaluate(() =>
+      (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).stream(),
+    );
+    await release();
+    await expect(transcript.getByText("Earlier messages", { exact: true })).toBeAttached();
+    await expect.poll(() => anchor(transcript)).toEqual(saved);
+    await page.waitForTimeout(300);
+    expect(await requests()).toEqual(["1"]);
+    expect(await transcript.locator('[data-slot="transcript-item"]').count()).toBeLessThan(40);
+    await page.evaluate(() =>
+      (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).grow("message-0"),
+    );
+    await expect.poll(() => anchor(transcript)).toEqual(saved);
+    await transcript.evaluate((element) => {
+      element.scrollTop = 120;
+    });
+    await expect.poll(requests).toEqual(["1", "2"]);
+    const second = await anchor(transcript);
+    await release();
+    await expect(transcript.getByText("Earlier messages", { exact: true })).toHaveCount(0);
+    await expect.poll(() => anchor(transcript)).toEqual(second);
+    await transcript.press("Home");
+    await page.waitForTimeout(250);
+    expect(await requests()).toEqual(["1", "2"]);
+    expect(await transcript.locator('[data-slot="transcript-item"]').count()).toBeLessThan(40);
+  });
 });
 
 for (const chatMode of ["full", "compact"]) {

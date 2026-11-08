@@ -9,6 +9,7 @@ import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-cha
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { scrollTranscriptEarlier } from "./scroll-transcript-earlier";
 
 afterEach(cleanup);
 it("loads older originals through the shared Chat, retries failure, and retains them through live snapshots", async () => {
@@ -55,9 +56,12 @@ it("loads older originals through the shared Chat, retries failure, and retains 
   );
   try {
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Load earlier messages" }));
+    expect(history).not.toHaveBeenCalled();
+    scrollTranscriptEarlier(screen.getByText("Earlier messages"));
     expect(await screen.findByText("Read temporarily unavailable")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Load earlier messages" }));
+    scrollTranscriptEarlier(screen.getByText("Earlier messages"));
+    expect(history).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "Retry loading earlier messages" }));
     expect(history).toHaveBeenLastCalledWith(
       { sessionId: CAKE_CHAT_SESSION_ID, cursor },
       { signal: expect.any(AbortSignal) },

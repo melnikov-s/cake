@@ -15,6 +15,7 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 import type { ReviewsStore } from "./ReviewsStore";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ConversationSessionStore } from "./ConversationSessionStore";
+import { ConversationHistoryStore } from "./ConversationHistoryStore";
 import { SessionArtifactsStore } from "./SessionArtifactsStore";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { MessageCommentsStore } from "./MessageCommentsStore";
@@ -370,6 +371,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   @child
+  get history(): ConversationHistoryStore {
+    return createStore(ConversationHistoryStore, { model: this.model });
+  }
+
+  @child
   get conversationSessionStore(): ConversationSessionStore {
     // Bind Project Session policy here; shared conversations/composers remain
     // reusable without depending on Project-only ambient capabilities.
@@ -449,6 +455,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           pending.setConfiguration(this.sessionId, configuration),
       },
       chat: {
+        history: this.history,
         modelPickerVisible: () => !this.isForkPreview,
         conversationMode: ConversationModeContext.consume(this)
           ? { workflow: ConversationModeContext.consume(this)!, target: this.conversationTarget }
