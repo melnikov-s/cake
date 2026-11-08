@@ -160,14 +160,9 @@ describe("app.state visible workspace metadata", () => {
       { signal: expect.any(AbortSignal) },
     );
     fixture.coverWorkspace();
-    expect(await fixture.appState()).toMatchObject({
-      state: {
-        workspaceView: {
-          kind: "vscode",
-          status: "hidden",
-        },
-      },
-    });
+    const covered = await fixture.appState();
+    expect(covered).toMatchObject({ state: { selection: { kind: "settings" } } });
+    expect(covered).not.toHaveProperty("state.workspaceView");
     expect(status).toHaveBeenCalledOnce();
   });
 

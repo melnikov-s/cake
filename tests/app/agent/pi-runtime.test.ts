@@ -122,7 +122,7 @@ describe("Pi 1.0.0 foundation contract", () => {
     expect(systemPrompt).toContain("Family coordination defaults to Workboard");
     expect(systemPrompt).toContain("including descendants");
     expect(systemPrompt).toContain("Create children with assignment: { description, body }");
-    expect(systemPrompt).toContain("Use resultDelivery: reply");
+    expect(systemPrompt).toContain("resultDelivery: reply");
     expect(systemPrompt).toContain("No prerequisite guide reads");
     const docsDirectory = systemPrompt?.match(/Task guide: `([^`]+)\/index\.md`/)?.[1];
     if (!docsDirectory) throw new Error("Expected readable Cake documentation references");

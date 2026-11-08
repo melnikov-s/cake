@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { App } from "../../../src/renderer/components/app";
+import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import { NewSessionDialog } from "../../../src/renderer/components/new-session-dialog";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import {
@@ -30,6 +31,7 @@ export function renderRootAppWorkflow(client: TestClientOverrides) {
     sessions: [rootAppSession],
     client: {
       ...client,
+      cakeChats: { open: async () => undefined, ...client.cakeChats },
       workspaces: { loadStagedSlashCommands: async () => [], ...client.workspaces },
     },
   });
@@ -38,24 +40,37 @@ export function renderRootAppWorkflow(client: TestClientOverrides) {
   fixture.root.navigationStore.selectProjectSession(session.sessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(session.sessionId);
   fixture.root.sessionLayoutStore.ensureSession(session.sessionId);
-  applyConversationUpdate(session.model, {
-    _tag: "Snapshot",
-    revision: 1,
-    snapshot: {
-      sessionId: session.sessionId,
-      sessionFile: "/alpha/current-session.jsonl",
-      parts: [],
-      models: [],
-      thinkingLevel: "off",
-      availableThinkingLevels: ["off"],
-      streaming: false,
-      diagnostics: [],
-      commands: [],
-      compatibility: { resources: [], diagnostics: [] },
-      extensionUi: { statuses: [] },
-      tree: [],
-    },
-  });
+  const snapshot: ConversationSnapshot = {
+    sessionId: session.sessionId,
+    sessionFile: "/alpha/current-session.jsonl",
+    parts: [],
+    models: [],
+    thinkingLevel: "off",
+    availableThinkingLevels: ["off"],
+    streaming: false,
+    diagnostics: [],
+    commands: [],
+    compatibility: { resources: [], diagnostics: [] },
+    extensionUi: { statuses: [] },
+    tree: [],
+  };
+  applyConversationUpdate(session.model, { _tag: "Snapshot", revision: 1, snapshot });
+  const chats = rootAppProjects.map((project, index) => ({
+    sessionId: `project-chat:${(index ? "b" : "a").repeat(64)}`,
+    projectPath: project.path,
+    title: `${project.name} / Project Chat`,
+  }));
+  applySnapshot(fixture.models.cakeChatCatalog, { loaded: true, sessions: chats });
+  for (const chat of chats)
+    applyConversationUpdate(fixture.models.cakeChatConversation(chat.sessionId), {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: {
+        ...snapshot,
+        sessionId: chat.sessionId,
+        sessionFile: `/chats/${chat.sessionId}.sqlite`,
+      },
+    });
   fixture.root.workspaceNavigatorStore.show("sessions");
   const view = render(
     <StoreProvider store={fixture.root}>

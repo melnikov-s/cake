@@ -236,7 +236,10 @@ it.each<Mode>(["browser", "vscode"])(
       companion.getByRole("button", { name: `Focus to-do: ${title}` });
     const expanded = () =>
       ["Task A", "Task B"].map((title) =>
-        companion.getByRole("button", { name: title }).getAttribute("aria-expanded"),
+        companion
+          .getAllByRole("button", { name: title })
+          .find((button) => button.hasAttribute("aria-expanded"))
+          ?.getAttribute("aria-expanded"),
       );
     await f.user.click(focus("Task A"));
     expect(expanded()).toEqual(["true", "false"]);
@@ -551,6 +554,19 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
           sessionSummary({ sessionId: projectId, projectPath: "/project", title: "Project task" }),
         ],
       });
+      // Startup is global, not the saved destination. The old conversation retains its collapse.
+      const restoredSession =
+        kind === "project"
+          ? restored.root.sessionRegistry.load(f.session.sessionId, "/project")
+          : restored.root.cakeChatCollectionStore.registry.load(f.session.sessionId);
+      expect(restoredSession.workspaceChatSidebarVisible).toBe(false);
+      if (kind === "project")
+        restored.root.navigationStore.showLoadedProjectSession(f.session.sessionId);
+      else restored.root.navigationStore.selectCakeChat(f.session.sessionId);
+      restoredSession.showPresentation(mode);
+      // Explicit navigation reveals Chat, then the user's close is respected again.
+      if (restored.root.workspaceNavigatorStore.paneVisible)
+        restored.root.workspaceNavigatorStore.togglePane();
       expect(restored.root.workspaceNavigatorStore.paneVisible).toBe(false);
       expect(restored.root.workspaceNavigatorStore.companionTab).toBe("sessions");
       restored.root.workspaceNavigatorStore.togglePane();
@@ -699,7 +715,7 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
       await f.user.click(
         within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByRole(
           "button",
-          { name: kind === "project" ? "Project task" : "Project Chat" },
+          { name: kind === "project" ? "Project task" : "Project" },
         ),
       );
       expect(

@@ -69,12 +69,23 @@ function renderWorkbench(client: TestClientOverrides, resolved = false) {
         ...client.workspaces,
       },
       projectSessions: { open: async () => undefined, ...client.projectSessions },
+      cakeChats: { open: async () => undefined, ...client.cakeChats },
       terminals: {
         workingDirectoryStatus: async () => ({ runningProgramCount: 0 }),
         closeWorkingDirectory: async () => undefined,
         ...client.terminals,
       },
     },
+  });
+  const projectChatId = `project-chat:${"a".repeat(64)}`;
+  applySnapshot(fixture.models.cakeChatCatalog, {
+    loaded: true,
+    sessions: [{ sessionId: projectChatId, title: "Project Chat", projectPath: "/project" }],
+  });
+  applyConversationUpdate(fixture.models.cakeChatConversation(projectChatId), {
+    _tag: "Snapshot",
+    revision: 1,
+    snapshot: snapshot(projectChatId),
   });
   applySnapshot(fixture.models.worktrees, { worktrees: [record] });
   for (const summary of summaries) {
@@ -184,7 +195,10 @@ describe("Workbench workflow", () => {
     await openSessionFromSearch(fixture.user, /^two conversation /);
     await openSessionFromSearch(fixture.user, /^one conversation /);
     await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));
-    expect(await screen.findByPlaceholderText("Ask Cake to work in Project…")).toBeDefined();
+    expect(await screen.findByRole("combobox", { name: "Message Project Chat" })).toHaveProperty(
+      "value",
+      "",
+    );
     expect(resolveWorkingDirectory).toHaveBeenCalledWith(
       { workingDirectory: "/worktree" },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -196,7 +210,7 @@ describe("Workbench workflow", () => {
     ["previous", "one", "two"],
     ["previous", "one", "two", "one"],
   ])(
-    "returns to the nearest retained visit after bulk retirement, deduplicating repeated visits: %j",
+    "returns to Project Chat after bulk retirement and retains prior visits for explicit navigation: %j",
     async (...visits) => {
       const resolveWorkingDirectory = vi.fn<Client["projectSessions"]["resolveWorkingDirectory"]>(
         async () => ({
@@ -211,15 +225,19 @@ describe("Workbench workflow", () => {
       for (const id of visits) {
         await openSessionFromSearch(fixture.user, new RegExp(`^${id} conversation `));
         await waitFor(() =>
-          expect(screen.getAllByText(`${id} conversation`).length).toBeGreaterThan(1),
+          expect(
+            screen.getByRole("navigation", { name: "Conversation breadcrumb" }).textContent,
+          ).toContain(`${id} conversation`),
         );
       }
       await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));
       await waitFor(() =>
         expect(
           document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
-        ).toBe("previous"),
+        ).toBe(`project-chat:${"a".repeat(64)}`),
       );
+      expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeDefined();
+      await openSessionFromSearch(fixture.user, /^previous conversation /);
       expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
       expect(resolveWorkingDirectory).toHaveBeenCalledOnce();
     },
@@ -236,7 +254,11 @@ describe("Workbench workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));
     await waitFor(() => expect(resolveWorkingDirectory).toHaveBeenCalledOnce());
     await openSessionFromSearch(fixture.user, /^two conversation /);
-    await waitFor(() => expect(screen.getAllByText("two conversation").length).toBeGreaterThan(1));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("navigation", { name: "Conversation breadcrumb" }).textContent,
+      ).toContain("two conversation"),
+    );
     await act(async () =>
       pending.resolve({
         projectPath: "/project",
@@ -247,7 +269,9 @@ describe("Workbench workflow", () => {
       }),
     );
     expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
-    expect(screen.getAllByText("two conversation").length).toBeGreaterThan(1);
+    expect(
+      screen.getByRole("navigation", { name: "Conversation breadcrumb" }).textContent,
+    ).toContain("two conversation");
   });
 
   it("hides editor and workspace-change actions when navigating to a resolved conversation", async () => {
@@ -261,7 +285,11 @@ describe("Workbench workflow", () => {
         name: /^two conversation /,
       }),
     );
-    await waitFor(() => expect(screen.getAllByText("two conversation").length).toBeGreaterThan(1));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("navigation", { name: "Conversation breadcrumb" }).textContent,
+      ).toContain("two conversation"),
+    );
     expect(screen.queryByRole("button", { name: "VS Code" })).toBeNull();
     expect(open).not.toHaveBeenCalled();
     expect(openSourceControl).not.toHaveBeenCalled();

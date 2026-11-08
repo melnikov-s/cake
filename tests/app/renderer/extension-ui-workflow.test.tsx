@@ -27,6 +27,8 @@ function renderExtensionUi(respondToUi: Client["artifacts"]["respondToUi"], with
       artifacts: { respondToUi, effective: async () => [] },
     },
   });
+  // This fixture exercises the extension landing surface, not global Cake Chat startup.
+  if (!withSession) fixture.root.navigationStore.showEmptyWorkbench();
   if (withSession) {
     fixture.root.sessionRegistry.load("session-1", "/project");
     applyConversationUpdate(fixture.models.projectConversation("session-1", "/project"), {

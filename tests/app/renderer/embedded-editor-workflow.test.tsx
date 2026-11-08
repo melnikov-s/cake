@@ -407,7 +407,9 @@ describe("Embedded editor workflow", () => {
     );
     await fixture.user.click(screen.getAllByRole("button", { name: "Settings" })[0]!);
     await boundary.accept();
-    await hydrateBootstrap(boundary, fixture);
+    fixture.hydrate();
+    await act(async () => fixture.initialization);
+    expect(boundary.openSession).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Back to chat" })).toBeDefined();
     expect(workspaceFrame()).toBeNull();
     expect(open).not.toHaveBeenCalled();

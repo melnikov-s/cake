@@ -194,7 +194,11 @@ it.each(["alpha", CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
         { name: "Artifacts" },
       ),
     );
+    expect(fixture.root.appShellStore.canGoBack).toBe(true);
     await fixture.pressHistory("back");
+    await waitFor(() =>
+      expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(parentSessionId),
+    );
     panel = await assertSplit();
     expect(within(panel).getByRole("combobox")).toHaveProperty("value", "Only the side draft");
     // The utility-model result arrives independently of navigation and updates the open pane.
@@ -228,6 +232,7 @@ it.each(["alpha", CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
     });
     panel = await assertSplit();
     expect(within(panel).getByRole("combobox")).toHaveProperty("value", "Only the side draft");
+    // Close hides the pane without resolving it, so its exact link remains reopenable.
     await fixture.user.click(within(panel).getByRole("button", { name: "Close side chat" }));
     expect(await screen.findByText("Origin conversation body")).toBeTruthy();
 

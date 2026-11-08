@@ -5,6 +5,7 @@ import type { DiscussionThread } from "../../../src/contracts/discussion-session
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { SubagentActivity } from "../../../src/renderer/models/SubagentActivity";
+import { applyPartUpdate } from "../../../src/renderer/reducers/SessionPartReducer";
 import {
   editorLease,
   editorSessionId,
@@ -81,11 +82,27 @@ afterEach(() => {
 // Start at the complete App with real Root/Reviews/Comments/Chat/Editor Stores.
 // Native text-marker geometry requires Electron; do not fabricate Range rectangles here.
 describe("IDE conversation workflows", () => {
-  it("opens private worker history from the header without leaving VS Code or duplicating it in Sessions", async () => {
+  it("opens private worker history from Work log without leaving VS Code or duplicating it in Sessions", async () => {
     using fixture = renderEmbeddedEditor({ vscode: { open: async () => editorLease("a") } });
     act(() => {
       const catalog = fixture.models.subagentCatalog(editorSessionId);
       catalog.loaded = true;
+      applyPartUpdate(
+        fixture.models.projectConversation(editorSessionId, editorWorkingDirectory).parts,
+        {
+          id: "worker-start",
+          kind: "tool",
+          name: "cake",
+          command: "subagents.start",
+          input: JSON.stringify({ task: "Review editor ownership" }),
+          output: JSON.stringify({
+            handleId: "10000000-0000-4000-8000-000000000099",
+            status: "complete",
+          }),
+          state: "success",
+        },
+        editorSessionId,
+      );
       catalog.activities.push(
         SubagentActivity.create({
           parentSessionId: editorSessionId,
@@ -107,16 +124,17 @@ describe("IDE conversation workflows", () => {
     });
     await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
-    await fixture.user.click(screen.getByRole("button", { name: "Side chats and subagents, 1" }));
-    const menu = within(screen.getByRole("dialog", { name: "Open side chats" }));
-    expect(menu.getByText("No open side chats")).toBeTruthy();
-    await fixture.user.click(menu.getByRole("button", { name: "Review editor ownership" }));
+    expect(screen.queryByRole("button", { name: /^Side chats/ })).toBeNull();
+    await fixture.user.click((await screen.findByText("Work log")).closest("summary")!);
+    // jsdom cannot settle Virtuoso's bottom probe. Set the reader preference before mounting it.
     act(() => {
       fixture.root.sessionRegistry
         .findSession(editorSessionId)!
         .subagentActivityStore.chatStore("10000000-0000-4000-8000-000000000099")!
         .transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
     });
+
+    await fixture.user.click(screen.getByRole("button", { name: "Open subagent chat" }));
     expect(await screen.findByText("Editor ownership is intact.")).toBeTruthy();
     expect(screen.getByTitle("VS Code workspace")).toBeDefined();
     expect(fixture.root.conversationNavigatorStore.tree(editorWorkingDirectory).total).toBe(1);

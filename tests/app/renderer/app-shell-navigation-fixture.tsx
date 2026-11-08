@@ -1,4 +1,5 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { expect } from "vitest";
 import { isMacPlatform } from "../../../src/renderer/lib/platform";
 import userEvent from "@testing-library/user-event";
 import { VirtuosoMockContext } from "react-virtuoso";
@@ -144,6 +145,10 @@ export function renderAppShellNavigation(
         await user.click(resolved);
       await user.type(dialog.getByRole("combobox"), summary.title);
       await user.click(await dialog.findByRole("option", { name: new RegExp(summary.title) }));
+      // Warm selection commits on requestAnimationFrame; later actions must not cancel it.
+      await waitFor(() =>
+        expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(sessionId),
+      );
     },
     async showSessions(resolved = false) {
       const reopen = screen.queryByRole("button", { name: "Open Workspace" });

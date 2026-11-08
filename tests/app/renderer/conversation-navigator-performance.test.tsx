@@ -15,6 +15,7 @@ import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import {
   navigatorProjectPath,
+  navigatorHomeId,
   navigatorSessions,
   populateConversationNavigationFixture,
 } from "./fixtures/conversation-navigation-fixtures";
@@ -216,7 +217,10 @@ it("preserves home, family, nested discussion and worker ancestry as catalogs ch
     for (const project of [undefined, navigatorProjectPath, "/other"]) {
       const tree = navigator.tree(project);
       for (const node of tree.byKey.values())
-        expect(navigator.lineageForTarget(node.target)).toEqual(
+        // Breadcrumbs retain resolved ownership ancestors; the active Sessions tree omits them.
+        expect(
+          navigator.lineageForTarget(node.target).filter((entry) => tree.byKey.has(entry.key)),
+        ).toEqual(
           conversationNavigationLineage(tree, node.key).map(
             ({ key, title, relationship, target }) => ({ key, title, relationship, target }),
           ),
@@ -272,6 +276,11 @@ it("preserves home, family, nested discussion and worker ancestry as catalogs ch
   assertAncestry();
   fixture.models.sessionCatalog.find("icons")!.resolved = true;
   assertAncestry();
+  expect(navigator.lineageFor("keyboard").map((entry) => entry.key)).toEqual([
+    `session:${navigatorHomeId}`,
+    "session:icons",
+    "session:keyboard",
+  ]);
 });
 
 it("renders and updates a session row without flattening its project's session roster", () => {

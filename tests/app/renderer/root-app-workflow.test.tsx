@@ -60,7 +60,9 @@ describe("Root App workflow", () => {
     await createSessionInProject(fixture.user, /^Beta/);
     await waitFor(() => expect(inspect).toHaveBeenCalledOnce());
     expect(input().value).toBe("Current draft");
-    expect(screen.getAllByText("Current conversation").length).toBeGreaterThan(1);
+    expect(
+      screen.getByRole("navigation", { name: "Conversation breadcrumb" }).textContent,
+    ).toContain("Current conversation");
     const request = inspect.mock.calls[0]?.[0];
     if (!request) throw new Error("Expected preparation request");
     await act(async () => preparing.resolve({ ...request }));
@@ -79,7 +81,7 @@ describe("Root App workflow", () => {
     expect(inspect.mock.calls.map(([request]) => request.path)).toEqual(["/beta", "/alpha"]);
   });
 
-  it("retires the last resolved session and returns to an empty staged project composer", async () => {
+  it("retires the last resolved session and returns to its Project Chat", async () => {
     const resolve = vi.fn<Client["projectSessions"]["resolve"]>(async () => undefined);
     using fixture = renderRootAppWorkflow({ projectSessions: { resolve } });
     await fixture.user.type(input(), "Old draft");
@@ -90,9 +92,15 @@ describe("Root App workflow", () => {
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
-    expect(await screen.findByText("New chat")).toBeDefined();
-    expect(input().value).toBe("");
-    expect(input().placeholder).toBe("Ask Cake to work in Alpha…");
+    const home = await screen.findByRole<HTMLTextAreaElement>("combobox", {
+      name: "Message Project Chat",
+    });
+    expect(home.value).toBe("");
+    expect(fixture.root.appShellStore.activeConversation).toEqual({
+      kind: "cake-chat",
+      sessionId: `project-chat:${"a".repeat(64)}`,
+    });
+    expect(fixture.root.sessionRegistry.findSession(rootAppSession.sessionId)).toBeUndefined();
     fixture.publishSessions([{ ...rootAppSession, resolved: true }]);
     expect(screen.queryByRole("button", { name: "Resolve Current conversation" })).toBeNull();
   });

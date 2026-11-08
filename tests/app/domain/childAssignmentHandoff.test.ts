@@ -273,10 +273,10 @@ describe("assignment-first child handoff", () => {
       assert.equal(message?.metadata.resultDelivery, "notification");
       assert.ok(message?.text.includes(input.assignment.body));
       assert.ok(message.text.includes(input.assignment.description));
-      assert.ok(message.text.includes(`board ${result.assignment?.boardId}, entry #1`));
+      assert.ok(message.text.includes(`board ${result.assignment?.boardId}, #1`));
       assert.ok(message.text.includes(`topic child-${result.childSessionId}`));
-      assert.ok(message.text.includes("no initial boards.read is needed"));
-      assert.ok(message.text.includes("Use the Workboard for later updates"));
+      assert.ok(message.text.includes("no initial board read needed"));
+      assert.ok(message.text.includes("Workboard calls (family board is automatic)"));
       const receipts = yield* f.provide(boards.entryReceipts("parent", 1));
       assert.equal(
         receipts.receipts.find((receipt) => receipt.sessionId === result.childSessionId)?.readAt,
@@ -578,9 +578,9 @@ describe("assignment-first child handoff", () => {
         assert.ok(message);
         assert.equal(message.metadata.resultDelivery, mode);
         assert.equal(message.metadata.expectsResponse, mode !== "ignore");
-        assert.ok(message.text.includes(`This launch uses resultDelivery: ${mode}.`));
+        assert.ok(message.text.includes(`resultDelivery: ${mode}`));
         assert.ok(message.text.includes(resultDeliveryBehavior[mode]));
-        assert.ok(message.text.includes(`Child public session ref: ${result.childSessionId}`));
+        assert.ok(message.text.includes(`Session: ${result.childSessionId}`));
         assert.ok(message.text.includes('"audience":["parent"]'));
         const receipts = yield* f.provide(boards.entryReceipts("parent", 1));
         assert.equal(
@@ -631,12 +631,10 @@ describe("assignment-first child handoff", () => {
       const message = parseCrossSessionMessage(f.bootstrap());
       assert.ok(message);
       assert.equal(message.metadata.sender.sessionId, parent.childSessionId);
-      assert.ok(
-        message.text.includes(`Immediate parent public session ref: ${parent.childSessionId}`),
-      );
-      assert.ok(message.text.includes("Family root public session ref: parent"));
+      assert.ok(message.text.includes(`Parent: ${parent.childSessionId}`));
+      assert.ok(message.text.includes("Root: parent"));
       assert.ok(message.text.includes(`"audience":["${parent.childSessionId}"]`));
-      assert.ok(message.text.includes("entry #2"));
+      assert.ok(message.text.includes(", #2, topic"));
       assert.equal(f.starts(), 2);
     }),
   );

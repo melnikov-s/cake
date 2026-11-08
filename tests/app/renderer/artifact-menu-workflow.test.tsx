@@ -162,6 +162,11 @@ const chooseConversation = async (fixture: ReturnType<typeof renderArtifacts>, i
       screen.getByRole("option", { name: new RegExp(`^${id} conversation `) }),
     );
   }
+  await waitFor(() =>
+    expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(
+      id === "cake" ? CAKE_CHAT_SESSION_ID : id,
+    ),
+  );
 };
 
 const openMenu = async (fixture: ReturnType<typeof renderArtifacts>, ownerLabel?: string) => {

@@ -98,16 +98,18 @@ describe("Workspace Sessions running count", () => {
 
   it("counts scoped work once, independently of search and disclosure, and keeps totals separate", async () => {
     using fixture = renderWorkspace();
-    expectCount(5);
+    expectCount(0);
+    const tree = fixture.root.conversationNavigatorStore.tree(navigatorProjectPath);
+    expect(fixture.root.conversationNavigatorStore.effectiveWorking(tree.roots[0]!)).toBe(true);
     expect(sessionsTab().getAttribute("aria-pressed")).toBe("false");
-    expect(sessionsTab().getAttribute("title")).toContain("15 total in this project");
+    expect(sessionsTab().getAttribute("title")).toContain("5 total in this project");
     await fixture.user.click(sessionsTab());
-    expect(screen.queryByText("15 total")).toBeNull();
+    expect(screen.queryByText("5 total")).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
-    expectCount(5);
+    expectCount(0);
     await fixture.user.type(screen.getByRole("searchbox", { name: "Search sessions" }), "no match");
     expect(screen.getByText("No matching conversations")).toBeTruthy();
-    expectCount(5);
+    expectCount(0);
   });
 
   it("reacts to own activity, inherited worker activity, release and idle without counting parents twice", () => {
@@ -122,7 +124,11 @@ describe("Workspace Sessions running count", () => {
         active: true,
       });
     });
-    expectCount(5); // An idle parent with active descendants is not another running session.
+    expectCount(0); // Descendant activity affects dots, not top-level counts.
+    const node = fixture.root.conversationNavigatorStore
+      .tree(navigatorProjectPath)
+      .byKey.get("session:layout")!;
+    expect(fixture.root.conversationNavigatorStore.effectiveWorking(node)).toBe(true);
     act(() => {
       applyConversationUpdate(parent, {
         _tag: "Event",
@@ -130,7 +136,7 @@ describe("Workspace Sessions running count", () => {
         event: { _tag: "StreamingChanged", sessionId: "layout", streaming: true },
       });
     });
-    expectCount(6); // A parent actually doing its own work does count.
+    expectCount(1); // A parent actually doing its own work does count.
     act(() => {
       applySubagentUpdate(catalog, "layout", {
         _tag: "Removed",
@@ -139,7 +145,8 @@ describe("Workspace Sessions running count", () => {
         handleId: SubagentHandleId.make(catalog.activities[0]!.handleId),
       });
     });
-    expectCount(5);
+    expectCount(1);
+    expect(fixture.root.conversationNavigatorStore.effectiveWorking(node)).toBe(true);
     act(() => {
       applyConversationUpdate(parent, {
         _tag: "Event",
@@ -156,6 +163,7 @@ describe("Workspace Sessions running count", () => {
         });
     });
     expectCount(0);
+    expect(fixture.root.conversationNavigatorStore.effectiveWorking(node)).toBe(false);
     expect(within(sessionsTab()).getByRole("img").className).toContain("text-muted-foreground");
     act(() => {
       applyConversationUpdate(parent, {
@@ -170,12 +178,14 @@ describe("Workspace Sessions running count", () => {
   it("aggregates registered projects in Global Cake Chat", () => {
     using fixture = renderWorkspace({ global: true });
     expectCount(1);
+    const tree = fixture.root.conversationNavigatorStore.tree(undefined);
+    expect(fixture.root.conversationNavigatorStore.effectiveWorking(tree.roots[0]!)).toBe(true);
     expect(sessionsTab().getAttribute("title")).toContain("7 total in all projects");
   });
 
   it("caps large visible counts without losing the exact tooltip or accessible count", () => {
     using fixture = renderWorkspace({ large: true });
-    expectCount(105, "99+");
-    expect(sessionsTab().getAttribute("title")).toContain("115 total in this project");
+    expectCount(100, "99+");
+    expect(sessionsTab().getAttribute("title")).toContain("105 total in this project");
   });
 });

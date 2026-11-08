@@ -22,14 +22,12 @@ describe("inline widget service", () => {
   });
 
   it("gives generation and repair agents one collision-free responsive layout contract", () => {
-    expect(inlineWidgetLayoutRequirements).toContain("from 320 CSS pixels to wide desktops");
-    expect(inlineWidgetLayoutRequirements).toContain(
-      "structural text, controls, icons and navigation use wrapping/reflowing flex/grid, never absolute/fixed positioning",
-    );
-    expect(inlineWidgetLayoutRequirements).toContain("No text/control may overlap");
-    expect(inlineWidgetLayoutRequirements).toContain("Artifact viewports resize");
-    expect(inlineWidgetLayoutRequirements).toContain("ResizeObserver");
-    expect(inlineWidgetLayoutRequirements).toContain("Geometry is not artifact document data");
+    expect(inlineWidgetLayoutRequirements).toContain("Responsive 320px–desktop");
+    expect(inlineWidgetLayoutRequirements).toContain("no overlap/horizontal page scroll");
+    expect(inlineWidgetLayoutRequirements).toContain("Use flex/grid, wrapping and min-width:0");
+    expect(inlineWidgetLayoutRequirements).toContain("absolute geometry only inside canvases");
+    expect(inlineWidgetLayoutRequirements).toContain("height:100%, min-height:0 and flex:1 canvas");
+    expect(inlineWidgetLayoutRequirements).toContain("resize without remount/state loss");
   });
 
   it("bundles the artifact state, runtime tool and canonical Cake SDK only in artifact widgets", async () => {

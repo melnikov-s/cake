@@ -24,11 +24,13 @@ const projectPath = "/project";
 const requestId = (id: number) => `00000000-0000-4000-8000-${String(id).padStart(12, "0")}`;
 
 function createControlFixture(client: TestClientOverrides) {
-  return createRendererStoreFixture({
+  const fixture = createRendererStoreFixture({
     client,
     projects: [projectRecord({ path: projectPath, name: "Project" })],
     sessions: [sessionSummary({ sessionId: "parent", projectPath })],
   });
+  fixture.root.navigationStore.showEmptyWorkbench();
+  return fixture;
 }
 
 const projectRequest = (id: number): ProjectSessionControlRequest => ({
@@ -322,12 +324,11 @@ describe("Application control transport integration", () => {
     fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID);
     applyCakeChatControlUpdate(controls, { _tag: "Snapshot", requests: [request] });
 
-    await vi.waitFor(() =>
-      expect(fixture.root.cakeChatCollectionStore.error).toBe("request expired"),
-    );
-    expect(fixture.root.cakeChatCollectionStore.errorDetails).toContain(
-      "Cake Chat control response: app.state",
-    );
+    const composer =
+      fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID)
+        .conversationSessionStore.composerStore;
+    await vi.waitFor(() => expect(composer.error).toBe("request expired"));
+    expect(composer.errorDetails).toContain("Cake Chat control response: app.state");
     applyCakeChatControlUpdate(controls, { _tag: "Snapshot", requests: [] });
     // A fresh request proves the replayed snapshot was consumed, without sleeps
     // or assuming that one microtask is sufficient to finish bridge invocation.

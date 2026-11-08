@@ -1072,11 +1072,10 @@ export class RootStore extends Store<{
       desktopConnection: this.props.desktopConnection,
       operations: this.sessionOperationCoordinator,
       activeSession: () => {
-        const active = this.appShellStore.activeConversation;
-        if (active?.kind === "project-session") {
-          const session = this.projectWorkbenchStore.activeSession;
-          return session?.sessionId === active.sessionId ? session : undefined;
-        }
+        const active =
+          this.appShellStore.activeConversation ?? this.appShellStore.settingsConversation;
+        if (active?.kind === "project-session")
+          return this.sessionRegistry.findSession(active.sessionId);
         return active?.kind === "cake-chat"
           ? this.cakeChatCollectionStore.registry.find(active.sessionId)
           : undefined;

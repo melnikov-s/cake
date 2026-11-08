@@ -115,9 +115,9 @@ it("discovers cold scoped owners and nested metadata without opening conversatio
   try {
     await vi.waitFor(() =>
       expect(
-        [...fixture.root.conversationNavigatorStore.tree("/cake").byKey.values()].map(
-          (node) => node.title,
-        ),
+        fixture.root.conversationNavigatorStore
+          .ownedConversations("nested-sidecar")
+          .map((node) => node.title),
       ).toContain("Nested real worker"),
     );
     expect(fixture.models.projectConversations).toHaveLength(0);

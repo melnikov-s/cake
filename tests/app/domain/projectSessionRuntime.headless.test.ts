@@ -54,6 +54,7 @@ const dependencies = Layer.mergeAll(
   Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active") }),
   Layer.mock(SessionFamilyStorage, {
     familyForMember: () => Effect.succeed(undefined),
+    invalidateAutoMerge: () => Effect.void,
     withMemberLock: (_sessionId, effect) => effect,
     state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
     settleTurn: () => Effect.void,

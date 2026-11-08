@@ -246,7 +246,9 @@ describe("Session continuation workflow", () => {
     expect(visibleSessionId()).toBe(previewId);
     await fixture.hydrateFork("/project");
     await waitFor(() => expect(visibleSessionId()).toBe("forked"));
-    expect(screen.getAllByText("Forked conversation").length).toBeGreaterThan(1);
+    expect(
+      screen.getByRole("navigation", { name: "Conversation breadcrumb" }).textContent,
+    ).toContain("Forked conversation");
     expect(screen.queryByText("Fork of Source conversation")).toBeNull();
     expect((screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value).toBe(
       "Continue from here",
@@ -432,7 +434,9 @@ describe("Session continuation workflow", () => {
     await act(async () => pendingFork.resolve({ sessionId: "forked" }));
     await fixture.hydrateFork("/current-worktree");
     expect(visibleSessionId()).toBe("source");
-    expect(screen.getAllByText("Source conversation").length).toBeGreaterThan(1);
+    expect(
+      screen.getByRole("navigation", { name: "Conversation breadcrumb" }).textContent,
+    ).toContain("Source conversation");
     expect(fork).toHaveBeenCalledTimes(1);
   });
 
@@ -477,7 +481,9 @@ describe("Session continuation workflow", () => {
     await fixture.user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(fork).not.toHaveBeenCalled();
-    expect(screen.getAllByText("Source conversation").length).toBeGreaterThan(1);
+    expect(
+      screen.getByRole("navigation", { name: "Conversation breadcrumb" }).textContent,
+    ).toContain("Source conversation");
   });
 
   it("tool-compacts the active session through the composer without a fork dialog", async () => {
@@ -514,6 +520,8 @@ describe("Session continuation workflow", () => {
     );
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(fork).not.toHaveBeenCalled();
-    expect(screen.getAllByText("Source conversation").length).toBeGreaterThan(1);
+    expect(
+      screen.getByRole("navigation", { name: "Conversation breadcrumb" }).textContent,
+    ).toContain("Source conversation");
   });
 });

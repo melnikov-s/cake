@@ -36,6 +36,8 @@ it("offers an actionable retry when a Discussion observation is no longer availa
       projectSessions: { observeCatalog: () => Stream.never },
       cakeChats: {
         observeCatalog: () => Stream.never,
+        observeSideChats: () => Stream.never,
+        observeControls: () => Stream.never,
         observeSideChatMetadata: () => Stream.never,
       },
       conversations: { observe: () => Stream.never },

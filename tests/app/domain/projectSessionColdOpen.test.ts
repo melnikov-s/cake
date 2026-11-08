@@ -324,7 +324,7 @@ it.effect.each([0, 1000, 5000])(
           expect(reads.length).toBeLessThanOrEqual(8);
         }
         const prompt = prompts[1] ?? "";
-        const reference = /immediate parent: ([^. ]+)/.exec(prompt)?.[1] ?? "";
+        const reference = /Parent: ([^. ]+)/.exec(prompt)?.[1] ?? "";
         expect(resolveSessionReference(reference, [parent, child, collision])).toEqual({
           ok: true,
           sessionId: parent,

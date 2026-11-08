@@ -219,7 +219,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
       const before = await readFile(join(root, "artifacts", "catalog.json"), "utf8");
       expect(
         (await operations.invoke({ command: "artifacts.present.help" }, context)).text,
-      ).toContain("fresh inline surface");
+      ).toContain("Show existing artifact");
       expect((await operations.invoke({ command: "artifacts" }, context)).text).toContain(
         "artifacts.present",
       );

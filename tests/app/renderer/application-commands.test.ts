@@ -66,6 +66,33 @@ describe("Application command registry", () => {
     expect(root.uiHintModeStore.active).toBe(false);
   });
 
+  it.each(["project-session", "project-chat", "cake-chat"])(
+    "retains only the %s Settings origin without making a hidden conversation active",
+    (kind) => {
+      using fixture = createRendererStoreFixture({
+        sessions: [sessionSummary({ sessionId: "session", projectPath: "/project" })],
+      });
+      const { root } = fixture;
+      const sessionId =
+        kind === "project-session"
+          ? "session"
+          : kind === "project-chat"
+            ? `project-chat:${"a".repeat(64)}`
+            : CAKE_CHAT_SESSION_ID;
+      const owner =
+        kind === "project-session"
+          ? root.sessionRegistry.load(sessionId, "/project")
+          : root.cakeChatCollectionStore.registry.load(sessionId);
+      if (kind === "project-session") root.navigationStore.showLoadedProjectSession(sessionId);
+      else root.navigationStore.selectCakeChat(sessionId);
+      root.navigationStore.showSettings();
+      expect(root.appShellStore.activeConversation).toBeUndefined();
+      expect(root.settingsStore.activeSession).toBe(owner);
+      root.navigationStore.showAutomations();
+      expect(root.settingsStore.activeSession).toBeUndefined();
+    },
+  );
+
   it("returns from Settings to the same conversation and leaves snapshot authority with shell and layout", () => {
     using fixture = createRendererStoreFixture();
     const { root } = fixture;
@@ -80,8 +107,9 @@ describe("Application command registry", () => {
     expect(root.appShellStore.surface).toBe("cake-chat");
     const snapshot = toSnapshot(root);
     expect(snapshot.children?.appShellStore).toMatchObject({
-      state: { navigationVersion: 4, workspace: "cake-chat" },
+      state: { navigationVersion: 4 },
     });
+    expect(snapshot.children?.appShellStore).not.toHaveProperty("state.workspace");
     expect(snapshot.children?.navigationStore).toMatchObject({ state: {} });
   });
 });

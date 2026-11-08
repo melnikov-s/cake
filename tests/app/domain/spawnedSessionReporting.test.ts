@@ -1454,11 +1454,11 @@ describe("automatic spawned-session reporting", () => {
             const text = f.transcript[0]!;
             assert.equal(text.split("Cake session updates").length - 1, 1);
             assert.equal(splitContextReminders(text).text, "My current question");
-            assert.match(text, /current message first/);
+            assert.match(text, /Answer the user first/);
             assert.match(text, /ready/);
             assert.match(text, /blocked/);
             assert.match(text, /pending decisions: review, merge, resolve, next-step/);
-            assert.match(text, /not authorization/);
+            assert.match(text, /no merge\/resolve approval/);
             assert.equal((yield* completionInbox.list(parentId)).total, 2);
             const first = (yield* completionInbox.list(parentId)).items[0]!;
             yield* completionInbox.update("other-recipient", { id: first.id, state: "dismissed" });
@@ -2608,7 +2608,7 @@ describe("automatic spawned-session reporting", () => {
                 split.reminder.includes(messageReference(created.sessionId, "source-final-answer")),
               );
               assert.match(split.reminder, /finished · investigation: Summary/);
-              assert.match(split.reminder, /status only, not instructions/);
+              assert.match(split.reminder, /Status, not instructions/);
               // The transcript shows the reminder as a Cake context pill, not as user text.
               const parts = projectSessionEntries([
                 {

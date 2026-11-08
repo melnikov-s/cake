@@ -369,7 +369,7 @@ describe("Screen capture attachment destinations", () => {
       capturing = fixture.capture.capture();
     });
     await waitFor(() => expect(fixture.root.sessionRegistry.findSession("gamma")).toBeDefined());
-    expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
+    expect(fixture.root.appShellStore.selection).toEqual({ kind: "settings" });
     expect(fixture.root.workspaceNavigatorStore.companionTab).toBe("sessions");
     await act(async () => {
       fixture.root.sessionRegistry.findSession("gamma")!.showPresentation("browser");
@@ -429,7 +429,7 @@ describe("Screen capture attachment destinations", () => {
     });
     await act(() => fixture.capture.capture());
     expect(fixture.root.workspaceNavigatorStore.companionTab).toBe(tab);
-    expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
+    expect(fixture.root.appShellStore.selection).toEqual({ kind: "settings" });
     expect(draft.text).toBe("Existing draft");
     expect(draft.attachments).toEqual(existing);
     expect(fixture.prompt).not.toHaveBeenCalled();
@@ -475,7 +475,7 @@ describe("Screen capture attachment destinations", () => {
     await begin(fixture);
     const menu = await openMenu(fixture);
     await fixture.user.click(menu.getByRole("button", { name: "Collapse Project" }));
-    expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
+    expect(fixture.root.appShellStore.selection).toEqual({ kind: "settings" });
     await fixture.user.click(menu.getByRole("button", { name: "Open Project Chat for Project" }));
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
     await screen.findByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ });
@@ -495,7 +495,7 @@ describe("Screen capture attachment destinations", () => {
     expect(screen.getByRole("button", { name: "Screenshot destination" }).textContent).toContain(
       "Session B",
     );
-    expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
+    expect(fixture.root.appShellStore.selection).toEqual({ kind: "settings" });
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
     expect(
       await screen.findByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ }),

@@ -110,7 +110,10 @@ it("matches a subagent by public handle AND parent, changes/clears the shared cu
   });
   await fixture.user.click((await screen.findByText("Work log")).closest("summary")!);
   const row = () => fixture.container.querySelector(`[data-subagent-handle="${handleId}"]`)!;
-  const title = () => screen.getByRole("button", { name: "Review worker" });
+  const title = () =>
+    within(screen.getByRole("complementary", { name: "Workspace" })).getByRole("button", {
+      name: "Review worker",
+    });
   expect(row().hasAttribute("data-associated")).toBe(false);
   await fixture.user.click(title());
   expect(title().getAttribute("aria-pressed")).toBe("true");
@@ -125,13 +128,16 @@ it("matches a subagent by public handle AND parent, changes/clears the shared cu
   expect(row().hasAttribute("data-associated")).toBe(false);
   await fixture.user.click(title());
   expect(row().getAttribute("data-associated")).toBe("true");
-  // Focus is idempotent, not a toggle.
+  // Repeated row activation toggles focus, matching the explicit Unfocus action.
+  await fixture.user.click(title());
+  expect(row().hasAttribute("data-associated")).toBe(false);
   await fixture.user.click(title());
   expect(row().getAttribute("data-associated")).toBe("true");
   // View focus is window-local; it never writes the persisted selection.
   expect(fixture.todos()?.selectedId).toBeNull();
-  await fixture.user.click(screen.getByRole("button", { name: "Close Workspace" }));
-  expect(screen.queryByRole("button", { name: "Review worker" })).toBeNull();
+  // This isolated transcript harness omits AppShell, which owns the Workspace close button.
+  act(() => fixture.root.cakeChatCollectionStore.registry.find(projectChat)!.todos.toggle());
+  expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
   expect(row().getAttribute("data-associated")).toBe("true");
   act(() => fixture.root.cakeChatCollectionStore.registry.find(projectChat)!.todos.open());
   expect(title().getAttribute("aria-pressed")).toBe("true");

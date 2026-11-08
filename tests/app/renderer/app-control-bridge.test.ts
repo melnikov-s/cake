@@ -215,7 +215,7 @@ describe("Application controls over the real Root host", () => {
     expect(target.tools.some((tool) => tool.command === "session-labels.remove")).toBe(true);
     const create = target.tools.find((tool) => tool.command === "sessions.create");
     expect(create && "guidance" in create ? create.guidance : undefined).toContainEqual(
-      expect.stringContaining("Omit model unless the user explicitly asks"),
+      expect.stringContaining("Omit model unless requested"),
     );
     expect(create?.examples?.[0]?.input).not.toHaveProperty("model");
     expect(create?.examples?.[1]?.input).toMatchObject({ model: "Sol" });

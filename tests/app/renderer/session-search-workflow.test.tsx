@@ -81,7 +81,7 @@ describe("Session search workflow", () => {
       dialog().getByRole("switch", { name: "Include resolved" }).getAttribute("aria-checked"),
     ).toBe("false");
     await fixture.user.type(dialog().getByRole("combobox"), "session search");
-    await waitFor(() => expect(labels()[0]).toContain("Session searchcake"));
+    await waitFor(() => expect(labels()[0]).toMatch(/^Session search.*cake$/));
     await fixture.user.clear(dialog().getByRole("combobox"));
     await fixture.user.type(dialog().getByRole("combobox"), "resolved");
     await waitFor(() =>

@@ -121,7 +121,8 @@ it.each([false, true])(
       expect(
         within(panel).queryByRole("combobox", { name: "Message about selected text" }),
       ).toBeNull();
-      expect(within(panel).getByText("Selection")).toBeDefined();
+      expect(within(panel).getByText("Side chat")).toBeDefined();
+      expect(within(panel).getByRole("button", { name: "Close and resolve" })).toBeDefined();
     }
   },
 );

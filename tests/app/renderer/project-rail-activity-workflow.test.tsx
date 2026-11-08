@@ -125,8 +125,13 @@ it("shows unselected-project activity from the project catalog without discoveri
     }),
   );
   expect(screen.getByRole("img", { name: "Work running in Other" })).toBeTruthy();
-  expect(fixture.models.discussionCatalogs).toHaveLength(0);
-  expect(fixture.models.subagentCatalogs).toHaveLength(0);
+  // Only the permanent startup chat is materialized, never the unselected project descendants.
+  expect(fixture.models.discussionCatalogs.map((catalog) => catalog.sessionId)).toEqual([
+    CAKE_CHAT_SESSION_ID,
+  ]);
+  expect(fixture.models.subagentCatalogs.map((catalog) => catalog.sessionId)).toEqual([
+    CAKE_CHAT_SESSION_ID,
+  ]);
   act(() =>
     applyProjectCatalogUpdate(fixture.models.projects, {
       _tag: "Event",

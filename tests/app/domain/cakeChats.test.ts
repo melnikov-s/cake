@@ -634,9 +634,7 @@ describe("permanent Cake Chat", () => {
         );
         expect(operations.help()).toContain("vscode —");
         expect(operations.topicHelp("vscode")).toContain("vscode.script.run");
-        expect(operations.operationHelp("vscode.script.run")).toContain(
-          "vscode, input, and require",
-        );
+        expect(operations.operationHelp("vscode.script.run")).toContain("vscode, input, require");
         const context = {
           signal: new AbortController().signal,
           toolCallId: "companion-vscode",
@@ -992,7 +990,7 @@ describe("permanent Cake Chat", () => {
         // Global Cake Chat keeps its own to-do list, separate from every Project's list.
         const globalPrompt = () => global.runtime.cakeChatSystemPrompt?.() ?? "";
         expect(globalPrompt()).toContain("## Cake Chat to-dos (application context)");
-        expect(globalPrompt()).toContain("separate from every Project Chat's list");
+        expect(globalPrompt()).toContain("separate from project lists");
         expect(globalPrompt()).toContain(PROJECT_TODO_CREATION_RULE);
         expect(globalPrompt()).toContain(PROJECT_TODO_CLOSING_RULE);
         expect(globalPrompt()).not.toContain("Project commitment");

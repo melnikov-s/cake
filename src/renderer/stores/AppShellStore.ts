@@ -93,6 +93,22 @@ export class AppShellStore extends Store<AppShellStoreProps> {
       : undefined;
   }
 
+  /** Settings retain their originating scope without making a hidden conversation active. */
+  get settingsConversation(): WindowConversationSelection | undefined {
+    if (this.workspace !== "settings" || this.returnWorkspace === "home") return undefined;
+    const sessionId = this.props.focusedSessionId(this.returnWorkspace);
+    if (!sessionId) return undefined;
+    return {
+      kind:
+        this.returnWorkspace === "automation-sessions"
+          ? "automation-session"
+          : this.returnWorkspace === "cake-chat" || isCakeChatSessionId(sessionId)
+            ? "cake-chat"
+            : "project-session",
+      sessionId,
+    };
+  }
+
   get selection(): AppSelection {
     if (this.applicationSurface) return { kind: this.applicationSurface };
     return (

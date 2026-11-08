@@ -8,5 +8,5 @@ it("keeps bounded output and failure honesty in both roles", () => {
     coordinatorSystemPrompt("", "/docs"),
     renderPromptTemplate(project, { commonPrompt: common, cakeDocsDirectory: "/docs" }),
   ])
-    expect(prompt).toContain("Keep tool output bounded; expose failures");
+    expect(prompt).toContain("Bound output; expose failures");
 });

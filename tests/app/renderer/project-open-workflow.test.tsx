@@ -45,6 +45,7 @@ function renderProjectOpen(
     </StoreProvider>,
   );
   return {
+    root: fixture.root,
     user: userEvent.setup(),
     [Symbol.dispose]() {
       view.unmount();
@@ -94,7 +95,7 @@ describe("Project opening workflow", () => {
       electron: { chooseProject },
       workspaces: { inspect, registerProject },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open project" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
     await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
     await act(async () => second.resolve("/second"));
     expect(await screen.findByPlaceholderText("Ask Cake to work in second…")).toBeDefined();
@@ -126,7 +127,7 @@ describe("Project opening workflow", () => {
       electron: { chooseProject },
       workspaces: { inspect, registerProject },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open project" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
     await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
     await waitFor(() =>
       expect(registerProject).toHaveBeenCalledWith("/second", "second", expect.anything()),
@@ -157,7 +158,7 @@ describe("Project opening workflow", () => {
       { electron: { chooseProject }, workspaces: { inspect, registerProject } },
       [projectRecord({ path: "/existing", name: "Existing" })],
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Open project" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
     expect(await screen.findByRole("combobox", { name: "Message" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
     await createSessionInProject(fixture.user, /^Existing/i);
@@ -185,7 +186,8 @@ describe("Project opening workflow", () => {
         registerProject,
       },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "One-off chat" }));
+    // The former landing-page button is gone; exercise the retained explicit navigation operation.
+    await act(() => fixture.root.navigationStore.startOneOffChat());
     expect(await screen.findByPlaceholderText("Ask Cake to work in user…")).toBeDefined();
     expect(registerProject).toHaveBeenCalledWith(
       "/home/user",
@@ -202,7 +204,7 @@ describe("Project opening workflow", () => {
       defaultApplicationState(),
     );
     using fixture = renderProjectOpen({ workspaces: { registerProject } });
-    await fixture.user.click(screen.getByRole("button", { name: "Open project" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
     expect(await screen.findByPlaceholderText("Ask Cake to work in cake…")).toBeDefined();
     expect(registerProject).toHaveBeenCalledWith(
       "/work/cake",

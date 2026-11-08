@@ -285,7 +285,7 @@ describe("utility work", () => {
       assert.ok(received);
       assert.match(
         received.instructions,
-        /speech-to-text[\s\S]*coding assistant[\s\S]*phonetic similarity[\s\S]*"Git"[\s\S]*"skills"[\s\S]*"agents"/,
+        /Speech-to-text: fix likely technical mishearings only with contextual\/phonetic evidence\. Preserve coherent code\/identifiers\/paths\/commands\. Never invent requirements\./,
       );
       assert.deepEqual(JSON.parse(received.context), {
         selection: "This is the thing I was rambling about.",

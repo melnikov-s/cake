@@ -1018,11 +1018,11 @@ describe("Cake Chat project investigators", () => {
           assert.equal(options.ephemeral, undefined);
           assert.equal(options.projectInvestigation, undefined);
           assert.deepEqual(options.tools, ["read", "bash", "message_parent"]);
+          assert.match(options.isolatedSystemPrompt ?? "", /No project resources, MCP/);
           assert.match(
             options.isolatedSystemPrompt ?? "",
-            /no project instructions, skills, extensions or MCP/,
+            /no guaranteed web\/search|No project resources, MCP or guaranteed web\/search/,
           );
-          assert.match(options.isolatedSystemPrompt ?? "", /web\/search access is not guaranteed/);
           assert.match(options.isolatedSystemPrompt ?? "", /Investigations only/);
           assert.doesNotMatch(options.isolatedSystemPrompt ?? "", /Mutation mode/);
           assert.equal(receipt.projectPath, undefined);
@@ -1098,7 +1098,7 @@ describe("Cake Chat project investigators", () => {
           assert.match(researchOptions.isolatedSystemPrompt ?? "", /Mutation mode/);
           assert.match(
             researchOptions.isolatedSystemPrompt ?? "",
-            /Report exactly what you changed/,
+            /Report changed files\/settings\/packages, side-effecting commands, stopped processes \(PID\/command\), failures and omissions/,
           );
           assert.doesNotMatch(researchOptions.isolatedSystemPrompt ?? "", /Investigations only/);
           yield* completeChild(fixture, researchSession);

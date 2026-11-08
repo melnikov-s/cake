@@ -65,6 +65,7 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
     projectTodoLayer(),
     Layer.mock(SessionFamilyStorage, {
       familyForMember: () => Effect.succeed(undefined),
+      invalidateAutoMerge: () => Effect.void,
       withMemberLock: (_sessionId, effect) => effect,
       state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
       settleTurn: () => Effect.void,

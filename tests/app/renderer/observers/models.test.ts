@@ -16,6 +16,7 @@ import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { createModelObserver, observeModels } from "../../../../src/renderer/observers";
 import type { Runtime } from "../../../../src/renderer/runtime";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
+import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
 import {
   observerClient,
@@ -156,8 +157,12 @@ describe("Project Session composition observer", () => {
         expect(fixture.models.projects.runningProjectPaths).toEqual(["/other"]),
       );
       expect(metadata).not.toHaveBeenCalled();
-      expect(fixture.models.discussionCatalogs).toHaveLength(0);
-      expect(fixture.models.subagentCatalogs).toHaveLength(0);
+      expect(fixture.models.discussionCatalogs.map((catalog) => catalog.sessionId)).toEqual([
+        CAKE_CHAT_SESSION_ID,
+      ]);
+      expect(fixture.models.subagentCatalogs.map((catalog) => catalog.sessionId)).toEqual([
+        CAKE_CHAT_SESSION_ID,
+      ]);
       fixture.root.workspaceNavigatorStore.show("sessions");
       await vi.waitFor(() => expect(metadata).toHaveBeenCalled());
       expect(
@@ -445,9 +450,18 @@ describe("focused projection lifetimes", () => {
     );
     const stop = observeModels(runtime, projection, root);
     try {
-      for (let index = 0; index < 6; index += 1) await Effect.runPromise(Queue.take(applied));
+      // The permanent startup chat is retained independently of the Project idle LRU.
+      for (let index = 0; index < 7; index += 1) await Effect.runPromise(Queue.take(applied));
       expect(new Set(conversations.mock.calls.map(([target]) => target.sessionId))).toEqual(
-        new Set(["selected", "running", "idle-1", "idle-2", "idle-3", "idle-4"]),
+        new Set([
+          CAKE_CHAT_SESSION_ID,
+          "selected",
+          "running",
+          "idle-1",
+          "idle-2",
+          "idle-3",
+          "idle-4",
+        ]),
       );
       expect(projection.findProjectConversation("idle-0")?.observedSnapshotRevision).toBe(0);
       const count = cancellations.length;
@@ -455,7 +469,7 @@ describe("focused projection lifetimes", () => {
         root.navigationStore.selectProjectSession("idle-4");
         root.sessionRegistry.observationRetention.retain("idle-4");
       });
-      expect(conversations).toHaveBeenCalledTimes(6);
+      expect(conversations).toHaveBeenCalledTimes(7);
       expect(cancellations).toHaveLength(count);
       expect(cancellations.every((cancel) => cancel.mock.calls.length === 0)).toBe(true);
       // Inspecting navigator metadata does not demand an idle conversation stream.
@@ -467,7 +481,7 @@ describe("focused projection lifetimes", () => {
         root.navigationStore.selectProjectSession("replacement");
         root.sessionRegistry.load("replacement", "/project");
       });
-      expect(conversations).toHaveBeenCalledTimes(7);
+      expect(conversations).toHaveBeenCalledTimes(8);
       // Conversation, discussions, schedules and subagents.
       expect(cancellations.filter((cancel) => cancel.mock.calls.length > 0)).toHaveLength(4);
       expect(projection.findProjectConversation("idle-1")?.parts).toEqual([]);

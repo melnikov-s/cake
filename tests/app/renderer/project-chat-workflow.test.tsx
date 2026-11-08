@@ -205,6 +205,14 @@ async function fixture(
   };
 }
 
+async function openTodos(user: ReturnType<typeof userEvent.setup>) {
+  const open = screen.queryByRole("button", { name: "Open Workspace" });
+  if (open) await user.click(open);
+  const tab = screen.getByRole("button", { name: /^To-dos / });
+  await user.click(tab);
+  return tab;
+}
+
 it("selects each Project Chat synchronously before history or runtime startup completes", async () => {
   using f = await fixture(undefined, undefined, undefined, false);
   f.chatOpen.mockClear();
@@ -420,8 +428,10 @@ it.each(
       );
       await publish();
       expect(panel()).toBeNull();
-      expect(screen.getByRole("button", { name: "To-dos" }).textContent).toBe("0");
-      if (alreadyOpen) await f.user.click(screen.getByRole("button", { name: "To-dos" }));
+      expect(f.root.cakeChatCollectionStore.registry.load(projectId).todos.openItems).toHaveLength(
+        0,
+      );
+      if (alreadyOpen) await openTodos(f.user);
       const first = await runtime.runPromise(
         projectTodos.create("/zombies", {
           title: "First commitment",
@@ -431,7 +441,7 @@ it.each(
       );
       await publish();
       expect(within(panel()!).getByText(first.title)).toBeTruthy();
-      expect(screen.getByRole("button", { name: "To-dos" }).getAttribute("aria-pressed")).toBe(
+      expect(screen.getByRole("button", { name: /^To-dos / }).getAttribute("aria-pressed")).toBe(
         "true",
       );
       await f.user.click(screen.getByRole("button", { name: "Close Workspace" }));
@@ -475,9 +485,9 @@ it.each(
       );
       await publish();
       expect(panel()).toBeNull(); // Done history means the list is not empty.
-      await f.user.click(screen.getByRole("button", { name: "To-dos" }));
+      await openTodos(f.user);
       expect(within(panel()!).getByText("New work after Done")).toBeTruthy();
-      await f.user.click(screen.getByRole("button", { name: "To-dos" }));
+      await f.user.click(screen.getByRole("button", { name: "Close Workspace" }));
       expect(panel()).toBeNull();
     } finally {
       await runtime.dispose();
@@ -523,7 +533,7 @@ it.each(["initial load", "snapshot hydration"] as const)(
       }),
     );
     expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
-    await f.user.click(screen.getByRole("button", { name: "To-dos" }));
+    await openTodos(f.user);
     expect(screen.getByText("Existing commitment")).toBeTruthy();
   },
 );
@@ -576,11 +586,9 @@ it("toggles Project Chat to-dos in the existing side pane, focuses/unfocuses, co
       }),
     );
     await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
-    const toggle = screen.getByRole("button", { name: "To-dos" });
-    // Count only open items, with the label reserved for accessibility and the tooltip.
-    expect(toggle.textContent).toBe("1");
-    expect(toggle.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
-    await f.user.click(toggle);
+    const toggle = await openTodos(f.user);
+    // The Workspace tab counts only open items, not completed history.
+    expect(toggle.textContent).toBe("To-dos 1");
     const panel = screen.getByRole("complementary", { name: "Workspace" });
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
     expect(within(panel).getByText(item.description)).toBeTruthy();
@@ -598,12 +606,12 @@ it("toggles Project Chat to-dos in the existing side pane, focuses/unfocuses, co
     await f.user.click(row());
     expect(row().getAttribute("aria-pressed")).toBe("true");
     await f.user.click(within(panel).getByRole("button", { name: `Mark done: ${item.title}` }));
-    await waitFor(() => expect(toggle.textContent).toBe("0"));
+    await waitFor(() => expect(toggle.textContent).toBe("To-dos 0"));
     expect(within(panel).queryByRole("list", { name: "Active to-dos" })).toBeNull();
     // Completion keeps window-local focus; the row stays in Focus with its Reopen action.
     expect(row().getAttribute("aria-pressed")).toBe("true");
     await f.user.click(within(panel).getByRole("button", { name: `Reopen: ${item.title}` }));
-    await waitFor(() => expect(toggle.textContent).toBe("1"));
+    await waitFor(() => expect(toggle.textContent).toBe("To-dos 1"));
     await f.user.click(within(panel).getByRole("button", { name: `Unfocus to-do: ${item.title}` }));
     expect(
       within(within(panel).getByRole("list", { name: "Active to-dos" }))
@@ -611,9 +619,9 @@ it("toggles Project Chat to-dos in the existing side pane, focuses/unfocuses, co
         .getAttribute("aria-pressed"),
     ).toBe("false");
     await f.user.click(screen.getByRole("button", { name: "Close Workspace" }));
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
     expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
-    await f.user.click(toggle);
+    await openTodos(f.user);
     await f.user.click(screen.getByRole("link", { name: "Startup investigation" }));
     await waitFor(() => expect(f.root.appShellStore.activeConversation?.sessionId).toBe("task"));
   } finally {
@@ -666,7 +674,7 @@ it.each(["response", "table"] as const)(
     );
     f.publish(projectId, [input, answer], false);
     await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
-    await f.user.click(screen.getByRole("button", { name: "To-dos" }));
+    await openTodos(f.user);
     // Focus is window-local view state: focusing the other task folds sections attributed later.
     await f.user.click(screen.getByRole("button", { name: `Task ${second}` }));
     const title = surface === "response" ? "Cake" : "Table";

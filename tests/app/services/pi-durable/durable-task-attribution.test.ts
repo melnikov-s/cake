@@ -467,7 +467,10 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
       await side.prompt("Navigation side topic", "prompt", []);
       const snapshot = await side.snapshot();
       expect(
-        snapshot.parts.find((part) => part.kind === "text" && part.role === "user"),
+        snapshot.parts.find(
+          (part) =>
+            part.kind === "text" && part.role === "user" && part.text === "Navigation side topic",
+        ),
       ).toMatchObject({ taskTodoId: B });
       expect(JSON.stringify(snapshot.parts)).not.toContain("cake-todo");
       expect(await f.doc()).toEqual(parent);
@@ -478,7 +481,8 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
     try {
       expect(
         (await reopened.snapshot()).parts.find(
-          (part) => part.kind === "text" && part.role === "user",
+          (part) =>
+            part.kind === "text" && part.role === "user" && part.text === "Navigation side topic",
         ),
       ).toMatchObject({ taskTodoId: B });
       expect(f.classify).not.toHaveBeenCalled();

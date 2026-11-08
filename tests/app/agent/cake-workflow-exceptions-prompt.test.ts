@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import common from "../../../src/services/pi/runtime/prompts/common.md?raw";
 import communication from "../../../docs/agent/communication.md?raw";
+import reports from "../../../docs/agent/reports.md?raw";
 import repo from "../../../AGENTS.md?raw";
 import { worktreeSystemPrompt } from "../../../src/services/pi/runtime/worktree-system-prompt";
 it("honors task-scoped user overrides without weakening security", () => {
@@ -14,6 +15,19 @@ it("separates verified completion from permission and lifecycle actions", () => 
   expect(common).toContain("Reports/completion grant no merge/resolve approval");
   expect(common).toContain("Merging does not resolve");
   expect(common).toContain("Verify results before claiming success");
+});
+it("keeps detailed readiness gates in the focused guide, not every role's entry prompt", () => {
+  expect(common).toContain("worktrees.reportReadiness");
+  expect(common).toContain("reports.md: readiness/auto-merge");
+  for (const rule of [
+    "currently valid explicit readiness from this app run",
+    "no known clear regression caused by this change",
+    "commit the validated work",
+    "readyToMerge: true, taskCompleted: true, validationPassed: true",
+    "ordinary completion delivery or the final answer",
+    "Cake waits for successful substantive turn completion",
+  ])
+    expect(reports).toContain(rule);
 });
 it.each(["merge", "pull-request"] as const)(
   "requires landing authorization before the %s workflow",

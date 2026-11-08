@@ -13,10 +13,15 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
 }) {
   const root = useStore(RootStore);
   const navigator = root.conversationNavigatorStore;
+  const previewTitle = root.sessionRegistry.forkPreviewTitle(sessionId);
+  const previewDirectory = previewTitle
+    ? root.sessionRegistry.findSession(sessionId)?.workspacePath
+    : undefined;
   const projectPath =
     root.sessionCatalogStore.find(sessionId)?.projectPath ??
     root.cakeChatCollectionStore.summaries.find((chat) => chat.sessionId === sessionId)
-      ?.projectPath;
+      ?.projectPath ??
+    (previewDirectory ? root.sessionCatalogStore.projectPathFor(previewDirectory) : undefined);
   const lineage = navigator
     .lineageFor(sessionId)
     .filter(
@@ -55,11 +60,21 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
               size="sm"
               className="h-6 max-w-full px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
               title={projectPath}
-              aria-current={lineage.length === 0 ? "page" : undefined}
+              aria-current={lineage.length === 0 && !previewTitle ? "page" : undefined}
               onClick={() => void root.navigationStore.openProjectChat(projectPath)}
             >
               {root.projectCatalogStore.nameForPath(projectPath)}
             </Button>
+          </>
+        )}
+        {previewTitle && (
+          <>
+            <span aria-hidden="true" className="text-muted-foreground">
+              ›
+            </span>
+            <span aria-current="page" className="px-1 font-medium text-foreground">
+              {previewTitle}
+            </span>
           </>
         )}
         {lineage.map((node, index) => (
