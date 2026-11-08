@@ -18,6 +18,7 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { Type, type TSchema } from "@earendil-works/pi-durable-ai";
 import { estimateContextTokens } from "@earendil-works/pi-durable-ai/utils/estimate";
 import { Schema } from "effect";
+import { durableAssistantEntryId } from "./durable-operation-context";
 import { randomUUID } from "node:crypto";
 import { copyJson } from "@earendil-works/chord";
 import { mkdir } from "node:fs/promises";
@@ -308,7 +309,11 @@ export async function createDurableCakeChatRuntime(
       const result = await operations.invoke(input, {
         signal: context.abortSignal ?? new AbortController().signal,
         toolCallId: api.callId,
-        runtime: { sessionId, model: { provider: selected.provider, id: selected.id } },
+        runtime: {
+          sessionId,
+          assistantEntryId: await durableAssistantEntryId(api, context),
+          model: { provider: selected.provider, id: selected.id },
+        },
         onUpdate: (value) => {
           void api.details(copyJson(value), context).catch(() => undefined);
         },

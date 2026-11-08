@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { messageReference } from "../../contracts/conversations/message-reference";
 import { snapshotPromptFiles } from "../../services/filesystem/prompt-files";
 import {
   immediateDelivery,
@@ -246,6 +247,9 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
     messageId,
     threadId: thread.threadId,
     sequence,
+    ...(caller.sourceEntryId
+      ? { sourceMessageRef: messageReference(caller.sessionId, caller.sourceEntryId) }
+      : null),
     expectsResponse,
     resultDelivery,
     ...(replyToMessageId ? { replyToMessageId } : null),

@@ -18,6 +18,9 @@ import {
   type DurableSideChats,
 } from "../../../../src/services/pi-durable/durable-side-chats";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
+import { inspectDurableSideChatMessages } from "../../../../src/services/pi-durable/durable-side-chat-messages";
+import { decodeMessageReadResult } from "../../../../src/contracts/conversations/message-reference";
+import { readDurableMessageReference } from "../../../../src/services/pi-durable/durable-message-references";
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
 
 it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
@@ -81,6 +84,20 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
             const sender = context.runtime?.sessionId;
             if (!sender) throw new Error("Missing sender");
             senders.push(sender);
+            const entryId = context.runtime.assistantEntryId;
+            expect(entryId).toBeDefined();
+            const original = decodeMessageReadResult(
+              await inspectDurableSideChatMessages(storage, sender, {
+                kind: "messages-read",
+                entryId,
+              }),
+            );
+            expect(original.message.entryId).toBe(entryId);
+            expect(original.text).toContain("sessions.send");
+            // Exact IDs never bypass the owning conversation’s visibility boundary.
+            await expect(
+              readDurableMessageReference(root, parentSessionId, { entryId }),
+            ).rejects.toThrow("does not exist");
             await (
               await root.submit(
                 { type: "input", content: `Side-chat message from ${sender}` },

@@ -65,7 +65,11 @@ const SafeSessionMetadata = Schema.Struct({
 /** The global model sees IDs. Only this trusted boundary can mint recipient grants. */
 export const forwardTaskInputControl = Effect.fn("CakeChats.forwardTaskInputControl")(function* (
   ownerSessionId: string,
-  invocation: { readonly name: string; readonly arguments: JsonValue },
+  invocation: {
+    readonly name: string;
+    readonly arguments: JsonValue;
+    readonly sourceEntryId?: string;
+  },
 ) {
   if (invocation.name === "sessions.send" || invocation.name === "sessions.reply")
     yield* Schema.decodeUnknownEffect(SessionMessageDeliveryOptions)(invocation.arguments);

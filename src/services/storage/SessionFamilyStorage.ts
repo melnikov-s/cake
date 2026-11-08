@@ -726,7 +726,8 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                                 ...(outcome === "failed"
                                   ? (report ?? turn.report!)
                                   : (turn.report ?? report!)),
-                                ...(report?.resultMessageRef
+                                ...(report?.resultMessageRef &&
+                                (outcome === "failed" || !turn.report?.resultMessageRef)
                                   ? { resultMessageRef: report.resultMessageRef }
                                   : null),
                               },

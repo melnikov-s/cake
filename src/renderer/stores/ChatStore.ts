@@ -260,7 +260,14 @@ export class ChatStore extends Store<ChatStoreProps> {
               ((part.role === "assistant" && part.status !== "streaming") ||
                 part.subagentReport ||
                 part.crossSession)
-            ? messageReferencesInText(part.text)
+            ? [
+                ...new Set([
+                  ...(part.crossSession?.sourceMessageRef
+                    ? [part.crossSession.sourceMessageRef]
+                    : []),
+                  ...messageReferencesInText(part.text),
+                ]),
+              ]
             : [];
       return references
         .filter(

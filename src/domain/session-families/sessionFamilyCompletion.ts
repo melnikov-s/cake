@@ -191,6 +191,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
       sequence: 1,
       expectsResponse: false,
       generatedNotice: !report,
+      ...(report?.resultMessageRef ? { sourceMessageRef: report.resultMessageRef } : null),
       ...(report ? { replyToMessageId: turn.requestMessageId } : null),
       sender: {
         sessionId: turn.sessionId,
@@ -488,6 +489,7 @@ const deliverRequesterNotice = Effect.fn("SessionFamilies.deliverRequesterNotice
       sequence: 1,
       expectsResponse: false,
       generatedNotice: !report,
+      ...(report?.resultMessageRef ? { sourceMessageRef: report.resultMessageRef } : null),
       ...(report ? { replyToMessageId: turn.requestMessageId } : null),
       sender: {
         sessionId: turn.sessionId,

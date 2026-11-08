@@ -181,6 +181,7 @@ it.effect.each([
             },
             new AbortController().signal,
             { usedTokens: 10, windowTokens: 100 },
+            "sending-assistant",
           ),
         );
         const decoded = yield* Schema.decodeUnknownEffect(
@@ -212,6 +213,7 @@ it.effect.each([
         assert.equal(metadata?.messageId, decoded.messageId);
         assert.equal(metadata?.threadId, decoded.threadId);
         assert.equal(metadata?.resultDelivery, decoded.resultDelivery);
+        assert.equal(metadata?.sourceMessageRef, "cake://session/root?message=sending-assistant");
         assert.deepEqual(metadata?.context, { usedTokens: 10, windowTokens: 100 });
         const turns = (yield* (yield* SessionFamilyStorage).state()).turns;
         assert.equal(turns.length, 1);

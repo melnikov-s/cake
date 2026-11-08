@@ -10,7 +10,11 @@ import {
 } from "../../contracts/conversations/cross-session-message";
 import type { Attachment } from "../../contracts/conversations/session-contract";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
-import type { SessionChatPromptInput } from "../../contracts/conversations/conversation-data";
+import {
+  SessionChatError,
+  type SessionChatPromptInput,
+} from "../../contracts/conversations/conversation-data";
+import { parseSessionLink } from "../../contracts/conversations/message-reference";
 
 /** Messages/assignments/forks can carry derived content even without original references. */
 export const inheritTaskInputProtection = Effect.fn("Conversations.inheritTaskInputProtection")(
@@ -21,15 +25,24 @@ export const inheritTaskInputProtection = Effect.fn("Conversations.inheritTaskIn
   },
 );
 
-/** Without linked responses, protected workers may return status, never report content. */
+/** Protected reports remain data behind exact Pi references, never inline instructions. */
 export const prepareCoordinatorMessage = Effect.fn("Conversations.prepareCoordinatorMessage")(
   function* (input: SessionChatPromptInput) {
     if (!input.crossSession) return input;
     const inputs = yield* TaskInputStorage;
     if (!(yield* inputs.isRecipient(input.crossSession.sender.sessionId))) return input;
+    const source = input.crossSession.sourceMessageRef;
+    if (source && parseSessionLink(source)?.sessionId !== input.crossSession.sender.sessionId)
+      return yield* new SessionChatError({
+        operation: "deliver",
+        message: "The response source must belong to the sending session",
+      });
+    const references = [
+      ...new Set([...(source ? [source] : []), ...messageReferencesInText(input.text)]),
+    ].slice(0, 20);
     return {
       ...input,
-      text: appendMessageReferences(protectedResponseNotice, messageReferencesInText(input.text)),
+      text: appendMessageReferences(protectedResponseNotice, references),
       attachments: [],
       crossSession: {
         ...input.crossSession,

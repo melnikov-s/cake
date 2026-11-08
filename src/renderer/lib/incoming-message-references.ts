@@ -11,7 +11,10 @@ export function incomingMessageReferences(parts: readonly UiPart[]): ReadonlySet
             entry.reference ? [entry.reference] : [],
           )
         : part.kind === "text" && (part.crossSession || part.subagentReport || part.agentSource)
-          ? messageReferencesInText(part.text)
+          ? [
+              ...(part.crossSession?.sourceMessageRef ? [part.crossSession.sourceMessageRef] : []),
+              ...messageReferencesInText(part.text),
+            ]
           : [],
     ),
   );

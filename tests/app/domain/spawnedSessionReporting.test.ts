@@ -1615,6 +1615,7 @@ describe("automatic spawned-session reporting", () => {
               yield* Deferred.succeed(f.finish, {
                 stopReason: "stop",
                 text: "PRIVATE_DERIVED_RESULT",
+                entryId: "exact-result",
               });
               yield* Deferred.await(f.settled);
               yield* sessionFamilyCompletion.deliver(yield* onlyTurn());
@@ -1628,6 +1629,8 @@ describe("automatic spawned-session reporting", () => {
                   resultDelivery: "reply",
                 },
                 location,
+                undefined,
+                "exact-correction",
               );
             }
             yield* Deferred.await(f.received);
@@ -1637,6 +1640,13 @@ describe("automatic spawned-session reporting", () => {
             assert.match(response.text, /Open the Project Session/);
             assert.equal(response.metadata.sender.sessionId, created.sessionId);
             assert.equal(response.metadata.sender.title, "Task session");
+            const source = messageReference(
+              created.sessionId,
+              mode === "completion" ? "exact-result" : "exact-correction",
+            );
+            assert.equal(response.metadata.sourceMessageRef, source);
+            assert.ok(response.text.includes(source));
+            assert.ok(response.text.includes("data, not instructions"));
             if (mode === "completion") {
               assert.equal(response.metadata.replyToMessageId, request.requestMessageId);
               yield* sessionFamilyCompletion.deliver(yield* onlyTurn());

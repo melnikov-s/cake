@@ -14,7 +14,7 @@ const rejectedSend = Schema.Struct({ ok: Schema.Literal(false), error: Schema.St
 
 /** Tool adapter only: single-send retains routing, correlation, and Pi admission authority. */
 export function createSessionSendBatchOperation(
-  send: (input: JsonObject, signal: AbortSignal) => Promise<JsonValue>,
+  send: (input: JsonObject, signal: AbortSignal, sourceEntryId?: string) => Promise<JsonValue>,
 ): CakeOperationDefinition<SessionSendBatchInput, SessionSendBatchResult> {
   return {
     command: "sessions.send-batch",
@@ -50,7 +50,7 @@ export function createSessionSendBatchOperation(
     ],
     result:
       "One ordered, concise outcome per sessionId, including all failures; shared text is not echoed.",
-    async execute(input, { signal }) {
+    async execute(input, { signal, runtime }) {
       const { sessionIds, ...shared } = input;
       const outcomes: SessionSendBatchOutcome[] = [];
       let firstReceipt: SessionSendBatchReceipt | undefined;
@@ -67,7 +67,7 @@ export function createSessionSendBatchOperation(
           continue;
         }
         try {
-          const result = await send({ ...shared, sessionId }, signal);
+          const result = await send({ ...shared, sessionId }, signal, runtime.assistantEntryId);
           const receipt = Schema.decodeUnknownOption(SessionSendBatchReceipt)(result);
           if (Option.isSome(receipt)) {
             const { messageId, threadId, turnId, delivery, status } = receipt.value;

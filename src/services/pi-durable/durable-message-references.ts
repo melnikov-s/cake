@@ -109,7 +109,18 @@ export async function readDurableMessageReference(
   const message = entry && original(entry);
   const identity = entry && metadata(sessionId, entry);
   if (!message || !identity) throw new Error("The referenced Pi Durable message does not exist");
-  const raw = textFromContent(message.content);
+  const raw =
+    typeof message.content === "string"
+      ? message.content
+      : message.content
+          .map((block) => {
+            if (block.type === "text") return block.text;
+            if (block.type === "toolCall")
+              return `${block.name} ${JSON.stringify(block.arguments)}`;
+            return "";
+          })
+          .filter(Boolean)
+          .join("\n");
   const text = message.role === "user" ? durableInputPresentation(raw).text : raw;
   const offset = query.offset ?? 0;
   const maxChars = query.maxChars ?? 4_000;

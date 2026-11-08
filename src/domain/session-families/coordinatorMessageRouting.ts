@@ -1,4 +1,5 @@
 import * as projectTodoUpdates from "../projects/projectTodoUpdates";
+import { messageReference } from "../../contracts/conversations/message-reference";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import type { ResultDelivery } from "../../contracts/conversations/result-delivery";
 import {
@@ -50,6 +51,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
     },
     location: ProjectSessionLocation,
     senderContext?: CrossSessionContextSnapshot,
+    sourceEntryId?: string,
   ) {
     yield* Schema.decodeUnknownEffect(SessionMessageDeliveryOptions)(input).pipe(
       Effect.mapError((error) => failure(error.message)),
@@ -103,12 +105,14 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
     )
       return toJsonValue({ ok: true, command, status: "already-reported", expectsResponse: false });
     const messageText = appendMessageReferences(input.text, input.messageRefs ?? []);
+    const sourceMessageRef = sourceEntryId ? messageReference(sessionId, sourceEntryId) : undefined;
     if (pending && pending.outcome === undefined && input.resultDelivery !== "reply") {
       if (!substantiveTurnResult({ stopReason: "stop", text: input.text }))
         return yield* failure(
           "A result report must contain substantive findings, changes, or a blocker—not an acknowledgment",
         );
       yield* storage.recordReport(pending.turnId, {
+        ...(sourceMessageRef ? { resultMessageRef: sourceMessageRef } : null),
         outcome: input.outcome ?? "result",
         ...(input.resultKind ? { resultKind: input.resultKind } : null),
         text: messageText,
@@ -132,6 +136,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
     const messageId = crypto.randomUUID();
     const replyToMessageId = pending?.requestMessageId ?? input.replyToMessageId;
     const metadata = {
+      ...(sourceMessageRef ? { sourceMessageRef } : null),
       version: 1 as const,
       messageId,
       threadId: pending?.threadId ?? input.threadId ?? spawn?.sessionId ?? crypto.randomUUID(),

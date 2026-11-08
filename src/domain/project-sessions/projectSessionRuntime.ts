@@ -785,7 +785,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         },
         routeFamilyMessage: sideChatSessionId
           ? undefined
-          : (command, untrustedInput, signal, senderContext) =>
+          : (command, untrustedInput, signal, senderContext, sourceEntryId) =>
               run(
                 Effect.scoped(
                   Schema.decodeUnknownEffect(sessionFamilyMessaging.FamilyMessageInput)(
@@ -795,7 +795,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     Effect.tap((input) => describeMessageReferences(input.messageRefs ?? [])),
                     Effect.flatMap((input) =>
                       sessionFamilyMessaging.route(
-                        { sessionId, location },
+                        { sessionId, location, sourceEntryId },
                         command,
                         input,
                         senderContext,
@@ -805,7 +805,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                 ),
                 { signal },
               ),
-        invokeAppControl: async (command, input, signal) => {
+        invokeAppControl: async (command, input, signal, sourceEntryId) => {
           if (
             command !== "sessions.compact" &&
             command !== "sessions.tool-compact" &&
@@ -845,6 +845,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     );
                     return yield* backendAgentControl.invoke(command, invocation.arguments, {
                       kind: "project-session",
+                      sourceEntryId,
                       sessionId:
                         sideChatSessionId &&
                         (command === "sessions.send" ||

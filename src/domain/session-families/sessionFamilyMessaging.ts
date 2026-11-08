@@ -7,7 +7,10 @@ import {
 } from "../../contracts/conversations/session-message-delivery";
 import * as projectTodoUpdates from "../projects/projectTodoUpdates";
 import { ResultDelivery } from "../../contracts/conversations/result-delivery";
-import { messageRefsSchema } from "../../contracts/conversations/message-reference";
+import {
+  messageReference,
+  messageRefsSchema,
+} from "../../contracts/conversations/message-reference";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
@@ -60,6 +63,7 @@ export interface FamilyMessageInput extends Schema.Schema.Type<typeof FamilyMess
 export interface FamilyMessageCaller {
   readonly sessionId: string;
   readonly location: ProjectSessionLocation;
+  readonly sourceEntryId?: string;
 }
 
 const routingError = (cause: unknown) =>
@@ -83,7 +87,7 @@ export const route: (
   ProjectSessionError,
   Effect.Services<ReturnType<typeof acquireOptions>> | Scope.Scope
 > = Effect.fn("SessionFamilyMessaging.route")(function* (
-  { sessionId, location },
+  { sessionId, location, sourceEntryId },
   command,
   input,
   senderContext,
@@ -102,6 +106,7 @@ export const route: (
     input,
     location,
     senderContext,
+    sourceEntryId,
   );
   if (spawnedResult !== undefined) return spawnedResult;
   if (!family) return undefined;
@@ -124,6 +129,7 @@ export const route: (
       : undefined;
   if (command === "sessions.reply" && !pending) return undefined;
   const messageText = appendMessageReferences(input.text, input.messageRefs ?? []);
+  const sourceMessageRef = sourceEntryId ? messageReference(sessionId, sourceEntryId) : undefined;
   let recordedReportTurnId: string | undefined;
   if (pending && pending.outcome === undefined && input.outcome) {
     if (!substantiveTurnResult({ stopReason: "stop", text: input.text }))
@@ -131,6 +137,7 @@ export const route: (
         "A terminal report must contain substantive findings, changes, or a blocker",
       );
     yield* families.recordReport(pending.turnId, {
+      ...(sourceMessageRef ? { resultMessageRef: sourceMessageRef } : null),
       outcome: input.outcome,
       ...(input.resultKind ? { resultKind: input.resultKind } : null),
       text: messageText,
@@ -209,6 +216,7 @@ export const route: (
   const resultDelivery = delivery === "fyi" ? "ignore" : (input.resultDelivery ?? "notification");
   const expectsResponse = resultDelivery !== "ignore";
   const messageMetadata = {
+    ...(sourceMessageRef ? { sourceMessageRef } : null),
     version: 1 as const,
     messageId,
     threadId,
@@ -257,6 +265,7 @@ export const route: (
     for (const request of preparedRequests)
       if (request.turnId !== recordedReportTurnId)
         yield* families.recordReport(request.turnId, {
+          ...(sourceMessageRef ? { resultMessageRef: sourceMessageRef } : null),
           outcome: input.outcome ?? "result",
           ...(input.resultKind ? { resultKind: input.resultKind } : null),
           text: messageText,

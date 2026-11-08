@@ -55,7 +55,17 @@ export function createGlobalControlOperations(
                 ),
               }
             : decodedInput;
-          return control.invoke({ name: tool.command, arguments: argumentsValue }, context.signal);
+          return control.invoke(
+            {
+              name: tool.command,
+              arguments: argumentsValue,
+              ...(context.runtime.assistantEntryId &&
+              (tool.command === "sessions.send" || tool.command === "sessions.reply")
+                ? { sourceEntryId: context.runtime.assistantEntryId }
+                : null),
+            },
+            context.signal,
+          );
         },
       },
   );
@@ -63,8 +73,8 @@ export function createGlobalControlOperations(
   // still crosses its existing trusted control and task-input boundary.
   if (control.tools.some((tool) => tool.command === "sessions.send"))
     operations.push(
-      createSessionSendBatchOperation((input, signal) =>
-        control.invoke({ name: "sessions.send", arguments: input }, signal),
+      createSessionSendBatchOperation((input, signal, sourceEntryId) =>
+        control.invoke({ name: "sessions.send", arguments: input, sourceEntryId }, signal),
       ),
     );
   return operations;

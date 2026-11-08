@@ -165,7 +165,7 @@ export function createCakeSessionRuntimeOperationApi(input: {
         signal,
       );
     },
-    async invokeAppControl(command, input, signal) {
+    async invokeAppControl(command, input, signal, sourceEntryId) {
       if (
         (command === "sessions.send" || command === "sessions.reply") &&
         input.promptFiles !== undefined
@@ -190,13 +190,14 @@ export function createCakeSessionRuntimeOperationApi(input: {
               input,
               signal,
               currentContextSnapshot(),
+              sourceEntryId,
             )
           : undefined;
       let result = familyResult;
       if (result === undefined) {
         const invoke = options.currentSessionControl?.invokeAppControl;
         if (!invoke) throw new Error("Cross-session Cake controls are unavailable in this runtime");
-        result = await invoke(command, input, signal);
+        result = await invoke(command, input, signal, sourceEntryId);
       }
       return capabilities.recordAppControlResult(result, session);
     },

@@ -839,7 +839,7 @@ describe("exact response presentation", () => {
     },
   );
 
-  it.each(["ready", "unavailable", "empty", "missing"] as const)(
+  it.each(["ready", "metadata-only", "unavailable", "empty", "missing"] as const)(
     "opens a title-only receipt lazily with honest %s content, including after reload",
     async (state) => {
       const source = SessionManager.inMemory("/producer");
@@ -861,7 +861,7 @@ describe("exact response presentation", () => {
         role: "user",
         timestamp: 3,
         content: encodeCrossSessionMessage(
-          state === "missing"
+          state === "missing" || state === "metadata-only"
             ? protectedResponseNotice
             : appendMessageReferences(protectedResponseNotice, [ref]),
           {
@@ -871,6 +871,7 @@ describe("exact response presentation", () => {
             replyToMessageId: crypto.randomUUID(),
             sequence: 1,
             expectsResponse: false,
+            ...(state !== "missing" ? { sourceMessageRef: ref } : null),
             sender: { sessionId: source.getSessionId(), title, kind: "project-session" },
           },
         ),

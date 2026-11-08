@@ -1036,6 +1036,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                     : ((yield* Effect.scoped(
                         backendAgentControl.invoke(forwarded.name, forwarded.arguments, {
                           kind: "cake-chat",
+                          sourceEntryId: forwarded.sourceEntryId,
                           sessionId: [
                             "sessions.send",
                             "sessions.reply",

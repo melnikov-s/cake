@@ -29,13 +29,20 @@ import { ChildSessionAssignment } from "../../contracts/project-sessions/child-s
 import { createSessionSendBatchOperation } from "../conversations/cake-session-batch-send-operation";
 
 export function createSessionFamilyOperations(
-  api: () => RuntimeOperationApi,
+  api: () => Pick<RuntimeOperationApi, "invokeAppControl" | "createChildSession">,
 ): CakeOperationDefinition[] {
   const invokeAppControl =
     (command: string): CakeOperationDefinition["execute"] =>
     (input, context) => {
       // SAFETY: CakeOperationRegistry decoded input with the operation's object schema.
-      return api().invokeAppControl(command, input as JsonObject, context.signal);
+      return command === "sessions.send" || command === "sessions.reply"
+        ? api().invokeAppControl(
+            command,
+            input as JsonObject,
+            context.signal,
+            context.runtime.assistantEntryId,
+          )
+        : api().invokeAppControl(command, input as JsonObject, context.signal);
     };
   return [
     {
@@ -262,8 +269,8 @@ export function createSessionFamilyOperations(
       execute: invokeAppControl("sessions.send"),
     },
     {
-      ...createSessionSendBatchOperation((input, signal) =>
-        api().invokeAppControl("sessions.send", input, signal),
+      ...createSessionSendBatchOperation((input, signal, sourceEntryId) =>
+        api().invokeAppControl("sessions.send", input, signal, sourceEntryId),
       ),
       requires: "invokeAppControl",
     },

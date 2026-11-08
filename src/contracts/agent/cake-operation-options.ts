@@ -94,6 +94,7 @@ export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
     input: JsonObject,
     signal: AbortSignal,
     senderContext?: CrossSessionContextSnapshot,
+    sourceEntryId?: string,
   ): Promise<JsonValue | undefined>;
   mergeSession?(targetSessionId: string | undefined, signal: AbortSignal): Promise<JsonValue>;
   discardSession?(
@@ -101,7 +102,12 @@ export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
     keepBranch: boolean,
     signal: AbortSignal,
   ): Promise<JsonValue>;
-  invokeAppControl?(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
+  invokeAppControl?(
+    command: string,
+    input: JsonObject,
+    signal: AbortSignal,
+    sourceEntryId?: string,
+  ): Promise<JsonValue>;
   pendingMessages?(sessionId: string, signal: AbortSignal): Promise<PiPendingMessages>;
   reorderPendingMessage?(
     sessionId: string,
@@ -112,7 +118,10 @@ export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
 
 export interface GlobalOperationControl {
   tools: readonly GlobalControlTool[];
-  invoke(input: { name: string; arguments: JsonValue }, signal: AbortSignal): Promise<JsonValue>;
+  invoke(
+    input: { name: string; arguments: JsonValue; sourceEntryId?: string },
+    signal: AbortSignal,
+  ): Promise<JsonValue>;
 }
 
 export interface AgentOperationControl {

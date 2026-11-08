@@ -48,7 +48,12 @@ export interface RuntimeOperationApi {
     open: boolean;
     destinationWorkingDirectory?: string;
   }): Promise<JsonValue>;
-  invokeAppControl(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
+  invokeAppControl(
+    command: string,
+    input: JsonObject,
+    signal: AbortSignal,
+    sourceEntryId?: string,
+  ): Promise<JsonValue>;
   pendingMessages(sessionId: string, signal: AbortSignal): Promise<PiPendingMessages>;
   reorderPendingMessage(
     sessionId: string,

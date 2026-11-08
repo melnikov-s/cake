@@ -57,6 +57,7 @@ import {
   readDurableOriginalPage,
 } from "./durable-chat-history";
 import { createDurableSideChatInterview } from "./durable-side-chat-interviews";
+import { durableAssistantEntryId } from "./durable-operation-context";
 import {
   setDurableUserMessageMarkdown,
   UserMessagePresentationDoc,
@@ -680,7 +681,10 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       const result = await registry.invoke(input, {
         signal: context.abortSignal ?? new AbortController().signal,
         toolCallId: api.callId,
-        runtime: { sessionId: cakeChatSideChatSessionId(api.conversationId, host.parentSessionId) },
+        runtime: {
+          sessionId: cakeChatSideChatSessionId(api.conversationId, host.parentSessionId),
+          assistantEntryId: await durableAssistantEntryId(api, context),
+        },
         onUpdate: (value) => {
           void api.details(copyJson(value), context).catch(() => undefined);
         },

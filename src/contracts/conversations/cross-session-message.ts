@@ -1,6 +1,7 @@
 import { Effect, Option, Schema } from "effect";
 import { ResultDelivery, migrateResultDelivery } from "./result-delivery";
 import { sessionReference } from "../project-sessions/session-reference";
+import { MessageReference } from "./message-reference";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const boundedLabel = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1_024));
@@ -47,6 +48,8 @@ export const CrossSessionMessageMetadata = Schema.Struct({
   replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   resultDelivery: Schema.optionalKey(ResultDelivery),
   generatedNotice: Schema.optionalKey(Schema.Boolean),
+  /** Exact sending Pi message, stamped from trusted tool context rather than body links. */
+  sourceMessageRef: Schema.optionalKey(MessageReference),
   context: Schema.optionalKey(CrossSessionContextSnapshot),
   sender: Schema.Struct({
     sessionId: boundedId,

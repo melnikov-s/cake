@@ -185,15 +185,16 @@ describe("SessionFamilyStorage", () => {
     },
   );
 
-  it.effect(
-    "preserves an application-captured result link when a worker explicitly classified the result",
-    () =>
+  it.effect.each([undefined, "cake://session/child?message=explicit"])(
+    "preserves the exact classified report source, or captures the final source for legacy reports (%s)",
+    (resultMessageRef) =>
       Effect.gen(function* () {
         const storage = yield* SessionFamilyStorage;
         yield* storage.recordTurn(turn({ resultDelivery: "reply" }));
         yield* storage.recordReport("turn", {
           outcome: "completed",
           text: "Worker-authored classification",
+          ...(resultMessageRef ? { resultMessageRef } : null),
         });
         yield* storage.settleTurn("turn", "complete", {
           outcome: "result",
@@ -203,7 +204,7 @@ describe("SessionFamilyStorage", () => {
         assert.deepEqual((yield* storage.state()).turns[0]?.report, {
           outcome: "completed",
           text: "Worker-authored classification",
-          resultMessageRef: "cake://session/child?message=final",
+          resultMessageRef: resultMessageRef ?? "cake://session/child?message=final",
         });
       }).pipe(Effect.provide(testLayer())),
   );

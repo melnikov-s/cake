@@ -649,8 +649,8 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     worktreeRecords,
     saves,
     saveRelease,
-    call: (command: string, input: JsonObject = {}) =>
-      Effect.promise(() => invoke(command, input, signal())),
+    call: (command: string, input: JsonObject = {}, sourceEntryId?: string) =>
+      Effect.promise(() => invoke(command, input, signal(), sourceEntryId)),
     direct: (command: string, input: JsonValue, sender: agentControl.AgentControlCaller = caller) =>
       agentControl.invoke(command, input, sender).pipe(Effect.provide(context)),
     background: (command: string, input: JsonValue) =>
@@ -1923,14 +1923,18 @@ it.effect(
       const f = yield* fixture();
       f.resolve();
       const selectedMessage = messageReference(source, "entry");
-      const sent = yield* f.call("sessions.send", {
-        sessionId: "00000022",
-        text: "Review this",
-        inputRefs: ["allowed"],
-        messageRefs: [selectedMessage],
-        resultDelivery: "reply",
-        delivery: "steer",
-      });
+      const sent = yield* f.call(
+        "sessions.send",
+        {
+          sessionId: "00000022",
+          text: "Review this",
+          inputRefs: ["allowed"],
+          messageRefs: [selectedMessage],
+          resultDelivery: "reply",
+          delivery: "steer",
+        },
+        "sending-assistant",
+      );
       expect(sent).toMatchObject({
         ok: true,
         expectsResponse: true,
@@ -1955,6 +1959,9 @@ it.effect(
         },
       });
       expect(envelope?.text).toContain(selectedMessage);
+      expect(envelope?.metadata.sourceMessageRef).toBe(
+        messageReference(source, "sending-assistant"),
+      );
       expect(f.grants).toContainEqual({ owner: source, refs: ["allowed"], recipient: target });
       expect(f.restored()).toBe(1);
       expect(f.requestCalls).toEqual([]);

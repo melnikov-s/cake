@@ -87,6 +87,8 @@ import {
 
 export interface AgentControlCaller {
   readonly kind: "project-session" | "cake-chat";
+  /** Trusted Pi tool-call origin, never a model-supplied argument. */
+  readonly sourceEntryId?: string;
   readonly sessionId: string;
   readonly title: string;
   readonly projectName?: string;
