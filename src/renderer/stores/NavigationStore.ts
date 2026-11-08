@@ -392,6 +392,16 @@ export class NavigationStore extends Store<{
     });
   }
 
+  /** Explicit global home intent; generic workspace/history switches retain inspection. */
+  async openGlobalChat() {
+    this.props.discussionNavigation().cancelOpening();
+    const home = this.props.cakeChat().registry.load(CAKE_CHAT_SESSION_ID);
+    if (home.conversationSessionStore.sideChatStore.target)
+      home.conversationSessionStore.sideChatStore.close();
+    home.showPresentation("normal");
+    return this.openCakeChat(CAKE_CHAT_SESSION_ID);
+  }
+
   /** Explicit project home intent; does not reset the conversation or its runtime. */
   async openProjectChat(projectPath: string) {
     try {

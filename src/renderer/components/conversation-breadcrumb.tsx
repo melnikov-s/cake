@@ -45,7 +45,7 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
               kind: "cake-chat",
               sessionId: CAKE_CHAT_SESSION_ID,
             });
-            void root.navigationStore.openCakeChat(CAKE_CHAT_SESSION_ID);
+            void root.navigationStore.openGlobalChat();
           }}
         >
           Cake Chat

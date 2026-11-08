@@ -61,9 +61,14 @@ export const ConversationActivity = observer(function ConversationActivity({
           accessibleLabel: `Inspect subagent: ${run.task}`,
           onSelect: () => {
             const chatStore = subagents.chatStore(run.key);
-            if (!chatStore) return;
+            if (!chatStore || !run.handleId) return;
             sideChat.open({
               key: `subagent:${run.key}`,
+              navigationTarget: {
+                kind: "subagent",
+                sessionId: subagents.parentSessionId,
+                handleId: run.handleId,
+              },
               title: "Subagent",
               eyebrow: () => {
                 const current = subagents.run(run.key);

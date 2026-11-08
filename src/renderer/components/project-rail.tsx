@@ -95,7 +95,7 @@ export const ProjectRail = observer(function ProjectRail({
                   kind: "cake-chat",
                   sessionId: CAKE_CHAT_SESSION_ID,
                 });
-                void root.navigationStore.openCakeChat();
+                void root.navigationStore.openGlobalChat();
               }}
             >
               <CakeIcon />

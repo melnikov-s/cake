@@ -19,7 +19,7 @@ export const ProjectChatHeaderLink = observer(function ProjectChatHeaderLink({
       tooltip={`Go to Project Chat for ${project.name}`}
       disabled={!chat}
       onClick={() => {
-        if (chat) void root.navigationStore.openCakeChat(chat.sessionId);
+        if (chat) void root.navigationStore.openProjectChat(project.path);
       }}
     >
       <Avatar

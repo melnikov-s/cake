@@ -185,9 +185,14 @@ export const SubagentTool = observer(function SubagentTool({
                   aria-label="Open subagent chat"
                   onClick={() => {
                     const chatStore = subagents.chatStore(run.key);
-                    if (!chatStore) return;
+                    if (!chatStore || !run.handleId) return;
                     sideChat.open({
                       key: `subagent:${run.key}`,
+                      navigationTarget: {
+                        kind: "subagent",
+                        sessionId: subagents.parentSessionId,
+                        handleId: run.handleId,
+                      },
                       title: "Subagent",
                       eyebrow: () => {
                         const current = subagents.run(run.key);

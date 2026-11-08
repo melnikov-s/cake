@@ -472,7 +472,7 @@ export class RootStore extends Store<{
   get newSessionStore(): NewSessionStore {
     return createStore(NewSessionStore, {
       createCakeChat: () => {
-        void this.navigationStore.startCakeChat();
+        void this.navigationStore.openGlobalChat();
       },
       createProjectSession: (path) => {
         void this.navigationStore.createSession(path);
