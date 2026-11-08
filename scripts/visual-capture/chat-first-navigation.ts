@@ -742,6 +742,12 @@ export function createChatFirstNavigationScenario(
             .getByRole("button", { name: /^Icon Placement Exploration(?: |$)/ })
             .click({ button: "right" });
           await expect(workspace.getByRole("img", { name: "1 unread", exact: true })).toBeVisible();
+          await expect(
+            rail.getByRole("img", { name: "Unread sessions in cake", exact: true }),
+          ).toBeVisible();
+          await expect(
+            rail.getByRole("img", { name: "Work running in cake", exact: true }),
+          ).toBeVisible();
         } else if (state === "sessions-collapsed") {
           await tree
             .getByRole("button", { name: "Collapse UI Layout Refactor", exact: true })
