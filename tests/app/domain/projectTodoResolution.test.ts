@@ -32,7 +32,6 @@ import * as controls from "../../../src/domain/projects/projectTodoAssociations"
 import {
   completeLinked,
   completeLinkedForProject,
-  initialize,
   join,
   recordLifecycle,
 } from "../../../src/domain/projects/projectTodoResolution";
@@ -368,7 +367,7 @@ it.effect(
 );
 
 it.effect(
-  "one bounded joined page reads one lifecycle index/family snapshot, no per-item content or runtime inspection",
+  "list access repairs its scope and joined pages use metadata only, without content or runtime inspection",
   () => {
     const f = fixture();
     return Effect.gen(function* () {
@@ -401,7 +400,13 @@ it.effect(
         revision: 0,
         state: "open",
       });
-      expect(f.reads).toEqual(before);
+      expect(f.reads).toEqual({
+        ...before,
+        index: before.index + 1,
+        family: before.family + 1,
+        identities: before.identities + 1,
+      });
+      const beforePage = { ...f.reads };
       const page = yield* controls.list(project, {
         state: "open",
         view: "reconciliation",
@@ -409,9 +414,9 @@ it.effect(
       });
       expect(Schema.is(ProjectTodoList)(page)).toBe(true);
       expect(page).toMatchObject({ total: 30, nextOffset: 20 });
-      expect(f.reads.index - before.index).toBe(1);
-      expect(f.reads.family - before.family).toBe(1);
-      expect(f.reads.identities - before.identities).toBe(1);
+      expect(f.reads.index - beforePage.index).toBe(2);
+      expect(f.reads.family - beforePage.family).toBe(2);
+      expect(f.reads.identities - beforePage.identities).toBe(2);
       expect(JSON.stringify(page)).not.toContain("PRIVATE_");
       expect(page.items[0]).toMatchObject({
         sessions: [
@@ -478,47 +483,64 @@ it.effect(
   },
 );
 
-it.effect.each(["finish", "shutdown"] as const)(
-  "startup returns while linked to-do repair is blocked and owns its worker through %s",
-  (outcome) => {
+it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
+  "list access repairs only %s before applying state filters and remains idempotent",
+  (scope) => {
     const f = fixture();
     return Effect.gen(function* () {
       yield* upsertProject(project, "Project");
-      const item = yield* todos.create(project, {
+      yield* upsertProject("/other", "Other");
+      const item = yield* todos.create(scope, {
         title: "Interrupted reconciliation",
         description: "Resolved while Cake was closed.",
         associations: [link(a)],
       });
+      const other = yield* todos.create("/other", {
+        title: "Do not sweep me",
+        description: "Only this list's own access may repair it.",
+        associations: [link(root)],
+      });
       f.resolved.add(a);
-      const entered = yield* Deferred.make<void>();
-      const release = yield* Deferred.make<void>();
-      const interrupted = yield* Deferred.make<void>();
-      const archive = yield* SessionArchiveStorage;
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const worker = yield* initialize();
-          // initialize must return even though its real metadata join cannot finish.
-          yield* Deferred.await(entered);
-          expect((yield* todos.read(project, item.id)).state).toBe("open");
-          if (outcome === "finish") {
-            yield* Deferred.succeed(release, undefined);
-            yield* Fiber.join(worker);
-            expect((yield* todos.read(project, item.id)).state).toBe("done");
-          }
-        }).pipe(
-          Effect.provideService(SessionArchiveStorage, {
-            ...archive,
-            resolutionSnapshot: () =>
-              Deferred.succeed(entered, undefined).pipe(
-                Effect.andThen(Deferred.await(release)),
-                Effect.andThen(archive.resolutionSnapshot()),
-                Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
-              ),
-          }),
-        ),
-      );
-      expect(yield* Deferred.isDone(interrupted)).toBe(outcome === "shutdown");
-      if (outcome === "shutdown") expect((yield* todos.read(project, item.id)).state).toBe("open");
+      f.resolved.add(root);
+      const before = { ...f.reads };
+      expect((yield* todos.read(scope, item.id)).state).toBe("open");
+      expect(f.reads).toEqual(before); // Reading stored projections never starts a repair.
+      const done = yield* controls.list(scope, { category: "done", limit: 1 });
+      expect(done).toMatchObject({ total: 1, nextOffset: null });
+      expect(done.items[0]).toMatchObject({ id: item.id, state: "done", revision: 1 });
+      expect((yield* todos.read("/other", other.id)).state).toBe("open");
+      const writes = f.reads.writes;
+      expect((yield* controls.list(scope, { state: "open" })).items).toEqual([]);
+      expect(f.reads.writes).toBe(writes);
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect(
+  "detail access repairs only the requested item, not other stale items in its list",
+  () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const item = yield* todos.create(project, {
+        title: "Read me",
+        description: "Resolved while Cake was closed.",
+        associations: [link(a)],
+      });
+      const other = yield* todos.create(project, {
+        title: "Not accessed",
+        description: "Leave alone.",
+        associations: [link(root)],
+      });
+      f.resolved.add(a);
+      f.resolved.add(root);
+      expect(yield* controls.read(project, item.id)).toMatchObject({
+        id: item.id,
+        state: "done",
+        revision: 1,
+        sessions: [{ sessionId: a, resolved: true }],
+      });
+      expect((yield* todos.read(project, other.id)).state).toBe("open");
     }).pipe(Effect.provide(f.layer));
   },
 );

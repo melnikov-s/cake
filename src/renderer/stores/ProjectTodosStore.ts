@@ -204,6 +204,23 @@ export class ProjectTodosStore extends Store<{
     );
   }
 
+  /** Access repairs this list only; authoritative changes arrive through its projection.
+   * Ignore repeat opens while a repair is running, without blocking ordinary edits.
+   */
+  reconciling = false;
+  async reconcile() {
+    const scope = this.source?.scope;
+    if (!scope || this.reconciling || this.signal.aborted) return;
+    this.reconciling = true;
+    this.error = undefined;
+    try {
+      await ClientContext.consume(this)!.projectTodos.reconcile({ scope }, { signal: this.signal });
+    } catch (error) {
+      if (!this.signal.aborted) this.error = describeError(error).message;
+    } finally {
+      if (!this.signal.aborted) this.reconciling = false;
+    }
+  }
   toggle() {
     if (this.visible) this.props.pane().close();
     else this.open();

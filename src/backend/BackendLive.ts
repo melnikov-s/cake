@@ -2,7 +2,6 @@ import * as discussionTitles from "../domain/discussion-sessions/discussionTitle
 import { DiscussionTitleRequests } from "../services/discussion-sessions/DiscussionTitleRequests";
 import * as projectTodoUpdates from "../domain/projects/projectTodoUpdates";
 import { ProjectTodoReports } from "../services/projects/ProjectTodoReports";
-import * as projectTodoResolution from "../domain/projects/projectTodoResolution";
 import * as projectTodoSnoozes from "../domain/projects/projectTodoSnoozes";
 import { join } from "node:path";
 import { makeVsCodeServerLive } from "../services/vscode/VsCodeServerLive";
@@ -332,9 +331,6 @@ export const makeBackendLive = <HostServices, HostError>(
       }),
     ),
     Layer.effectDiscard(startupDiagnostics.measure("local-mcp-initialize", localMcp.initialize())),
-    Layer.effectDiscard(
-      startupDiagnostics.measure("todo-resolution-initialize", projectTodoResolution.initialize()),
-    ),
     Layer.effectDiscard(
       startupDiagnostics.measure("todo-snoozes-initialize", projectTodoSnoozes.initialize()),
     ),

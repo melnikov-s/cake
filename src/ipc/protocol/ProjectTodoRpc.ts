@@ -4,6 +4,13 @@ import { ProjectTodoUserMutation, ProjectTodos } from "../../contracts/projects/
 import { ProjectError } from "../../contracts/projects/project-error";
 
 export const ProjectTodoRpc = RpcGroup.make(
+  Rpc.make("projectTodos.reconcile", {
+    payload: Schema.Struct({
+      scope: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
+    }),
+    success: Schema.Void,
+    error: ProjectError,
+  }),
   Rpc.make("projectTodos.activateAttention", {
     payload: Schema.Struct({
       scope: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),

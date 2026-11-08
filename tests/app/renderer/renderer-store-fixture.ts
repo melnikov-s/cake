@@ -37,6 +37,8 @@ export function createRendererStoreFixture(options: RendererStoreFixtureOptions 
       },
       ...options.client?.projectSessions,
     },
+    // Most UI workflows use a static to-do authority; reconciliation is exercised separately.
+    projectTodos: { reconcile: async () => {}, ...options.client?.projectTodos },
     // Resource disposal is incidental in workflows that do not inspect publication lifetimes.
     inlineWidgets: { release: async () => {}, ...options.client?.inlineWidgets },
     nonChatModels: { list: async () => [], ...options.client?.nonChatModels },

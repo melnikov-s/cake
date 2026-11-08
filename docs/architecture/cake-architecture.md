@@ -493,7 +493,8 @@ is a refactoring signal, not precedent.
   status metadata; the pane displays the description. Optional titled session, message, artifact, web and workspace associations use
   shared conversation navigation. Backend lifecycle authority completes linked open items
   once all actual session associations are resolved (UI and tools alike). Metadata-only,
-  idempotent reconciliation handles late associations and legacy open items at startup;
+  idempotent reconciliation handles late associations and repairs interrupted completion when
+  the owning list is opened/listed or an item is read, never through a startup-wide sweep;
   source/report links are context, not required work. First-class subagent associations use the public
   handle plus canonical parent identity, never a private Pi session ID. They open the parent’s
   existing worker chat/report and use a distinct type icon. Subagents have no resolve lifecycle:

@@ -1,9 +1,22 @@
 /** @vitest-environment jsdom */
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { observer, StoreProvider } from "r-state-tree/react";
 import { expect, it } from "vitest";
+import { Effect, Layer, ManagedRuntime, Stream } from "effect";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { upsertProject } from "../../../src/domain/application/application";
+import * as projectTodos from "../../../src/domain/projects/projectTodos";
+import { projectTodoHandlers } from "../../../src/ipc/server/ProjectTodoHandlers";
+import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
+import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
+import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
+import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
+import { sessionDirectoryPath } from "../../../src/services/storage/session-files";
 import {
   emptyProjectTodos,
   projectTodoBaseline,
@@ -34,6 +47,8 @@ function renderTodos(
     sessions: ReturnType<typeof sessionSummary>[];
     autoMergeRequests?: AutoMergeRequest[];
     autoMergeEnabled?: boolean;
+    startOpen?: boolean;
+    reconcile?: (scope: string) => Promise<ProjectTodos>;
   },
 ) {
   let todos: ProjectTodos = initial?.todos ?? {
@@ -66,6 +81,7 @@ function renderTodos(
   };
   const mutations: ProjectTodoUserMutation[] = [];
   const autoMergeChanges: boolean[] = [];
+  const reconciliationScopes: string[] = [];
   let landing: "merge" | "pull-request" = "merge";
   const project = () => ({
     ...projectRecord({
@@ -101,6 +117,13 @@ function renderTodos(
         },
       },
       projectTodos: {
+        reconcile: async ({ scope }) => {
+          reconciliationScopes.push(scope);
+          if (initial?.reconcile) {
+            todos = await initial.reconcile(scope);
+            act(() => applySnapshot(fixture.models.projects, { projects: [project()] }));
+          }
+        },
         mutateUser: async ({ mutation }) => {
           mutations.push(mutation);
           if (mutation._tag === "Select") todos = { ...todos, selectedId: mutation.selectedId };
@@ -176,7 +199,8 @@ function renderTodos(
   const store = fixture.root.cakeChatCollectionStore.registry.load(projectChat).todos;
   const { root } = fixture;
   root.navigationStore.selectCakeChat(projectChat);
-  store.open();
+  if (initial?.startOpen === false) root.workspaceNavigatorStore.close();
+  else store.open();
   const Surface = observer(function Surface() {
     return (
       <>
@@ -210,6 +234,7 @@ function renderTodos(
     todos: () => todos,
     mutations,
     autoMergeChanges,
+    reconciliationScopes,
     async updateLanding(value: "merge" | "pull-request") {
       landing = value;
       await act(async () => applySnapshot(fixture.models.projects, { projects: [project()] }));
@@ -325,6 +350,115 @@ it("external projects do not present retained readiness as merge-ready, but keep
     mergeRequest("ready", { state: "failed", message: "Target dirty" }),
   ]);
   expect(screen.getByLabelText("Merge status for ready").textContent).toContain("Target dirty");
+});
+
+it("repairs only the opened list through the real backend and projection, never while closed or on projection refresh", async () => {
+  const resolved = new Set<string>();
+  let indexReads = 0;
+  const runtime = ManagedRuntime.make(
+    Layer.mergeAll(
+      ApplicationState.layer.pipe(
+        Layer.provide(
+          Layer.succeed(ApplicationStorage, {
+            load: () =>
+              Effect.succeed({ state: defaultApplicationState(), source: "current" as const }),
+            save: () => Effect.void,
+          }),
+        ),
+      ),
+      Layer.mock(SessionArchiveStorage, {
+        resolutionSnapshot: () =>
+          Effect.sync(() => {
+            indexReads++;
+            return {
+              version: 1 as const,
+              directories: {
+                [sessionDirectoryPath({ workingDirectory: "/cake", root: "/sessions" })]: [
+                  ...resolved,
+                ],
+              },
+            };
+          }),
+      }),
+      Layer.mock(SessionFamilyStorage, {
+        state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
+      }),
+      Layer.mock(CakeSessionRuntimes, { sessionIds: () => Stream.make("first", "second") }),
+      Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([]) }),
+      Layer.succeed(ProjectSessionConfiguration, {
+        agentDirectory: "/agent",
+        sessionDirectory: "/sessions",
+        resolvedSessionDirectory: "/resolved",
+      }),
+    ),
+  );
+  try {
+    await runtime.runPromise(upsertProject("/cake", "Cake"));
+    await runtime.runPromise(upsertProject("/other", "Other"));
+    const item = await runtime.runPromise(
+      projectTodos.create("/cake", {
+        title: "Interrupted completion",
+        description: "Resolved while closed.",
+        associations: [{ kind: "session", sessionId: "first", title: "Work" }],
+      }),
+    );
+    const other = await runtime.runPromise(
+      projectTodos.create("/other", {
+        title: "Untouched list",
+        description: "Not accessed.",
+        associations: [{ kind: "session", sessionId: "second", title: "Other work" }],
+      }),
+    );
+    const initial = await runtime.runPromise(projectTodos.list("/cake"));
+    using fixture = renderTodos(false, {
+      todos: initial,
+      sessions: [],
+      startOpen: false,
+      reconcile: async (scope) => {
+        await runtime.runPromise(projectTodoHandlers["projectTodos.reconcile"]({ scope }));
+        return runtime.runPromise(projectTodos.list(scope));
+      },
+    });
+    expect(fixture.reconciliationScopes).toEqual([]);
+    expect(indexReads).toBe(0);
+    resolved.add("first");
+    resolved.add("second");
+    await fixture.user.click(screen.getByRole("button", { name: "Open Workspace" }));
+    await waitFor(() =>
+      expect(fixture.store.doneItems.map((value) => value.id)).toEqual([item.id]),
+    );
+    expect(fixture.reconciliationScopes).toEqual(["/cake"]);
+    expect(indexReads).toBe(1);
+    expect((await runtime.runPromise(projectTodos.read("/other", other.id))).state).toBe("open");
+    await fixture.updateTodos(fixture.todos());
+    expect(fixture.reconciliationScopes).toEqual(["/cake"]);
+    await fixture.user.click(screen.getAllByRole("button", { name: "Close Workspace" })[0]!);
+    await fixture.user.click(screen.getByRole("button", { name: "Open Workspace" }));
+    await waitFor(() => expect(fixture.reconciliationScopes).toEqual(["/cake", "/cake"]));
+    expect(indexReads).toBe(1); // Already done: reopening needs no session discovery.
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+it("shows repair failures without closing the pane or claiming completion, and retries on reopen", async () => {
+  using fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items: [todo(501)] },
+    sessions: [],
+    startOpen: false,
+    reconcile: async () => {
+      throw new Error("Cannot read resolution metadata");
+    },
+  });
+  await fixture.user.click(screen.getByRole("button", { name: "Open Workspace" }));
+  await waitFor(() =>
+    expect(screen.getByRole("alert").textContent).toContain("Cannot read resolution metadata"),
+  );
+  expect(fixture.store.openItems).toHaveLength(1);
+  expect(fixture.mutations).toEqual([]);
+  await fixture.user.click(screen.getAllByRole("button", { name: "Close Workspace" })[0]!);
+  await fixture.user.click(screen.getByRole("button", { name: "Open Workspace" }));
+  await waitFor(() => expect(fixture.reconciliationScopes).toHaveLength(2));
 });
 
 it("groups accepted structured declarations and retains them while auto-merge is off", async () => {

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { AnimatedList } from "@/components/ui/animated-list";
@@ -20,6 +20,9 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
     !projectPath ||
     root.projectCatalogStore.find(projectPath)?.settings.worktreeLanding !== "pull-request";
   const pane = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    void store.reconcile();
+  }, [store]);
   // Only explicit row actions may scroll or restore keyboard focus after a section move.
   // Mounting, filtering and authority updates must not replay an old request.
   const request = store.paneRequest;

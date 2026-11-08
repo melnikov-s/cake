@@ -35,7 +35,6 @@ import { projectSessionHandlers } from "../../../src/ipc/server/ProjectSessionHa
 import { projectTodoHandlers } from "../../../src/ipc/server/ProjectTodoHandlers";
 import { DiscussionSessionEnvironment } from "../../../src/services/discussion-sessions/DiscussionSessionEnvironment";
 import * as projectTodos from "../../../src/domain/projects/projectTodos";
-import * as projectTodoResolution from "../../../src/domain/projects/projectTodoResolution";
 import * as projectTodoAssociations from "../../../src/domain/projects/projectTodoAssociations";
 import * as projectSessionLifecycle from "../../../src/domain/project-sessions/projectSessionLifecycle";
 import {
@@ -2592,7 +2591,7 @@ describe("Project Sessions domain", () => {
         }).pipe(Effect.result);
         assert.equal(result._tag, "Failure");
         assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
-        yield* projectTodoResolution.initialize();
+        yield* projectTodoAssociations.list("/project", {});
         assert.equal((yield* projectTodos.read("/project", item.id)).revision, 1);
       }).pipe(
         Effect.provide(

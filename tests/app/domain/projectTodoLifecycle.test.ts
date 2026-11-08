@@ -17,7 +17,8 @@ import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktre
 import { sessionDirectoryPath } from "../../../src/services/storage/session-files";
 import { upsertProject } from "../../../src/domain/application/application";
 import * as todos from "../../../src/domain/projects/projectTodos";
-import { completeLinked, initialize } from "../../../src/domain/projects/projectTodoResolution";
+import { completeLinked } from "../../../src/domain/projects/projectTodoResolution";
+import { list } from "../../../src/domain/projects/projectTodoAssociations";
 import { observeCatalog } from "../../../src/domain/projects/projects";
 import { ProjectCatalog } from "../../../src/renderer/models/ProjectCatalog";
 import { applyProjectCatalogUpdate } from "../../../src/renderer/reducers/CatalogReducer";
@@ -87,7 +88,7 @@ const create = (sessionIds: string[]) =>
   });
 
 it.effect(
-  "backfills legacy canonical/suffix links on restart, persists count projection, and remains idempotent without runtimes or wakes",
+  "backfills legacy canonical/suffix links on list access after restart, persists count projection, and remains idempotent without runtimes or wakes",
   () => {
     const f = fixture();
     return Effect.gen(function* () {
@@ -152,7 +153,8 @@ it.effect(
           Effect.forkChild,
         );
         yield* Deferred.await(ready);
-        yield* initialize(); // Same startup path as BackendLive, no Project Chat or Pi runtime loaded.
+        expect(f.reads.index).toBe(0); // Restart and projection observation do not scan links.
+        yield* list(project, {}); // Repair is explicitly requested by list access.
         yield* Deferred.await(updated);
         expect(store.openItems.map((item) => item.id)).toEqual([ids.source]);
         expect(store.focusedItems).toEqual([]);
@@ -167,7 +169,7 @@ it.effect(
           f.persisted().projects[0]?.todos?.items.filter((item) => item.state === "open"),
         ).toHaveLength(1);
         const writes = f.reads.writes;
-        yield* initialize();
+        yield* list(project, {});
         expect(f.reads.writes).toBe(writes);
         expect((yield* todos.read(project, ids.closed)).revision).toBe(1); // Explicit closure was not touched.
         const receipt = (yield* todos.list(project)).sequence;
@@ -175,13 +177,13 @@ it.effect(
           sequence: receipt,
           token: (yield* todos.list(project)).deliveryToken ?? "",
         });
-        yield* initialize();
+        yield* list(project, {});
         expect((yield* todos.list(project)).pending).toEqual([]); // No acknowledgment/wake loop.
         yield* Fiber.interrupt(observer);
       }).pipe(Effect.provide(f.app, { local: true }));
       yield* Effect.gen(function* () {
         yield* (yield* ApplicationState).initialize();
-        yield* initialize();
+        yield* list(project, {});
         expect((yield* todos.read(project, ids.canonical)).state).toBe("done");
         expect((yield* todos.list(project)).selectedId).toBeNull();
         expect((yield* todos.read(project, ids.source)).state).toBe("open");

@@ -12,7 +12,7 @@ export const initialize = Effect.fn("ProjectTodoSnoozes.initialize")(function* (
     function* () {
       const scopes = yield* expireOverdue();
       // Expiry increments revisions. Reconcile just the affected lists so a resolution join
-      // racing that revision cannot leave already-resolved work active until next restart.
+      // racing that revision cannot leave already-resolved work active until the next access.
       for (const scope of scopes) yield* completeLinked(scope);
     },
     Effect.catch((cause) => Effect.logWarning("To-do snooze expiry failed; retrying", cause)),

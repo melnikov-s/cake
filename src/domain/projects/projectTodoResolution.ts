@@ -10,7 +10,6 @@ import {
 } from "../../contracts/projects/project-todos";
 import { ProjectError } from "../../contracts/projects/project-error";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
-import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { sessionDirectoryPath } from "../../services/storage/session-files";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
@@ -126,27 +125,6 @@ export const completeLinked = Effect.fn("ProjectTodos.completeLinked")(function*
       )
       .map(({ item }) => item),
   );
-});
-
-/** Idempotent repair covers a process exit between the session authority and the to-do commit. */
-const reconcileOnStartup = Effect.fn("ProjectTodos.reconcileOnStartup")(function* () {
-  const projects = (yield* ApplicationState).snapshot().projects;
-  for (const scope of [...projects.map((project) => project.path), CAKE_CHAT_TODO_SCOPE])
-    yield* completeLinked(scope).pipe(
-      Effect.catch((cause) =>
-        Effect.logWarning(
-          "Linked to-do reconciliation failed; retry on next startup or association change",
-          cause,
-        ),
-      ),
-    );
-});
-
-/** Linked to-do repair is not a startup prerequisite. Keep its potentially cross-project
- * identity scans in the backend scope, without delaying the first window or acquiring runtimes.
- */
-export const initialize = Effect.fn("ProjectTodos.initialize")(function* () {
-  return yield* reconcileOnStartup().pipe(Effect.forkScoped);
 });
 
 /** Both UI and tools use this after an actual committed lifecycle transition. Context only;

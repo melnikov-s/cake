@@ -116,6 +116,9 @@ export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
 ) {
   const input = yield* Schema.decodeUnknownEffect(ProjectTodoListInput)(request).pipe(asError);
   const query = input.query?.toLowerCase();
+  // Repair only the requested list, before filtering/paging so newly completed items
+  // appear in Done rather than leaking stale Open rows after an interrupted commit.
+  yield* completeLinked(scope);
   const value = yield* todos.list(scope);
   const page = agentListPage(
     value.items.filter(
@@ -147,6 +150,8 @@ export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
 });
 
 export const read = Effect.fn("ProjectTodos.readForAgent")(function* (scope: string, id: string) {
+  yield* todos.read(scope, id);
+  yield* completeLinked(scope, new Set([id]));
   const item = yield* todos.read(scope, id);
   const [joined] = yield* join(scope, [item]);
   return { ...item, sessions: joined?.sessions ?? [] };
@@ -181,7 +186,7 @@ export const updateMany = Effect.fn("ProjectTodos.updateManyWithAssociations")(f
       .map(({ item }) => item.id),
   );
   yield* todos.updateMany(scope, canonical, false, resolved);
-  // Recheck only these items in case resolution raced their commit. Lifecycle/startup
+  // Recheck only these items in case resolution raced their commit. Lifecycle/list-access
   // reconciliation owns other items; cheap edits must not wait on unrelated discovery.
   yield* completeLinked(scope, new Set(canonical.map((input) => input.id)));
   return yield* Effect.forEach(canonical, (input) => todos.read(scope, input.id));
