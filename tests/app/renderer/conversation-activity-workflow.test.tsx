@@ -185,27 +185,16 @@ function renderActivity(
 }
 
 it.each(["project", "cake-chat"] as const)(
-  "%s header keeps worker-only and released chats navigable with empty Side chats first",
+  "%s bubble excludes all workers, including released history",
   async (kind) => {
     using view = renderActivity(kind);
-    view.publishWorker("running");
-    await view.user.click(screen.getByRole("button", { name: "Side chats and subagents, 1" }));
-    let menu = within(screen.getByRole("dialog", { name: "Open side chats" }));
-    expect(menu.getAllByRole("heading").map((heading) => heading.textContent)).toEqual([
-      "Side chats",
-      "Subagents",
-    ]);
-    expect(menu.getByText("No open side chats")).toBeTruthy();
-    expect(menu.getByRole("img", { name: "Running" })).toBeTruthy();
-    await view.user.click(menu.getByRole("button", { name: "Inspect the boundary" }));
-    expect(await screen.findByText("Inspecting now")).toBeTruthy();
-    view.publishWorker("running", true);
-    await view.user.click(screen.getByRole("button", { name: "Side chats and subagents, 1" }));
-    menu = within(screen.getByRole("dialog", { name: "Open side chats" }));
-    expect(menu.getByText("Resources released")).toBeTruthy();
-    expect(menu.queryByRole("img", { name: "Running" })).toBeNull();
-    await view.user.click(menu.getByRole("button", { name: "Inspect the boundary" }));
-    expect(screen.getByText("Inspecting now")).toBeTruthy();
+    for (const status of ["queued", "running", "complete"] as const) {
+      view.publishWorker(status);
+      expect(screen.queryByRole("button", { name: /^Side chats/ })).toBeNull();
+      expect(screen.queryByRole("dialog", { name: "Open side chats" })).toBeNull();
+    }
+    view.publishWorker("complete", true);
+    expect(screen.queryByRole("button", { name: /^Side chats/ })).toBeNull();
   },
 );
 

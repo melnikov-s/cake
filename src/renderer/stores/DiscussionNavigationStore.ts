@@ -212,6 +212,8 @@ export class DiscussionNavigationStore extends Store<{
         currentTitle: () => session.thread.title || title,
         chatStore: session.chatStore,
         parentChatStore: parent?.chatStore,
+        merge: session.mergeStore,
+        resolve: () => session.resolve(),
       });
       return;
     }

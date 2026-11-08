@@ -1,4 +1,5 @@
 import { Store } from "r-state-tree";
+import { describeError } from "../lib/error-details";
 import type { ArtifactMenuStore } from "./ArtifactMenuStore";
 import type { ThinkingLevel } from "../../contracts/conversations/session-contract";
 import type { SideChatMergeStore } from "./SideChatMergeStore";
@@ -23,6 +24,7 @@ interface SidePanelTarget {
   readonly eyebrow?: () => string;
   readonly model?: () => SideChatModel | undefined;
   readonly merge?: SideChatMergeStore;
+  readonly resolve?: () => Promise<boolean>;
 }
 
 export type SideChatTarget = SidePanelTarget &
@@ -54,9 +56,30 @@ export interface SideChatStoreProps {
 export class SideChatStore extends Store<SideChatStoreProps> {
   target: SideChatTarget | undefined;
   width = 416;
+  resolving = false;
+  resolutionError: string | undefined;
 
   open(target: SideChatTarget) {
+    this.resolutionError = undefined;
     this.target = target;
+  }
+
+  async closeAndResolve() {
+    const target = this.target;
+    if (!target?.resolve || this.resolving || target.merge?.pending) return;
+    this.resolving = true;
+    this.resolutionError = undefined;
+    try {
+      const resolved = await target.resolve();
+      if (this.signal.aborted || this.target !== target) return;
+      if (resolved) this.close();
+      else this.resolutionError = "Could not resolve side chat. Try again.";
+    } catch (error) {
+      if (!this.signal.aborted && this.target === target)
+        this.resolutionError = describeError(error).message;
+    } finally {
+      this.resolving = false;
+    }
   }
 
   close() {

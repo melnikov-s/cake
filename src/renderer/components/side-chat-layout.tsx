@@ -38,7 +38,7 @@ export const SideChatLayout = observer(function SideChatLayout({
     <Button
       variant="outline"
       size="sm"
-      disabled={target.merge.disabled}
+      disabled={target.merge.disabled || store.resolving}
       onClick={() => void target.merge?.run()}
     >
       {target.merge.label}
@@ -85,7 +85,9 @@ export const SideChatLayout = observer(function SideChatLayout({
               title={title}
               compact={isSideChat}
               eyebrow={isSideChat ? undefined : target.eyebrow?.()}
-              onClose={() => store.close()}
+              closeLabel={target.resolve ? "Close and resolve" : undefined}
+              closeDisabled={store.resolving || target.merge?.pending}
+              onClose={() => (target.resolve ? void store.closeAndResolve() : store.close())}
               headerActions={
                 target.changes ? (
                   <IconButton
@@ -107,6 +109,9 @@ export const SideChatLayout = observer(function SideChatLayout({
               }
             >
               <div className="flex h-full min-h-0 flex-col">
+                {store.resolutionError && (
+                  <Callout variant="error">{store.resolutionError}</Callout>
+                )}
                 {target.merge?.error && <Callout variant="error">{target.merge.error}</Callout>}
                 <div className="min-h-0 flex-1">
                   {target.changes ? (

@@ -128,6 +128,7 @@ export const queuedWorkerInputId = (turnId: string) => `worker-input:${turnId}`;
 
 export const activityOf = (handle: SubagentHandleState): SubagentActivity => {
   const activity: SubagentActivity = {
+    resolved: false,
     parentSessionId: handle.parentSessionId,
     anchorPartId: handle.anchorPartId,
     handleId: handle.handleId,

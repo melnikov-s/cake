@@ -328,6 +328,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       },
       title: "Side chat",
       currentTitle: () => thread.title || "Side chat",
+      resolve: () => this.props.reviews().resolveThread(threadId),
       chatStore,
     });
     return true;

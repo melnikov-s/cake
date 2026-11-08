@@ -151,6 +151,7 @@ it.effect(
             status: "complete",
             streaming: false,
             released: false,
+            resolved: false,
           },
         ]);
         expect(JSON.stringify(metadata.value)).not.toContain(history.privateSessionId);
@@ -190,6 +191,7 @@ it.effect("released worker metadata reads ownership records, never historical Pi
         handleId: record.handleId,
         task: record.task,
         released: true,
+        resolved: true,
       });
       expect(JSON.stringify(value.value)).not.toContain("parts");
       expect(JSON.stringify(value.value)).not.toContain(record.privateSessionId);

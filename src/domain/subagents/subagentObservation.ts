@@ -37,6 +37,7 @@ const historyActivity = Effect.fn("Subagents.historyActivity")(function* (record
     fastMode: record.fastMode,
     streaming: false,
     released: true,
+    resolved: true,
     parts: preview._tag === "Success" ? preview.success.parts.map(jsonValue) : [],
   };
   if (record.projectPath) Object.assign(activity, { projectPath: record.projectPath });
@@ -82,6 +83,7 @@ export const observeMetadata = Effect.fn("Subagents.observeMetadata")(function* 
               status: handle.status,
               streaming: handle.streaming,
               released: false,
+              resolved: false,
             })),
           ...history
             .filter(
@@ -97,6 +99,7 @@ export const observeMetadata = Effect.fn("Subagents.observeMetadata")(function* 
               status: record.status,
               streaming: false,
               released: true,
+              resolved: true,
             })),
         ]),
       ),

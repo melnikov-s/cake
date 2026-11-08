@@ -417,17 +417,14 @@ describe("Sessions navigator workflow", () => {
     expect(
       within(screen.getByRole("region", { name: "Sessions" })).queryByText("Pane widths"),
     ).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Side chats and subagents, 4" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     const menu = within(screen.getByRole("dialog", { name: "Open side chats" }));
     expect(menu.getAllByRole("heading").map((heading) => heading.textContent)).toEqual([
       "Side chats",
-      "Subagents",
     ]);
+    expect(menu.queryByText(/resolved|history/i)).toBeNull();
     expect(menu.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
       "Pane widths",
-      "Breadcrumb audit",
-      "Icon and tooltip audit",
-      "Dense tree review",
     ]);
     expect(menu.queryByText("Shortcut review")).toBeNull();
     await fixture.user.keyboard("{Escape}");
@@ -483,7 +480,7 @@ describe("Sessions navigator workflow", () => {
     using fixture = renderNavigator(navigatorProjectPath, true);
     const catalog = fixture.models.discussionCatalog("layout");
     expect(catalog.threads).toHaveLength(0);
-    await fixture.user.click(screen.getByRole("button", { name: "Side chats and subagents, 4" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     await fixture.user.click(screen.getByRole("button", { name: "Pane widths" }));
     await waitFor(() =>
       expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("layout"),

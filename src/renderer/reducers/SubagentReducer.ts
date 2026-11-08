@@ -38,6 +38,8 @@ export function applySubagentUpdate(
       // A later authoritative snapshot supplies Pi-backed released history.
       if (!model.releasedHandleIds.includes(update.handleId))
         model.releasedHandleIds.push(update.handleId);
+      const activity = model.activities.find((item) => item.handleId === update.handleId);
+      if (activity) activity.resolved = true;
     } else model.backgroundActive = update.active;
   });
 }
@@ -58,6 +60,7 @@ function upsertSubagentActivity(model: SubagentCatalog, activity: SubagentActivi
   target.task = activity.task;
   target.projectPath = activity.projectPath;
   target.status = activity.status;
+  target.resolved = activity.resolved;
   target.resolvedModel = activity.resolvedModel;
   target.fastMode = activity.fastMode;
   target.streaming = activity.streaming;

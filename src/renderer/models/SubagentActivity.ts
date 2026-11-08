@@ -21,6 +21,7 @@ export class SubagentActivity extends Model {
   };
   fastMode = false;
   streaming = false;
+  resolved = false;
   parts: UiPart[] = [];
   usage: SessionUsage | undefined;
   error: string | undefined;

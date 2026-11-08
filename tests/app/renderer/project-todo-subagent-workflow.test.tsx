@@ -27,6 +27,7 @@ it.each([false, true])(
         status: "complete",
         streaming: false,
         released: true,
+        resolved: true,
         parts: [
           {
             id: "entry-original-answer-text-0",

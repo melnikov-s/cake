@@ -68,6 +68,7 @@ it("discovers cold scoped owners and nested metadata without opening conversatio
               status: "running",
               streaming: true,
               released: false,
+              resolved: false,
             } satisfies SubagentMetadata,
           ]
         : [],

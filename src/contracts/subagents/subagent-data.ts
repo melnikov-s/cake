@@ -33,6 +33,8 @@ export const SubagentMetadata = Schema.Struct({
   status: SubagentStatus,
   streaming: Schema.Boolean,
   released: Schema.Boolean,
+  /** Release is terminal resolution, independent of the last turn's outcome. */
+  resolved: Schema.Boolean,
 });
 export interface SubagentMetadata extends Schema.Schema.Type<typeof SubagentMetadata> {}
 
@@ -106,6 +108,7 @@ export interface SubagentParent extends Schema.Schema.Type<typeof SubagentParent
 export const SubagentActivity = Schema.Struct({
   /** History remains readable after runtime/capability disposal. */
   released: Schema.optionalKey(Schema.Boolean),
+  resolved: Schema.Boolean,
   parentSessionId: SubagentParent.fields.parentSessionId,
   anchorPartId: nonEmptyBoundedString(256),
   handleId: SubagentHandleId,

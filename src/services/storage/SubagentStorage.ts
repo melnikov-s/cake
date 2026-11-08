@@ -45,7 +45,8 @@ export const SubagentRecord = Schema.Struct({
 });
 export interface SubagentRecord extends Schema.Schema.Type<typeof SubagentRecord> {}
 
-/** Released identity/ownership only: no transcript, execution intent or capability grants. */
+/** Released workers are resolved. Keep identity/ownership only, never duplicate Pi history.
+ * Resolution is derived from membership here, including older records, not a second stored flag. */
 export const SubagentHistory = Schema.Struct({
   handleId: SubagentHandleId,
   privateSessionId: Schema.String,

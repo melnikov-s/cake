@@ -20,6 +20,7 @@ const resolvedModel = {
   fallbacks: [],
 };
 const activity = {
+  resolved: false,
   parentSessionId: "parent",
   anchorPartId: "tool-call",
   handleId,

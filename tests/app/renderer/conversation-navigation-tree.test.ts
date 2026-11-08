@@ -204,6 +204,7 @@ describe("conversation navigation projection", () => {
       status: "running",
       streaming: false,
       released: true,
+      resolved: true,
     });
     expect(fixture.owned("layout")[1]).toMatchObject({
       title: "Retained released worker",

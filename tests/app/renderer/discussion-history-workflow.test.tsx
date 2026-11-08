@@ -73,7 +73,11 @@ function renderHistory(
   const abort = vi.fn<Client["sessionChats"]["abort"]>();
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project" })],
-    client: { cakeChats: { open: async () => undefined }, sessionChats: { history, abort } },
+    client: {
+      cakeChats: { open: async () => undefined },
+      sessionChats: { history, abort },
+      discussionSessions: { setResolved: async () => ({ ...thread, status: "resolved" }) },
+    },
   });
   applySnapshot(fixture.models.cakeChatCatalog, {
     loaded: true,
@@ -208,7 +212,7 @@ it.each(scopes)(
     fixture.publish([recent], { usage: usage(null, 64_000) });
     expect(indicator().textContent).toBe("Context unavailable");
     fixture.publish([recent], { usage: usage(32_000, 64_000) });
-    await user.click(screen.getByRole("button", { name: "Close Side chat" }));
+    await user.click(screen.getByRole("button", { name: "Close and resolve" }));
     await user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     const menu = within(screen.getByRole("dialog", { name: "Open side chats" }));
     expect(menu.getByText("Working…")).toBeTruthy();
@@ -274,7 +278,7 @@ it.each(scopes)(
     await user.click(screen.getByRole("button", { name: "Load earlier messages" }));
     const signal = history.mock.calls[0]?.[1]?.signal;
     expect(signal).toBeDefined();
-    await user.click(screen.getByRole("button", { name: "Close Side chat" }));
+    await user.click(screen.getByRole("button", { name: "Close and resolve" }));
     expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
     expect(fixture.abort).not.toHaveBeenCalled();
     fixture.dispose();

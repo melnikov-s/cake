@@ -216,6 +216,7 @@ it("opens actual nested discussion/retained-worker parts, preserving the public 
       status: "complete",
       streaming: false,
       released: true,
+      resolved: true,
     });
   });
   await act(async () => {
@@ -241,6 +242,7 @@ it("opens actual nested discussion/retained-worker parts, preserving the public 
           status: "complete",
           streaming: false,
           released: true,
+          resolved: true,
           parts: [
             {
               id: "worker-answer",

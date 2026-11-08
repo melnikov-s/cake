@@ -103,7 +103,8 @@ const releaseHandle = Effect.fn("Subagents.releaseHandle")(function* (
   );
   yield* coordinator.checkpoints.withPermit(
     Effect.gen(function* () {
-      // Commit the permanent identity before dropping any recovery/capability evidence.
+      // History membership resolves every release path (explicit, idle, parent and descendants).
+      // Commit it before dropping any recovery/capability evidence; Pi history stays on disk.
       const current =
         (yield* SubscriptionRef.get(coordinator.state)).handles.get(handle.handleId) ?? handle;
       const history: SubagentHistory = {

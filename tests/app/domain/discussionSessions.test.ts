@@ -116,6 +116,7 @@ const makeLayer = (
     readonly mergeQueued?: "parent" | "source";
     readonly mergeReferences?: readonly string[];
     readonly mergeFailure?: boolean;
+    readonly mergeGate?: { entered: Deferred.Deferred<void>; complete: Deferred.Deferred<void> };
     readonly activityGate?: { entered: Deferred.Deferred<void>; complete: Deferred.Deferred<void> };
   } = {},
 ) => {
@@ -205,6 +206,10 @@ const makeLayer = (
         messages: historyMessages,
       }),
       importSideChatHistory: async (history) => {
+        if (mergeOptions.mergeGate) {
+          await Effect.runPromise(Deferred.succeed(mergeOptions.mergeGate.entered, undefined));
+          await Effect.runPromise(Deferred.await(mergeOptions.mergeGate.complete));
+        }
         if (mergeOptions.mergeFailure) throw new Error("Import failed");
         importedHistories.push(history);
         return { importedMessages: 2 };
@@ -567,7 +572,7 @@ describe("Cake Chat side-chat merge", () => {
     threadId: "thread-1",
   };
 
-  it.effect("imports to the parent without prompting or resolving the source", () => {
+  it.effect("imports to the parent without prompting and resolves the preserved source", () => {
     const fixture = makeLayer({ cakeChat: true, persistedSidecar: true });
     return Effect.gen(function* () {
       yield* assembleCakeChat;
@@ -583,7 +588,7 @@ describe("Cake Chat side-chat merge", () => {
         },
       ]);
       assert.deepEqual(fixture.prompts, []);
-      assert.equal(fixture.record().status, "open");
+      assert.equal(fixture.record().status, "resolved");
     }).pipe(Effect.provide(fixture.layer), Effect.scoped);
   });
 
@@ -596,6 +601,7 @@ describe("Cake Chat side-chat merge", () => {
         assert.match(error.message, /both chats to finish/);
         assert.deepEqual(fixture.importedHistories, []);
         assert.deepEqual(fixture.prompts, []);
+        assert.equal(fixture.record().status, "open");
       }).pipe(Effect.provide(fixture.layer), Effect.scoped);
     });
   }
@@ -609,6 +615,7 @@ describe("Cake Chat side-chat merge", () => {
         assert.match(error.message, /both chats to finish/);
         assert.deepEqual(fixture.importedHistories, []);
         assert.deepEqual(fixture.prompts, []);
+        assert.equal(fixture.record().status, "open");
       }).pipe(Effect.provide(fixture.layer), Effect.scoped);
     });
   }
@@ -644,6 +651,25 @@ describe("Cake Chat side-chat merge", () => {
       assert.equal(fixture.importedHistories.length, 1);
     }).pipe(Effect.provide(fixture.layer), Effect.scoped);
   });
+
+  it.effect("does not resolve while the dialogue import is pending", () =>
+    Effect.gen(function* () {
+      const mergeGate = {
+        entered: yield* Deferred.make<void>(),
+        complete: yield* Deferred.make<void>(),
+      };
+      const fixture = makeLayer({ cakeChat: true, persistedSidecar: true, mergeGate });
+      yield* Effect.gen(function* () {
+        yield* assembleCakeChat;
+        const merge = yield* discussionSessions.merge(target).pipe(Effect.forkChild);
+        yield* Deferred.await(mergeGate.entered);
+        assert.equal(fixture.record().status, "open");
+        yield* Deferred.succeed(mergeGate.complete, undefined);
+        yield* Fiber.join(merge);
+        assert.equal(fixture.record().status, "resolved");
+      }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+    }),
+  );
 
   it.effect("surfaces import failures without resolving or prompting", () => {
     const fixture = makeLayer({ cakeChat: true, persistedSidecar: true, mergeFailure: true });

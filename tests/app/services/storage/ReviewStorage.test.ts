@@ -64,7 +64,7 @@ describe("ReviewStorage Discussion metadata", () => {
     ),
   );
 
-  it.effect("retains a generated title across storage reload and later thread updates", () =>
+  it.effect("retains side-chat resolution, identity and title across storage reload", () =>
     withStorage("cake-discussion-title-", (storage, _fileSystem, path, root) =>
       Effect.gen(function* () {
         const thread = yield* storage.createDiscussion("/project", "parent", codeAnchor);
@@ -75,6 +75,9 @@ describe("ReviewStorage Discussion metadata", () => {
         }).pipe(Effect.provide(makeReviewStorageTestAdapter(root, path.join(root, "pi-sessions"))));
         expect(reloaded[0]?.title).toBe("Filename collisions");
         expect(reloaded[0]?.status).toBe("resolved");
+        expect(reloaded[0]?.id).toBe(thread.id);
+        expect(reloaded[0]?.resolvedAt).toBeDefined();
+        expect(reloaded[0]?.anchor).toEqual(thread.anchor);
         expect((yield* storage.listSession("/project", "parent"))[0]?.title).toBe(
           "Filename collisions",
         );

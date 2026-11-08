@@ -135,6 +135,7 @@ async function renderWorkerStatus(status: "queued" | "running" = "running") {
                     status: activity.status,
                     streaming: activity.streaming,
                     released: activity.released ?? false,
+                    resolved: activity.released ?? false,
                   })),
                 ),
               )
@@ -284,6 +285,7 @@ it.each(
         parentSessionId: sessionId,
         status: outcome === "released" ? initial : outcome,
         released: outcome === "released",
+        resolved: outcome === "released",
         streaming: false,
         parts: [],
       }),

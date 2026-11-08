@@ -77,10 +77,11 @@ function renderSideChats(
     streaming?: boolean;
     streamingThreads?: readonly string[];
     commands?: ConversationSnapshot["commands"];
+    setResolved?: Client["discussionSessions"]["setResolved"];
   } = {},
 ) {
   const fixture = createRendererStoreFixture({
-    client: { discussionSessions: { start } },
+    client: { discussionSessions: { start, setResolved } },
     projects: [projectRecord({ path: "/project", name: "Project" })],
     sessions: [
       sessionSummary({
@@ -101,7 +102,24 @@ function renderSideChats(
   if (options.withoutModel) Object.assign(snapshot, { model: undefined });
   applyConversationSnapshot(session.model, snapshot);
   let revision = 0;
+  let currentThreads = options.threads ?? [];
+  const resolutions = vi.fn<Client["discussionSessions"]["setResolved"]>(async (input, request) => {
+    if (options.setResolved) return options.setResolved(input, request);
+    const updated = currentThreads.map((item) =>
+      item.id === input.threadId
+        ? { ...item, status: input.resolved ? ("resolved" as const) : ("open" as const) }
+        : item,
+    );
+    act(() => publish(updated));
+    const resolvedThread = updated.find((item) => item.id === input.threadId);
+    if (!resolvedThread) throw new Error("Missing side chat");
+    return resolvedThread;
+  });
+  function setResolved(...args: Parameters<Client["discussionSessions"]["setResolved"]>) {
+    return resolutions(...args);
+  }
   function publish(threads: DiscussionThread[]) {
+    currentThreads = threads;
     for (const item of threads) {
       if (!item.sidecarSessionId) continue;
       const model = fixture.models.discussionConversation(item.sidecarSessionId, "/project");
@@ -166,6 +184,7 @@ function renderSideChats(
   );
   return {
     user: userEvent.setup(),
+    resolutions,
     publish(threads: DiscussionThread[]) {
       act(() => publish(threads));
     },
@@ -224,7 +243,7 @@ describe("Secondary conversation workflows", () => {
       expect(screen.getByRole("combobox", { name: "Message" })).toBe(input);
       expect(screen.getByRole("separator", { name: "Resize side chat" })).toBeDefined();
       expect(within(panel).getByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
-      await fixture.user.click(within(panel).getByRole("button", { name: "Close Side chat" }));
+      await fixture.user.click(within(panel).getByRole("button", { name: "Close and resolve" }));
       expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
       expect(screen.getByRole("combobox")).toBeDefined();
     },
@@ -295,7 +314,7 @@ describe("Secondary conversation workflows", () => {
     expect(start).toHaveBeenCalledTimes(1);
   });
 
-  it("replaces the open side chat from the session menu and can reopen it after closing", async () => {
+  it("replaces the open side chat and closes/resolves only the selected thread", async () => {
     const start = vi.fn<Client["discussionSessions"]["start"]>();
     const first = thread("first", "First discussion");
     const second = {
@@ -320,11 +339,40 @@ describe("Secondary conversation workflows", () => {
     expect(screen.getAllByRole("complementary", { name: "Side chat" })).toHaveLength(1);
     expect(screen.getByRole("combobox", { name: "Reply to selection side chat" })).toBeDefined();
     expect(screen.queryByRole("combobox", { name: "Reply to side chat" })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Close Side chat" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 2 open" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Close and resolve" }));
+    expect(fixture.resolutions).toHaveBeenCalledWith(
+      {
+        parentSessionId: "parent-1",
+        workingDirectory: "/project",
+        threadId: "second",
+        resolved: true,
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     await fixture.user.click(screen.getByRole("button", { name: /First discussion/ }));
     expect(screen.getByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
     expect(start).not.toHaveBeenCalled();
+  });
+
+  it("keeps a side chat open on resolution failure and permits retry", async () => {
+    const setResolved = vi
+      .fn<Client["discussionSessions"]["setResolved"]>()
+      .mockRejectedValueOnce(new Error("Resolution failed"))
+      .mockResolvedValueOnce({ ...thread("first", "First discussion"), status: "resolved" });
+    using fixture = renderSideChats(vi.fn<Client["discussionSessions"]["start"]>(), {
+      threads: [thread("first", "First discussion")],
+      setResolved,
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+    await fixture.user.click(screen.getByRole("button", { name: "First discussion" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Close and resolve" }));
+    expect(screen.getByRole("complementary", { name: "Side chat" })).toBeDefined();
+    expect(screen.getByText("Could not resolve side chat. Try again.")).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Close and resolve" }));
+    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
+    expect(setResolved).toHaveBeenCalledTimes(2);
   });
 
   it("lists only open user side chats, projects live activity, and follows catalog removal", async () => {
@@ -352,14 +400,14 @@ describe("Secondary conversation workflows", () => {
     const menu = within(screen.getByLabelText("Open side chats"));
     expect(menu.getByText("Working…")).toBeDefined();
     expect(menu.getByRole("heading", { name: "Side chats" })).toBeDefined();
-    expect(menu.getByText("No subagents")).toBeDefined();
+    expect(menu.queryByText(/subagents|resolved|history/i)).toBeNull();
     expect(menu.queryByText(/Resolved discussion|Code discussion/)).toBeNull();
     await fixture.user.click(menu.getByRole("button", { name: /The important selection/ }));
     expect(screen.queryByLabelText("Open side chats")).toBeNull();
     const panel = within(screen.getByRole("complementary", { name: "Side chat" }));
     expect(panel.getByRole("combobox", { name: "Reply to selection side chat" })).toBeDefined();
     expect(panel.getByRole("button", { name: "Stop" })).toBeDefined();
-    await fixture.user.click(panel.getByRole("button", { name: "Close Side chat" }));
+    await fixture.user.click(panel.getByRole("button", { name: "Close and resolve" }));
     fixture.publish([resolved, code, { ...selection, status: "resolved" }]);
     expect(screen.queryByRole("button", { name: /^Side chats,/ })).toBeNull();
     expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();

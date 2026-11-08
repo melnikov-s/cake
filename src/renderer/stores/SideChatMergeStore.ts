@@ -10,7 +10,7 @@ interface SideChatMergeStoreProps {
   sideChat(): ChatStore;
 }
 
-/** Explicit historical import; never sends a prompt or closes the source chat. */
+/** Explicit dialogue import; the backend resolves the source only after success. */
 export class SideChatMergeStore extends Store<SideChatMergeStoreProps> {
   pending = false;
   private alreadyMergedThrough: string | undefined;

@@ -770,7 +770,7 @@ export const startTaskSideSession = Effect.fn("DiscussionSessions.startTaskSideS
   };
 });
 
-/** Import historical dialogue without submitting a request or changing thread lifecycle. */
+/** Import historical dialogue without submitting a request; resolve only after import succeeds. */
 export const merge = Effect.fn("DiscussionSessions.merge")(function* (
   target: DiscussionSessionTarget,
 ) {
@@ -815,9 +815,11 @@ export const merge = Effect.fn("DiscussionSessions.merge")(function* (
       yield* inputs.grant(record.parentSessionId, grants).pipe(asError("merge"));
     }
   }
-  return yield* parent
+  const result = yield* parent
     .importSideChatHistory({ ...history, threadId: record.id, title: "Side chat" })
     .pipe(asError("merge"));
+  yield* setResolved(target, true);
+  return result;
 }, Effect.scoped);
 
 export const setResolved = Effect.fn("DiscussionSessions.setResolved")(function* (

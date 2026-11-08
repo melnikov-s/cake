@@ -216,7 +216,10 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   openSideChat(threadId: string, sourceEntryId?: string) {
     // Metadata discovery precedes full thread hydration when navigating a cold owner.
     this.pendingSideChatThreadId = threadId;
-    const thread = this.sideChatThreads.find((candidate) => candidate.id === threadId);
+    // Imported dialogue's Source links can inspect a resolved thread without restoring it.
+    const thread = sourceEntryId
+      ? this.sideChats.discussionSession(threadId)?.thread
+      : this.sideChatThreads.find((candidate) => candidate.id === threadId);
     const chatStore = this.sideChats.chatStore(threadId);
     if (!thread || !chatStore || !thread.sidecarSessionId) return false;
     this.pendingSideChatThreadId = undefined;
@@ -238,6 +241,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       title: "Side chat",
       currentTitle: () => thread.title || "Side chat",
       merge: this.sideChats.discussionSession(threadId)?.mergeStore,
+      resolve: () => this.sideChats.resolveThread(threadId),
       chatStore,
     });
     return true;

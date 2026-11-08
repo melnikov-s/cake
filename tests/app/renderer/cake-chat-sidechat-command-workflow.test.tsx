@@ -72,6 +72,7 @@ function renderChat(
       artifacts: { effective: async () => [] },
       sessionChats: { prompt },
       cakeChats: { start, startSideChat },
+      discussionSessions: { setResolved: async () => ({ ...thread, status: "resolved" }) },
     },
   });
   applySnapshot(fixture.models.cakeChatCatalog, {
@@ -352,7 +353,7 @@ describe.each([
     expect(
       await within(panel).findByRole("combobox", { name: "Reply to selection side chat" }),
     ).toBeDefined();
-    await fixture.user.click(within(panel).getByRole("button", { name: "Close Side chat" }));
+    await fixture.user.click(within(panel).getByRole("button", { name: "Close and resolve" }));
     expect(screen.getByRole("combobox")).toBe(main);
     expect(fixture.prompt).not.toHaveBeenCalled();
     expect(fixture.start).not.toHaveBeenCalled();

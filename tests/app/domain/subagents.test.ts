@@ -1158,6 +1158,16 @@ describe("Cake Chat project investigators", () => {
           Stream.runHead,
         );
         assert.match(JSON.stringify(released), /PRIVATE_TOOL_OUTPUT/);
+        assert.equal(released._tag, "Some");
+        if (released._tag === "Some") {
+          const activities =
+            released.value._tag === "Snapshot"
+              ? released.value.activities
+              : released.value._tag === "Activity"
+                ? [released.value.activity]
+                : [];
+          assert.equal(activities[0]?.resolved, true);
+        }
       }).pipe(Effect.provide(fixture.layer));
     }),
   );
@@ -2659,6 +2669,7 @@ describe("Subagents", () => {
           assert.equal(first._tag, "Some");
           if (first._tag === "Some" && first.value._tag === "Snapshot") {
             assert.equal(first.value.activities[0]?.released, true);
+            assert.equal(first.value.activities[0]?.resolved, true);
             assert.match(JSON.stringify(first.value.activities[0]?.parts), /PRIVATE_TOOL_OUTPUT/);
             assert.match(JSON.stringify(first.value.activities[0]?.parts), /config.ts:12/);
           } else assert.fail("Missing released history snapshot");
@@ -2676,9 +2687,10 @@ describe("Subagents", () => {
           const stream = yield* subagentObservation.observe("parent-cake-chat");
           const first = yield* stream.pipe(Stream.runHead);
           assert.equal(first._tag, "Some");
-          if (first._tag === "Some" && first.value._tag === "Snapshot")
+          if (first._tag === "Some" && first.value._tag === "Snapshot") {
             assert.match(JSON.stringify(first.value.activities[0]?.parts), /PRIVATE_TOOL_OUTPUT/);
-          else assert.fail("Missing restarted history snapshot");
+            assert.equal(first.value.activities[0]?.resolved, true);
+          } else assert.fail("Missing restarted history snapshot");
           assert.equal(yield* Ref.get(restarted.constructions), 0);
         }).pipe(Effect.provide(restarted.layer));
       }),
@@ -2747,6 +2759,31 @@ describe("Subagents", () => {
       }),
   );
 
+  it.effect(
+    "resolves descendant workers when an ancestor is released without deleting their history",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        yield* Effect.gen(function* () {
+          const ancestor = yield* subagents.start({ task: "Ancestor" }, parent(fixture));
+          const ancestorId = yield* Queue.take(fixture.childStarted);
+          yield* subagents.start({ task: "Descendant" }, parent(fixture, ancestorId));
+          yield* Queue.take(fixture.childStarted);
+          yield* subagentLifetime.close("parent", ancestor.handleId);
+          const coordinator = yield* SubagentCoordinator;
+          assert.equal((yield* SubscriptionRef.get(coordinator.state)).handles.size, 0);
+          assert.equal((yield* coordinator.storage.history.list()).length, 2);
+          for (const owner of ["parent", ancestorId]) {
+            const metadata = yield* (yield* subagentObservation.observeMetadata(owner)).pipe(
+              Stream.runHead,
+            );
+            assert.equal(metadata._tag, "Some");
+            if (metadata._tag === "Some") assert.equal(metadata.value[0]?.resolved, true);
+          }
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
+
   it.effect("parent release closes subagents", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
@@ -2757,6 +2794,11 @@ describe("Subagents", () => {
         );
         yield* Queue.take(fixture.childStarted);
         yield* subagentLifetime.releaseParent("parent");
+        const metadata = yield* (yield* subagentObservation.observeMetadata("parent")).pipe(
+          Stream.runHead,
+        );
+        assert.equal(metadata._tag, "Some");
+        if (metadata._tag === "Some") assert.equal(metadata.value[0]?.resolved, true);
         const coordinator = yield* SubagentCoordinator;
         assert.equal(
           (yield* SubscriptionRef.get(coordinator.state)).handles.has(receipt.handleId),

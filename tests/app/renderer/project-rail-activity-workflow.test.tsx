@@ -193,6 +193,7 @@ it("keeps the project rail idle when worker snapshots change without changing pr
     status: "running" as const,
     streaming: true,
     released: false,
+    resolved: false,
   };
   workers.metadata.push(worker);
   fixture.models.projects.runningProjectPaths.push("/cake");

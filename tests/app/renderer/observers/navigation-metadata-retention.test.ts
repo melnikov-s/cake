@@ -54,6 +54,7 @@ it("metadata snapshots never replace already loaded worker or side-chat history"
                 status: "complete",
                 streaming: false,
                 released: false,
+                resolved: false,
               },
             ]),
         },

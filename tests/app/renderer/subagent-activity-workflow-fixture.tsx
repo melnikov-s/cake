@@ -27,6 +27,7 @@ export const handleId = SubagentHandleId.make("10000000-0000-4000-8000-000000000
 
 export function workerActivity(overrides: Partial<SubagentActivity> = {}): SubagentActivity {
   return {
+    resolved: overrides.released ?? false,
     parentSessionId,
     anchorPartId: "tool-spawn",
     handleId,

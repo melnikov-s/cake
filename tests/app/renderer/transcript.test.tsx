@@ -141,7 +141,10 @@ describe("Transcript reader workflows", () => {
     };
     using fixture = renderTranscriptFinish([question, answer], {
       thread,
-      client: { sessionChats: { prompt } },
+      client: {
+        sessionChats: { prompt },
+        discussionSessions: { setResolved: async () => ({ ...thread, status: "resolved" }) },
+      },
     });
     const reopen = async () => {
       await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
@@ -163,7 +166,7 @@ describe("Transcript reader workflows", () => {
       }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    await fixture.user.click(within(panel).getByRole("button", { name: "Close Side chat" }));
+    await fixture.user.click(within(panel).getByRole("button", { name: "Close and resolve" }));
     expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
     await reopen();
     expect(
