@@ -400,14 +400,15 @@ export class SidebarSessionListStore extends Store<{
             { modifiedAt: latestActivity(left), draft: left.draft },
             { modifiedAt: latestActivity(right), draft: right.draft },
           ) || compareSessionSummariesByCreation(left, right);
+    const labelOrder =
+      this.projectSessionSort(projectPath) === "label"
+        ? new Map(this.metadata.projectLabels(projectPath).map((label, index) => [label.id, index]))
+        : undefined;
     roots.sort((left, right) => {
       const activityOrder =
         activityPriorities.get(left.sessionId)! - activityPriorities.get(right.sessionId)!;
       if (activityOrder) return activityOrder;
-      if (this.projectSessionSort(projectPath) === "date") return compareByDate(left, right);
-      const labelOrder = new Map(
-        this.metadata.projectLabels(projectPath).map((label, index) => [label.id, index]),
-      );
+      if (!labelOrder) return compareByDate(left, right);
       const leftOrder =
         labelOrder.get(this.metadata.sessionLabelIds(left.sessionId)[0] ?? "") ?? Infinity;
       const rightOrder =

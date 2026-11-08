@@ -628,10 +628,18 @@ function MarkdownRenderer({
       : children;
     return { source, models };
   }, [children, renderModelReferences]);
-  const source = prepareMarkdownLinks(
-    normalizeLatexDelimiters ? normalizeLatexMathDelimiters(references.source) : references.source,
-    Boolean(onOpenSourceLocation),
-    Boolean(linkActions?.loadWorkspaceImage),
+  const normalizedSource = useMemo(
+    () =>
+      normalizeLatexDelimiters
+        ? normalizeLatexMathDelimiters(references.source)
+        : references.source,
+    [references.source, normalizeLatexDelimiters],
+  );
+  const sourceLinks = Boolean(onOpenSourceLocation);
+  const workspaceImages = Boolean(linkActions?.loadWorkspaceImage);
+  const source = useMemo(
+    () => prepareMarkdownLinks(normalizedSource, sourceLinks, workspaceImages),
+    [normalizedSource, sourceLinks, workspaceImages],
   );
   // Streaming updates are lower priority than scrolling and other input. Keeping
   // Streamdown on its previous source during the urgent render also lets React

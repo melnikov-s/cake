@@ -6,7 +6,8 @@ import type { ComponentProps } from "react";
 import {
   fencedCode,
   isStandaloneDiagram,
-  type Markdown,
+  Markdown,
+  MarkdownLinkProvider,
 } from "../../../src/renderer/components/ai-elements/markdown";
 import { Tool } from "../../../src/renderer/components/ai-elements/tool";
 import { godotDiagram } from "../../fixtures/godot-diagram";
@@ -560,6 +561,92 @@ describe("Markdown rendering integration", () => {
     expect(fixture.container.querySelector(".katex-display")).not.toBeNull();
     expect(screen.getByText("\\(inline code\\)").tagName).toBe("CODE");
     expect(codeBodies(fixture.container)[0]!.textContent).toContain("\\[fenced code\\]");
+  });
+
+  it("memoizes preprocessing across unrelated renders but refreshes source and capability changes", async () => {
+    const matches = vi.spyOn(RegExp.prototype, Symbol.match);
+    const splits = vi.spyOn(RegExp.prototype, Symbol.split);
+    const normalizations = () =>
+      matches.mock.contexts.filter(
+        (regex) => regex instanceof RegExp && regex.source === /[^\n]*\n|[^\n]+$/g.source,
+      ).length;
+    const linkPreparations = () =>
+      splits.mock.contexts.filter(
+        (regex) =>
+          regex instanceof RegExp &&
+          regex.source ===
+            /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|!?\[[^\]]*\]\([^)]+\))/g.source,
+      ).length;
+    let source = "Read src/example.ts:4. Inline \\(x + y\\).";
+    const actions = { openExternalUrl: vi.fn() };
+    using fixture = renderMarkdown(source, {
+      actions,
+      props: { onOpenSourceLocation: () => undefined },
+    });
+    await waitFor(() => expect(fixture.container.textContent).toContain("$x + y$"));
+    const before = [normalizations(), linkPreparations()];
+    expect(before[0]).toBeGreaterThan(0);
+    expect(before[1]).toBeGreaterThan(0);
+    for (let index = 0; index < 3; index++)
+      await fixture.update(source, {
+        className: `unrelated-${index}`,
+        onOpenSourceLocation: () => undefined,
+      });
+    expect([normalizations(), linkPreparations()]).toEqual(before);
+    expect(screen.getByRole("link", { name: "src/example.ts:4" })).toBeDefined();
+
+    source += " Next token.";
+    await fixture.update(source, { streaming: true, onOpenSourceLocation: () => undefined });
+    expect([normalizations(), linkPreparations()]).toEqual([before[0]! + 1, before[1]! + 1]);
+    expect(fixture.container.textContent).toContain("Next token.");
+    // A new callback with the same presence is irrelevant to preprocessing, but
+    // removing source navigation changes whether bare source links are generated.
+    await fixture.update(source, { streaming: true });
+    expect([normalizations(), linkPreparations()]).toEqual([before[0]! + 1, before[1]! + 2]);
+    expect(screen.queryByRole("link", { name: "src/example.ts:4" })).toBeNull();
+    await fixture.update(source, { normalizeLatexDelimiters: false });
+    expect(normalizations()).toBe(before[0]! + 1);
+    expect(linkPreparations()).toBe(before[1]! + 3);
+    expect(fixture.container.textContent).toContain("Inline (x + y).");
+    await fixture.update(source, { normalizeLatexDelimiters: true });
+    expect([normalizations(), linkPreparations()]).toEqual([before[0]! + 2, before[1]! + 4]);
+    expect(fixture.container.textContent).toContain("$x + y$");
+  });
+
+  it("keys link preprocessing to image capability rather than provider or loader identity", async () => {
+    const splits = vi.spyOn(RegExp.prototype, Symbol.split);
+    const preparations = () =>
+      splits.mock.calls.filter(([source]) => source === "Plain prose.").length;
+    const content = (
+      loadWorkspaceImage?: NonNullable<
+        ComponentProps<typeof MarkdownLinkProvider>["actions"]["loadWorkspaceImage"]
+      >,
+    ) => (
+      <MarkdownLinkProvider
+        actions={{
+          openSession: () => undefined,
+          openExternalUrl: () => undefined,
+          loadWorkspaceImage,
+        }}
+      >
+        <Markdown>Plain prose.</Markdown>
+      </MarkdownLinkProvider>
+    );
+    const view = render(content());
+    const initial = preparations();
+    expect(initial).toBe(1);
+    await act(async () => view.rerender(content()));
+    expect(preparations()).toBe(initial);
+    const loader = async () => ({ data: "", mimeType: "image/png" });
+    await act(async () => view.rerender(content(loader)));
+    expect(preparations()).toBe(initial + 1);
+    await act(async () =>
+      view.rerender(content(async () => ({ data: "changed", mimeType: "image/png" }))),
+    );
+    expect(preparations()).toBe(initial + 1);
+    await act(async () => view.rerender(content()));
+    expect(preparations()).toBe(initial + 2);
+    expect(view.container.textContent).toBe("Plain prose.");
   });
 
   it("can defer math normalization for an incomplete streaming response", () => {

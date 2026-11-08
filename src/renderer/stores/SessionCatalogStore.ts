@@ -74,6 +74,15 @@ export class SessionCatalogStore extends Store<{
   private get sessionIndex(): ReadonlyMap<string, SessionSummary | PendingSessionSummary> {
     const index = new Map<string, SessionSummary | PendingSessionSummary>();
     for (const session of this.props.model.sessions) index.set(session.sessionId, session);
+    for (const session of this.pendingSessionIndex.values()) {
+      if (!index.has(session.sessionId)) index.set(session.sessionId, session);
+    }
+    return index;
+  }
+
+  @computed
+  private get pendingSessionIndex(): ReadonlyMap<string, PendingSessionSummary> {
+    const index = new Map<string, PendingSessionSummary>();
     for (const session of this.props.pendingSessions?.() ?? []) {
       if (!index.has(session.sessionId)) index.set(session.sessionId, session);
     }
@@ -81,7 +90,7 @@ export class SessionCatalogStore extends Store<{
   }
 
   find(sessionId: string) {
-    return this.sessionIndex.get(sessionId);
+    return this.props.model.find(sessionId) ?? this.pendingSessionIndex.get(sessionId);
   }
 
   /** Reconcile one explicit identity without reloading the Project catalog or a transcript. */
