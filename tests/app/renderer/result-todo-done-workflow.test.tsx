@@ -223,6 +223,7 @@ async function renderChat(kind: ChatKind, incomingCards = false) {
     client: {
       cakeChats: { open: async () => undefined },
       artifacts: { effective: async () => [] },
+      electron: { setFullscreenSurfaceOpen: async () => undefined },
       projectTodos: { mutateUser },
     },
   });
