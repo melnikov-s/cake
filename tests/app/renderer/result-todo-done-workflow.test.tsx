@@ -376,20 +376,41 @@ it.each(["Project Chat"] as const)(
   },
 );
 
-it("keeps multiple linked titles flexible beside non-shrinking right-hand actions", async () => {
+it("keeps multiple linked legacy titles flexible beside non-shrinking right-hand actions", async () => {
   await using f = await renderChat("Project Chat");
   const title = "Review the evidence " + "UnbrokenTitle".repeat(30);
   await f.commit(
-    projectTodos.create(f.scope, {
-      title,
-      description: "A long title must wrap without pushing its action out of the footer.",
-      associations: [
-        {
-          kind: "source",
-          ref: `cake://session/${f.chat.sessionId}?message=session-reply`,
-          title: "Exact report",
-        },
-      ],
+    Effect.gen(function* () {
+      const created = yield* projectTodos.create(f.scope, {
+        title: "Review the evidence",
+        description: "A long legacy title must wrap without pushing its action out of the footer.",
+        associations: [
+          {
+            kind: "source",
+            ref: `cake://session/${f.chat.sessionId}?message=session-reply`,
+            title: "Exact report",
+          },
+        ],
+      });
+      // Seed a saved legacy title: new title mutations correctly reject more than 80 characters.
+      yield* (yield* ApplicationState).transact((state) =>
+        Effect.succeed({
+          ...state,
+          projects: state.projects.map((project) =>
+            project.path === f.scope && project.todos
+              ? {
+                  ...project,
+                  todos: {
+                    ...project.todos,
+                    items: project.todos.items.map((item) =>
+                      item.id === created.id ? { ...item, title } : item,
+                    ),
+                  },
+                }
+              : project,
+          ),
+        }),
+      );
     }),
   );
   const group = f.groupFor("session-reply")!;
