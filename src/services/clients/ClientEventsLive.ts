@@ -117,6 +117,7 @@ export const ClientEventsLive = Layer.effect(
         focused(
           connectionId,
           "vscode",
+          "embedded-editor-navigation-reveal",
           "embedded-editor-toggle-mode-requested",
           "embedded-editor-selection",
           "embedded-editor-back-to-agent",

@@ -53,6 +53,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
           <WorkLogControls store={session.conversationSessionStore.chatStore} />
         ) : undefined
       }
+      workspaceMode={mode}
       commandPaneWidth={commandPaneWidth}
       onCommandPaneWidthChange={setCommandPaneWidth}
     >

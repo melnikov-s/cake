@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
@@ -25,9 +25,17 @@ import { ProjectActionDialog, type ProjectAction } from "./project-action-dialog
 import { SessionSearchDialog } from "./session-search-dialog";
 
 /** Persistent project homes and global actions; never a second session list. */
-export const ProjectRail = observer(function ProjectRail() {
+export const ProjectRail = observer(function ProjectRail({
+  autoHide = false,
+}: {
+  autoHide?: boolean;
+}) {
   const root = useStore(RootStore);
   const projects = root.projectCatalogStore;
+  useLayoutEffect(() => {
+    root.projectRailStore.setRevealed(false);
+    return () => root.projectRailStore.setRevealed(false);
+  }, [root, autoHide]);
   const [action, setAction] = useState<{ path: string; kind: ProjectAction }>();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string>();
@@ -58,6 +66,9 @@ export const ProjectRail = observer(function ProjectRail() {
     <>
       <NavigationRail
         label="Projects and global utilities"
+        autoHide={autoHide}
+        revealed={root.projectRailStore.revealed}
+        onRevealChange={(revealed) => root.projectRailStore.setRevealed(revealed)}
         onOverlayRightChange={setOverlayRight}
         header={
           <>

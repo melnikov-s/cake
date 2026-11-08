@@ -8,6 +8,16 @@ export const observeVsCodeEvents = (runtime: Runtime, root: RootStore) =>
     (event) => {
       try {
         if (event.type === "renderer-events-ready") return;
+        if (event.type === "embedded-editor-navigation-reveal") {
+          const editor = root.projectWorkbenchStore.presentationStore.embeddedEditorStore;
+          if (
+            editor.visible &&
+            root.workspaceSession?.presentationMode === "vscode" &&
+            event.workspacePath === editor.props.projectPath()
+          )
+            root.projectRailStore.setRevealed(event.revealed);
+          return;
+        }
         if (event.type === "embedded-editor-toggle-mode-requested") {
           if (root.appShellStore.selection.kind === "project-session")
             void root.projectWorkbenchStore.presentationStore.toggleIde();

@@ -70,6 +70,27 @@ export class VsCodeViewsRuntime {
       if (target.origin !== address.origin || !target.pathname.startsWith(address.pathname))
         event.preventDefault();
     });
+    // Native views paint above Cake's DOM, so an HTML edge target alone cannot
+    // receive the pointer. Forward only edge motion; reserve no activation gutter.
+    let navigationAtEdge = false;
+    view.webContents.on("before-mouse-event", (_event, mouse) => {
+      if (mouse.type !== "mouseMove") return;
+      const bounds = this.requestedBounds.get(nativeId);
+      const atEdge = Boolean(
+        mouse.x >= 0 &&
+        mouse.x <= 2 &&
+        bounds?.visible &&
+        bounds.x === 0 &&
+        !this.fullscreenWindows.has(nativeId),
+      );
+      if (atEdge === navigationAtEdge) return;
+      navigationAtEdge = atEdge;
+      this.send(nativeId, {
+        type: "embedded-editor-navigation-reveal",
+        workspacePath: endpoint.workspacePath,
+        revealed: atEdge,
+      });
+    });
     view.webContents.on("console-message", (event) => {
       if (!event.message.startsWith(VSCODE_SHELL_CONTROL_PREFIX)) return;
       event.preventDefault();

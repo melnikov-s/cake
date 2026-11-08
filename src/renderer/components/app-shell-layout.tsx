@@ -12,21 +12,26 @@ import { AppSurfaceHeader } from "./app-surface-header";
 import { ConversationFocusContext } from "../lib/conversation-focus-context";
 import { FullscreenViewportContext } from "./fullscreen-viewport-context";
 import { SessionChatHomeButton } from "./session-chat-home-button";
+import { useHoverPointer } from "../lib/hover-pointer";
 
 export const AppShellLayout = observer(function AppShellLayout({
   children,
   overlays,
   workspaceControls,
+  workspaceMode,
   commandPaneWidth,
   onCommandPaneWidthChange,
 }: {
   children: ReactNode;
   overlays: ReactNode;
   workspaceControls?: ReactNode;
+  workspaceMode?: "browser" | "vscode";
   commandPaneWidth: number;
   onCommandPaneWidthChange(width: number): void;
 }) {
   const root = useStore(RootStore);
+  const hoverPointer = useHoverPointer();
+  const autoHideRail = workspaceMode === "vscode" && hoverPointer;
   const store = root.projectWorkbenchStore;
   const shell = root.appShellStore;
   const navigator = root.workspaceNavigatorStore;
@@ -58,6 +63,7 @@ export const AppShellLayout = observer(function AppShellLayout({
         "relative grid h-full w-full max-w-[100vw] grid-cols-[var(--project-rail-width)_minmax(0,1fr)_var(--navigator-width)_var(--command-width)] overflow-hidden bg-background text-foreground [--project-rail-width:54px] max-[700px]:grid-cols-[var(--project-rail-width)_minmax(0,1fr)_0px_0px] max-[700px]:[--project-rail-width:44px]",
         applicationView &&
           "grid-cols-[0px_minmax(0,1fr)_0px_var(--command-width)] [--project-rail-width:0px] max-[700px]:grid-cols-[0px_minmax(0,1fr)_0px_0px] max-[700px]:[--project-rail-width:0px]",
+        autoHideRail && "[--project-rail-width:0px] max-[700px]:[--project-rail-width:0px]",
         resizingPanel && "cursor-col-resize select-none",
       )}
       style={shellStyle}
@@ -67,7 +73,7 @@ export const AppShellLayout = observer(function AppShellLayout({
         data-slot="window-controls-drag-region"
         className="absolute left-0 top-0 z-40 h-title-bar w-[100px] [app-region:drag]"
       />
-      {!applicationView && <ProjectRail />}
+      {!applicationView && <ProjectRail autoHide={autoHideRail} />}
       <section
         data-slot="workspace"
         className={cn(
@@ -90,7 +96,7 @@ export const AppShellLayout = observer(function AppShellLayout({
         )}
       </section>
       {navigatorVisible && (
-        <div className="col-start-3 min-h-0 min-w-0 max-[700px]:absolute max-[700px]:inset-y-0 max-[700px]:left-11 max-[700px]:right-0 max-[700px]:z-30">
+        <div className="col-start-3 min-h-0 min-w-0 max-[700px]:absolute max-[700px]:inset-y-0 max-[700px]:left-[var(--project-rail-width)] max-[700px]:right-0 max-[700px]:z-30">
           <WorkspaceNavigator />
         </div>
       )}

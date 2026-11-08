@@ -583,7 +583,9 @@ export function createChatFirstNavigationScenario(
           );
         });
       const hoverRail = async () => {
-        await rail.hover();
+        const edge = page.locator('[data-slot="project-rail-edge"]');
+        if (await edge.count()) await edge.hover();
+        else await rail.hover();
         const bounds = (await rail.boundingBox())!;
         await page.mouse.move(bounds.x + 1, bounds.y + 3);
         await expect.poll(async () => (await rail.boundingBox())!.width).toBe(240);

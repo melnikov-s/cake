@@ -114,6 +114,40 @@ describe("VsCodeViewsRuntime native presentation", () => {
     expect(view.setVisible).toHaveBeenLastCalledWith(true);
   });
 
+  it("forwards left-edge motion without a gutter, only for a visible edge-aligned editor", async () => {
+    const { runtime, open, send } = fixture();
+    runtime.updateBounds(7, { ...shownBounds, x: 0 });
+    await open();
+    const listener = firstView().webContents.on.mock.calls.find(
+      ([event]) => event === "before-mouse-event",
+    )?.[1] as unknown as (event: object, mouse: { type: string; x: number }) => void;
+    const move = (x: number, type = "mouseMove") => listener({}, { type, x });
+    move(1);
+    expect(send).toHaveBeenLastCalledWith(7, {
+      type: "embedded-editor-navigation-reveal",
+      workspacePath: endpoint.workspacePath,
+      revealed: true,
+    });
+    move(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    move(3);
+    expect(send).toHaveBeenLastCalledWith(7, {
+      type: "embedded-editor-navigation-reveal",
+      workspacePath: endpoint.workspacePath,
+      revealed: false,
+    });
+    send.mockClear();
+    move(1, "mouseDown");
+    runtime.updateBounds(7, shownBounds);
+    move(1);
+    runtime.updateBounds(7, { ...shownBounds, x: 0, visible: false });
+    move(1);
+    runtime.updateBounds(7, { ...shownBounds, x: 0 });
+    runtime.setFullscreenSurfaceOpen(7, true);
+    move(1);
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("routes Back to Agent only to the native owner", async () => {
     const { runtime, open, send } = fixture();
     runtime.updateBounds(7, shownBounds);

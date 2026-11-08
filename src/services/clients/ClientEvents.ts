@@ -61,6 +61,7 @@ export interface ClientEventsService {
     connectionId: number,
   ) => Stream.Stream<
     FocusedCakeEvent<
+      | "embedded-editor-navigation-reveal"
       | "embedded-editor-toggle-mode-requested"
       | "embedded-editor-selection"
       | "embedded-editor-back-to-agent"
