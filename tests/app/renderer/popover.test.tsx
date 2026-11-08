@@ -121,10 +121,12 @@ describe("Cake Popover", () => {
         disconnect() {}
       },
     );
-    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (this: HTMLElement) {
-      const cap = Number.parseFloat(this.style.maxWidth.replace("min(", ""));
-      return Math.min(352, Number.isFinite(cap) ? cap : 352);
-    });
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(
+      function (this: HTMLElement) {
+        const cap = Number.parseFloat(this.style.maxWidth.replace("min(", ""));
+        return Math.min(352, Number.isFinite(cap) ? cap : 352);
+      },
+    );
     act(() =>
       root.render(
         <PopoverBoundaryContext.Provider value={{ current: pane }}>

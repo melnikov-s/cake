@@ -1,11 +1,111 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { expect, test, type Locator } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
-import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { Harness, createRegistry, UserEntry } from "@earendil-works/pi-durable";
+import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { createModels } from "@earendil-works/pi-durable-ai";
+import { cakeChatSideChatSessionId } from "../../src/contracts/cake-chats/cake-chat-identity";
+import { defaultApplicationState } from "../../src/contracts/application/application-data";
+import { store, windowStateDocument } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
+
+async function seedPicker(
+  cakeHome: string,
+  userData: string,
+  project: string,
+  theme: "dark" | "light",
+) {
+  const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+  const sessionId = `project-chat:${hash(project)}`;
+  const timestamp = new Date(0).toISOString();
+  const directory = join(cakeHome, "pi", "project-chats", hash(project));
+  await Promise.all([
+    mkdir(directory, { recursive: true }),
+    mkdir(project, { recursive: true }),
+    mkdir(join(cakeHome, "state"), { recursive: true }),
+    mkdir(userData, { recursive: true }),
+  ]);
+  await writeFile(
+    join(cakeHome, "state", "application.json"),
+    JSON.stringify({
+      version: 7,
+      data: {
+        ...defaultApplicationState(),
+        projects: [
+          { path: project, name: "Picker fixture", addedAt: timestamp, lastOpenedAt: timestamp },
+        ],
+      },
+    }),
+  );
+  await writeFile(
+    join(userData, "window-state.json"),
+    windowStateDocument({ settingsStore: store({}, { appearance: store({ theme }) }) }),
+  );
+  const storage = await openNodeSqliteStorage(join(directory, "coordinator.sqlite"));
+  const harness = await Harness.open(
+    storage,
+    { models: createModels(), registry: createRegistry() },
+    BACKGROUND_CONTEXT,
+  );
+  try {
+    const root = await harness.root(BACKGROUND_CONTEXT);
+    const entry = await root.commit(
+      (tx) =>
+        tx.appendEntry(UserEntry, root.id, {
+          model: [{ role: "user", content: "A parent conversation", timestamp: 1 }],
+        }),
+      BACKGROUND_CONTEXT,
+    );
+    const fork = await root.fork(
+      entry.id,
+      { ownership: { kind: "ownerless" } },
+      BACKGROUND_CONTEXT,
+    );
+    await fork.commit(
+      (tx) =>
+        tx.appendEntry(UserEntry, fork.id, {
+          model: [{ role: "user", content: "A side conversation", timestamp: 2 }],
+        }),
+      BACKGROUND_CONTEXT,
+    );
+    const records = join(cakeHome, "state", "reviews", hash(project), hash(sessionId));
+    await mkdir(records, { recursive: true });
+    await writeFile(
+      join(records, `${hash("picker-side-chat")}.json`),
+      JSON.stringify({
+        id: "picker-side-chat",
+        title: "Quick greeting",
+        workspacePath: project,
+        sessionId,
+        agentSessionId: cakeChatSideChatSessionId(fork.id, sessionId),
+        anchor: {
+          path: `session:${sessionId}/message/${entry.id}`,
+          view: "message",
+          messageId: String(entry.id),
+          entryId: String(entry.id),
+          start: { diffLine: 0 },
+          end: { diffLine: 0 },
+          selectedText: "",
+          contextBefore: "",
+          contextAfter: "",
+          diff: "",
+        },
+        pendingComments: [],
+        status: "open",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    );
+  } finally {
+    await harness.close(BACKGROUND_CONTEXT);
+    await storage.close(BACKGROUND_CONTEXT);
+  }
+}
 
 async function expectContained(popup: Locator, pane: Locator) {
   await expect(async () => {
@@ -32,8 +132,7 @@ for (const theme of ["dark", "light"] as const) {
       project: join(directory, "project"),
       userData: join(directory, "user-data"),
     };
-    const scenario = findVisualCaptureScenario("side-chat-actions")!;
-    await scenario.seed(paths, theme);
+    await seedPicker(paths.cakeHome, paths.userData, paths.project, theme);
     const application = await electron.launch({
       args: [repositoryRoot],
       cwd: repositoryRoot,
@@ -56,7 +155,12 @@ for (const theme of ["dark", "light"] as const) {
           [width, height] as [number, number],
         );
       await resizeWindow(1024, 768);
-      await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Open Project Chat for Picker fixture", exact: true })
+        .click();
+      const composer = page.getByRole("combobox", { name: "Message Project Chat", exact: true });
+      // Let the newly mounted conversation finish its initial composer focus before opening a popup.
+      await expect(composer).toBeFocused();
       const trigger = page.getByRole("button", { name: "Side chats, 1 open", exact: true });
       const popup = page.getByRole("dialog", { name: "Open side chats", exact: true });
       const entry = popup.getByRole("button", { name: "Quick greeting", exact: true });
@@ -72,6 +176,7 @@ for (const theme of ["dark", "light"] as const) {
       for (const mode of ["Browser", "VS Code"] as const) {
         await page.getByRole("button", { name: mode, exact: true }).click();
         await expect(page.getByRole("region", { name: `${mode} workspace` })).toBeVisible();
+        await expect(composer).toBeFocused();
         await divider.press("Home");
         await trigger.click();
         await expect(entry).toBeFocused();
