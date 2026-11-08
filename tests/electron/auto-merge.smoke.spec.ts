@@ -7,7 +7,7 @@ import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("activity-bar Auto-merge authorizes on/off and restarts safely off", async ({}, testInfo) => {
+test("shared Auto-merge authorizes on/off and restarts safely off", async ({}, testInfo) => {
   test.setTimeout(60_000);
   const root = await mkdtemp(join(tmpdir(), "cake-auto-merge-"));
   const userData = join(root, "user-data");
@@ -54,7 +54,9 @@ test("activity-bar Auto-merge authorizes on/off and restarts safely off", async 
     try {
       const page = await restarted.firstWindow();
       await expect(
-        page.getByRole("button", { name: "Auto-merge: off", exact: true }),
+        page
+          .getByRole("navigation", { name: "Projects and global utilities" })
+          .getByRole("button", { name: "Auto-merge: off", exact: true }),
       ).toHaveAttribute("aria-pressed", "false", { timeout: 20_000 });
     } finally {
       await restarted.close();

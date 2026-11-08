@@ -20,11 +20,28 @@ export async function verifyInlineActivity(activity: Locator, composer: Locator)
   expect(Math.abs(expandedInput.y - collapsedInput.y)).toBeLessThan(2);
   expect(expanded.y).toBeGreaterThan(0);
 
+  const bar = activity.locator("..");
+  const autoMerge = bar.getByRole("button", { name: "Auto-merge: off", exact: true });
+  await expect(autoMerge).toBeVisible();
+  const page = activity.page();
+  const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
+  await autoMerge.click();
+  await expect(bar.getByRole("button", { name: "Auto-merge: on", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(rail.getByRole("button", { name: "Auto-merge: on", exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(details).toBeVisible();
+  await rail.getByRole("button", { name: "Auto-merge: on", exact: true }).click();
+  await expect(autoMerge).toHaveAttribute("aria-pressed", "false");
   await details.getByRole("button").first().focus();
   await details.getByRole("button").first().press("Shift+Tab");
+  await expect(autoMerge).toBeFocused();
+  await autoMerge.press("Shift+Tab");
   await expect(activity).toBeFocused();
   await activity.press("Tab");
-  await expect(composer).toBeFocused();
+  await expect(autoMerge).toBeFocused();
   await composer.click();
   await expect(composer).toBeFocused();
   await composer.pressSequentially("Keep activity draft");

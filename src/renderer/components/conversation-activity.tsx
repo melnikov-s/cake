@@ -3,6 +3,7 @@ import { RootStore } from "../stores/RootStore";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { ActivityDisclosure } from "./ui/activity-disclosure";
+import { AutoMergeToggle } from "./auto-merge-toggle";
 import { ChatIcon, ForkIcon } from "./ui/icons";
 import { ComposerCap } from "./ui/composer-cap";
 
@@ -33,6 +34,7 @@ export const ConversationActivity = observer(function ConversationActivity({
       summary={`${running} running`}
       status="running"
       onOpen={onOpen}
+      actions={<AutoMergeToggle showLabel />}
       items={[
         ...sessions.map((session) => ({
           id: `session:${session.sessionId}`,

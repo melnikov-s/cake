@@ -15,13 +15,14 @@ import { localSnoozeDateTime } from "../../../src/renderer/lib/project-todo-snoo
 import type { AutoMergeRequest } from "../../../src/contracts/worktrees/auto-merge";
 import { WorkspaceNavigator } from "../../../src/renderer/components/workspace-navigator";
 import { ProjectRail } from "../../../src/renderer/components/project-rail";
+import { ConversationActivity } from "../../../src/renderer/components/conversation-activity";
 import { SidebarNavigationControls } from "../../../src/renderer/components/sidebar-navigation-controls";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { applyWorktreeOperationCatalogUpdate } from "../../../src/renderer/reducers/WorktreeOperationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
-const projectChat = "project-chat:/cake";
+const projectChat = `project-chat:${"a".repeat(64)}`;
 const todoRegions = () =>
   within(screen.getByRole("complementary", { name: "Workspace" })).queryAllByRole("region");
 
@@ -150,7 +151,7 @@ function renderTodos(
   });
   applySnapshot(fixture.models.cakeChatCatalog, {
     loaded: true,
-    sessions: [{ sessionId: "project-chat:/cake", title: "Project Chat", projectPath: "/cake" }],
+    sessions: [{ sessionId: projectChat, title: "Project Chat", projectPath: "/cake" }],
   });
   const store = fixture.root.cakeChatCollectionStore.registry.load(projectChat).todos;
   const { root } = fixture;
@@ -160,6 +161,15 @@ function renderTodos(
     return (
       <>
         <ProjectRail />
+        <ConversationActivity
+          sessionId={projectChat}
+          subagents={root.cakeChatCollectionStore.registry.load(projectChat).subagentActivityStore}
+          sideChat={
+            root.cakeChatCollectionStore.registry.load(projectChat).conversationSessionStore
+              .sideChatStore
+          }
+          placement="strip"
+        />
         <SidebarNavigationControls />
         {root.workspaceNavigatorStore.visible && <WorkspaceNavigator />}
       </>
@@ -367,6 +377,45 @@ it("orders Ready to Merge between attention and Active, preserves collapse, and 
   expect(todoRegions()).toHaveLength(0);
   expect(screen.getByRole("status").textContent).toBe("No to-dos.");
   expect(toggle()).toBeDefined();
+  expect(fixture.mutations).toEqual([]);
+});
+
+it("Activity and Ready to Merge share auto-merge state without confirmation or changing ready work", async () => {
+  using fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items: [todo(219, undefined, ["ready"])] },
+    sessions: [
+      sessionSummary({ sessionId: "ready", projectPath: "/cake" }),
+      sessionSummary({
+        sessionId: "running",
+        projectPath: "/cake",
+        running: true,
+        cakeChatLaunch: {
+          requesterSessionId: projectChat,
+          launchedAt: "2026-01-01T00:00:00Z",
+        },
+      }),
+    ],
+    autoMergeRequests: [mergeRequest("ready")],
+  });
+  const activity = screen.getByRole("button", { name: "Activity · 1 running" });
+  const bar = within(activity.parentElement!);
+  const readyControl = () =>
+    within(screen.getByRole("complementary", { name: "Workspace" })).getByRole("button", {
+      name: /Auto-merge/,
+    });
+  expect(bar.getByText("Auto-merge off")).toBeDefined();
+  await fixture.user.click(activity);
+  await fixture.user.click(bar.getByRole("button", { name: "Auto-merge: off" }));
+  expect(fixture.autoMergeChanges).toEqual([true]);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(readyControl().getAttribute("aria-pressed")).toBe("true");
+  expect(activity.getAttribute("aria-expanded")).toBe("true");
+  await fixture.user.click(readyControl());
+  expect(fixture.autoMergeChanges).toEqual([true, false]);
+  expect(bar.getByRole("button", { name: "Auto-merge: off" }).getAttribute("aria-pressed")).toBe(
+    "false",
+  );
+  expect(screen.getByRole("list", { name: "Ready to Merge to-dos" })).toBeDefined();
   expect(fixture.mutations).toEqual([]);
 });
 

@@ -22,12 +22,14 @@ export function ActivityDisclosure({
   status,
   items,
   onOpen,
+  actions,
   presentation = "pill",
 }: {
   summary: string;
   status: StatusDotProps["status"];
   items: readonly ActivityDisclosureItem[];
   onOpen?(): void;
+  actions?: ReactNode;
   presentation?: "pill" | "strip";
 }) {
   const [open, setOpen] = useState(false);
@@ -45,32 +47,44 @@ export function ActivityDisclosure({
         triggerRef.current?.focus();
       }}
     >
-      <Button
-        ref={triggerRef}
-        variant={presentation === "strip" ? "ghost" : "outline"}
-        size="sm"
-        data-slot={presentation === "strip" ? "composer-activity" : undefined}
+      <div
         className={cn(
-          "gap-1.5 font-mono text-xs",
-          presentation === "strip"
-            ? "h-9 w-full shrink-0 justify-start rounded-none rounded-t-[1.75rem] bg-muted/20 px-5 shadow-none"
-            : "h-7 rounded-full bg-card/95 px-2.5 shadow-sm",
+          "flex min-w-0 items-center",
+          presentation === "strip" && "rounded-t-[1.75rem] bg-muted/20 pr-3",
         )}
-        aria-label={`Activity · ${summary}`}
-        aria-expanded={open}
-        aria-controls={contentId}
-        onClick={() => {
-          if (!open) onOpen?.();
-          setOpen(!open);
-        }}
       >
-        <StatusDot status={status} />
-        <span className={presentation === "pill" ? "@max-[640px]/session-pane:hidden" : undefined}>
-          Activity ·
-        </span>
-        <span>{summary}</span>
-        <ChevronIcon className={cn(presentation === "strip" && "ml-auto", open && "rotate-180")} />
-      </Button>
+        <Button
+          ref={triggerRef}
+          variant={presentation === "strip" ? "ghost" : "outline"}
+          size="sm"
+          data-slot={presentation === "strip" ? "composer-activity" : undefined}
+          className={cn(
+            "gap-1.5 font-mono text-xs",
+            presentation === "strip"
+              ? "h-9 min-w-0 flex-1 justify-start rounded-none rounded-tl-[1.75rem] px-5 shadow-none"
+              : "h-7 rounded-full bg-card/95 px-2.5 shadow-sm",
+          )}
+          aria-label={`Activity · ${summary}`}
+          aria-expanded={open}
+          aria-controls={contentId}
+          onClick={() => {
+            if (!open) onOpen?.();
+            setOpen(!open);
+          }}
+        >
+          <StatusDot status={status} />
+          <span
+            className={presentation === "pill" ? "@max-[640px]/session-pane:hidden" : undefined}
+          >
+            Activity ·
+          </span>
+          <span>{summary}</span>
+          <ChevronIcon
+            className={cn(presentation === "strip" && "ml-auto", open && "rotate-180")}
+          />
+        </Button>
+        {actions}
+      </div>
       <div
         id={contentId}
         role="region"

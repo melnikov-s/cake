@@ -241,16 +241,46 @@ it.effect(
   () => {
     const test = fixture();
     return Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
       yield* report(target, readiness);
-      yield* (yield* SessionFamilyStorage).updateAutoMerge("turn", "ready");
+      yield* storage.updateAutoMerge("turn", "ready");
+      const first = (yield* requests)[0];
+      expect(first).toBeDefined();
+      if (!first) return;
+      yield* storage.recordAutoMerge({
+        ...first,
+        id: "old-run",
+        workspacePath: "/old",
+        runId: "previous-run",
+      });
+      yield* storage.recordAutoMerge({
+        ...first,
+        id: "invalidated",
+        workspacePath: "/changed",
+      });
+      yield* storage.invalidateAutoMerge("/changed");
       yield* runPass();
       expect(test.events).toEqual([]);
+      yield* Effect.all([setEnabled(true), setEnabled(true)], { concurrency: "unbounded" });
+      const epoch = (yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state))
+        .autoMergeEpoch;
       yield* setEnabled(true);
+      expect(
+        (yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state)).autoMergeEpoch,
+      ).toBe(epoch);
+      yield* runPass();
       yield* runPass();
       yield* terminal;
       yield* runPass();
-      expect((yield* requests)[0]?.state).toBe("landed");
-      expect(test.events).toContain("resolve");
+      yield* runPass();
+      expect(
+        (yield* requests).map(({ id, state, readyToMerge }) => ({ id, state, readyToMerge })),
+      ).toEqual([
+        { id: "turn", state: "landed", readyToMerge: true },
+        { id: "old-run", state: "canceled", readyToMerge: false },
+        { id: "invalidated", state: "canceled", readyToMerge: false },
+      ]);
+      expect(test.events).toEqual(["land", "intent:true", "resolve", "intent:false"]);
     }).pipe(Effect.provide(test.layer));
   },
 );
