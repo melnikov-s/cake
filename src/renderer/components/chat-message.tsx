@@ -374,7 +374,7 @@ export interface ChatTranscriptBehavior {
   interviews?: readonly InterviewStore[];
   messageComments?: MessageCommentsStore;
   subagents?: SubagentActivityStore;
-  /** The chat's to-do list; result messages offer a one-click Done for linked open to-dos. */
+  /** Shared to-do data; only Project Chat transcripts show linked completion controls. */
   todos?: ProjectTodosStore;
   /** Hides the response fullscreen affordance for compact, transient chats. */
   showAssistantFullscreen?: boolean;

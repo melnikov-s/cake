@@ -338,7 +338,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
               key={entry.props.entry.key}
               store={entry}
               onOpenSourceLocation={behavior.openSourceLocation}
-              todos={behavior.todos}
+              todos={behavior.hideTodoAssociations ? undefined : behavior.todos}
             />
           ))}
         </SessionResultNotice>

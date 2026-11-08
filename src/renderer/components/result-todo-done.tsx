@@ -25,7 +25,7 @@ export const ResultTodoDone = observer(function ResultTodoDone({ origin, todos }
     >
       {items.map((item) => {
         const done = item.state === "done";
-        const action = done ? "Reopen" : "Mark done";
+        const action = done ? "Done" : "Mark done";
         return (
           <div
             key={item.id}

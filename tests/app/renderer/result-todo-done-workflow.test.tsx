@@ -16,7 +16,11 @@ import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-ope
 import { durableInputText } from "../../../src/services/pi-durable/durable-input-presentation";
 import { readDurableOriginalPage } from "../../../src/services/pi-durable/durable-chat-history";
 import { durableAnswer, durableModels } from "../../fixtures/durable-chat";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  SESSION_ASSISTANT_ID,
+  cakeChatSideChatSessionId,
+} from "../../../src/contracts/cake-chats/cake-chat-identity";
 import {
   CAKE_CHAT_TODO_SCOPE,
   emptyProjectTodos,
@@ -40,6 +44,8 @@ import { Chat } from "../../../src/renderer/components/chat";
 import { SessionMessage } from "../../../src/renderer/components/session-message";
 import { projectTranscriptBehaviorFor } from "../../../src/renderer/lib/project-transcript-behavior";
 import { nestedTranscriptBehaviorFor } from "../../../src/renderer/lib/nested-transcript-behavior";
+import { cakeChatTranscriptBehaviorFor } from "../../../src/renderer/lib/cake-chat-transcript-behavior";
+import { ReviewThread } from "../../../src/renderer/models/ReviewThread";
 import { sessionSummary } from "./fixtures/catalog-fixtures";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
 import { applyCakeChatTodosProjection } from "../../../src/renderer/reducers/CakeChatTodosReducer";
@@ -171,7 +177,7 @@ function createTodoRuntime() {
  * tool or automatic completion) reaches the window only as an application projection, as in
  * the app, so the pane and the message control can only agree through the shared list.
  */
-async function renderChat(kind: ChatKind, incomingCards = false) {
+async function renderChat(kind: ChatKind) {
   const runtime = createTodoRuntime();
   const chatId = kind === "Cake Chat" ? CAKE_CHAT_SESSION_ID : projectChatId;
   const scope = kind === "Cake Chat" ? CAKE_CHAT_TODO_SCOPE : projectPath;
@@ -260,51 +266,11 @@ async function renderChat(kind: ChatKind, incomingCards = false) {
       kind: "top",
     });
   });
-  // Cake/Project Chat use task sections instead of per-card associations. Exercise
-  // the incoming cards in an ordinary viewing session over the same live list.
-  let viewer;
-  if (incomingCards) {
-    applySnapshot(fixture.models.sessionCatalog, {
-      sessions: [
-        sessionSummary({ sessionId: "result-viewer", projectPath, workingDirectory: projectPath }),
-      ],
-      resolvedHasMoreByProject: {},
-    });
-    viewer = fixture.root.sessionRegistry.load("result-viewer", projectPath);
-    applyConversationSnapshot(viewer.model, {
-      sessionId: "result-viewer",
-      sessionFile: "/viewer.jsonl",
-      parts,
-      models: [],
-      thinkingLevel: "off",
-      availableThinkingLevels: ["off"],
-      streaming: false,
-      diagnostics: [],
-      commands: [],
-      compatibility: { resources: [], diagnostics: [] },
-      extensionUi: { statuses: [] },
-      tree: [],
-    });
-    viewer.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
-      kind: "top",
-    });
-  }
   const view = render(
     <StoreProvider store={fixture.root}>
       <VirtuosoMockContext.Provider value={{ viewportHeight: 4000, itemHeight: 100 }}>
         <AppShellLayout overlays={null} commandPaneWidth={420} onCommandPaneWidthChange={() => {}}>
           <CakeChatSurface />
-          {viewer && (
-            <Chat
-              store={viewer.conversationSessionStore.chatStore}
-              transcriptBehavior={{
-                ...projectTranscriptBehaviorFor(fixture.root, viewer),
-                todos: chat.todos,
-                messageReferenceSessionId: chatId,
-              }}
-              composerFocusEnabled={false}
-            />
-          )}
         </AppShellLayout>
       </VirtuosoMockContext.Provider>
     </StoreProvider>,
@@ -364,10 +330,10 @@ async function renderChat(kind: ChatKind, incomingCards = false) {
   };
 }
 
-it.each(chats)(
+it.each(["Project Chat"] as const)(
   "keeps linked to-do actions in named footers, never collapsed headers in %s",
   async (kind) => {
-    await using f = await renderChat(kind, true);
+    await using f = await renderChat(kind);
     for (const [partId, title] of [
       ["worker-report", "Research options"],
       ["session-progress", "Fix the build"],
@@ -389,10 +355,20 @@ it.each(chats)(
       const disclosure = within(card).getByRole("button", { expanded: true });
       await f.user.click(disclosure);
       expect(card.querySelector("footer")).toBeNull();
-      expect(within(card).queryByRole("button", { name: /^(Mark done|Reopen):/ })).toBeNull();
+      expect(within(card).queryByRole("button", { name: /^(Mark done|Done):/ })).toBeNull();
       expect(within(card).queryByRole("checkbox")).toBeNull();
       await f.user.click(disclosure);
       expect(within(card).getByRole("button", { name: `Mark done: ${title}` })).toBeDefined();
+    }
+    for (const [partId, title] of [
+      ["notice", "Benchmark startup"],
+      ["standalone-original", "Fix the build"],
+    ]) {
+      const part = f.view.container.querySelector<HTMLElement>(`[data-part-id="${partId}"]`)!;
+      await f.user.click(within(part).getAllByRole("button", { expanded: false })[0]!);
+      expect(
+        within(f.groupFor(partId!)!).getByRole("button", { name: `Mark done: ${title}` }),
+      ).toBeDefined();
     }
     expect(f.groupFor("unlinked-report")).toBeNull();
     expect(f.groupFor("different-source")).toBeNull();
@@ -401,7 +377,7 @@ it.each(chats)(
 );
 
 it.each(
-  chats.flatMap(
+  (["Project Chat"] as const).flatMap(
     (kind) =>
       [
         [kind, "worker-report", "workerTodo"],
@@ -409,7 +385,7 @@ it.each(
       ] as const,
   ),
 )("toggles only the named linked or standalone to-do in %s / %s", async (kind, partId, itemKey) => {
-  await using f = await renderChat(kind, true);
+  await using f = await renderChat(kind);
   const linked = f.items[itemKey];
   const standalone = await f.commit(
     projectTodos.create(f.scope, {
@@ -445,12 +421,12 @@ it.each(
   });
   expect((await f.read(linked.id)).completion?.by).toBe("user");
   expect((await f.read(standalone.id)).state).toBe("open");
-  expect(within(group).getByRole("button", { name: `Reopen: ${linked.title}` }).textContent).toBe(
-    "Reopen",
+  expect(within(group).getByRole("button", { name: `Done: ${linked.title}` }).textContent).toBe(
+    "Done",
   );
   await f.user.click(within(group).getByRole("button", { name: "Mark done: Review the evidence" }));
   expect((await f.read(standalone.id)).completion?.by).toBe("user");
-  await f.user.click(within(group).getByRole("button", { name: `Reopen: ${linked.title}` }));
+  await f.user.click(within(group).getByRole("button", { name: `Done: ${linked.title}` }));
   expect((await f.read(linked.id)).state).toBe("open");
   expect((await f.read(standalone.id)).state).toBe("done");
   const current = await f.read(standalone.id);
@@ -462,15 +438,45 @@ it.each(
     }),
   );
   expect(within(group).getByText("To-do · Evidence reviewed")).toBeDefined();
-  expect(within(group).getByRole("button", { name: "Reopen: Evidence reviewed" })).toBeDefined();
+  expect(within(group).getByRole("button", { name: "Done: Evidence reviewed" })).toBeDefined();
   await f.clickPane("Reopen", "Evidence reviewed");
   expect(within(group).getByRole("button", { name: "Mark done: Evidence reviewed" })).toBeDefined();
 });
 
-it.each(chats)(
+it("shows Done after session-driven completion and clicking it reopens through the existing user path", async () => {
+  await using f = await renderChat("Project Chat");
+  const linked = f.items.sessionTodo;
+  await f.commit(projectTodos.completeResolved(f.scope, [linked]));
+  const completed = await f.read(linked.id);
+  expect(completed.completion?.by).toBe("sessions");
+  const group = f.groupFor("session-reply")!;
+  const done = within(group).getByRole("button", { name: `Done: ${linked.title}` });
+  expect(done.textContent).toBe("Done");
+  expect(done.title).toBe(`Done: ${linked.title}`);
+  expect(within(group).queryByRole("button", { name: /Re-?open/i })).toBeNull();
+  await f.user.click(done);
+  expect(f.mutateUser).toHaveBeenCalledExactlyOnceWith(
+    {
+      scope: f.scope,
+      mutation: {
+        _tag: "SetState",
+        id: linked.id,
+        expectedRevision: completed.revision,
+        state: "open",
+      },
+    },
+    expect.anything(),
+  );
+  expect((await f.read(linked.id)).state).toBe("open");
+  expect((await f.read(linked.id)).completion).toBeUndefined();
+  expect(within(group).getByRole("button", { name: `Mark done: ${linked.title}` })).toBeDefined();
+  expect(await f.paneState(linked.title)).toBe("open");
+});
+
+it.each(["Project Chat"] as const)(
   "disables all linked footer actions during a pending mutation in %s",
   async (kind) => {
-    await using f = await renderChat(kind, true);
+    await using f = await renderChat(kind);
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -503,7 +509,7 @@ it.each(chats)(
     await waitFor(() => expect(f.chat.todos.busy).toBe(false));
     expect(
       within(f.groupFor("session-reply")!)
-        .getByRole("button", { name: "Reopen: Fix the build" })
+        .getByRole("button", { name: "Done: Fix the build" })
         .hasAttribute("disabled"),
     ).toBe(false);
     expect((await f.read(f.items.workerTodo.id)).state).toBe("open");
@@ -532,13 +538,13 @@ it("keeps fullscreen completion actions under the named to-do, not in its toolba
   const action = within(dialog).getByRole("button", { name: "Mark done: Fix the build" });
   expect(action.closest("footer")).not.toBeNull();
   expect(
-    within(dialog.querySelector("header")!).queryByRole("button", { name: /^(Mark done|Reopen):/ }),
+    within(dialog.querySelector("header")!).queryByRole("button", { name: /^(Mark done|Done):/ }),
   ).toBeNull();
   await f.user.click(action);
   expect((await f.read(f.items.sessionTodo.id)).state).toBe("done");
-  expect(within(dialog).getByRole("button", { name: "Reopen: Fix the build" })).toBeDefined();
+  expect(within(dialog).getByRole("button", { name: "Done: Fix the build" })).toBeDefined();
   await f.user.click(within(dialog).getByRole("button", { name: "Exit fullscreen Build report" }));
-  expect(screen.getByRole("button", { name: "Reopen: Fix the build" })).toBeDefined();
+  expect(screen.getByRole("button", { name: "Done: Fix the build" })).toBeDefined();
   view.unmount();
 });
 
@@ -893,59 +899,108 @@ it.each(chats)(
   },
 );
 
-it("reuses the Project's to-do list for incoming Project Session and secondary-chat cards without opening Project Chat", async () => {
-  await using f = await renderChat("Project Chat");
-  f.view.unmount();
-  act(() =>
-    applySnapshot(f.models.sessionCatalog, {
-      sessions: [
-        sessionSummary({ sessionId: "viewer", projectPath, workingDirectory: projectPath }),
-      ],
-      resolvedHasMoreByProject: {},
-    }),
-  );
-  const session = f.root.sessionRegistry.load("viewer", projectPath);
-  act(() =>
-    applyConversationSnapshot(session.model, {
-      sessionId: "viewer",
-      sessionFile: "/viewer.jsonl",
-      parts: parts.filter((part) => part.kind === "text" && part.crossSession),
-      models: [],
-      thinkingLevel: "off",
-      availableThinkingLevels: ["off"],
-      streaming: false,
-      diagnostics: [],
-      commands: [],
-      compatibility: { resources: [], diagnostics: [] },
-      extensionUi: { statuses: [] },
-      tree: [],
-    }),
-  );
-  session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
-    kind: "top",
-  });
-  const behavior = projectTranscriptBehaviorFor(f.root, session);
-  expect(behavior.todos).toBe(f.chat.todos);
-  expect(
-    nestedTranscriptBehaviorFor(f.root, session.conversationSessionStore.chatStore, behavior).todos,
-  ).toBe(f.chat.todos);
-  const view = render(
-    <StoreProvider store={f.root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 4000, itemHeight: 100 }}>
-        <Chat
-          store={session.conversationSessionStore.chatStore}
-          transcriptBehavior={behavior}
-          composerFocusEnabled={false}
-        />
-      </VirtuosoMockContext.Provider>
-    </StoreProvider>,
-  );
-  expect(screen.getAllByRole("button", { name: "Mark done: Fix the build" })).toHaveLength(3);
-  await f.user.click(screen.getAllByRole("button", { name: "Mark done: Fix the build" })[0]!);
-  expect((await f.read(f.items.sessionTodo.id)).state).toBe("done");
-  expect(screen.getAllByRole("button", { name: "Reopen: Fix the build" })).toHaveLength(3);
-  view.unmount();
-});
+it.each([
+  "Project Session",
+  "Project Chat side chat",
+  "Cake Chat side chat",
+  "Cake Chat",
+  "Session assistant",
+] as const)(
+  "hides every linked footer in %s even with shared Project Chat to-dos",
+  async (kind) => {
+    await using f = await renderChat(kind === "Cake Chat side chat" ? "Cake Chat" : "Project Chat");
+    f.view.unmount();
+    let model;
+    let store;
+    let behavior;
+    if (kind === "Project Session") {
+      act(() =>
+        applySnapshot(f.models.sessionCatalog, {
+          sessions: [
+            sessionSummary({ sessionId: "viewer", projectPath, workingDirectory: projectPath }),
+          ],
+          resolvedHasMoreByProject: {},
+        }),
+      );
+      const session = f.root.sessionRegistry.load("viewer", projectPath);
+      model = session.model;
+      store = session.conversationSessionStore.chatStore;
+      behavior = projectTranscriptBehaviorFor(f.root, session);
+    } else if (kind === "Project Chat side chat" || kind === "Cake Chat side chat") {
+      const timestamp = new Date(0).toISOString();
+      const thread = ReviewThread.create({
+        parentSessionId: f.chat.sessionId,
+        id: "side-thread",
+        sidecarSessionId: cakeChatSideChatSessionId(1, f.chat.sessionId),
+        workingDirectory: projectPath,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+      thread.anchor = { ...thread.anchor, view: "session" };
+      act(() => f.models.discussionCatalog(f.chat.sessionId).threads.push(thread));
+      const side = f.chat.sideChats.discussionSession(thread.id)!;
+      model = side.model;
+      store = side.chatStore;
+      behavior = nestedTranscriptBehaviorFor(
+        f.root,
+        store,
+        cakeChatTranscriptBehaviorFor(f.root, f.chat),
+      );
+    } else {
+      const chat = f.root.cakeChatCollectionStore.registry.load(
+        kind === "Cake Chat" ? CAKE_CHAT_SESSION_ID : SESSION_ASSISTANT_ID,
+      );
+      model = chat.model;
+      store = chat.conversationSessionStore.chatStore;
+      behavior = cakeChatTranscriptBehaviorFor(f.root, chat);
+    }
+    // Deliberately retain the list and a Project Chat reference identity: neither
+    // the shared owner nor the linked source is the displayed conversation.
+    behavior = { ...behavior, todos: f.chat.todos, messageReferenceSessionId: f.chat.sessionId };
+    act(() => {
+      applyConversationSnapshot(model, {
+        sessionId: store.id,
+        sessionFile: "/viewer.jsonl",
+        parts,
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      });
+      store.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
+    });
+    const view = render(
+      <StoreProvider store={f.root}>
+        <VirtuosoMockContext.Provider value={{ viewportHeight: 4000, itemHeight: 100 }}>
+          <Chat store={store} transcriptBehavior={behavior} composerFocusEnabled={false} />
+        </VirtuosoMockContext.Provider>
+      </StoreProvider>,
+    );
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-part-id="notice"]')).not.toBeNull(),
+    );
+    expect(
+      view.container.querySelectorAll('[data-slot="session-message-card"]').length,
+    ).toBeGreaterThan(3);
+    // Notices and exact-original readers start collapsed; cover their open footers too.
+    for (const button of view.container.querySelectorAll<HTMLButtonElement>(
+      '[data-slot="response-disclosure"][aria-expanded="false"]',
+    ))
+      await f.user.click(button);
+    expect(view.container.querySelector('[data-slot="result-todo-done"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: /^(Mark done|Done|Reopen):/ })).toBeNull();
+    await f.commit(projectTodos.completeResolved(f.scope, [f.items.sessionTodo]));
+    expect((await f.read(f.items.sessionTodo.id)).completion?.by).toBe("sessions");
+    expect(view.container.querySelector('[data-slot="result-todo-done"]')).toBeNull();
+    expect(f.mutateUser).not.toHaveBeenCalled();
+    view.unmount();
+  },
+);
 
 it("opens global Cake Chat's To-do pane when its first item arrives, not on hydration", () => {
   using fixture = createRendererStoreFixture({});

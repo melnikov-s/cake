@@ -44,6 +44,7 @@ import { transcriptTaskSections } from "../lib/transcript-task-sections";
 import { resultTodoOrigin, referenceTodoOrigin } from "../lib/result-todo-origin";
 import {
   isCakeChatSessionId,
+  isProjectChatSessionId,
   cakeChatSideChatParentId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { useArrivals } from "../hooks/use-arrivals";
@@ -293,7 +294,8 @@ export const ChatTranscript = observer(function ChatTranscript({
     () => ({
       store,
       ...behavior,
-      hideTodoAssociations: isCakeChatSessionId(store.id),
+      // Gate by the displayed conversation, not its shared to-do owner or link target.
+      hideTodoAssociations: !isProjectChatSessionId(store.id),
       openSideChat: sideChat ? (target) => sideChat.open(target) : undefined,
     }),
     [behavior, sideChat, store],
