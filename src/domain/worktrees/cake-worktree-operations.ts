@@ -1,6 +1,6 @@
 import type { WorktreeLandingControl } from "../../contracts/worktrees/worktree-agent-control";
 import { Schema } from "effect";
-import { MergeReadiness } from "../../contracts/worktrees/auto-merge";
+import { MergeReadiness, MergeReadinessResult } from "../../contracts/worktrees/auto-merge";
 import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 const proposeSquashMessageInputSchema = Schema.Struct({
@@ -28,6 +28,7 @@ export function createCakeWorktreeOperations(
               "Cake waits for this turn to complete successfully. Readiness is retained while off. Switching the user-owned Auto-merge toggle on authorizes currently valid structured readiness from this app run, never generic completed history. New input/changes invalidate readiness. Do not call worktrees.merge to force automatic landing.",
             ],
             inputSchema: MergeReadiness,
+            outputSchema: MergeReadinessResult,
             examples: [
               {
                 input: {
@@ -39,7 +40,7 @@ export function createCakeWorktreeOperations(
               },
             ],
             result:
-              "Whether this declaration is eligible; actual merge and resolution happen only after successful turn completion.",
+              "Whether current-run readiness was accepted, independent of Auto-merge being on or off; ineligible declarations include a reason. Automatic merge and resolution require Auto-merge authorization and successful turn completion.",
             execute: (input) => {
               // SAFETY: CakeOperationRegistry parsed this input with MergeReadiness.
               return reportReadiness(input as MergeReadiness);

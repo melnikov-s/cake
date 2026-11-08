@@ -45,6 +45,7 @@ function fixture(
     wait?: Effect.Effect<void>;
     head?: string;
     recovery?: boolean;
+    executingTurns?: string[];
   } = {},
 ) {
   const events: string[] = [];
@@ -56,7 +57,7 @@ function fixture(
     familyStorageHarness().layer,
     WorktreeLandingCoordinatorLive,
     Layer.mock(CakeSessionRuntimes, {
-      executingTurnIds: () => Effect.succeed(["turn"]),
+      executingTurnIds: () => Effect.succeed(options.executingTurns ?? ["turn"]),
       activeWorkingDirectories: () => Effect.sync(() => active),
     }),
     Layer.mock(ApplicationState, { snapshot: () => defaultApplicationState() }),
@@ -203,11 +204,13 @@ const terminal = Effect.gen(function* () {
 });
 
 it.effect(
-  "default off never lands; enabling an incomplete declaration still waits for task settlement",
+  "default off accepts readiness without landing; enabling still waits for task settlement",
   () => {
     const test = fixture();
     return Effect.gen(function* () {
-      expect(yield* report(target, readiness)).toEqual({ eligible: false });
+      expect(yield* report(target, readiness)).toEqual({ eligible: true });
+      yield* runPass();
+      expect(test.events).toEqual([]);
       yield* setEnabled(true);
       yield* runPass();
       expect(test.events).toEqual([]);
@@ -229,8 +232,13 @@ it.effect(
       expect((yield* requests)[0]).toMatchObject({ readyToMerge: true, state: "ready" });
       const projection = yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state);
       expect(projection.autoMergeRequests?.[0]?.state).toBe("ready");
+      expect(projection.autoMergeRequests?.[0]?.message).toBeUndefined();
+      expect(yield* report(target, readiness)).toEqual({ eligible: true });
       expect((yield* storage.state()).completionInbox ?? []).toEqual([]);
-      yield* report(target, { ...readiness, readyToMerge: false });
+      expect(yield* report(target, { ...readiness, readyToMerge: false })).toEqual({
+        eligible: false,
+        reason: "Merge readiness was revoked.",
+      });
       expect((yield* requests)[0]).toMatchObject({ readyToMerge: false, state: "canceled" });
     }).pipe(Effect.provide(test.layer));
   },
@@ -247,6 +255,7 @@ it.effect(
       const first = (yield* requests)[0];
       expect(first).toBeDefined();
       if (!first) return;
+      expect(yield* report(target, readiness)).toEqual({ eligible: true });
       yield* storage.recordAutoMerge({
         ...first,
         id: "old-run",
@@ -344,6 +353,77 @@ it.effect(
   },
 );
 
+it.effect.each([{ executingTurns: [] }, { executingTurns: ["turn", "another-turn"] }])(
+  "rejects readiness without exactly one executing turn: %j",
+  ({ executingTurns }) => {
+    const test = fixture({ executingTurns });
+    return Effect.gen(function* () {
+      const result = yield* report(target, readiness).pipe(Effect.result);
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { message: "Readiness requires one executing task turn." },
+      });
+      expect(yield* requests).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect.each(["revoked", "previous-run", "different-commit"] as const)(
+  "explains ineligible %s readiness without replacing the stored declaration",
+  (change) => {
+    const test = fixture();
+    return Effect.gen(function* () {
+      yield* report(target, readiness);
+      if (change === "revoked") yield* (yield* SessionFamilyStorage).invalidateAutoMerge("/tree");
+      if (change === "previous-run")
+        yield* SubscriptionRef.update((yield* WorktreeLandingCoordinator).state, (state) => ({
+          ...state,
+          autoMergeRunId: "new-run",
+        }));
+      const result = yield* report(
+        target,
+        change === "different-commit"
+          ? { ...readiness, validatedCommit: "b".repeat(40) }
+          : readiness,
+      );
+      expect(result).toEqual({
+        eligible: false,
+        reason:
+          change === "revoked"
+            ? "New input invalidated merge readiness"
+            : change === "previous-run"
+              ? "Readiness belongs to a previous app run."
+              : "Stored readiness does not match this session, workspace, or validated commit.",
+      });
+      expect((yield* requests)[0]?.commit).toBe(commit);
+      yield* setEnabled(true);
+      yield* runPass();
+      expect(test.events).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect.each(["landing", "landed", "failed", "canceled"] as const)(
+  "explains already %s declarations instead of silently returning false",
+  (state) => {
+    const test = fixture();
+    return Effect.gen(function* () {
+      yield* report(target, readiness);
+      yield* (yield* SessionFamilyStorage).updateAutoMerge(
+        "turn",
+        state,
+        "Existing landing outcome",
+      );
+      expect(yield* report(target, readiness)).toEqual({
+        eligible: false,
+        reason: "Existing landing outcome",
+      });
+      expect((yield* requests)[0]?.state).toBe(state);
+      expect(test.events).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
 it.effect.each(["taskCompleted", "validationPassed"] as const)(
   "rejects readiness without %s",
   (field) => {
@@ -418,6 +498,7 @@ it.effect.each([
     yield* runPass();
     expect((yield* requests)[0]).toMatchObject({ state: "failed", readyToMerge: true });
     if (!options.resolveFailure) expect(test.events).not.toContain("resolve");
+    if (options.head) expect((yield* requests)[0]?.message).toContain("Stale validated commit");
     yield* runPass();
     expect(test.events.filter((event) => event === "land").length).toBeLessThanOrEqual(1);
   }).pipe(Effect.provide(test.layer));

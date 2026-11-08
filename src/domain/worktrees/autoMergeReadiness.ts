@@ -5,11 +5,6 @@ import { CakeSessionRuntimes, type PiSessionTarget } from "../../services/pi/Cak
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
 
-interface ReadinessMetadata {
-  message?: string;
-  coordinatorSessionId?: string;
-}
-
 export const setEnabled = Effect.fn("AutoMerge.setEnabled")(function* (enabled: boolean) {
   const coordinator = yield* WorktreeLandingCoordinator;
   const storage = yield* SessionFamilyStorage;
@@ -42,7 +37,7 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
   const storage = yield* SessionFamilyStorage;
   if (!readiness.readyToMerge) {
     yield* storage.invalidateAutoMerge(target.workingDirectory);
-    return { eligible: false };
+    return { eligible: false as const, reason: "Merge readiness was revoked." };
   }
   if (!readiness.taskCompleted || !readiness.validationPassed)
     return yield* new WorktreeLandingError({
@@ -63,28 +58,47 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
       message: "Readiness requires one executing task turn.",
     });
   const state = yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state);
-  const eligible = state.autoMergeEnabled === true && state.autoMergeEpoch !== undefined;
+  if (!state.autoMergeRunId)
+    return {
+      eligible: false as const,
+      reason: "Readiness requires a current app-run identity.",
+    };
   const document = yield* storage.state();
   const coordinatorSessionId =
     document.spawnedSessions.find((item) => item.sessionId === target.sessionId)?.requester
       .sessionId ?? document.turns.find((item) => item.turnId === id)?.senderSessionId;
-  const metadata: ReadinessMetadata = {};
-  if (!eligible) metadata.message = "Auto-merge was off when readiness was declared";
-  if (coordinatorSessionId) metadata.coordinatorSessionId = coordinatorSessionId;
   const request: AutoMergeRequest = {
-    ...metadata,
     id,
     sessionId: target.sessionId,
     workspacePath: target.workingDirectory,
     epoch: state.autoMergeEpoch ?? "",
-    runId: state.autoMergeRunId ?? "",
+    runId: state.autoMergeRunId,
     commit: readiness.validatedCommit,
     state: "pending",
     readyToMerge: true,
   };
+  if (coordinatorSessionId) Object.assign(request, { coordinatorSessionId });
   yield* storage.recordAutoMerge(request);
   const stored = (yield* storage.state()).autoMergeRequests?.find((item) => item.id === id);
-  return {
-    eligible: eligible && stored?.state === "pending" && stored.epoch === state.autoMergeEpoch,
-  };
+  if (!stored) return { eligible: false as const, reason: "Readiness was not retained." };
+  if (stored.runId !== state.autoMergeRunId)
+    return { eligible: false as const, reason: "Readiness belongs to a previous app run." };
+  if (
+    stored.sessionId !== target.sessionId ||
+    stored.workspacePath !== target.workingDirectory ||
+    stored.commit !== readiness.validatedCommit
+  )
+    return {
+      eligible: false as const,
+      reason: "Stored readiness does not match this session, workspace, or validated commit.",
+    };
+  if (!stored.readyToMerge || (stored.state !== "pending" && stored.state !== "ready"))
+    return {
+      eligible: false as const,
+      reason:
+        stored.message ??
+        `Readiness is ${stored.state}; it is not awaiting task completion or landing.`,
+    };
+  // The worker separately enforces toggle/epoch authorization, settlement and Git safety.
+  return { eligible: true as const };
 });

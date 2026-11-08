@@ -11,6 +11,13 @@ export const MergeReadiness = Schema.Struct({
 });
 export interface MergeReadiness extends Schema.Schema.Type<typeof MergeReadiness> {}
 
+/** Eligibility accepts current-run metadata; it does not authorize automatic landing. */
+export const MergeReadinessResult = Schema.Union([
+  Schema.Struct({ eligible: Schema.Literal(true) }),
+  Schema.Struct({ eligible: Schema.Literal(false), reason: Schema.NonEmptyString }),
+]);
+export type MergeReadinessResult = typeof MergeReadinessResult.Type;
+
 export const AutoMergeOutcome = Schema.Struct({
   targetBranch: Schema.String,
   landedCommit: Schema.optionalKey(Schema.String),
