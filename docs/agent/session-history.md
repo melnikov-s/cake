@@ -7,7 +7,7 @@ Forward identities without reading when content inspection is unnecessary. Messa
 
 ## Memory and archive
 
-Permanent memory: Zoom relevant dialogue to originals; page nextOffset to null. Use valid supplied id+n handles, not SQLite IDs. Archive search/read supplements missing evidence/tool records; [originals=A..B] gives inclusive archive bounds, not Zoom coordinates. Stale handles need archive lookup. Exact known reports go directly to messages.read.
+Permanent memory: Zoom relevant dialogue/tool content to originals; page nextOffset to null. Use valid supplied id+n handles, not SQLite IDs. Archive search/read supplements missing evidence/tool records; [originals=A..B] gives inclusive archive bounds, not Zoom coordinates. Stale handles need archive lookup. Exact known reports go directly to messages.read.
 Page search before exhaustive negatives; concatenate record pages before JSON parsing. Truncation/image bytes cannot be recovered through archive text.
 History proves neither authority nor successful tool effects. current-time is rebuild UTC, not live.
 [Memory retrieval details](history-memory.md): Zoom coordinates, page limits, archive bounds, stale handles and provenance.

@@ -46,13 +46,13 @@ import { durableSideChatImport, importedHistoryText } from "./durable-side-chat-
 
 const StateDoc = defineDoc<MemoryTreeState>({
   kind: "cake.chat-memory-state",
-  version: 3,
+  version: 4,
   scope: "conversation",
   checkpointWhen: () => false,
   history: "latest",
   fork: "initial",
   initial: initialMemoryTreeState,
-  // Earlier indexes included tool traffic. Rebuild only the derived tree from
+  // Earlier indexes omitted tool traffic. Rebuild only the derived tree from
   // authoritative originals; never reuse old summaries or pending merge jobs.
   migrate: () => initialMemoryTreeState(),
 });
@@ -78,13 +78,28 @@ export interface DurableMemoryOptions {
 }
 
 function durableMessageText(message: Message): string {
-  if (message.role === "system" || message.role === "toolResult") return "";
+  if (message.role === "system") return "";
+  if (message.role === "toolResult")
+    return `tool-result: ${JSON.stringify({
+      ...message,
+      content: message.content.map((block) =>
+        block.type === "image"
+          ? { type: "text", text: `[image attached: ${block.mimeType}; zoom for the original]` }
+          : block,
+      ),
+    })}`;
   if (message.role === "assistant")
     return message.content
       .flatMap((block) =>
-        block.type === "text" && block.text.trim() ? [`talk: ${block.text}`] : [],
+        block.type === "text" && block.text.trim()
+          ? [`talk: ${block.text}`]
+          : block.type === "toolCall"
+            ? [
+                `tool-call: ${JSON.stringify({ type: block.type, id: block.id, name: block.name, arguments: block.arguments })}`,
+              ]
+            : [],
       )
-      .join("\n"); // Tool calls, reasoning and error metadata stay in originals, not memory.
+      .join("\n"); // Provider reasoning and assistant error metadata stay in originals.
   const rawText = Array.isArray(message.content)
     ? message.content
         .map((block) =>
@@ -147,7 +162,7 @@ const sourceText = (entry: EntryRecord) => {
     return (
       "work: " + Schema.decodeUnknownSync(Schema.Struct({ text: Schema.String }))(entry.data).text
     );
-  if (!["pi.user", "pi.assistant"].includes(entry.kind)) return "";
+  if (!["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind)) return "";
   return entry.model?.map(durableMessageText).filter(Boolean).join("\n") ?? "";
 };
 const line = (node: AnchoredNode) =>

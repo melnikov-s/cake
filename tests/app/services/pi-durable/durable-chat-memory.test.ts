@@ -22,6 +22,7 @@ import { memoryWork } from "../../../../src/services/opt-memory/memory-work";
 import { MEMORY_INPUT_BYTES } from "../../../../src/services/opt-memory/memory-policy";
 import { encodeScheduledMessage } from "../../../../src/contracts/conversations/scheduled-message-envelope";
 import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
+import type { JsonObject } from "../../../../src/contracts/serialization/json-contract";
 
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
@@ -83,80 +84,115 @@ async function fixture(storage: Storage = new MemoryStorage(), budget = 4_000) {
   };
 }
 
-it("indexes dialogue text without tool traffic or reasoning and preserves complete originals", async () => {
-  const f = await fixture();
-  await f.append("Remember the decision");
-  const originals = await f.root.commit(async (tx) => {
-    const call = {
-      type: "toolCall" as const,
-      id: "call-1",
-      name: "inspect",
-      arguments: { secret: "TOOL_ARGUMENT" },
-    };
-    const toolOnly = await tx.appendEntry(AssistantEntry, f.root.id, {
-      model: [durableAnswer("", [call, { type: "thinking", thinking: "PRIVATE_REASONING" }])],
+it.each<{ name: string; arguments: JsonObject }>([
+  { name: "cake", arguments: { command: "sessions.create", input: { prompt: "TOOL_ARGUMENT" } } },
+  { name: "bash", arguments: { command: "printf TOOL_ARGUMENT" } },
+])(
+  "indexes $name calls/results and dialogue, excluding reasoning without rewriting originals",
+  async (tool) => {
+    const f = await fixture();
+    await f.append("Remember the decision");
+    const originals = await f.root.commit(async (tx) => {
+      const call = {
+        type: "toolCall" as const,
+        id: "call-1",
+        name: tool.name,
+        arguments: tool.arguments,
+      };
+      const toolOnly = await tx.appendEntry(AssistantEntry, f.root.id, {
+        model: [
+          durableAnswer("", [
+            { ...call, thoughtSignature: "PRIVATE_THOUGHT_SIGNATURE" },
+            { type: "thinking", thinking: "PRIVATE_REASONING" },
+          ]),
+        ],
+      });
+      const result = await tx.appendEntry(ToolResultEntry, f.root.id, {
+        data: { diagnostics: [] },
+        model: [
+          {
+            role: "toolResult",
+            toolCallId: call.id,
+            toolName: tool.name,
+            content: [
+              { type: "text", text: "TOOL_RESULT ".repeat(200) },
+              { type: "image", mimeType: "image/png", data: "IMAGE_BYTES" },
+            ],
+            details: { outcome: "failed", error: "EXACT_ERROR" },
+            isError: true,
+            timestamp: 1,
+          },
+        ],
+      });
+      const mixed = await tx.appendEntry(AssistantEntry, f.root.id, {
+        model: [
+          durableAnswer("", [
+            { type: "text", text: "We chose this policy. ".repeat(40) },
+            call,
+            { type: "thinking", thinking: "PRIVATE_REASONING" },
+          ]),
+        ],
+      });
+      await tx.appendEntry(AssistantEntry, f.root.id, {
+        model: [{ ...durableAnswer("   "), errorMessage: "ERROR_METADATA" }],
+      });
+      await tx.appendEntry(AssistantEntry, f.root.id, {
+        model: [durableAnswer("", [{ type: "thinking", thinking: "REASONING_ONLY" }])],
+      });
+      return { toolOnly, result, mixed, call };
+    }, BACKGROUND_CONTEXT);
+    const before = await f.root.context(BACKGROUND_CONTEXT);
+    const view = await f.view();
+    expect(view.sourceCount).toBe(4);
+    const summaryInputs = f.summarize.mock.calls
+      .map(([input]) => inputText(input.context))
+      .join("\n");
+    expect(summaryInputs).toContain("TOOL_RESULT");
+    expect(summaryInputs).toContain(JSON.stringify(originals.call));
+    expect(summaryInputs).not.toMatch(
+      /PRIVATE_REASONING|PRIVATE_THOUGHT_SIGNATURE|REASONING_ONLY|ERROR_METADATA|IMAGE_BYTES/,
+    );
+    const toolOnly = await f.memory.zoom(1, 1, signal());
+    expect(toolOnly.text).toContain(`tool-call: ${JSON.stringify(originals.call)}`);
+    expect(toolOnly.text).toContain(
+      `[originals=${originals.toolOnly.id}..${originals.toolOnly.id}]`,
+    );
+    expect(toolOnly.text).not.toMatch(/PRIVATE_REASONING|PRIVATE_THOUGHT_SIGNATURE/);
+    const result = await f.memory.zoom(2, 1, signal());
+    const record = JSON.parse(result.text.split("tool-result: ")[1]!);
+    expect(record).toMatchObject({
+      role: "toolResult",
+      toolCallId: originals.call.id,
+      toolName: tool.name,
+      isError: true,
+      details: { outcome: "failed", error: "EXACT_ERROR" },
     });
-    const result = await tx.appendEntry(ToolResultEntry, f.root.id, {
-      data: { diagnostics: [] },
-      model: [
-        {
-          role: "toolResult",
-          toolCallId: "call-1",
-          toolName: "inspect",
-          content: [{ type: "text", text: "TOOL_RESULT ".repeat(200) }],
-          isError: false,
-          timestamp: 1,
-        },
-      ],
-    });
-    const mixed = await tx.appendEntry(AssistantEntry, f.root.id, {
-      model: [
-        durableAnswer("", [
-          { type: "text", text: "We chose the dialogue-only policy. ".repeat(40) },
-          call,
-          { type: "thinking", thinking: "PRIVATE_REASONING" },
-        ]),
-      ],
-    });
-    await tx.appendEntry(AssistantEntry, f.root.id, {
-      model: [{ ...durableAnswer("   "), errorMessage: "ERROR_METADATA" }],
-    });
-    return { toolOnly, result, mixed };
-  }, BACKGROUND_CONTEXT);
-  const before = await f.root.context(BACKGROUND_CONTEXT);
-  const view = await f.view();
-  expect(view.sourceCount).toBe(2);
-  expect(f.summarize).toHaveBeenCalledOnce();
-  expect(inputText(f.summarize.mock.calls[0]![0].context)).toBe(
-    `talk: ${"We chose the dialogue-only policy. ".repeat(40)}`,
-  );
-  const zoom = await f.memory.zoom(1, 1, signal());
-  expect(zoom.text).toContain("talk: We chose the dialogue-only policy.");
-  expect(zoom.text).not.toMatch(/TOOL_ARGUMENT|TOOL_RESULT|PRIVATE_REASONING|ERROR_METADATA/);
-  expect(zoom.messages).toEqual(originals.mixed.model);
-  // Neither indexing nor zoom rewrites the live context or the stored originals.
-  expect((await f.root.context(BACKGROUND_CONTEXT)).messages).toEqual(before.messages);
-  expect(
-    await f.root.entries(
-      { minEntryId: originals.toolOnly.id, maxEntryId: originals.toolOnly.id },
-      1,
-      undefined,
-      BACKGROUND_CONTEXT,
-    ),
-  ).toMatchObject({ items: [originals.toolOnly] });
-  expect(
-    await f.root.entries(
-      { minEntryId: originals.result.id, maxEntryId: originals.result.id },
-      1,
-      undefined,
-      BACKGROUND_CONTEXT,
-    ),
-  ).toMatchObject({ items: [originals.result] });
-  await f.view();
-  expect(f.summarize).toHaveBeenCalledOnce();
-});
+    expect(record.content[0].text).toBe("TOOL_RESULT ".repeat(200));
+    expect(result.text).not.toContain("IMAGE_BYTES");
+    const zoom = await f.memory.zoom(3, 1, signal());
+    expect(zoom.text).toContain("talk: We chose this policy.");
+    expect(zoom.text).toContain(`tool-call: ${JSON.stringify(originals.call)}`);
+    expect(zoom.text).not.toMatch(/PRIVATE_REASONING|ERROR_METADATA/);
+    expect(zoom.messages).toEqual(originals.mixed.model);
+    // Neither indexing nor zoom rewrites the live context or the stored originals.
+    expect((await f.root.context(BACKGROUND_CONTEXT)).messages).toEqual(before.messages);
+    for (const original of [originals.toolOnly, originals.result]) {
+      expect(
+        await f.root.entries(
+          { minEntryId: original.id, maxEntryId: original.id },
+          1,
+          undefined,
+          BACKGROUND_CONTEXT,
+        ),
+      ).toMatchObject({ items: [original] });
+    }
+    const calls = f.summarize.mock.calls.length;
+    await f.view();
+    expect(f.summarize).toHaveBeenCalledTimes(calls);
+  },
+);
 
-it("advances across pages of tool-only entries and indexes subsequent dialogue exactly once", async () => {
+it("indexes pages of tool-only entries and subsequent dialogue exactly once", async () => {
   const f = await fixture();
   await f.append("First request");
   for (let i = 0; i < 70; i += 1)
@@ -169,7 +205,7 @@ it("advances across pages of tool-only entries and indexes subsequent dialogue e
                 type: "toolCall",
                 id: `call-${i}`,
                 name: "inspect",
-                arguments: { payload: "large tool arguments ".repeat(100) },
+                arguments: { payload: "tool arguments" },
               },
             ]),
           ],
@@ -178,11 +214,57 @@ it("advances across pages of tool-only entries and indexes subsequent dialogue e
     );
   expect(
     await f.memory.synchronize(signal(), undefined, undefined, { maxOriginals: 1 }),
-  ).toMatchObject({ sourceCount: 1, complete: true });
+  ).toMatchObject({ sourceCount: 1, complete: false });
   await f.append("Second request");
-  expect(await f.view()).toMatchObject({ sourceCount: 2, complete: true });
-  expect((await f.memory.zoom(1, 1, signal())).text).toContain("user: Second request");
-  expect(f.summarize).not.toHaveBeenCalled();
+  expect(await f.view()).toMatchObject({ sourceCount: 72, complete: true });
+  expect((await f.memory.zoom(70, 1, signal())).text).toContain('"id":"call-69"');
+  expect((await f.memory.zoom(71, 1, signal())).text).toContain("user: Second request");
+  const calls = f.summarize.mock.calls.length;
+  await f.view();
+  expect(f.summarize).toHaveBeenCalledTimes(calls);
+});
+
+it("indexes tool-only history, empty results and unmatched calls without inventing outcomes", async () => {
+  const f = await fixture();
+  await f.root.commit(async (tx) => {
+    await tx.appendEntry(AssistantEntry, f.root.id, {
+      model: [
+        durableAnswer("", [
+          { type: "toolCall", id: "empty", name: "arbitrary_tool", arguments: {} },
+          {
+            type: "toolCall",
+            id: "unmatched",
+            name: "other_tool",
+            arguments: { action: "pending" },
+          },
+        ]),
+      ],
+    });
+    await tx.appendEntry(ToolResultEntry, f.root.id, {
+      data: { diagnostics: [] },
+      model: [
+        {
+          role: "toolResult",
+          toolCallId: "empty",
+          toolName: "arbitrary_tool",
+          content: [],
+          isError: false,
+          timestamp: 1,
+        },
+      ],
+    });
+  }, BACKGROUND_CONTEXT);
+  expect(await f.view()).toMatchObject({ complete: true, sourceCount: 2 });
+  const calls = await f.memory.zoom(0, 1, signal());
+  expect(calls.text).toContain('"id":"unmatched"');
+  expect(calls.text).not.toContain("tool-result:");
+  const result = await f.memory.zoom(1, 1, signal());
+  expect(JSON.parse(result.text.split("tool-result: ")[1]!)).toMatchObject({
+    toolCallId: "empty",
+    toolName: "arbitrary_tool",
+    content: [],
+    isError: false,
+  });
 });
 
 it("remembers a fired schedule as work, not as something the user said", async () => {
@@ -269,27 +351,29 @@ it("derives bounded original anchors through view consolidation, zoom and SQLite
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const database = join(directory, "memory.sqlite");
   const first = await fixture(await openNodeSqliteStorage(database), 900);
-  const originals: Awaited<ReturnType<typeof first.append>>[] = [];
+  const originals: { readonly id: number }[] = [];
   for (const marker of ["A", "B", "C", "D"]) {
-    originals.push(await first.append(`RAW_${marker} `.repeat(100)));
-    if (marker === "A")
-      await first.root.commit(
-        (tx) =>
-          tx.appendEntry(ToolResultEntry, first.root.id, {
-            data: { diagnostics: [] },
-            model: [
-              {
-                role: "toolResult",
-                toolCallId: "between",
-                toolName: "inspect",
-                content: [{ type: "text", text: "intervening tool evidence" }],
-                isError: false,
-                timestamp: 2,
-              },
-            ],
-          }),
-        BACKGROUND_CONTEXT,
-      );
+    originals.push(
+      marker === "B"
+        ? await first.root.commit(
+            (tx) =>
+              tx.appendEntry(ToolResultEntry, first.root.id, {
+                data: { diagnostics: [] },
+                model: [
+                  {
+                    role: "toolResult",
+                    toolCallId: "between",
+                    toolName: "inspect",
+                    content: [{ type: "text", text: "RAW_B tool evidence ".repeat(100) }],
+                    isError: false,
+                    timestamp: 2,
+                  },
+                ],
+              }),
+            BACKGROUND_CONTEXT,
+          )
+        : await first.append(`RAW_${marker} `.repeat(100)),
+    );
   }
   const anchor = (start: number, end: number) =>
     `[originals=${originals[start]!.id}..${originals[end]!.id}]`;
@@ -317,6 +401,10 @@ it("derives bounded original anchors through view consolidation, zoom and SQLite
   expect(await reopened.view()).toEqual(view);
   expect((await reopened.memory.zoom(0, 4, signal())).text).toContain(anchor(0, 1));
   expect((await reopened.memory.zoom(3, 1, signal())).text).toContain(anchor(3, 3));
+  const tool = await reopened.memory.zoom(1, 1, signal());
+  expect(tool.text).toContain(anchor(1, 1));
+  expect(tool.text).toContain('"toolCallId":"between"');
+  expect(tool.text).toContain("RAW_B tool evidence ".repeat(100));
   expect(reopened.summarize).not.toHaveBeenCalled();
   expect(await reopened.nodes()).toEqual(stored);
   expect((await reopened.root.context(BACKGROUND_CONTEXT)).messages).toEqual(head.messages);
@@ -354,10 +442,25 @@ it("keeps verbatim text from both children when a merge summary keeps failing", 
   expect(Buffer.byteLength(parent.text)).toBeLessThanOrEqual(512);
 });
 
-it("bounds one oversized original to a single-request input with its head and tail", async () => {
+it("bounds oversized tool arguments to a single-request input and recovers them through paged Zoom", async () => {
   const f = await fixture();
   const original = `HEAD_MARK ${"x".repeat(300_000)} TAIL_MARK`;
-  await f.append(original);
+  await f.root.commit(
+    (tx) =>
+      tx.appendEntry(AssistantEntry, f.root.id, {
+        model: [
+          durableAnswer("", [
+            {
+              type: "toolCall",
+              id: "large",
+              name: "bash",
+              arguments: { command: original },
+            },
+          ]),
+        ],
+      }),
+    BACKGROUND_CONTEXT,
+  );
   expect((await f.view()).sourceCount).toBe(1);
   const input = inputText(f.summarize.mock.calls[0]![0].context);
   expect(Buffer.byteLength(input)).toBeLessThan(MEMORY_INPUT_BYTES + 100);

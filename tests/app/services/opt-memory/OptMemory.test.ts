@@ -248,21 +248,25 @@ describe("shared OptMem core and automation adapter", () => {
         ],
       });
     }, BACKGROUND_CONTEXT);
+    await f.append("RAW_C ".repeat(100));
     const b = await f.append("RAW_B ".repeat(100));
     await f.head("<chat>\n0+1|old handle\n</chat>");
     const before = await f.root.context(BACKGROUND_CONTEXT);
     const view = await f.memory.synchronize(signal());
-    expect(view).toMatchObject({ sourceCount: 2, partCount: 1 });
+    expect(view).toMatchObject({ sourceCount: 4, partCount: 1 });
     expect(view.text).toContain(`[originals=${a.id}..${b.id}]`);
-    expect(f.summarize.mock.calls.map(([input]) => input.context).join("\n")).not.toMatch(
-      /PRIVATE_REASONING|PRIVATE_TOOL_OUTPUT/,
-    );
+    const inputs = f.summarize.mock.calls.map(([input]) => input.context).join("\n");
+    expect(inputs).not.toContain("PRIVATE_REASONING");
+    expect(inputs).toContain("PRIVATE_TOOL_OUTPUT");
     expect((await f.root.context(BACKGROUND_CONTEXT)).messages).toEqual(before.messages);
     await expect(f.memory.zoom(0, 1, signal())).rejects.toThrow("handle is stale");
     await f.head(view.text);
     const recalled = await f.memory.zoom(0, 1, signal());
     expect(recalled.text).toContain("RAW_A ".repeat(100));
     expect(recalled.messages).toEqual(a.model);
+    const tool = await f.memory.zoom(1, 1, signal());
+    expect(tool.text).toContain("PRIVATE_TOOL_OUTPUT");
+    expect(tool.text).toContain('"toolCallId":"test"');
   });
 
   it("keeps the existing Durable chat memory and scheduling regression suites passing", async () => {

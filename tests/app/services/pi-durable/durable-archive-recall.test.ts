@@ -150,7 +150,13 @@ it("searches originals outside memory and reads dialogue, tool arguments and fai
     const call = await tx.appendEntry(AssistantEntry, f.engine.root.id, {
       model: [
         durableAnswer("", [
-          { type: "toolCall", id: "call-1", name: "inspect", arguments: { path: "violet.config" } },
+          {
+            type: "toolCall",
+            id: "call-1",
+            name: "inspect",
+            arguments: { path: "violet.config" },
+            thoughtSignature: "PRIVATE_THOUGHT_SIGNATURE",
+          },
           { type: "thinking", thinking: "PRIVATE_REASONING" },
         ]),
       ],
@@ -187,7 +193,7 @@ it("searches originals outside memory and reads dialogue, tool arguments and fai
     return { call, result, report };
   }, BACKGROUND_CONTEXT);
   const view = await f.engine.index(new AbortController().signal);
-  expect(view.sourceCount).toBe(2); // dialogue + report; the tool-only entries have no memory leaves
+  expect(view.sourceCount).toBe(4); // dialogue, tool-only call/result and report all have leaves
   await f.engine.root.commit(
     (tx) =>
       tx.appendEntry(ResetEntry, f.engine.root.id, {
@@ -230,6 +236,7 @@ it("searches originals outside memory and reads dialogue, tool arguments and fai
   expect(report.text).toContain("Worker provenance:");
   expect(report.text).toContain(researchOrigin.handleId);
   expect((await f.search({ query: "PRIVATE_REASONING" })).matches).toEqual([]);
+  expect((await f.search({ query: "PRIVATE_THOUGHT_SIGNATURE" })).matches).toEqual([]);
   expect((await f.search({ query: "BINARY_PAYLOAD" })).matches).toEqual([]);
   expect(await f.engine.root.context(BACKGROUND_CONTEXT)).toEqual(before);
 });
@@ -295,7 +302,7 @@ it("uses memory-derived inclusive bounds to search only a summary's originals ac
             role: "toolResult",
             toolCallId: "bounded",
             toolName: "inspect",
-            content: [{ type: "text", text: "needle tool evidence" }],
+            content: [{ type: "text", text: "needle tool evidence ".repeat(100) }],
             isError: false,
             timestamp: 2,
           },
@@ -305,32 +312,33 @@ it("uses memory-derived inclusive bounds to search only a summary's originals ac
   );
   const b = await f.append("needle second ".repeat(100));
   await f.append("needle outside third ".repeat(100));
-  await f.append("needle outside fourth ".repeat(100));
   const view = await f.engine.index(new AbortController().signal, undefined, 140);
   expect(view.partCount).toBe(1);
   const zoom = await f.engine.memory.zoom(0, 4, new AbortController().signal);
   const anchor = /^0\+2\|\[originals=(\d+)\.\.(\d+)\]/.exec(zoom.text)!;
   expect(anchor).not.toBeNull();
   const bounds = { fromEntryId: Number(anchor[1]), throughEntryId: Number(anchor[2]) };
-  expect(bounds).toEqual({ fromEntryId: a.id, throughEntryId: b.id });
-  // Recover the indexed dialogue through Zoom, then supplement it with retained
-  // tool evidence inside the original-entry bounds, not the memory coordinates.
+  expect(bounds).toEqual({ fromEntryId: a.id, throughEntryId: tool.id });
+  // Recover dialogue and tool evidence through Zoom after consolidation; archive
+  // lookup uses the same inclusive original-entry bounds, not memory coordinates.
   const dialogue = await f.engine.memory.zoom(0, 1, new AbortController().signal);
   expect(dialogue.text).toContain("needle first");
-  expect(dialogue.text).not.toContain("needle tool evidence");
+  const toolLeaf = await f.engine.memory.zoom(1, 1, new AbortController().signal);
+  expect(toolLeaf.text).toContain("needle tool evidence");
+  expect(toolLeaf.text).toContain('"toolCallId":"bounded"');
   const first = await f.search({ ...bounds, query: "needle", limit: 1 });
   expect(first).toMatchObject({ ...bounds, matches: [{ entryId: a.id }], complete: false });
   const rest = await f.search({ ...bounds, query: "needle", afterEntryId: first.nextAfterEntryId });
   expect(rest).toMatchObject({ complete: true, nextAfterEntryId: null });
-  expect(rest.matches.map((match: { entryId: number }) => match.entryId)).toEqual([tool.id, b.id]);
+  expect(rest.matches.map((match: { entryId: number }) => match.entryId)).toEqual([tool.id]);
   const record = JSON.parse((await f.read({ entryId: tool.id, section: "record" })).text);
   expect(record.message).toMatchObject({
     role: "toolResult",
     toolCallId: "bounded",
-    content: [{ type: "text", text: "needle tool evidence" }],
+    content: [{ type: "text", text: "needle tool evidence ".repeat(100) }],
     isError: false,
   });
-  expect((await f.search({ ...bounds, afterEntryId: 0 })).matches).toHaveLength(3);
+  expect((await f.search({ ...bounds, afterEntryId: 0 })).matches).toHaveLength(2);
   expect((await f.search({ fromEntryId: b.id, throughEntryId: b.id })).matches).toMatchObject([
     { entryId: b.id },
   ]);

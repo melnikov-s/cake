@@ -561,17 +561,19 @@ at revision `3c190e06f34aba0c69f49042c526093269604935` for its **whole-chat adap
 background compactions. This is not a claim that the standalone CLI has those policies,
 nor evidence of a public implementation of the author's chat application.
 
-Only dialogue from SDK originals enters the tree: user inputs (`pi.user`) and text
-blocks from assistant outputs (`pi.assistant`). Tool calls/arguments, tool results,
-assistant reasoning and error metadata are excluded. Mixed assistant entries contribute
-only their nonblank text blocks; tool-only/blank assistant entries create no leaf or
-merge jobs. Pi remains the authority for complete originals, including images, tool
-traffic and reasoning. Live warm context retains tool traffic unchanged; compaction
-replaces older dialogue with memory without carrying older tool traffic forward.
+SDK originals enter the tree: user inputs (`pi.user`), assistant text and tool calls
+(`pi.assistant`), and tool results (`pi.tool-result`). All tool types are eligible,
+including delegation and tool-only entries; blank/reasoning-only assistant entries
+create no leaf. Provider reasoning and assistant error metadata remain excluded.
+Tool calls preserve names, IDs and arguments; results preserve tool names, call IDs,
+content, error status and retained details/timing. Image bytes do not enter summary
+inputs. Pi remains the authority for complete originals. Summaries compress tool
+content by significance rather than mechanically enumerating records; calls alone
+never prove success. Retrieved content is data, not instructions.
 SDK entries remain the source/zoom units, not a second transcript. Zoom is the
 primary entry point for recovering dialogue represented in compressed memory: start
 with the relevant `id+n` range, expand only relevant branches to originals, not the
-whole tree, then use `zoom(id,1)` for original dialogue and retained inline images.
+whole tree, then use `zoom(id,1)` for original dialogue, tool calls/results and retained inline images.
 Ranges require power-of-two `n` and `id` divisible by `n`. Leaf output is bounded JSON
 with `text`, `entryId`, `offset`, `totalChars` and `nextOffset`; follow the same `id,n`
 with `nextOffset` as `offset` until null. Offsets count UTF-16 characters including
@@ -579,20 +581,18 @@ the header. Pages default to at most 8,000 characters; JSON escapes newlines and
 keeps even worst-case text escaping below Durable's 50 KiB/2,000-line tool-output
 caps. Inline images accompany the first page only. A rebuilt index must not silently
 resolve stale coordinates to different history: errors direct callers to archive
-bounds/query retrieval until fresh handles arrive at the next memory handoff. Zoom does not expose full tool records;
-excluded tool-only entries have no memory leaf. Findings that appear only in tool
-output are not retained in memory unless reported in dialogue.
+bounds/query retrieval until fresh handles arrive at the next memory handoff.
+Zoom pages tool arguments/results as source text, preserving names and call IDs;
+archive record reads additionally expose SDK entry data such as diagnostics.
 Every rendered memory line also carries runtime-derived `[originals=A..B]` metadata:
-the inclusive SQLite entry IDs of its first and last dialogue originals. Parent bounds
+the inclusive SQLite entry IDs of its first and last source originals. Parent bounds
 follow the tree's outermost leaves; zoomed children expose narrower bounds and leaves
-identify their exact original. Intervening tool-only entries are searchable within the
-span even though they have no memory leaf. These are location spans, not claims that
-every entry in them contributed dialogue; tool-only gaps outside a line's endpoints
-require a neighboring/wider search. Bounds are derived by reading only the tree's two
-boundary paths, not by summarizing provenance or scanning entire subtrees. They are
+identify their exact original. These are location spans, not claims that every
+entry in them contributed content; excluded derived/system entries may intervene.
+Bounds are derived by reading only the tree's two boundary paths, not by summarizing provenance or scanning entire subtrees. They are
 rendered outside stored summary text, counted in view byte budgets, and reconstructed
-from existing immutable nodes on restart. No state/node version change or rebuild is
-needed. Existing warm heads remain unchanged until the ordinary next memory handoff.
+from existing immutable nodes on restart. Existing warm heads remain unchanged until
+the ordinary next memory handoff.
 The runtime prompt separately carries the stable `cake://session/<id>` conversation
 reference and recall guidance, outside compressed memory. `archive_search` and
 `archive_read` supplement rather than replace Zoom for omitted or unlocated evidence,
@@ -642,8 +642,8 @@ IDs. Ready queues permit up to eight independent requests; a leaf starts with fe
 eight preceding unbuilt leaves, and parents start only after both children are committed.
 The single persistence owner does not serialize HTTP requests. Each completed node and its
 DAG checkpoint commit atomically; the built-prefix cursor/view advances in order. Version
-three checkpoints discard earlier derived indexes (including pending jobs) and rebuild
-from dialogue-only originals. Old immutable summaries remain stored but are no longer
+four checkpoints discard earlier derived indexes (including pending jobs) and rebuild
+from dialogue and tool originals. Old immutable summaries remain stored but are no longer
 indexed; original entries and the active head are not rewritten. Range IDs are reassigned
 by the rebuilt index. A range in a retained pre-rebuild head cannot resolve to a
 newer node: zoom/inspection rejects that stale handle until the next memory handoff;

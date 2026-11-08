@@ -955,20 +955,22 @@ it("uses production SQLite, existing credentials and exact originals across reop
     message.role === "system" ? (message.toolsAdded ?? []) : [],
   );
   const description = (name: string) => offered?.find((tool) => tool.name === name)?.description;
-  expect(description("zoom")).toContain("Primary entry point for dialogue represented");
-  expect(description("zoom")).toContain("not full tool records");
-  expect(description("archive_search")).toContain("Supplements Zoom");
-  expect(description("archive_search")).toContain("use Zoom first for dialogue");
-  expect(description("archive_read")).toContain("section=record supplements Zoom");
-  expect(description("archive_search")).toContain("user/assistant dialogue");
+  expect(description("zoom")).toContain(
+    "Primary entry point for dialogue/tool content represented",
+  );
+  expect(description("zoom")).toContain("tool calls/results with names/call IDs");
+  expect(description("zoom")).toContain("calls alone do not prove success");
+  expect(description("archive_search")).toContain("retained dialogue/tools");
+  expect(description("archive_search")).toContain("Zoom first for remembered dialogue");
+  expect(description("archive_read")).toContain("record (tool arguments/results/errors)");
   expect(description("archive_read")).toContain(
-    "including user/assistant dialogue or tool evidence",
+    "No image bytes/reasoning, replay or inferred success",
   );
   expect(description("zoom")).toContain("nextOffset");
   const zoomParameters = offered?.find((tool) => tool.name === "zoom")?.parameters;
   expect(JSON.stringify(zoomParameters)).toContain("power-of-two");
   expect(JSON.stringify(zoomParameters)).toContain("divisible by n");
-  expect(JSON.stringify(f.requests[0])).toContain("supplement rather than replace Zoom");
+  expect(JSON.stringify(f.requests[0])).toContain("archive_search/read supplements");
   expect(offered?.map((tool) => tool.name)).toEqual([
     "cake",
     "zoom",

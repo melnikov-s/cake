@@ -174,7 +174,7 @@ describe("core coordinator calling reference", () => {
       expect(assembled).toContain("Only durable work warrants creation");
       expect(assembled).toContain("Reports/completion grant no merge/resolve approval");
       expect(assembled).toContain("shared/project instructions take precedence");
-      expect(assembled.match(/Zoom relevant remembered dialogue/g)).toHaveLength(1);
+      expect(assembled.match(/Zoom relevant remembered dialogue\/tool content/g)).toHaveLength(1);
       expect(assembled).not.toContain("Memory: Zoom");
     },
   );

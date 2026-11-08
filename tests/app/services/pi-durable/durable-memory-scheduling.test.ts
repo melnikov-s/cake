@@ -366,8 +366,8 @@ it.each([4_000, 40_000])(
   },
 );
 
-it.each([1, 2])(
-  "rebuilds a version-%i derived index from dialogue originals, discarding old summaries and pending jobs",
+it.each([1, 2, 3])(
+  "rebuilds a version-%i derived index including tool originals, discarding old summaries and pending jobs",
   async (version) => {
     const NodeEntry = defineEntry<{ id: number; n: number; text: string; original: number }>(
       "cake.chat-memory-node/v1",
@@ -427,7 +427,7 @@ it.each([1, 2])(
         },
       });
       Object.assign(await tx.doc(Legacy, first.root.id), {
-        through: original.id,
+        through: tool.id,
         count: 1,
         budget: 4_000,
         shrinking: false,
@@ -460,7 +460,7 @@ it.each([1, 2])(
     const active = await first.root.context(BACKGROUND_CONTEXT);
     await first.harness.close(BACKGROUND_CONTEXT);
     cleanup.pop();
-    const summarize = vi.fn(async () => "must not run");
+    const summarize = vi.fn(async () => "tool-result: inspect old-call returned OLD_TOOL_OUTPUT");
     const reopened = await fixture(summarize, await openNodeSqliteStorage(database), 4_000);
     expect(
       await reopened.memory.synchronize(signal(), undefined, undefined, { readyOnly: true }),
@@ -468,10 +468,15 @@ it.each([1, 2])(
     expect(summarize).not.toHaveBeenCalled();
     expect(await reopened.nodes()).toHaveLength(1); // No migrated work on a cache-only read.
     expect((await reopened.root.context(BACKGROUND_CONTEXT)).messages).toEqual(active.messages);
-    expect((await reopened.memory.synchronize(signal())).text).toBe(
-      `<chat>\n0+1|[originals=${original.id}..${original.id}] user: Persisted original\n</chat>`,
+    const rebuilt = await reopened.memory.synchronize(signal());
+    expect(rebuilt).toMatchObject({ sourceCount: 2, complete: true });
+    expect(rebuilt.text).toContain(
+      `0+1|[originals=${original.id}..${original.id}] user: Persisted original`,
     );
-    expect(summarize).not.toHaveBeenCalled();
+    expect(rebuilt.text).toContain(
+      `1+1|[originals=${tool.id}..${tool.id}] tool-result: inspect old-call`,
+    );
+    expect(summarize).toHaveBeenCalledOnce();
     expect((await reopened.root.context(BACKGROUND_CONTEXT)).messages).toEqual(active.messages);
     await expect(reopened.memory.zoom(0, 1, signal())).rejects.toThrow("handle is stale");
     await expect(reopened.memory.zoom(0, 1, signal())).rejects.toThrow(
@@ -490,8 +495,11 @@ it.each([1, 2])(
       BACKGROUND_CONTEXT,
     );
     expect((await reopened.memory.zoom(0, 1, signal())).text).toContain("Persisted original");
-    expect(await reopened.nodes()).toHaveLength(2); // Immutable old entry remains, but is no longer indexed.
+    expect((await reopened.memory.zoom(1, 1, signal())).text).toContain(
+      "OLD_TOOL_OUTPUT ".repeat(200),
+    );
+    expect(await reopened.nodes()).toHaveLength(4); // Old entry plus rebuilt leaves/parent; the old node is no longer indexed.
     await reopened.memory.synchronize(signal());
-    expect(await reopened.nodes()).toHaveLength(2); // The migrated checkpoint persists; no repeated rebuild.
+    expect(await reopened.nodes()).toHaveLength(4); // The migrated checkpoint persists; no repeated rebuild.
   },
 );
