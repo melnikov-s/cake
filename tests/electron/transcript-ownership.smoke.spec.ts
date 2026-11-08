@@ -1911,7 +1911,7 @@ test.describe("viewport-aware message actions", () => {
             kind: "text",
             id: "clearance-body",
             role: "assistant",
-            status: "streaming",
+            status: "complete",
             text: "Reserved action body\n\n" + "Long paragraph.\n\n".repeat(100),
           },
           {
@@ -1928,7 +1928,7 @@ test.describe("viewport-aware message actions", () => {
         .filter({ hasText: "Reserved action body" });
       const toolbar = message.locator('[data-slot="message-action-toolbar"]');
       const clearance = message.locator('[data-slot="message-action-clearance"]');
-      const workLog = page.locator('[data-slot="activity-group"]').filter({ hasText: "Reasoning" });
+      const workLog = page.locator('[data-slot="activity-group"]');
       const alignWorkLog = async () => {
         await workLog.evaluate((node) => {
           const scroller = node.closest<HTMLElement>(".transcript")!;
@@ -1951,7 +1951,9 @@ test.describe("viewport-aware message actions", () => {
       }
       await expect(workLog).toHaveCount(1);
       await expect(toolbar).toHaveCount(1);
-      const copy = toolbar.getByRole("button", { name: "Copy response", exact: true });
+      // Capture identity even when the initial virtual range leaves the toolbar
+      // inert/offscreen; accessible-role checks follow after alignment.
+      const copy = toolbar.locator('button[aria-label="Copy response"]');
       await copy.evaluate((node) => {
         node.dataset.identity = "retained";
       });
@@ -1984,6 +1986,18 @@ test.describe("viewport-aware message actions", () => {
             scrollTop: scroller.scrollTop,
           };
         });
+      const capture = async (state: "before" | "after") => {
+        // Hover the reading surface for a clear toolbar image without a focused
+        // button's tooltip covering it. Restore focus for the transition checks.
+        await transcript.focus();
+        await page.mouse.move(width / 2, 200);
+        await expect(page.getByRole("tooltip")).toHaveCount(0);
+        await expect(toolbar).toHaveCSS("opacity", "1");
+        await page.screenshot({
+          path: join(repositoryRoot, `.visual-captures/message-actions-${width}-${state}.png`),
+        });
+        await copy.focus();
+      };
       // Recreate the pre-fix layout in the isolated fixture: without an in-flow
       // top row the absolute toolbar straddles the preceding Work log border.
       await clearance.evaluate((node) => {
@@ -1994,9 +2008,7 @@ test.describe("viewport-aware message actions", () => {
       await expect.poll(async () => (await geometry()).intersectsWorkLog).toBe(true);
       await copy.focus();
       await mkdir(join(repositoryRoot, ".visual-captures"), { recursive: true });
-      await page.screenshot({
-        path: join(repositoryRoot, `.visual-captures/message-actions-${width}-before.png`),
-      });
+      await capture("before");
       await clearance.evaluate((node) => {
         node.style.display = "";
       });
@@ -2020,19 +2032,17 @@ test.describe("viewport-aware message actions", () => {
         await expect(message.locator('[data-slot="message-action-toolbar"]')).toHaveCount(1);
       };
       await assertReserved();
-      await page.screenshot({
-        path: join(repositoryRoot, `.visual-captures/message-actions-${width}-after.png`),
-      });
+      await capture("after");
       const before = await geometry();
-      // A streaming update must not move the reserved row or the reading position.
+      // Streaming in the preceding Work log must not move the completed
+      // message's reserved row, remove its actions, or change the reading position.
       await page.evaluate(() => {
         (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).partsUpdated([
           {
-            kind: "text",
-            id: "clearance-body",
-            role: "assistant",
+            kind: "reasoning",
+            id: "clearance-reasoning",
             status: "streaming",
-            text: "Reserved action body\n\n" + "Long paragraph.\n\n".repeat(110),
+            text: "Reasoning chunk. ".repeat(110),
           },
         ]);
       });
