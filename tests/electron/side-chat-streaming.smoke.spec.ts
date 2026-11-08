@@ -254,9 +254,15 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
     });
     const streamedAnswer = sideChat.getByText("Side chat streamed answer", { exact: false });
     const header = sideChat.locator(":scope > header");
-    const close = header.getByRole("button", { name: "Close and resolve", exact: true });
+    const close = header.getByRole("button", { name: "Close and resolve side chat", exact: true });
+    const actions = sideChat.getByRole("group", { name: "Side chat actions" });
+    const actionClose = actions.getByRole("button", { name: "Close and resolve", exact: true });
     const expectHeaderClose = async () => {
       await expect(close).toBeInViewport();
+      await expect(actionClose).toBeInViewport();
+      await expect(
+        actions.getByRole("button", { name: "Merge into main chat", exact: true }),
+      ).toBeInViewport();
       await expect(
         sideChat.getByRole("button", { name: "Close and resolve", exact: true }),
       ).toHaveCount(1);
@@ -291,7 +297,7 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
 
     // Submitting while the side chat streams queues the prompt instead of being refused.
     await sideChatInput.click();
-    await close.focus();
+    await actionClose.focus();
     await page.keyboard.press("Tab");
     await expect(sideChatInput).toBeFocused();
     await sideChatInput.press("Tab");
@@ -380,8 +386,8 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
     await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBe(0);
     expect(await close.boundingBox()).toEqual(headerCloseBounds);
     await expectHeaderClose();
-    await close.focus();
-    await expect(close).toBeFocused();
+    await actionClose.focus();
+    await expect(actionClose).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(sideChat).toHaveCount(0);
     await page.keyboard.press("Tab");

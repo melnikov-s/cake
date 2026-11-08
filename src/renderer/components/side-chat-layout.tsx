@@ -13,7 +13,7 @@ import { ModelSummary } from "./model-summary";
 import { SideChatsMenu } from "./side-chats-menu";
 import { SessionChangesPanel } from "./session-changes-panel";
 import { IconButton } from "./ui/icon-button";
-import { ReloadIcon } from "./ui/icons";
+import { CheckIcon, MergeResolveIcon, ReloadIcon } from "./ui/icons";
 
 export const SideChatLayout = observer(function SideChatLayout({
   store,
@@ -32,26 +32,45 @@ export const SideChatLayout = observer(function SideChatLayout({
   const model = target?.model?.();
   const title = target?.currentTitle?.() ?? target?.title ?? "";
   const isSideChat = Boolean(target?.chatStore && !target.key.startsWith("subagent:"));
-  // Keep merge near the composer; pane dismissal always belongs in the header.
-  const dockMergeAction = Boolean(target?.chatStore?.composerVisible && target.merge);
+  const showExitActions = isSideChat && Boolean(target?.resolve);
+  const dockActions = Boolean(
+    target?.chatStore?.composerVisible && (target.merge || showExitActions),
+  );
   const mergeAction = target?.merge && (
     <Button
-      variant="outline"
+      variant={showExitActions ? "default" : "outline"}
       size="sm"
+      className={showExitActions ? "flex-1 gap-1.5" : "gap-1.5"}
       disabled={target.merge.disabled || store.resolving}
       onClick={() => void target.merge?.run()}
     >
+      <MergeResolveIcon />
       {target.merge.label}
     </Button>
   );
-  const composerHeader = dockMergeAction && (
+  const actions = (
     <div
       data-slot="side-chat-actions"
-      className="flex shrink-0 items-center justify-end gap-3 px-3 py-2"
+      role="group"
+      aria-label="Side chat actions"
+      className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border/65 bg-sidebar/30 px-3 py-2"
     >
       {mergeAction}
+      {showExitActions && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1 gap-1.5"
+          disabled={store.resolving || target?.merge?.pending}
+          onClick={() => void store.closeAndResolve()}
+        >
+          <CheckIcon />
+          Close and resolve
+        </Button>
+      )}
     </div>
   );
+  const composerHeader = dockActions && actions;
   // Subagents retain their focused presentation; user side chats always keep their origin visible.
   if (focusConversation && target?.chatStore && target.key.startsWith("subagent:"))
     return (
@@ -85,7 +104,7 @@ export const SideChatLayout = observer(function SideChatLayout({
               title={title}
               compact={isSideChat}
               eyebrow={isSideChat ? undefined : target.eyebrow?.()}
-              closeLabel={target.resolve ? "Close and resolve" : undefined}
+              closeLabel={target.resolve ? "Close and resolve side chat" : undefined}
               closeDisabled={store.resolving || target.merge?.pending}
               onClose={() => (target.resolve ? void store.closeAndResolve() : store.close())}
               headerActions={
@@ -103,12 +122,13 @@ export const SideChatLayout = observer(function SideChatLayout({
                       <SideChatsMenu store={{ sessionId: target.navigationTarget.sessionId }} />
                     )}
                     {model && <ModelSummary {...model} className="max-w-[65%]" />}
-                    {!dockMergeAction && mergeAction}
+                    {!dockActions && !showExitActions && mergeAction}
                   </>
                 )
               }
             >
               <div className="flex h-full min-h-0 flex-col">
+                {showExitActions && !dockActions && actions}
                 {store.resolutionError && (
                   <Callout variant="error">{store.resolutionError}</Callout>
                 )}

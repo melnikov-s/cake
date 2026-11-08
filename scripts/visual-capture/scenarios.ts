@@ -284,7 +284,7 @@ const assistantMarkdownCode: VisualCaptureScenario = {
 const sideChatActions: VisualCaptureScenario = {
   ...assistantMarkdownCode,
   name: "side-chat-actions",
-  description: "Named side chat beside its parent, with compact header and composer merge action",
+  description: "Named side chat beside its parent, with grouped merge and close/resolve actions",
   states: ["default", "draft"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
@@ -368,8 +368,8 @@ const sideChatActions: VisualCaptureScenario = {
     }
   },
   async prepare(page, state) {
-    await assistantMarkdownCode.prepare(page, "default");
     if (state === "draft") {
+      await assistantMarkdownCode.prepare(page, "default");
       const composer = page.getByRole("combobox", { name: "Message", exact: true });
       await composer.fill("/sidechat ");
       await composer.press("Escape");
@@ -387,7 +387,13 @@ const sideChatActions: VisualCaptureScenario = {
     await page.getByRole("dialog", { name: "Open side chats" }).getByRole("button").click();
     const conversation = page.getByRole("complementary", { name: "Quick greeting", exact: true });
     await expect(conversation.getByText("Hi! What’s on your mind?")).toBeVisible();
-    await expect(conversation.getByRole("button", { name: "Merge into main chat" })).toBeEnabled();
+    const actions = conversation.getByRole("group", { name: "Side chat actions" });
+    await expect(
+      actions.getByRole("button", { name: "Merge into main chat", exact: true }),
+    ).toBeEnabled();
+    await expect(
+      actions.getByRole("button", { name: "Close and resolve", exact: true }),
+    ).toBeVisible();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },
