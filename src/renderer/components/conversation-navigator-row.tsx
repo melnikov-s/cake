@@ -55,6 +55,7 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
         : node.activity;
   const working = store.effectiveWorking(node);
   const activity = sessionActivityWithInheritedWorking(ownActivity, working);
+  const hideRunningSubtitle = node.relationship === "home" && projectPath !== undefined && working;
   const time = working
     ? "Running"
     : node.modifiedAt
@@ -71,7 +72,8 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
       data-working={working}
       data-navigation-active={selected}
       className={cn(
-        "group flex min-h-11 min-w-0 items-stretch rounded-md",
+        "group flex min-w-0 items-stretch rounded-md",
+        hideRunningSubtitle ? "min-h-9" : "min-h-11",
         selected ? "bg-sidebar-active" : "hover:bg-sidebar-hover",
       )}
     >
@@ -126,7 +128,10 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
         <NavItem
           active={selected}
           activateOnMouseDown
-          className="min-h-11 min-w-0 flex-1 bg-transparent py-1.5 pl-0 text-sm hover:bg-transparent"
+          className={cn(
+            "min-w-0 flex-1 bg-transparent py-1.5 pl-0 text-sm hover:bg-transparent",
+            hideRunningSubtitle ? "min-h-9" : "min-h-11",
+          )}
           actionProps={{ "aria-label": node.title }}
           label={
             <span className="block truncate" title={`${node.title} — ${relationship}`}>
@@ -155,11 +160,13 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
             </span>
           }
           description={
-            <span className="flex min-w-0 items-center gap-1.5 text-xs leading-none">
-              <span className="min-w-0 flex-1 truncate" title={`${time} — ${relationship}`}>
-                {time}
+            hideRunningSubtitle ? undefined : (
+              <span className="flex min-w-0 items-center gap-1.5 text-xs leading-none">
+                <span className="min-w-0 flex-1 truncate" title={`${time} — ${relationship}`}>
+                  {time}
+                </span>
               </span>
-            </span>
+            )
           }
           trailing={
             <span

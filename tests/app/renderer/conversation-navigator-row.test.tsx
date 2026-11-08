@@ -10,6 +10,72 @@ import { createRendererStoreFixture } from "./renderer-store-fixture";
 afterEach(cleanup);
 
 it.each([
+  { scope: "project", activity: "own", hideSubtitle: true },
+  { scope: "project", activity: "descendant", hideSubtitle: true },
+  { scope: "project", activity: "idle", hideSubtitle: false },
+  { scope: "global", activity: "own", hideSubtitle: false },
+  { scope: "session", activity: "own", hideSubtitle: false },
+] as const)(
+  "only hides the running project subtitle: $scope / $activity",
+  ({ scope, activity, hideSubtitle }) => {
+    using fixture = createRendererStoreFixture();
+    const child: ConversationNavigationNode = {
+      key: "session:child",
+      title: "Child",
+      label: "Session",
+      relationship: "grouped",
+      target: { kind: "project-session", sessionId: "child" },
+      parentKey: "session:home",
+      modifiedAt: "",
+      activity: "running",
+      running: true,
+      children: [],
+    };
+    const node: ConversationNavigationNode = {
+      key: "session:home",
+      title: scope === "project" ? "cake" : "Conversation",
+      label: scope === "session" ? "Session" : "Project Chat",
+      relationship: scope === "session" ? "grouped" : "home",
+      target: { kind: scope === "session" ? "project-session" : "cake-chat", sessionId: "home" },
+      parentKey: undefined,
+      modifiedAt: "",
+      activity: activity === "own" ? "running" : undefined,
+      running: activity === "own",
+      children: activity === "descendant" ? [child] : [],
+    };
+    const view = render(
+      <StoreProvider store={fixture.root}>
+        <ConversationNavigatorRow
+          node={node}
+          depth={0}
+          projectPath={scope === "global" ? undefined : "/project"}
+        />
+      </StoreProvider>,
+    );
+    try {
+      const button = screen.getByRole("button", { name: node.title });
+      const working = activity !== "idle";
+      expect(button.textContent).toBe(
+        node.title + (hideSubtitle ? "" : working ? "Running" : "Idle"),
+      );
+      expect(
+        view.container
+          .querySelector('[data-slot="conversation-navigator-row"]')
+          ?.getAttribute("data-working"),
+      ).toBe(String(working));
+      expect(view.container.firstElementChild?.classList.contains("min-h-9")).toBe(hideSubtitle);
+      // No empty description wrapper remains underneath the project name.
+      expect(button.querySelector(".flex-col")?.children.length).toBe(hideSubtitle ? 1 : 2);
+      if (working) expect(screen.getByRole("img", { name: "Running" })).toBeTruthy();
+      else expect(screen.getByLabelText("Idle")).toBeTruthy();
+      expect(fixture.root.conversationNavigatorStore.effectiveWorking(node)).toBe(working);
+    } finally {
+      view.unmount();
+    }
+  },
+);
+
+it.each([
   ["Cake Chat", "home", "cake-chat", CAKE_CHAT_SESSION_ID],
   ["Project Chat", "home", "cake-chat", "project-chat"],
   ["Session", "grouped", "project-session", "missing-session"],
