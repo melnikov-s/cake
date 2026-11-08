@@ -26,7 +26,7 @@ export const ConversationAttention = observer(function ConversationAttention({
       {todos.attentionItems.map((item) => (
         <div
           key={item.id}
-          className="flex min-w-0 items-center rounded-full border border-border/85 bg-background"
+          className="group/attention flex min-w-0 items-center rounded-full border border-border/85 bg-background"
         >
           <Button
             variant="ghost"
@@ -41,10 +41,10 @@ export const ConversationAttention = observer(function ConversationAttention({
           <IconButton
             tooltip={`Clear attention: ${item.title}`}
             disabled={todos.busy}
-            className="mr-1 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="mr-1 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground [@media(hover:hover)_and_(not_(any-pointer:coarse))]:opacity-0 [@media(hover:hover)_and_(not_(any-pointer:coarse))]:group-hover/attention:opacity-100 group-focus-within/attention:opacity-100"
             onClick={() => void todos.dismissAttention(item)}
           >
-            <CloseIcon />
+            <CloseIcon size={12} />
           </IconButton>
         </div>
       ))}

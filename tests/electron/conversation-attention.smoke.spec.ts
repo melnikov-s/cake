@@ -97,11 +97,60 @@ for (const theme of ["dark", "light"] as const) {
       await composer.click();
       await page.mouse.move(900, 450);
       await expect(page.locator('[data-slot="project-rail"]')).toHaveCSS("width", "54px");
+      const clear = queue.getByRole("button", { name: `Clear attention: ${items[1].title}` });
+      const pill = queue.getByRole("button", { name: `Open attention: ${items[1].title}` });
+      await expect(clear.locator("svg")).toHaveCSS("width", "12px");
+      await expect(clear).toHaveCSS("opacity", "0");
+      await pill.hover();
+      await expect(clear).toHaveCSS("opacity", "1");
+      await composer.click();
+      await page.mouse.move(900, 450);
+      await expect(clear).toHaveCSS("opacity", "0");
+      await pill.focus();
+      await expect(clear).toHaveCSS("opacity", "1");
+      await clear.focus();
+      await expect(clear).toBeFocused();
+      await expect(clear).toHaveCSS("opacity", "1");
+      await clear.press("Shift+Tab");
+      await expect(pill).toBeFocused();
+      // Cake reserves plain Tab for returning to the composer.
+      await pill.press("Tab");
+      await expect(composer).toBeFocused();
+      await composer.click();
+      await page.mouse.move(900, 450);
+      await expect(clear).toHaveCSS("opacity", "0");
       await mkdir(join(repository, ".visual-captures"), { recursive: true });
       await page.screenshot({
         path: join(repository, ".visual-captures", `attention-pills-${theme}.png`),
       });
-      await queue.getByRole("button", { name: `Clear attention: ${items[1].title}` }).click();
+      await pill.hover();
+      await expect(clear).toHaveCSS("opacity", "1");
+      await page.screenshot({
+        path: join(repository, ".visual-captures", `attention-pills-hover-${theme}.png`),
+      });
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+      expect(await page.evaluate(() => matchMedia("(any-pointer: coarse)").matches)).toBe(true);
+      await composer.focus();
+      await page.mouse.move(900, 450);
+      await expect(clear).toHaveCSS("opacity", "1");
+      const touchTarget = await clear.boundingBox();
+      expect(touchTarget!.height).toBeGreaterThanOrEqual(44);
+      await page.screenshot({
+        path: join(repository, ".visual-captures", `attention-pills-touch-${theme}.png`),
+      });
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [
+          {
+            x: touchTarget!.x + touchTarget!.width / 2,
+            y: touchTarget!.y + touchTarget!.height / 2,
+          },
+        ],
+      });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+      await cdp.detach();
       await expect(queue.getByRole("button")).toHaveCount(2);
       await expect(composer).toHaveValue("Keep this unsent draft");
       const open = queue.getByRole("button", { name: `Open attention: ${items[0].title}` });
