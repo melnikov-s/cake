@@ -1,13 +1,15 @@
 /** @vitest-environment jsdom */
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
-import { expect, it } from "vitest";
+import { afterEach, expect, it } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { emptyProjectTodos, type ProjectTodo } from "../../../src/contracts/projects/project-todos";
 import { CakeChatComposerHeader } from "../../../src/renderer/components/cake-chat-composer-header";
 import { projectRecord } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+
+afterEach(cleanup);
 
 const item: ProjectTodo = {
   id: "00000000-0000-4000-8000-000000000011",
@@ -105,6 +107,46 @@ it("shows every own attention item even when focused or filtered; X never activa
   expect(calls[1]).toEqual(["activate", { scope: "/cake", id: item.id, expectedRevision: 0 }]);
   expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
   expect(items[0]?.state).toBe("open");
+});
+
+it.each([1, 3, 10])("keeps all %i attention items in the inner list and in order", (count) => {
+  const items = Array.from({ length: count }, (_, index) => ({
+    ...item,
+    id: `00000000-0000-4000-8000-${String(index + 11).padStart(12, "0")}`,
+    title: `Finding ${index + 1}`,
+    attentionReason: `Review finding ${index + 1}`,
+  }));
+  using fixture = createRendererStoreFixture({
+    projects: [
+      {
+        ...projectRecord({ path: "/cake" }),
+        todos: { ...emptyProjectTodos(), items },
+      },
+    ],
+  });
+  applySnapshot(fixture.models.cakeChatCatalog, {
+    loaded: true,
+    sessions: [{ sessionId: chat, title: "Project Chat", projectPath: "/cake" }],
+  });
+  const session = fixture.root.cakeChatCollectionStore.registry.load(chat);
+  render(
+    <StoreProvider store={fixture.root}>
+      <CakeChatComposerHeader session={session} />
+    </StoreProvider>,
+  );
+  const queue = screen.getByRole("region", { name: "Needs attention" });
+  expect(within(queue).getByRole("heading").textContent).toBe(`Needs attention${count}`);
+  const list = within(queue).getByRole("list", { name: "Needs attention items" });
+  expect(within(list).getAllByRole("listitem")).toHaveLength(count);
+  expect(
+    within(list)
+      .getAllByRole("button")
+      .map((button) => button.getAttribute("aria-label")),
+  ).toEqual(
+    items
+      .toReversed()
+      .flatMap((todo) => [`Open attention: ${todo.title}`, `Clear attention: ${todo.title}`]),
+  );
 });
 
 it("never borrows the global chat's list and keeps a failed activation visible", async () => {

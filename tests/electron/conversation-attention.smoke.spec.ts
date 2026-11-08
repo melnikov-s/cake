@@ -10,8 +10,11 @@ import { store, windowStateDocument } from "../fixtures/window-state";
 
 const repository = resolve(import.meta.dirname, "../..");
 
-for (const theme of ["dark", "light"] as const) {
-  test(`own-chat attention pills: X, activation and preserved draft (${theme})`, async () => {
+const scenarios = (["dark", "light"] as const).flatMap((theme) =>
+  [2, 3, 10].map((count) => ({ theme, count })),
+);
+for (const { theme, count } of scenarios) {
+  test(`own-chat attention pills: bounded list, X, activation and preserved draft (${theme}, ${count} items)`, async () => {
     const directory = await mkdtemp(join(tmpdir(), "cake-attention-pills-"));
     const paths = {
       cakeHome: join(directory, "cake"),
@@ -30,6 +33,14 @@ for (const theme of ["dark", "light"] as const) {
         title: "Choose navigation",
         attentionReason: "Which navigation approach should we use?",
       },
+      ...Array.from({ length: count - 2 }, (_, index) => ({
+        id: `00000000-0000-4000-8000-${String(index + 13).padStart(12, "0")}`,
+        title: `Additional finding ${index + 1}`,
+        attentionReason:
+          index === count - 3
+            ? "Review these detailed findings and choose the next step. ".repeat(4).trim()
+            : `Review additional finding ${index + 1}`,
+      })),
     ].map((item) => ({
       ...item,
       description: "Findings ready",
@@ -84,6 +95,90 @@ for (const theme of ["dark", "light"] as const) {
         .locator(".workbench-composer")
         .getByRole("region", { name: "Needs attention" });
       await expect(queue).toBeVisible();
+      await expect(queue.getByRole("button")).toHaveCount(count * 2);
+      await expect(queue.getByRole("heading")).toHaveText(`Needs attention${count}`);
+      const list = queue.getByRole("list", { name: "Needs attention items" });
+      const metrics = () =>
+        list.evaluate((element) => {
+          const rows = Array.from(element.children);
+          const style = getComputedStyle(element);
+          const threeRowHeight =
+            rows[Math.min(2, rows.length - 1)].getBoundingClientRect().bottom -
+            rows[0].getBoundingClientRect().top +
+            parseFloat(style.paddingTop) +
+            parseFloat(style.paddingBottom);
+          return {
+            height: element.clientHeight,
+            total: element.scrollHeight,
+            limit: Math.min(threeRowHeight, innerHeight * 0.3),
+            overflow: style.overflowY,
+            containment: style.overscrollBehaviorY,
+            scrollTop: element.scrollTop,
+          };
+        });
+      await expect
+        .poll(async () => {
+          const { height, limit } = await metrics();
+          return Math.abs(height - limit);
+        })
+        .toBeLessThanOrEqual(1);
+      expect((await metrics()).overflow).toBe("auto");
+      if (count <= 3) {
+        const { height, total } = await metrics();
+        expect(total).toBeLessThanOrEqual(height + 1);
+      } else {
+        expect((await metrics()).total).toBeGreaterThan((await metrics()).height);
+        expect((await metrics()).containment).toBe("contain");
+        await page.setViewportSize({ width: 640, height: 480 });
+        await expect
+          .poll(async () => {
+            const { height, limit } = await metrics();
+            return Math.abs(height - limit);
+          })
+          .toBeLessThanOrEqual(1);
+        const inputBefore = await composer.boundingBox();
+        await list.hover();
+        await page.mouse.wheel(0, 500);
+        await expect.poll(async () => (await metrics()).scrollTop).toBeGreaterThan(0);
+        expect((await composer.boundingBox())!.y).toBeCloseTo(inputBefore!.y, 0);
+        const lastClear = queue.getByRole("button", {
+          name: `Clear attention: ${items[0].title}`,
+        });
+        await lastClear.focus();
+        await expect(lastClear).toBeFocused();
+        const listBounds = (await list.boundingBox())!;
+        const actionBounds = (await lastClear.boundingBox())!;
+        expect(actionBounds.y).toBeGreaterThanOrEqual(listBounds.y + 3);
+        expect(actionBounds.y + actionBounds.height).toBeLessThanOrEqual(
+          listBounds.y + listBounds.height - 3,
+        );
+        await lastClear.press("Shift+Tab");
+        const lastOpen = queue.getByRole("button", {
+          name: `Open attention: ${items[0].title}`,
+        });
+        await expect(lastOpen).toBeFocused();
+        await lastOpen.press("Tab");
+        await expect(composer).toBeFocused();
+        await mkdir(join(repository, ".visual-captures"), { recursive: true });
+        await page.screenshot({
+          path: join(repository, ".visual-captures", `attention-bounded-${theme}.png`),
+        });
+        await page.setViewportSize({ width: 1280, height: 800 });
+      }
+      for (const extra of items.slice(2).reverse()) {
+        const clearExtra = queue.getByRole("button", { name: `Clear attention: ${extra.title}` });
+        await clearExtra.focus();
+        await clearExtra.press("Enter");
+        await expect(clearExtra).toHaveCount(0);
+        if ((await list.getByRole("listitem").count()) <= 3) {
+          await expect
+            .poll(async () => {
+              const { total, height } = await metrics();
+              return total - height;
+            })
+            .toBeLessThanOrEqual(1);
+        }
+      }
       await expect(queue.getByRole("button")).toHaveCount(4);
       await expect(queue.getByText("Review", { exact: true })).toHaveCount(0);
       await expect(queue.getByText("This chat’s to-dos")).toHaveCount(0);
@@ -152,6 +247,8 @@ for (const theme of ["dark", "light"] as const) {
       await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
       await cdp.detach();
       await expect(queue.getByRole("button")).toHaveCount(2);
+      const single = await metrics();
+      expect(single.total).toBeLessThanOrEqual(single.height + 1);
       await expect(composer).toHaveValue("Keep this unsent draft");
       const open = queue.getByRole("button", { name: `Open attention: ${items[0].title}` });
       await open.focus();
