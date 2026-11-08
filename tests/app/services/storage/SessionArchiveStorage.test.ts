@@ -1,6 +1,7 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { createHash } from "node:crypto";
-import { stat } from "node:fs/promises";
+import { stat, utimes } from "node:fs/promises";
+import { afterEach, vi } from "vitest";
 import {
   Clock,
   Deferred,
@@ -19,6 +20,7 @@ import {
 } from "../../../../src/services/pi/runtime/session-discovery";
 import { SessionArchiveStorage } from "../../../../src/services/storage/SessionArchiveStorage";
 import { makeSessionArchiveStorageLive } from "../../../../src/services/storage/SessionArchiveStorageLive";
+import * as sessionFiles from "../../../../src/services/storage/session-files";
 
 const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
 
@@ -78,7 +80,439 @@ const makeMetadataRoot = Effect.fn("SessionArchiveStorage.test.makeMetadataRoot"
 const withPlatform = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(Effect.provide(PlatformLive));
 
+const runInstrumentedArchive = <A, E>(
+  metadataRoot: string,
+  roots: { activeRoot: string; resolvedRoot: string },
+  fs: FileSystem.FileSystem,
+  use: (storage: SessionArchiveStorage["Service"]) => Effect.Effect<A, E>,
+) =>
+  Effect.flatMap(SessionArchiveStorage, use).pipe(
+    Effect.provide(
+      makeSessionArchiveStorageLive(metadataRoot, roots).pipe(
+        Layer.provide(Layer.mergeAll(Layer.succeed(FileSystem.FileSystem, fs), NodePath.layer)),
+      ),
+    ),
+  );
+
+const testIoError = (method: string) =>
+  PlatformError.systemError({ _tag: "Unknown", module: "ArchiveCacheTest", method });
+
 describe("SessionArchiveStorage", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it.effect("retains only unchanged decoded metadata and skips repeated legacy scans", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const fs = yield* FileSystem.FileSystem;
+        const indexPath = `${metadataRoot}/resolution.json`;
+        const scans = vi.spyOn(sessionFiles, "streamSessionFiles");
+        let reads = 0;
+        const counting = FileSystem.makeNoop({
+          ...fs,
+          readFileString: (file, encoding) => {
+            if (file === indexPath) reads++;
+            return fs.readFileString(file, encoding);
+          },
+        });
+        yield* runInstrumentedArchive(metadataRoot, location, counting, (storage) =>
+          Effect.gen(function* () {
+            yield* storage.resolveProject("session-1", location, {
+              projectPath: "/projects/cake",
+              projectName: "Cake",
+            });
+            const snapshot = yield* storage.resolutionSnapshot();
+            for (let i = 0; i < 100; i++) {
+              expect([...(yield* storage.resolvedIds({ ...location }))]).toEqual(["session-1"]);
+              expect(yield* storage.locate("session-1", { ...location })).toBe("resolved");
+              expect(yield* storage.resolvedEntry("session-1", { ...location })).toMatchObject({
+                id: "session-1",
+              });
+              expect(yield* storage.resolvedProjectEntry("session-1")).toMatchObject({
+                sessionId: "session-1",
+              });
+              // Identity proves that decoding, not just disk IO, is retained.
+              expect(yield* storage.resolutionSnapshot()).toBe(snapshot);
+            }
+            expect(Object.isFrozen(snapshot)).toBe(true);
+            expect(Object.isFrozen(snapshot.directories)).toBe(true);
+            expect(Object.values(snapshot.directories).every(Object.isFrozen)).toBe(true);
+            expect(reads).toBe(1);
+            expect(scans).toHaveBeenCalledTimes(1);
+          }),
+        );
+      }),
+    ),
+  );
+
+  it.effect("keys migration by effective directory routing as well as configured roots", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const originalDirectoryPath = sessionFiles.sessionDirectoryPath;
+        let routingVersion = "";
+        vi.spyOn(sessionFiles, "sessionDirectoryPath").mockImplementation(
+          (input) => `${originalDirectoryPath(input)}${routingVersion}`,
+        );
+        const scans = vi.spyOn(sessionFiles, "streamSessionFiles");
+        yield* runArchive(metadataRoot, (storage) =>
+          Effect.gen(function* () {
+            yield* storage.resolvedIds(location);
+            yield* storage.resolvedIds({ ...location });
+            expect(scans).toHaveBeenCalledTimes(1);
+            routingVersion = "-changed-routing";
+            yield* storage.resolvedIds(location);
+            yield* storage.resolvedIds({ ...location });
+            expect(scans).toHaveBeenCalledTimes(2);
+          }),
+        );
+      }),
+    ),
+  );
+
+  it.effect(
+    "shares concurrent legacy initialization and rereads persisted resolution on restart",
+    () =>
+      withPlatform(
+        Effect.gen(function* () {
+          const metadataRoot = yield* makeMetadataRoot();
+          const location = yield* makeFixture();
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const directory = cakeWorkspaceSessionDirectory(location.cwd, location.resolvedRoot);
+          const archivedFile = path.join(directory, path.basename(location.sessionFile));
+          yield* fs.makeDirectory(directory, { recursive: true });
+          yield* fs.rename(location.sessionFile, archivedFile);
+          const scans = vi.spyOn(sessionFiles, "streamSessionFiles");
+          let moves = 0;
+          const counting = FileSystem.makeNoop({
+            ...fs,
+            rename: (source, destination) => {
+              if (source === archivedFile) moves++;
+              return fs.rename(source, destination);
+            },
+          });
+          yield* runInstrumentedArchive(metadataRoot, location, counting, (storage) =>
+            Effect.gen(function* () {
+              const results = yield* Effect.all(
+                Array.from({ length: 20 }, () => storage.resolvedIds({ ...location })),
+                { concurrency: "unbounded" },
+              );
+              expect(results.every((ids) => ids.has("session-1"))).toBe(true);
+              expect(moves).toBe(1);
+              expect(scans).toHaveBeenCalledTimes(1);
+            }),
+          );
+          expect(yield* fs.exists(archivedFile)).toBe(false);
+          expect(yield* fs.exists(location.sessionFile)).toBe(true);
+          expect([
+            ...(yield* runArchive(metadataRoot, (storage) => storage.resolvedIds(location))),
+          ]).toEqual(["session-1"]);
+          expect(scans).toHaveBeenCalledTimes(2);
+        }),
+      ),
+  );
+
+  it.effect(
+    "retries a failed migration in the same service after the resolution write commits",
+    () =>
+      withPlatform(
+        Effect.gen(function* () {
+          const metadataRoot = yield* makeMetadataRoot();
+          const location = yield* makeFixture();
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const directory = cakeWorkspaceSessionDirectory(location.cwd, location.resolvedRoot);
+          const archivedFile = path.join(directory, path.basename(location.sessionFile));
+          yield* fs.makeDirectory(directory, { recursive: true });
+          yield* fs.rename(location.sessionFile, archivedFile);
+          const scans = vi.spyOn(sessionFiles, "streamSessionFiles");
+          let failMove = true;
+          const controlled = FileSystem.makeNoop({
+            ...fs,
+            rename: (source, destination) => {
+              if (source === archivedFile && failMove) {
+                failMove = false;
+                return Effect.fail(testIoError("rename"));
+              }
+              return fs.rename(source, destination);
+            },
+          });
+          yield* runInstrumentedArchive(metadataRoot, location, controlled, (storage) =>
+            Effect.gen(function* () {
+              expect((yield* storage.resolvedIds(location).pipe(Effect.flip)).operation).toBe(
+                "migrateLocation",
+              );
+              expect([...(yield* storage.recordedResolvedIds(location))]).toEqual(["session-1"]);
+              expect(yield* fs.exists(archivedFile)).toBe(true);
+              expect([...(yield* storage.resolvedIds({ ...location }))]).toEqual(["session-1"]);
+              expect(yield* storage.locate("session-1", location)).toBe("resolved");
+              expect(scans).toHaveBeenCalledTimes(2);
+            }),
+          );
+          expect(yield* fs.exists(archivedFile)).toBe(false);
+        }),
+      ),
+  );
+
+  it.effect("retries interrupted and failed legacy scans without retaining false success", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const entered = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const scans = vi.spyOn(sessionFiles, "streamSessionFiles");
+        scans.mockImplementationOnce(() =>
+          Stream.fromEffect(
+            Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(release))),
+          ).pipe(Stream.drain),
+        );
+        scans.mockImplementationOnce(() => Stream.fail(new Error("transient scan error")));
+        yield* runArchive(metadataRoot, (storage) =>
+          Effect.gen(function* () {
+            const interrupted = yield* storage.resolvedIds(location).pipe(Effect.forkChild);
+            yield* Deferred.await(entered);
+            yield* Fiber.interrupt(interrupted);
+            expect((yield* storage.resolvedIds(location).pipe(Effect.flip)).operation).toBe(
+              "migrateLocation",
+            );
+            expect([...(yield* storage.resolvedIds(location))]).toEqual([]);
+            expect([...(yield* storage.resolvedIds({ ...location }))]).toEqual([]);
+            expect(scans).toHaveBeenCalledTimes(3);
+          }),
+        );
+      }),
+    ),
+  );
+
+  it.effect("serializes cold index initialization with concurrent resolution writes", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const first = yield* makeFixture();
+        const second = yield* makeFixture();
+        const fs = yield* FileSystem.FileSystem;
+        const indexPath = `${metadataRoot}/resolution.json`;
+        yield* fs.makeDirectory(metadataRoot, { recursive: true });
+        yield* fs.writeFileString(indexPath, JSON.stringify({ version: 1, directories: {} }));
+        const reading = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        let reads = 0;
+        const controlled = FileSystem.makeNoop({
+          ...fs,
+          readFileString: (file, encoding) =>
+            file === indexPath && reads++ === 0
+              ? fs.readFileString(file, encoding).pipe(
+                  Effect.tap(() => Deferred.succeed(reading, undefined)),
+                  Effect.tap(() => Deferred.await(release)),
+                )
+              : fs.readFileString(file, encoding),
+        });
+        yield* runInstrumentedArchive(metadataRoot, first, controlled, (storage) =>
+          Effect.gen(function* () {
+            const coldRead = yield* storage.resolutionSnapshot().pipe(Effect.forkChild);
+            yield* Deferred.await(reading);
+            const writes = yield* Effect.all(
+              [storage.resolve("session-1", first), storage.resolve("session-1", second)],
+              { concurrency: "unbounded" },
+            ).pipe(Effect.forkChild);
+            yield* Deferred.succeed(release, undefined);
+            expect((yield* Fiber.join(coldRead)).directories).toEqual({});
+            expect(yield* Fiber.join(writes)).toEqual([true, true]);
+            expect(Object.values((yield* storage.resolutionSnapshot()).directories)).toEqual([
+              ["session-1"],
+              ["session-1"],
+            ]);
+            yield* storage.restore("session-1", first);
+            expect([...(yield* storage.resolvedIds(first))]).toEqual([]);
+            expect([...(yield* storage.resolvedIds(second))]).toEqual(["session-1"]);
+          }),
+        );
+        expect(
+          Object.values(
+            (yield* runArchive(metadataRoot, (storage) => storage.resolutionSnapshot()))
+              .directories,
+          ),
+        ).toEqual([["session-1"]]);
+      }),
+    ),
+  );
+
+  it.effect("invalidates warm metadata after relocation and preserves other directories", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const from = yield* makeFixture();
+        const to = yield* makeFixture();
+        const other = yield* makeFixture();
+        const fs = yield* FileSystem.FileSystem;
+        yield* fs.remove(to.sessionFile);
+        yield* runArchive(metadataRoot, (storage) =>
+          Effect.gen(function* () {
+            yield* storage.resolve("session-1", from);
+            yield* storage.resolve("session-1", other);
+            yield* storage.resolutionSnapshot();
+            yield* fs.rename(from.sessionFile, to.sessionFile);
+            yield* storage.relocate("session-1", from, to, true);
+            expect([...(yield* storage.recordedResolvedIds(from))]).toEqual([]);
+            expect([...(yield* storage.recordedResolvedIds(to))]).toEqual(["session-1"]);
+            expect([...(yield* storage.recordedResolvedIds(other))]).toEqual(["session-1"]);
+          }),
+        );
+        expect(yield* runArchive(metadataRoot, (storage) => storage.locate("session-1", to))).toBe(
+          "resolved",
+        );
+      }),
+    ),
+  );
+
+  it.effect(
+    "observes other service writers, external corruption, deletion and in-place edits",
+    () =>
+      withPlatform(
+        Effect.gen(function* () {
+          const metadataRoot = yield* makeMetadataRoot();
+          const location = yield* makeFixture();
+          const fs = yield* FileSystem.FileSystem;
+          const indexPath = `${metadataRoot}/resolution.json`;
+          yield* runArchive(metadataRoot, (storage) =>
+            Effect.gen(function* () {
+              expect([...(yield* storage.recordedResolvedIds(location))]).toEqual([]);
+              yield* runArchive(metadataRoot, (other) => other.resolve("session-1", location));
+              expect(yield* storage.locate("session-1", location)).toBe("resolved");
+              yield* runArchive(metadataRoot, (other) => other.restore("session-1", location));
+              expect(yield* storage.locate("session-1", location)).toBe("active");
+              yield* storage.resolve("session-1", location);
+              const persisted = yield* fs.readFileString(indexPath);
+              const before = yield* Effect.promise(() => stat(indexPath));
+              // Same byte length and restored mtime must still invalidate via ctime.
+              yield* fs.writeFileString(indexPath, persisted.replace("session-1", "session-2"));
+              yield* Effect.promise(() => utimes(indexPath, before.atime, before.mtime));
+              expect([...(yield* storage.recordedResolvedIds(location))]).toEqual(["session-2"]);
+              yield* fs.writeFileString(`${indexPath}.external`, "{ broken");
+              yield* fs.rename(`${indexPath}.external`, indexPath);
+              for (let attempt = 0; attempt < 2; attempt++)
+                expect((yield* storage.resolutionSnapshot().pipe(Effect.flip)).operation).toBe(
+                  "resolution",
+                );
+              yield* fs.writeFileString(indexPath, persisted);
+              expect([...(yield* storage.recordedResolvedIds(location))]).toEqual(["session-1"]);
+              yield* fs.remove(indexPath);
+              expect([...(yield* storage.recordedResolvedIds(location))]).toEqual([]);
+              yield* storage.resolve("session-1", location);
+              expect([...(yield* storage.recordedResolvedIds(location))]).toEqual(["session-1"]);
+            }),
+          );
+        }),
+      ),
+  );
+
+  it.effect(
+    "retries transient index reads without retaining a failed decode or false empty state",
+    () =>
+      withPlatform(
+        Effect.gen(function* () {
+          const metadataRoot = yield* makeMetadataRoot();
+          const location = yield* makeFixture();
+          const fs = yield* FileSystem.FileSystem;
+          const indexPath = `${metadataRoot}/resolution.json`;
+          yield* runArchive(metadataRoot, (storage) => storage.resolve("session-1", location));
+          let reads = 0;
+          const controlled = FileSystem.makeNoop({
+            ...fs,
+            readFileString: (file, encoding) => {
+              if (file === indexPath && reads++ === 0) return Effect.fail(testIoError("read"));
+              return fs.readFileString(file, encoding);
+            },
+          });
+          yield* runInstrumentedArchive(metadataRoot, location, controlled, (storage) =>
+            Effect.gen(function* () {
+              expect((yield* storage.resolutionSnapshot().pipe(Effect.flip)).operation).toBe(
+                "resolution",
+              );
+              expect([...(yield* storage.recordedResolvedIds(location))]).toEqual(["session-1"]);
+              yield* storage.resolutionSnapshot();
+              expect(reads).toBe(2);
+            }),
+          );
+        }),
+      ),
+  );
+
+  it.effect("retries interrupted index initialization in the same service", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const fs = yield* FileSystem.FileSystem;
+        const indexPath = `${metadataRoot}/resolution.json`;
+        yield* runArchive(metadataRoot, (storage) => storage.resolve("session-1", location));
+        const reading = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        let reads = 0;
+        const controlled = FileSystem.makeNoop({
+          ...fs,
+          readFileString: (file, encoding) =>
+            file === indexPath && reads++ === 0
+              ? Deferred.succeed(reading, undefined).pipe(
+                  Effect.andThen(Deferred.await(release)),
+                  Effect.andThen(fs.readFileString(file, encoding)),
+                )
+              : fs.readFileString(file, encoding),
+        });
+        yield* runInstrumentedArchive(metadataRoot, location, controlled, (storage) =>
+          Effect.gen(function* () {
+            const interrupted = yield* storage.resolutionSnapshot().pipe(Effect.forkChild);
+            yield* Deferred.await(reading);
+            yield* Fiber.interrupt(interrupted);
+            expect([...(yield* storage.recordedResolvedIds(location))]).toEqual(["session-1"]);
+            expect(reads).toBe(2);
+          }),
+        );
+      }),
+    ),
+  );
+
+  it.effect("does not publish failed resolution writes and retries them in the same service", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const fs = yield* FileSystem.FileSystem;
+        const indexPath = `${metadataRoot}/resolution.json`;
+        let failCommit = true;
+        const controlled = FileSystem.makeNoop({
+          ...fs,
+          rename: (source, destination) => {
+            if (destination === indexPath && failCommit) {
+              failCommit = false;
+              return Effect.fail(testIoError("rename"));
+            }
+            return fs.rename(source, destination);
+          },
+        });
+        yield* runInstrumentedArchive(metadataRoot, location, controlled, (storage) =>
+          Effect.gen(function* () {
+            expect([...(yield* storage.recordedResolvedIds(location))]).toEqual([]);
+            expect(
+              (yield* storage.resolve("session-1", location).pipe(Effect.flip)).operation,
+            ).toBe("resolve");
+            expect(yield* fs.exists(indexPath)).toBe(false);
+            expect([...(yield* storage.recordedResolvedIds(location))]).toEqual([]);
+            expect(yield* storage.resolve("session-1", location)).toBe(true);
+            expect([...(yield* storage.recordedResolvedIds(location))]).toEqual(["session-1"]);
+          }),
+        );
+        expect([
+          ...(yield* runArchive(metadataRoot, (storage) => storage.recordedResolvedIds(location))),
+        ]).toEqual(["session-1"]);
+      }),
+    ),
+  );
+
   it.effect(
     "resolves and restores one in-place namespace without treating its transcript as a legacy duplicate",
     () =>
@@ -263,7 +697,20 @@ describe("SessionArchiveStorage", () => {
         };
         const migrated = yield* runArchive(
           metadataRoot,
-          (storage) => storage.resolvedProjectEntry("session-1"),
+          (storage) =>
+            Effect.gen(function* () {
+              // A successful empty scan must be invalidated when V1 root rebinding
+              // subsequently brings an archive into this namespace.
+              expect([...(yield* storage.resolvedIds({ ...location, ...roots }))]).toEqual([]);
+              // Relocation's V1 read may consult the index too; it must not hold
+              // the index semaphore recursively while rebinding the entry.
+              yield* storage.relocate("session-1", location, { ...location, ...roots }, true);
+              const entry = yield* storage.resolvedProjectEntry("session-1");
+              expect(yield* storage.locate("session-1", { ...location, ...roots })).toBe(
+                "resolved",
+              );
+              return entry;
+            }),
           roots,
         );
         expect(migrated).toMatchObject({ ...roots, version: 2 });

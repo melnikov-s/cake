@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
+import { stat } from "node:fs/promises";
 import {
+  Cache,
+  Duration,
   Effect,
   Exit,
   FileSystem,
@@ -194,6 +197,11 @@ export const makeSessionArchiveStorageLive = (
               yield* fileSystem
                 .rename(legacy, path.join(destinationDirectory, path.basename(legacy)))
                 .pipe(
+                  // V1 root rebinding is the one remaining writer to a legacy
+                  // namespace. Reopen its success marker along with the move.
+                  Effect.andThen(
+                    Cache.invalidate(migratedLocations, migrationKey(currentLocation)),
+                  ),
                   Effect.uninterruptible,
                   Effect.mapError((cause) => archiveError(operation, sessionId, cause)),
                 );
@@ -286,12 +294,66 @@ export const makeSessionArchiveStorageLive = (
         );
       });
 
-      const readIndex = Effect.fn("SessionArchiveStorage.readIndex")(function* () {
-        return (
-          (yield* readDocument("resolution", "", indexPath, SessionResolutionIndex)) ?? {
-            version: 1 as const,
-            directories: {},
-          }
+      // Unlike request-local discovery/title projections, this retains only decoded
+      // Cake metadata. A backend Layer owns it, never transcript content. Other
+      // backends/tools can replace the file: validate its version on every read.
+      // Nanosecond ctime also detects in-place edits that preserve size/mtime.
+      const indexVersion = Effect.fn("SessionArchiveStorage.indexVersion")(() =>
+        Effect.tryPromise({
+          try: async () => {
+            try {
+              const info = await stat(indexPath, { bigint: true });
+              return `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
+            } catch (cause) {
+              if (cause instanceof Error && "code" in cause && cause.code === "ENOENT")
+                return "absent";
+              throw cause;
+            }
+          },
+          catch: (cause) => archiveError("resolution", "", cause),
+        }),
+      );
+      const decodedIndex = yield* Cache.makeWith(
+        (_version: string) =>
+          readDocument("resolution", "", indexPath, SessionResolutionIndex).pipe(
+            Effect.map((stored) => {
+              const index = stored ?? { version: 1 as const, directories: {} };
+              // Snapshots must not let a caller mutate the retained authority.
+              for (const ids of Object.values(index.directories)) Object.freeze(ids);
+              Object.freeze(index.directories);
+              return Object.freeze(index);
+            }),
+          ),
+        {
+          capacity: 1,
+          timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero),
+        },
+      );
+      // Callers already holding indexUpdates must use the unlocked read. In
+      // particular, initialization cannot race a write and publish stale state.
+      const readIndexUnlocked = Effect.fn("SessionArchiveStorage.readIndexUnlocked")(function* () {
+        const version = yield* indexVersion();
+        return yield* Cache.get(decodedIndex, version).pipe(
+          Effect.onInterrupt(() => Cache.invalidate(decodedIndex, version)),
+        );
+      });
+      const readIndex = Effect.fn("SessionArchiveStorage.readIndex")(() =>
+        indexUpdates.withPermits(1)(readIndexUnlocked()),
+      );
+      const writeIndexUnlocked = Effect.fn("SessionArchiveStorage.writeIndexUnlocked")(function* (
+        operation: string,
+        sessionId: string,
+        directories: typeof SessionResolutionIndex.Type.directories,
+      ) {
+        // Invalidate before attempting persistence, including ambiguous failures.
+        // The next read decodes the committed file, never speculative state.
+        yield* Cache.invalidateAll(decodedIndex);
+        yield* atomicWriteFile(
+          fileSystem,
+          path,
+          indexPath,
+          `${JSON.stringify({ version: 1, directories }, null, 2)}\n`,
+          (_stage, cause) => archiveError(operation, sessionId, cause),
         );
       });
 
@@ -309,7 +371,7 @@ export const makeSessionArchiveStorageLive = (
           indexUpdates.withPermits(1)(
             Effect.uninterruptibleMask((restore) =>
               Effect.gen(function* () {
-                const index = yield* restore(readIndex());
+                const index = yield* restore(readIndexUnlocked());
                 const directory = sessionDirectoryPath(directoryInput(location, false));
                 const ids = new Set(index.directories[directory] ?? []);
                 if (ids.has(sessionId) === resolved) return false;
@@ -318,13 +380,7 @@ export const makeSessionArchiveStorageLive = (
                 const directories = { ...index.directories };
                 if (ids.size === 0) delete directories[directory];
                 else directories[directory] = [...ids];
-                yield* atomicWriteFile(
-                  fileSystem,
-                  path,
-                  indexPath,
-                  `${JSON.stringify({ version: 1, directories }, null, 2)}\n`,
-                  (_stage, cause) => archiveError("resolution", sessionId, cause),
-                );
+                yield* writeIndexUnlocked("resolution", sessionId, directories);
                 return true;
               }),
             ),
@@ -334,40 +390,71 @@ export const makeSessionArchiveStorageLive = (
       // Storage migration only: old installations moved resolved Pi files out of
       // their normal directory. Record resolution before moving each one back;
       // interruption/restart can safely retry without losing that status.
-      const migrateLocation = Effect.fn("SessionArchiveStorage.migrateLocation")(function* (
-        location: SessionArchiveLocation,
-      ) {
-        if (
-          sessionDirectoryPath(directoryInput(location, true)) ===
-          sessionDirectoryPath(directoryInput(location, false))
-        )
-          return;
-        yield* streamSessionFiles(directoryInput(location, true)).pipe(
-          Stream.runForEach((item) =>
-            withUpdateLock(
-              locatorPath(item.id),
-              Effect.uninterruptibleMask((restore) =>
-                Effect.gen(function* () {
-                  const source = yield* restore(findAt(item.id, location, true));
-                  if (!source) return;
-                  if (yield* restore(findAt(item.id, location, false)))
-                    return yield* archiveError(
-                      "migrateLocation",
-                      item.id,
-                      new Error(`Session ${item.id} exists in both namespaces`),
-                    );
-                  yield* setResolution(item.id, location, true);
-                  const directory = sessionDirectoryPath(directoryInput(location, false));
-                  yield* fileSystem.makeDirectory(directory, {
-                    recursive: true,
-                    mode: 0o700,
-                  });
-                  yield* fileSystem.rename(source, path.join(directory, path.basename(source)));
-                }),
+      const migrateLocationUncached = Effect.fn("SessionArchiveStorage.migrateLocationUncached")(
+        function* (location: SessionArchiveLocation) {
+          if (
+            sessionDirectoryPath(directoryInput(location, true)) ===
+            sessionDirectoryPath(directoryInput(location, false))
+          )
+            return;
+          yield* streamSessionFiles(directoryInput(location, true)).pipe(
+            Stream.runForEach((item) =>
+              withUpdateLock(
+                locatorPath(item.id),
+                Effect.uninterruptibleMask((restore) =>
+                  Effect.gen(function* () {
+                    const source = yield* restore(findAt(item.id, location, true));
+                    if (!source) return;
+                    if (yield* restore(findAt(item.id, location, false)))
+                      return yield* archiveError(
+                        "migrateLocation",
+                        item.id,
+                        new Error(`Session ${item.id} exists in both namespaces`),
+                      );
+                    yield* setResolution(item.id, location, true);
+                    const directory = sessionDirectoryPath(directoryInput(location, false));
+                    yield* fileSystem.makeDirectory(directory, {
+                      recursive: true,
+                      mode: 0o700,
+                    });
+                    yield* fileSystem.rename(source, path.join(directory, path.basename(source)));
+                  }),
+                ),
               ),
             ),
-          ),
-          Effect.mapError((cause) => archiveError("migrateLocation", "", cause)),
+            Effect.mapError((cause) => archiveError("migrateLocation", "", cause)),
+          );
+        },
+      );
+
+      const migrationKey = (location: SessionArchiveLocation) =>
+        Object.freeze({
+          cwd: path.resolve(location.cwd),
+          activeRoot: path.resolve(location.activeRoot),
+          resolvedRoot: path.resolve(location.resolvedRoot),
+          direct: location.direct ?? false,
+          // Pi's custom-directory routing can change while the backend lives.
+          activeDirectory: sessionDirectoryPath(directoryInput(location, false)),
+          resolvedDirectory: sessionDirectoryPath(directoryInput(location, true)),
+        });
+
+      // Normal resolve/restore never writes legacy roots. V1 root rebinding above
+      // explicitly invalidates its location when it moves a legacy archive here.
+      // Keep one success marker per location for this Layer's lifetime. Failed or
+      // interrupted scans retry; concurrent callers share initialization. Restart
+      // scans again, so interrupted moves recover from the persisted index.
+      const migratedLocations = yield* Cache.makeWith(migrateLocationUncached, {
+        capacity: Number.POSITIVE_INFINITY,
+        timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero),
+      });
+      const migrateLocation = Effect.fn("SessionArchiveStorage.migrateLocation")((
+        location: SessionArchiveLocation,
+      ) => {
+        const key = migrationKey(location);
+        return Cache.get(migratedLocations, key).pipe(
+          // The pinned Cache can retain an interrupted lookup. Never replay a
+          // cancelled migration to a later caller as initialization state.
+          Effect.onInterrupt(() => Cache.invalidate(migratedLocations, key)),
         );
       });
 
@@ -822,57 +909,56 @@ export const makeSessionArchiveStorageLive = (
         ) =>
           withUpdateLock(
             locatorPath(sessionId),
-            indexUpdates.withPermits(1)(
-              Effect.uninterruptibleMask((restore) =>
-                Effect.gen(function* () {
-                  const index = yield* restore(readIndex());
-                  const previous = yield* restore(readProjectEntry("relocate", sessionId));
-                  const sourceDirectory = sessionDirectoryPath(directoryInput(from, false));
-                  const destinationDirectory = sessionDirectoryPath(directoryInput(to, false));
-                  const directories = { ...index.directories };
-                  const sourceIds = new Set(directories[sourceDirectory] ?? []);
-                  sourceIds.delete(sessionId);
-                  if (sourceIds.size) directories[sourceDirectory] = [...sourceIds];
-                  else delete directories[sourceDirectory];
-                  const destinationIds = new Set(directories[destinationDirectory] ?? []);
-                  if (resolved) destinationIds.add(sessionId);
-                  else destinationIds.delete(sessionId);
-                  if (destinationIds.size) directories[destinationDirectory] = [...destinationIds];
-                  else delete directories[destinationDirectory];
-                  const original = previous ?? metadata;
-                  const updated =
-                    original && resolved
-                      ? {
-                          ...original,
-                          workingDirectory: to.cwd,
-                          activeRoot: to.activeRoot,
-                          resolvedRoot: to.resolvedRoot,
-                        }
-                      : undefined;
-                  yield* Effect.gen(function* () {
-                    if (updated) yield* writeProjectEntryUnlocked("relocate", updated);
-                    else if (previous) yield* removeProjectEntryUnlocked("relocate", previous);
-                    yield* atomicWriteFile(
-                      fileSystem,
-                      path,
-                      indexPath,
-                      `${JSON.stringify({ version: 1, directories }, null, 2)}\n`,
-                      (_stage, cause) => archiveError("relocate", sessionId, cause),
+            Effect.gen(function* () {
+              // V1 entry migration can itself read resolution metadata. Do it
+              // before taking indexUpdates to avoid recursively taking that lock.
+              const previous = yield* readProjectEntry("relocate", sessionId);
+              return yield* indexUpdates.withPermits(1)(
+                Effect.uninterruptibleMask((restore) =>
+                  Effect.gen(function* () {
+                    const index = yield* restore(readIndexUnlocked());
+                    const sourceDirectory = sessionDirectoryPath(directoryInput(from, false));
+                    const destinationDirectory = sessionDirectoryPath(directoryInput(to, false));
+                    const directories = { ...index.directories };
+                    const sourceIds = new Set(directories[sourceDirectory] ?? []);
+                    sourceIds.delete(sessionId);
+                    if (sourceIds.size) directories[sourceDirectory] = [...sourceIds];
+                    else delete directories[sourceDirectory];
+                    const destinationIds = new Set(directories[destinationDirectory] ?? []);
+                    if (resolved) destinationIds.add(sessionId);
+                    else destinationIds.delete(sessionId);
+                    if (destinationIds.size)
+                      directories[destinationDirectory] = [...destinationIds];
+                    else delete directories[destinationDirectory];
+                    const original = previous ?? metadata;
+                    const updated =
+                      original && resolved
+                        ? {
+                            ...original,
+                            workingDirectory: to.cwd,
+                            activeRoot: to.activeRoot,
+                            resolvedRoot: to.resolvedRoot,
+                          }
+                        : undefined;
+                    yield* Effect.gen(function* () {
+                      if (updated) yield* writeProjectEntryUnlocked("relocate", updated);
+                      else if (previous) yield* removeProjectEntryUnlocked("relocate", previous);
+                      yield* writeIndexUnlocked("relocate", sessionId, directories);
+                    }).pipe(
+                      Effect.onExit((exit) =>
+                        Exit.isSuccess(exit)
+                          ? Effect.void
+                          : previous
+                            ? writeProjectEntryUnlocked("relocateCompensation", previous)
+                            : updated
+                              ? removeProjectEntryUnlocked("relocateCompensation", updated)
+                              : Effect.void,
+                      ),
                     );
-                  }).pipe(
-                    Effect.onExit((exit) =>
-                      Exit.isSuccess(exit)
-                        ? Effect.void
-                        : previous
-                          ? writeProjectEntryUnlocked("relocateCompensation", previous)
-                          : updated
-                            ? removeProjectEntryUnlocked("relocateCompensation", updated)
-                            : Effect.void,
-                    ),
-                  );
-                }),
-              ),
-            ),
+                  }),
+                ),
+              );
+            }),
           ),
       );
 
