@@ -1,8 +1,8 @@
 import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import { it } from "@effect/vitest";
 import { Context, Deferred, Effect, Exit, Layer, Option, Queue, Scope, Stream } from "effect";
-import { RpcServer } from "effect/unstable/rpc";
-import type { FromClientEncoded, FromServerEncoded } from "effect/unstable/rpc/RpcMessage";
+import { RpcServer, RpcSerialization } from "effect/rpc";
+import type { FromClientEncoded, FromServerEncoded } from "effect/rpc/RpcMessage";
 import { describe, expect } from "vitest";
 import {
   defaultApplicationState,
@@ -181,6 +181,7 @@ const openEndpoint = Effect.fn("RpcEndpoint.test.openEndpoint")(function* (
         supportsTransferables: false,
         supportsSpanPropagation: true,
         supportsNotifications: false,
+        codecFor: RpcSerialization.json.codecFor,
       });
     }),
   );

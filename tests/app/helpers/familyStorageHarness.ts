@@ -1,4 +1,4 @@
-import { Effect, FileSystem, Layer, Option, Path, PlatformError } from "effect";
+import { ByteSize, Effect, FileSystem, Layer, Option, Path, PlatformError } from "effect";
 import { makeSessionFamilyStorageLive } from "../../../src/services/storage/SessionFamilyStorage";
 const failure = (method: string) =>
   PlatformError.systemError({ _tag: "Unknown", module: "SessionFamilyStorageTest", method });
@@ -24,7 +24,7 @@ export const familyStorageHarness = (initialFiles = new Map<string, string>()) =
       return Effect.succeed({
         type: "File",
         ino: Option.none(),
-        size: FileSystem.Size(content.length),
+        size: ByteSize.bytes(content.length),
         mtime: Option.some(new Date(revisions.get(path)?.revision ?? 0)),
       } as FileSystem.File.Info);
     },

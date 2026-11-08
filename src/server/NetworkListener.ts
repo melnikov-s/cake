@@ -1,8 +1,8 @@
 import { NodeSocketServer } from "@effect/platform-node-shared";
 import { exactHost, exactOrigin, exactHttpsOrigin } from "../contracts/desktop/network-access";
 import { Effect, Exit, Layer, Option, Predicate, Result, Schema, Scope } from "effect";
-import { RpcSerialization } from "effect/unstable/rpc";
-import { Socket, SocketServer } from "effect/unstable/socket";
+import { RpcSerialization } from "effect/rpc";
+import { Socket, SocketServer } from "effect/socket";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { browserAssetAt, loadBrowserAssets } from "./browserAssets";
 import { inlineWidgetResource } from "../services/widgets/inline-widget-document-registry";
@@ -417,90 +417,100 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
             }
             const bounded = Socket.make({
               writer: socket.writer,
-              runRaw: <A, E, R>(
-                consume: (data: string | Uint8Array) => Effect.Effect<A, E, R> | void,
-                config?: { readonly onOpen?: Effect.Effect<void> },
-              ) =>
-                socket.runRaw<unknown, E | Socket.SocketError, R>((data) => {
-                  const size = Predicate.isString(data) ? Buffer.byteLength(data) : data.byteLength;
-                  // Ordinary RPC retains its configured ceiling. Only a pending targeted
-                  // widget PNG or browser screenshot can use the separate 12-MiB image cap.
-                  const capturePayload = (() => {
-                    if (size <= 1024 * 1024 || size > 12 * 1024 * 1024) return undefined;
-                    try {
-                      const parsed = parseRendererRpcMessage(
-                        JSON.parse(
-                          Predicate.isString(data) ? data : Buffer.from(data).toString("utf8"),
-                        ),
-                      );
-                      if (
-                        Result.isFailure(parsed) ||
-                        parsed.success._tag !== "Request" ||
-                        parsed.success.tag !== "widgets.respond-widget-capture"
-                      )
-                        return undefined;
-                      const payload = Schema.decodeUnknownOption(
-                        cakeRpcPayloadSchemas["respond-widget-capture"],
-                      )(parsed.success.payload);
-                      return Option.isSome(payload) ? payload.value : undefined;
-                    } catch {
-                      return undefined;
-                    }
-                  })();
-                  const browserScreenshot = (() => {
-                    if (size <= 1024 * 1024 || size > 12 * 1024 * 1024) return undefined;
-                    try {
-                      const parsed = parseRendererRpcMessage(
-                        JSON.parse(
-                          Predicate.isString(data) ? data : Buffer.from(data).toString("utf8"),
-                        ),
-                      );
-                      if (
-                        Result.isFailure(parsed) ||
-                        parsed.success._tag !== "Request" ||
-                        parsed.success.tag !== "browser.respond-browser-native"
-                      )
-                        return undefined;
-                      const payload = Schema.decodeUnknownOption(
-                        cakeRpcPayloadSchemas["respond-browser-native"],
-                      )(parsed.success.payload);
-                      if (Option.isNone(payload) || payload.value.result.status !== "completed")
-                        return undefined;
-                      const screenshot = Schema.decodeUnknownOption(
-                        Schema.Struct({
-                          data: Schema.String.check(Schema.isMaxLength(11_000_000)),
-                        }),
-                      )(payload.value.result.value);
-                      if (Option.isNone(screenshot)) return undefined;
-                      return payload.value;
-                    } catch {
-                      return undefined;
-                    }
-                  })();
-                  return Effect.flatMap(
-                    capturePayload
-                      ? requests.hasPendingWidgetCapture(
-                          capturePayload.requestId,
-                          capturePayload.sessionId,
-                        )
-                      : browserScreenshot
-                        ? requests.hasPendingBrowserScreenshot(
-                            browserScreenshot.requestId,
-                            browserScreenshot.sessionId,
-                          )
-                        : Effect.succeed(false),
-                    (largeCapture): Effect.Effect<unknown, E | Socket.SocketError, R> =>
-                      size >
-                      (largeCapture ? 12 * 1024 * 1024 : (options.maxPayloadBytes ?? 1024 * 1024))
-                        ? socket.writer.pipe(
-                            Effect.flatMap((write) =>
-                              write(new Socket.CloseEvent(1009, "RPC message too large")),
+              reader: Effect.gen(function* () {
+                const reader = yield* socket.reader;
+                const writer = yield* socket.writer;
+                const pull = Effect.gen(function* () {
+                  const batch = yield* reader.pull;
+                  yield* Effect.forEach(
+                    batch,
+                    Effect.fn("NetworkListener.checkFrame")(function* (data: string | Uint8Array) {
+                      const size = Predicate.isString(data)
+                        ? Buffer.byteLength(data)
+                        : data.byteLength;
+                      // Ordinary RPC retains its configured ceiling. Only a pending targeted
+                      // widget PNG or browser screenshot can use the separate 12-MiB image cap.
+                      const capturePayload = (() => {
+                        if (size <= 1024 * 1024 || size > 12 * 1024 * 1024) return undefined;
+                        try {
+                          const parsed = parseRendererRpcMessage(
+                            JSON.parse(
+                              Predicate.isString(data) ? data : Buffer.from(data).toString("utf8"),
                             ),
-                            Effect.scoped,
+                          );
+                          if (
+                            Result.isFailure(parsed) ||
+                            parsed.success._tag !== "Request" ||
+                            parsed.success.tag !== "widgets.respond-widget-capture"
                           )
-                        : (consume(data) ?? Effect.void),
+                            return undefined;
+                          const payload = Schema.decodeUnknownOption(
+                            cakeRpcPayloadSchemas["respond-widget-capture"],
+                          )(parsed.success.payload);
+                          return Option.isSome(payload) ? payload.value : undefined;
+                        } catch {
+                          return undefined;
+                        }
+                      })();
+                      const browserScreenshot = (() => {
+                        if (size <= 1024 * 1024 || size > 12 * 1024 * 1024) return undefined;
+                        try {
+                          const parsed = parseRendererRpcMessage(
+                            JSON.parse(
+                              Predicate.isString(data) ? data : Buffer.from(data).toString("utf8"),
+                            ),
+                          );
+                          if (
+                            Result.isFailure(parsed) ||
+                            parsed.success._tag !== "Request" ||
+                            parsed.success.tag !== "browser.respond-browser-native"
+                          )
+                            return undefined;
+                          const payload = Schema.decodeUnknownOption(
+                            cakeRpcPayloadSchemas["respond-browser-native"],
+                          )(parsed.success.payload);
+                          if (Option.isNone(payload) || payload.value.result.status !== "completed")
+                            return undefined;
+                          const screenshot = Schema.decodeUnknownOption(
+                            Schema.Struct({
+                              data: Schema.String.check(Schema.isMaxLength(11_000_000)),
+                            }),
+                          )(payload.value.result.value);
+                          if (Option.isNone(screenshot)) return undefined;
+                          return payload.value;
+                        } catch {
+                          return undefined;
+                        }
+                      })();
+                      const largeCapture = yield* capturePayload
+                        ? requests.hasPendingWidgetCapture(
+                            capturePayload.requestId,
+                            capturePayload.sessionId,
+                          )
+                        : browserScreenshot
+                          ? requests.hasPendingBrowserScreenshot(
+                              browserScreenshot.requestId,
+                              browserScreenshot.sessionId,
+                            )
+                          : Effect.succeed(false);
+                      if (
+                        size >
+                        (largeCapture ? 12 * 1024 * 1024 : (options.maxPayloadBytes ?? 1024 * 1024))
+                      ) {
+                        yield* writer.write(new Socket.CloseEvent(1009, "RPC message too large"));
+                        return yield* new Socket.SocketError({
+                          reason: new Socket.SocketCloseError({
+                            code: 1009,
+                            closeReason: "RPC message too large",
+                          }),
+                        });
+                      }
+                    }),
                   );
-                }, config),
+                  return batch;
+                });
+                return { ...reader, pull };
+              }),
             });
             return yield* handler(bounded);
           }).pipe(Effect.scoped),
@@ -617,7 +627,7 @@ const openIsolatedEditorListener = Effect.fn("NetworkListener.editor")(function*
     )
     .pipe(Effect.forkScoped);
   const address = socketServer.address;
-  if (address._tag !== "TcpAddress")
+  if (address._tag === "UnixPathAddress")
     return yield* new NetworkListenerError({
       message: "Editor listener did not acquire a TCP port",
     });

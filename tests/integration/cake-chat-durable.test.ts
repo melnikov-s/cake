@@ -13,7 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import { Deferred, Effect, Layer, ManagedRuntime } from "effect";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { makePiSettingsLive } from "../../src/services/pi/live/PiSettingsLive";
-import { CakeSessionRuntimes } from "../../src/services/pi/CakeSessionRuntimes";
+import { CakeSessionRuntimes, PiSessionError } from "../../src/services/pi/CakeSessionRuntimes";
 import { piSettingsHandlers } from "../../src/ipc/server/PiSettingsHandlers";
 import { makeTaskInputStorageLive } from "../../src/services/storage/TaskInputStorageLive";
 import { TaskInputStorage } from "../../src/services/storage/TaskInputStorage";
@@ -638,7 +638,12 @@ it("saves and reloads global Pi settings while permanent Cake Chat is busy witho
         Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
       ),
       Layer.mock(CakeSessionRuntimes, {
-        reloadAll: () => Effect.tryPromise(() => runtime.reload!()),
+        reloadAll: () =>
+          Effect.tryPromise({
+            try: () => runtime.reload!(),
+            catch: (cause) =>
+              new PiSessionError({ operation: "reloadAll", message: String(cause) }),
+          }),
       }),
     ),
   );

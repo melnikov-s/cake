@@ -38,8 +38,8 @@ it("keeps desktop-only Browser Mode out of browser chat", async () => {
           },
         },
       ).pipe(Effect.provideContext(backend.context));
-      assert.equal(listener.address._tag, "TcpAddress");
-      if (listener.address._tag !== "TcpAddress") throw new Error("Expected TCP listener");
+      assert.equal(listener.address._tag, "InetAddressV4");
+      if (listener.address._tag !== "InetAddressV4") throw new Error("Expected TCP listener");
       const address = listener.address;
       yield* Effect.promise(async () => {
         const browser = await chromium.launch({ channel: "chromium-headless-shell" });

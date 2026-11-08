@@ -1,5 +1,5 @@
 import { Layer } from "effect";
-import type { RequestEncoded, FromServerEncoded } from "effect/unstable/rpc/RpcMessage";
+import type { RequestEncoded, FromServerEncoded } from "effect/rpc/RpcMessage";
 import type { artifactEventSchema } from "../../../src/contracts/application/cake-rpc-contract";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { observeArtifactEvents } from "../../../src/renderer/observers";

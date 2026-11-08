@@ -1515,7 +1515,7 @@ describe("Discussion Sessions domain", () => {
           ),
         ).toEqual({ answer: true });
         expect(fixture.interviewRequests).toEqual([{ sessionId, record }]);
-        yield* discussionSessions.observe(
+        const _updates = yield* discussionSessions.observe(
           {
             parentSessionId: "parent-1",
             workingDirectory: "/project",

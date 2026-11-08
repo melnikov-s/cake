@@ -1,4 +1,4 @@
-import { NodeSocket } from "@effect/platform-node-shared";
+import { NodeWS } from "@effect/platform-node-shared";
 import { Context, Effect } from "effect";
 import { createServer, request, type IncomingMessage } from "node:http";
 import { connect } from "node:net";
@@ -33,7 +33,7 @@ it("leased editor HTTP/WS preserves base paths and bytes, refuses wrong owners/r
           res.end(req.url);
         }
       });
-      const sockets = new NodeSocket.NodeWS.WebSocketServer({
+      const sockets = new NodeWS.WebSocketServer({
         server: upstream,
         perMessageDeflate: false,
       });
@@ -85,7 +85,7 @@ it("leased editor HTTP/WS preserves base paths and bytes, refuses wrong owners/r
           },
         },
       ).pipe(Effect.provide(context));
-      if (listener.address._tag !== "TcpAddress") throw new Error("No listener address");
+      if (listener.address._tag !== "InetAddressV4") throw new Error("No listener address");
       const port = listener.address.port;
       const origin = `http://127.0.0.1:${port}`;
       const prefix = editorLeasePath(lease);
@@ -170,7 +170,7 @@ it("leased editor HTTP/WS preserves base paths and bytes, refuses wrong owners/r
         "?reconnectionToken=test&skipWebSocketFrames=false";
       const rejectedSocket = (url: string, origin?: string) =>
         new Promise<number>((resolve, reject) => {
-          const socket = new NodeSocket.NodeWS.WebSocket(url, origin ? { origin } : undefined);
+          const socket = new NodeWS.WebSocket(url, origin ? { origin } : undefined);
           socket.once("unexpected-response", (_request, response) => {
             response.resume();
             socket.terminate();
@@ -196,7 +196,7 @@ it("leased editor HTTP/WS preserves base paths and bytes, refuses wrong owners/r
           ),
         ).toBe(404);
       });
-      const socket = new NodeSocket.NodeWS.WebSocket(socketUrl, { origin });
+      const socket = new NodeWS.WebSocket(socketUrl, { origin });
       yield* Effect.addFinalizer(() => Effect.sync(() => socket.terminate()));
       yield* Effect.promise(
         () =>
@@ -241,7 +241,7 @@ it("leased editor HTTP/WS preserves base paths and bytes, refuses wrong owners/r
         expect(await rejectedSocket(socketUrl, origin)).toBe(404);
       });
       yield* Effect.promise(async () => {
-        const rpc = new NodeSocket.NodeWS.WebSocket(origin.replace("http:", "ws:") + "/rpc");
+        const rpc = new NodeWS.WebSocket(origin.replace("http:", "ws:") + "/rpc");
         await new Promise<void>((resolve, reject) => {
           rpc.once("open", resolve);
           rpc.once("error", reject);
@@ -251,7 +251,7 @@ it("leased editor HTTP/WS preserves base paths and bytes, refuses wrong owners/r
         await closed;
       });
       activeLease = { ...lease, id: "c".repeat(64), revocation: new AbortController() };
-      const remaining = new NodeSocket.NodeWS.WebSocket(
+      const remaining = new NodeWS.WebSocket(
         origin.replace("http:", "ws:") + editorLeasePath(activeLease),
         { origin },
       );

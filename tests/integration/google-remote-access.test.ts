@@ -76,7 +76,7 @@ const setup = Effect.fn("GoogleRemoteAccessTest.setup")(function* (
     undefined,
     auth,
   ).pipe(Effect.provideContext(backend.context));
-  assert.equal(listener.address._tag, "TcpAddress");
+  assert.equal(listener.address._tag, "InetAddressV4");
   const port = listener.address.port;
   const send = (
     path: string,

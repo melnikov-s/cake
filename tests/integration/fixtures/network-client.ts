@@ -1,9 +1,9 @@
-import { NodeSocket } from "@effect/platform-node-shared";
+import { NodeWS } from "@effect/platform-node-shared";
 import { Effect, Exit, Layer, Queue, Schedule, Scope } from "effect";
-import { RpcClient, RpcSerialization } from "effect/unstable/rpc";
-import { Socket } from "effect/unstable/socket";
+import { RpcClient, RpcSerialization } from "effect/rpc";
+import { Socket } from "effect/socket";
 import { BackendRpc } from "../../../src/ipc/protocol/BackendRpc";
-import type { FromServerEncoded } from "effect/unstable/rpc/RpcMessage";
+import type { FromServerEncoded } from "effect/rpc/RpcMessage";
 import { parseMainRpcMessage } from "../../../src/ipc/transport/ElectronRpcTransport";
 import { Result } from "effect";
 
@@ -21,16 +21,16 @@ export const connectClient = Effect.fn("NetworkTest.connect")(function* (
         Socket.layerWebSocket(url).pipe(
           Layer.provide(
             origin
-              ? Layer.succeed(
-                  Socket.WebSocketConstructor,
-                  (address, protocols) =>
-                    // ws implements Effect's required browser WebSocket API; its Node
-                    // overload types differ from lib.dom. This is an external adapter
-                    // boundary, not an unchecked RPC/data conversion.
-                    new NodeSocket.NodeWS.WebSocket(address, protocols, {
-                      origin,
-                    }) as unknown as globalThis.WebSocket,
-                )
+              ? Layer.succeed(Socket.WebSocketConstructor, (address, protocols) => {
+                  const options =
+                    typeof protocols === "string" || Array.isArray(protocols)
+                      ? { protocols }
+                      : protocols;
+                  return new NodeWS.WebSocket(address, options?.protocols, {
+                    headers: options?.headers,
+                    origin,
+                  });
+                })
               : Socket.layerWebSocketConstructorGlobal,
           ),
         ),
@@ -51,12 +51,12 @@ export const connectClient = Effect.fn("NetworkTest.connect")(function* (
 /** Raw ws only for adversarial frames/headers which the typed client correctly normalizes. */
 export const rawClient = Effect.fn("NetworkTest.rawClient")(function* (
   url: string,
-  options?: NodeSocket.NodeWS.ClientOptions,
+  options?: NodeWS.ClientOptions,
 ) {
   const messages = yield* Queue.unbounded<FromServerEncoded>();
   const closed = yield* Queue.unbounded<number>();
   const ws = yield* Effect.acquireRelease(
-    Effect.sync(() => new NodeSocket.NodeWS.WebSocket(url, options)),
+    Effect.sync(() => new NodeWS.WebSocket(url, options)),
     (socket) => Effect.sync(() => socket.terminate()),
   );
   ws.on("close", (code) => Queue.offerUnsafe(closed, code));

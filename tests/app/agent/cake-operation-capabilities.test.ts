@@ -1,3 +1,4 @@
+import { toDraft07JsonSchema } from "../../../src/contracts/serialization/json-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Schema } from "effect";
 import { AgentSessionListInput } from "../../../src/contracts/project-sessions/agent-session-list";
@@ -210,11 +211,7 @@ describe("Project Session operation capabilities", () => {
     const navigation = definitions.find((operation) => operation.command === "sessions.open");
     expect(navigation).toBeDefined();
     if (!navigation) throw new Error("Expected navigation capability");
-    expect(
-      Schema.toStandardJSONSchemaV1(navigation.inputSchema)["~standard"].jsonSchema.input({
-        target: "draft-07",
-      }),
-    ).toMatchObject({
+    expect(toDraft07JsonSchema(navigation.inputSchema)).toMatchObject({
       type: "object",
       properties: {
         sessionId: { type: "string", minLength: 1, maxLength: 256 },
@@ -287,9 +284,7 @@ describe("Project Session operation capabilities", () => {
     const listing = definitions.find((operation) => operation.command === "sessions.list");
     const backendListing = backendAgentTools().find((tool) => tool.command === "sessions.list");
     if (!listing || !backendListing) throw new Error("Expected session-list definitions");
-    const parameters = Schema.toStandardJSONSchemaV1(listing.inputSchema)[
-      "~standard"
-    ].jsonSchema.input({ target: "draft-07" });
+    const parameters = toDraft07JsonSchema(listing.inputSchema);
     expect(parameters).toEqual(backendListing.parameters);
     expect(parameters).toMatchObject({
       type: "object",

@@ -1,3 +1,4 @@
+import { toDraft07JsonSchema } from "../serialization/json-contract";
 import { AgentContextFork } from "../cake-chats/agent-context-fork";
 import { themeOperationDefinitions } from "../themes/theme-operations";
 import { PresetContext } from "../model-presets/preset-context";
@@ -434,9 +435,9 @@ export function cakeChatControlTools(): CakeControlTool[] {
         result: "A bounded authoritative Cake application result.",
         ...definition.discovery,
         command: definition.command,
-        parameters: Schema.toStandardJSONSchemaV1(
+        parameters: toDraft07JsonSchema(
           "discoveryArgs" in definition ? definition.discoveryArgs : definition.args,
-        )["~standard"].jsonSchema.input({ target: "draft-07" }),
+        ),
       }),
     ),
   ];

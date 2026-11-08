@@ -259,7 +259,7 @@ describe("native responders", () => {
           "two",
           Effect.gen(function* () {
             yield* Queue.offer(started, undefined);
-            yield* Effect.never;
+            return yield* Effect.never;
           }),
           "native",
         );

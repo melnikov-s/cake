@@ -1,13 +1,13 @@
-import { NodeSocket } from "@effect/platform-node-shared";
+import { NodeWS } from "@effect/platform-node-shared";
 import { Effect, Option, Predicate } from "effect";
-import { Socket } from "effect/unstable/socket";
+import { Socket } from "effect/socket";
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import type { PreviewLease, PreviewLeases } from "../services/browser/PreviewLeases";
 
 const MAX_PATH = 4_096;
 const MAX_BODY = 16 * 1024 * 1024;
 const MAX_FRAME = 1024 * 1024;
-const WS = NodeSocket.NodeWS;
+const WS = NodeWS;
 
 /** The Cake-origin route is NOT a browser-facing document endpoint: it requires a
  * separate native-bridge secret on every HTTP request and WS upgrade. */

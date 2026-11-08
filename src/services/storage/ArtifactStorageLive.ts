@@ -5,6 +5,7 @@ import {
   ArtifactDigest,
   type ArtifactLineageId,
   ArtifactLink,
+  type ArtifactLinkTarget,
   ArtifactRevision,
   ArtifactRevisionNumber,
   type ArtifactLineage,
@@ -301,44 +302,48 @@ export const makeArtifactStorageLive = (root: string) =>
         }).pipe(Effect.mapError((cause) => storageError("publish", cause)));
       });
 
-      const publish = Effect.fn("ArtifactStorage.publish")((input) =>
-        lock.withPermits(1)(publishUnlocked(input)),
+      const publish = Effect.fn("ArtifactStorage.publish")(
+        (input: Parameters<typeof publishUnlocked>[0]) =>
+          lock.withPermits(1)(publishUnlocked(input)),
       );
-      const publishWithLink = Effect.fn("ArtifactStorage.publishWithLink")((input, link) =>
-        lock.withPermits(1)(
-          Schema.decodeUnknownEffect(ArtifactLink)(link).pipe(
-            Effect.mapError((cause) => storageError("publishWithLink", cause)),
-            Effect.flatMap((decoded) => publishUnlocked(input, decoded)),
+      const publishWithLink = Effect.fn("ArtifactStorage.publishWithLink")(
+        (input: Parameters<typeof publishUnlocked>[0], link: ArtifactLink) =>
+          lock.withPermits(1)(
+            Schema.decodeUnknownEffect(ArtifactLink)(link).pipe(
+              Effect.mapError((cause) => storageError("publishWithLink", cause)),
+              Effect.flatMap((decoded) => publishUnlocked(input, decoded)),
+            ),
           ),
-        ),
       );
 
-      const read = Effect.fn("ArtifactStorage.read")((lineageId, revision) =>
-        lock.withPermits(1)(
-          loadUnlocked().pipe(
-            Effect.flatMap((catalog) => readRevisionUnlocked(catalog, lineageId, revision)),
+      const read = Effect.fn("ArtifactStorage.read")(
+        (lineageId: ArtifactLineageId, revision?: ArtifactRevisionNumber) =>
+          lock.withPermits(1)(
+            loadUnlocked().pipe(
+              Effect.flatMap((catalog) => readRevisionUnlocked(catalog, lineageId, revision)),
+            ),
           ),
-        ),
       );
-      const listRevisions = Effect.fn("ArtifactStorage.listRevisions")((lineageId) =>
-        lock.withPermits(1)(
-          Effect.gen(function* () {
-            const catalog = yield* loadUnlocked();
-            const lineage = catalog.lineages.find((candidate) => candidate.id === lineageId);
-            if (!lineage) return [];
-            return yield* Effect.forEach(lineage.revisions, (metadata) =>
-              readRevisionUnlocked(catalog, lineageId, metadata.revision).pipe(
-                Effect.flatMap((revision) =>
-                  revision === undefined
-                    ? storageError("listRevisions", `Missing revision ${metadata.revision}`)
-                    : Effect.succeed(revision),
+      const listRevisions = Effect.fn("ArtifactStorage.listRevisions")(
+        (lineageId: ArtifactLineageId) =>
+          lock.withPermits(1)(
+            Effect.gen(function* () {
+              const catalog = yield* loadUnlocked();
+              const lineage = catalog.lineages.find((candidate) => candidate.id === lineageId);
+              if (!lineage) return [];
+              return yield* Effect.forEach(lineage.revisions, (metadata) =>
+                readRevisionUnlocked(catalog, lineageId, metadata.revision).pipe(
+                  Effect.flatMap((revision) =>
+                    revision === undefined
+                      ? storageError("listRevisions", `Missing revision ${metadata.revision}`)
+                      : Effect.succeed(revision),
+                  ),
                 ),
-              ),
-            );
-          }),
-        ),
+              );
+            }),
+          ),
       );
-      const putLink = Effect.fn("ArtifactStorage.putLink")((input) =>
+      const putLink = Effect.fn("ArtifactStorage.putLink")((input: ArtifactLink) =>
         lock.withPermits(1)(
           Effect.gen(function* () {
             const link = yield* Schema.decodeUnknownEffect(ArtifactLink)(input).pipe(
@@ -361,19 +366,20 @@ export const makeArtifactStorageLive = (root: string) =>
           }),
         ),
       );
-      const removeLink = Effect.fn("ArtifactStorage.removeLink")((target, lineageId) =>
-        lock.withPermits(1)(
-          Effect.gen(function* () {
-            const catalog = yield* loadUnlocked();
-            yield* saveUnlocked({
-              ...catalog,
-              links: catalog.links.filter(
-                (link) =>
-                  !(link.lineageId === lineageId && targetKey(link.target) === targetKey(target)),
-              ),
-            });
-          }),
-        ),
+      const removeLink = Effect.fn("ArtifactStorage.removeLink")(
+        (target: ArtifactLinkTarget, lineageId: ArtifactLineageId) =>
+          lock.withPermits(1)(
+            Effect.gen(function* () {
+              const catalog = yield* loadUnlocked();
+              yield* saveUnlocked({
+                ...catalog,
+                links: catalog.links.filter(
+                  (link) =>
+                    !(link.lineageId === lineageId && targetKey(link.target) === targetKey(target)),
+                ),
+              });
+            }),
+          ),
       );
       const resolveLinks = Effect.fn("ArtifactStorage.resolveLinks")(
         (selectLinks: (links: ReadonlyArray<ArtifactLink>) => ReadonlyArray<ArtifactLink>) =>
@@ -404,18 +410,19 @@ export const makeArtifactStorageLive = (root: string) =>
             }),
           ),
       );
-      const removeTargetLinks = Effect.fn("ArtifactStorage.removeTargetLinks")((target) =>
-        lock.withPermits(1)(
-          Effect.gen(function* () {
-            const catalog = yield* loadUnlocked();
-            yield* saveUnlocked({
-              ...catalog,
-              links: catalog.links.filter(
-                (candidate) => targetKey(candidate.target) !== targetKey(target),
-              ),
-            });
-          }),
-        ),
+      const removeTargetLinks = Effect.fn("ArtifactStorage.removeTargetLinks")(
+        (target: ArtifactLinkTarget) =>
+          lock.withPermits(1)(
+            Effect.gen(function* () {
+              const catalog = yield* loadUnlocked();
+              yield* saveUnlocked({
+                ...catalog,
+                links: catalog.links.filter(
+                  (candidate) => targetKey(candidate.target) !== targetKey(target),
+                ),
+              });
+            }),
+          ),
       );
       const catalogToken = (value: ArtifactCatalog) => digest(JSON.stringify(value));
       const catalog = Effect.fn("ArtifactStorage.catalog")(() =>
@@ -612,32 +619,33 @@ export const makeArtifactStorageLive = (root: string) =>
           }),
         );
       });
-      const deleteBlobIfOrphaned = Effect.fn("ArtifactStorage.deleteBlobIfOrphaned")((value) =>
-        lock.withPermits(1)(
-          Effect.gen(function* () {
-            const current = yield* loadUnlocked();
-            if (
-              current.lineages.some((lineage) =>
-                lineage.revisions.some((revision) => revision.digest === value),
+      const deleteBlobIfOrphaned = Effect.fn("ArtifactStorage.deleteBlobIfOrphaned")(
+        (value: ArtifactDigest) =>
+          lock.withPermits(1)(
+            Effect.gen(function* () {
+              const current = yield* loadUnlocked();
+              if (
+                current.lineages.some((lineage) =>
+                  lineage.revisions.some((revision) => revision.digest === value),
+                )
               )
-            )
-              return false;
-            const target = blobPath(value);
-            if (
-              !(yield* fileSystem
-                .exists(target)
-                .pipe(Effect.mapError((cause) => storageError("deleteBlobIfOrphaned", cause))))
-            )
-              return false;
-            const browser = yield* browserDigestFromBlob(target);
-            if (browser)
-              yield* removeBrowserOutput(browser, yield* retainedBrowserDigests(current));
-            yield* fileSystem
-              .remove(target, { force: true })
-              .pipe(Effect.mapError((cause) => storageError("deleteBlobIfOrphaned", cause)));
-            return true;
-          }),
-        ),
+                return false;
+              const target = blobPath(value);
+              if (
+                !(yield* fileSystem
+                  .exists(target)
+                  .pipe(Effect.mapError((cause) => storageError("deleteBlobIfOrphaned", cause))))
+              )
+                return false;
+              const browser = yield* browserDigestFromBlob(target);
+              if (browser)
+                yield* removeBrowserOutput(browser, yield* retainedBrowserDigests(current));
+              yield* fileSystem
+                .remove(target, { force: true })
+                .pipe(Effect.mapError((cause) => storageError("deleteBlobIfOrphaned", cause)));
+              return true;
+            }),
+          ),
       );
 
       const readState = Effect.fn("ArtifactStorage.readState")((lineageId: ArtifactLineageId) =>

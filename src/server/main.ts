@@ -1,4 +1,5 @@
 import { NodeRuntime } from "@effect/platform-node-shared";
+import { NetAddress } from "effect/net";
 import { Config, Effect, Layer, Schema } from "effect";
 import { isAbsolute } from "node:path";
 import { homedir } from "node:os";
@@ -32,7 +33,7 @@ const program = Effect.gen(function* () {
   const backend = makeBackendLive(backendOptions, () => Layer.empty).pipe(
     Layer.provideMerge(logging),
   );
-  yield* Effect.gen(function* () {
+  return yield* Effect.gen(function* () {
     if (network) {
       const previews = yield* PreviewLeases;
       const listener = yield* openNetworkListener(
@@ -47,10 +48,8 @@ const program = Effect.gen(function* () {
         "Unauthenticated Cake endpoint: accepted clients have full backend authority",
       );
       const address = listener.address;
-      if (address._tag === "TcpAddress") {
-        const hostname = address.hostname.includes(":")
-          ? `[${address.hostname}]`
-          : address.hostname;
+      if (address._tag !== "UnixPathAddress") {
+        const hostname = NetAddress.formatUrlHost(address.address);
         yield* Effect.logInfo(
           `Cake headless RPC listening at ws://${hostname}:${address.port}${listener.path}`,
         );
@@ -66,7 +65,7 @@ const program = Effect.gen(function* () {
     } else {
       yield* Effect.logInfo("Cake headless backend ready (no network listener)");
     }
-    yield* Effect.never;
+    return yield* Effect.never;
   }).pipe(
     Effect.ensuring(Effect.logInfo("Cake headless backend stopped")),
     Effect.scoped,

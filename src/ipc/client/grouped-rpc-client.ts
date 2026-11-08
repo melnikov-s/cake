@@ -1,4 +1,4 @@
-import type { Rpc, RpcClient, RpcClientError, RpcGroup } from "effect/unstable/rpc";
+import type { Rpc, RpcClient, RpcClientError, RpcGroup } from "effect/rpc";
 
 type TransportError = RpcClientError.RpcClientError;
 type RpcDefinition = Rpc.Any & Pick<Rpc.AnyWithProps, "payloadSchema" | "successSchema">;

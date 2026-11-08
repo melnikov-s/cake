@@ -26,7 +26,7 @@ import { nativeWidgetCaptureHandlers } from "../ipc/server/WidgetCaptureHandlers
 import { vscodeViewHandlers } from "../ipc/server/VsCodeHandlers";
 import { VsCodeViewsLive } from "../services/vscode/VsCodeViewsLive";
 import { Layer } from "effect";
-import { RpcServer } from "effect/unstable/rpc";
+import { RpcServer } from "effect/rpc";
 import { ElectronRpc } from "../ipc/protocol/ElectronRpc";
 import { WindowStateRpc } from "../ipc/protocol/WindowStateRpc";
 import { DesktopHostRpc } from "../ipc/protocol/DesktopHostRpc";

@@ -1,4 +1,4 @@
-import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Rpc, RpcGroup } from "effect/rpc";
 import { AttachmentUploadError } from "../../contracts/filesystem/attachment-uploads-errors";
 import {
   cakeRpcPayloadSchemas,

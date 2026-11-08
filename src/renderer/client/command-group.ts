@@ -1,5 +1,5 @@
 import type { Effect } from "effect";
-import { RpcSchema } from "effect/unstable/rpc";
+import { RpcSchema } from "effect/rpc";
 import {
   CakeClientRpc,
   cakeIpcAdapters,

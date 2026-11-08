@@ -1,5 +1,6 @@
-import { Effect, Encoding, FileSystem, Path, Result, Schema, type Scope } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import { Effect, FileSystem, Path, Result, Schema, type Scope } from "effect";
+import { Base64 } from "effect/encoding";
+import { HttpClient, HttpClientRequest } from "effect/http";
 import {
   ArtifactCommandError,
   ArtifactHostInvocation,
@@ -12,7 +13,11 @@ import { backendAgentSettingsTools } from "../../contracts/application/agent-set
 import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 import { globalArtifactOperationContracts } from "../../contracts/artifacts/global-artifact-control";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
-import { jsonObjectSchema, type JsonValue } from "../../contracts/serialization/json-contract";
+import {
+  toDraft07JsonSchema,
+  jsonObjectSchema,
+  type JsonValue,
+} from "../../contracts/serialization/json-contract";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { rejectArtifactRuntimeReentry } from "../../services/artifact-runtime/ArtifactRuntimeExecution";
@@ -42,24 +47,18 @@ export function describe(command?: string): JsonValue {
       command: member.fields.name.literal,
       description:
         descriptions.get(member.fields.name.literal) ?? "Canonical backend Cake operation.",
-      parameters: Schema.toStandardJSONSchemaV1(member.fields.arguments)[
-        "~standard"
-      ].jsonSchema.input({ target: "draft-07" }),
+      parameters: toDraft07JsonSchema(member.fields.arguments),
     })),
     ...backendAgentSettingsTools(),
     ...globalArtifactOperationContracts.map((definition) => ({
       command: definition.command,
       description: definition.summary,
-      parameters: Schema.toStandardJSONSchemaV1(definition.inputSchema)[
-        "~standard"
-      ].jsonSchema.input({ target: "draft-07" }),
+      parameters: toDraft07JsonSchema(definition.inputSchema),
     })),
     ...ArtifactHostInvocation.members.map((member) => ({
       command: member.fields.name.literal,
       description: artifactHostCommandDescriptions[member.fields.name.literal],
-      parameters: Schema.toStandardJSONSchemaV1(member.fields.arguments)[
-        "~standard"
-      ].jsonSchema.input({ target: "draft-07" }),
+      parameters: toDraft07JsonSchema(member.fields.arguments),
     })),
   ];
   const selected = command ? commands.filter((item) => item.command === command) : commands;
@@ -139,14 +138,13 @@ const host = Effect.fn("ArtifactCommands.host")(function* (
           command,
           path: input.path,
           encoding,
-          content:
-            encoding === "base64" ? Encoding.encodeBase64(bytes) : new TextDecoder().decode(bytes),
+          content: encoding === "base64" ? Base64.encode(bytes) : new TextDecoder().decode(bytes),
         });
       }
       const write = invocation.arguments;
       let bytes: Uint8Array;
       if (write.encoding === "base64") {
-        const decoded = Encoding.decodeBase64(write.content);
+        const decoded = Base64.decode(write.content);
         if (Result.isFailure(decoded))
           return yield* new ArtifactCommandError({ command, message: decoded.failure.message });
         bytes = decoded.success;
@@ -168,7 +166,7 @@ const host = Effect.fn("ArtifactCommands.host")(function* (
       const encoding = input.responseEncoding ?? "utf8";
       const body =
         encoding === "base64"
-          ? Encoding.encodeBase64(new Uint8Array(yield* response.arrayBuffer))
+          ? Base64.encode(new Uint8Array(yield* response.arrayBuffer))
           : yield* response.text;
       return toJsonValue({
         ok: true,

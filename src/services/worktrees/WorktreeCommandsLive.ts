@@ -1,5 +1,5 @@
 import { DateTime, Effect, FileSystem, Layer, Option, Path } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import {
   WorktreeCommandError,
   WorktreeCommands,

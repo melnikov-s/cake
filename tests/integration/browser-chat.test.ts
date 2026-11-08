@@ -92,7 +92,7 @@ it("retains a lost-receipt draft but blocks resending until browser delivery is 
           },
         },
       ).pipe(Effect.provideContext(backend.context));
-      assert.equal(listener.address._tag, "TcpAddress");
+      assert.equal(listener.address._tag, "InetAddressV4");
       const url = `http://127.0.0.1:${listener.address.port}`;
       yield* Effect.promise(async () => {
         const browser = await chromium.launch({ channel: "chromium-headless-shell" });
@@ -209,7 +209,7 @@ it("mobile draft checkpoints cannot restore accepted prompts while persistence t
           },
         },
       ).pipe(Effect.provideContext(backend.context));
-      assert.equal(listener.address._tag, "TcpAddress");
+      assert.equal(listener.address._tag, "InetAddressV4");
       const url = `http://127.0.0.1:${listener.address.port}`;
       yield* Effect.promise(async () => {
         const browser = await chromium.launch({ channel: "chromium-headless-shell" });
@@ -418,7 +418,7 @@ it("real Chromium uses the shared sidebar, project chat and Cake Chat without re
           },
         },
       ).pipe(Effect.provideContext(backend.context));
-      assert.equal(listener.address._tag, "TcpAddress");
+      assert.equal(listener.address._tag, "InetAddressV4");
       const url = `http://127.0.0.1:${listener.address.port}`;
       yield* Effect.promise(async () => {
         const browser = await chromium.launch({ channel: "chromium-headless-shell" });

@@ -1,5 +1,5 @@
 import { Effect, Option, Path, Stream, type PlatformError } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import {
   ArtifactCommandError,
   type ArtifactShellInput,

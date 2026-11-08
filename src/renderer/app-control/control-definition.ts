@@ -1,3 +1,4 @@
+import { toDraft07JsonSchema } from "../../contracts/serialization/json-contract";
 import { Schema } from "effect";
 import { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
@@ -68,9 +69,7 @@ export function defineControl<
             result: "A bounded authoritative Cake application result.",
             ...definition.discovery,
             command: definition.command,
-            parameters: Schema.toStandardJSONSchemaV1(definition.discoveryArgs ?? definition.args)[
-              "~standard"
-            ].jsonSchema.input({ target: "draft-07" }),
+            parameters: toDraft07JsonSchema(definition.discoveryArgs ?? definition.args),
           })
         : undefined,
     async invoke(untrustedInput, context) {

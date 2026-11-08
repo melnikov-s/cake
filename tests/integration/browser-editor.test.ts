@@ -6,7 +6,7 @@ import { createServer, get as httpGet } from "node:http";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { NodeSocket } from "@effect/platform-node-shared";
+import { NodeWS } from "@effect/platform-node-shared";
 import { chromium, expect as browserExpect } from "@playwright/test";
 import { Effect, Stream } from "effect";
 import { expect, it, vi } from "vitest";
@@ -54,7 +54,7 @@ it("embeds only an isolated editor origin, supports editor resources and revokes
             : "editor-resource",
         );
       });
-      const upstreamSockets = new NodeSocket.NodeWS.WebSocketServer({ server: upstream });
+      const upstreamSockets = new NodeWS.WebSocketServer({ server: upstream });
       upstreamSockets.on("connection", (socket) =>
         socket.on("message", (data) => socket.send(data)),
       );
@@ -127,7 +127,7 @@ it("embeds only an isolated editor origin, supports editor resources and revokes
           },
         },
       ).pipe(Effect.provideContext(backend.context));
-      if (listener.address._tag !== "TcpAddress" || !listener.editorPort)
+      if (listener.address._tag !== "InetAddressV4" || !listener.editorPort)
         throw new Error("Missing isolated listener");
       const app = `http://127.0.0.1:${listener.address.port}`;
       appOrigin = app;

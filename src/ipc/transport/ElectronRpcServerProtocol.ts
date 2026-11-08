@@ -1,8 +1,8 @@
 import { Effect, Layer, Option, Queue, Result } from "effect";
 import { ipcMain, webContents, type IpcMainEvent } from "electron";
 import { ClientConnections } from "../../services/clients/ClientConnections";
-import { RpcServer } from "effect/unstable/rpc";
-import type { FromClientEncoded } from "effect/unstable/rpc/RpcMessage";
+import { RpcServer, RpcSerialization } from "effect/rpc";
+import type { FromClientEncoded } from "effect/rpc/RpcMessage";
 import {
   correlationIdHeader,
   rendererConnectionHeader,
@@ -93,6 +93,7 @@ export const ElectronRpcServerProtocolLive = Layer.effect(
       supportsTransferables: false,
       supportsSpanPropagation: true,
       supportsNotifications: false,
+      codecFor: RpcSerialization.json.codecFor,
     });
   }),
 );

@@ -3,7 +3,7 @@ import { request as httpRequest } from "node:http";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeSocket } from "@effect/platform-node-shared";
+import { NodeWS } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
 import { Context, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
 import { expect } from "vitest";
@@ -52,7 +52,7 @@ const start = Effect.fn("NetworkTest.start")(function* (
     { port: 0, allowMissingOrigin: true, ...options },
     configuration,
   ).pipe(Effect.provideContext(backend.context));
-  assert.equal(listener.address._tag, "TcpAddress");
+  assert.equal(listener.address._tag, "InetAddressV4");
   return { backend, listener, url: `ws://127.0.0.1:${listener.address.port}${listener.path}` };
 });
 
@@ -67,7 +67,7 @@ it.live("network compiler publishes only live, capability-addressed rich content
         "import React from 'react'; export default function App() { return <h1>Remote widget</h1> }",
     });
     const module = publishExtensionCompanionModule("export default 'remote companion'");
-    const base = `http://127.0.0.1:${listener.address._tag === "TcpAddress" ? listener.address.port : 0}`;
+    const base = `http://127.0.0.1:${listener.address._tag === "InetAddressV4" ? listener.address.port : 0}`;
     const document = `${base}/widget-assets/document/${compiled.widget.token}`;
     const source = `${base}/widget-assets/module/${module.token}`;
     const get = (path: string, init?: RequestInit) => Effect.promise(() => fetch(path, init));
@@ -154,7 +154,7 @@ it.live(
       const original =
         "import React from 'react'; export default function App() { return <h1>Reviewed remotely</h1> }";
       const publication = yield* Deferred.make<string>();
-      const host = `http://127.0.0.1:${listener.address._tag === "TcpAddress" ? listener.address.port : 0}`;
+      const host = `http://127.0.0.1:${listener.address._tag === "InetAddressV4" ? listener.address.port : 0}`;
       const capturedPixels = "A".repeat(1_100_000);
       const review = yield* generateReviewedWidget(
         {
@@ -733,7 +733,7 @@ it.live("two_websocket_clients_share_backend_authority_and_listener_close_preser
       { port: 0, allowMissingOrigin: true },
       configuration,
     ).pipe(Effect.provideContext(backend.context));
-    assert.equal(second.address._tag, "TcpAddress");
+    assert.equal(second.address._tag, "InetAddressV4");
     const c = yield* connectClient(`ws://127.0.0.1:${second.address.port}/rpc`);
     expect(JSON.stringify(yield* c.client["application.getState"]())).toContain("from-a");
   }).pipe(Effect.scoped),
@@ -919,7 +919,7 @@ it.live("accepted_turn_survives_last_socket_disconnect_and_reconnect_reads_curre
       { port: 0, allowMissingOrigin: true },
       configuration,
     ).pipe(Effect.provideContext(backend.context));
-    assert.equal(replacement.address._tag, "TcpAddress");
+    assert.equal(replacement.address._tag, "InetAddressV4");
     const c = yield* connectClient(`ws://127.0.0.1:${replacement.address.port}/rpc`);
     yield* c.client["projectSessions.open"]({ sessionId, workingDirectory: "/project" });
     const current = yield* c.client["conversations.observe"](target).pipe(
@@ -968,7 +968,7 @@ it.live("explicit_stop_after_reconnect_is_distinct_from_disconnect", () =>
 it.live("bind_failure_reports_actual_address_and_preserves_existing_listener", () =>
   Effect.gen(function* () {
     const { backend, listener, url } = yield* start();
-    assert.equal(listener.address._tag, "TcpAddress");
+    assert.equal(listener.address._tag, "InetAddressV4");
     const result = yield* openNetworkListener(
       { port: listener.address.port, allowMissingOrigin: true },
       configuration,
@@ -985,9 +985,9 @@ it.live("bind_failure_reports_actual_address_and_preserves_existing_listener", (
   }).pipe(Effect.scoped),
 );
 
-const refused = (url: string, options?: NodeSocket.NodeWS.ClientOptions) =>
+const refused = (url: string, options?: NodeWS.ClientOptions) =>
   Effect.callback<number, Error>((resume) => {
-    const socket = new NodeSocket.NodeWS.WebSocket(url, options);
+    const socket = new NodeWS.WebSocket(url, options);
     socket.on("unexpected-response", (_request, response) => {
       response.resume();
       socket.terminate();

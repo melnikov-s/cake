@@ -1,6 +1,15 @@
-import { Context, Effect, Layer, ManagedRuntime, Schedule, Semaphore, Stream } from "effect";
-import { RpcClient, RpcClientError, RpcSerialization } from "effect/unstable/rpc";
-import { Socket } from "effect/unstable/socket";
+import {
+  Context,
+  Effect,
+  Layer,
+  ManagedRuntime,
+  Predicate,
+  Schedule,
+  Semaphore,
+  Stream,
+} from "effect";
+import { RpcClient, RpcClientError, RpcSerialization } from "effect/rpc";
+import { Socket } from "effect/socket";
 import {
   CakeIpcClient,
   CakeIpcClientLive,
@@ -93,6 +102,8 @@ export const makeNetworkRuntime = (
 ): Runtime & { reconnect(): void } => {
   let socket: WebSocket | undefined;
   const constructor = Layer.succeed(Socket.WebSocketConstructor, (address, protocols) => {
+    if (protocols !== undefined && !Predicate.isString(protocols) && !Array.isArray(protocols))
+      throw new TypeError("Browser WebSocket constructors do not support client options");
     socket = new WebSocket(address, protocols);
     return socket;
   });

@@ -1,3 +1,4 @@
+import { toDraft07JsonSchema } from "../serialization/json-contract";
 import { sessionParentGuidance } from "../project-sessions/session-reference";
 import { sessionMessageDeliveryGuidance } from "../conversations/session-message-delivery";
 import { promptFilesGuidance } from "../conversations/prompt-files";
@@ -414,9 +415,7 @@ export function backendAgentTools() {
         result: "A bounded authoritative Cake application result.",
         ...definition.discovery,
         command: definition.command,
-        parameters: Schema.toStandardJSONSchemaV1(schema.fields.arguments)[
-          "~standard"
-        ].jsonSchema.input({ target: "draft-07" }),
+        parameters: toDraft07JsonSchema(schema.fields.arguments),
       }),
     ];
   });

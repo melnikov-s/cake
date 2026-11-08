@@ -1,3 +1,4 @@
+import { toDraft07JsonSchema } from "../../../src/contracts/serialization/json-contract";
 import { Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
@@ -164,9 +165,7 @@ describe("Cake operation registry", () => {
   });
 
   it("keeps the model-visible envelope and description compact", () => {
-    const schema = Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)[
-      "~standard"
-    ].jsonSchema.input({ target: "draft-07" });
+    const schema = toDraft07JsonSchema(cakeToolEnvelopeSchema);
     const encoded = JSON.stringify(schema);
     expect(encoded).toContain('"command"');
     expect(encoded).toContain('"input"');

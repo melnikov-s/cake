@@ -4,7 +4,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { NodeSocket } from "@effect/platform-node-shared";
+import { NodeWS } from "@effect/platform-node-shared";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
@@ -112,7 +112,7 @@ test("remote Pi Browser Mode controls desktop Chromium and previews backend loca
         : '<!doctype html><title>Backend preview</title><main id="source">BACKEND PAGE</main><span id="asset"></span><span id="hot"></span><span id="post"></span><span id="cookie"></span><canvas width="1200" height="900"></canvas><script src="/app.js"></script>',
     );
   });
-  const previewWs = new NodeSocket.NodeWS.WebSocketServer({ server: preview });
+  const previewWs = new NodeWS.WebSocketServer({ server: preview });
   previewWs.on("connection", (ws) => ws.on("message", (bytes) => ws.send(`BACKEND HMR:${bytes}`)));
   let sourcePort = 0;
   for (let port = 5200; port < 5300; port++) {

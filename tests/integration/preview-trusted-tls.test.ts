@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createServer, request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
-import { NodeSocket } from "@effect/platform-node-shared";
+import { NodeWS } from "@effect/platform-node-shared";
 import { expect, it, onTestFinished } from "vitest";
 import { openNativePreviewTunnel } from "../../src/services/browser/NativePreviewTunnel";
 
@@ -87,7 +87,7 @@ await context.close();`,
     response.setHeader("content-type", "text/html");
     response.end("trusted-preview-document");
   });
-  const websocketServer = new NodeSocket.NodeWS.WebSocketServer({
+  const websocketServer = new NodeWS.WebSocketServer({
     noServer: true,
     perMessageDeflate: false,
   });
@@ -142,7 +142,7 @@ await context.close();`,
       status: 200,
       body: "trusted-post:clicked",
     });
-    const ws = new NodeSocket.NodeWS.WebSocket(`ws://127.0.0.1:${local.port}/hot`, "vite-hmr", {
+    const ws = new NodeWS.WebSocket(`ws://127.0.0.1:${local.port}/hot`, "vite-hmr", {
       origin: tunnel.endpoint.slice(0, -1),
       headers: { host: local.host },
     });

@@ -1,3 +1,4 @@
+import { toDraft07JsonSchema } from "../serialization/json-contract";
 import { Schema } from "effect";
 import { piSettingUpdateSchema, type PiSettingUpdate } from "../conversations/session-contract";
 import { CakeModelChoice } from "../model-presets/cake-model-selection";
@@ -479,12 +480,6 @@ function summarizeNode(node: JsonSchemaNode): string {
 export function settingTypeSummary(definition: SettingDefinition): string {
   return (
     definition.type ??
-    summarizeNode(
-      Schema.decodeUnknownSync(JsonSchemaNode)(
-        Schema.toStandardJSONSchemaV1(definition.value)["~standard"].jsonSchema.input({
-          target: "draft-07",
-        }),
-      ),
-    )
+    summarizeNode(Schema.decodeUnknownSync(JsonSchemaNode)(toDraft07JsonSchema(definition.value)))
   );
 }

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Effect, Schema, type Scope } from "effect";
-import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
+import { toDraft07JsonSchema, jsonObjectSchema } from "../../contracts/serialization/json-contract";
 import { cakeToolDescription, cakeToolEnvelopeSchema } from "../../contracts/agent/cake-operation";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import {
@@ -36,9 +36,7 @@ const endpoint = Effect.fn("LocalMcp.endpoint")(function* () {
         name: "cake",
         description: cakeToolDescription,
         inputSchema: Schema.decodeUnknownSync(jsonObjectSchema)(
-          Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)["~standard"].jsonSchema.input({
-            target: "draft-07",
-          }),
+          toDraft07JsonSchema(cakeToolEnvelopeSchema),
         ),
         annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
       },

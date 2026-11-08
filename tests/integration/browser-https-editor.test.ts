@@ -10,7 +10,7 @@ import { connect } from "node:net";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { NodeSocket } from "@effect/platform-node-shared";
+import { NodeWS } from "@effect/platform-node-shared";
 import { chromium, expect as browserExpect } from "@playwright/test";
 import { Effect, Stream } from "effect";
 import { expect, it } from "vitest";
@@ -125,7 +125,7 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
         : "editor-resource",
     );
   });
-  const sockets = new NodeSocket.NodeWS.WebSocketServer({ server: upstream });
+  const sockets = new NodeWS.WebSocketServer({ server: upstream });
   sockets.on("connection", (socket) => socket.on("message", (data) => socket.send(data)));
   try {
     await mkdir(join(root, "project"));
@@ -230,7 +230,7 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
             },
           },
         ).pipe(Effect.provideContext(fixture.context));
-        if (listener.address._tag !== "TcpAddress" || listener.editorPort !== editorPort)
+        if (listener.address._tag !== "InetAddressV4" || listener.editorPort !== editorPort)
           throw new Error("No fixed editor listener");
         const appPort = listener.address.port;
         proxy.route(appPort, editorPort);
@@ -251,7 +251,7 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
             expect(response?.status()).toBe(200);
             expect(await response?.headerValue("content-security-policy")).toContain(proxy.editor);
             await page.evaluate(() => sessionStorage.setItem("app-only", "secret"));
-            const deniedRpc = new NodeSocket.NodeWS.WebSocket(`ws://127.0.0.1:${appPort}/rpc`, {
+            const deniedRpc = new NodeWS.WebSocket(`ws://127.0.0.1:${appPort}/rpc`, {
               origin: proxy.editor,
               headers: { host: new URL(proxy.app).host },
             });

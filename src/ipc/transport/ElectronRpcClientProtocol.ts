@@ -1,5 +1,5 @@
 import { Effect, Layer, Queue, Result } from "effect";
-import { RpcClient, RpcClientError } from "effect/unstable/rpc";
+import { RpcClient, RpcClientError, RpcSerialization } from "effect/rpc";
 import { parseMainRpcMessage, type ElectronRpcTransport } from "./ElectronRpcTransport";
 
 export const makeElectronRpcClientProtocol = (transport: ElectronRpcTransport) =>
@@ -65,6 +65,7 @@ export const makeElectronRpcClientProtocol = (transport: ElectronRpcTransport) =
             }),
           supportsAck: true,
           supportsTransferables: false,
+          codecFor: RpcSerialization.json.codecFor,
         };
       }),
     ),

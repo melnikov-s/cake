@@ -26,7 +26,7 @@ import {
   Stream,
 } from "effect";
 import type { Path } from "effect";
-import { RpcClient } from "effect/unstable/rpc";
+import { RpcClient } from "effect/rpc";
 import { expect, vi } from "vitest";
 import { BackendRpc } from "../../src/ipc/protocol/BackendRpc";
 import { makeBackendRpcServerLive } from "../../src/ipc/server/BackendRpcServer";

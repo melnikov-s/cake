@@ -4,7 +4,7 @@ import {
   VocabularyPage,
 } from "../../contracts/dictation/vocabulary";
 import { Schema } from "effect";
-import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Rpc, RpcGroup } from "effect/rpc";
 import {
   DictationAudio,
   DictationError,

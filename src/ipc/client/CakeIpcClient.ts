@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from "effect";
-import { RpcClient, type Rpc, type RpcClientError, type RpcGroup } from "effect/unstable/rpc";
+import { RpcClient, type Rpc, type RpcClientError, type RpcGroup } from "effect/rpc";
 import { CakeRpc } from "../protocol/CakeRpc";
 import { NativePreviewTunnelRpc } from "../protocol/NativePreviewTunnelRpc";
 import { groupRpcClient, type GroupedRpcClient } from "./grouped-rpc-client";

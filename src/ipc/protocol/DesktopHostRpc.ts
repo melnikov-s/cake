@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Rpc, RpcGroup } from "effect/rpc";
 import { DesktopHostError, DesktopHostSelection } from "../../contracts/desktop/desktop-host-data";
 
 export const DesktopHostRpc = RpcGroup.make(

@@ -24,7 +24,7 @@
     "lint:knip": "node scripts/validation-run.mjs lint:knip",
     "lint:oxlint": "node scripts/validation-run.mjs lint:oxlint",
     "lint:anti-slop:audit": "node scripts/validation-run.mjs lint:anti-slop:audit",
-    "postinstall": "node scripts/prepare-node-pty.mjs && install-electron",
+    "postinstall": "effect-tsgo patch --typescript && node scripts/prepare-node-pty.mjs && install-electron",
     "theme:build": "node scripts/validation-run.mjs theme:build",
     "start": "node scripts/start-snapshot.mjs",
     "start:direct": "node scripts/electron-run-queue.mjs --no-timeout electron-vite preview",
@@ -62,8 +62,8 @@
     "@earendil-works/pi-durable-ai": "npm:@earendil-works/pi-ai@1.4.0",
     "@earendil-works/pi-mcp": "1.4.0",
     "@earendil-works/pi-tui": "1.4.0",
-    "@effect/platform-node": "4.0.0-rc.111",
-    "@effect/platform-node-shared": "4.0.0-rc.111",
+    "@effect/platform-node": "4.1.2",
+    "@effect/platform-node-shared": "4.1.2",
     "@preact/signals-react": "3.10.3",
     "@shikijs/langs": "3.23.0",
     "@shikijs/themes": "3.23.0",
@@ -79,7 +79,7 @@
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "dompurify": "3.4.17",
-    "effect": "4.0.0-rc.111",
+    "effect": "4.1.2",
     "esbuild": "0.28.1",
     "google-auth-library": "^11.3.2",
     "jsonc-parser": "^3.3.1",
@@ -103,7 +103,8 @@
     "vite": "7.3.6"
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.0-rc.111",
+    "@effect/tsgo": "0.67.1",
+    "@effect/vitest": "4.1.2",
     "@oxlint/plugins": "1.78.0",
     "@playwright/test": "1.62.1",
     "@testing-library/react": "^16.3.3",
@@ -121,7 +122,7 @@
     "oxlint": "1.78.0",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
-    "vitest": "4.1.11"
+    "vitest": "5.1.0"
   },
   "engines": {
     "node": ">=22.19.0"

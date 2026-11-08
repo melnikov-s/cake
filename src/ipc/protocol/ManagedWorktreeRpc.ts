@@ -1,4 +1,4 @@
-import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Rpc, RpcGroup } from "effect/rpc";
 import { Schema } from "effect";
 import { WorktreeChanges } from "../../contracts/worktrees/worktree-changes";
 import {

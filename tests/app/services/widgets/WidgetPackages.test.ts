@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { Effect, Layer, ManagedRuntime, Sink, Stream } from "effect";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcessSpawner, type CommandLine } from "effect/process";
 import { afterEach, describe, expect, it } from "vitest";
 import { WidgetPackages } from "../../../../src/services/widgets/WidgetPackages";
 import { makeWidgetPackagesLive } from "../../../../src/services/widgets/WidgetPackagesLive";
@@ -17,7 +17,11 @@ const fixture = async (exitCode = 0) => {
   const root = await mkdtemp(join(tmpdir(), "cake-widget-service-"));
   cleanup.push(() => rm(root, { recursive: true, force: true }));
   const directory = join(root, "widget-packages");
-  const calls: Array<{ command: string; args: readonly string[]; cwd: string | undefined }> = [];
+  const calls: Array<{
+    command: string;
+    args: readonly CommandLine.Word[];
+    cwd: string | undefined;
+  }> = [];
   const spawner = ChildProcessSpawner.make((command) =>
     Effect.gen(function* () {
       if (command._tag !== "StandardCommand") throw new Error("Unexpected pipeline");

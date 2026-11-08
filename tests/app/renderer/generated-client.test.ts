@@ -2,12 +2,8 @@ import { Effect, Schema, Stream } from "effect";
 import { ArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
 import { automation, automationDefinition, automationId } from "./fixtures/automation-fixtures";
 import { retainedDeliveryUncertainty } from "../../../src/renderer/client/command-delivery-policy";
-import { RpcSchema } from "effect/unstable/rpc";
-import type {
-  FromClientEncoded,
-  FromServerEncoded,
-  RequestEncoded,
-} from "effect/unstable/rpc/RpcMessage";
+import { RpcSchema } from "effect/rpc";
+import type { FromClientEncoded, FromServerEncoded, RequestEncoded } from "effect/rpc/RpcMessage";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   CakeClientRpc,

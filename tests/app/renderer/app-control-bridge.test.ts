@@ -1,3 +1,4 @@
+import { toDraft07JsonSchema } from "../../../src/contracts/serialization/json-contract";
 import { Effect, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { cakeChatSideChatSessionId } from "../../../src/contracts/cake-chats/cake-chat-identity";
@@ -81,9 +82,7 @@ describe("AppControlRegistry", () => {
         run,
       }),
     ]);
-    expect(registry.listTools("global")[0]?.parameters).toEqual(
-      Schema.toStandardJSONSchemaV1(args)["~standard"].jsonSchema.input({ target: "draft-07" }),
-    );
+    expect(registry.listTools("global")[0]?.parameters).toEqual(toDraft07JsonSchema(args));
     using fixture = createCommandClientFinishFixture();
     const context: ControlContext = { host: fixture.root.applicationControlStore.props.host };
     await expect(

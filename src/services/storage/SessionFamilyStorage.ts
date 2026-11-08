@@ -324,7 +324,9 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             ),
           ),
       );
-      const addChild = Effect.fn("SessionFamilyStorage.addChild")(function* (input) {
+      const addChild = Effect.fn("SessionFamilyStorage.addChild")(function* (
+        input: Parameters<SessionFamilyStorage["Service"]["addChild"]>[0],
+      ) {
         return yield* lock.withPermits(1)(
           Effect.gen(function* () {
             const document = yield* loadUnlocked();

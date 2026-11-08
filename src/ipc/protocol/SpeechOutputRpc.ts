@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { SpeechOutputProvider } from "../../contracts/speech/pocket-tts-data";
-import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Rpc, RpcGroup } from "effect/rpc";
 import {
   SpeechOutputAudio,
   SpeechOutputError,

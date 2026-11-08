@@ -1,3 +1,4 @@
+import { toDraft07JsonSchema } from "../../contracts/serialization/json-contract";
 import { emptyProjectTodos, projectTodoBaseline } from "../../contracts/projects/project-todos";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -285,9 +286,7 @@ export async function createDurableCakeChatRuntime(
     options.sessionReferences?.project,
   );
   const registry = createRegistry();
-  const parameters = Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)[
-    "~standard"
-  ].jsonSchema.input({ target: "draft-07" });
+  const parameters = toDraft07JsonSchema(cakeToolEnvelopeSchema);
   const cake = defineTool({
     name: "cake",
     description: cakeToolDescription,

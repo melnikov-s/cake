@@ -1,5 +1,5 @@
 import { Layer } from "effect";
-import { RpcServer } from "effect/unstable/rpc";
+import { RpcServer } from "effect/rpc";
 import type { CakeChatRuntimeConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import { CakeRpc, DesktopRpc } from "../protocol/CakeRpc";
 import { RendererConnectionMiddlewareLive } from "../protocol/RendererConnectionMiddleware";

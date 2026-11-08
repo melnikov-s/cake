@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Rpc, RpcGroup } from "effect/rpc";
 import { ProjectTodoUserMutation, ProjectTodos } from "../../contracts/projects/project-todos";
 import { ProjectError } from "../../contracts/projects/project-error";
 

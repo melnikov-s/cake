@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer, request as httpRequest } from "node:http";
-import { NodeSocket } from "@effect/platform-node-shared";
+import { NodeWS } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
 import { Context, Effect, Layer } from "effect";
 import { expect } from "vitest";
@@ -44,7 +44,7 @@ it.live(
         }
         response.end(`path:${request.url}`);
       });
-      const sourceWs = new NodeSocket.NodeWS.WebSocketServer({ server: source });
+      const sourceWs = new NodeWS.WebSocketServer({ server: source });
       sourceWs.on("connection", (socket) =>
         socket.on("message", (data) => socket.send(`hmr:${socket.protocol}:${data}`)),
       );
@@ -92,7 +92,7 @@ it.live(
         configuration,
         previews,
       ).pipe(Effect.provideContext(backend.context));
-      assert.equal(listener.address._tag, "TcpAddress");
+      assert.equal(listener.address._tag, "InetAddressV4");
       const fixedPort = listener.address.port;
       const desktop = Context.get(backend.context, ClientConnections).desktop(12);
       const lease = yield* previews.acquire(desktop, "preview-session", sourcePort);
@@ -172,7 +172,7 @@ it.live(
         }),
       );
       expect(yield* Effect.promise(() => direct.text())).toContain("backend-only app");
-      const wrongOrigin = new NodeSocket.NodeWS.WebSocket(`ws://127.0.0.1:${local.port}/hot`, {
+      const wrongOrigin = new NodeWS.WebSocket(`ws://127.0.0.1:${local.port}/hot`, {
         origin: "http://attacker.invalid",
         headers: { Host: local.host },
       });
@@ -188,7 +188,7 @@ it.live(
         ),
       ).toBe(403);
       wrongOrigin.terminate();
-      const ws = new NodeSocket.NodeWS.WebSocket(`ws://127.0.0.1:${local.port}/hot`, "vite-hmr", {
+      const ws = new NodeWS.WebSocket(`ws://127.0.0.1:${local.port}/hot`, "vite-hmr", {
         origin: bridge.endpoint.slice(0, -1),
         headers: { Host: local.host },
       });

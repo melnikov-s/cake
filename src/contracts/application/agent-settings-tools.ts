@@ -1,3 +1,4 @@
+import { toDraft07JsonSchema } from "../serialization/json-contract";
 import { Schema } from "effect";
 import { CakeControlTool } from "../cake-chats/cake-chat-data";
 import { agentSettingsOperations, settingsOperationGuidance } from "./agent-settings-schema";
@@ -22,9 +23,7 @@ export function agentSettingsTool(
     command: definition.command,
     topic: "settings",
     summary: definition.summary,
-    parameters: Schema.toStandardJSONSchemaV1(definition.input)["~standard"].jsonSchema.input({
-      target: "draft-07",
-    }),
+    parameters: toDraft07JsonSchema(definition.input),
     guidance: settingsOperationGuidance(definition),
     examples: [{ input: definition.example }],
     result: "The existing Settings service's result; credentials remain masked.",

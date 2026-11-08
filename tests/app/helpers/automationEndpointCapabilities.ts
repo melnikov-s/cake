@@ -1,6 +1,6 @@
 import { Effect, FileSystem, Layer, Path, Stream } from "effect";
-import { HttpClient } from "effect/unstable/http";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { HttpClient } from "effect/http";
+import { ChildProcessSpawner } from "effect/process";
 import {
   AutomationRecords,
   type AutomationRecordSnapshot,

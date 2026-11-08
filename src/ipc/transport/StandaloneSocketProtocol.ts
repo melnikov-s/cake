@@ -1,6 +1,6 @@
 import { Effect, Layer, Queue, Result } from "effect";
 import { releaseConnectionResources } from "../../domain/clients/clientConnectionResources";
-import { RpcServer } from "effect/unstable/rpc";
+import { RpcServer } from "effect/rpc";
 import { ClientConnections } from "../../services/clients/ClientConnections";
 import { ClientWorkspaces } from "../../services/clients/ClientWorkspaces";
 import {

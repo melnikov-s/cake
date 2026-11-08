@@ -127,7 +127,7 @@ it("selects published widget and HTML artifacts through the real library project
           ),
         ),
       );
-      assert.equal(listener.address._tag, "TcpAddress");
+      assert.equal(listener.address._tag, "InetAddressV4");
       const port = listener.address.port;
       yield* Effect.promise(async () => {
         const browser = await chromium.launch({ channel: "chromium-headless-shell" });

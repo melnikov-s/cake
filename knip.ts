@@ -19,13 +19,15 @@ export default {
     // Forked dynamically by the Node validation-queue suite.
     "tests/fixtures/validation-queue-client.mjs",
     "tests/fixtures/validation-queue-job.mjs",
+    "tests/tooling/effect-tooling.test.mjs",
   ],
   // Configs reached through the queue must be loaded before graph analysis so
   // these plugins discover browser HTML, test includes, setup and global setup.
   vite: { config: ["vite.config.ts", "vite.browser.config.ts"] },
   vitest: { config: ["vitest.config.ts", "vitest.integration.config.ts"] },
   ignore: [".agents/skills/**/assets/**"],
-  ignoreDependencies: ["vscode"],
+  // The native Effect compiler loads this plugin name from tsconfig; its package is @effect/tsgo.
+  ignoreDependencies: ["vscode", "@effect/language-service"],
   ignoreBinaries: ["swift"],
   ignoreExportsUsedInFile: false,
   compilers: {

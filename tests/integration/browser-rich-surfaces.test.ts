@@ -34,7 +34,7 @@ it("Chromium renders a published navigable widget and HTML artifact in opaque fr
           },
         },
       ).pipe(Effect.provideContext(backend.context));
-      assert.equal(listener.address._tag, "TcpAddress");
+      assert.equal(listener.address._tag, "InetAddressV4");
       const origin = `http://127.0.0.1:${listener.address.port}`;
       const compiled = publishInlineWidget(
         yield* Effect.promise(() =>

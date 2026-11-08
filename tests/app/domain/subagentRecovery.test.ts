@@ -148,7 +148,7 @@ describe("private worker restart recovery", () => {
               parentWorkingDirectory: record.parentWorkingDirectory,
             }),
           );
-        yield* initialize();
+        const _activateRecovery = yield* initialize();
         if (released) {
           assert.equal((yield* SubscriptionRef.get(coordinator.state)).handles.size, 0);
           assert.equal(constructions.length, 0);

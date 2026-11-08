@@ -319,7 +319,7 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
     expectShellPlacement();
     await f.user.click(screen.getByRole("button", { name: "Main" }));
     expectToolbarPlacement();
-    await f.user.click(screen.getByRole("button", { name: "Browser", exact: true }));
+    await f.user.click(screen.getByRole("button", { name: /^Browser$/ }));
     expectToolbarPlacement();
     await f.user.click(screen.getByRole("button", { name: "VS Code" }));
     expectShellPlacement();

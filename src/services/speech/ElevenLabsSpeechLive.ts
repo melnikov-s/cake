@@ -10,12 +10,7 @@ import {
   SubscriptionRef,
   type Types,
 } from "effect";
-import {
-  Headers,
-  HttpClient,
-  HttpClientRequest,
-  type HttpClientResponse,
-} from "effect/unstable/http";
+import { Headers, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http";
 import {
   SpeechOutputError,
   SpeechOutputRequest,

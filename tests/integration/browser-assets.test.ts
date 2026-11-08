@@ -35,7 +35,7 @@ it("serves only the bounded browser build with HTTP authority checks and correct
             },
           },
         ).pipe(Effect.provideContext(backend.context));
-        assert.equal(listener.address._tag, "TcpAddress");
+        assert.equal(listener.address._tag, "InetAddressV4");
         const port = listener.address.port;
         assert.ok(listener.editorPort);
         const get = (

@@ -36,7 +36,7 @@ it("browser menu actions and pasted image bytes reach backend staging without a 
           },
         },
       ).pipe(Effect.provideContext(backend.context));
-      assert.equal(listener.address._tag, "TcpAddress");
+      assert.equal(listener.address._tag, "InetAddressV4");
       const url = `http://127.0.0.1:${listener.address.port}`;
       yield* Effect.promise(async () => {
         const browser = await chromium.launch({ channel: "chromium-headless-shell" });

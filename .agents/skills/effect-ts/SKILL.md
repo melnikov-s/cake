@@ -39,7 +39,7 @@ a generic example.
 
 Cake pins one exact Effect version in `package.json`. Do not use a floating
 `effect@rc` command in this repository and do not install `@effect/rpc`; Cake
-uses `effect/unstable/rpc`.
+uses `effect/rpc`.
 
 A repository adopting this skill must include the Effect learning instructions
 in `AGENTS.md` and must make this skill required reading before Effect changes.

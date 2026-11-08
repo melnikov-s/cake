@@ -1,8 +1,4 @@
-import type {
-  ExitEncoded,
-  FromClientEncoded,
-  RequestEncoded,
-} from "effect/unstable/rpc/RpcMessage";
+import type { ExitEncoded, FromClientEncoded, RequestEncoded } from "effect/rpc/RpcMessage";
 import { makeRuntime } from "../../../src/renderer/runtime";
 import type { ElectronRpcTransport } from "../../../src/ipc/transport/ElectronRpcTransport";
 

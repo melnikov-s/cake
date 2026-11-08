@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { WindowControlResponse } from "../../contracts/application/window-control";
-import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Rpc, RpcGroup } from "effect/rpc";
 import {
   RendererApplicationProjection,
   RendererApplicationState,

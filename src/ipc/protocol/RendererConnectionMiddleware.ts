@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Option, Schema } from "effect";
-import { RpcMiddleware } from "effect/unstable/rpc";
-import { Headers } from "effect/unstable/http";
+import { RpcMiddleware } from "effect/rpc";
+import { Headers } from "effect/http";
 
 export const rendererConnectionHeader = "x-cake-renderer-connection";
 export const correlationIdHeader = "x-cake-correlation-id";

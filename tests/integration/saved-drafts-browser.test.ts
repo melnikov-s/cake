@@ -31,7 +31,7 @@ it("two real browser tabs see shared saved edits and one activation reaches the 
           },
         },
       ).pipe(Effect.provideContext(backend.context));
-      assert.equal(listener.address._tag, "TcpAddress");
+      assert.equal(listener.address._tag, "InetAddressV4");
       const endpoint = `http://127.0.0.1:${listener.address.port}`;
       const socket = yield* connectClient(
         `ws://127.0.0.1:${listener.address.port}${listener.path}`,

@@ -97,7 +97,7 @@ const cancellationValue = (pending: PendingRequest, stopped: boolean): JsonValue
         : "The Project Session request was cancelled.",
     };
   return stopped
-    ? { ok: false, error: "Cake Chat stopped." }
+    ? { ok: false, name: pending.name, error: "Cake Chat stopped." }
     : { ok: false, name: pending.name, error: "The Cake Chat request was cancelled." };
 };
 

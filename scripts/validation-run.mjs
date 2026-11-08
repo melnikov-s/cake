@@ -55,7 +55,15 @@ export const validationCommands = {
   },
   "test:validation": {
     priority: 0,
-    steps: [["node", "--test", "--test-concurrency=1", "tests/tooling/validation-queue.test.mjs"]],
+    steps: [
+      [
+        "node",
+        "--test",
+        "--test-concurrency=1",
+        "tests/tooling/validation-queue.test.mjs",
+        "tests/tooling/effect-tooling.test.mjs",
+      ],
+    ],
   },
   "test:dictation:native": {
     priority: 2,

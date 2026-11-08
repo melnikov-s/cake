@@ -1,4 +1,4 @@
-import { NodeSocket } from "@effect/platform-node-shared";
+import { NodeWS } from "@effect/platform-node-shared";
 import { Context, Effect } from "effect";
 import { createServer, request } from "node:http";
 import { connect } from "node:net";
@@ -24,7 +24,7 @@ it("isolates leased editor HTTP and WS from browser assets and RPC, then revokes
       yield* Effect.promise(() => mkdir(join(root, "assets")));
       yield* Effect.promise(() => writeFile(join(root, "index.html"), "browser application"));
       const upstream = createServer((req, res) => res.end(`editor:${req.url}`));
-      const upstreamSockets = new NodeSocket.NodeWS.WebSocketServer({ server: upstream });
+      const upstreamSockets = new NodeWS.WebSocketServer({ server: upstream });
       upstreamSockets.on("connection", (socket) =>
         socket.on("message", (message) => socket.send(message)),
       );
@@ -74,7 +74,7 @@ it("isolates leased editor HTTP and WS from browser assets and RPC, then revokes
           },
         },
       ).pipe(Effect.provide(backend));
-      if (listener.address._tag !== "TcpAddress" || listener.editorPort === undefined)
+      if (listener.address._tag !== "InetAddressV4" || listener.editorPort === undefined)
         throw new Error("Isolated listeners missing");
       const appPort = listener.address.port;
       const app = `http://127.0.0.1:${appPort}`;
@@ -117,7 +117,7 @@ it("isolates leased editor HTTP and WS from browser assets and RPC, then revokes
         });
       const deniedSocket = (url: string, origin: string) =>
         new Promise<number>((resolve, reject) => {
-          const socket = new NodeSocket.NodeWS.WebSocket(url, { origin });
+          const socket = new NodeWS.WebSocket(url, { origin });
           socket.once("unexpected-response", (_request, response) => {
             response.resume();
             socket.terminate();
@@ -154,7 +154,7 @@ it("isolates leased editor HTTP and WS from browser assets and RPC, then revokes
         ).toBe(403);
         expect(await deniedSocket(app.replace("http:", "ws:") + prefix, app)).toBe(404);
         expect(await deniedSocket(app.replace("http:", "ws:") + "/rpc", editor)).toBe(403);
-        const ws = new NodeSocket.NodeWS.WebSocket(editor.replace("http:", "ws:") + prefix, {
+        const ws = new NodeWS.WebSocket(editor.replace("http:", "ws:") + prefix, {
           origin: editor,
         });
         await new Promise<void>((resolve, reject) => {
@@ -171,7 +171,7 @@ it("isolates leased editor HTTP and WS from browser assets and RPC, then revokes
         await closed;
         expect((await get(editor + prefix)).status).toBe(403);
         activeLease = { ...lease, id: "b".repeat(64), revocation: new AbortController() };
-        const remaining = new NodeSocket.NodeWS.WebSocket(
+        const remaining = new NodeWS.WebSocket(
           editor.replace("http:", "ws:") + editorLeasePath(activeLease),
           { origin: editor },
         );
@@ -239,7 +239,7 @@ it("keeps an IPv6 editor Host and CSP origin bracketed exactly once", async () =
           },
         },
       ).pipe(Effect.provide(backend));
-      if (listener.address._tag !== "TcpAddress" || listener.editorPort === undefined)
+      if (listener.address._tag !== "InetAddressV4" || listener.editorPort === undefined)
         throw new Error("No IPv6 listeners");
       const app = `http://[::1]:${listener.address.port}`;
       const editor = `http://[::1]:${listener.editorPort}`;

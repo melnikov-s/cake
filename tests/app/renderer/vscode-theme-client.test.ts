@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { FromClientEncoded, FromServerEncoded } from "effect/unstable/rpc/RpcMessage";
+import type { FromClientEncoded, FromServerEncoded } from "effect/rpc/RpcMessage";
 import { afterEach, expect, it, vi } from "vitest";
 import { makeClient } from "../../../src/renderer/client/ClientLive";
 import { makeRuntime } from "../../../src/renderer/runtime";

@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
-import { HttpClient, HttpClientResponse, type HttpClientRequest } from "effect/unstable/http";
+import { HttpClient, HttpClientResponse, type HttpClientRequest } from "effect/http";
 import * as artifactCommands from "../../../src/domain/artifacts/artifactCommands";
 import { ArtifactRuntime } from "../../../src/services/artifact-runtime/ArtifactRuntime";
 import { ArtifactViews } from "../../../src/services/artifacts/ArtifactViews";

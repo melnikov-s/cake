@@ -54,7 +54,7 @@ it.live(
         { port: 0, allowMissingOrigin: true },
         configuration,
       ).pipe(Effect.provide(Layer.mock(SavedDraftStorage, {})), Effect.provideContext(context));
-      assert.equal(listener.address._tag, "TcpAddress");
+      assert.equal(listener.address._tag, "InetAddressV4");
       const url = `ws://127.0.0.1:${listener.address.port}${listener.path}`;
       const a = yield* connectClient(url);
       const b = yield* connectClient(url);
@@ -122,7 +122,7 @@ it.live("disconnecting during device authorization aborts the server's provider 
       { port: 0, allowMissingOrigin: true },
       configuration,
     ).pipe(Effect.provide(Layer.mock(SavedDraftStorage, {})), Effect.provideContext(context));
-    assert.equal(listener.address._tag, "TcpAddress");
+    assert.equal(listener.address._tag, "InetAddressV4");
     const a = yield* connectClient(`ws://127.0.0.1:${listener.address.port}${listener.path}`);
     const notices = yield* Queue.unbounded<CakeEvent>();
     yield* a.client["application.observeEvents"]().pipe(
@@ -184,7 +184,7 @@ it.live(
         { port: 0, allowMissingOrigin: true },
         configuration,
       ).pipe(Effect.provide(Layer.mock(SavedDraftStorage, {})), Effect.provideContext(context));
-      assert.equal(listener.address._tag, "TcpAddress");
+      assert.equal(listener.address._tag, "InetAddressV4");
       const url = `ws://127.0.0.1:${listener.address.port}${listener.path}`;
       const a = yield* connectClient(url);
       const b = yield* connectClient(url);

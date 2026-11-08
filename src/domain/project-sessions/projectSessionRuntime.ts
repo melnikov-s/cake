@@ -36,8 +36,8 @@ import * as projectSessionOperations from "./projectSessionOperations";
 import * as sessionChats from "../conversations/sessionChats";
 import { inheritTaskInputProtection } from "../conversations/taskInputs";
 import { Context, Effect, Option, Schema, type FileSystem, type Path } from "effect";
-import type { HttpClient } from "effect/unstable/http";
-import type { ChildProcessSpawner } from "effect/unstable/process";
+import type { HttpClient } from "effect/http";
+import type { ChildProcessSpawner } from "effect/process";
 import type { ModelPresetPrompts } from "../../services/storage/ModelPresetPrompts";
 import {
   deleteSessionPlugin,

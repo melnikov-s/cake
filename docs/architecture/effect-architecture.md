@@ -302,7 +302,7 @@ dependency-injection system.
 
 ## Effect RPC over Electron
 
-Cake uses Effect 4's `effect/unstable/rpc`; it does not maintain a competing
+Cake uses Effect 4's `effect/rpc`; it does not maintain a competing
 request/stream/cancellation framework.
 
 The shared RPC definitions use Effect Schema and group capabilities such as:

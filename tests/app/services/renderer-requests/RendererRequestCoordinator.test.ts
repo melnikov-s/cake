@@ -566,6 +566,30 @@ describe("RendererRequestCoordinator", () => {
     }),
   );
 
+  it.effect("preserves the command name when Cake Chat stops after publishing a control", () =>
+    Effect.gen(function* () {
+      const { coordinator } = yield* makeFixture;
+      yield* coordinator.bind({ _tag: "CakeChatSession", sessionId: "chat-1" }, 25);
+      const request = yield* coordinator
+        .requestCakeChatControl(
+          "chat-1",
+          { name: "projects.open", arguments: {} },
+          new AbortController().signal,
+        )
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* coordinator.cakeChatControlSnapshots(25).pipe(
+        Stream.filter((requests) => requests.length > 0),
+        Stream.runHead,
+      );
+      yield* coordinator.releaseSession({ _tag: "CakeChatSession", sessionId: "chat-1" });
+      expect(yield* Fiber.join(request)).toEqual({
+        ok: false,
+        name: "projects.open",
+        error: "Cake Chat stopped.",
+      });
+    }),
+  );
+
   it.effect("removes a published Cake Chat control when its request fiber is interrupted", () =>
     Effect.gen(function* () {
       const { coordinator } = yield* makeFixture;

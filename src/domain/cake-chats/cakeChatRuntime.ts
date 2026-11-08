@@ -17,8 +17,8 @@ import { cakeRpcPayloadSchemas } from "../../contracts/application/cake-rpc-cont
 import type { JsonObject } from "../../contracts/serialization/json-contract";
 import type { BrowserControl } from "../../contracts/browser/browser-agent-control";
 import { Context, Effect, Option, Schema, type FileSystem, type Path } from "effect";
-import type { HttpClient } from "effect/unstable/http";
-import type { ChildProcessSpawner } from "effect/unstable/process";
+import type { HttpClient } from "effect/http";
+import type { ChildProcessSpawner } from "effect/process";
 import * as backendAgentControl from "../application/agentControl";
 import { validateMessageReferenceControl } from "../conversations/messageReferenceForwarding";
 import { grantMessageAttachments } from "../conversations/messageReferenceAccess";

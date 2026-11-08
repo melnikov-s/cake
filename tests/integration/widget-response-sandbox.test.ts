@@ -206,7 +206,7 @@ it.live(
         undefined,
         auth,
       ).pipe(Effect.provideContext(backend.context));
-      assert.equal(listener.address._tag, "TcpAddress");
+      assert.equal(listener.address._tag, "InetAddressV4");
       proxy.route(listener.address.port);
       const browser = yield* Effect.acquireRelease(
         Effect.promise(() => chromium.launch({ channel: "chromium-headless-shell" })),

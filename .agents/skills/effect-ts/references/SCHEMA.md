@@ -26,6 +26,13 @@ Guidance:
 - Use `Schema.decodeUnknownOption(...)` only when mismatch details are intentionally discarded.
 - Use `Schema.decodeUnknownResult(...)` for pure code that wants explicit success/failure without Effect.
 
+## Command JSON Schemas
+
+Use `toDraft07JsonSchema` from `src/contracts/serialization/json-contract.ts`
+for Cake command discovery and tool schemas. It explicitly rejects unmodeled
+object properties, matching Cake's strict boundary decoders; Effect's Standard
+JSON Schema adapter defaults to open objects. Explicit record keys remain valid.
+
 ## Field And Contract Reuse
 
 Reuse fields directly when contracts are semantically related.

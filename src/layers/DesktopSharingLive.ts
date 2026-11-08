@@ -155,7 +155,7 @@ export const makeDesktopSharingLive = (
             ),
           );
           listener = opened;
-          if (opened.address._tag !== "TcpAddress")
+          if (opened.address._tag === "UnixPathAddress")
             return yield* Effect.die("Expected TCP listener");
           const serving: DesktopSharingState = {
             status: "serving",

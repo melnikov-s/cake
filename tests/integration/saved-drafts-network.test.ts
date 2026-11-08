@@ -24,7 +24,7 @@ it.live(
           },
         },
       ).pipe(Effect.provideContext(backend.context));
-      assert.equal(listener.address._tag, "TcpAddress");
+      assert.equal(listener.address._tag, "InetAddressV4");
       const url = `ws://127.0.0.1:${listener.address.port}${listener.path}`;
       const first = yield* connectClient(url);
       const second = yield* connectClient(url);

@@ -1,6 +1,6 @@
 import { NodeChildProcessSpawner, NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { Layer } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 const FileSystemAndPathLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
 

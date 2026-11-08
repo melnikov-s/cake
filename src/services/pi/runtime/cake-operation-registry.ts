@@ -13,6 +13,7 @@ import {
   type CakeOperationResult,
 } from "../../../contracts/agent/cake-operation";
 import {
+  toDraft07JsonSchema,
   jsonObjectSchema,
   jsonValueSchema,
   type JsonObject,
@@ -168,9 +169,7 @@ function schemaJson(
   direction: "input" | "output" = "input",
 ): JsonObject {
   return Schema.decodeUnknownSync(jsonObjectSchema)(
-    Schema.toStandardJSONSchemaV1(schema)["~standard"].jsonSchema[direction]({
-      target: "draft-07",
-    }),
+    toDraft07JsonSchema(direction === "output" ? Schema.toType(schema) : schema),
   );
 }
 

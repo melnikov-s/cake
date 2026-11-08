@@ -1,7 +1,7 @@
 import { jsonObjectSchema, jsonValueSchema } from "../../contracts/serialization/json-contract";
 import { AssistantContext } from "../../contracts/cake-chats/assistant-context";
 import { Schema } from "effect";
-import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Rpc, RpcGroup } from "effect/rpc";
 import {
   CakeChatCatalogQuery,
   CakeChatError,

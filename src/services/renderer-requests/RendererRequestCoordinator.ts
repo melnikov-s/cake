@@ -362,7 +362,11 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
     );
 
     const requestBrowserNative = Effect.fn("RendererRequestCoordinator.requestBrowserNative")(
-      function* (sessionId, request, signal) {
+      function* (
+        sessionId: string,
+        request: Parameters<RendererRequestCoordinator["Service"]["requestBrowserNative"]>[1],
+        signal: AbortSignal,
+      ) {
         if (signal.aborted)
           return yield* coordinatorError("requestBrowserNative", "Browser request cancelled");
         const connectionId = yield* Effect.try({
@@ -410,7 +414,12 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
     );
 
     const respondBrowserNative = Effect.fn("RendererRequestCoordinator.respondBrowserNative")(
-      (connectionId, sessionId, requestId, result) =>
+      (
+        connectionId: number,
+        sessionId: string,
+        requestId: string,
+        result: Parameters<RendererRequestCoordinator["Service"]["respondBrowserNative"]>[3],
+      ) =>
         runTransition(
           Effect.gen(function* () {
             const request = validateResponse(

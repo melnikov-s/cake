@@ -4,29 +4,29 @@ import { NetworkListenerOptions } from "./NetworkListener";
 
 /** No socket is acquired by reading configuration. Malformed explicit values fail closed. */
 export const networkConfiguration = Effect.fn("Server.networkConfiguration")(function* () {
-  const enabled = yield* Config.boolean("CAKE_SERVER_ENABLED").pipe(Config.withDefault(false));
+  const enabled = yield* Config.Boolean("CAKE_SERVER_ENABLED").pipe(Config.withDefault(false));
   if (!enabled) return undefined;
-  const bind = yield* Config.nonEmptyString("CAKE_SERVER_BIND").pipe(
+  const bind = yield* Config.NonEmptyString("CAKE_SERVER_BIND").pipe(
     Config.withDefault("127.0.0.1"),
   );
-  const port = yield* Config.number("CAKE_SERVER_PORT").pipe(Config.withDefault(4317));
-  const editorPort = yield* Config.number("CAKE_SERVER_EDITOR_PORT").pipe(Config.withDefault(0));
-  const editorPublicOrigin = yield* Config.string("CAKE_SERVER_EDITOR_PUBLIC_ORIGIN").pipe(
+  const port = yield* Config.Number("CAKE_SERVER_PORT").pipe(Config.withDefault(4317));
+  const editorPort = yield* Config.Number("CAKE_SERVER_EDITOR_PORT").pipe(Config.withDefault(0));
+  const editorPublicOrigin = yield* Config.String("CAKE_SERVER_EDITOR_PUBLIC_ORIGIN").pipe(
     Config.withDefault(""),
   );
-  const allowedHosts = yield* Config.string("CAKE_SERVER_ALLOWED_HOSTS").pipe(
+  const allowedHosts = yield* Config.String("CAKE_SERVER_ALLOWED_HOSTS").pipe(
     Config.withDefault(""),
   );
-  const allowedOrigins = yield* Config.string("CAKE_SERVER_ALLOWED_ORIGINS").pipe(
+  const allowedOrigins = yield* Config.String("CAKE_SERVER_ALLOWED_ORIGINS").pipe(
     Config.withDefault(""),
   );
-  const allowMissingOrigin = yield* Config.boolean("CAKE_SERVER_ALLOW_MISSING_ORIGIN").pipe(
+  const allowMissingOrigin = yield* Config.Boolean("CAKE_SERVER_ALLOW_MISSING_ORIGIN").pipe(
     Config.withDefault(false),
   );
-  const maxPayloadBytes = yield* Config.number("CAKE_SERVER_MAX_PAYLOAD_BYTES").pipe(
+  const maxPayloadBytes = yield* Config.Number("CAKE_SERVER_MAX_PAYLOAD_BYTES").pipe(
     Config.withDefault(1024 * 1024),
   );
-  const browserEnabled = yield* Config.boolean("CAKE_SERVER_BROWSER_ENABLED").pipe(
+  const browserEnabled = yield* Config.Boolean("CAKE_SERVER_BROWSER_ENABLED").pipe(
     Config.withDefault(false),
   );
   const options = { bind, port, editorPort, allowMissingOrigin, maxPayloadBytes };

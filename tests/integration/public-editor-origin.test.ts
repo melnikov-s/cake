@@ -1,4 +1,4 @@
-import { NodeSocket } from "@effect/platform-node-shared";
+import { NodeWS } from "@effect/platform-node-shared";
 import { Context, Effect, Exit } from "effect";
 import { createServer, request } from "node:http";
 import { connect } from "node:net";
@@ -38,7 +38,7 @@ it("routes a fixed-port public editor Host and Origin while isolating app RPC an
       yield* Effect.promise(() => mkdir(join(root, "assets")));
       yield* Effect.promise(() => writeFile(join(root, "index.html"), "Cake"));
       const upstream = createServer((req, response) => response.end(`editor:${req.url}`));
-      const sockets = new NodeSocket.NodeWS.WebSocketServer({ server: upstream });
+      const sockets = new NodeWS.WebSocketServer({ server: upstream });
       sockets.on("connection", (socket) => socket.on("message", (data) => socket.send(data)));
       yield* Effect.promise(
         () => new Promise<void>((done) => upstream.listen(0, "127.0.0.1", done)),
@@ -114,7 +114,7 @@ it("routes a fixed-port public editor Host and Origin while isolating app RPC an
       const listener = yield* openNetworkListener(options, configuration).pipe(
         Effect.provide(backend),
       );
-      if (listener.address._tag !== "TcpAddress") throw new Error("No TCP address");
+      if (listener.address._tag !== "InetAddressV4") throw new Error("No TCP address");
       expect(listener.editorPort).toBe(editorPort);
       const acquired = yield* acquire(42, {
         requestId: crypto.randomUUID(),
@@ -164,7 +164,7 @@ it("routes a fixed-port public editor Host and Origin while isolating app RPC an
         });
       const deniedSocket = (port: number, route: string, host: string, origin: string) =>
         new Promise<number>((resolve, reject) => {
-          const ws = new NodeSocket.NodeWS.WebSocket(`ws://127.0.0.1:${port}${route}`, {
+          const ws = new NodeWS.WebSocket(`ws://127.0.0.1:${port}${route}`, {
             origin,
             headers: { host },
           });
@@ -225,7 +225,7 @@ it("routes a fixed-port public editor Host and Origin while isolating app RPC an
         expect(
           await deniedSocket(appPort, "/rpc", `cake.example:${editorPort}`, directEditorOrigin),
         ).toBe(403);
-        const rpc = new NodeSocket.NodeWS.WebSocket(`ws://127.0.0.1:${appPort}/rpc`, {
+        const rpc = new NodeWS.WebSocket(`ws://127.0.0.1:${appPort}/rpc`, {
           origin: collidingAppOrigin,
           headers: { host: `cake.example:${editorPort}` },
         });
@@ -236,7 +236,7 @@ it("routes a fixed-port public editor Host and Origin while isolating app RPC an
         rpc.terminate();
         expect(await deniedSocket(editorPort, path, "editor.example", appOrigin)).toBe(403);
         expect(await deniedSocket(editorPort, path, "cake.example", editorOrigin)).toBe(403);
-        const ws = new NodeSocket.NodeWS.WebSocket(`ws://127.0.0.1:${editorPort}${path}`, {
+        const ws = new NodeWS.WebSocket(`ws://127.0.0.1:${editorPort}${path}`, {
           origin: editorOrigin,
           headers: { host: "editor.example" },
         });

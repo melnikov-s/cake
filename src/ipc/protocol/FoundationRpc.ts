@@ -1,6 +1,6 @@
 import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 import { Schema } from "effect";
-import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Rpc, RpcGroup } from "effect/rpc";
 import { ProjectCatalogUpdate } from "../../contracts/application/catalog-data";
 import { applicationEventSchema } from "../../contracts/application/cake-rpc-contract";
 

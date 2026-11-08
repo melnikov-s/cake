@@ -165,7 +165,7 @@ it.effect("interrupted reads report elapsed work and release the permit", () =>
         lock,
         Effect.gen(function* () {
           yield* Deferred.succeed(reading, undefined);
-          yield* Effect.never;
+          return yield* Effect.never;
         }),
       ).pipe(Effect.forkScoped({ startImmediately: true }));
       yield* Deferred.await(reading);

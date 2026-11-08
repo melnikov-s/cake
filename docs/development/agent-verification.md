@@ -23,7 +23,15 @@ for final lint verification when the task's scope permits; it runs Oxlint and
 Knip's unused-code checks. ESLint and its unsupported rules are intentionally
 removed. Run focused tests and the typecheck or build warranted by the affected
 behavior. `pnpm typecheck` uses stable TypeScript 7's native Go compiler (the
-command is still named `tsc`), not the legacy Node compiler or a preview package.
+command is still named `tsc`), enhanced by `@effect/tsgo` for Effect diagnostics.
+`pnpm install` patches the matching native compiler in `postinstall`; after an
+install with scripts disabled, run `pnpm exec effect-tsgo patch --typescript`.
+Effect errors fail typechecking; warnings are advisory and suggestions remain
+available in the editor without printing in CLI checks. The unstable-API warning
+is disabled because Cake deliberately uses Effect's platform and RPC APIs.
+VS Code uses the patched workspace
+compiler through `.vscode/settings.json`. `pnpm test:validation` verifies that
+yielded Effects pass and floating Effects fail through the workspace `tsc`.
 Docs-only changes need only applicable documentation formatting/link checks, not
 tests, builds or Electron checks.
 

@@ -1,3 +1,4 @@
+import { toDraft07JsonSchema } from "../../../contracts/serialization/json-contract";
 import {
   DefaultResourceLoader,
   createEventBus,
@@ -56,13 +57,9 @@ export function createCakeToolDefinition(
     description: cakeToolDescription,
     promptSnippet: "Use Cake-native application controls.",
     // SAFETY: Pi accepts the draft-07 JSON Schema produced by Effect Schema.
-    parameters: Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)["~standard"].jsonSchema.input(
-      { target: "draft-07" },
-    ) as TSchema,
+    parameters: toDraft07JsonSchema(cakeToolEnvelopeSchema) as TSchema,
     // SAFETY: Like parameters, this is an Effect-derived draft-07 JSON Schema.
-    outputSchema: Schema.toStandardJSONSchemaV1(cakeToolOutputSchema)[
-      "~standard"
-    ].jsonSchema.output({ target: "draft-07" }) as TSchema,
+    outputSchema: toDraft07JsonSchema(Schema.toType(cakeToolOutputSchema)) as TSchema,
     async execute(toolCallId, params, signal, onUpdate, runtime) {
       const update = (value: JsonValue) =>
         onUpdate?.({

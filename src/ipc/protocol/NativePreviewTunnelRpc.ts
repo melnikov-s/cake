@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Rpc, RpcGroup } from "effect/rpc";
 import { NativePreviewError } from "../../contracts/browser/native-preview-tunnels-errors";
 
 /** Trusted desktop registration only; never exposed by the backend or preview origin. */

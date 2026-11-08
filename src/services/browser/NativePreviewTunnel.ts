@@ -1,4 +1,4 @@
-import { NodeSocket } from "@effect/platform-node-shared";
+import { NodeWS } from "@effect/platform-node-shared";
 import { randomBytes } from "node:crypto";
 import { Predicate } from "effect";
 import {
@@ -10,7 +10,7 @@ import {
 import { request as httpsRequest } from "node:https";
 import type { Socket } from "node:net";
 
-const WS = NodeSocket.NodeWS;
+const WS = NodeWS;
 const MAX_BODY = 16 * 1024 * 1024;
 const MAX_FRAME = 1024 * 1024;
 

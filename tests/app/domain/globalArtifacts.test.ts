@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { NodeChildProcessSpawner, NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Schema } from "effect";
-import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientResponse } from "effect/http";
 import { TestClock } from "effect/testing";
 import { runSchedulePass } from "../../../src/domain/automations/automationWorker";
 import { ArtifactRuntimeHostLive } from "../../../src/layers/ArtifactRuntimeHostLive";

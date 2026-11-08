@@ -5,7 +5,7 @@ import { delimiter, join } from "node:path";
 import { NodeChildProcessSpawner, NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, PlatformError, Sink, Stream } from "effect";
-import { type ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { type ChildProcess, ChildProcessSpawner } from "effect/process";
 import { TestClock } from "effect/testing";
 import { describe, expect } from "vitest";
 import { ArtifactHostInvocation } from "../../../src/contracts/artifacts/artifact-commands";

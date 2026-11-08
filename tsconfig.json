@@ -11,6 +11,16 @@
     "moduleResolution": "Bundler",
     "noEmit": true,
     "noUncheckedIndexedAccess": true,
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "includeSuggestionsInTsc": false,
+        "ignoreEffectWarningsInTscExitCode": true,
+        "diagnosticSeverity": {
+          "unstableApiUsage": "off"
+        }
+      }
+    ],
     "paths": {
       "@/*": ["./src/renderer/*"]
     },

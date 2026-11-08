@@ -40,7 +40,7 @@ it("projects review-run status, saves a label, and gates browser-only native set
           },
         },
       ).pipe(Effect.provideContext(backend.context));
-      assert.equal(listener.address._tag, "TcpAddress");
+      assert.equal(listener.address._tag, "InetAddressV4");
       const url = `http://127.0.0.1:${listener.address.port}`;
       yield* Effect.promise(async () => {
         const browser = await chromium.launch({ channel: "chromium-headless-shell" });

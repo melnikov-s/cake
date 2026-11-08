@@ -1,5 +1,5 @@
 import { Result, Schema } from "effect";
-import type { FromClientEncoded, FromServerEncoded } from "effect/unstable/rpc/RpcMessage";
+import type { FromClientEncoded, FromServerEncoded } from "effect/rpc/RpcMessage";
 
 const requestId = Schema.Union([Schema.String, Schema.Number]);
 const headers = Schema.Array(Schema.Tuple([Schema.String, Schema.String]));

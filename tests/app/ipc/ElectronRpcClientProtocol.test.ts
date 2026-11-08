@@ -1,7 +1,7 @@
 import { it } from "@effect/vitest";
 import { Context, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Stream } from "effect";
-import { Rpc, RpcClient, RpcGroup } from "effect/unstable/rpc";
-import type { FromClientEncoded, FromServerEncoded } from "effect/unstable/rpc/RpcMessage";
+import { Rpc, RpcClient, RpcGroup } from "effect/rpc";
+import type { FromClientEncoded, FromServerEncoded } from "effect/rpc/RpcMessage";
 import { expect } from "vitest";
 import { makeElectronRpcClientProtocol } from "../../../src/ipc/transport/ElectronRpcClientProtocol";
 

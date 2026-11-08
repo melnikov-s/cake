@@ -1,6 +1,6 @@
-import { NodeSocket } from "@effect/platform-node-shared";
+import { NodeWS } from "@effect/platform-node-shared";
 import { Effect, Option } from "effect";
-import { Socket } from "effect/unstable/socket";
+import { Socket } from "effect/socket";
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import type { VsCodeServer } from "../services/vscode/VsCodeServer";
 import type { VsCodeLease } from "../services/vscode/VsCodeServerRuntime";
@@ -161,13 +161,13 @@ export const proxyEditorSocket = Effect.fn("EditorProxy.socket")(function* (
   target: EditorProxyTarget,
 ) {
   const current = yield* Effect.serviceOption(Socket.WebSocket);
-  if (Option.isNone(current) || !(current.value instanceof NodeSocket.NodeWS.WebSocket))
+  if (Option.isNone(current) || !(current.value instanceof NodeWS.WebSocket))
     return yield* Effect.die("Expected a Node editor WebSocket");
   const downstream = current.value;
   yield* Effect.callback<void>((resume) => {
     const url = new URL(target.path, target.lease.url);
     url.protocol = "ws:";
-    const upstream = new NodeSocket.NodeWS.WebSocket(url, {
+    const upstream = new NodeWS.WebSocket(url, {
       origin: new URL(target.lease.url).origin,
       perMessageDeflate: false,
       maxPayload: 16 * 1024 * 1024,
@@ -192,7 +192,7 @@ export const proxyEditorSocket = Effect.fn("EditorProxy.socket")(function* (
           ? data.reduce((total, part) => total + part.byteLength, 0)
           : data.byteLength;
         pending += size;
-        if (pending > 16 * 1024 * 1024 || to.readyState !== NodeSocket.NodeWS.WebSocket.OPEN) {
+        if (pending > 16 * 1024 * 1024 || to.readyState !== NodeWS.WebSocket.OPEN) {
           close();
           return;
         }

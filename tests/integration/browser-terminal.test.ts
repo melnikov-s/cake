@@ -101,7 +101,7 @@ it("opens a socket-owned browser terminal, accepts input/output and never replay
           },
         },
       ).pipe(Effect.provideContext(backend.context));
-      if (listener.address._tag !== "TcpAddress") throw new Error("Expected TCP listener");
+      if (listener.address._tag !== "InetAddressV4") throw new Error("Expected TCP listener");
       const port = listener.address.port;
       const browser = yield* Effect.acquireRelease(
         Effect.promise(() => chromium.launch({ channel: "chromium-headless-shell" })),

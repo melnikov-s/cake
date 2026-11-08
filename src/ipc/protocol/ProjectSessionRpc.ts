@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Rpc, RpcGroup } from "effect/rpc";
 import { SessionCatalogUpdate } from "../../contracts/application/catalog-data";
 import { TurnId } from "../../contracts/conversations/conversation-data";
 import {

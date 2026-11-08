@@ -1,4 +1,4 @@
-import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Rpc, RpcGroup } from "effect/rpc";
 import { Schema } from "effect";
 import { PiExtensionSetting, PiExtensionToggle } from "../../contracts/pi/extension-settings-data";
 import { PiSettingsError } from "../../contracts/pi/pi-settings-errors";
