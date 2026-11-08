@@ -693,25 +693,47 @@ describe("WorktreeLandings", () => {
     );
   });
 
-  it.effect("adopts durable paused metadata and resumes ready work after process recovery", () => {
-    const events: string[] = [];
-    const layer = services({
-      status: () => ({
-        ...baseStatus(),
-        landingOperationId: "recovered-landing",
-        record: { ...record, pendingStrategy: "preserve" },
-      }),
-      events,
-    });
-    return Effect.scoped(
-      Effect.gen(function* () {
-        const snapshot = yield* worktreeLandings.inspect({ workspacePath, sessionId: "session-1" });
-        expect(snapshot.operation?.operationId).toBe("recovered-landing");
-        yield* awaitPhase("landed");
-        expect(events).toEqual(["prepare", "land"]);
-      }).pipe(Effect.provide(layer)),
-    );
-  });
+  it.effect.each([false, true])(
+    "adopts durable paused metadata and resolve intent after process recovery (%s)",
+    (resolveAfterLanding) => {
+      const events: string[] = [];
+      const layer = services({
+        status: () => ({
+          ...baseStatus(),
+          landingOperationId: "recovered-landing",
+          record: { ...record, pendingStrategy: "preserve", resolveAfterLanding },
+        }),
+        events,
+        resolve: (workingDirectory) =>
+          Effect.sync(() => {
+            events.push("resolve");
+            return {
+              projectPath: "/project",
+              workingDirectory,
+              resolvedSessionIds: ["session-1"],
+              failures: [],
+              cleanupFailures: [],
+            };
+          }),
+      });
+      return Effect.scoped(
+        Effect.gen(function* () {
+          const snapshot = yield* worktreeLandings.inspect({
+            workspacePath,
+            sessionId: "session-1",
+          });
+          expect(snapshot.operation?.operationId).toBe("recovered-landing");
+          expect(snapshot.operation?.resolveAfterLanding).toBe(resolveAfterLanding);
+          yield* awaitPhase("landed");
+          expect(events).toEqual(
+            resolveAfterLanding
+              ? ["prepare", "land", "resolve", "resolve-intent:false"]
+              : ["prepare", "land"],
+          );
+        }).pipe(Effect.provide(layer)),
+      );
+    },
+  );
 
   it.effect("reacquires the FIFO reservation for durable paused landing metadata", () => {
     const events: string[] = [];

@@ -11,6 +11,7 @@ import { findLocation } from "../project-sessions/projectSessionMetadata";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
 import * as worktreeLandings from "./worktreeLandings";
+import type { WorktreeMergeAndResolveReport } from "../../contracts/worktrees/worktree-merge-data";
 
 /**
  * Agent-facing outcome of Cake's normal Managed Worktree merge workflow.
@@ -117,27 +118,36 @@ const outcomeOf = (operation: WorktreeLandingOperation | undefined): WorktreeMer
   return "in-progress";
 };
 
-/**
- * Start (or retry, or observe) Cake's normal preserve-commits merge workflow for one Managed
- * Worktree and wait until it lands, fails, or needs its owning agent. This is the same
- * landing path as the Merge action in the Cake UI: it commits uncommitted work through the
- * owning session, serializes through the repository landing queue, prompts the owning session
- * to resolve conflicts, and marks the worktree landed without resolving its session.
- */
-export const merge = Effect.fn("WorktreeMerges.merge")(function* (input: {
+interface WorktreeMergeInput {
   readonly sessionId: string;
   readonly workspacePath: string;
   /** The session invoking the merge, used to tell an owner to end its own turn. */
   readonly callerSessionId?: string;
   readonly timeout?: Duration.Input;
-}) {
+}
+
+/** Start, retry or observe the UI's preserve-commits landing workflow, then wait for
+ * completion, an owner turn, or the bounded timeout. */
+const mergeWorkflow = Effect.fn("WorktreeMerges.mergeWorkflow")(function* (
+  input: WorktreeMergeInput & { readonly resolveAfterLanding: boolean },
+) {
   const coordinator = yield* WorktreeLandingCoordinator;
   const existing = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
     input.workspacePath,
   );
   let operationId: string;
   let claimed: WorktreeLandingOperation | undefined;
-  if (existing?.phase === "stalled") {
+  if (input.resolveAfterLanding) {
+    const accepted = yield* worktreeLandings.mergeAndResolve(input);
+    operationId = accepted.operationId;
+    if (accepted.phase === "stalled") {
+      claimed = yield* worktreeLandings.retry({
+        workspacePath: input.workspacePath,
+        sessionId: accepted.sessionId,
+      });
+      operationId = claimed.operationId;
+    }
+  } else if (existing?.phase === "stalled") {
     claimed = yield* worktreeLandings.retry({
       workspacePath: input.workspacePath,
       sessionId: existing.sessionId,
@@ -207,7 +217,53 @@ export const merge = Effect.fn("WorktreeMerges.merge")(function* (input: {
   if (operation?.pauseReason) report.pauseReason = operation.pauseReason;
   if (operation?.error) report.error = operation.error;
   if (record?.state) report.worktreeState = record.state;
-  return report;
+  return { report, operation };
+});
+
+export const merge = Effect.fn("WorktreeMerges.merge")((input: WorktreeMergeInput) =>
+  mergeWorkflow({ ...input, resolveAfterLanding: false }).pipe(Effect.map(({ report }) => report)),
+);
+
+/** Same UI/backend landing path, with durable lifecycle intent rather than a follow-up call. */
+export const mergeAndResolve = Effect.fn("WorktreeMerges.mergeAndResolve")(function* (
+  input: WorktreeMergeInput,
+) {
+  if (cakeChatSideChatConversationId(input.sessionId) !== undefined)
+    return yield* new WorktreeLandingError({
+      operation: "mergeAndResolve",
+      message: "Merge & resolve requires an owning Project Session, not a Side Chat.",
+    });
+  const { report, operation } = yield* mergeWorkflow({ ...input, resolveAfterLanding: true });
+  const resolved = report.outcome === "landed" && operation?.resolveAfterLanding === true;
+  const landed = report.outcome === "landed" || operation?.resolutionError !== undefined;
+  const outcome = operation?.resolutionError
+    ? "resolution-failed"
+    : resolved
+      ? "landed-and-resolved"
+      : report.outcome;
+  const command = "worktrees.merge-and-resolve";
+  const nextStep = resolved
+    ? `Landed on ${report.targetBranch ?? "the target branch"}; session resolution completed.${operation?.cleanupFailures?.length ? " Checkout cleanup warnings are attached; Git landing and resolution succeeded." : ""}`
+    : operation?.resolutionError
+      ? `Git landing succeeded, but resolution did not complete: ${operation.resolutionError}. Resolve intent is retained; retry ${command} to finish resolution without relanding unchanged work.`
+      : report.nextStep.replaceAll("worktrees.merge", command) +
+        (report.outcome === "awaiting-agent" || report.outcome === "in-progress"
+          ? " Resolve-after-success intent is persisted; Cake will resolve automatically after successful landing. No second invocation is required."
+          : " The session has not been resolved by this operation.");
+  const result: WorktreeMergeAndResolveReport = {
+    ...report,
+    command,
+    outcome,
+    landed,
+    resolved,
+    nextStep,
+    ...(operation?.resolutionError ? { resolutionError: operation.resolutionError } : null),
+    ...(operation?.resolvedSessionIds
+      ? { resolvedSessionIds: operation.resolvedSessionIds }
+      : null),
+    ...(operation?.cleanupFailures ? { cleanupFailures: operation.cleanupFailures } : null),
+  };
+  return result;
 });
 
 const targetError = (message: string) =>

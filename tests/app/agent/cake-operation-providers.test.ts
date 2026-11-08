@@ -535,11 +535,21 @@ describe("Backend-owned Cake operation composition", () => {
 
   it("exposes Cake Chat's native worktree merge by session reference", async () => {
     const merge = vi.fn(async () => ({ command: "worktrees.merge", outcome: "landed" }));
+    const mergeAndResolve = vi.fn(async () => ({
+      command: "worktrees.merge-and-resolve",
+      outcome: "landed-and-resolved",
+      landed: true,
+      resolved: true,
+      operationId: "operation",
+      sessionId: "1a2b3c4d",
+      workingDirectory: "/worktree",
+      nextStep: "Done",
+    }));
     const configured = configureCakeSessionRuntime({
       ...options("/workspace"),
       globalControl: { tools: [], invoke: vi.fn() },
-      cakeChatWorktrees: { merge },
-      allowedCakeOperations: ["worktrees.merge"],
+      cakeChatWorktrees: { merge, mergeAndResolve },
+      allowedCakeOperations: ["worktrees.merge", "worktrees.merge-and-resolve"],
     });
     if (!configured.coordinator) throw new Error("Expected coordinator composition");
     const registry = new CakeOperationRegistry(
@@ -559,6 +569,7 @@ describe("Backend-owned Cake operation composition", () => {
       }),
     );
     expect(registry.definitions().map((operation) => operation.command)).toEqual([
+      "worktrees.merge-and-resolve",
       "worktrees.merge",
     ]);
     expect(registry.help()).toContain("worktrees — Managed landing");
@@ -571,6 +582,19 @@ describe("Backend-owned Cake operation composition", () => {
       context,
     );
     expect(merge).toHaveBeenCalledWith("1a2b3c4d", context.signal);
+    expect(registry.operationHelp("worktrees.merge-and-resolve")).toContain("persisted");
+    expect(registry.operationOutputSchema("worktrees.merge-and-resolve")).toContain(
+      "resolutionError",
+    );
+    const resolved = await registry.invoke(
+      { command: "worktrees.merge-and-resolve", input: { sessionId: "1a2b3c4d" } },
+      context,
+    );
+    expect(mergeAndResolve).toHaveBeenCalledWith("1a2b3c4d", context.signal);
+    expect(resolved.details).toMatchObject({ result: { landed: true, resolved: true } });
+    await expect(
+      registry.invoke({ command: "worktrees.merge-and-resolve", input: {} }, context),
+    ).rejects.toThrow();
     expect(result.details).toMatchObject({ result: { outcome: "landed" } });
     await expect(
       registry.invoke({ command: "worktrees.merge", input: {} }, context),

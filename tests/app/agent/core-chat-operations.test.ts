@@ -35,7 +35,7 @@ const operations = new CakeOperationRegistry([
     updateMany: unused,
   }),
   ...createMessageOperations({ list: unused, read: unused, open: unused }),
-  ...createCakeChatWorktreeOperations({ merge: unused }),
+  ...createCakeChatWorktreeOperations({ merge: unused, mergeAndResolve: unused }),
 ]);
 const reference = coreChatOperations(operations);
 const prompt = coordinatorSystemPrompt("", "/docs", false, reference);
@@ -55,6 +55,7 @@ describe("core coordinator calling reference", () => {
     expect(line("sessions.send")).toContain("sessionId");
     expect(line("sessions.send")).not.toContain("sessionId?");
     expect(line("worktrees.merge")).toBe("worktrees.merge {sessionId}");
+    expect(line("worktrees.merge-and-resolve")).toBe("worktrees.merge-and-resolve {sessionId}");
     expect(line("sessions.resolve")).toBe(
       'sessions.resolve {targets:[{kind:"project", sessionId}], resolved}',
     );

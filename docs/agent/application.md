@@ -14,7 +14,7 @@ Global Cake Chat can target registered projects; Project Chat only its own. Codi
 
 ## Land
 
-worktrees.merge: managed landing only; report its actual outcome/next step. No manual Git fallback.
+worktrees.merge-and-resolve {sessionId}: managed landing plus persisted resolve-on-success intent. Report outcome, landed/resolved and nextStep separately; resolution-failed means Git succeeded but lifecycle completion did not. Owner conflict turns resume automatically, including resolution after success; do not poll. Unchanged already-landed work resolves without relanding. Failed/stalled/canceled landing never resolves. worktrees.merge remains merge-only. No manual Git fallback.
 Commit in the owner worktree first. Awaiting-agent/stalled requires the owner to complete the requested step there, then retry Cake landing. PR-only projects use their PR workflow.
 [Session/worktree lifecycle](sessions.md#fork-and-lifecycle).
 

@@ -1,5 +1,15 @@
 import { it } from "@effect/vitest";
-import { type Duration, Effect, Layer } from "effect";
+import {
+  Deferred,
+  type Duration,
+  Effect,
+  Fiber,
+  Layer,
+  Schema,
+  Stream,
+  SubscriptionRef,
+} from "effect";
+import { TestClock } from "effect/testing";
 import { describe, expect } from "vitest";
 import {
   defaultApplicationState,
@@ -15,7 +25,18 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { WorktreeLandingAgent } from "../../../src/services/worktrees/WorktreeLandingAgent";
 import { WorktreeLandingCompletion } from "../../../src/services/worktrees/WorktreeLandingCompletion";
-import { WorktreeLandingCoordinatorLive } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
+import {
+  WorktreeLandingCoordinator,
+  WorktreeLandingCoordinatorLive,
+} from "../../../src/services/worktrees/WorktreeLandingCoordinator";
+import { WorktreeLandingError } from "../../../src/contracts/worktrees/worktree-landing-data";
+import { WorktreeMergeAndResolveReport } from "../../../src/contracts/worktrees/worktree-merge-data";
+import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
+import {
+  ResolutionCleanupFailed,
+  type WorkingDirectoryResolutionResult,
+} from "../../../src/contracts/project-sessions/project-session-resolution";
+import * as worktreeLandings from "../../../src/domain/worktrees/worktreeLandings";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
@@ -32,6 +53,10 @@ const record = {
 };
 
 interface Harness {
+  record?: WorktreeRecord;
+  missingStatus?: boolean;
+  events?: string[];
+  resolve?: () => Effect.Effect<WorkingDirectoryResolutionResult, WorktreeLandingError>;
   status: Partial<WorktreeStatus>;
   land: () => Effect.Effect<WorktreeLandOutcome, ManagedWorktreeError>;
   prepare?: Effect.Effect<void>;
@@ -57,26 +82,35 @@ const layer = (harness: Harness) => {
     WorktreeLandingCoordinatorLive,
     Layer.mock(ApplicationState, { snapshot: () => state }),
     Layer.mock(ManagedWorktrees, {
-      records: () => Effect.succeed([record]),
+      records: () => Effect.sync(() => [harness.record ?? record]),
       status: () =>
-        Effect.sync(() => ({
-          record,
-          targetBranch: "main",
-          dirtyCount: 0,
-          aheadCount: 1,
-          behindCount: 0,
-          merged: false,
-          targetDirty: false,
-          targetOnBranch: true,
-          merging: false,
-          rebasing: false,
-          squashMessageReady: false,
-          ...harness.status,
-        })),
+        Effect.sync(() =>
+          harness.missingStatus
+            ? undefined
+            : {
+                record: harness.record ?? record,
+                targetBranch: "main",
+                dirtyCount: 0,
+                aheadCount: 1,
+                behindCount: 0,
+                merged: false,
+                targetDirty: false,
+                targetOnBranch: true,
+                merging: false,
+                rebasing: false,
+                squashMessageReady: false,
+                ...harness.status,
+              },
+        ),
       prepareLanding: () => harness.prepare ?? Effect.void,
       land: () => harness.land(),
       cancelLanding: () => Effect.void,
-      setResolveAfterLanding: () => Effect.void,
+      setResolveAfterLanding: (_, enabled) =>
+        Effect.sync(() => {
+          harness.events?.push(`intent:${enabled}`);
+          if (harness.record)
+            harness.record = { ...harness.record, resolveAfterLanding: enabled || undefined };
+        }),
     }),
     Layer.mock(WorktreeLandingAgent, {
       promptAndWait: ({ text }) => {
@@ -85,7 +119,8 @@ const layer = (harness: Harness) => {
       },
     }),
     Layer.mock(WorktreeLandingCompletion, {
-      resolveWorkingDirectory: () => Effect.die("merge must not resolve the session"),
+      resolveWorkingDirectory: () =>
+        harness.resolve?.() ?? Effect.die("merge must not resolve the session"),
     }),
   );
 };
@@ -244,6 +279,268 @@ describe("WorktreeMerges.merge", () => {
       // A second call observes the same landing instead of starting another.
       const second = yield* merge("cake-chat", "20 millis");
       expect(second.operationId).toBe(first.operationId);
+    }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+  });
+});
+
+/** Stateful engine boundary: successful Git landing checkpoints before lifecycle completion. */
+const resolvingHarness = (): Harness => {
+  const harness: Harness = {
+    record: { ...record },
+    status: {},
+    events: [],
+    prompts: [],
+    land: () =>
+      Effect.sync(() => {
+        harness.events?.push("land");
+        harness.record = { ...record, ...harness.record, state: "landed" };
+        harness.status = { aheadCount: 0 };
+        return { outcome: "landed", commit: "abc1234" };
+      }),
+    resolve: () =>
+      Effect.sync(() => {
+        harness.events?.push("resolve");
+        return {
+          projectPath: "/project",
+          workingDirectory: workspacePath,
+          resolvedSessionIds: ["owner"],
+          failures: [],
+          cleanupFailures: [],
+        };
+      }),
+  };
+  return harness;
+};
+const mergeAndResolve = () => worktreeMerges.mergeAndResolve({ sessionId: "owner", workspacePath });
+const awaitLanded = Effect.gen(function* () {
+  const coordinator = yield* WorktreeLandingCoordinator;
+  return yield* SubscriptionRef.changes(coordinator.state).pipe(
+    Stream.map((state) => state.operations.get(workspacePath)),
+    Stream.filter((operation) => operation?.phase === "landed"),
+    Stream.runHead,
+  );
+});
+
+describe("WorktreeMerges.mergeAndResolve", () => {
+  it.effect("fresh success resolves once and duplicate requests share the landing", () => {
+    const harness = resolvingHarness();
+    return Effect.gen(function* () {
+      const reports = yield* Effect.all([mergeAndResolve(), mergeAndResolve()], {
+        concurrency: "unbounded",
+      });
+      const again = yield* mergeAndResolve();
+      for (const report of [...reports, again]) {
+        expect(report).toMatchObject({
+          command: "worktrees.merge-and-resolve",
+          outcome: "landed-and-resolved",
+          landed: true,
+          resolved: true,
+          resolvedSessionIds: ["owner"],
+        });
+        expect(() => Schema.decodeUnknownSync(WorktreeMergeAndResolveReport)(report)).not.toThrow();
+        expect(report.operationId).toBe(reports[0]?.operationId);
+      }
+      expect(harness.events?.filter((event) => event === "land")).toHaveLength(1);
+      expect(harness.events?.filter((event) => event === "resolve")).toHaveLength(1);
+      expect(harness.record?.resolveAfterLanding).toBeUndefined();
+    }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+  });
+
+  it.effect("conflicts later land and resolve automatically without another command", () => {
+    const harness = resolvingHarness();
+    const land = harness.land;
+    return Effect.gen(function* () {
+      const ownerDone = yield* Deferred.make<void>();
+      let first = true;
+      harness.land = () => {
+        if (!first) return land();
+        first = false;
+        return Effect.succeed({ outcome: "resolving", files: ["src/conflict.ts"] });
+      };
+      harness.prompt = () => Deferred.await(ownerDone);
+      const paused = yield* mergeAndResolve();
+      expect(paused).toMatchObject({ outcome: "awaiting-agent", landed: false, resolved: false });
+      expect(harness.record?.resolveAfterLanding).toBe(true);
+      expect(harness.events).not.toContain("resolve");
+      expect(paused.nextStep).toContain("No second invocation is required");
+      yield* Deferred.succeed(ownerDone, undefined);
+      yield* awaitLanded;
+      expect(harness.events).toEqual(["intent:true", "land", "resolve", "intent:false"]);
+    }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+  });
+
+  it.effect("upgrades an existing merge-only owner turn to durable resolve intent", () => {
+    const harness = resolvingHarness();
+    harness.status = { dirtyCount: 1 };
+    return Effect.gen(function* () {
+      const ownerDone = yield* Deferred.make<void>();
+      harness.prompt = () => Deferred.await(ownerDone);
+      const legacy = yield* merge();
+      const upgraded = yield* mergeAndResolve();
+      expect(upgraded.operationId).toBe(legacy.operationId);
+      expect(upgraded.outcome).toBe("awaiting-agent");
+      harness.status = {};
+      yield* Deferred.succeed(ownerDone, undefined);
+      yield* awaitLanded;
+      expect(harness.events?.filter((event) => event === "resolve")).toHaveLength(1);
+    }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+  });
+
+  it.effect("landing failure leaves the session open and clears resolve intent", () => {
+    const harness = resolvingHarness();
+    harness.land = () =>
+      Effect.fail(new ManagedWorktreeError({ operation: "land", message: "target dirty" }));
+    return Effect.gen(function* () {
+      const report = yield* mergeAndResolve();
+      expect(report).toMatchObject({
+        outcome: "failed",
+        landed: false,
+        resolved: false,
+        error: "target dirty",
+      });
+      expect(harness.events).toEqual(["intent:true", "intent:false"]);
+    }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+  });
+
+  it.effect("already-landed retired checkout resolves without calling Git again", () => {
+    const harness = resolvingHarness();
+    harness.record = { ...record, state: "landed" };
+    harness.missingStatus = true;
+    harness.land = () => Effect.die("already-landed work must not remerge");
+    return Effect.gen(function* () {
+      expect(yield* mergeAndResolve()).toMatchObject({
+        outcome: "landed-and-resolved",
+        landed: true,
+        resolved: true,
+      });
+      expect(harness.events).toEqual(["intent:true", "resolve", "intent:false"]);
+    }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+  });
+
+  it.effect.each([false, true])(
+    "reports resolution partial failure honestly and retries without relanding (typed: %s)",
+    (typed) => {
+      const harness = resolvingHarness();
+      const resolve = harness.resolve;
+      harness.resolve = () =>
+        typed
+          ? Effect.fail(
+              new WorktreeLandingError({
+                operation: "resolveWorkingDirectory",
+                message: "owner active",
+              }),
+            )
+          : Effect.succeed({
+              projectPath: "/project",
+              workingDirectory: workspacePath,
+              resolvedSessionIds: ["child"],
+              failures: [{ sessionIds: ["owner"], message: "owner active" }],
+              cleanupFailures: [],
+            });
+      return Effect.gen(function* () {
+        const report = yield* mergeAndResolve();
+        expect(report).toMatchObject({
+          outcome: "resolution-failed",
+          landed: true,
+          resolved: false,
+          landedCommit: "abc1234",
+          resolutionError: "owner active",
+        });
+        if (!typed) expect(report.resolvedSessionIds).toEqual(["child"]);
+        expect(harness.record?.resolveAfterLanding).toBe(true);
+        harness.resolve = resolve;
+        expect(yield* mergeAndResolve()).toMatchObject({ outcome: "landed-and-resolved" });
+        expect(harness.events?.filter((event) => event === "land")).toHaveLength(1);
+      }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+    },
+  );
+
+  it.effect("later commits on a landed worktree still land before resolution", () => {
+    const harness = resolvingHarness();
+    harness.record = { ...record, state: "landed" };
+    return Effect.gen(function* () {
+      expect(yield* mergeAndResolve()).toMatchObject({ outcome: "landed-and-resolved" });
+      expect(harness.events).toEqual(["intent:true", "land", "resolve", "intent:false"]);
+    }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+  });
+
+  it.effect("reports committed resolution with cleanup warnings as success", () => {
+    const harness = resolvingHarness();
+    const cleanup = new ResolutionCleanupFailed({
+      operation: "cleanup",
+      resolvedSessionIds: ["owner"],
+      cleanupFailures: [{ workingDirectory: workspacePath, message: "checkout busy" }],
+      message: "checkout busy",
+    });
+    harness.resolve = () =>
+      Effect.succeed({
+        projectPath: "/project",
+        workingDirectory: workspacePath,
+        resolvedSessionIds: ["owner"],
+        failures: [],
+        cleanupFailures: [cleanup],
+      });
+    return Effect.gen(function* () {
+      const report = yield* mergeAndResolve();
+      expect(report).toMatchObject({
+        outcome: "landed-and-resolved",
+        landed: true,
+        resolved: true,
+        cleanupFailures: [cleanup],
+      });
+      expect(() => Schema.decodeUnknownSync(WorktreeMergeAndResolveReport)(report)).not.toThrow();
+      expect(harness.record?.resolveAfterLanding).toBeUndefined();
+    }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+  });
+
+  it.effect.each([false, true])(
+    "queued landing reports progress/cancellation without resolving (timeout: %s)",
+    (timeout) => {
+      const harness = resolvingHarness();
+      harness.prepare = Effect.never;
+      return Effect.gen(function* () {
+        const pending = yield* Effect.forkChild(mergeAndResolve());
+        const coordinator = yield* WorktreeLandingCoordinator;
+        const waiting = yield* SubscriptionRef.changes(coordinator.state).pipe(
+          Stream.map((state) => state.operations.get(workspacePath)),
+          Stream.filter((operation) => operation?.phase === "waiting"),
+          Stream.runHead,
+        );
+        if (timeout) {
+          yield* TestClock.adjust("2 minutes");
+          expect(yield* Fiber.join(pending)).toMatchObject({
+            outcome: "in-progress",
+            landed: false,
+            resolved: false,
+          });
+        }
+        // The accepted operation is visible before start returns to the caller.
+        const operation = waiting._tag === "Some" ? waiting.value : undefined;
+        expect(operation).toBeDefined();
+        if (operation) yield* worktreeLandings.cancel(workspacePath, operation.operationId);
+        if (!timeout)
+          expect(yield* Fiber.join(pending)).toMatchObject({
+            outcome: "canceled",
+            landed: false,
+            resolved: false,
+          });
+        expect(harness.events).toEqual(["intent:true", "intent:false"]);
+      }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+    },
+  );
+
+  it.effect("stalled and canceled landings never resolve", () => {
+    const harness = resolvingHarness();
+    harness.land = () => Effect.succeed({ outcome: "resolving", files: ["a.ts"] });
+    harness.prompt = () =>
+      Effect.sync(() => {
+        harness.status = { merging: true };
+      });
+    return Effect.gen(function* () {
+      const report = yield* mergeAndResolve();
+      expect(report).toMatchObject({ outcome: "stalled", landed: false, resolved: false });
+      yield* worktreeLandings.cancel(workspacePath, report.operationId);
+      expect(harness.events).toEqual(["intent:true", "intent:false"]);
     }).pipe(Effect.scoped, Effect.provide(layer(harness)));
   });
 });

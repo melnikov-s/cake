@@ -29,6 +29,7 @@ const normalizeOperation = (operation: WorktreeLandingOperation): WorktreeLandin
   if (normalized.landedCommit === undefined) delete normalized.landedCommit;
   if (normalized.cleanupFailures === undefined) delete normalized.cleanupFailures;
   if (normalized.resolvedSessionIds === undefined) delete normalized.resolvedSessionIds;
+  if (normalized.resolutionError === undefined) delete normalized.resolutionError;
   return normalized;
 };
 
@@ -92,6 +93,69 @@ const landingBlocked = (status: WorktreeStatus, strategy: WorktreeLandRequest["s
   gitBlocked(status) ||
   (status.aheadCount > 0 && strategy === "squash" && !status.squashMessageReady);
 
+/** Shared UI/tool completion. Serialize intent upgrades with terminal publication so an
+ * accepted merge-and-resolve cannot miss a merge that finishes during the request. */
+const completeLanding = Effect.fn("WorktreeLandings.completeLanding")(function* (
+  operation: WorktreeLandingOperation,
+  landedCommit?: string,
+) {
+  const coordinator = yield* WorktreeLandingCoordinator;
+  const worktrees = yield* ManagedWorktrees;
+  const completion = yield* WorktreeLandingCompletion;
+  yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
+    Effect.gen(function* () {
+      const current = state.operations.get(operation.workspacePath);
+      if (!current || current.operationId !== operation.operationId)
+        return [undefined, state] as const;
+      let completed: WorktreeLandingOperation = {
+        ...current,
+        phase: "landed",
+        pauseReason: undefined,
+        landedCommit,
+        error: undefined,
+        resolutionError: undefined,
+      };
+      if (current.resolveAfterLanding) {
+        const result = yield* completion
+          .resolveWorkingDirectory(operation.workspacePath)
+          .pipe(Effect.result);
+        if (result._tag === "Failure") {
+          completed = {
+            ...completed,
+            phase: "failed",
+            error: result.failure.message,
+            resolutionError: result.failure.message,
+          };
+        } else {
+          const resolved = result.success;
+          completed = {
+            ...completed,
+            resolvedSessionIds: resolved.resolvedSessionIds,
+            cleanupFailures: resolved.cleanupFailures.length ? resolved.cleanupFailures : undefined,
+          };
+          const failure = resolved.failures.length
+            ? [...resolved.failures, ...resolved.cleanupFailures]
+                .map((item) => item.message)
+                .join("\n")
+            : undefined;
+          const cleared = failure
+            ? undefined
+            : yield* worktrees
+                .setResolveAfterLanding(operation.workspacePath, false)
+                .pipe(asError("resolveWorkingDirectory"), Effect.result);
+          const error =
+            failure ?? (cleared?._tag === "Failure" ? cleared.failure.message : undefined);
+          if (error) completed = { ...completed, phase: "failed", error, resolutionError: error };
+        }
+      }
+      // Publish resolution evidence only with the terminal phase, never before cleanup.
+      const operations = new Map(state.operations);
+      operations.set(operation.workspacePath, normalizeOperation(completed));
+      return [undefined, { operations }] as const;
+    }),
+  );
+});
+
 const performLanding: (
   operation: WorktreeLandingOperation,
 ) => Effect.Effect<
@@ -124,39 +188,7 @@ const performLanding: (
       })).pipe(Effect.provideService(WorktreeLandingCoordinator, coordinator)),
     )
     .pipe(asError("land"));
-  if (outcome.outcome === "landed") {
-    let resolvedSessionIds: ReadonlyArray<string> | undefined;
-    if (operation.resolveAfterLanding) {
-      const result = yield* (yield* WorktreeLandingCompletion).resolveWorkingDirectory(
-        operation.workspacePath,
-      );
-      resolvedSessionIds = result.resolvedSessionIds;
-      yield* update(operation.workspacePath, operation.operationId, (current) => ({
-        ...current,
-        cleanupFailures: result.cleanupFailures.length > 0 ? result.cleanupFailures : undefined,
-      }));
-      if (result.failures.length > 0)
-        return yield* new WorktreeLandingError({
-          operation: "resolveWorkingDirectory",
-          message: [...result.failures, ...result.cleanupFailures]
-            .map((failure) => failure.message)
-            .join("\n"),
-        });
-      yield* worktrees
-        .setResolveAfterLanding(operation.workspacePath, false)
-        .pipe(asError("resolveWorkingDirectory"));
-    }
-    // Publish the resolved set with the terminal phase: an intermediate projection change
-    // would make observers refresh a retired checkout before they can present completion.
-    yield* update(operation.workspacePath, operation.operationId, (current) => ({
-      ...current,
-      phase: "landed",
-      pauseReason: undefined,
-      landedCommit: outcome.commit,
-      resolvedSessionIds,
-    }));
-    return;
-  }
+  if (outcome.outcome === "landed") return yield* completeLanding(operation, outcome.commit);
   const status = yield* requireStatus(operation.workspacePath);
   const reason = outcome.outcome === "proposal" ? "squash-message" : "conflict";
   yield* update(operation.workspacePath, operation.operationId, (current) => ({
@@ -328,7 +360,10 @@ const run = Effect.fn("WorktreeLandings.run")(function* (
             .pipe(Effect.catch(() => Effect.succeed([])))).find(
             (candidate) => candidate.worktreePath === operation.workspacePath,
           );
-          if (operation.resolveAfterLanding && record?.state !== "landed")
+          const current = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
+            operation.workspacePath,
+          );
+          if (current?.resolveAfterLanding && record?.state !== "landed")
             yield* worktrees
               .setResolveAfterLanding(operation.workspacePath, false)
               .pipe(Effect.ignore);
@@ -405,6 +440,81 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
     }),
   );
   return operation;
+});
+
+/** Start/join the same landing workflow as UI Merge & resolve. The coordinator's
+ * existing state lock owns duplicate admission and resolve-intent upgrades. */
+export const mergeAndResolve = Effect.fn("WorktreeLandings.mergeAndResolve")(function* (input: {
+  readonly workspacePath: string;
+  readonly sessionId: string;
+}) {
+  const coordinator = yield* WorktreeLandingCoordinator;
+  const worktrees = yield* ManagedWorktrees;
+  const claimed = yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
+    Effect.gen(function* () {
+      const current = state.operations.get(input.workspacePath);
+      if (current && !isTerminal(current) && current.kind !== "landing")
+        return yield* new WorktreeLandingError({
+          operation: "mergeAndResolve",
+          message: "A rebase is already in progress for this worktree.",
+        });
+      const record = (yield* worktrees.records().pipe(asError("mergeAndResolve"))).find(
+        (item) => item.worktreePath === input.workspacePath,
+      );
+      const status = yield* worktrees.status(input.workspacePath).pipe(asError("mergeAndResolve"));
+      const alreadyLanded =
+        (record?.state === "landed" ||
+          (record?.state === "resolved" && record.resolvedFrom === "landed")) &&
+        (!status || (!gitBlocked(status) && status.aheadCount === 0));
+      if (
+        alreadyLanded &&
+        current?.phase === "landed" &&
+        current.resolveAfterLanding &&
+        current.resolvedSessionIds !== undefined
+      )
+        return [{ operation: current, start: false, alreadyLanded }, state] as const;
+      if (!record)
+        return yield* new WorktreeLandingError({
+          operation: "mergeAndResolve",
+          message: "Cake could not find that worktree",
+        });
+      if ((yield* worktreeLifecycle.forProject(record.projectPath)).landsThroughPullRequests)
+        return yield* new WorktreeLandingError({
+          operation: "mergeAndResolve",
+          message:
+            "This project lands work through pull requests, so Cake does not merge its worktrees.",
+        });
+      yield* worktrees
+        .setResolveAfterLanding(input.workspacePath, true)
+        .pipe(asError("mergeAndResolve"));
+      const joining = current && !isTerminal(current);
+      const operation = normalizeOperation(
+        joining
+          ? { ...current, resolveAfterLanding: true }
+          : {
+              operationId: crypto.randomUUID(),
+              workspacePath: input.workspacePath,
+              sessionId: input.sessionId,
+              kind: "landing",
+              phase: "waiting",
+              strategy: "preserve",
+              allowDirtyTarget: false,
+              resolveAfterLanding: true,
+            },
+      );
+      const operations = new Map(state.operations);
+      operations.set(input.workspacePath, operation);
+      return [{ operation, start: !joining, alreadyLanded }, { operations }] as const;
+    }),
+  );
+  if (claimed.start)
+    yield* run(
+      claimed.operation,
+      claimed.alreadyLanded
+        ? completeLanding(claimed.operation)
+        : prepareCommitAndLand(claimed.operation),
+    );
+  return claimed.operation;
 });
 
 export const startRebase = Effect.fn("WorktreeLandings.startRebase")(function* (input: {
@@ -633,6 +743,7 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
       phase: strategy ? "waiting" : ready ? "rebasing" : "stalled",
       strategy,
       allowDirtyTarget: false,
+      resolveAfterLanding: status.record.resolveAfterLanding,
       pauseReason: ready
         ? undefined
         : strategy

@@ -34,6 +34,8 @@ export const WorktreeLandingOperation = Schema.Struct({
     Schema.Literals(["commit", "conflict", "rebase-conflict", "squash-message"]),
   ),
   error: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
+  /** Git landing succeeded, but lifecycle completion or clearing its intent failed. */
+  resolutionError: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
   /** Conflicting paths reported by the latest paused landing or rebase attempt. */
   conflictFiles: Schema.optionalKey(
     Schema.Array(Schema.String.check(Schema.isMaxLength(4_096))).check(Schema.isMaxLength(10_000)),

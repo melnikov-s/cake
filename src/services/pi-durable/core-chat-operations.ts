@@ -33,9 +33,10 @@ export function coreChatOperations(operations: CakeOperationRegistry): string {
       "delivery: steer corrects active work; prompt assigns now; queue orders future work; fyi is passive. Omission steers active/starts idle. resultDelivery controls the return, not outbound delivery; fyi cannot request reply or forward attachments. Receipt is intake, not execution.",
     );
   add("sessions.abort", ["reason"]);
+  add("worktrees.merge-and-resolve");
   if (add("worktrees.merge"))
     lines.push(
-      "Use the worktree owner's sessionId; never manual Git landing. Inspect outcome/nextStep; merging never resolves.",
+      "Owner sessionId; never manual Git landing. Inspect outcome/nextStep; merge-only: merging never resolves.",
     );
   if (add("sessions.resolve", [], ["targets"]))
     lines.push(

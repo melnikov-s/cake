@@ -224,6 +224,7 @@ const CAKE_CHAT_OPERATIONS = [
   "projects.settings.get",
   "projects.settings.update",
   "worktrees.merge",
+  "worktrees.merge-and-resolve",
   "subagents.start",
   "subagents.follow-up",
   "subagents.abort",
@@ -446,6 +447,30 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     events: (methods, limit, clear, signal) =>
       browserRequest("events", { methods, limit, clear }, signal),
   };
+  const landWorktree = (reference: string, signal: AbortSignal, resolve: boolean) =>
+    run(
+      Effect.gen(function* () {
+        if (
+          Option.isNone(landingCoordinator) ||
+          Option.isNone(landingAgent) ||
+          Option.isNone(landingCompletion)
+        )
+          return yield* Effect.fail(new Error("Managed Worktree landing is unavailable"));
+        const worktree = yield* worktreeMerges.resolveSessionWorktree(
+          yield* sessionReferences.resolve(reference, target.sessionId),
+        );
+        const input = { ...worktree, callerSessionId: target.sessionId };
+        const landing = resolve
+          ? worktreeMerges.mergeAndResolve(input).pipe(Effect.map(toJsonValue))
+          : worktreeMerges.merge(input).pipe(Effect.map(toJsonValue));
+        return yield* landing.pipe(
+          Effect.provideService(WorktreeLandingCoordinator, landingCoordinator.value),
+          Effect.provideService(WorktreeLandingAgent, landingAgent.value),
+          Effect.provideService(WorktreeLandingCompletion, landingCompletion.value),
+        );
+      }),
+      { signal },
+    );
   const runtimeOptions: CakeSessionRuntimeAcquireOptions = {
     profile: { _tag: "CakeChatSession" },
     admitTurn: (input, accept) => {
@@ -684,30 +709,8 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           }),
         ),
       cakeChatWorktrees: {
-        merge: (reference, signal) =>
-          run(
-            Effect.gen(function* () {
-              if (
-                Option.isNone(landingCoordinator) ||
-                Option.isNone(landingAgent) ||
-                Option.isNone(landingCompletion)
-              )
-                return yield* Effect.fail(new Error("Managed Worktree landing is unavailable"));
-              const worktree = yield* worktreeMerges.resolveSessionWorktree(
-                yield* sessionReferences.resolve(reference, target.sessionId),
-              );
-              return toJsonValue(
-                yield* worktreeMerges
-                  .merge({ ...worktree, callerSessionId: target.sessionId })
-                  .pipe(
-                    Effect.provideService(WorktreeLandingCoordinator, landingCoordinator.value),
-                    Effect.provideService(WorktreeLandingAgent, landingAgent.value),
-                    Effect.provideService(WorktreeLandingCompletion, landingCompletion.value),
-                  ),
-              );
-            }),
-            { signal },
-          ),
+        merge: (reference, signal) => landWorktree(reference, signal, false),
+        mergeAndResolve: (reference, signal) => landWorktree(reference, signal, true),
       },
       cakeChatProjects: {
         list: (input, signal) =>

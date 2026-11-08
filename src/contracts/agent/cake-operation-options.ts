@@ -162,6 +162,7 @@ export interface AgentOperationControl {
 /** Cake Chat's native Managed Worktree landing authority over any Project Session. */
 export interface CakeChatWorktreeControl {
   merge(sessionId: string, signal: AbortSignal): Promise<JsonValue>;
+  mergeAndResolve(sessionId: string, signal: AbortSignal): Promise<JsonValue>;
 }
 
 export interface CakeOperationOptions extends Partial<CakeArtifactOperationOptions> {

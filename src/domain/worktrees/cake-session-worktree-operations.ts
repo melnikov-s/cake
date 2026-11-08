@@ -4,6 +4,8 @@ import type { RuntimeOperationApi } from "../../contracts/agent/cake-operation-a
 import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 import type { CakeChatWorktreeControl } from "../../contracts/agent/cake-operation-options";
 
+import { WorktreeMergeAndResolveReport } from "../../contracts/worktrees/worktree-merge-data";
+
 const sessionIdSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 
 const mergeResult =
@@ -79,6 +81,32 @@ export function createCakeChatWorktreeOperations(
   control: CakeChatWorktreeControl,
 ): CakeOperationDefinition[] {
   return [
+    {
+      command: "worktrees.merge-and-resolve",
+      topic: "worktrees",
+      summary: "Land managed worktree and resolve on success",
+      guidance: [
+        "Use the owning Project Session's sessionId when the user authorizes landing and resolution. This reuses Cake UI Merge & resolve and the serialized backend landing workflow.",
+        "The call waits up to about two minutes, returning landed-and-resolved, resolution-failed, awaiting-agent, stalled, failed, in-progress or canceled. Inspect landed and resolved separately: successful Git landing is not proof of resolution.",
+        "Resolve-after-success intent is persisted through owner commit/conflict turns and supported restart recovery. Awaiting-agent or in-progress needs no second invocation to resolve after successful landing; report progress rather than polling.",
+        "Duplicate requests join the existing landing and retain resolve intent; stalled landings retry. Already-landed unchanged work resolves without relanding. New unlanded work must land first.",
+        "Failed, blocked, stalled or canceled landings never resolve. Resolution failures retain intent and report partial resolvedSessionIds; retry this command to finish resolution. cleanupFailures are warnings after committed resolution, not a failed Git merge.",
+        "Use worktrees.merge instead for an intentional merge-only exception. No manual Git landing fallback.",
+      ],
+      inputSchema: Schema.Struct({ sessionId: sessionIdSchema }),
+      outputSchema: WorktreeMergeAndResolveReport,
+      canonicalSessionIds: true,
+      examples: [{ input: { sessionId: "1a2b3c4d" } }],
+      result:
+        "Structured landing and lifecycle receipt with outcome, landed, resolved, operationId, sessionId, workingDirectory, phase, landedCommit, resolutionError, resolvedSessionIds, cleanupFailures and nextStep.",
+      limitations: [
+        "The target must own a Cake-managed worktree and support native Project Session resolution. Lifecycle policy still requires inactive family members; this command does not override resolution authority.",
+        "Authorization to merge alone does not grant authorization to resolve.",
+      ],
+      execute: (input, context) =>
+        // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
+        control.mergeAndResolve((input as { sessionId: string }).sessionId, context.signal),
+    },
     {
       command: "worktrees.merge",
       topic: "worktrees",

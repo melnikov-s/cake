@@ -789,6 +789,8 @@ successful removal also releases the checkout's landing reservations. Project-wi
 resolved-worktree cleanup uses this same safe, restorable retirement path, not
 forced discard.
 
+The Cake/Project Chat command `worktrees.merge-and-resolve {sessionId}` uses this same backend completion helper as UI Merge & resolve; `worktrees.merge` remains merge-only. Its structured receipt distinguishes Git landing from resolution, including partial resolution failure. Duplicate admission and resolve-intent upgrades serialize with terminal publication through the coordinator's existing state lock. Restart adoption carries the durable resolve intent, and unchanged landed work can complete resolution without another Git landing.
+
 A merge-and-resolve operation remains `landed` when Git landing and session
 resolution commit but checkout cleanup fails. Its optional `cleanupFailures`
 projection carries warnings, and the completed resolve intent is cleared as on
