@@ -1,3 +1,4 @@
+import { unusedMessageLookupLayer } from "../helpers/heldAttentionHarness";
 import { it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { expect } from "vitest";
@@ -29,6 +30,7 @@ const report = (recipientSessionId: string, id = crypto.randomUUID()) => ({
 const layer = () =>
   Layer.mergeAll(
     projectTodoLayer(),
+    unusedMessageLookupLayer,
     Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
     familyStorageHarness().layer,
     Layer.mock(CakeSessionRuntimes, {
@@ -95,8 +97,8 @@ it.effect(
       });
       const firstReport = report(CAKE_CHAT_SESSION_ID);
       const secondReport = report(CAKE_CHAT_SESSION_ID);
-      yield* attention.hold(firstReport, { sessionId: "first-worker", label: "First findings" });
-      yield* attention.hold(secondReport, { sessionId: "second-worker", label: "Second findings" });
+      yield* attention.hold(firstReport, { sessionId: "first-worker" });
+      yield* attention.hold(secondReport, { sessionId: "second-worker" });
       const first = yield* todos.read(scope, older.id);
       expect(first.attentionSequence).toBe(1);
       expect((yield* todos.read(scope, newer.id)).attentionSequence).toBe(2);
@@ -106,14 +108,13 @@ it.effect(
         expectedRevision: first.revision,
         needsAttention: false,
       });
-      yield* attention.hold(firstReport, { sessionId: "first-worker", label: "First findings" });
+      yield* attention.hold(firstReport, { sessionId: "first-worker" });
       expect(yield* todos.read(scope, older.id)).toMatchObject({
         needsAttention: false,
         attentionSequence: 1,
       });
       yield* attention.hold(report(CAKE_CHAT_SESSION_ID), {
         sessionId: "first-worker",
-        label: "New findings",
       });
       expect(yield* todos.read(scope, older.id)).toMatchObject({
         needsAttention: true,
@@ -195,18 +196,23 @@ it.effect("a failed activation retains the pill and original; stale clicks canno
   }).pipe(Effect.provide(layer())),
 );
 
-it.effect("manual attention without a held report clears without acquiring a runtime", () =>
-  Effect.gen(function* () {
-    const item = yield* todos.create(CAKE_CHAT_TODO_SCOPE, {
-      title: "Decision",
-      description: "Choose one",
-      needsAttention: true,
-      attentionReason: "Choose a direction",
-    });
-    yield* attention.activate(CAKE_CHAT_TODO_SCOPE, item.id, item.revision);
-    expect(yield* todos.read(CAKE_CHAT_TODO_SCOPE, item.id)).toMatchObject({
-      state: "open",
-      needsAttention: false,
-    });
-  }).pipe(Effect.provide(layer())),
+it.effect(
+  "manual attention without a held report remains pending when its owning runtime is unavailable",
+  () =>
+    Effect.gen(function* () {
+      const item = yield* todos.create(CAKE_CHAT_TODO_SCOPE, {
+        title: "Decision",
+        description: "Choose one",
+        needsAttention: true,
+        attentionReason: "Choose a direction",
+      });
+      expect(
+        (yield* Effect.result(attention.activate(CAKE_CHAT_TODO_SCOPE, item.id, item.revision)))
+          ._tag,
+      ).toBe("Failure");
+      expect(yield* todos.read(CAKE_CHAT_TODO_SCOPE, item.id)).toMatchObject({
+        state: "open",
+        needsAttention: true,
+      });
+    }).pipe(Effect.provide(layer())),
 );

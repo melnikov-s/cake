@@ -28,7 +28,8 @@ export const inheritTaskInputProtection = Effect.fn("Conversations.inheritTaskIn
 /** Protected reports remain data behind exact Pi references, never inline instructions. */
 export const prepareCoordinatorMessage = Effect.fn("Conversations.prepareCoordinatorMessage")(
   function* (input: SessionChatPromptInput) {
-    if (!input.crossSession) return input;
+    // Lifecycle facts have no authored response to redact or recover.
+    if (!input.crossSession || input.crossSession.generatedNotice) return input;
     const inputs = yield* TaskInputStorage;
     if (!(yield* inputs.isRecipient(input.crossSession.sender.sessionId))) return input;
     const source = input.crossSession.sourceMessageRef;

@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 import { subagentLink } from "../subagents/subagent-reference";
+import { ReadableMessageReference } from "./message-reference";
+import { parseCrossSessionMessage } from "./cross-session-message";
 
 const id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 
@@ -8,6 +10,10 @@ export const PendingReport = Schema.Struct({
   id,
   recipientSessionId: id,
   text: Schema.String,
+  /** Immutable original, independent of protected notification copy. */
+  resultMessageRef: Schema.optionalKey(ReadableMessageReference),
+  /** Exact persisted request turn answered by this response, never just its owner. */
+  responseKey: Schema.optionalKey(id),
   /** Held for an explicit click on this owning chat's to-do, never an automatic reminder. */
   attentionTodoId: Schema.optionalKey(Schema.String),
   source: Schema.optionalKey(
@@ -27,10 +33,21 @@ export interface PendingReport extends Schema.Schema.Type<typeof PendingReport> 
 
 /** Public retained conversation, optionally at the exact final answer. Private Pi IDs are provenance. */
 export function pendingReportRef(report: PendingReport): string | undefined {
+  if (report.resultMessageRef) return report.resultMessageRef;
+  const recorded = parseCrossSessionMessage(report.text)?.metadata.sourceMessageRef;
+  if (recorded) return recorded;
   const source = report.source;
   return source
     ? subagentLink(report.recipientSessionId, source.handleId, source.messageId)
     : undefined;
+}
+
+/** Only persisted delivery/request identities establish equivalence. */
+export function samePendingResponse(a: PendingReport, b: PendingReport): boolean {
+  return (
+    a.recipientSessionId === b.recipientSessionId &&
+    (a.id === b.id || Boolean(a.responseKey && a.responseKey === b.responseKey))
+  );
 }
 
 /** A receipt names visible Pi evidence; it does not claim semantic verification. */
@@ -38,6 +55,7 @@ export const ReportHandlingReceipt = Schema.Struct({
   id,
   recipientSessionId: id,
   assistantPartId: id,
+  responseKey: Schema.optionalKey(id),
   disposition: Schema.Literals(["communicated", "dismissed"]),
 });
 export interface ReportHandlingReceipt extends Schema.Schema.Type<typeof ReportHandlingReceipt> {}

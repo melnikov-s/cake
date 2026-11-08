@@ -1,4 +1,5 @@
 import { child, createStore, Store } from "r-state-tree";
+import { parseSubagentLink } from "../../contracts/subagents/subagent-reference";
 import {
   decodeMessageReadResult,
   messageNavigationTarget,
@@ -47,12 +48,25 @@ export class MessageReferencePreviewStore extends Store<{
   private revision = 0;
 
   private async readPage(sessionId: string, entryId: string, offset: number) {
+    const publicRef = parseSubagentLink(this.props.reference ?? "")?.messageId
+      ? this.props.reference
+      : undefined;
     const value = await ClientContext.consume(this)!.sessionChats.inspect(
-      { sessionId, kind: "messages-read", entryId, offset, maxChars: 20_000 },
+      {
+        sessionId,
+        kind: "messages-read",
+        entryId,
+        offset,
+        maxChars: 20_000,
+        ...(publicRef ? { ref: publicRef } : null),
+      },
       { signal: this.signal },
     );
     const page = decodeMessageReadResult(value);
-    if (page.message.ref !== messageReference(sessionId, entryId) || page.offset !== offset)
+    if (
+      page.message.ref !== (publicRef ?? messageReference(sessionId, entryId)) ||
+      page.offset !== offset
+    )
       throw new Error("The source reader returned a different message or page");
     return page;
   }

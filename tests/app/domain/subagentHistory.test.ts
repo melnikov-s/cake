@@ -1,3 +1,10 @@
+import { unusedMessageLookupLayer } from "../helpers/heldAttentionHarness";
+import { projectTodoLayer } from "../helpers/projectTodoHarness";
+import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import * as messageReferences from "../../../src/domain/conversations/messageReferences";
+import { subagentLink } from "../../../src/contracts/subagents/subagent-reference";
+import { MessageReadInput } from "../../../src/contracts/conversations/message-reference";
+import { Schema } from "effect";
 import * as subagentLifetime from "../../../src/domain/subagents/subagentLifetime";
 import * as subagentObservation from "../../../src/domain/subagents/subagentObservation";
 import * as subagentData from "../../../src/contracts/subagents/subagent-data";
@@ -182,5 +189,52 @@ it.effect(
         storage.history.list(),
       ).pipe(Effect.provide(f.layer()));
       expect(retained).toEqual([unrelated]);
+    }).pipe(Effect.provide(platform)),
+);
+
+it.effect(
+  "public exact worker refs read their persisted Pi entry after release/restart, never the latest response",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const entryId = f.session.appendMessage(
+        assistant([{ type: "text", text: "Exact selected result" }]),
+      );
+      f.session.appendMessage(assistant([{ type: "text", text: "Later unrelated turn" }]));
+      const ref = subagentLink(f.record.parentSessionId, f.record.handleId, entryId);
+      const input = Schema.decodeUnknownSync(MessageReadInput)({ ref });
+      yield* Effect.flatMap(SubagentStorage, (storage) => storage.history.update(f.record)).pipe(
+        Effect.provide(f.layer()),
+      );
+      for (let restart = 0; restart < 2; restart++) {
+        const sourceLayer = Layer.mergeAll(
+          f.layer(),
+          unusedMessageLookupLayer,
+          projectTodoLayer(),
+          familyStorageHarness().layer,
+        );
+        const page = yield* messageReferences.read(input).pipe(Effect.provide(sourceLayer));
+        expect(page.message.ref).toBe(ref);
+        expect(page.message.link).toBe(ref);
+        expect(page.text).toBe("Exact selected result");
+        expect(
+          (yield* Effect.result(
+            messageReferences
+              .read({
+                ref: subagentLink("wrong-parent", f.record.handleId, entryId),
+              })
+              .pipe(Effect.provide(sourceLayer)),
+          ))._tag,
+        ).toBe("Failure");
+        expect(
+          (yield* Effect.result(
+            messageReferences
+              .read({
+                ref: subagentLink(f.record.parentSessionId, f.record.handleId, "missing"),
+              })
+              .pipe(Effect.provide(sourceLayer)),
+          ))._tag,
+        ).toBe("Failure");
+      }
     }).pipe(Effect.provide(platform)),
 );

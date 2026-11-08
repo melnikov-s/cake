@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { parseSubagentLink } from "../subagents/subagent-reference";
 import { TaskInputReference } from "./task-input";
 import type { JsonValue } from "../serialization/json-contract";
 
@@ -61,6 +62,15 @@ export const MessageReference = Schema.String.check(
   Schema.makeFilter((value) => parseSessionLink(value)?.messageId !== undefined),
 );
 
+/** Public worker handles resolve through persisted ownership, never a guessed private session. */
+export const ReadableMessageReference = Schema.String.check(
+  Schema.isMaxLength(4_096),
+  Schema.makeFilter(
+    (value) =>
+      Schema.is(MessageReference)(value) || parseSubagentLink(value)?.messageId !== undefined,
+  ),
+);
+
 export const messageRefsSchema = Schema.Array(MessageReference).check(Schema.isMaxLength(20));
 
 export const MessageListInput = Schema.Struct({
@@ -80,7 +90,7 @@ export const MessageListInput = Schema.Struct({
 export interface MessageListInput extends Schema.Schema.Type<typeof MessageListInput> {}
 
 export const MessageReadInput = Schema.Struct({
-  ref: MessageReference,
+  ref: ReadableMessageReference,
   offset: Schema.optionalKey(offset),
   maxChars: Schema.optionalKey(
     Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(20_000)),
@@ -93,8 +103,8 @@ export interface MessageOpenInput extends Schema.Schema.Type<typeof MessageOpenI
 
 /** Metadata only. No body previews, extracted attachment text, image bytes or storage paths. */
 export const MessageMetadata = Schema.Struct({
-  ref: MessageReference,
-  link: MessageReference,
+  ref: ReadableMessageReference,
+  link: ReadableMessageReference,
   sessionId: id,
   entryId: id,
   parentId: Schema.NullOr(id),
@@ -137,6 +147,8 @@ export interface MessageOperationControl {
 }
 
 export function messageNavigationTarget(ref: string) {
+  const worker = parseSubagentLink(ref);
+  if (worker?.messageId) return { sessionId: worker.parentSessionId, messageId: worker.messageId };
   const target = parseSessionLink(ref);
   if (!target?.messageId) throw new Error("Expected an exact Cake message reference");
   return { sessionId: target.sessionId, messageId: target.messageId };

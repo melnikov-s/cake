@@ -273,6 +273,20 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
     status: delivery === "fyi" ? "deferred" : delivery === "queue" ? "queued" : "accepted",
   };
   yield* coordination.record(thread, message);
+  // Durable session replies must satisfy the same exact request journal as regular Pi
+  // replies. A separate coordination thread alone does not settle that obligation.
+  if (replyToMessageId && !expectsResponse) {
+    const families = yield* SessionFamilyStorage;
+    const sender = yield* sessions.acquireSession(caller.sessionId);
+    const executing = yield* sender.currentTurnIds();
+    yield* families.prepareResponse(
+      caller.sessionId,
+      targetSessionId,
+      replyToMessageId,
+      messageId,
+      executing,
+    );
+  }
   const inputRefs =
     invocation.name === "sessions.send" ? (invocation.arguments.inputRefs ?? []) : [];
   const turnId = yield* sessionChats
@@ -298,6 +312,8 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
       ),
     );
   message.turnId = turnId;
+  if (replyToMessageId && !expectsResponse)
+    yield* (yield* SessionFamilyStorage).confirmResponse(messageId);
   if (thread.maxMessages !== undefined && sequence >= thread.maxMessages)
     yield* coordination.close(thread);
   const queued =

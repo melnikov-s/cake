@@ -26,7 +26,15 @@ export function subagentLink(
 export function parseSubagentLink(reference: string): SubagentReference | undefined {
   try {
     const url = new URL(reference);
-    if (url.protocol !== "cake:" || url.hostname !== "subagent" || url.hash) return;
+    if (
+      url.protocol !== "cake:" ||
+      url.hostname !== "subagent" ||
+      url.hash ||
+      url.username ||
+      url.password ||
+      url.port
+    )
+      return;
     if ([...url.searchParams.keys()].some((key) => key !== "message")) return;
     if (url.searchParams.getAll("message").length > 1) return;
     const segments = url.pathname.slice(1).split("/");

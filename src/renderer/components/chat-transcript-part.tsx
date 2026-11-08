@@ -75,6 +75,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         part={part}
         onReply={behavior.onReplyToMessage}
         onOpenSourceLocation={behavior.openSourceLocation}
+        sources={behavior.store.messageSources.filter((source) => source.props.partId === part.id)}
         workerTask={
           worker && worker.parentSessionId === behavior.subagents?.parentSessionId
             ? behavior.subagents.run(worker.handleId)?.task
@@ -422,6 +423,7 @@ export const TranscriptPart = observer(function TranscriptPart(props: {
         {props.part.kind === "text" &&
           !props.part.crossSession &&
           !props.part.subagentReport &&
+          !props.part.agentSource &&
           props.behavior.store.messageSources
             .filter((source) => source.props.partId === props.part.id)
             .map((source) => (

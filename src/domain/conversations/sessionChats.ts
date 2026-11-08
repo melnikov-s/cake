@@ -7,6 +7,7 @@ import {
 import { resumeAfterUserInput } from "../session-families/workboardDeliveries";
 import { takePassiveNotices } from "../session-families/updateBatches";
 import * as messageReferences from "./messageReferences";
+import * as projectTodoAttention from "../projects/projectTodoAttention";
 import { messageReference } from "../../contracts/conversations/message-reference";
 import { toJsonValue } from "../../utils/to-json-value";
 import type { AttachmentReadInput } from "../../contracts/conversations/attachment-reference-control";
@@ -140,15 +141,35 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
       input.crossSession &&
       !input.attachments.length &&
       delivery !== "steer" &&
-      isReferenceNotification(encodeCrossSessionMessage(input.text, input.crossSession))
+      isReferenceNotification(
+        encodeCrossSessionMessage(message.text, message.crossSession ?? input.crossSession),
+      )
     ) {
-      yield* storage
-        .deferReferenceNotice({
-          id: input.crossSession.messageId,
-          recipientSessionId: input.sessionId,
-          text: encodeCrossSessionMessage(message.text, message.crossSession ?? input.crossSession),
-        })
-        .pipe(asError("deliver"));
+      const crossSession = message.crossSession ?? input.crossSession;
+      // The entire admission already owns withNoticeDelivery below.
+      const requests = (yield* storage.state()).turns.filter((turn) =>
+        turn.replyMessageIds?.includes(crossSession.messageId),
+      );
+      const report = {
+        id: crossSession.messageId,
+        recipientSessionId: input.sessionId,
+        text: encodeCrossSessionMessage(message.text, crossSession),
+        ...(crossSession.sourceMessageRef
+          ? { resultMessageRef: crossSession.sourceMessageRef }
+          : null),
+        ...(requests[0] ? { responseKey: requests[0].turnId } : null),
+      };
+      const turnIds = requests.map((turn) => turn.turnId);
+      if (
+        !(yield* projectTodoAttention.hold(
+          report,
+          {
+            sessionId: crossSession.sender.sessionId,
+          },
+          turnIds,
+        ))
+      )
+        yield* storage.deferReferenceNotice(report, turnIds);
       return TurnId.make(input.crossSession.messageId);
     }
     const references =
@@ -451,7 +472,7 @@ export const inspect = Effect.fn("SessionChats.inspect")(function* (
   if (input.kind === "messages-read")
     return toJsonValue(
       yield* messageReferences.read({
-        ref: messageReference(input.sessionId, input.entryId ?? ""),
+        ref: input.ref ?? messageReference(input.sessionId, input.entryId ?? ""),
         offset: input.offset,
         maxChars: input.maxChars,
       }),

@@ -485,7 +485,13 @@ const deliverRequesterNotice = Effect.fn("SessionFamilies.deliverRequesterNotice
     turn.resultDelivery === "notification" && isCakeChatSessionId(turn.senderSessionId)
       ? yield* storage.withNoticeDelivery(
           projectTodoAttention.hold(
-            { id: reportMessageId(turn.turnId), recipientSessionId: turn.senderSessionId, text },
+            {
+              id: reportMessageId(turn.turnId),
+              recipientSessionId: turn.senderSessionId,
+              text,
+              responseKey: turn.turnId,
+              ...(report?.resultMessageRef ? { resultMessageRef: report.resultMessageRef } : null),
+            },
             { sessionId: turn.sessionId },
             [turn.turnId],
           ),

@@ -38,7 +38,11 @@ export const ConversationAttention = observer(function ConversationAttention({
   }, [items]);
 
   return (
-    <section aria-label="Needs attention" className="flex min-w-0 flex-col gap-1.5 pt-2">
+    <section
+      aria-label="Needs attention"
+      aria-busy={todos.busy}
+      className="flex min-w-0 flex-col gap-1.5 pt-2"
+    >
       <h2 className="px-1 pb-0.5 text-xs font-medium">
         Needs attention
         <span className="ml-2 font-normal tabular-nums text-muted-foreground">

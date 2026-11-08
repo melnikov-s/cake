@@ -4906,3 +4906,56 @@ it.effect("restart recovery resumes Cake Chat through the runtime the window ope
     expect(cakeChatRuntimeCount(f)).toBe(1);
   }),
 );
+
+it.effect(
+  "an exact non-family reply settles only its persisted obligation and retains response provenance instead of creating a second generic notice",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const sent = yield* f.call("sessions.send", {
+        sessionId: target,
+        text: "Investigate the merge responsiveness issue",
+        resultDelivery: "notification",
+      });
+      const request = yield* Schema.decodeUnknownEffect(
+        Schema.Struct({ messageId: Schema.String, threadId: Schema.String }),
+      )(sent);
+      const storage = Context.get(f.context, SessionFamilyStorage);
+      const recorded = (yield* storage.state()).turns.find(
+        (turn) => turn.requestMessageId === request.messageId,
+      );
+      assert.ok(recorded);
+      const turnId = recorded.turnId;
+      const replyOptions = yield* acquireOptions({
+        location,
+        sessionId: target,
+        newSession: false,
+      }).pipe(Effect.provide(f.context));
+      yield* Context.get(f.context, CakeSessionRuntimes).acquire(replyOptions);
+      yield* storage.recordTurn({
+        sessionId: target,
+        senderSessionId: source,
+        turnId: "other-turn",
+        requestMessageId: "other-request",
+        threadId: "other-thread",
+        reported: false,
+        resultDelivery: "notification",
+      });
+      const ref = messageReference(target, "46866");
+      yield* f.direct(
+        "sessions.reply",
+        {
+          threadId: request.threadId,
+          resultDelivery: "ignore",
+          text: `The task session sent a response. Open the Project Session to read it.\n\n[Full original](${ref})`,
+        },
+        { ...caller, sessionId: target, sourceEntryId: "46866" },
+      );
+      const state = yield* storage.state();
+      expect(state.turns.map((turn) => turn.turnId)).toEqual(["other-turn"]);
+      expect(state.deferredReferences).toMatchObject([
+        { responseKey: turnId, resultMessageRef: ref },
+      ]);
+      expect(state.deferredReferences).toHaveLength(1);
+    }).pipe(Effect.scoped),
+);

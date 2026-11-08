@@ -1,8 +1,9 @@
+import { Schema } from "effect";
 import { pendingReportRef, type PendingReport } from "./pending-report";
 import type { AgentUpdate } from "./agent-update";
 import type { PassiveNotice } from "./passive-notice";
 import { subagentTaskTitle } from "../subagents/subagent-presentation";
-import { parseSessionLink } from "./message-reference";
+import { parseSessionLink, MessageReference } from "./message-reference";
 import { describeCrossSessionMessage, parseCrossSessionMessage } from "./cross-session-message";
 
 const forwardingHeading =
@@ -62,7 +63,16 @@ export function pendingReportPresentation(reports: readonly PendingReport[]) {
     } else {
       const message = parseCrossSessionMessage(report.text);
       if (message)
-        notices.push({ id: report.id, text: message.text, crossSession: message.metadata });
+        notices.push({
+          id: report.id,
+          text: message.text,
+          crossSession: {
+            ...message.metadata,
+            ...(report.resultMessageRef && Schema.is(MessageReference)(report.resultMessageRef)
+              ? { sourceMessageRef: report.resultMessageRef }
+              : null),
+          },
+        });
     }
   }
   return { updates, notices };

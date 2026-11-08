@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { ReadableMessageReference } from "./message-reference";
 
 const entryId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 
@@ -90,6 +91,8 @@ export const SessionHistoryEntry = Schema.Struct({
 export interface SessionHistoryEntry extends Schema.Schema.Type<typeof SessionHistoryEntry> {}
 
 export const SessionInspectionQuery = Schema.Struct({
+  /** Exact public source for user-opened session/worker originals. */
+  ref: Schema.optionalKey(ReadableMessageReference),
   kind: Schema.Literals([
     "history",
     "compactions",

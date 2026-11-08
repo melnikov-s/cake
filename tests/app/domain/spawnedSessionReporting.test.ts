@@ -1,3 +1,6 @@
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { cakeWorkspaceSessionDirectory } from "../../../src/services/pi/runtime/session-discovery";
+import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import * as sessionFamilyCompletion from "../../../src/domain/session-families/sessionFamilyCompletion";
 import * as coordinatorMessageRouting from "../../../src/domain/session-families/coordinatorMessageRouting";
@@ -2717,10 +2720,39 @@ describe("automatic spawned-session reporting", () => {
                 ],
               });
               yield* Deferred.await(f.entered);
+              // This contract now verifies the original before admitting the open request.
+              // Persist a real isolated Pi original, not an invented entry ID.
+              const sourceRoot = yield* Effect.acquireRelease(
+                Effect.promise(() => mkdtemp(join(tmpdir(), "cake-held-original-"))),
+                (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+              );
+              const source = SessionManager.create(
+                "/project",
+                cakeWorkspaceSessionDirectory("/project", sourceRoot),
+                { id: created.sessionId },
+              );
+              source.appendMessage({ role: "user", content: "Investigate", timestamp: 0 });
+              const sourceEntryId = source.appendMessage({
+                role: "assistant",
+                content: [{ type: "text", text: resultText }],
+                api: "openai-responses",
+                provider: "test",
+                model: "fixture",
+                timestamp: 1,
+                stopReason: "stop",
+                usage: {
+                  input: 0,
+                  output: 0,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  totalTokens: 0,
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                },
+              });
               yield* Deferred.succeed(f.finish, {
                 stopReason: "stop",
                 text: resultText,
-                entryId: "source-final-answer",
+                entryId: sourceEntryId,
               });
               yield* Deferred.await(f.settled);
               const settled = yield* onlyTurn();
@@ -2743,7 +2775,7 @@ describe("automatic spawned-session reporting", () => {
               assert.equal(state.deferredReferences?.[0]?.attentionTodoId, todo.id);
               assert.ok(
                 state.deferredReferences?.[0]?.text.includes(
-                  messageReference(created.sessionId, "source-final-answer"),
+                  messageReference(created.sessionId, sourceEntryId),
                 ),
               );
               assert.equal(state.spawnedSessions[0]?.handoffSettled, true);
@@ -2767,16 +2799,23 @@ describe("automatic spawned-session reporting", () => {
                 .activate(CAKE_CHAT_TODO_SCOPE, todo.id, todo.revision)
                 .pipe(
                   Effect.provide(
-                    Layer.mock(TaskInputStorage, {
-                      isRecipient: () => Effect.succeed(protectedInput),
-                    }),
+                    Layer.mergeAll(
+                      Layer.mock(TaskInputStorage, {
+                        isRecipient: () => Effect.succeed(protectedInput),
+                      }),
+                      Layer.succeed(ProjectSessionConfiguration, {
+                        agentDirectory: "/cake",
+                        sessionDirectory: sourceRoot,
+                        resolvedSessionDirectory: `${sourceRoot}/resolved`,
+                      }),
+                    ),
                   ),
                 );
               while (f.transcript.length < 2) yield* Effect.yieldNow;
               assert.equal((f.transcript.at(1) ?? "").includes(resultText), !protectedInput);
               assert.ok(
                 (f.transcript.at(1) ?? "").includes(
-                  messageReference(created.sessionId, "source-final-answer"),
+                  messageReference(created.sessionId, sourceEntryId),
                 ),
               );
               const opened = yield* projectTodos.read(CAKE_CHAT_TODO_SCOPE, todo.id);

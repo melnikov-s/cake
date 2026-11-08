@@ -1,9 +1,12 @@
 import { isDirectProjectChatDelegation } from "../../contracts/worktrees/auto-merge-delegation";
 import type { AutoMergeOutcome, AutoMergeRequest } from "../../contracts/worktrees/auto-merge";
+import { ReadableMessageReference } from "../../contracts/conversations/message-reference";
 import type { StoredPassiveNotice } from "../../contracts/conversations/passive-notice";
-import type {
-  PendingReport,
-  ReportHandlingReceipt,
+import {
+  pendingReportRef,
+  samePendingResponse,
+  type PendingReport,
+  type ReportHandlingReceipt,
 } from "../../contracts/conversations/pending-report";
 import type { BoardDelivery } from "../../contracts/artifacts/board-delivery";
 import type {
@@ -168,6 +171,7 @@ export class SessionFamilyStorage extends Context.Service<
     readonly releaseAttentionReports: (
       recipientSessionId: string,
       todoId: string,
+      ids: readonly string[],
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly markReferenceAdmissions: (
       ids: ReadonlyArray<string>,
@@ -984,31 +988,58 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           update((document) => {
             if (
               turnIds.length &&
-              !document.turns.some((turn) => turnIds.includes(turn.turnId) && !turn.reported)
+              !document.turns.some((turn) => turnIds.includes(turn.turnId) && !turn.reported) &&
+              !document.deferredReferences?.some((notice) => samePendingResponse(notice, item))
             )
               return document;
             if (
               document.handledReports?.some(
                 (receipt) =>
-                  receipt.id === item.id && receipt.recipientSessionId === item.recipientSessionId,
+                  receipt.recipientSessionId === item.recipientSessionId &&
+                  (receipt.id === item.id ||
+                    Boolean(item.responseKey && receipt.responseKey === item.responseKey)),
               )
             )
               return turnIds.reduce(withoutNotice, document);
+            const candidate = pendingReportRef(item);
+            const ref =
+              candidate && Schema.is(ReadableMessageReference)(candidate) ? candidate : undefined;
+            const retained = { ...item, ...(ref ? { resultMessageRef: ref } : null) };
             const notices = document.deferredReferences ?? [];
+            const existing = notices.find((notice) => samePendingResponse(notice, retained));
             return {
               ...turnIds.reduce(withoutNotice, document),
-              deferredReferences: notices.some((notice) => notice.id === item.id)
-                ? notices
-                : [...notices, item],
+              deferredReferences: existing
+                ? notices.map((notice) =>
+                    notice !== existing
+                      ? notice
+                      : {
+                          ...notice,
+                          // Upgrade in place without reviving attention or replaying an admission.
+                          ...(!Schema.is(ReadableMessageReference)(pendingReportRef(notice)) && ref
+                            ? {
+                                text: retained.text,
+                                resultMessageRef: ref,
+                                ...(retained.source ? { source: retained.source } : null),
+                              }
+                            : null),
+                          ...(retained.responseKey ? { responseKey: retained.responseKey } : null),
+                        },
+                  )
+                : [...notices, retained],
             };
           }),
       );
       const releaseAttentionReports = Effect.fn("SessionFamilyStorage.releaseAttentionReports")(
-        (recipientSessionId: string, todoId: string) =>
+        (recipientSessionId: string, todoId: string, ids: readonly string[]) =>
           update((document) => ({
             ...document,
             deferredReferences: document.deferredReferences?.map((item) => {
-              if (item.recipientSessionId !== recipientSessionId || item.attentionTodoId !== todoId)
+              if (
+                item.recipientSessionId !== recipientSessionId ||
+                item.attentionTodoId !== todoId ||
+                !ids.includes(item.id)
+              )
                 return item;
               const { attentionTodoId: _todoId, ...released } = item;
               return released;
@@ -1038,14 +1069,26 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
               deferredReferences: document.deferredReferences?.filter((item) => !matches(item)),
               handledReports: [
                 ...handled,
-                ...receipts.filter(
-                  (receipt) =>
-                    !handled.some(
+                ...receipts
+                  .map((receipt) => {
+                    const pending = document.deferredReferences?.find(
                       (item) =>
-                        item.id === receipt.id &&
-                        item.recipientSessionId === receipt.recipientSessionId,
-                    ),
-                ),
+                        item.recipientSessionId === receipt.recipientSessionId &&
+                        item.id === receipt.id,
+                    );
+                    return {
+                      ...receipt,
+                      ...(pending?.responseKey ? { responseKey: pending.responseKey } : null),
+                    };
+                  })
+                  .filter(
+                    (receipt) =>
+                      !handled.some(
+                        (item) =>
+                          item.id === receipt.id &&
+                          item.recipientSessionId === receipt.recipientSessionId,
+                      ),
+                  ),
               ],
             };
           }),

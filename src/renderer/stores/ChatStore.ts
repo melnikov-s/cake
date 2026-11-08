@@ -259,12 +259,14 @@ export class ChatStore extends Store<ChatStoreProps> {
           : part.kind === "text" &&
               ((part.role === "assistant" && part.status !== "streaming") ||
                 part.subagentReport ||
-                part.crossSession)
+                part.crossSession ||
+                part.agentSource)
             ? [
                 ...new Set([
                   ...(part.crossSession?.sourceMessageRef
                     ? [part.crossSession.sourceMessageRef]
                     : []),
+                  ...(part.agentSource ? messageReferencesInText(part.agentSource.href) : []),
                   ...messageReferencesInText(part.text),
                 ]),
               ]
@@ -272,7 +274,8 @@ export class ChatStore extends Store<ChatStoreProps> {
       return references
         .filter(
           (reference) =>
-            (part.kind === "text" && (part.crossSession || part.subagentReport)) ||
+            (part.kind === "text" &&
+              (part.crossSession || part.subagentReport || part.agentSource)) ||
             !incoming.has(reference),
         )
         .map((reference) =>
