@@ -184,10 +184,16 @@ export class ConversationNavigatorStore extends Store<{
     return this.props.projection.projects.runningProjectPaths.includes(projectPath);
   }
 
-  /** Read each active session's own flag, never inherited activity or descendant catalogs. */
+  /** Only top-level sessions' own unread counts; descendants still contribute to running. */
   projectUnread(projectPath: string) {
     return (
-      this.props.catalog.projectSessions(projectPath, false).some((session) => session.unread) ||
+      this.props.catalog
+        .projectSessions(projectPath, false)
+        .some(
+          (session) =>
+            session.unread &&
+            (!session.familyParentSessionId || session.familyParentSessionId === session.sessionId),
+        ) ||
       this.props.projection.cakeChatCatalog.sessions.some(
         (session) => session.projectPath === projectPath && !session.resolved && session.unread,
       )

@@ -181,7 +181,50 @@ it.each([
   },
 );
 
-it("preserves unread behind blue and clears green only after the last own-unread session is read", () => {
+it.each(["child", "nested", "orphan"])(
+  "ignores %s unread even when its parent is absent from the active project catalog",
+  (unreadId) => {
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/cake", name: "Cake" })],
+      sessions: [
+        sessionSummary({
+          sessionId: "owner",
+          projectPath: "/cake",
+          familyChildSessionIds: ["child"],
+        }),
+        sessionSummary({
+          sessionId: "child",
+          projectPath: "/cake",
+          familyParentSessionId: "owner",
+          familyChildSessionIds: ["nested"],
+          unread: unreadId === "child",
+        }),
+        sessionSummary({
+          sessionId: "nested",
+          projectPath: "/cake",
+          familyParentSessionId: "child",
+          unread: unreadId === "nested",
+        }),
+        sessionSummary({
+          sessionId: "orphan",
+          projectPath: "/cake",
+          familyParentSessionId: "missing-parent",
+          unread: unreadId === "orphan",
+        }),
+      ],
+    });
+    render(
+      <StoreProvider store={fixture.root}>
+        <ProjectRail />
+      </StoreProvider>,
+    );
+    expect(screen.queryByRole("img", { name: "Unread sessions in Cake" })).toBeNull();
+    expect(fixture.root.conversationNavigatorStore.tree("/cake").unread).toBe(0);
+    expect(fixture.models.sessionCatalog.find(unreadId)!.unread).toBe(true);
+  },
+);
+
+it("preserves top-level unread behind child-only running and ignores child unread after parents are read", () => {
   using fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/cake", name: "Cake" })],
     sessions: [
@@ -190,7 +233,12 @@ it("preserves unread behind blue and clears green only after the last own-unread
         projectPath: "/cake",
         familyChildSessionIds: ["child"],
       }),
-      sessionSummary({ sessionId: "child", projectPath: "/cake", familyParentSessionId: "owner" }),
+      sessionSummary({
+        sessionId: "child",
+        projectPath: "/cake",
+        familyParentSessionId: "owner",
+        running: true,
+      }),
       sessionSummary({ sessionId: "peer", projectPath: "/cake" }),
       sessionSummary({ sessionId: "elsewhere", projectPath: "/other", unread: true }),
       sessionSummary({ sessionId: "archived", projectPath: "/cake", resolved: true, unread: true }),
@@ -208,7 +256,7 @@ it("preserves unread behind blue and clears green only after the last own-unread
     </StoreProvider>,
   );
   const green = () => screen.queryByRole("img", { name: "Unread sessions in Cake" });
-  const update = (sessionId: string, unread: boolean, revision: number) =>
+  const update = (sessionId: string, unread: boolean, revision: number, running = false) =>
     act(() =>
       applySessionCatalogGroupUpdate(
         fixture.models.sessionCatalog,
@@ -216,31 +264,37 @@ it("preserves unread behind blue and clears green only after the last own-unread
         {
           _tag: "Event",
           revision,
-          event: { _tag: "ActivityChanged", sessionId, running: false, unread },
+          event: { _tag: "ActivityChanged", sessionId, running, unread },
         },
       ),
     );
   expect(green()).toBeNull();
-  update("child", true, 1);
+  update("child", true, 1, true);
   expect(green()).toBeNull();
   expect(screen.getByRole("img", { name: "Work running in Cake" })).toBeTruthy();
   expect(fixture.models.sessionCatalog.find("child")!.unread).toBe(true);
   expect(fixture.models.sessionCatalog.find("owner")!.unread).toBe(false);
+  expect(fixture.root.conversationNavigatorStore.tree("/cake").running).toBe(1);
+  update("child", true, 2);
   act(() => fixture.models.projects.runningProjectPaths.splice(0));
-  expect(green()).toBeTruthy();
+  expect(green()).toBeNull();
   expect(screen.queryByRole("img", { name: "Work running in Cake" })).toBeNull();
-  update("peer", true, 2);
-  update("child", false, 3);
+  update("owner", true, 3);
+  update("peer", true, 4);
+  expect(green()).toBeTruthy();
+  update("owner", false, 5);
   expect(green()).toBeTruthy();
   act(() => fixture.models.projects.runningProjectPaths.push("/cake"));
   expect(green()).toBeNull();
   expect(fixture.models.sessionCatalog.find("peer")!.unread).toBe(true);
-  update("peer", false, 4);
+  update("peer", false, 6);
   expect(green()).toBeNull();
   expect(screen.getByRole("img", { name: "Work running in Cake" })).toBeTruthy();
   act(() => fixture.models.projects.runningProjectPaths.splice(0));
   expect(green()).toBeNull();
   expect(screen.queryByRole("img", { name: "Work running in Cake" })).toBeNull();
+  expect(fixture.models.sessionCatalog.find("child")!.unread).toBe(true);
+  expect(fixture.root.conversationNavigatorStore.tree("/cake").unread).toBe(0);
   expect(load).not.toHaveBeenCalled();
   expect(fixture.models.projectConversations).toHaveLength(0);
   expect([...fixture.models.discussionCatalogs]).toEqual(discussionCatalogs);
