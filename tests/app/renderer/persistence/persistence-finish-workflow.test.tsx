@@ -66,7 +66,7 @@ describe("window presentation persistence workflows", () => {
         await fixture.user.type(projectComposer(), "Continue this unsent investigation");
         await fixture.user.click(screen.getAllByRole("button", { name: "Close Workspace" })[0]!);
         await fixture.user.click(screen.getAllByRole("button", { name: "Settings" })[0]!);
-        expect(await screen.findByText("Model configuration")).toBeDefined();
+        expect(await screen.findByRole("heading", { name: "Settings" })).toBeDefined();
         // Window-close flushing is a lifecycle boundary, not an invented UI command.
         await act(async () => persistence.flush());
         expect(save).toHaveBeenCalled();
@@ -81,7 +81,7 @@ describe("window presentation persistence workflows", () => {
         "value",
         "",
       );
-      expect(screen.queryByText("Model configuration")).toBeNull();
+      expect(screen.queryByRole("heading", { name: "Settings" })).toBeNull();
       await openAlpha(restored.user);
       expect(await screen.findByPlaceholderText("Ask Cake to work in alpha…")).toHaveProperty(
         "value",

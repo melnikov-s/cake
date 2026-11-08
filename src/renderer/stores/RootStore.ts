@@ -1071,11 +1071,19 @@ export class RootStore extends Store<{
       screenCapture: this.screenCaptureStore,
       desktopConnection: this.props.desktopConnection,
       operations: this.sessionOperationCoordinator,
-      activeSession: () => {
-        const active =
+      mcpProjectSession: () => {
+        const origin =
           this.appShellStore.activeConversation ?? this.appShellStore.settingsConversation;
-        if (active?.kind === "project-session")
-          return this.sessionRegistry.findSession(active.sessionId);
+        return origin?.kind === "project-session"
+          ? this.sessionRegistry.findSession(origin.sessionId)
+          : undefined;
+      },
+      activeSession: () => {
+        const active = this.appShellStore.activeConversation;
+        if (active?.kind === "project-session") {
+          const session = this.projectWorkbenchStore.activeSession;
+          return session?.sessionId === active.sessionId ? session : undefined;
+        }
         return active?.kind === "cake-chat"
           ? this.cakeChatCollectionStore.registry.find(active.sessionId)
           : undefined;

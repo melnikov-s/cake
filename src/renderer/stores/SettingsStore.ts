@@ -17,7 +17,7 @@ import { AgentNavigationSettingsStore } from "./AgentNavigationSettingsStore";
 import { ModelPresetSettingsStore } from "./ModelPresetSettingsStore";
 import { ProviderSettingsStore } from "./ProviderSettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import { ProjectSessionStore } from "./ProjectSessionStore";
+import type { ProjectSessionStore } from "./ProjectSessionStore";
 import { McpSettingsStore } from "./McpSettingsStore";
 import { LocalMcpSettingsStore } from "./LocalMcpSettingsStore";
 import { WidgetPackageSettingsStore } from "./WidgetPackageSettingsStore";
@@ -44,6 +44,7 @@ export interface SettingsStoreProps {
   desktopConnection?: DesktopConnectionStore;
   operations: SessionOperationCoordinatorStore;
   activeSession(): ProjectSessionStore | CakeChatSessionStore | undefined;
+  mcpProjectSession(): ProjectSessionStore | undefined;
 }
 
 /** Coordinates the focused workflows presented by the settings surface. */
@@ -73,8 +74,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
 
   @child get mcp(): McpSettingsStore {
     return createStore(McpSettingsStore, {
-      projectSession: () =>
-        this.activeSession instanceof ProjectSessionStore ? this.activeSession : undefined,
+      projectSession: () => this.props.mcpProjectSession(),
     });
   }
   @child get localMcp(): LocalMcpSettingsStore {

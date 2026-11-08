@@ -545,7 +545,9 @@ describe("App shell navigation workflow", () => {
         return frameId;
       });
       vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
-      await fixture.selectSession("alpha");
+      // Deliberately leave selection pending; the normal fixture helper waits for it to land.
+      await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
+      await fixture.user.click(screen.getByRole("option", { name: /^alpha conversation / }));
       expect(screen.getByPlaceholderText("Ask Cake to work in beta…")).toBeDefined();
       expect(frames.size).toBeGreaterThan(0);
       if (showSettings) {

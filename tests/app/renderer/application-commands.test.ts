@@ -67,7 +67,7 @@ describe("Application command registry", () => {
   });
 
   it.each(["project-session", "project-chat", "cake-chat"])(
-    "retains only the %s Settings origin without making a hidden conversation active",
+    "retains the %s Settings origin only for Project MCP, not global model configuration",
     (kind) => {
       using fixture = createRendererStoreFixture({
         sessions: [sessionSummary({ sessionId: "session", projectPath: "/project" })],
@@ -87,9 +87,15 @@ describe("Application command registry", () => {
       else root.navigationStore.selectCakeChat(sessionId);
       root.navigationStore.showSettings();
       expect(root.appShellStore.activeConversation).toBeUndefined();
-      expect(root.settingsStore.activeSession).toBe(owner);
+      expect(root.settingsStore.activeSession).toBeUndefined();
+      expect(root.settingsStore.configuration).toBeUndefined();
+      expect(root.appShellStore.settingsConversation?.sessionId).toBe(sessionId);
+      expect(root.settingsStore.mcp.projectSession).toBe(
+        kind === "project-session" ? owner : undefined,
+      );
       root.navigationStore.showAutomations();
       expect(root.settingsStore.activeSession).toBeUndefined();
+      expect(root.settingsStore.mcp.projectSession).toBeUndefined();
     },
   );
 
