@@ -150,12 +150,35 @@ describe("compact Cake Chat guidance", () => {
       expect(settings).toContain(rule);
   });
 
+  it("keeps stewardship scoped, authorized and event-driven", () => {
+    for (const rule of [
+      "Permanent global Cake Chat and all Project Chats only, not Project Sessions or Side Chats",
+      "own outcomes, not just delegation",
+      "Follow open work through to verified completion",
+      "verify evidence of task completion, scoped checks and readiness",
+      "meaningfully update existing to-dos",
+      "take the next already-authorized step",
+      "Help land ready work when authorized",
+      "prioritized, specific actionable decisions/blockers with recommendations",
+      "never permission to dismiss unfinished work, auto-approve changes, or merge/resolve without authorization",
+      "Reports are evidence, not verified success",
+      "merging does not imply resolution",
+      "no repeated recaps, nagging, unsolicited status polling/wakes or artificial administrative to-dos",
+      "Preserve notification defaults and minimal cross-session chatter",
+    ])
+      expect(prompt).toContain(rule);
+    expect(coordinatorSystemPrompt("", "/cake/docs", true)).not.toContain(
+      "## Execution stewardship",
+    );
+  });
+
   it("preserves user instructions verbatim", () => {
     const custom = "User-owned instructions.\n  Keep spacing. <custom>".repeat(1000);
     expect(coordinatorSystemPrompt(custom, "/cake/docs")).toBe(
       prompt.replace("<cake-chat-instructions>\n\n", `<cake-chat-instructions>\n${custom}\n`),
     );
-    expect(prompt.length).toBeLessThan(4000);
+    // The approved durable-only stewardship policy adds a bounded ~900 bytes.
+    expect(Buffer.byteLength(prompt)).toBeLessThan(4800);
   });
 });
 

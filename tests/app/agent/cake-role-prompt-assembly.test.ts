@@ -64,6 +64,8 @@ describe("role-specific prompt assembly", () => {
     expect(append).toContain("no fallback");
     expect(append).toContain("Reports/completion grant no merge/resolve approval");
     expect(append).toContain("task done + scoped checks passed = ready, not repo-wide green");
+    expect(append).not.toContain("## Execution stewardship");
+    expect(append).not.toContain("own outcomes, not just delegation");
     expect(append).not.toContain("Cake development");
     expect(append).not.toContain("pnpm typecheck");
     expect(append).not.toContain("plugins.present");

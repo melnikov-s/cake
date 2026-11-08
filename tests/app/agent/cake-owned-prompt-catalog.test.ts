@@ -6,7 +6,7 @@ import { defaultCakePrompts } from "../../../src/contracts/application/cake-prom
 
 const promptDirectory = new URL("../../../src/services/pi/runtime/prompts/", import.meta.url);
 const budgets = {
-  "cake-chat.md": 2200,
+  "cake-chat.md": 3100,
   "common.md": 850,
   "general-research.md": 650,
   "interview.md": 150,
