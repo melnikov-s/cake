@@ -81,7 +81,7 @@ import type { SideChatHistoryImport } from "../pi/side-chat-history";
 import { inspectDurableSideChatMessages } from "./durable-side-chat-messages";
 import type { SessionInspectionQuery } from "../../contracts/conversations/session-query-data";
 import { SideSessionDoc } from "./durable-side-session";
-import { createEditTool, createWriteTool } from "@earendil-works/pi-durable/tools";
+import type { PiContextFork } from "../pi/context-fork";
 
 const ORIGINALS = ["pi.user", "pi.assistant", "pi.tool-result"];
 const NO_REPLY = "That Cake Chat message has no completed reply to branch from yet";
@@ -105,11 +105,8 @@ export interface DurableSideChats {
   /** Forks the main conversation after an anchored exchange, or its latest settled reply when omitted. */
   fork(entryId?: string): Promise<string>;
   transferQueued(sourceSessionId: string, targetSessionId: string, partId: string): Promise<string>;
-  /** Task fork from an explicit or latest settled reply, with an isolated execution binding. */
-  forkTask(
-    workingDirectory: string,
-    entryId?: string,
-  ): Promise<{ sessionId: string; entryId: string }>;
+  /** Read settled model context without creating a human Side Chat or executable fork. */
+  taskContext(entryId?: string): Promise<PiContextFork>;
   /** The Cake conversation runtime of one existing side-chat fork. */
   open(options: CakeSessionRuntimeOptions): Promise<CakeSessionRuntime>;
   preview(sessionId: string): Promise<PiSessionPreview | undefined>;
@@ -502,7 +499,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
                 ? [
                     {
                       type: "text" as const,
-                      text: `${DURABLE_SIDE_CHAT_NOTE}\n${task?.workingDirectory ? `You are a read-only investigation context fork (inline/side session), not an implementation Project Session. Your tools run in the Cake-managed worktree ${task.workingDirectory}; tool availability does not authorize code changes. Read applicable project instruction files in this checkout before investigating project behavior; inherited chat context does not replace them. Never mutate this worktree or the source checkout. If code changes become needed, return findings to the parent for handoff to a fresh independent Project Session via sessions.create; never silently expand research into coding or redelegate it yourself. Cake delivers the correlated result automatically; no duplicate completion message.\n` : ""}Your parent/main conversation address is ${host.parentSessionId ?? CAKE_CHAT_SESSION_ID}. Your own messaging identity is ${sessionId}. Use cake sessions.send with input { sessionId: "parent", text: "..." } to message the parent.\n${host.todoContext?.() ?? ""}`,
+                      text: `${DURABLE_SIDE_CHAT_NOTE}\n${task?.workingDirectory ? `You are a legacy read-only investigation context fork, not an implementation Project Session. Your tools run in the Cake-managed worktree ${task.workingDirectory}; tool availability does not authorize code changes. Read applicable project instruction files in this checkout before investigating project behavior; inherited chat context does not replace them. Never mutate this worktree or the source checkout. If code changes become needed, return findings to the parent for handoff to a fresh independent Project Session via sessions.create; never silently expand research into coding or redelegate it yourself. Cake delivers the correlated result automatically; no duplicate completion message.\n` : ""}Your parent/main conversation address is ${host.parentSessionId ?? CAKE_CHAT_SESSION_ID}. Your own messaging identity is ${sessionId}. Use cake sessions.send with input { sessionId: "parent", text: "..." } to message the parent.\n${host.todoContext?.() ?? ""}`,
                     },
                   ]
                 : []),
@@ -707,7 +704,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         throw new Error("Interviews are unavailable in this closed or unsupported side chat");
       return dispatch(input, api, context);
     },
-    async forkTask(workingDirectory, entryId) {
+    async taskContext(entryId) {
       let at: EntryId | undefined;
       if (entryId !== undefined) at = await sideChatForkPoint(root, entryId);
       else {
@@ -730,20 +727,8 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         } while (at === undefined && cursor !== undefined);
       }
       if (at === undefined) throw new Error(NO_REPLY);
-      const sessionId = await this.fork(String(at));
-      const { conversation } = await resolve(sessionId);
-      const inherited = await conversation.agent(BACKGROUND_CONTEXT);
-      await conversation.configure(
-        {
-          cwd: workingDirectory,
-          tools: [...inherited.callable, createEditTool(), createWriteTool()],
-        },
-        BACKGROUND_CONTEXT,
-      );
-      await conversation.commit(async (tx) => {
-        (await tx.doc(SideSessionDoc, conversation.id)).workingDirectory = workingDirectory;
-      }, BACKGROUND_CONTEXT);
-      return { sessionId, entryId: String(at) };
+      const view = await root.context(BACKGROUND_CONTEXT, { at });
+      return { entryId: String(at), messages: view.messages };
     },
     async fork(entryId) {
       const at = await sideChatForkPoint(root, entryId);

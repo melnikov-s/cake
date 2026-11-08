@@ -1,3 +1,4 @@
+import type { PiContextFork } from "../pi/context-fork";
 import type { AssistantContext } from "../../contracts/cake-chats/assistant-context";
 import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { SessionInspectionQuery } from "../../contracts/conversations/session-query-data";
@@ -47,11 +48,10 @@ export class CakeChatDurable extends Context.Service<
     readonly createRuntime: (
       options: CakeSessionRuntimeSetup,
     ) => Effect.Effect<CakeSessionRuntime, DurableChatError>;
-    readonly forkTask: (
+    readonly taskContext: (
       parentSessionId: string,
-      workingDirectory: string,
       entryId?: string,
-    ) => Effect.Effect<{ sessionId: string; entryId: string }, DurableChatError>;
+    ) => Effect.Effect<PiContextFork, DurableChatError>;
     readonly createSideChatRuntime: (
       options: CakeSessionRuntimeSetup,
     ) => Effect.Effect<CakeSessionRuntime, DurableChatError>;
@@ -175,12 +175,12 @@ export const makeCakeChatDurableLive = (
           },
         });
       }),
-      forkTask: (parentSessionId, workingDirectory, entryId) =>
-        operation("forkTask", async () => {
+      taskContext: (parentSessionId, entryId) =>
+        operation("taskContext", async () => {
           const runtime = live.get(parentSessionId);
           if (!runtime)
             throw new Error("Open the originating permanent chat before forking a task");
-          return runtime.sideChats.forkTask(workingDirectory, entryId);
+          return runtime.sideChats.taskContext(entryId);
         }),
       createSideChatRuntime: Effect.fn("CakeChatDurable.createSideChatRuntime")(
         function* (options) {

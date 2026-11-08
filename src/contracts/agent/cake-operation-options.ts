@@ -119,7 +119,7 @@ export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
 export interface GlobalOperationControl {
   tools: readonly GlobalControlTool[];
   invoke(
-    input: { name: string; arguments: JsonValue; sourceEntryId?: string },
+    input: { name: string; arguments: JsonValue; sourceEntryId?: string; anchorPartId?: string },
     signal: AbortSignal,
   ): Promise<JsonValue>;
 }

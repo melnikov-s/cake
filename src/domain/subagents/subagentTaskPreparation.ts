@@ -238,6 +238,8 @@ const resolveModel = (
 };
 
 export interface PreparedTask {
+  /** Persist inherited context before publishing a new handle; never rerun on restore. */
+  readonly initializeContext?: (sessionId: string) => Effect.Effect<void, SubagentError>;
   readonly input: SubagentTask;
   readonly parent: SubagentParentRuntime;
   readonly workingDirectory: string;

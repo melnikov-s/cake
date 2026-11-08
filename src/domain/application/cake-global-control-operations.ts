@@ -59,6 +59,9 @@ export function createGlobalControlOperations(
             {
               name: tool.command,
               arguments: argumentsValue,
+              ...(tool.command === "sessions.fork"
+                ? { anchorPartId: `tool-${context.toolCallId}` }
+                : null),
               ...(context.runtime.assistantEntryId &&
               (tool.command === "sessions.send" || tool.command === "sessions.reply")
                 ? { sourceEntryId: context.runtime.assistantEntryId }

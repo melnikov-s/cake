@@ -17,7 +17,7 @@ describe("permanent-chat delegation tool guidance", () => {
         "read-only",
         "explicitly requested different model",
         "private subagent directly with that model",
-        "Private subagents require an explicit request",
+        "Fresh-context subagents require an explicit request",
         "only when explicitly authorized",
         "research workaround",
         "existing context",
@@ -39,6 +39,22 @@ describe("permanent-chat delegation tool guidance", () => {
     },
   );
 
+  it("never advertises an agent fork as a human Side Chat lifecycle", () => {
+    const definition = windowControlDefinitions["sessions.fork"];
+    const text = [definition.discovery.summary, ...definition.discovery.guidance].join("\n");
+    for (const rule of [
+      "agent-owned",
+      "parent-owned Subagent Session",
+      "handleId/ref",
+      "survive restart",
+      "fails visibly",
+      "Side Chats are exclusively human-created",
+    ])
+      expect(text).toContain(rule);
+    expect(text).not.toContain("context-forked Side Session");
+    expect(text).not.toContain("inline/side context fork");
+  });
+
   it("makes fresh implementation examples isolated, asynchronous tasks even with a requested model", () => {
     for (const example of windowControlDefinitions["sessions.create"].discovery.examples) {
       expect(example.input.initialPrompt).toContain("Implement");
@@ -51,9 +67,9 @@ describe("permanent-chat delegation tool guidance", () => {
     for (const rule of [
       "implementation/code changes use sessions.create",
       "never sessions.fork or family children",
-      "sessions.fork as a read-only inline/side context fork",
+      "sessions.fork as a read-only agent-owned context-forked subagent",
       "explicitly requested different model uses a private subagent directly with that model",
-      "Private subagents require an explicit request",
+      "Fresh-context subagents require an explicit request",
       "Unhelpful existing context permits a private investigator only when explicitly authorized",
       "otherwise use the contextual fork",
       "handoff to a fresh Project Session",

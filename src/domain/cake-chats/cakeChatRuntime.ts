@@ -1,9 +1,7 @@
-import { SideSessionFork } from "../../contracts/cake-chats/side-session-fork";
+import { AgentContextFork } from "../../contracts/cake-chats/agent-context-fork";
 import { cakeChatControlTools } from "../../contracts/application/window-control-definitions";
-import { startTaskSideSession } from "../discussion-sessions/discussionSessions";
-import { DiscussionSessionEnvironment } from "../../services/discussion-sessions/DiscussionSessionEnvironment";
+import { fork as forkAgentContext } from "../subagents/agentContextFork";
 import type { DiscussionTitleRequests } from "../../services/discussion-sessions/DiscussionTitleRequests";
-import { ReviewStorage } from "../../services/storage/ReviewStorage";
 import { messageReference } from "../../contracts/conversations/message-reference";
 import { globalArtifactOperationContracts } from "../../contracts/artifacts/global-artifact-control";
 import type { invokeGlobalArtifactCommand } from "../artifacts/globalArtifacts";
@@ -87,7 +85,7 @@ import { SessionCoordination } from "../../services/session-catalogs/SessionCoor
 import * as sessionFamilyAdmission from "../session-families/sessionFamilyAdmission";
 import { implicitTurnResultFor } from "../../contracts/pi/turn-result-data";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
-import { makeSubagentControl } from "../subagents/subagentControl";
+import { makeSubagentControl, makeSubagentParent } from "../subagents/subagentControl";
 import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
 import type { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import type { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
@@ -95,7 +93,7 @@ import { RendererRequestCoordinator as RendererRequests } from "../../services/r
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { SubagentStorage } from "../../services/storage/SubagentStorage";
 import { SubagentCoordinator } from "../../services/subagents/SubagentCoordinator";
-import type { SubagentEnvironment } from "../../services/subagents/SubagentEnvironment";
+import { SubagentEnvironment } from "../../services/subagents/SubagentEnvironment";
 import { ProjectTodoReports } from "../../services/projects/ProjectTodoReports";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import type { ModelPresetPrompts } from "../../services/storage/ModelPresetPrompts";
@@ -316,8 +314,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   });
   const vscode = yield* Effect.serviceOption(VsCodeServer);
   const durable = yield* Effect.serviceOption(CakeChatDurable);
-  const discussions = yield* Effect.serviceOption(DiscussionSessionEnvironment);
-  const reviews = yield* Effect.serviceOption(ReviewStorage);
+  const subagentEnvironment = yield* SubagentEnvironment;
   const families = yield* SessionFamilyStorage;
   const automationEvents = yield* Effect.serviceOption(AutomationEvents);
   const archive = yield* SessionArchiveStorage;
@@ -977,32 +974,25 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                         error:
                           "Task forks originate from permanent Project Chat or global Cake Chat, not a Side Session or Companion",
                       }
-                    : Option.isNone(durable) || Option.isNone(discussions) || Option.isNone(reviews)
+                    : Option.isNone(durable) || !subagentEnvironment.seedContext
                       ? {
                           ok: false,
-                          error: "Native task Side Sessions are unavailable in this runtime",
+                          error: "Agent-owned context forks are unavailable in this runtime",
                         }
                       : toJsonValue(
-                          yield* Effect.scoped(
-                            startTaskSideSession(
-                              yield* Schema.decodeUnknownEffect(SideSessionFork)(
-                                forwarded.arguments,
-                              ),
-                              {
-                                sessionId: target.sessionId,
-                                title,
-                                workingDirectory: configuration.location.workingDirectory,
-                                ...(project ? { projectPath: project.path } : null),
-                              },
-                            ).pipe(
-                              Effect.provideService(CakeChatDurable, durable.value),
-                              Effect.provideService(
-                                DiscussionSessionEnvironment,
-                                discussions.value,
-                              ),
-                              Effect.provideService(ReviewStorage, reviews.value),
+                          yield* forkAgentContext(
+                            yield* Schema.decodeUnknownEffect(AgentContextFork)(
+                              forwarded.arguments,
                             ),
-                          ),
+                            makeSubagentParent(
+                              getRuntimeOptions(),
+                              target.sessionId,
+                              configuration.location.workingDirectory,
+                              (effect, signal) => run(effect, { signal }),
+                            ),
+                            project?.path,
+                            invocation.anchorPartId,
+                          ).pipe(Effect.provideService(CakeChatDurable, durable.value)),
                         )
                   : invocation.name === "sessions.create"
                     ? yield* Effect.scoped(

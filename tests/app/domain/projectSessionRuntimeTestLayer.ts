@@ -58,7 +58,7 @@ export const makeHeadlessProjectSessionRuntimeMechanismTestLayer = (
     Layer.mock(Terminal, {
       closeWorkingDirectory: () => Effect.void,
     }),
-    Layer.mock(SubagentEnvironment, {
+    Layer.succeed(SubagentEnvironment, {
       location: (workingDirectory) =>
         Effect.succeed({
           workingDirectory: workingDirectory ?? "/home",

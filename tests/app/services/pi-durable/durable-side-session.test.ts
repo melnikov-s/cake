@@ -27,7 +27,7 @@ import { cakeChatSideChatConversationId } from "../../../../src/contracts/cake-c
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
 
 it.each([undefined, `project-chat:${"a".repeat(64)}`])(
-  "forks real parent reasoning, keeps source unchanged and scopes investigation read-only (%s)",
+  "preserves legacy task Side Chat history, execution and read-only instructions (%s)",
   async (parentSessionId) => {
     const { models, requests } = durableModels((_request, index) =>
       durableAnswer(
@@ -95,7 +95,7 @@ it.each([undefined, `project-chat:${"a".repeat(64)}`])(
         models: () => [],
         fastMode: () => false,
       });
-      await expect(chats.forkTask("/worktree")).rejects.toThrow("no completed reply");
+      await expect(chats.taskContext()).rejects.toThrow("no completed reply");
       await (
         await root.submit(
           { type: "input", content: "Keep the simple design, because our users need it." },
@@ -105,12 +105,24 @@ it.each([undefined, `project-chat:${"a".repeat(64)}`])(
       const before = await readDurableOriginalPage(root);
       const agentBefore = await root.agent(context);
       const configurationBefore = await harness.snapshot(AgentDoc, root.id, context);
-      const fork = await chats.forkTask("/managed/task");
-      const id = cakeChatSideChatConversationId(fork.sessionId)!;
+      // Reconstruct an already-persisted legacy task, not the agent launch entry point.
+      const sessionId = await chats.fork();
+      const fork = { sessionId, entryId: (await chats.taskContext()).entryId };
+      const id = cakeChatSideChatConversationId(sessionId)!;
       const conversation = await harness.conversation(id as typeof root.id, context);
       expect(conversation).toBeDefined();
       const record = await storage.conversation(id as typeof root.id, context);
       expect(record?.parent).toEqual({ conversationId: root.id, at: Number(fork.entryId) });
+      await conversation!.configure(
+        {
+          cwd: "/managed/task",
+          tools: [allowed, createEditTool(), createWriteTool()],
+        },
+        context,
+      );
+      await conversation!.commit(async (tx) => {
+        (await tx.doc(SideSessionDoc, conversation!.id)).workingDirectory = "/managed/task";
+      }, context);
       const taskAgent = await conversation!.agent(context);
       expect(taskAgent.tools.map((tool) => tool.name)).toEqual(["allowed", "edit", "write"]);
       expect(taskAgent.instructions).toBe(agentBefore.instructions);

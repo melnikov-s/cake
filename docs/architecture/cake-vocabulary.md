@@ -164,7 +164,7 @@ Sessions, not additional Cake Chat Sessions.
 
 ### Discussion Session
 
-A lightweight Cake Session whose Conversation is anchored to a parent Project
+An exclusively human-created lightweight Cake Session whose Conversation is anchored to a parent Project
 Session's primary Conversation at session, assistant-message, review, or source
 scope. Cake owns the anchor and regenerates read-only parent context; Pi owns
 the Discussion Session's transcript. **Side chat** is UI copy only; domain code
@@ -182,8 +182,7 @@ Permanent-chat forks share the actual parent's to-do list and can ask interview 
 changes are immediate and do not require merging the conversation. Project Chat
 side chats share the project's list; global Cake Chat side chats share its separate
 list. They do not consume the parent's selection or reminder acknowledgments.
-When Cake Chat cannot fork there, the side chat captures the Cake Chat text through
-the anchored message once in its instructions.
+When Cake Chat cannot fork there, creation fails visibly; no fallback conversation is created.
 
 The user can merge new side-chat dialogue into the parent's Pi-owned history while
 both chats are idle. Each incremental import appears as a collapsed, attributed
@@ -202,10 +201,12 @@ permissions unless started with `allowMutations: true`, which permits scoped,
 reported operational mutations. Project-free general researchers use isolated instructions without
 repository resources and have only read/bash/message_parent. Both Cake Chat modes
 end on explicit close, backend shutdown, or the first idle moment 30 minutes
-after creation; turns have no time limit. Their Pi history is
-in-memory; their parent retains only compact
-receipts/reports and usage. Ordinary Project Session subagents keep their existing
-private on-disk Pi history and explicit-delegation policy.
+after creation; turns have no time limit. Pi owns their private on-disk history;
+Cake retains handles, recovery intents and compact receipts/reports, not a second transcript.
+`sessions.fork` creates this role with inherited settled parent context in a managed
+worktree. Context inheritance never creates a human Discussion/Side Chat. Fresh-context
+investigators use `subagents.start`; coding uses `sessions.create`. Handles and result
+routing survive restart. Ordinary Project Session subagents retain their explicit-delegation policy.
 
 ### Session Family
 

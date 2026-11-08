@@ -23,6 +23,33 @@ async function openWorkerChat(user: ReturnType<typeof renderSubagentActivity>["u
 }
 
 describe("Subagent activity workflow", () => {
+  it("keeps agent-owned context-fork activity and completion out of human Side Chat threads, panes and tabs", () => {
+    using fixture = renderSubagentActivity({
+      activity: workerActivity({ task: "Context-forked read-only investigation" }),
+      parts: workerTranscript(),
+    });
+    const expectNoHumanSideChat = () => {
+      expect(fixture.models.discussionCatalogs.flatMap((catalog) => catalog.threads)).toEqual([]);
+      expect(fixture.models.discussionConversations).toHaveLength(0);
+      expect(fixture.sideChatStore.target).toBeUndefined();
+      expect(fixture.sideChatStore.tabs).toEqual([]);
+      expect(screen.queryByRole("button", { name: "Merge into main chat" })).toBeNull();
+      expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(parentSessionId);
+    };
+    expectNoHumanSideChat();
+    fixture.publish({
+      _tag: "Activity",
+      revision: 2,
+      parentSessionId,
+      activity: workerActivity({
+        revision: 2,
+        status: "complete",
+        streaming: false,
+        task: "Context-forked read-only investigation",
+      }),
+    });
+    expectNoHumanSideChat();
+  });
   it("opens a public exact-message link in the retained worker chat and selects that message", async () => {
     using fixture = renderSubagentActivity({
       client: { projectSessions: { open: async () => undefined } },

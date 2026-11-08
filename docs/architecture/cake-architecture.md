@@ -174,19 +174,22 @@ projections needed by a surface. References do not transfer ownership.
   Permanent-chat implementation/code changes default to `sessions.create`: fresh
   independent Project Sessions with scoped tasks, meaningful context and managed
   worktrees, never family children. Useful-context investigation with implementation
-  not yet clear uses `sessions.fork`: read-only inline/side context forks, not coding
-  sessions. Needed code changes require findings handed off to a fresh Project Session.
-  Private subagents require an explicit request. Once authorized, investigation with
-  a requested different model uses that model directly, not a fork or independent
-  session workaround. Unhelpful context permits a private investigator only when
-  explicitly authorized; otherwise use the context fork.
-  Native Durable context forks branch at a completed reply with their own executable
-  identity and a Cake-managed worktree binding. The source stays open and unchanged;
-  inherited history stays in Durable, not an assignment prompt or another transcript
-  store. They retain originating Cake authority and the per-message asynchronous
-  result journal; tool availability does not authorize code changes. Launch is
-  non-blocking, notification by default, reply for owed answers/dependencies. Existing
-  sessions are not migrated. Native Side Chat IDs resolve through their saved Discussion
+  not yet clear uses `sessions.fork`: agent-owned read-only context-forked subagents,
+  never human Side Chats. Fork describes context inheritance, not role or ownership.
+  Needed code changes require findings handed off to a fresh Project Session.
+  Fresh-context subagents require an explicit request; context forks are allowed subagents.
+  Requested different models use fresh-context investigators directly.
+  The shared backend captures Pi Durable's settled model context at a completed reply
+  and seeds a private Pi-owned subagent transcript. Historical system context carries
+  no live coordinator authority or tool grants; the worker gets current investigation-only
+  project resources in its managed worktree. The unfinished exchange must be supplied
+  in initialPrompt. No Discussion record, message anchor, pane, tab or merge-history
+  affordance is created. Public handles, recovery, exact result links, notification/reply
+  delivery and idle cleanup use the existing subagent lifecycle. Unsupported hosts fail
+  visibly, never fall back to a Side Chat. Notification is the default; reply is for
+  owed answers/dependencies.
+  Existing wrongly-created task Side Chats are preserved, not migrated or interrupted.
+  Native Side Chat IDs resolve through their saved Discussion
   owner, not the Project Session catalog: exact messages, stop, metadata and navigation
   use the Discussion profile, including cold acquisition after restart. Session-linked
   to-dos follow Discussion resolution. Legacy task forks retain their managed-worktree

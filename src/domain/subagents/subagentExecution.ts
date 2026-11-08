@@ -355,6 +355,8 @@ export const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         ),
       );
     const recipientSessionId = restored?.privateSessionId ?? crypto.randomUUID();
+    if (prepared.initializeContext && !restored)
+      yield* prepared.initializeContext(recipientSessionId);
     const attachmentAccess = prepared.parent.attachments?.(
       prepared.parent.parentSessionId,
       recipientSessionId,
@@ -389,7 +391,8 @@ export const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         cwd: location.workingDirectory,
         agentDir: location.agentDirectory,
         sessionDir: restored?.privateSessionDirectory ?? location.sessionDirectory,
-        newSession: !lazy && persisted === undefined && !transcriptExpected,
+        newSession:
+          !prepared.initializeContext && !lazy && persisted === undefined && !transcriptExpected,
         sessionId: recipientSessionId,
         auxiliary: true,
         // Nobody can compact a background worker by hand, so it never inherits the

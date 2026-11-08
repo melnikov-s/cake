@@ -1,3 +1,7 @@
+import { SubagentHandleId } from "../../../src/contracts/subagents/subagent-data";
+import { SubagentCoordinator } from "../../../src/services/subagents/SubagentCoordinator";
+import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
+import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import { toJsonValue } from "../../../src/utils/to-json-value";
 import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
@@ -10,7 +14,7 @@ import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktre
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, Layer, Logger, Queue, Scope, Stream } from "effect";
+import { Deferred, Effect, Fiber, Layer, Logger, Queue, Scope, Stream, Schema } from "effect";
 import { DiscussionTitleRequests } from "../../../src/services/discussion-sessions/DiscussionTitleRequests";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import { describe, expect } from "vitest";
@@ -48,7 +52,6 @@ import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntime
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { CakeChatDurable } from "../../../src/services/pi-durable/CakeChatDurable";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { acquireOptions as acquireChatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { CakeChatConfiguration } from "../../../src/services/pi-durable/CakeChatConfiguration";
 import { listAppControlTools } from "../../../src/renderer/app-control/AppControlBridge";
@@ -107,6 +110,7 @@ const attachmentReference = {
 const makeLayer = (
   options: {
     readonly inspectSession?: CakeSessionRuntime["inspectSession"];
+    readonly investigator?: boolean;
     readonly persistedSidecar?: boolean;
     readonly queuedUser?: boolean;
     readonly cakeChat?: boolean;
@@ -206,6 +210,7 @@ const makeLayer = (
   const linkedSidecars: string[] = [];
   const runtime = (options: CakeSessionRuntimeSetup): CakeSessionRuntime => {
     const sessionId = options.sessionId ?? "generated";
+    let answered = false;
     const sessionFile = options.directSessionDir
       ? `${options.sessionDir}/${sessionId}.jsonl`
       : `/sessions/${sessionId}.jsonl`;
@@ -244,6 +249,39 @@ const makeLayer = (
           }),
       snapshot: async () => ({
         ...makeSnapshot(sessionId, sessionFile),
+        ...(mergeOptions.investigator
+          ? {
+              model: { provider: "test", id: "model", name: "Model" },
+              models: [
+                {
+                  provider: "test",
+                  providerName: "Test",
+                  id: "model",
+                  name: "Model",
+                  reasoning: false,
+                  availableThinkingLevels: ["off"],
+                  fastMode: false,
+                  input: ["text"],
+                  authenticated: true,
+                  available: true,
+                  authTypes: [],
+                },
+              ],
+              parts:
+                answered && options.auxiliary
+                  ? [
+                      {
+                        id: "original-answer",
+                        entryId: "original-answer",
+                        kind: "text",
+                        role: "assistant",
+                        text: "Read-only findings with cake://session/source?message=exact",
+                        status: "complete",
+                      },
+                    ]
+                  : [],
+            }
+          : {}),
         ...(mergeOptions.queuedUser && sessionId === CAKE_CHAT_SESSION_ID
           ? {
               parts: [
@@ -318,6 +356,7 @@ const makeLayer = (
               respondsToSessionId: parseCrossSessionMessage(input[0])?.metadata.sender.sessionId,
             });
         }
+        answered = true;
         options.onEvent({ type: "streaming", sessionId, streaming: false });
       },
       setUserMessageMarkdown: async () => undefined,
@@ -856,7 +895,141 @@ describe("native Side Chat control routing", () => {
   });
 });
 
-describe("task Side Sessions", () => {
+describe("agent-owned context-fork tool boundary", () => {
+  it.effect.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
+    "routes the actual %s tool to a retained subagent and quiet completion without any Discussion presentation",
+    (sessionId) =>
+      Effect.gen(function* () {
+        const fixture = makeLayer({ cakeChat: true, investigator: true });
+        const seeds: string[] = [];
+        yield* Effect.gen(function* () {
+          const options = yield* acquireChatOptions({
+            configuration: {
+              location: {
+                workingDirectory: sessionId === CAKE_CHAT_SESSION_ID ? "/home" : "/project",
+                sessionDirectory: "/cake/chat",
+              },
+              agentDirectory: "/cake",
+            },
+            target: { sessionId, tools: listAppControlTools() },
+            newSession: false,
+          });
+          const registry = new CakeOperationRegistry(
+            createGlobalControlOperations(options.runtime.globalControl!, () => {
+              throw new Error("Context forks inherit the current model");
+            }),
+          );
+          const result = yield* Effect.promise(() =>
+            registry.invoke(
+              {
+                command: "sessions.fork",
+                input: {
+                  workspacePath: "/project",
+                  worktreeName: "investigate",
+                  name: "Investigation",
+                  initialPrompt: "Unfinished exchange specifics",
+                },
+              },
+              { signal: new AbortController().signal, toolCallId: "actual-fork", runtime: {} },
+            ),
+          );
+          const receipt = Schema.decodeUnknownSync(
+            Schema.Struct({
+              result: Schema.Struct({
+                handleId: SubagentHandleId,
+                ref: Schema.String,
+                status: Schema.Literal("started"),
+                sourceSessionId: Schema.String,
+              }),
+            }),
+          )(result.details);
+          expect(receipt.result.sourceSessionId).toBe(sessionId);
+          expect(receipt.result.ref).toContain("cake://subagent/");
+          const coordinator = yield* SubagentCoordinator;
+          while (
+            (yield* coordinator.storage.get(receipt.result.handleId))?.completionDisposition !==
+            "notified"
+          )
+            yield* Effect.yieldNow;
+          const saved = yield* coordinator.storage.get(receipt.result.handleId);
+          expect(saved).toMatchObject({
+            parentSessionId: sessionId,
+            parentProfile: "CakeChatSession",
+            anchorPartId: "tool-actual-fork",
+            status: "complete",
+            allowMutations: false,
+          });
+          expect(seeds).toEqual([saved?.privateSessionId]);
+          expect(
+            fixture.options.find((runtime) => runtime.sessionId === saved?.privateSessionId),
+          ).toMatchObject({
+            cwd: "/managed/research",
+            auxiliary: true,
+            projectInvestigation: true,
+            allowMutations: false,
+          });
+          expect((yield* (yield* SessionFamilyStorage).state()).deferredReferences).toEqual([
+            expect.objectContaining({
+              recipientSessionId: sessionId,
+              source: expect.objectContaining({
+                kind: "subagent",
+                handleId: receipt.result.handleId,
+                messageId: "original-answer",
+              }),
+            }),
+          ]);
+          expect(fixture.createdRecords).toEqual([]);
+          expect(fixture.linkedSidecars).toEqual([]);
+          expect(fixture.rendererBindings).toEqual([]);
+          expect(fixture.controlInvocations).toEqual([]);
+          expect(fixture.preparedContexts()).toBe(0);
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              fixture.layer,
+              Layer.mock(CakeChatDurable, {
+                taskContext: () =>
+                  Effect.succeed({
+                    entryId: "settled",
+                    messages: [{ role: "user", content: "Settled parent context", timestamp: 1 }],
+                  }),
+              }),
+              Layer.mock(SubagentEnvironment, {
+                location: (workingDirectory) =>
+                  Effect.succeed({
+                    workingDirectory: workingDirectory ?? "/home",
+                    agentDirectory: "/cake",
+                    sessionDirectory: "/private",
+                  }),
+                seedContext: (_workingDirectory, recipient) =>
+                  Effect.sync(() => {
+                    seeds.push(recipient);
+                  }),
+              }),
+              Layer.mock(ProjectAccess, {
+                isAllowed: () => Effect.succeed(true),
+                allow: () => Effect.void,
+              }),
+              Layer.mock(ManagedWorktrees, {
+                createCheckout: () =>
+                  Effect.succeed({
+                    projectPath: "/project",
+                    worktreePath: "/managed/research",
+                    branch: "agent/research",
+                    baseBranch: "main",
+                    createdAt: "2026-01-01",
+                    state: "active",
+                    parentWorktreePath: undefined,
+                    baseCommit: "base",
+                    resolvedFrom: undefined,
+                  }),
+                awaitSetup: () => Effect.void,
+              }),
+            ),
+          ),
+        );
+      }).pipe(Effect.scoped),
+  );
   for (const sessionId of [CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")]) {
     it.effect(`exposes native fork help without renderer registration (${sessionId})`, () => {
       const fixture = makeLayer({ cakeChat: true });
@@ -882,7 +1055,8 @@ describe("task Side Sessions", () => {
         const help = yield* Effect.promise(() =>
           registry.invoke({ command: "sessions.fork.help" }, context),
         );
-        expect(help.text).toContain("Pi Durable's native fork");
+        expect(help.text).toContain("parent-owned Subagent Session");
+        expect(help.text).not.toContain("context-forked Side Session");
         expect(control.tools.filter((tool) => tool.command === "sessions.fork")).toHaveLength(1);
         const unavailable = yield* Effect.promise(() =>
           registry.invoke(
@@ -901,227 +1075,13 @@ describe("task Side Sessions", () => {
         expect(unavailable.details).toMatchObject({
           result: {
             ok: false,
-            error: "Native task Side Sessions are unavailable in this runtime",
+            error: "Agent-owned context forks are unavailable in this runtime",
           },
         });
         expect(fixture.createdRecords).toEqual([]);
         expect(fixture.prompts).toEqual([]);
       }).pipe(Effect.provide(fixture.layer), Effect.scoped);
     });
-  }
-
-  it.effect(
-    "routes discoverable permanent-chat task forks through managed isolation and correlates async results",
-    () =>
-      Effect.gen(function* () {
-        const entered = yield* Deferred.make<void>();
-        const complete = yield* Deferred.make<void>();
-        const settled = yield* Deferred.make<void>();
-        const fixture = makeLayer({ cakeChat: true, activityGate: { entered, complete } });
-        const forks: unknown[] = [];
-        const setup: string[] = [];
-        const worktree = {
-          projectPath: "/project",
-          worktreePath: "/managed/task",
-          branch: "agent/task",
-          baseBranch: "main",
-          createdAt: "2026-01-01",
-          parentWorktreePath: undefined,
-          baseCommit: "base",
-          state: "active" as const,
-          resolvedFrom: undefined,
-        };
-        yield* Effect.gen(function* () {
-          const storage = yield* SessionFamilyStorage;
-          yield* Effect.gen(function* () {
-            const options = yield* acquireChatOptions({
-              configuration: {
-                location: { workingDirectory: "/home", sessionDirectory: "/cake/cake-chat" },
-                agentDirectory: "/cake",
-              },
-              target: { sessionId: CAKE_CHAT_SESSION_ID, tools: listAppControlTools() },
-              newSession: false,
-            });
-            expect(
-              options.runtime.globalControl?.tools.find((tool) => tool.command === "sessions.fork")
-                ?.summary,
-            ).toContain("context-forked Side Session");
-            const registry = new CakeOperationRegistry(
-              createGlobalControlOperations(options.runtime.globalControl!, () => {
-                throw new Error("Forks must inherit the native model, not resolve a fresh one");
-              }),
-            );
-            const context = {
-              signal: new AbortController().signal,
-              toolCallId: "fork-call",
-              runtime: {},
-            };
-            const topic = yield* Effect.promise(() =>
-              registry.invoke({ command: "sessions" }, context),
-            );
-            expect(topic.text).toContain("sessions.fork");
-            const help = yield* Effect.promise(() =>
-              registry.invoke({ command: "sessions.fork.help" }, context),
-            );
-            for (const field of [
-              "workspacePath",
-              "worktreeName",
-              "name",
-              "initialPrompt",
-              "resultDelivery",
-            ])
-              expect(help.text).toContain(`"${field}"`);
-            expect(help.text).toContain("current unfinished exchange");
-            const result = yield* Effect.promise(() =>
-              registry.invoke(
-                {
-                  command: "sessions.fork",
-                  input: {
-                    workspacePath: "/project",
-                    name: "Small fix",
-                    worktreeName: "small-fix",
-                    initialPrompt: "Implement the agreed fix",
-                    resultDelivery: "reply",
-                  },
-                },
-                context,
-              ),
-            );
-            expect(result.details).toMatchObject({
-              result: {
-                ok: true,
-                status: "started",
-                sessionId: cakeChatSideChatSessionId(7),
-                workspacePath: "/managed/task",
-                managedWorktree: {
-                  projectPath: "/project",
-                  worktreePath: "/managed/task",
-                  branch: "agent/task",
-                },
-              },
-            });
-            yield* Deferred.await(entered);
-            expect(forks).toEqual([
-              { parent: CAKE_CHAT_SESSION_ID, directory: "/managed/task", entryId: undefined },
-            ]);
-            expect(setup).toEqual(["create:/project", "ready:/managed/task"]);
-            const running = (yield* storage.state()).turns.find(
-              (turn) => turn.sessionId === cakeChatSideChatSessionId(7),
-            );
-            expect(running).toMatchObject({
-              senderSessionId: CAKE_CHAT_SESSION_ID,
-              resultDelivery: "reply",
-              reported: false,
-            });
-            expect(running?.outcome).toBeUndefined();
-            yield* Deferred.succeed(complete, undefined);
-            yield* Deferred.await(settled);
-            const finished = (yield* storage.state()).turns.find(
-              (turn) => turn.turnId === running?.turnId,
-            );
-            expect(finished).toMatchObject({
-              sessionId: cakeChatSideChatSessionId(7),
-              outcome: "complete",
-              report: {
-                text: "Implemented the agreed small fix.",
-                resultMessageRef: expect.stringContaining(
-                  encodeURIComponent(cakeChatSideChatSessionId(7)),
-                ),
-              },
-            });
-            expect(fixture.preparedContexts()).toBe(0);
-          }).pipe(
-            Effect.provideService(SessionFamilyStorage, {
-              ...storage,
-              settleTurn: (...args) =>
-                storage
-                  .settleTurn(...args)
-                  .pipe(Effect.tap(() => Deferred.succeed(settled, undefined))),
-            }),
-          );
-        }).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              fixture.layer,
-              Layer.mock(CakeChatDurable, {
-                forkTask: (parent, directory, entryId) =>
-                  Effect.sync(() => {
-                    forks.push({ parent, directory, entryId });
-                    return { sessionId: cakeChatSideChatSessionId(7), entryId: "12" };
-                  }),
-              }),
-              Layer.mock(ManagedWorktrees, {
-                createCheckout: (project) =>
-                  Effect.sync(() => {
-                    setup.push(`create:${project}`);
-                    return worktree;
-                  }),
-                awaitSetup: (directory) =>
-                  Effect.sync(() => {
-                    setup.push(`ready:${directory}`);
-                  }),
-              }),
-              Layer.mock(ProjectAccess, {
-                isAllowed: () => Effect.succeed(true),
-                allow: () => Effect.void,
-              }),
-              Layer.mock(ReviewStorage, {
-                agentSessionDirectory: () => "/cake/reviews/thread-1",
-                reviewContextPath: () => "/cake/reviews/context.md",
-                discussionParentContextPath: () => "/cake/reviews/context/parent.md",
-              }),
-            ),
-          ),
-        );
-      }),
-  );
-
-  for (const { workspacePath, projectPath, allowed } of [
-    { workspacePath: "/other", projectPath: "/project", allowed: true },
-    { workspacePath: "/unregistered", projectPath: undefined, allowed: true },
-    { workspacePath: "/project", projectPath: undefined, allowed: false },
-    { workspacePath: "/project", projectPath: "/project", allowed: false },
-  ]) {
-    it.effect(
-      `rejects unauthorized task forks before creating work (${workspacePath}, ${projectPath}, ${allowed})`,
-      () => {
-        const fixture = makeLayer({ cakeChat: true });
-        return Effect.gen(function* () {
-          const error = yield* discussionSessions
-            .startTaskSideSession(
-              {
-                workspacePath,
-                name: "Wrong project",
-                worktreeName: "wrong",
-                initialPrompt: "Change it",
-              },
-              {
-                sessionId: projectPath ? projectChatSessionId(projectPath) : CAKE_CHAT_SESSION_ID,
-                title: "Permanent Chat",
-                workingDirectory: projectPath ?? "/home",
-                projectPath,
-              },
-            )
-            .pipe(Effect.flip);
-          expect(error.message).toContain("not authorized");
-          expect(fixture.createdRecords).toEqual([]);
-        }).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              fixture.layer,
-              Layer.mock(CakeChatDurable, {}),
-              Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(allowed) }),
-              Layer.mock(ManagedWorktrees, {}),
-              Layer.mock(ReviewStorage, {
-                agentSessionDirectory: () => "/cake/reviews/thread-1",
-                reviewContextPath: () => "/cake/reviews/context.md",
-                discussionParentContextPath: () => "/cake/reviews/context/parent.md",
-              }),
-            ),
-          ),
-        );
-      },
-    );
   }
 });
 

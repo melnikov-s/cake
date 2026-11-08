@@ -211,6 +211,8 @@ export function renderSubagentActivity(options: {
     user: userEvent.setup(),
     container: view.container,
     root: fixture.root,
+    models: fixture.models,
+    sideChatStore: session.conversationSessionStore.sideChatStore,
     /** The persisted to-do document as the domain last committed it. */
     todos: () => todos,
     publish(update: SubagentUpdate, parts?: UiPart[]) {

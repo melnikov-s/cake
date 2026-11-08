@@ -14,7 +14,9 @@ describe("compact Cake Chat guidance", () => {
       "Inspect projects read-only",
       "no checkout edits, installs, generated files or Git mutations",
       "Never sessions.fork for coding delegation",
-      "read-only inline/side context fork",
+      "agent-owned read-only subagent",
+      "Side Chats belong exclusively to humans",
+      "fork means context inheritance, never a human Side Chat",
       "Code changes: sessions.create",
       "Context-dependent investigations: sessions.fork inherits settled context",
       "exact authorized registered project root",
@@ -23,7 +25,7 @@ describe("compact Cake Chat guidance", () => {
       "Never family children",
       "notification by default",
       "Keep cross-session chatter minimal",
-      "Private subagents require an explicit request",
+      "Fresh-context subagents require an explicit request",
       "only when asked",
       "Omit model overrides unless requested",
       "Never edit settings files",
@@ -48,7 +50,7 @@ describe("compact Cake Chat guidance", () => {
       scenario: "useful-context investigation -> read-only fork",
       rules: [
         "Context-dependent investigations: sessions.fork inherits settled context",
-        "read-only inline/side context fork",
+        "agent-owned read-only subagent",
         "return findings for handoff to a fresh Project Session",
         "never silently turn research into coding",
       ],
@@ -56,14 +58,14 @@ describe("compact Cake Chat guidance", () => {
     {
       scenario: "authorized different-model investigation -> private subagent with that model",
       rules: [
-        "Private subagents require an explicit request",
+        "Fresh-context subagents require an explicit request",
         "Only when authorized: requested different-model investigations use that model directly",
       ],
     },
     {
       scenario: "unhelpful-context investigation -> private subagent only when authorized",
       rules: [
-        "Private subagents require an explicit request",
+        "Fresh-context subagents require an explicit request",
         "Only when authorized:",
         "investigations without useful context may use a private subagent",
         "Otherwise use the contextual fork",

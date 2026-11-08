@@ -12,7 +12,6 @@ import { createEditTool, createWriteTool } from "@earendil-works/pi-durable/tool
 import { expect, it } from "vitest";
 import { createDurableSideChats } from "../../../../src/services/pi-durable/durable-side-chats";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
-import { cakeChatSideChatConversationId } from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
 
 it("forks at the latest settled reply while the current exchange is unfinished", async () => {
@@ -68,26 +67,19 @@ it("forks at the latest settled reply while the current exchange is unfinished",
     await entered.promise;
     try {
       const before = await readDurableOriginalPage(root);
-      const fork = await chats.forkTask("/managed/task");
-      const id = cakeChatSideChatConversationId(fork.sessionId)! as typeof root.id;
-      expect(id).not.toBe(root.id);
-      const conversation = await harness.conversation(id, context);
-      const inherited = JSON.stringify(await conversation!.context(context));
+      const fork = await chats.taskContext();
+      const inherited = JSON.stringify(fork.messages);
+      expect(fork).not.toHaveProperty("sessionId");
       expect(inherited).toContain("First decision");
       expect(inherited).toContain("Latest decision");
       expect(inherited).toContain("Latest settled reply");
       expect(inherited).not.toContain("Unfinished exchange details");
       expect(inherited).not.toContain("fork-call");
-      expect((await storage.conversation(id, context))?.parent).toEqual({
-        conversationId: root.id,
-        at: Number(fork.entryId),
-      });
+      expect(fork.entryId).toBeTruthy();
       expect(await readDurableOriginalPage(root)).toEqual(before);
-      const explicit = await chats.forkTask("/managed/explicit", fork.entryId);
+      const explicit = await chats.taskContext(fork.entryId);
       expect(explicit.entryId).toBe(fork.entryId);
-      await expect(chats.forkTask("/managed/invalid", "999999999")).rejects.toThrow(
-        "no longer available",
-      );
+      await expect(chats.taskContext("999999999")).rejects.toThrow("no longer available");
     } finally {
       release.resolve();
       await ongoing.wait(context);

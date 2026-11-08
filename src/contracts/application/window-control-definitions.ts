@@ -1,4 +1,4 @@
-import { SideSessionFork } from "../cake-chats/side-session-fork";
+import { AgentContextFork } from "../cake-chats/agent-context-fork";
 import { themeOperationDefinitions } from "../themes/theme-operations";
 import { PresetContext } from "../model-presets/preset-context";
 import { ResultDelivery, resultDeliveryGuidance } from "../conversations/result-delivery";
@@ -267,17 +267,17 @@ export const windowControlDefinitions = {
   },
   "sessions.fork": {
     command: "sessions.fork",
-    args: SideSessionFork,
+    args: AgentContextFork,
     scope: "global",
     discovery: {
       topic: "sessions",
       summary:
-        "Investigate read-only in a context-forked Side Session (inline/side context fork) from this permanent chat, in a new Cake-managed worktree. Starts asynchronously; leaves the source open and unchanged.",
+        "Launch an agent-owned context-forked subagent for read-only investigation in a Cake-managed worktree. Never creates a human Side Chat, thread, pane or tab; leaves the source unchanged.",
       guidance: [
         "For investigation/research with useful existing context where implementation is not yet clear. Never use sessions.fork for coding delegation: implementation/code changes default to sessions.create, a fresh independent Project Session. If code changes become needed, return findings for handoff to a fresh Project Session; never silently expand research into coding. No family children.",
         "workspacePath must be an authorized registered Project root; a Project Chat can use only its own project. worktreeName is required. entryId optionally selects an exchange; otherwise uses the latest completed reply before this tool call. If no settled reply exists, the operation fails rather than launching a fresh task.",
-        "Private subagents require an explicit request. Investigation with an explicitly requested different model uses a private subagent directly with that model, not sessions.fork or sessions.create as a research workaround. Investigation where existing context is not helpful may use a private subagent only when explicitly authorized; otherwise use the contextual fork for investigation.",
-        "Uses Pi Durable's native fork, inheriting conversation context, model and originating tool permissions. initialPrompt is the read-only assignment, not a replacement for inherited history. The current unfinished exchange is outside the settled fork boundary: include any task specifics from it. The context fork has its own executable identity and tools bound to its managed worktree; tool availability is not permission to code.",
+        "Fresh-context subagents require an explicit request; sessions.fork is an allowed context-inheriting subagent. Investigation with an explicitly requested different model uses a private subagent directly with that model, not sessions.fork or sessions.create as a research workaround. Investigation where existing context is not helpful may use a private subagent only when explicitly authorized; otherwise use the contextual fork for investigation.",
+        "Inherits Pi's settled model context and the current model into a parent-owned Subagent Session with investigation-only tools, not the parent's Cake controls. initialPrompt supplies the read-only assignment and specifics from the current unfinished exchange, which is outside the settled boundary. Returns a public handleId/ref for subagents follow-up, result retrieval and close; ownership, history and result routing survive restart. If context-fork support is unavailable, fails visibly without a Side Chat fallback. Side Chats are exclusively human-created; fork means context inheritance, not a conversation role. Forward exact inputRefs/messageRefs when needed.",
         "Launch asynchronously/non-blocking with resultDelivery: notification by default, reply for owed answers/dependencies. Omit model overrides unless requested. Minimize cross-session chatter; completion is automatic.",
         resultDeliveryGuidance,
       ],
@@ -292,7 +292,7 @@ export const windowControlDefinitions = {
       summary: "Launch independent Project Session",
       guidance: [
         'Default for implementation/code changes ("do work"): create a fresh independent Project Session with its own scoped task and Cake-managed worktree, never sessions.fork or family children. workspacePath must be an authorized registered Project root; Project Chat targets only its own project. Pass worktreeName and a focused initialPrompt with meaningful context, constraints, relevant findings and acceptance checks; fresh sessions do not inherit conversation history.',
-        "Investigation with useful existing context where implementation is not yet clear uses sessions.fork read-only. If code changes become needed, hand off findings here; do not silently expand research into coding. Private subagents require an explicit request. Investigation with an explicitly requested different model uses a private subagent directly with that model, not sessions.create as a research workaround. Investigation where existing context is not helpful may use a private subagent only when explicitly authorized. Otherwise use the contextual fork for investigation.",
+        "Investigation with useful existing context where implementation is not yet clear uses sessions.fork read-only. If code changes become needed, hand off findings here; do not silently expand research into coding. Fresh-context subagents require an explicit request; sessions.fork is an allowed context-inheriting subagent. Investigation with an explicitly requested different model uses a private subagent directly with that model, not sessions.create as a research workaround. Investigation where existing context is not helpful may use a private subagent only when explicitly authorized. Otherwise use the contextual fork for investigation.",
         "Launch asynchronously/non-blocking. Minimize cross-session chatter; completion is automatic.",
         "Omit model unless requested; configured default preset supplies complete settings, falling back to caller only if no default.",
         promptFilesGuidance,
