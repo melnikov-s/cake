@@ -17,10 +17,26 @@ export const ProjectTodoWorkLink = observer(function ProjectTodoWorkLink({
   const root = useStore(RootStore);
   const { href, Icon } = projectTodoAssociationDestination(association);
   const isSource = association.kind === "source";
+  const readiness =
+    association.kind === "session"
+      ? root.sessionMetadataStore.sessionMergeReadiness(association.sessionId)
+      : undefined;
+  const mergeStatus = readiness
+    ? readiness.outcome?.merged
+      ? readiness.outcome.resolutionSucceeded
+        ? `Merged and resolved · ${readiness.outcome.message}`
+        : `Merged; resolution failed: ${readiness.outcome.message}`
+      : readiness.state === "failed"
+        ? `Merge failed: ${readiness.message ?? readiness.outcome?.message ?? "Open the session for details"}`
+        : readiness.state === "landing"
+          ? "Landing…"
+          : `Ready to Merge${readiness.message ? ` · ${readiness.message}` : ""}`
+    : undefined;
   return (
     <span
       className={cn(
         "inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-normal leading-4 [&>a]:min-w-0 [&>a]:truncate [&>a]:font-normal [&>a]:leading-4 [&>a]:no-underline [&>a:hover]:text-foreground [&>a:hover]:underline [&_a>svg]:hidden",
+        mergeStatus && "flex-wrap gap-y-0.5",
         isSource
           ? "bg-muted/75 text-muted-foreground"
           : "border border-border/80 bg-background/80 text-foreground/90 shadow-2xs",
@@ -51,6 +67,17 @@ export const ProjectTodoWorkLink = observer(function ProjectTodoWorkLink({
         <CommitChangeStatsText
           stats={root.sessionMetadataStore.sessionCommitStats(association.sessionId)}
         />
+      )}
+      {mergeStatus && (
+        <span
+          aria-label={`Merge status for ${association.title}`}
+          className={cn(
+            "basis-full whitespace-pre-wrap break-words",
+            readiness?.state === "failed" ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
+          {mergeStatus}
+        </span>
       )}
     </span>
   );

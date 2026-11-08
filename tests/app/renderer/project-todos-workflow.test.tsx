@@ -12,9 +12,12 @@ import {
   type ProjectTodoUserMutation,
 } from "../../../src/contracts/projects/project-todos";
 import { localSnoozeDateTime } from "../../../src/renderer/lib/project-todo-snooze";
+import type { AutoMergeRequest } from "../../../src/contracts/worktrees/auto-merge";
 import { WorkspaceNavigator } from "../../../src/renderer/components/workspace-navigator";
 import { ProjectRail } from "../../../src/renderer/components/project-rail";
+import { SidebarNavigationControls } from "../../../src/renderer/components/sidebar-navigation-controls";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
+import { applyWorktreeOperationCatalogUpdate } from "../../../src/renderer/reducers/WorktreeOperationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -24,7 +27,12 @@ const todoRegions = () =>
 
 function renderTodos(
   withSidebar = false,
-  initial?: { todos: ProjectTodos; sessions: ReturnType<typeof sessionSummary>[] },
+  initial?: {
+    todos: ProjectTodos;
+    sessions: ReturnType<typeof sessionSummary>[];
+    autoMergeRequests?: AutoMergeRequest[];
+    autoMergeEnabled?: boolean;
+  },
 ) {
   let todos: ProjectTodos = initial?.todos ?? {
     ...emptyProjectTodos(),
@@ -55,6 +63,7 @@ function renderTodos(
     ],
   };
   const mutations: ProjectTodoUserMutation[] = [];
+  const autoMergeChanges: boolean[] = [];
   const project = () => ({ ...projectRecord({ path: "/cake" }), todos });
   const sessions =
     initial?.sessions ??
@@ -71,6 +80,12 @@ function renderTodos(
     projects: [project()],
     sessions,
     client: {
+      managedWorktrees: {
+        setAutoMerge: async (enabled) => {
+          autoMergeChanges.push(enabled);
+          fixture.models.worktreeOperations.autoMergeEnabled = enabled;
+        },
+      },
       projectTodos: {
         mutateUser: async ({ mutation }) => {
           mutations.push(mutation);
@@ -128,6 +143,11 @@ function renderTodos(
       },
     },
   });
+  applySnapshot(fixture.models.worktreeOperations, {
+    operations: [],
+    autoMergeEnabled: initial?.autoMergeEnabled ?? false,
+    autoMergeRequests: initial?.autoMergeRequests ?? [],
+  });
   applySnapshot(fixture.models.cakeChatCatalog, {
     loaded: true,
     sessions: [{ sessionId: "project-chat:/cake", title: "Project Chat", projectPath: "/cake" }],
@@ -140,6 +160,7 @@ function renderTodos(
     return (
       <>
         <ProjectRail />
+        <SidebarNavigationControls />
         {root.workspaceNavigatorStore.visible && <WorkspaceNavigator />}
       </>
     );
@@ -158,6 +179,16 @@ function renderTodos(
     store,
     todos: () => todos,
     mutations,
+    autoMergeChanges,
+    async updateMergeRequests(requests: AutoMergeRequest[]) {
+      await act(async () =>
+        applyWorktreeOperationCatalogUpdate(fixture.models.worktreeOperations, {
+          operations: [],
+          autoMergeEnabled: fixture.models.worktreeOperations.autoMergeEnabled,
+          autoMergeRequests: requests,
+        }),
+      );
+    },
     async updateSessions(next: ReturnType<typeof sessionSummary>[]) {
       await act(async () =>
         applySnapshot(fixture.models.sessionCatalog, {
@@ -209,6 +240,290 @@ function renderTodos(
     },
   };
 }
+
+function mergeRequest(
+  sessionId: string,
+  overrides: Partial<AutoMergeRequest> = {},
+): AutoMergeRequest {
+  return {
+    id: `turn-${sessionId}`,
+    sessionId,
+    workspacePath: `/worktrees/${sessionId}`,
+    readyToMerge: true,
+    epoch: "enabled-epoch",
+    runId: "current-run",
+    commit: "a".repeat(40),
+    state: "ready",
+    ...overrides,
+  };
+}
+
+it("groups only structured settled readiness and retains it while auto-merge is off", async () => {
+  const ready = todo(201, undefined, ["ready"]);
+  const finished = {
+    ...todo(202, undefined, ["finished"]),
+    title: "Ready to Merge — finished checkpoint",
+    status: "readyToMerge: true",
+  };
+  const pending = todo(203, undefined, ["pending"]);
+  const revoked = todo(204, undefined, ["revoked"]);
+  const sessions = ["ready", "finished", "pending", "revoked"].map((sessionId) =>
+    sessionSummary({ sessionId, projectPath: "/cake", latestTurnOutcome: "complete" }),
+  );
+  const requests = [
+    mergeRequest("ready", { state: "canceled", epoch: "", message: "Auto-merge is off" }),
+    mergeRequest("pending", { state: "pending" }),
+    mergeRequest("revoked"),
+    mergeRequest("revoked", { id: "later-turn", readyToMerge: false, state: "canceled" }),
+  ];
+  using fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items: [ready, finished, pending, revoked] },
+    sessions,
+    autoMergeRequests: requests,
+  });
+  const readyList = () => screen.getByRole("list", { name: "Ready to Merge to-dos" });
+  expect(within(readyList()).getByRole("button", { name: ready.title })).toBeDefined();
+  expect(readyList().querySelectorAll("[data-todo-id]")).toHaveLength(1);
+  const active = screen.getByRole("list", { name: "Active to-dos" });
+  for (const item of [finished, pending, revoked])
+    expect(within(active).getByRole("button", { name: item.title })).toBeDefined();
+  await fixture.updateSessions(sessions.map((session) => ({ ...session, unread: true })));
+  await fixture.updateSessions(sessions);
+  await fixture.updateMergeRequests(requests);
+  expect(within(readyList()).getByRole("button", { name: ready.title })).toBeDefined();
+  expect(screen.getByLabelText("Merge status for ready").textContent).toContain(
+    "Auto-merge is off",
+  );
+  await fixture.updateMergeRequests(
+    requests.map((request) =>
+      request.sessionId === "pending" ? { ...request, state: "ready" } : request,
+    ),
+  );
+  expect(within(readyList()).getByRole("button", { name: pending.title })).toBeDefined();
+  await fixture.updateMergeRequests(
+    requests.map((request) =>
+      request.sessionId === "ready" ? { ...request, readyToMerge: false } : request,
+    ),
+  );
+  expect(screen.queryByRole("region", { name: "Ready to Merge" })).toBeNull();
+  expect(
+    within(screen.getByRole("list", { name: "Active to-dos" })).getByRole("button", {
+      name: ready.title,
+    }),
+  ).toBeDefined();
+  expect(fixture.autoMergeChanges).toEqual([]);
+  expect(fixture.mutations).toEqual([]);
+});
+
+it("orders Ready to Merge between attention and Active, preserves collapse, and exposes the shared toggle when empty", async () => {
+  const ready = todo(211, undefined, ["ready"]);
+  using fixture = renderTodos(false, {
+    todos: {
+      ...emptyProjectTodos(),
+      items: [
+        { ...todo(210), needsAttention: true, attentionReason: "Review this" },
+        ready,
+        todo(212),
+        { ...todo(213), snoozedUntil: "2099-01-01T00:00:00.000Z" },
+        { ...todo(214), state: "done" },
+      ],
+    },
+    sessions: [sessionSummary({ sessionId: "ready", projectPath: "/cake" })],
+    autoMergeRequests: [mergeRequest("ready")],
+  });
+  expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual([
+    "Needs attention",
+    "Ready to Merge",
+    "Active",
+    "Snoozed",
+    "Done",
+  ]);
+  const workspace = () => within(screen.getByRole("complementary", { name: "Workspace" }));
+  const toggle = () => workspace().getByRole("button", { name: /Auto-merge/ });
+  expect(toggle().getAttribute("aria-pressed")).toBe("false");
+  await fixture.user.click(toggle());
+  expect(fixture.autoMergeChanges).toEqual([true]);
+  expect(toggle().getAttribute("aria-pressed")).toBe("true");
+  const railToggle = within(
+    screen.getByRole("navigation", { name: "Projects and global utilities" }),
+  ).getByRole("button", { name: "Auto-merge: on" });
+  await fixture.user.click(railToggle);
+  expect(fixture.autoMergeChanges).toEqual([true, false]);
+  expect(toggle().getAttribute("aria-pressed")).toBe("false");
+  await fixture.user.click(screen.getByRole("button", { name: "Ready to Merge (1)" }));
+  expect(screen.queryByRole("list", { name: "Ready to Merge to-dos" })).toBeNull();
+  expect(toggle()).toBeDefined();
+  const search = screen.getByRole("searchbox", { name: "Search to-dos" });
+  await fixture.user.type(search, "no matching task");
+  expect(todoRegions()).toHaveLength(0);
+  expect(toggle()).toBeDefined();
+  await fixture.user.clear(search);
+  expect(
+    screen.getByRole("button", { name: "Ready to Merge (1)" }).getAttribute("aria-expanded"),
+  ).toBe("false");
+  await fixture.user.click(screen.getByRole("button", { name: "Ready to Merge (1)" }));
+  expect(screen.getByRole("button", { name: ready.title })).toBeDefined();
+  await fixture.updateTodos(emptyProjectTodos());
+  expect(todoRegions()).toHaveLength(0);
+  expect(screen.getByRole("status").textContent).toBe("No to-dos.");
+  expect(toggle()).toBeDefined();
+  expect(fixture.mutations).toEqual([]);
+});
+
+it("keeps blocked and failed landings visible and reports partial resolution without claiming success", async () => {
+  const item = todo(221, undefined, ["ready", "other"]);
+  const sessions = ["ready", "other"].map((sessionId) =>
+    sessionSummary({ sessionId, projectPath: "/cake" }),
+  );
+  using fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items: [item] },
+    sessions,
+    autoMergeRequests: [mergeRequest("ready")],
+    autoMergeEnabled: true,
+  });
+  for (const [request, text] of [
+    [
+      mergeRequest("ready", { state: "canceled", message: "Blocked by active family member" }),
+      "Blocked by active family member",
+    ],
+    [mergeRequest("ready", { state: "landing" }), "Landing…"],
+    [
+      mergeRequest("ready", { state: "failed", message: "Conflicting target changes" }),
+      "Merge failed: Conflicting target changes",
+    ],
+    [
+      mergeRequest("ready", {
+        state: "failed",
+        outcome: {
+          targetBranch: "main",
+          landedCommit: "b".repeat(40),
+          merged: true,
+          resolutionSucceeded: false,
+          message: "Family resolution failed",
+        },
+      }),
+      "Merged; resolution failed: Family resolution failed",
+    ],
+  ] as const) {
+    await fixture.updateMergeRequests([request]);
+    const list = screen.getByRole("list", { name: "Ready to Merge to-dos" });
+    expect(within(list).getByRole("button", { name: item.title })).toBeDefined();
+    expect(within(list).getByRole("link", { name: "ready" }).getAttribute("href")).toBe(
+      "cake://session/ready",
+    );
+    expect(screen.getByLabelText("Merge status for ready").textContent).toContain(text);
+    expect(screen.queryByRole("list", { name: "Active to-dos" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Done" })).toBeNull();
+  }
+  await fixture.updateSessions([{ ...sessions[0]!, resolved: true }, sessions[1]!]);
+  expect(screen.getByLabelText("Merge status for ready").textContent).toBe(
+    "Merged; resolution failed: Family resolution failed",
+  );
+  expect(
+    within(screen.getByRole("list", { name: "Ready to Merge to-dos" })).getByRole("button", {
+      name: item.title,
+    }),
+  ).toBeDefined();
+  expect(fixture.todos().items[0]!.state).toBe("open");
+  expect(fixture.mutations).toEqual([]);
+});
+
+it("waits for every associated session and removes successful work only through authoritative to-do resolution", async () => {
+  const item = todo(231, undefined, ["first", "second"]);
+  const sessions = ["first", "second"].map((sessionId) =>
+    sessionSummary({ sessionId, projectPath: "/cake" }),
+  );
+  using fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items: [item] },
+    sessions,
+    autoMergeRequests: [mergeRequest("first")],
+  });
+  const landed = mergeRequest("first", {
+    state: "landed",
+    outcome: {
+      targetBranch: "main",
+      merged: true,
+      resolutionSucceeded: true,
+      message: "Merged and resolved",
+    },
+  });
+  await fixture.updateMergeRequests([landed]);
+  await fixture.updateSessions([{ ...sessions[0]!, resolved: true }, sessions[1]!]);
+  expect(
+    within(screen.getByRole("list", { name: "Active to-dos" })).getByRole("button", {
+      name: item.title,
+    }),
+  ).toBeDefined();
+  expect(fixture.todos().items[0]!.state).toBe("open");
+  await fixture.updateMergeRequests([landed, mergeRequest("second")]);
+  expect(
+    within(screen.getByRole("list", { name: "Ready to Merge to-dos" })).getByRole("button", {
+      name: item.title,
+    }),
+  ).toBeDefined();
+  await fixture.updateMergeRequests([landed, mergeRequest("second", { state: "landed" })]);
+  expect(fixture.todos().items[0]!.state).toBe("open");
+  await fixture.updateSessions(sessions.map((session) => ({ ...session, resolved: true })));
+  await fixture.updateTodos({
+    ...emptyProjectTodos(),
+    items: [{ ...item, state: "done", revision: 1, completion: { revision: 1, by: "sessions" } }],
+  });
+  expect(screen.queryByRole("region", { name: "Ready to Merge" })).toBeNull();
+  await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
+  expect(
+    within(screen.getByRole("list", { name: "Done to-dos" })).getByRole("button", {
+      name: item.title,
+    }),
+  ).toBeDefined();
+  expect(fixture.mutations).toEqual([]);
+});
+
+it("preserves flags, snooze and focus without duplicate rows and shows every ready linked session", async () => {
+  const attention = {
+    ...todo(241, undefined, ["first", "second"]),
+    needsAttention: true,
+    attentionReason: "Review the findings",
+  };
+  const snoozed = { ...todo(242, undefined, ["third"]), snoozedUntil: "2099-01-01T00:00:00.000Z" };
+  using fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items: [attention, snoozed] },
+    sessions: ["first", "second", "third"].map((sessionId) =>
+      sessionSummary({ sessionId, projectPath: "/cake" }),
+    ),
+    autoMergeRequests: [mergeRequest("first"), mergeRequest("second"), mergeRequest("third")],
+  });
+  expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual([
+    "Needs attention",
+    "Snoozed",
+  ]);
+  for (const sessionId of ["first", "second", "third"])
+    expect(screen.getByLabelText(`Merge status for ${sessionId}`).textContent).toBe(
+      "Ready to Merge",
+    );
+  expect(fixture.todos().items[0]).toMatchObject({
+    needsAttention: true,
+    attentionReason: attention.attentionReason,
+  });
+  await fixture.user.click(
+    screen.getByRole("button", { name: `Dismiss attention: ${attention.title}` }),
+  );
+  const ready = () => screen.getByRole("list", { name: "Ready to Merge to-dos" });
+  expect(within(ready()).getByRole("button", { name: attention.title })).toBeDefined();
+  await fixture.user.click(screen.getByRole("button", { name: attention.title }));
+  expect(
+    within(screen.getByRole("list", { name: "Focus to-dos" })).getByRole("button", {
+      name: attention.title,
+    }),
+  ).toBeDefined();
+  expect(screen.getByLabelText("Merge status for second").textContent).toBe("Ready to Merge");
+  await fixture.user.click(
+    screen.getByRole("button", { name: `Unfocus to-do: ${attention.title}` }),
+  );
+  expect(within(ready()).getByRole("button", { name: attention.title })).toBeDefined();
+  for (const item of [attention, snoozed])
+    expect(fixture.container.querySelectorAll(`[data-todo-id="${item.id}"]`)).toHaveLength(1);
+  expect(fixture.mutations.map((mutation) => mutation._tag)).toEqual(["SetAttention"]);
+});
 
 it("renders only nonempty categories with separators between visible sections and preserves disclosure across filtering", async () => {
   using fixture = renderTodos(false, { todos: emptyProjectTodos(), sessions: [] });

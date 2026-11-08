@@ -101,6 +101,19 @@ export class SessionMetadataStore extends Store<{
     return ids;
   }
 
+  /** Latest structured declaration wins; reading a report never consumes readiness. */
+  sessionMergeReadiness(sessionId: string) {
+    const request = this.props.worktreeOperations?.autoMergeRequests.findLast(
+      (request) => request.sessionId === sessionId,
+    );
+    // A partial family resolution can resolve this member while leaving landing follow-up.
+    const resolutionFailed = request?.outcome?.merged && !request.outcome.resolutionSucceeded;
+    if (this.isResolved(sessionId) && !resolutionFailed) return undefined;
+    return request?.readyToMerge && request.state !== "pending" && request.state !== "landed"
+      ? request
+      : undefined;
+  }
+
   /** To-do readiness must survive read acknowledgement and resolve/restore. */
   sessionWorkActivity(sessionId: string): SessionWorkActivity | undefined {
     const activity = this.sessionActivity(sessionId);

@@ -9,6 +9,7 @@ import {
 import { parseSessionLink } from "../../contracts/conversations/message-reference";
 import { parseSubagentLink } from "../../contracts/subagents/subagent-reference";
 import { ClientContext } from "./context/ClientContext";
+import { SessionMetadataContext } from "./context/SessionMetadataContext";
 import { describeError } from "../lib/error-details";
 
 /** A main-owned to-do list projection: a Project's list or global Cake Chat's own list. */
@@ -41,6 +42,7 @@ export class ProjectTodosStore extends Store<{
   replyContext(name: string, text: string): void;
 }> {
   query = "";
+  readyExpanded = true;
   activeExpanded = true;
   doneExpanded = false;
   snoozedExpanded = true;
@@ -122,8 +124,24 @@ export class ProjectTodosStore extends Store<{
   get filteredAttentionItems() {
     return this.unfocusedItems.filter((item) => projectTodoCategory(item) === "attention");
   }
+  /** Readiness is a session authority fact, never authored to-do text or turn completion. */
+  isReadyToMerge(item: ProjectTodo) {
+    return item.associations.some(
+      (link) =>
+        link.kind === "session" &&
+        SessionMetadataContext.consume(this)!.sessionMergeReadiness(link.sessionId)
+          ?.readyToMerge === true,
+    );
+  }
+  get filteredReadyItems() {
+    return this.unfocusedItems.filter(
+      (item) => projectTodoCategory(item) === "active" && this.isReadyToMerge(item),
+    );
+  }
   get filteredActiveItems() {
-    return this.unfocusedItems.filter((item) => projectTodoCategory(item) === "active");
+    return this.unfocusedItems.filter(
+      (item) => projectTodoCategory(item) === "active" && !this.isReadyToMerge(item),
+    );
   }
   get filteredSnoozedItems() {
     return this.unfocusedItems.filter((item) => item.state === "open" && item.snoozedUntil);
@@ -196,8 +214,12 @@ export class ProjectTodosStore extends Store<{
     this.requestPane(item.id, "nearest", false);
     if (item.state === "done") this.doneExpanded = true;
     else if (item.snoozedUntil) this.snoozedExpanded = true;
+    else if (this.isReadyToMerge(item)) this.readyExpanded = true;
     else if (!item.needsAttention) this.activeExpanded = true;
     this.open();
+  }
+  toggleReady() {
+    this.readyExpanded = !this.readyExpanded;
   }
   toggleActive() {
     this.activeExpanded = !this.activeExpanded;
@@ -264,6 +286,7 @@ export class ProjectTodosStore extends Store<{
     this.focusedItemIds = this.focusedItemIds.filter((id) => id !== item.id);
     if (item.state === "done") this.doneExpanded = true;
     else if (item.snoozedUntil) this.snoozedExpanded = true;
+    else if (this.isReadyToMerge(item)) this.readyExpanded = true;
     else if (!item.needsAttention) this.activeExpanded = true;
     this.requestPane(item.id, "none", true);
   }

@@ -36,6 +36,7 @@ it("keeps self-contained lifecycle, writing and attention rules in both baseline
       PROJECT_TODO_ATTENTION_GUIDANCE,
     ])
       expect(baseline).toContain(rule);
+    expect(baseline).toContain("Sections: Needs attention, Ready to Merge, Active, Snoozed, Done.");
     expect(baseline).toContain("No extra guide reads needed");
     expect(baseline.match(/Session-linked/g)).toHaveLength(1);
     expect(baseline).toContain("only when all required sessions resolve");

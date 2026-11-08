@@ -3,6 +3,7 @@ import { observer } from "r-state-tree/react";
 import { AnimatedList } from "@/components/ui/animated-list";
 import { Callout } from "@/components/ui/callout";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
+import { AutoMergeToggle } from "./auto-merge-toggle";
 import { cn } from "@/lib/utils";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
 import { ProjectTodoItem } from "./project-todo-item";
@@ -41,6 +42,12 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
     { title: "Focus", items: store.filteredFocusedItems, open: true },
     { title: "Needs attention", items: store.filteredAttentionItems, open: true },
     {
+      title: "Ready to Merge",
+      items: store.filteredReadyItems,
+      open: store.readyExpanded,
+      toggle: () => store.toggleReady(),
+    },
+    {
       title: "Active",
       items: store.filteredActiveItems,
       open: store.activeExpanded,
@@ -70,6 +77,12 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
           {store.error}
         </Callout>
       )}
+      {store.filteredReadyItems.length === 0 && (
+        <div className="mb-3 flex items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
+          <span>Auto-merge</span>
+          <AutoMergeToggle />
+        </div>
+      )}
       <AnimatedList nested animateRemovals>
         {sections.map((section, index) => (
           <section
@@ -81,11 +94,14 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
             )}
           >
             {section.toggle ? (
-              <DisclosureTrigger
-                title={`${section.title} (${section.items.length})`}
-                open={section.open}
-                onClick={section.toggle}
-              />
+              <div className="flex items-center gap-3">
+                <DisclosureTrigger
+                  title={`${section.title} (${section.items.length})`}
+                  open={section.open}
+                  onClick={section.toggle}
+                />
+                {section.title === "Ready to Merge" && <AutoMergeToggle />}
+              </div>
             ) : (
               <h2 className="mb-3 px-3 text-xs font-semibold">
                 {section.title}{" "}

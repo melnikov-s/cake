@@ -22,7 +22,8 @@ Default list is bounded title/id/state/revision/attention/reason/snooze metadata
 
 ## Attention and dismissal
 
-Four visible groups: Needs attention, Active, Snoozed, Done. Needs attention is always expanded; others collapse independently.
+Visible groups: Needs attention, Ready to Merge, Active, Snoozed, Done. Needs attention is always expanded; others collapse independently.
+Ready to Merge projects linked sessions' structured readiness, never finished prose, checkpoints or to-do text. Attention, snooze and pane focus retain precedence without duplicate rows; session links still show each ready session's status. Failed/blocked landings remain ready with their error; partial landing/resolution is not success. The category's Auto-merge control shares the activity bar's setting and remains accessible when empty. Only resolution of every required session closes linked items; readiness does not. Tool category:active includes this renderer-only readiness grouping.
 needsAttention:true requires nonempty action-oriented attentionReason, max 512 characters, e.g. "Review the startup findings". Work in progress uses false.
 Dismiss disables attention but retains the reason. Never reflag/reword the same dismissed request; description refreshes do not create a new request. Only a genuinely new request with a changed reason reactivates via agent edits; the user may restore the retained reason.
 Attention does not complete/select/acknowledge/unsnooze/wake/resolve. Completion clears attention; reopening starts Active. Retained user decisions are durable context, not inferred intent.
