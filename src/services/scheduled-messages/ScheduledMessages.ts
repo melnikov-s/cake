@@ -15,6 +15,8 @@ export class ScheduledMessages extends Context.Service<
       ScheduledMessageSnapshot,
       ScheduledMessageStorageError
     >;
+    /** Serializes cancellation with short, nonblocking delivery reconciliation. */
+    readonly withDelivery: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
     readonly snapshot: () => ScheduledMessageSnapshot;
     readonly changes: () => Stream.Stream<ScheduledMessageSnapshot>;
     readonly transact: <E>(
@@ -34,6 +36,7 @@ export class ScheduledMessages extends Context.Service<
       });
 
       const mutations = yield* Semaphore.make(1);
+      const deliveries = yield* Semaphore.make(1);
 
       const initialize = Effect.fn("ScheduledMessages.initialize")(function* () {
         const messages = yield* storage.load();
@@ -72,6 +75,7 @@ export class ScheduledMessages extends Context.Service<
 
       return ScheduledMessages.of({
         initialize,
+        withDelivery: deliveries.withPermits(1),
         snapshot: () => SubscriptionRef.getUnsafe(projection),
         changes: () => SubscriptionRef.changes(projection),
         transact,

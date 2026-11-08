@@ -35,7 +35,7 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Type } from "@earendil-works/pi-durable-ai";
+import { Type, createAssistantMessageEventStream } from "@earendil-works/pi-durable-ai";
 import { estimateContextTokens } from "@earendil-works/pi-durable-ai/utils/estimate";
 import { afterEach, expect, it, vi } from "vitest";
 import { ChatMetadataDoc } from "../../../../src/services/pi-durable/durable-chat-metadata";
@@ -62,6 +62,11 @@ import {
   researchMarkdown,
 } from "../../../fixtures/subagent-report";
 import { projectSessionEntries } from "../../../../src/services/pi/runtime/session-projection";
+import {
+  scheduledInputReceipt,
+  acknowledgeScheduledInputs,
+} from "../../../../src/services/pi-durable/durable-scheduled-inputs";
+import { encodeScheduledMessage } from "../../../../src/contracts/conversations/scheduled-message-envelope";
 import { promptText } from "../../../../src/services/pi/runtime/user-message-transport";
 import { subagentCompletionMessage } from "../../../../src/contracts/subagents/subagent-report";
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
@@ -176,6 +181,69 @@ async function fixture(
     },
   };
 }
+
+it("acknowledges scheduled input at the generation boundary, not placement or response completion", async () => {
+  const preparing = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const requested = Promise.withResolvers<void>();
+  const heldStream = createAssistantMessageEventStream();
+  const f = await fixture(undefined, 20_000, undefined, undefined, true, false, {
+    onInputConsumed: async () => {
+      preparing.resolve();
+      await release.promise;
+    },
+  });
+  vi.mocked(f.models.streamSimple).mockImplementation(() => {
+    requested.resolve();
+    return heldStream;
+  });
+  const text = encodeScheduledMessage("Check the build", {
+    version: 1,
+    id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
+    createdAt: new Date(0).toISOString(),
+    sendAt: new Date(5_000).toISOString(),
+  });
+  const id = "b4e2a064-09ab-428b-a479-33546d017746";
+  const submission = await f.submit(durableInputText(text, [], false), id);
+  await preparing.promise;
+  expect(await scheduledInputReceipt(f.engine.root, id)).toEqual({ status: "pending" });
+  f.advance(60 * 60_000);
+  release.resolve();
+  await requested.promise;
+  const receipt = await scheduledInputReceipt(f.engine.root, id);
+  expect(receipt).toMatchObject({ status: "consumed", consumedAt: expect.any(Number) });
+  // The model stream is still pending: no response/settlement was necessary.
+  expect(
+    (await f.storage.submissionByRequest(f.engine.root.id, id, BACKGROUND_CONTEXT))?.status,
+  ).toBe("placed");
+  await acknowledgeScheduledInputs(f.engine.root, f.storage, Date.now() + 1_000_000);
+  expect(await scheduledInputReceipt(f.engine.root, id)).toEqual(receipt);
+  heldStream.push({ type: "done", reason: "stop", message: durableAnswer("Done") });
+  await submission.wait(BACKGROUND_CONTEXT);
+});
+
+it("retains the exact scheduled consumption receipt and submission identity across SQLite reopen", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-scheduled-reopen-"));
+  cleanup.unshift(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "chat.sqlite");
+  const first = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
+  const id = "b4e2a064-09ab-428b-a479-33546d017746";
+  const text = encodeScheduledMessage("Check once", {
+    version: 1,
+    id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
+    createdAt: new Date(0).toISOString(),
+    sendAt: new Date(5_000).toISOString(),
+  });
+  await first.send(durableInputText(text, [], false), id);
+  const receipt = await scheduledInputReceipt(first.engine.root, id);
+  expect(receipt?.status).toBe("consumed");
+  await first.engine.close();
+  const reopened = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
+  expect(await scheduledInputReceipt(reopened.engine.root, id)).toEqual(receipt);
+  await reopened.send(durableInputText(text, [], false), id);
+  expect(reopened.requests).toEqual([]);
+  expect(await scheduledInputReceipt(reopened.engine.root, id)).toEqual(receipt);
+});
 
 it("reports existing SDK execution duration only on new Cake tool-result commits", async () => {
   const f = await fixture();

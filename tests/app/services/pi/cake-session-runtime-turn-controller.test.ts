@@ -31,7 +31,10 @@ function deferred() {
   return { promise, resolve };
 }
 
-function createFixture(overrides: Partial<AgentSession> = {}) {
+function createFixture(
+  overrides: Partial<AgentSession> = {},
+  beforeIdleTurn = async () => undefined,
+) {
   const sessionManager = SessionManager.inMemory("/project");
   const session = {
     model: durableModel,
@@ -62,7 +65,7 @@ function createFixture(overrides: Partial<AgentSession> = {}) {
     session,
     isDisposed: () => false,
     allowUserBash: true,
-    beforeIdleTurn: async () => undefined,
+    beforeIdleTurn,
     withResponseRetries: (operation) => operation(),
     cancelResponseRetries: vi.fn(),
     recovery: { onUserInput: vi.fn(), onAbort: vi.fn() },
@@ -77,6 +80,22 @@ function createFixture(overrides: Partial<AgentSession> = {}) {
 }
 
 describe("CakeSessionRuntime turn controller", () => {
+  it("withdraws a scheduled input still preparing without aborting the turn or injecting it later", async () => {
+    const preparing = deferred();
+    const release = deferred();
+    const { controller, session } = createFixture({}, async () => {
+      preparing.resolve();
+      await release.promise;
+    });
+    const pending = controller.prompt("Scheduled input", "steer", [], false, "scheduled-input");
+    const canceled = pending.catch((error: unknown) => error);
+    await preparing.promise;
+    await controller.cancelScheduledInput("scheduled-input");
+    release.resolve();
+    expect(await canceled).toBeInstanceOf(TurnCanceledError);
+    expect(session.prompt).not.toHaveBeenCalled();
+    expect(session.abort).not.toHaveBeenCalled();
+  });
   it("acknowledges Stop while Pi cleanup is hung, and fences the next input until it ends", async () => {
     const cleanup = deferred();
     const delivered = deferred();

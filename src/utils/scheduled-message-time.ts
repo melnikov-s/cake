@@ -43,9 +43,16 @@ export function formatRepeatInterval(seconds: number) {
 /** Hover text for a pending schedule: its absolute send time and any repeat. */
 export function describeScheduledSend(message: {
   readonly sendAt: string;
+  readonly pendingOccurrenceId?: string | undefined;
+  readonly cancelRequested?: boolean | undefined;
+  readonly deliveryError?: string | undefined;
   readonly repeatEverySeconds?: number | undefined;
   readonly repeatUntil?: string | undefined;
 }) {
+  if (message.deliveryError) return `Delivery failed: ${message.deliveryError}`;
+  if (message.cancelRequested) return "Cancelling pending scheduled input";
+  if (message.pendingOccurrenceId)
+    return "Awaiting Pi consumption; the next interval starts after delivery";
   const at = new Date(message.sendAt).toLocaleString();
   if (message.repeatEverySeconds === undefined) return `Sends at ${at}`;
   const until = message.repeatUntil

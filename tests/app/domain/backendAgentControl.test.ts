@@ -152,6 +152,8 @@ const summary = (id: string) => ({
 });
 
 const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChats = false) {
+  const clock = yield* Clock.Clock;
+  const consumedInputs = new Map<string, number>();
   const compactions: Array<{ sessionId: string; instructions?: string }> = [];
   const toolCompactions: string[] = [];
   const compactFailures = new Set<string>();
@@ -318,6 +320,10 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
             return active.has(sessionId);
           },
           snapshot: async () => ({ ...snapshot, sessionId, streaming: active.has(sessionId) }),
+          scheduledInputReceipt: async (turnId) => {
+            const consumedAt = consumedInputs.get(turnId);
+            return consumedAt === undefined ? undefined : { status: "consumed", consumedAt };
+          },
           callCakeOperation: async (command, input) => {
             gatewayCalls.push({ sessionId, command, input, fullControl: false });
             if (command !== "settings.open") throw new Error(`Unknown Cake operation: ${command}`);
@@ -352,6 +358,8 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
             internal,
           ) => {
             if (internal) internalInputs.push(internal);
+            if (_turnId && parseScheduledMessage(text))
+              consumedInputs.set(_turnId, clock.currentTimeMillisUnsafe());
             await Effect.runPromise(
               Queue.offer(prompts, { sessionId, text, delivery, attachments }),
             );
@@ -4786,7 +4794,7 @@ it.effect(
         text: "hi",
         origin: { id: first.id, createdBySessionId: projectChat },
       });
-      // Admission precedes the commit that removes the delivered one-off; await that commit.
+      // The fixture acknowledges Pi consumption separately from admission; await reconciliation.
       yield* Context.get(f.context, ScheduledMessages)
         .changes()
         .pipe(

@@ -20,6 +20,10 @@ export const ScheduledMessage = Schema.Struct({
   text: Schema.String.check(Schema.isTrimmed(), Schema.isMinLength(1), Schema.isMaxLength(100_000)),
   sendAt: isoTimestamp,
   createdAt: isoTimestamp,
+  /** Persisted before admission; retained until Pi acknowledges consumption. */
+  pendingOccurrenceId: Schema.optionalKey(boundedId),
+  cancelRequested: Schema.optionalKey(Schema.Boolean),
+  deliveryError: Schema.optionalKey(Schema.String),
   createdBySessionId: Schema.optionalKey(boundedId),
   repeatEverySeconds: Schema.optionalKey(ScheduleRepeatSeconds),
   repeatUntil: Schema.optionalKey(isoTimestamp),

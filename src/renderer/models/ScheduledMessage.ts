@@ -7,6 +7,9 @@ export class ScheduledMessage extends Model {
   text = "";
   sendAt = "";
   createdAt = "";
+  pendingOccurrenceId: string | undefined;
+  cancelRequested: boolean | undefined;
+  deliveryError: string | undefined;
   createdBySessionId: string | undefined;
   repeatEverySeconds: number | undefined;
   repeatUntil: string | undefined;

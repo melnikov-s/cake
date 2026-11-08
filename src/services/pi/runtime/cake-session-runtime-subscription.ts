@@ -104,6 +104,8 @@ export function createCakeSessionRuntimeSubscription(input: {
         session.sessionManager.appendCustomEntry(recoveryInputEntryType, {
           turnId: consumedTurnId,
           timestamp: event.message.timestamp,
+          // Queue timestamps describe admission; this callback is Pi agent-loop consumption.
+          consumedAt: Date.now(),
         });
       const presentation = projection.consumeUserPresentation(content);
       if (presentation?.renderUserMessageAsMarkdown)

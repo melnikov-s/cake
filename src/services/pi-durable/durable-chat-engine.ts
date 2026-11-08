@@ -42,6 +42,7 @@ import { createDurableChatMemory, type DurableMemoryOptions } from "./durable-ch
 import { withoutDurableInputPresentation } from "./durable-input-presentation";
 import { MemorySummaryError, memoryWork } from "../opt-memory/memory-work";
 import { durableModelFacade } from "./durable-model-facade";
+import { acknowledgeScheduledInputs } from "./durable-scheduled-inputs";
 import { reportSlowCakeToolExecution } from "../pi/runtime/cake-tool-timing";
 import { durableContextInspection } from "./durable-context-inspection";
 import { estimateContextTokens } from "@earendil-works/pi-durable-ai/utils/estimate";
@@ -476,6 +477,7 @@ export async function openDurableChatEngine(options: {
               })
             : undefined;
           const requestedAt = now();
+          await acknowledgeScheduledInputs(root, options.storage, requestedAt);
           const evidence = durableCacheEvidence(model.api);
           preparing = false;
           const source = options.models.streamSimple(

@@ -39,6 +39,7 @@ import type {
   CakeModelLaunch,
 } from "../../contracts/model-presets/cake-model-selection";
 import { CakeOperationRegistry } from "../pi/runtime/cake-operation-registry";
+import { scheduledInputReceipt } from "./durable-scheduled-inputs";
 import { shutdownDiagnostics, shutdownResource } from "../diagnostics/shutdown-diagnostics";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import { cakeToolDescription, cakeToolEnvelopeSchema } from "../../contracts/agent/cake-operation";
@@ -576,6 +577,7 @@ export async function createDurableCakeChatRuntime(
       BACKGROUND_CONTEXT,
     );
   };
+  const canceledScheduledInputs = new Set<string>();
   const admit = async (
     text: string,
     delivery: "prompt" | "steer" | "follow-up",
@@ -640,7 +642,9 @@ export async function createDurableCakeChatRuntime(
       // Reference attachments have no image parts.
     ];
     assertCurrent();
-    return engine.root.submit(
+    if (id && canceledScheduledInputs.has(id))
+      throw new TurnCanceledError("Scheduled input was canceled");
+    const submission = await engine.root.submit(
       {
         type: "input",
         content,
@@ -649,6 +653,9 @@ export async function createDurableCakeChatRuntime(
       },
       BACKGROUND_CONTEXT,
     );
+    if (id && canceledScheduledInputs.has(id))
+      await engine.harness.abortSubmission(submission.id, BACKGROUND_CONTEXT, engine.root.id);
+    return submission;
   };
   const sideChats = createDurableSideChats({
     parentSessionId: sessionId,
@@ -683,6 +690,18 @@ export async function createDurableCakeChatRuntime(
       return !turnStop.stopped() && streaming;
     },
     executingTurnIds: () => activeTurnIds,
+    scheduledInputReceipt: (turnId) => scheduledInputReceipt(engine.root, turnId),
+    async cancelScheduledInput(turnId) {
+      if ((await scheduledInputReceipt(engine.root, turnId))?.status === "consumed") return;
+      canceledScheduledInputs.add(turnId);
+      const submission = await storage.submissionByRequest(
+        engine.root.id,
+        turnId,
+        BACKGROUND_CONTEXT,
+      );
+      if (submission)
+        await engine.harness.abortSubmission(submission.id, BACKGROUND_CONTEXT, engine.root.id);
+    },
     recordReviewRun() {
       throw new Error("Project review runs do not belong to permanent chats");
     },

@@ -8,7 +8,8 @@ import * as projectSessionMetadata from "../project-sessions/projectSessionMetad
 import * as projectSessionOperations from "../project-sessions/projectSessionOperations";
 import * as cakeChatTargets from "../cake-chats/cakeChatTargets";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
-import { deliverWhenAvailable } from "../conversations/conversations";
+import { CakeSessionRuntimes, type CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
+import { parseScheduledMessage } from "../../contracts/conversations/scheduled-message-envelope";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import {
   ScheduledMessageError,
@@ -98,18 +99,16 @@ export const schedule = Effect.fn("ScheduledMessages.schedule")(function* (
 
 export const cancel = Effect.fn("ScheduledMessages.cancel")(function* (id: string) {
   const messages = yield* ScheduledMessages;
-  let removed = false;
-  yield* messages
-    .transact((current) => {
-      removed = current.some((message) => message.id === id);
-      return Effect.succeed(current.filter((message) => message.id !== id));
-    })
-    .pipe(asError("cancel"));
-  if (!removed)
+  const message = messages.snapshot().messages.find((item) => item.id === id);
+  if (!message)
     return yield* new ScheduledMessageError({
       operation: "cancel",
       message: "Cake could not find that scheduled message",
     });
+  // Keep a durable cancellation intent until only this schedule's pending inputs are removed.
+  // The delivery gate prevents admission racing past a completed cancellation.
+  yield* messages.withDelivery(updateMessage(id, (item) => ({ ...item, cancelRequested: true })));
+  yield* reconcile(message).pipe(asError("cancel"));
 });
 
 export const observe = Effect.fn("ScheduledMessages.observe")(function* (targetSessionId: string) {
@@ -159,63 +158,203 @@ export const observe = Effect.fn("ScheduledMessages.observe")(function* (targetS
   );
 });
 
-/** The first interval boundary after `now`, skipping boundaries missed while Cake was closed. */
-const nextSendAt = (message: ScheduledMessage, now: number) => {
+/** No fixed cadence or catch-up: the next interval starts at Pi consumption. */
+const nextSendAt = (message: ScheduledMessage, consumedAt: number) => {
   if (message.repeatEverySeconds === undefined) return undefined;
-  const interval = message.repeatEverySeconds * 1_000;
-  const previous = Date.parse(message.sendAt);
-  const next = previous + (Math.floor(Math.max(0, now - previous) / interval) + 1) * interval;
+  const next = consumedAt + message.repeatEverySeconds * 1_000;
   if (message.repeatUntil !== undefined && next > Date.parse(message.repeatUntil)) return undefined;
   return new Date(next).toISOString();
 };
 
-/** A scheduled message is not user input: it starts or follows the target's work directly and
- * never carries passive notices that wait for the user's next message. */
-const deliverToChat = Effect.fn("ScheduledMessages.deliverToChat")(function* (
-  sessionId: string,
-  text: string,
+const updateMessage = Effect.fn("ScheduledMessages.updateMessage")(function* (
+  id: string,
+  transition: (message: ScheduledMessage) => ScheduledMessage | undefined,
 ) {
-  yield* Effect.scoped(
-    Effect.gen(function* () {
-      const handle = yield* cakeChatTargets.acquireAvailable(sessionId);
-      yield* deliverWhenAvailable(Effect.succeed(handle), text, [], false);
-      yield* handle.publishSessionChanged();
-    }),
-  );
-});
-
-const deliverOne = Effect.fn("ScheduledMessages.deliverOne")(function* (message: ScheduledMessage) {
-  const text = encodeScheduledMessage(message.text, scheduledMessageOrigin(message));
-  if (isCakeChatSessionId(message.targetSessionId))
-    yield* deliverToChat(message.targetSessionId, text);
-  else
-    yield* projectSessionOperations.sendAutomatically({
-      sessionId: message.targetSessionId,
-      text,
-      attachments: [],
-      renderUserMessageAsMarkdown: false,
-    });
-  const next = nextSendAt(message, DateTime.toEpochMillis(yield* DateTime.now));
-  const messages = yield* ScheduledMessages;
-  // A cancellation during delivery removed the message; a repeat never re-adds it.
-  yield* messages
+  yield* (yield* ScheduledMessages)
     .transact((current) =>
       Effect.succeed(
-        current.flatMap((item) =>
-          item.id !== message.id ? [item] : next ? [{ ...item, sendAt: next }] : [],
-        ),
+        current.flatMap((item) => {
+          if (item.id !== id) return [item];
+          const next = transition(item);
+          return next ? [next] : [];
+        }),
       ),
     )
     .pipe(asError("deliver"));
 });
 
-const deliverDue = Effect.fn("ScheduledMessages.deliverDue")(function* () {
+const acquireDeliveryTarget = Effect.fn("ScheduledMessages.acquireDeliveryTarget")(function* (
+  sessionId: string,
+) {
+  // Revalidate permanent addresses too: a removed project must not be silently resurrected.
+  yield* validateTarget(sessionId);
+  return isCakeChatSessionId(sessionId)
+    ? yield* cakeChatTargets.acquireAvailable(sessionId)
+    : yield* projectSessionOperations.prepareAgentCommand({ sessionId });
+});
+
+const acknowledgeDelivery = Effect.fn("ScheduledMessages.acknowledgeDelivery")(function* (
+  message: ScheduledMessage,
+  consumedAt: number,
+) {
+  const next = nextSendAt(message, consumedAt);
+  yield* updateMessage(message.id, (item) => {
+    if (!next) return undefined; // Explicit one-shot, or the repeat's end boundary.
+    const { pendingOccurrenceId: _, deliveryError: __, ...rest } = item;
+    return { ...rest, sendAt: next };
+  });
+});
+
+const reconcileInput = Effect.fn("ScheduledMessages.reconcileInput")(function* (
+  message: ScheduledMessage,
+  handle: CakeSessionHandle,
+) {
+  const queued = (yield* handle.pendingMessages()).items
+    .flatMap((item) => {
+      const scheduled = parseScheduledMessage(item.text);
+      return scheduled?.origin.id === message.id ? [{ item, origin: scheduled.origin }] : [];
+    })
+    .sort((a, b) => a.origin.sendAt.localeCompare(b.origin.sendAt));
+  if (message.cancelRequested) {
+    for (const { item } of queued) yield* handle.removeQueuedMessage(item.partId ?? item.itemId);
+    // Also withdraw an accepted input still preparing (not yet visible in Pi's queue).
+    if (message.pendingOccurrenceId && handle.cancelScheduledInput)
+      yield* handle.cancelScheduledInput(message.pendingOccurrenceId);
+    yield* updateMessage(message.id, () => undefined);
+    return;
+  }
+  // Adopt the oldest legacy occurrence with its exact input identity; coalesce only siblings
+  // of this schedule. Never replace unrelated follow-ups or abort an executing tool/turn.
+  if (!message.pendingOccurrenceId && queued[0]) {
+    const { item, origin } = queued[0];
+    message = {
+      ...message,
+      sendAt: origin.sendAt,
+      pendingOccurrenceId: item.turnId ?? item.itemId,
+    };
+    const adopted = message;
+    yield* updateMessage(message.id, () => adopted);
+  }
+  for (const { item } of queued) {
+    if ((item.turnId ?? item.itemId) !== message.pendingOccurrenceId)
+      yield* handle.removeQueuedMessage(item.partId ?? item.itemId);
+    else if (item.lane !== "steering") yield* handle.steerQueuedMessage(item.partId ?? item.itemId);
+  }
   const now = DateTime.formatIso(yield* DateTime.now);
-  const due = (yield* list()).filter((message) => message.sendAt <= now);
+  if (!message.pendingOccurrenceId) {
+    if (message.sendAt > now) return;
+    message = { ...message, pendingOccurrenceId: crypto.randomUUID() };
+    const pending = message;
+    // Persist identity before touching Pi, including one-shots. A restart retries the same ID.
+    yield* updateMessage(message.id, () => pending);
+  }
+  if (!handle.scheduledInputReceipt)
+    return yield* new ScheduledMessageError({
+      operation: "deliver",
+      message: "Target has no Pi consumption acknowledgement",
+    });
+  const occurrenceId = message.pendingOccurrenceId;
+  if (!occurrenceId)
+    return yield* new ScheduledMessageError({
+      operation: "deliver",
+      message: "Missing persisted occurrence identity",
+    });
+  const receipt = yield* handle.scheduledInputReceipt(occurrenceId);
+  if (receipt?.status === "consumed") {
+    yield* acknowledgeDelivery(message, receipt.consumedAt);
+    return;
+  }
+  if (receipt?.status === "canceled") {
+    // Withdrawing an occurrence never silently re-injects it or restarts recurrence.
+    yield* updateMessage(message.id, () => undefined);
+    return;
+  }
+  if (receipt?.status === "failed")
+    return yield* new ScheduledMessageError({ operation: "deliver", message: receipt.message });
+  if (receipt?.status === "pending") return;
+  yield* handle.submit({
+    turnId: occurrenceId,
+    text: encodeScheduledMessage(message.text, scheduledMessageOrigin(message)),
+    // Pi treats steering as normal execution intake when idle, and safe-boundary steering
+    // when active. Avoid a racy snapshot check and never promote other human inputs.
+    delivery: "steer",
+    attachments: [],
+    markdown: false,
+  });
+  yield* handle.publishSessionChanged();
+  // Idle Pi intake can already be consumed by now; observe its real receipt without
+  // delaying status publication to the next worker pass (or waiting for its reply).
+  const delivered = yield* handle.scheduledInputReceipt(occurrenceId);
+  if (delivered?.status === "consumed") yield* acknowledgeDelivery(message, delivered.consumedAt);
+});
+
+const reconcile = Effect.fn("ScheduledMessages.reconcile")(function* (
+  candidate: ScheduledMessage,
+  existingOnly = false,
+) {
+  const messages = yield* ScheduledMessages;
+  const result = yield* Effect.scoped(
+    Effect.gen(function* () {
+      // Future legacy schedules may inspect an already assembled queue, but must not open
+      // or restore a resolved/idle target before their due time. Acquisition stays outside
+      // the short cancellation/admission gate so an unavailable target cannot hold it.
+      const handle = existingOnly
+        ? yield* (yield* CakeSessionRuntimes)
+            .acquireSession(candidate.targetSessionId)
+            .pipe(
+              Effect.catchTag("PiSessionError", (error) =>
+                error.operation === "acquireSession" &&
+                error.message.includes("has not been assembled")
+                  ? Effect.succeed(undefined)
+                  : Effect.fail(error),
+              ),
+            )
+        : yield* acquireDeliveryTarget(candidate.targetSessionId);
+      if (!handle) return;
+      if (existingOnly) yield* validateTarget(candidate.targetSessionId);
+      yield* messages.withDelivery(
+        Effect.gen(function* () {
+          const message = messages.snapshot().messages.find((item) => item.id === candidate.id);
+          if (!message) return;
+          yield* reconcileInput(message, handle);
+          const latest = messages.snapshot().messages.find((item) => item.id === message.id);
+          if (latest?.deliveryError)
+            yield* updateMessage(message.id, (item) => {
+              const { deliveryError: _, ...rest } = item;
+              return rest;
+            });
+        }),
+      );
+    }),
+  ).pipe(Effect.result);
+  if (result._tag === "Failure") {
+    const error = result.failure instanceof Error ? result.failure.message : String(result.failure);
+    const current = messages.snapshot().messages.find((item) => item.id === candidate.id);
+    if (current && current.deliveryError !== error)
+      yield* updateMessage(candidate.id, (item) => ({ ...item, deliveryError: error }));
+    return yield* Effect.fail(result.failure);
+  }
+});
+
+const deliverDue = Effect.fn("ScheduledMessages.deliverDue")(function* (includeFuture = false) {
+  const now = DateTime.formatIso(yield* DateTime.now);
+  const due = (yield* list()).filter(
+    (message) =>
+      includeFuture ||
+      message.cancelRequested ||
+      message.pendingOccurrenceId ||
+      message.sendAt <= now,
+  );
   yield* Effect.forEach(
     due,
     (message) =>
-      deliverOne(message).pipe(
+      reconcile(
+        message,
+        includeFuture &&
+          !message.pendingOccurrenceId &&
+          !message.cancelRequested &&
+          message.sendAt > now,
+      ).pipe(
         Effect.tapError((error) =>
           Effect.logWarning("Scheduled message delivery failed", error).pipe(
             Effect.annotateLogs({ scheduledMessageId: message.id }),
@@ -227,4 +366,8 @@ const deliverDue = Effect.fn("ScheduledMessages.deliverDue")(function* () {
   );
 });
 
-export const runWorker = deliverDue().pipe(Effect.repeat(Schedule.spaced("1 second")));
+export const runWorker = Effect.gen(function* () {
+  // On restart also discover/coalesce old queue entries whose schedule already advanced.
+  yield* deliverDue(true);
+  return yield* deliverDue().pipe(Effect.repeat(Schedule.spaced("1 second")));
+});

@@ -27,7 +27,7 @@ export const AgentScheduleInput = Schema.Struct({
   repeatEverySeconds: Schema.optionalKey(
     ScheduleRepeatSeconds.annotate({
       description:
-        "Repeat at this interval (60 to 604800 seconds) until cancelled or repeatUntil. Without sendAt/delaySeconds the first send is one interval from now.",
+        "Repeat this many seconds after actual Pi consumption (60 to 604800 seconds), until cancelled or repeatUntil. Without sendAt/delaySeconds the first send is one interval from now.",
     }),
   ),
   repeatUntil: Schema.optionalKey(
@@ -43,6 +43,7 @@ export const agentScheduleGuidance = [
   'The Companion uses sessionId: "parent" for "this session"; omission always targets its own chat. The concrete resolved destination is returned and stored, so later navigation does not retarget a schedule.',
   "Omit sessionId to schedule to the calling conversation (a self-reminder or check-in); Cake Chat, Project Chats and Project Sessions all work. Other targets accept cake-chat, project-chat:<hash> or a Project Session reference.",
   "Give sendAt (ISO) or delaySeconds for a one-off. Add repeatEverySeconds for a recurring check-in (optional repeatUntil); it keeps one ID and one pending entry.",
+  "Active targets always receive safe-boundary steering without aborting tools; idle targets start normal execution. Admission/queueing is not delivery. A recurring schedule has at most one outstanding occurrence; its next due time is actual Pi input consumption plus the interval, not response completion or wall-clock cadence. Blocked tools never accumulate a backlog or catch-up burst.",
   "Schedules survive restart. sessions.scheduled lists them; sessions.cancel-scheduled stops one, including a recurring check-in when its task finishes or the user pauses it.",
 ];
 
@@ -64,13 +65,27 @@ export function agentScheduledPage(messages: readonly ScheduledMessage[], input:
   const { items, ...page } = agentListPage(selected, input);
   return {
     ...page,
-    messages: items.map(({ id, targetSessionId, sendAt, repeatEverySeconds, text }) => ({
-      id,
-      targetSessionId,
-      sendAt,
-      ...(repeatEverySeconds === undefined ? null : { repeatEverySeconds }),
-      label: agentListLabel(text.replace(/\s+/g, " ")),
-    })),
+    messages: items.map(
+      ({
+        id,
+        targetSessionId,
+        sendAt,
+        repeatEverySeconds,
+        pendingOccurrenceId,
+        cancelRequested,
+        deliveryError,
+        text,
+      }) => ({
+        id,
+        targetSessionId,
+        sendAt,
+        ...(repeatEverySeconds === undefined ? null : { repeatEverySeconds }),
+        ...(pendingOccurrenceId === undefined ? null : { pendingOccurrenceId }),
+        ...(cancelRequested === undefined ? null : { cancelRequested }),
+        ...(deliveryError === undefined ? null : { deliveryError }),
+        label: agentListLabel(text.replace(/\s+/g, " ")),
+      }),
+    ),
   };
 }
 

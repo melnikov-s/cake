@@ -265,6 +265,41 @@ describe("Scheduled message workflow", () => {
     });
   });
 
+  it("shows awaiting delivery across many intervals, then the consumption-relative next due time", async () => {
+    using fixture = renderQueue([queuePart(1, "Check now", { lane: "steering" })], {});
+    const catalog = fixture.models.scheduledMessageCatalog(queueSessionId);
+    const pending = {
+      ...scheduled,
+      targetSessionId: queueSessionId,
+      repeatEverySeconds: 120,
+      pendingOccurrenceId: "occurrence",
+    };
+    act(() =>
+      applyScheduledMessageUpdate(catalog, { _tag: "Snapshot", revision: 1, messages: [pending] }),
+    );
+    const group = screen.getByRole("group", { name: "Scheduled" });
+    const summary = within(group).getByRole("button", { name: /1 scheduled/ });
+    expect(summary.textContent).toContain("awaiting delivery");
+    await fixture.user.click(summary);
+    expect(within(group).getByRole("listitem").textContent).toContain("Awaiting delivery");
+    await act(async () => vi.advanceTimersByTime(60 * 60_000));
+    expect(summary.textContent).toContain("awaiting delivery");
+    expect(summary.textContent).not.toContain("next in");
+    const { pendingOccurrenceId: _, ...delivered } = pending;
+    act(() =>
+      applyScheduledMessageUpdate(catalog, {
+        _tag: "Event",
+        revision: 2,
+        event: {
+          _tag: "Upserted",
+          message: { ...delivered, sendAt: new Date(Date.now() + 120_000).toISOString() },
+        },
+      }),
+    );
+    expect(summary.textContent).toContain("next in 2:00");
+    expect(within(group).getByRole("listitem").textContent).not.toContain("Awaiting delivery");
+  });
+
   it("lists schedules after steering and queued items, collapsed until the user expands them", async () => {
     using fixture = renderQueue(
       [

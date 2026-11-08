@@ -3,6 +3,7 @@ import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import {
+  consumedInputAt,
   recoveryInputEntryType,
   restartDecision,
   restartResumePrompt,
@@ -62,6 +63,18 @@ const result = () =>
   });
 
 describe("restart transcript reconciliation", () => {
+  it("requires Pi consumption metadata plus the persisted input, and preserves delivery time across restart", () => {
+    const consumed: SessionEntry = {
+      ...marker(),
+      data: { turnId: "turn", timestamp: 0, consumedAt: 3_600_000 },
+    } as SessionEntry;
+    expect(consumedInputAt([user()], "turn")).toBeUndefined();
+    expect(consumedInputAt([consumed], "turn")).toBeUndefined();
+    expect(consumedInputAt([consumed, user()], "turn")).toBe(3_600_000);
+    expect(consumedInputAt([consumed, user(), call()], "turn")).toBe(3_600_000);
+    expect(consumedInputAt([consumed, user(), assistant()], "turn")).toBe(3_600_000);
+    expect(consumedInputAt([consumed, user()], "different")).toBeUndefined();
+  });
   it("only resubmits input which Pi has not consumed", () => {
     expect(restartDecision([], "turn").kind).toBe("pending");
     expect(restartDecision([marker()], "turn").kind).toBe("pending");

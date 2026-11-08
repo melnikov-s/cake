@@ -50,7 +50,15 @@ export const ScheduledGroup = observer(function ScheduledGroup({
           <span className="font-medium text-foreground">{messages.length} scheduled</span>
           <span aria-hidden="true">·</span>
           <span role="timer" className="font-mono tabular-nums">
-            {nextRemaining === 0 ? "sending…" : `next in ${formatCountdown(nextRemaining)}`}
+            {next.cancelRequested
+              ? "cancelling…"
+              : next.deliveryError
+                ? "delivery failed"
+                : next.pendingOccurrenceId
+                  ? "awaiting delivery"
+                  : nextRemaining === 0
+                    ? "sending…"
+                    : `next in ${formatCountdown(nextRemaining)}`}
           </span>
           {repeating > 0 && (
             <>
@@ -100,9 +108,17 @@ export const ScheduledGroup = observer(function ScheduledGroup({
                 <time
                   role="timer"
                   className="min-w-16 text-right font-mono whitespace-nowrap text-muted-foreground tabular-nums"
-                  dateTime={message.sendAt}
+                  dateTime={message.pendingOccurrenceId ? undefined : message.sendAt}
                 >
-                  {remaining === 0 ? "Sending…" : `in ${formatCountdown(remaining)}`}
+                  {message.cancelRequested
+                    ? "Cancelling…"
+                    : message.deliveryError
+                      ? "Delivery failed"
+                      : message.pendingOccurrenceId
+                        ? "Awaiting delivery"
+                        : remaining === 0
+                          ? "Sending…"
+                          : `in ${formatCountdown(remaining)}`}
                 </time>
                 {store.canCancel && (
                   <IconButton

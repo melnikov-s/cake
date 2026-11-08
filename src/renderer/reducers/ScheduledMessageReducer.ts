@@ -26,6 +26,13 @@ export function applyScheduledMessageUpdate(
     }
     const index = model.messages.findIndex((message) => message.id === event.message.id);
     if (index < 0) model.messages.push(ScheduledMessage.create(event.message));
-    else applySnapshot(model.messages[index]!, event.message);
+    else
+      applySnapshot(model.messages[index]!, {
+        ...event.message,
+        // Optional workflow metadata must clear when consumption advances the schedule.
+        pendingOccurrenceId: event.message.pendingOccurrenceId,
+        cancelRequested: event.message.cancelRequested,
+        deliveryError: event.message.deliveryError,
+      });
   });
 }

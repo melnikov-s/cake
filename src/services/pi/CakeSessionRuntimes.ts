@@ -64,6 +64,7 @@ import type { ReviewParentContext } from "./runtime/sidecar-runtime";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
 import type { PiTurnResult } from "../../contracts/pi/turn-result-data";
+import type { ScheduledInputReceipt } from "../../contracts/scheduled-messages/scheduled-input-receipt";
 
 export const PiSessionQuery = Schema.Struct({
   workingDirectory: Schema.String,
@@ -171,6 +172,10 @@ export interface CakeSessionHandle {
   readonly submit: (input: RuntimeRecoveryInput) => Effect.Effect<string, PiSessionError>;
   /** Permanent-chat receipt metadata; other profiles do not expose a digest inbox. */
   readonly admittedDigestIds?: () => Effect.Effect<ReadonlyArray<string>, PiSessionError>;
+  readonly cancelScheduledInput?: (turnId: string) => Effect.Effect<void, PiSessionError>;
+  readonly scheduledInputReceipt?: (
+    turnId: string,
+  ) => Effect.Effect<ScheduledInputReceipt | undefined, PiSessionError>;
   readonly inputReceipt?: (
     turnId: string,
   ) => Effect.Effect<"consumed" | "canceled" | "pending" | undefined, PiSessionError>;

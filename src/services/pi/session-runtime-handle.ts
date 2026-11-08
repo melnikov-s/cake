@@ -14,6 +14,7 @@ import {
 } from "effect";
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import { parseScheduledMessage } from "../../contracts/conversations/scheduled-message-envelope";
 import { jsonValueSchema } from "../../contracts/serialization/json-contract";
 import { subagentCompletionInput } from "../../contracts/subagents/subagent-report";
 import type { Attachment } from "../../contracts/conversations/session-contract";
@@ -512,7 +513,8 @@ export function createSessionRuntimeHandle(input: {
     if (
       record?.state === "blocked" &&
       (!internal || internal._tag === "UserWithReminders") &&
-      !parseCrossSessionMessage(text)
+      !parseCrossSessionMessage(text) &&
+      !parseScheduledMessage(text)
     ) {
       // Continue the original turns and their reporting obligations. A
       // continuation is not a user stop and must not publish an abort.
@@ -553,6 +555,45 @@ export function createSessionRuntimeHandle(input: {
     profile: shared.profile,
     updates,
     snapshot,
+    cancelScheduledInput: (turnId) =>
+      Effect.gen(function* () {
+        const receipt = yield* call("scheduledInputReceipt", async (runtime) =>
+          runtime.scheduledInputReceipt?.(turnId),
+        );
+        if (receipt?.status === "consumed") return;
+        yield* editQueue("cancelScheduledInput", async (runtime) => {
+          if (!runtime.cancelScheduledInput)
+            throw new Error("Target cannot withdraw scheduled input");
+          await runtime.cancelScheduledInput(turnId);
+        });
+        yield* recoveryGate
+          .withPermit(
+            Effect.gen(function* () {
+              const record = yield* recoveryStorage.get(shared.runtime.sessionId);
+              if (!record) return;
+              yield* recoveryStorage.update({
+                ...record,
+                inputs: record.inputs.filter((item) => item.turnId !== turnId),
+                canceledInputIds: [...new Set([...(record.canceledInputIds ?? []), turnId])],
+              });
+            }),
+          )
+          .pipe(sessionError("cancelScheduledInput"));
+      }),
+    scheduledInputReceipt: (turnId) =>
+      Effect.gen(function* () {
+        const receipt = yield* call("scheduledInputReceipt", async (runtime) =>
+          runtime.scheduledInputReceipt?.(turnId),
+        );
+        if (receipt) return receipt;
+        const record = yield* recoveryStorage
+          .get(shared.runtime.sessionId)
+          .pipe(sessionError("scheduledInputReceipt"));
+        if (record?.canceledInputIds?.includes(turnId)) return { status: "canceled" as const };
+        if (record?.inputs.some((item) => item.turnId === turnId))
+          return { status: "pending" as const };
+        return undefined;
+      }),
     inputReceipt: (turnId) =>
       Effect.gen(function* () {
         const record = yield* recoveryStorage

@@ -6,7 +6,30 @@ import { parseCrossSessionMessage } from "../../../contracts/conversations/cross
 import { textFromContent } from "./tool-projection";
 
 export const recoveryInputEntryType = "cake.recovery-input";
-const recoveryInputEntry = Schema.Struct({ turnId: Schema.String, timestamp: Schema.Number });
+const recoveryInputEntry = Schema.Struct({
+  turnId: Schema.String,
+  timestamp: Schema.Number,
+  consumedAt: Schema.optionalKey(Schema.Number),
+});
+
+/** Only a Pi consumption marker paired with its persisted user input is an acknowledgement.
+ * A user transcript row by itself (or queue admission) is not one. */
+export function consumedInputAt(entries: readonly SessionEntry[], turnId: string) {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry?.type !== "custom" || entry.customType !== recoveryInputEntryType) continue;
+    const data = Schema.decodeUnknownOption(recoveryInputEntry)(entry.data);
+    if (Option.isNone(data) || data.value.turnId !== turnId) continue;
+    const next = entries[index + 1];
+    if (
+      next?.type === "message" &&
+      next.message.role === "user" &&
+      next.message.timestamp === data.value.timestamp
+    )
+      return data.value.consumedAt;
+  }
+  return undefined;
+}
 const recoveryTurn = Schema.Struct({ turnId: Schema.String });
 
 export type RestartDecision =

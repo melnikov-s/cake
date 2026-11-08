@@ -74,6 +74,7 @@ export function createDurableConversationQueue(options: {
             const text = durableQueuedText(item.content);
             return {
               itemId: id,
+              ...(parseScheduledMessage(text) ? { turnId: id } : null),
               partId: `queued-${id}`,
               lane: item.mode === "steer" ? ("steering" as const) : ("follow-up" as const),
               position: items.slice(0, index + 1).filter((other) => other.mode === item.mode)

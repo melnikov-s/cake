@@ -93,6 +93,7 @@ export interface CakeSessionRuntimeTurnController {
   }>;
   readonly internalInput: (content: string) => InternalInput | undefined;
   readonly consumeUserMessage: (content: string) => string | undefined;
+  readonly cancelScheduledInput: (turnId: string) => Promise<void>;
   readonly resume: (turnId: string, content: string) => Promise<void>;
   readonly restorePending: (input: {
     turnId: string;
@@ -134,6 +135,11 @@ export function createCakeSessionRuntimeTurnController(input: {
   readonly onAbortSettled?: (error?: unknown) => void;
 }): CakeSessionRuntimeTurnController {
   const { session } = input;
+  const canceledScheduledInputs = new Set<string>();
+  const assertScheduledInput = (turnId?: string) => {
+    if (turnId && canceledScheduledInputs.has(turnId))
+      throw new TurnCanceledError("Scheduled input was canceled");
+  };
   const assertImageSupport = (attachments: readonly Attachment[]) => {
     const count = attachments.filter((item) => item.kind === "image").length;
     if (!count) return;
@@ -298,13 +304,14 @@ export function createCakeSessionRuntimeTurnController(input: {
             renderUserMessageAsMarkdown: item.renderUserMessageAsMarkdown,
           });
           await input.deliverTrackedUserMessage(content, item.renderUserMessageAsMarkdown, () =>
-            input.withResponseRetries(() =>
-              session.prompt(content, {
+            input.withResponseRetries(() => {
+              assertScheduledInput(item.turnId);
+              return session.prompt(content, {
                 images,
                 source: "interactive",
                 streamingBehavior: delivery === "steer" ? "steer" : "followUp",
-              }),
-            ),
+              });
+            }),
           );
           reconcileQueue();
           if (
@@ -351,6 +358,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     internal?: InternalInput,
   ) => {
     assertActive();
+    assertScheduledInput(turnId);
     assertImageSupport(attachments);
     const generation = abortGeneration;
     if (abortCleanup) {
@@ -360,7 +368,12 @@ export function createCakeSessionRuntimeTurnController(input: {
     input.onTurnStarted?.();
     input.recovery.onUserInput();
     // Only a person's input resumes work held after a restart; sender and Cake inputs wait.
-    if (!parseCrossSessionMessage(text) && !isAutomaticInput(internal)) pausedAfterRestart = false;
+    if (
+      !parseCrossSessionMessage(text) &&
+      !parseScheduledMessage(text) &&
+      !isAutomaticInput(internal)
+    )
+      pausedAfterRestart = false;
     const builtin = parseBuiltinCommand(text);
     if (builtin?.name === "compact") {
       await runCompact(builtin.args || undefined, generation);
@@ -411,6 +424,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       await input.beforeIdleTurn(preparation.signal);
       assertNotAborted(generation);
     }
+    assertScheduledInput(turnId);
     const content = contentForPresentation(
       text,
       attachments,
@@ -456,15 +470,16 @@ export function createCakeSessionRuntimeTurnController(input: {
           renderUserMessageAsMarkdown,
         });
       await input.deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-        input.withResponseRetries(() =>
-          session.prompt(content, {
+        input.withResponseRetries(() => {
+          assertScheduledInput(turnId);
+          return session.prompt(content, {
             images,
             source: "interactive",
             ...(delivery === "steer"
               ? { streamingBehavior: "steer" as const }
               : { streamingBehavior: "followUp" as const }),
-          }),
-        ),
+          });
+        }),
       );
       if (wasStreaming) {
         if (lane === "steering") notifySteeringQueued();
@@ -572,6 +587,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       return [
         ...trackedQueue[lane].map((item, index) => ({
           itemId: item.itemId,
+          turnId: item.turnId,
           partId: queuedIds[index],
           state: "queued" as const,
           content: item.content,
@@ -580,6 +596,7 @@ export function createCakeSessionRuntimeTurnController(input: {
           .filter((item) => item.delivery === delivery)
           .map((item, index) => ({
             itemId: item.itemId,
+            turnId: item.turnId,
             partId: queuedIds[trackedQueue[lane].length + index],
             state: item.command ? ("command-queued" as const) : ("compaction-held" as const),
             content: item.text,
@@ -591,6 +608,9 @@ export function createCakeSessionRuntimeTurnController(input: {
         const parsed = parseCrossSessionMessage(visibleContent);
         return {
           itemId: item.itemId,
+          ...(parseScheduledMessage(visibleContent) && item.turnId
+            ? { turnId: item.turnId }
+            : null),
           ...(item.partId ? { partId: item.partId } : null),
           state: item.state,
           lane,
@@ -1195,6 +1215,12 @@ export function createCakeSessionRuntimeTurnController(input: {
         if (item) return item.turnId ? turnCompletions.internalInputById(item.turnId) : undefined;
       }
       return turnCompletions.internalInput(content);
+    },
+    async cancelScheduledInput(turnId) {
+      if (turnCompletions.executingIds().includes(turnId)) return;
+      canceledScheduledInputs.add(turnId);
+      const item = (await pendingMessages()).items.find((item) => item.turnId === turnId);
+      if (item) await this.removeQueuedMessage(item.partId ?? item.itemId);
     },
     consumeUserMessage(content) {
       let turnId: string | undefined;

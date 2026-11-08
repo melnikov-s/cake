@@ -91,7 +91,13 @@ import { projectCakeSessionRuntimeSnapshot } from "./cake-session-runtime-snapsh
 import { createCakeSessionRuntimeTurnController } from "./cake-session-runtime-turn-controller";
 import { createCakeSessionRuntimeRecovery } from "./cake-session-runtime-recovery";
 import type { RuntimeRecoveryInput } from "../../storage/RuntimeRecoveryStorage";
-import { restartDecision, restartResumePrompt, unfinishedTools } from "./restart-recovery";
+import {
+  consumedInputAt,
+  restartDecision,
+  restartResumePrompt,
+  unfinishedTools,
+} from "./restart-recovery";
+import type { ScheduledInputReceipt } from "../../../contracts/scheduled-messages/scheduled-input-receipt";
 import {
   createCakeSessionRuntimeResourceLifecycle,
   shutdownCakeSessionExtensions,
@@ -237,6 +243,8 @@ export interface CakeSessionRuntime {
   recoverInput?(input: RuntimeRecoveryInput): Promise<void>;
   restoreInput?(input: RuntimeRecoveryInput): Promise<void>;
   hasConsumedInput?(turnId: string): boolean;
+  scheduledInputReceipt?(turnId: string): Promise<ScheduledInputReceipt | undefined>;
+  cancelScheduledInput?(turnId: string): Promise<void>;
   pendingRecoveryInputs?(): ReadonlyArray<{
     turnId: string;
     delivery: "steer" | "follow-up";
@@ -775,6 +783,11 @@ export async function createCakeSessionRuntime(
     restoreInput: (input) =>
       turnController.restorePending({ ...input, attachments: [...input.attachments] }),
     pendingRecoveryInputs: turnController.pendingRecoveryInputs,
+    cancelScheduledInput: (turnId) => turnController.cancelScheduledInput(turnId),
+    async scheduledInputReceipt(turnId) {
+      const consumedAt = consumedInputAt(session.sessionManager.getEntries(), turnId);
+      return consumedAt === undefined ? undefined : { status: "consumed", consumedAt };
+    },
     hasConsumedInput(turnId) {
       return restartDecision(session.sessionManager.getEntries(), turnId).kind !== "pending";
     },

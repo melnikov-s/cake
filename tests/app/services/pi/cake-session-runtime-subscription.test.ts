@@ -158,6 +158,7 @@ describe("Cake runtime subscription", () => {
     expect(f.appendCustomEntry).toHaveBeenCalledWith(recoveryInputEntryType, {
       turnId: "turn-1",
       timestamp: 10,
+      consumedAt: expect.any(Number),
     });
     expect(f.continuations.initializeSessionFromFirstMessage).toHaveBeenLastCalledWith(
       "hello",
