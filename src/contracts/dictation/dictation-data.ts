@@ -1,5 +1,8 @@
 import { Schema } from "effect";
 
+/** Total native preparation budget, including optional vocabulary warmup. */
+export const DICTATION_PREPARATION_TIMEOUT_MS = 180_000;
+
 export const TextProcessingMode = Schema.Literals(["raw", "utility"]);
 export type TextProcessingMode = typeof TextProcessingMode.Type;
 

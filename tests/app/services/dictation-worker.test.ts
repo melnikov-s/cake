@@ -41,7 +41,7 @@ const readyWorker = async () => {
   return active;
 };
 
-it("classifies an unexpected warm-worker exit without treating startup/configuration failure as recoverable", async () => {
+it("classifies unexpected connection loss during both startup and warm inference as recoverable", async () => {
   const active = await readyWorker();
   const result = active.transcribe({ utteranceId: "field", pcm: "", final: false });
   native.processes[0]!.emit("exit", 1, null);
@@ -49,7 +49,14 @@ it("classifies an unexpected warm-worker exit without treating startup/configura
   const startup = worker();
   native.processes[1]!.stderr.write("Model configuration invalid");
   native.processes[1]!.emit("exit", 1, null);
-  await expect(startup.ready).rejects.toMatchObject({ code: "unknown" });
+  await expect(startup.ready).rejects.toMatchObject({ code: "engine-exit" });
+});
+
+it("does not mistake a resolved startup promise for a healthy retained worker after idle disconnect", async () => {
+  const active = await readyWorker();
+  await active.prepare();
+  native.processes[0]!.emit("exit", 1, null);
+  await expect(active.prepare()).rejects.toMatchObject({ code: "engine-exit" });
 });
 
 it("enforces the existing 30-second inference deadline with a typed timeout and kills the worker", async () => {
@@ -73,6 +80,14 @@ it("keeps startup's 180-second deadline and explicit close distinct from transie
   const stopped = expect(active.ready).rejects.toMatchObject({ code: "stopped" });
   active.close();
   await stopped;
+});
+
+it("keeps explicit native startup/configuration errors manual rather than restarting repeatedly", async () => {
+  const active = worker();
+  const result = expect(active.prepare()).rejects.not.toHaveProperty("code");
+  native.processes[0]!.stdout.write('{"error":"Model configuration invalid"}\n');
+  native.processes[0]!.emit("exit", 1, null);
+  await result;
 });
 
 it("does not classify arbitrary native/provider error strings as retryable", async () => {

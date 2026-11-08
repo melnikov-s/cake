@@ -23,6 +23,7 @@ import {
 } from "../../contracts/dictation/vocabulary";
 import vadManifest from "../../../native/dictation/vad-manifest.json";
 import {
+  DICTATION_PREPARATION_TIMEOUT_MS,
   DictationError,
   type DictationAudio,
   type SpeechDetectionAudio,
@@ -242,7 +243,6 @@ export class ParakeetWorker {
   };
   private failure?: Error;
   private errors = "";
-  private started = false;
   readonly ready: Promise<void>;
 
   constructor(executable: string, modelPath: string, vocabularyPath: string) {
@@ -253,9 +253,8 @@ export class ParakeetWorker {
         stdio: "pipe",
       },
     );
-    this.ready = this.response(180_000).then((reply) => {
+    this.ready = this.response(DICTATION_PREPARATION_TIMEOUT_MS).then((reply) => {
       if (!("ready" in reply)) throw new Error("Invalid native dictation startup response");
-      this.started = true;
     });
     const lines = createInterface({ input: this.process.stdout });
     lines.on("line", (line) => {
@@ -278,7 +277,7 @@ export class ParakeetWorker {
     this.process.stdin.on("error", () =>
       this.fail(
         new DictationError({
-          code: this.started ? "engine-exit" : "unknown",
+          code: "engine-exit",
           message: "Native speech engine connection closed",
         }),
       ),
@@ -288,7 +287,7 @@ export class ParakeetWorker {
       lines.close();
       this.fail(
         new DictationError({
-          code: this.started ? "engine-exit" : "unknown",
+          code: "engine-exit",
           message: this.errors || "Native speech engine stopped",
         }),
       );
@@ -323,6 +322,11 @@ export class ParakeetWorker {
         },
       };
     });
+  }
+  /** A resolved startup promise alone does not establish that the process is still alive. */
+  async prepare() {
+    await this.ready;
+    if (this.failure) throw this.failure;
   }
   async prepareVocabulary() {
     if (this.failure) throw this.failure;

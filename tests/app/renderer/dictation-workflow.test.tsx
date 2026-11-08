@@ -9,6 +9,7 @@ import {
   type ConversationEvent,
 } from "../../../src/contracts/conversations/conversation-data";
 import {
+  DICTATION_PREPARATION_TIMEOUT_MS,
   DictationError,
   type DictationAudio,
   type DictationErrorCode,
@@ -3414,6 +3415,114 @@ describe("Dictation writing-field workflow", () => {
     expect(message().value).toBe("After permission");
     expect(trial().value).toBe("");
   });
+
+  it("abandons a disconnected pending preparation RPC and retries freshly without waiting for its completion", async () => {
+    using f = renderDictation();
+    await f.user.click(mode());
+    const old = deferred<void>();
+    f.prepare.mockImplementationOnce(() => old.promise);
+    vi.useFakeTimers();
+    await act(async () => {
+      message().focus();
+    });
+    const signal = f.prepare.mock.calls.at(-1)![0]!.signal!;
+    expect(f.prepare).toHaveBeenCalledTimes(2);
+    expect(f.audio.getUserMedia).not.toHaveBeenCalled();
+    await act(async () => {
+      f.root.dictationStore.reportObservationError();
+      f.root.dictationStore.reportObservationError();
+      f.root.dictationStore.reportObservationError();
+    });
+    expect(signal.aborted).toBe(true);
+    await advanceRecovery(499);
+    expect(f.prepare).toHaveBeenCalledTimes(2);
+    await advanceRecovery(1);
+    listening();
+    expect(f.prepare).toHaveBeenCalledTimes(3);
+    // The old Promise may settle even after its command was aborted. It owns no new state.
+    await act(async () => old.reject(engineFailure()));
+    await advanceRecovery(DICTATION_PREPARATION_TIMEOUT_MS + 5000);
+    listening();
+    expect(f.audio.getUserMedia).toHaveBeenCalledOnce();
+    expect(f.prepare).toHaveBeenCalledTimes(3);
+  });
+
+  it("bounds missing preparation completions, aborts each RPC, exhausts backoff and offers a successful manual retry", async () => {
+    using f = renderDictation();
+    await f.user.click(mode());
+    const old: Array<ReturnType<typeof deferred<void>>> = [];
+    f.prepare.mockImplementation(() => {
+      const pending = deferred<void>();
+      old.push(pending);
+      return pending.promise;
+    });
+    vi.useFakeTimers();
+    await act(async () => {
+      message().focus();
+    });
+    for (const delay of [500, 1500, 4000]) {
+      const signal = f.prepare.mock.calls.at(-1)![0]!.signal!;
+      await advanceRecovery(DICTATION_PREPARATION_TIMEOUT_MS + 4999);
+      expect(signal.aborted).toBe(false);
+      await advanceRecovery(1);
+      expect(signal.aborted).toBe(true);
+      expect(f.audio.getUserMedia).not.toHaveBeenCalled();
+      await advanceRecovery(delay);
+    }
+    await advanceRecovery(DICTATION_PREPARATION_TIMEOUT_MS + 5000);
+    expect(screen.getByText(/Automatic recovery stopped.*preparation timed out/)).toBeDefined();
+    expect(f.prepare).toHaveBeenCalledTimes(5); // enable preload, then initial capture + 3 retries
+    await advanceRecovery(1_000_000);
+    expect(f.prepare).toHaveBeenCalledTimes(5);
+    f.prepare.mockResolvedValue(undefined);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry dictation" }));
+    });
+    listening();
+    await act(async () => {
+      for (const pending of old) pending.resolve();
+    });
+    listening();
+    expect(f.prepare).toHaveBeenCalledTimes(6);
+    expect(f.audio.getUserMedia).toHaveBeenCalledOnce();
+  });
+
+  it.each(["mute", "owner-release", "cancel", "disable", "field-switch"] as const)(
+    "a late preparation completion after %s cannot revive the old capture or schedule retries",
+    async (stop) => {
+      using f = renderDictation();
+      await f.user.click(mode());
+      const old = deferred<void>();
+      f.prepare.mockImplementationOnce(() => old.promise);
+      vi.useFakeTimers();
+      await act(async () => {
+        message().focus();
+      });
+      const owner = f.root.dictationStore.activeTargetId!;
+      await act(async () => {
+        if (stop === "mute") f.root.dictationStore.setMuted(owner, true);
+        else if (stop === "owner-release") f.root.dictationStore.releaseTarget(owner);
+        else if (stop === "disable") await f.root.dictationStore.setEnabled(false);
+        else if (stop === "field-switch") trial().focus();
+        else f.root.dictationStore.pauseCapture();
+      });
+      // A field switch shares the warmup, but only the new field may open capture.
+      expect(f.prepare).toHaveBeenCalledTimes(2);
+      await act(async () => old.resolve());
+      await advanceRecovery(DICTATION_PREPARATION_TIMEOUT_MS + 10_000);
+      if (stop === "field-switch") {
+        listening();
+        expect(f.audio.getUserMedia).toHaveBeenCalledOnce();
+        expect(f.root.dictationStore.activeTargetId).not.toBe(owner);
+      } else {
+        expect(f.audio.getUserMedia).not.toHaveBeenCalled();
+        expect(f.root.dictationStore.phase).toBe(stop === "disable" ? "off" : "paused");
+      }
+      expect(f.prepare).toHaveBeenCalledTimes(2);
+      expect(message().value).toBe("");
+      expect(f.prompt).not.toHaveBeenCalled();
+    },
+  );
 
   it("recovers a transient decode failure once, preserves text and owner, and ignores duplicate/stale capture events", async () => {
     using f = renderDictation();

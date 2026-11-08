@@ -1,11 +1,12 @@
 import { child, createStore, snapshot, Store, untracked } from "r-state-tree";
 import { matchesDiscardFilter, utteranceText } from "../../contracts/dictation/discard-filters";
-import type {
-  DictationState,
-  DictationTrace,
-  DictationTraceStep,
-  TextProcessingMode,
-  SpeechRecognitionSettings,
+import {
+  DICTATION_PREPARATION_TIMEOUT_MS,
+  type DictationState,
+  type DictationTrace,
+  type DictationTraceStep,
+  type TextProcessingMode,
+  type SpeechRecognitionSettings,
 } from "../../contracts/dictation/dictation-data";
 import type { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
 import { speechRecognitionSettings } from "../../utils/speech-input-settings";
@@ -155,7 +156,7 @@ export class DictationStore extends Store<{
   private utterance: Utterance | undefined;
   private installation: AbortController | undefined;
   /** The model load in flight for this mode; a capture starting meanwhile awaits it. */
-  private modelLoad: Promise<void> | undefined;
+  private modelLoad: { promise: Promise<void>; controller: AbortController } | undefined;
   /** A background preload failed with no capture waiting; the next field focus shows it. */
   private preloadFailure: unknown;
   private modeRevision = 0;
@@ -326,7 +327,17 @@ export class DictationStore extends Store<{
   }
   /** Observation reconnects itself; capture recovery still belongs to the current owner. */
   reportObservationError() {
-    if (!this.utterance && !this.recoveryTimer) return;
+    // A reconnect must not join an old, disconnected preparation RPC forever.
+    this.modelLoad?.controller.abort(
+      new ClientError(
+        "transport",
+        "dictation.prepare",
+        "Dictation connection interrupted.",
+        "dictation.prepare",
+      ),
+    );
+    this.modelLoad = undefined;
+    if (!this.utterance) return;
     this.captureFailed(
       new Error("Dictation connection interrupted."),
       "observation",
@@ -433,6 +444,14 @@ export class DictationStore extends Store<{
     this.engaged = false;
     this.error = undefined;
     this.endUtterance(false, "mode-changed");
+    this.modelLoad?.controller.abort(
+      new ClientError(
+        "interrupted",
+        "dictation.prepare",
+        "Dictation mode changed.",
+        "dictation.prepare",
+      ),
+    );
     this.modelLoad = undefined;
     this.preloadFailure = undefined;
     this.phase = enabled ? "paused" : "off";
@@ -475,12 +494,36 @@ export class DictationStore extends Store<{
   }
   /** At most one load in flight: a capture started during a preload joins it, never restarts it. */
   private loadModel(): Promise<void> {
-    if (this.modelLoad) return this.modelLoad;
-    const load = this.props.client.prepare({ signal: this.signal }).finally(() => {
-      if (this.modelLoad === load) this.modelLoad = undefined;
+    if (this.modelLoad) return this.modelLoad.promise;
+    const controller = new AbortController();
+    const signal = AbortSignal.any([this.signal, controller.signal]);
+    // Give main's native deadline time to report its typed error. Also bound queueing and
+    // lost RPC completions; abort the real command, not just the visible spinner.
+    const timer = setTimeout(
+      () =>
+        controller.abort(
+          new ClientError(
+            "transport",
+            "dictation.prepare",
+            "Dictation preparation timed out. Retry dictation.",
+            "dictation.prepare",
+          ),
+        ),
+      DICTATION_PREPARATION_TIMEOUT_MS + 5000,
+    );
+    let aborted: () => void;
+    const promise = new Promise<void>((resolve, reject) => {
+      aborted = () => reject(signal.reason);
+      signal.addEventListener("abort", aborted, { once: true });
+      signal.throwIfAborted();
+      void this.props.client.prepare({ signal }).then(resolve, reject);
+    }).finally(() => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", aborted);
+      if (this.modelLoad?.promise === promise) this.modelLoad = undefined;
     });
-    this.modelLoad = load;
-    return load;
+    this.modelLoad = { promise, controller };
+    return promise;
   }
   focus(target: DictationTarget, intentional = true) {
     if (!intentional && this.stoppedTargetId === target.id) return;

@@ -6,8 +6,9 @@ import {
 } from "../../contracts/dictation/vocabulary";
 import { join } from "node:path";
 import { rm } from "node:fs/promises";
-import { Effect, Layer, Queue, Semaphore, Stream, SubscriptionRef } from "effect";
+import { Clock, Effect, Layer, Queue, Semaphore, Stream, SubscriptionRef } from "effect";
 import {
+  DICTATION_PREPARATION_TIMEOUT_MS,
   DictationError,
   type DictationAudio,
   type DictationState,
@@ -57,10 +58,12 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
       });
       const lock = yield* Semaphore.make(1);
       let worker: ParakeetWorker | undefined;
+      let vocabularyPrepared = false;
       let vocabulary: DictationVocabulary | undefined;
       const stop = () => {
         worker?.close();
         worker = undefined;
+        vocabularyPrepared = false;
       };
       yield* Effect.addFinalizer(() => Effect.sync(stop));
       const patch = (value: Partial<DictationState>) =>
@@ -105,15 +108,28 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
             message: "Cake's bundled speech engine is missing. Reinstall or update Cake.",
           });
       });
-      const resetAfterInterruption = Effect.fn("Dictation.resetAfterInterruption")(function* () {
+      const resetAfterInterruption = Effect.fn("Dictation.resetAfterInterruption")(function* (
+        refreshState: boolean,
+      ) {
         stop();
-        yield* refresh().pipe(
-          Effect.catch((error) => patch({ status: "error", message: error.message })),
-        );
+        if (refreshState) {
+          yield* refresh().pipe(
+            Effect.catch((error) => patch({ status: "error", message: error.message })),
+          );
+          return;
+        }
+        // Preparation changes no model files. Release its lock without more filesystem I/O.
+        const current = yield* SubscriptionRef.get(state);
+        yield* patch({
+          status: current.modelPath && current.engineAvailable ? "installed" : "missing",
+          message: undefined,
+          downloadedBytes: 0,
+          totalBytes: 0,
+        });
       });
-      const guarded = <A>(operation: Effect.Effect<A, DictationError>) =>
+      const guarded = <A>(operation: Effect.Effect<A, DictationError>, refreshOnInterrupt = true) =>
         operation.pipe(
-          Effect.onInterrupt(resetAfterInterruption),
+          Effect.onInterrupt(() => resetAfterInterruption(refreshOnInterrupt)),
           Effect.catch((error) =>
             Effect.gen(function* () {
               stop();
@@ -243,17 +259,34 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
           );
         }),
         prepare: Effect.fn("Dictation.prepare")(function* () {
+          const requestedAt = yield* Clock.currentTimeMillis;
           yield* guarded(
             Effect.gen(function* () {
-              yield* requireSupported();
+              const acquiredAt = yield* Clock.currentTimeMillis;
               const current = yield* SubscriptionRef.get(state);
               if (worker) {
-                if (current.vocabularyCount > 0 && current.vocabularyInstalled) {
-                  const active = worker;
+                const active = worker;
+                yield* native(() => active.prepare());
+                if (
+                  !vocabularyPrepared &&
+                  current.vocabularyCount > 0 &&
+                  current.vocabularyInstalled
+                ) {
                   yield* native(() => active.prepareVocabulary());
+                  vocabularyPrepared = true;
                 }
+                const finishedAt = yield* Clock.currentTimeMillis;
+                if (finishedAt - requestedAt >= 1000)
+                  yield* Effect.logInfo("Dictation warm preparation delayed", {
+                    queueMs: acquiredAt - requestedAt,
+                    prepareMs: finishedAt - acquiredAt,
+                    workerReused: true,
+                  });
                 return;
               }
+              // A healthy warm worker needs neither another executable filesystem probe nor
+              // another vocabulary preparation command on every focus/capture generation.
+              yield* requireSupported();
               if (!current.modelPath || !current.engineAvailable)
                 return yield* new DictationError({
                   code: "configuration",
@@ -268,18 +301,31 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
                 const cancel = () => next.close();
                 signal.addEventListener("abort", cancel, { once: true });
                 try {
-                  await next.ready;
+                  await next.prepare();
                   if (current.vocabularyCount > 0 && current.vocabularyInstalled)
                     await next.prepareVocabulary();
                 } finally {
                   signal.removeEventListener("abort", cancel);
                 }
               });
+              vocabularyPrepared = current.vocabularyCount > 0 && current.vocabularyInstalled;
               yield* patch({ status: "ready", message: undefined });
               yield* Effect.logInfo("Dictation engine ready", {
                 loadMs: Date.now() - loadStarted,
               });
-            }),
+            }).pipe(
+              Effect.timeoutOrElse({
+                duration: DICTATION_PREPARATION_TIMEOUT_MS,
+                orElse: () =>
+                  Effect.fail(
+                    new DictationError({
+                      code: "engine-timeout",
+                      message: "Dictation preparation timed out. Retry dictation.",
+                    }),
+                  ),
+              }),
+            ),
+            false,
           );
         }),
         release: Effect.fn("Dictation.release")(function* () {

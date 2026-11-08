@@ -1,8 +1,10 @@
 import { beforeEach, vi } from "vitest";
 import { expect, it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Logger, Schema, Stream } from "effect";
+import { TestClock } from "effect/testing";
 import type { DictationVocabulary } from "../../../src/contracts/dictation/vocabulary";
 import {
+  DICTATION_PREPARATION_TIMEOUT_MS,
   DictationError,
   DictationState,
   DictationTrace,
@@ -16,6 +18,7 @@ const native = vi.hoisted(() => ({
   vocabulary: { revision: 0, entries: [] } as DictationVocabulary,
   vocabularyInstalled: false,
   available: true,
+  availableChecks: vi.fn(),
   ready: () => Promise.resolve(),
   prepareVocabulary: vi.fn(async () => {}),
   transcribe: vi.fn(async () => "hello"),
@@ -29,7 +32,10 @@ const native = vi.hoisted(() => ({
 }));
 vi.mock("node:fs/promises", () => ({ rm: native.remove }));
 vi.mock("../../../src/services/dictation/local-parakeet", () => ({
-  helperAvailable: async () => native.available,
+  helperAvailable: async () => {
+    native.availableChecks();
+    return native.available;
+  },
   loadVocabulary: async () => native.vocabulary,
   saveVocabulary: async (_root: string, vocabulary: DictationVocabulary) => {
     native.vocabulary = vocabulary;
@@ -56,6 +62,9 @@ vi.mock("../../../src/services/dictation/local-parakeet", () => ({
     constructor(executable: string, path: string, vocabularyPath: string) {
       native.constructed(executable, path, vocabularyPath);
       this.ready = native.ready();
+    }
+    async prepare() {
+      await this.ready;
     }
     prepareVocabulary = native.prepareVocabulary;
     transcribe = native.transcribe;
@@ -125,6 +134,11 @@ it.effect(
       expect((yield* state(service)).vocabularyInstalled).toBe(true);
       yield* service.prepare();
       expect(native.prepareVocabulary).toHaveBeenCalledTimes(1);
+      const checks = native.availableChecks.mock.calls.length;
+      yield* service.prepare();
+      yield* service.prepare();
+      expect(native.prepareVocabulary).toHaveBeenCalledTimes(1);
+      expect(native.availableChecks).toHaveBeenCalledTimes(checks);
       yield* service.transcribe(audio);
       expect(native.transcribe).toHaveBeenLastCalledWith(audio, native.vocabulary.entries);
       const saved = yield* service.listVocabulary({});
@@ -214,6 +228,129 @@ it.effect("concurrent prepare calls acquire one bundled worker and wait for warm
     yield* service.release();
     expect(native.close).toHaveBeenCalledTimes(1);
     expect((yield* state(service)).status).toBe("installed");
+  }).pipe(Effect.provide(live())),
+);
+
+it.effect(
+  "bounds missing model readiness, closes the worker, ignores late completion and permits retry",
+  () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      let complete = () => {};
+      native.ready = () =>
+        new Promise<void>((resolve) => {
+          complete = resolve;
+          Effect.runSync(Deferred.succeed(started, undefined));
+        });
+      const service = yield* Dictation;
+      const loading = yield* service.prepare().pipe(Effect.result, Effect.forkChild);
+      yield* Deferred.await(started);
+      yield* TestClock.adjust(DICTATION_PREPARATION_TIMEOUT_MS);
+      expect(yield* Fiber.join(loading)).toMatchObject({
+        _tag: "Failure",
+        failure: { code: "engine-timeout" },
+      });
+      expect(native.close).toHaveBeenCalled();
+      expect(yield* state(service)).toMatchObject({
+        status: "error",
+        message: expect.stringContaining("timed out"),
+      });
+      yield* Effect.promise(async () => {
+        complete();
+        await Promise.resolve();
+      });
+      expect((yield* state(service)).status).toBe("error");
+      native.ready = () => Promise.resolve();
+      yield* service.prepare();
+      yield* service.prepare();
+      expect(native.constructed).toHaveBeenCalledTimes(2);
+      expect((yield* state(service)).status).toBe("ready");
+    }).pipe(Effect.provide(live())),
+);
+
+it.effect(
+  "bounds model and vocabulary preparation together instead of allowing two full startup waits",
+  () =>
+    Effect.gen(function* () {
+      const modelStarted = yield* Deferred.make<void>();
+      const modelReady = yield* Deferred.make<void>();
+      const vocabularyStarted = yield* Deferred.make<void>();
+      native.ready = () => {
+        Effect.runSync(Deferred.succeed(modelStarted, undefined));
+        return Effect.runPromise(Deferred.await(modelReady));
+      };
+      native.prepareVocabulary.mockImplementationOnce(() => {
+        Effect.runSync(Deferred.succeed(vocabularyStarted, undefined));
+        return new Promise<void>(() => {});
+      });
+      const service = yield* Dictation;
+      yield* service.changeVocabulary({
+        action: "add",
+        expectedRevision: 0,
+        text: "Cake",
+        aliases: [],
+      });
+      yield* service.installVocabulary();
+      const loading = yield* service.prepare().pipe(Effect.result, Effect.forkChild);
+      yield* Deferred.await(modelStarted);
+      yield* TestClock.adjust(DICTATION_PREPARATION_TIMEOUT_MS / 2);
+      yield* Deferred.succeed(modelReady, undefined);
+      yield* Deferred.await(vocabularyStarted);
+      yield* TestClock.adjust(DICTATION_PREPARATION_TIMEOUT_MS / 2);
+      expect(yield* Fiber.join(loading)).toMatchObject({
+        _tag: "Failure",
+        failure: { code: "engine-timeout" },
+      });
+      expect((yield* state(service)).status).toBe("error");
+      yield* service.prepare();
+      expect(native.constructed).toHaveBeenCalledTimes(2);
+    }).pipe(Effect.provide(live())),
+);
+
+it.effect(
+  "interrupted pending preparation releases the lock without filesystem refresh and cannot revive",
+  () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      let complete = () => {};
+      native.ready = () =>
+        new Promise<void>((resolve) => {
+          complete = resolve;
+          Effect.runSync(Deferred.succeed(started, undefined));
+        });
+      const service = yield* Dictation;
+      const loading = yield* service.prepare().pipe(Effect.forkChild);
+      yield* Deferred.await(started);
+      const checks = native.availableChecks.mock.calls.length;
+      yield* Fiber.interrupt(loading);
+      expect(native.availableChecks).toHaveBeenCalledTimes(checks);
+      expect((yield* state(service)).status).toBe("installed");
+      yield* Effect.promise(async () => {
+        complete();
+        await Promise.resolve();
+      });
+      expect((yield* state(service)).status).toBe("installed");
+      native.ready = () => Promise.resolve();
+      yield* service.prepare();
+      expect(native.constructed).toHaveBeenCalledTimes(2);
+      expect((yield* state(service)).status).toBe("ready");
+    }).pipe(Effect.provide(live())),
+);
+
+it.effect("a startup disconnect publishes an error and the next prepare replaces the worker", () =>
+  Effect.gen(function* () {
+    native.ready = () =>
+      Promise.reject(new DictationError({ code: "engine-exit", message: "Connection closed" }));
+    const service = yield* Dictation;
+    expect(yield* service.prepare().pipe(Effect.result)).toMatchObject({
+      _tag: "Failure",
+      failure: { code: "engine-exit" },
+    });
+    expect((yield* state(service)).status).toBe("error");
+    native.ready = () => Promise.resolve();
+    yield* service.prepare();
+    expect(native.constructed).toHaveBeenCalledTimes(2);
+    expect((yield* state(service)).status).toBe("ready");
   }).pipe(Effect.provide(live())),
 );
 
