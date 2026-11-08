@@ -1889,3 +1889,114 @@ test.describe("media content anchoring diagnosis", () => {
     });
   }
 });
+
+test.describe("viewport-aware message actions", () => {
+  test.use({ messageCount: 2, chatMode: "full" });
+  test("keeps one external toolbar through boundary transitions and hides a cramped side rail", async ({
+    fixturePage: page,
+  }) => {
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await page.evaluate(() => {
+      (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).partsUpdated([
+        {
+          kind: "text",
+          id: "before",
+          role: "user",
+          status: "complete",
+          text: "Earlier message. ".repeat(150),
+        },
+        {
+          kind: "text",
+          id: "target",
+          role: "assistant",
+          status: "complete",
+          text: "Viewport action body\n\n" + "Long paragraph.\n\n".repeat(100),
+        },
+        {
+          kind: "text",
+          id: "after",
+          role: "user",
+          status: "complete",
+          text: "Later message. ".repeat(150),
+        },
+      ]);
+    });
+    const message = page
+      .locator('[data-slot="message"]')
+      .filter({ hasText: "Viewport action body" });
+    const toolbar = message.locator('[data-slot="message-action-toolbar"]');
+    const copy = toolbar.locator('button[aria-label="Copy response"]');
+    await expect(toolbar).toHaveCount(1);
+    await copy.evaluate((button) => {
+      button.dataset.identity = "original";
+    });
+    const scrollTo = async (boundary: "top" | "middle" | "bottom" | "offscreen") => {
+      await message.evaluate((node, boundary) => {
+        const scroller = node.closest<HTMLElement>(".transcript")!;
+        const viewport = scroller.getBoundingClientRect();
+        const body = node.querySelector('[data-slot="message-content"]')!.getBoundingClientRect();
+        const delta =
+          boundary === "top"
+            ? body.top - viewport.top - 64
+            : boundary === "middle"
+              ? body.top - viewport.top + 250
+              : boundary === "bottom"
+                ? body.bottom - viewport.bottom + 64
+                : body.bottom - viewport.top + 100;
+        scroller.scrollTop += delta;
+      }, boundary);
+    };
+    const assertExternal = async (kind: "above" | "side" | "footer") => {
+      await expect(toolbar).toHaveAttribute("data-placement", kind);
+      const geometry = await toolbar.evaluate((node) => {
+        const actions = node.getBoundingClientRect();
+        const article = node.closest("article")!;
+        const body = article
+          .querySelector('[data-slot="message-content"]')!
+          .getBoundingClientRect();
+        const viewport = article.closest(".transcript")!.getBoundingClientRect();
+        return {
+          external:
+            actions.bottom <= body.top ||
+            actions.top >= body.bottom ||
+            actions.right <= body.left ||
+            actions.left >= body.right,
+          contained:
+            actions.left >= viewport.left &&
+            actions.right <= viewport.right &&
+            actions.top >= viewport.top &&
+            actions.bottom <= viewport.bottom,
+        };
+      });
+      expect(geometry).toEqual({ external: true, contained: true });
+      await expect(copy).toHaveAttribute("data-identity", "original");
+      await expect(toolbar.getByRole("button")).toHaveCount(1);
+    };
+    await scrollTo("top");
+    await assertExternal("above");
+    await copy.focus();
+    await expect(copy).toBeFocused();
+    await scrollTo("middle");
+    await assertExternal("side");
+    await expect(copy).toBeFocused();
+    // Resize only the chat pane, not the window: window-wide space is irrelevant.
+    await page.locator("#root").evaluate((node) => {
+      node.style.width = "400px";
+    });
+    await expect(toolbar).toHaveAttribute("data-placement", "hidden");
+    await expect(copy).toBeHidden();
+    await expect(toolbar).toHaveAttribute("inert", "");
+    await page.locator("#root").evaluate((node) => {
+      node.style.width = "100%";
+    });
+    await assertExternal("side");
+    await scrollTo("bottom");
+    await assertExternal("footer");
+    await copy.focus();
+    await copy.press("Enter");
+    await expect(toolbar.getByRole("button", { name: "Copied response" })).toBeVisible();
+    await scrollTo("offscreen");
+    await expect(toolbar).toHaveAttribute("data-placement", "hidden");
+    await expect(toolbar.getByRole("button")).toHaveCount(0);
+  });
+});

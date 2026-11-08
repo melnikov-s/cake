@@ -2,6 +2,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
+import { MessageActions } from "./message-actions";
 
 export function Message({
   className,
@@ -20,15 +21,7 @@ export function Message({
       {...props}
     >
       {children}
-      {actions && (
-        <div
-          data-slot="message-actions"
-          className="mt-1.5 flex min-h-7 items-center gap-1 opacity-0 transition-opacity group-hover/msg:opacity-100 group-focus-within/msg:opacity-100"
-          aria-label="Message actions"
-        >
-          {actions}
-        </div>
-      )}
+      {actions && <MessageActions>{actions}</MessageActions>}
       {fullscreen && (
         <FullscreenButton
           className="absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-md bg-transparent p-0 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/msg:opacity-100 group-focus-within/msg:opacity-100"
