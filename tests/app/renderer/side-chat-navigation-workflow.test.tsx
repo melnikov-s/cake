@@ -14,8 +14,8 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {
       const rect = measure.call(this);
-      // Below the ordinary accessory replacement breakpoint, but still a conversation split.
-      return this.getAttribute("data-slot") === "side-chat-layout" ? { ...rect, width: 700 } : rect;
+      // A wide conversation area keeps the origin and side chat paired.
+      return this.getAttribute("data-slot") === "side-chat-layout" ? { ...rect, width: 900 } : rect;
     },
   );
   vi.stubGlobal("PointerEvent", MouseEvent);
@@ -228,7 +228,7 @@ it.each(["alpha", CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
     });
     panel = await assertSplit();
     expect(within(panel).getByRole("combobox")).toHaveProperty("value", "Only the side draft");
-    await fixture.user.click(within(panel).getByRole("button", { name: `Close ${paneTitle}` }));
+    await fixture.user.click(within(panel).getByRole("button", { name: "Close side chat" }));
     expect(await screen.findByText("Origin conversation body")).toBeTruthy();
 
     // Session links and app open-session requests share this navigation intent.

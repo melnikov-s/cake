@@ -254,7 +254,7 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
     });
     const streamedAnswer = sideChat.getByText("Side chat streamed answer", { exact: false });
     const header = sideChat.locator(":scope > header");
-    const close = header.getByRole("button", { name: "Close and resolve side chat", exact: true });
+    const close = header.getByRole("button", { name: "Close side chat", exact: true });
     const actions = sideChat.getByRole("group", { name: "Side chat actions" });
     const actionClose = actions.getByRole("button", { name: "Close and resolve", exact: true });
     const expectHeaderClose = async () => {

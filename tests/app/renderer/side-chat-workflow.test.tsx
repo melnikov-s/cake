@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Schema } from "effect";
 import { StoreProvider } from "r-state-tree/react";
 import {
@@ -184,6 +184,7 @@ function renderSideChats(
   );
   return {
     user: userEvent.setup(),
+    session,
     resolutions,
     publish(threads: DiscussionThread[]) {
       act(() => publish(threads));
@@ -198,9 +199,105 @@ function renderSideChats(
   };
 }
 
-afterEach(cleanup);
+let availableWidth = 1200;
+let resizeLayout: () => void;
+beforeEach(() => {
+  availableWidth = 1200;
+  const measure = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      const rect = measure.call(this);
+      return this.getAttribute("data-slot") === "side-chat-layout"
+        ? { ...rect, width: availableWidth }
+        : rect;
+    },
+  );
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(private callback: () => void) {}
+      observe(element: HTMLElement) {
+        if (element.getAttribute("data-slot") === "side-chat-layout") resizeLayout = this.callback;
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+});
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("Secondary conversation workflows", () => {
+  it.each([416, 700, 1200])(
+    "dismisses without resolving and preserves drafts across resize (initial area: %ipx)",
+    async (width) => {
+      availableWidth = width;
+      const start = vi.fn<Client["discussionSessions"]["start"]>();
+      using fixture = renderSideChats(start, { threads: [thread("first", "First discussion")] });
+      const mainChat = fixture.session.conversationSessionStore.chatStore;
+      const mainInput = screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
+      await fixture.user.type(mainInput, "Main draft");
+      act(() => mainChat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" }));
+      const openSideChat = async () => {
+        await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+        await fixture.user.click(screen.getByRole("button", { name: "First discussion" }));
+        return screen.getByRole("complementary", { name: "Side chat" });
+      };
+      let panel = await openSideChat();
+      const layout = panel.closest('[data-slot="side-chat-layout"]')!;
+      const origin = layout.firstElementChild!;
+      const sideInput = within(panel).getByRole<HTMLTextAreaElement>("combobox");
+      const sideChatStore = fixture.session.conversationSessionStore.sideChatStore;
+      const sideChat = sideChatStore.target!.chatStore!;
+      act(() => sideChatStore.setWidth(600));
+      await fixture.user.type(sideInput, "Side draft");
+      act(() => sideChat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" }));
+      expect(layout.getAttribute("data-presentation")).toBe(
+        width >= 860 ? "side-by-side" : "replacement",
+      );
+      // The local chat area, not the outer editor/browser/window width, owns this breakpoint.
+      for (const nextWidth of [860, 859, 320, 1200, 416]) {
+        act(() => {
+          availableWidth = nextWidth;
+          resizeLayout();
+        });
+        const split = nextWidth >= 860;
+        expect(layout.getAttribute("data-presentation")).toBe(
+          split ? "side-by-side" : "replacement",
+        );
+        expect(origin.hasAttribute("inert")).toBe(!split);
+        expect((layout as HTMLElement).style.getPropertyValue("--accessory-panel-width")).toBe(
+          split ? `${Math.min(600, nextWidth * 0.6)}px` : "0px",
+        );
+        expect(sideChatStore.width).toBe(600);
+        expect(screen.queryByRole("separator", { name: "Resize side chat" }) !== null).toBe(split);
+        expect(within(panel).getByRole("combobox")).toBe(sideInput);
+        expect(sideInput.value).toBe("Side draft");
+        expect(mainInput.isConnected).toBe(true);
+        expect(mainInput.value).toBe("Main draft");
+        expect(mainChat.transcriptInteraction.transcriptScrollPosition).toEqual({ kind: "top" });
+        expect(sideChat.transcriptInteraction.transcriptScrollPosition).toEqual({ kind: "top" });
+      }
+      const close = within(panel).getByRole("button", { name: "Close side chat" });
+      act(() => close.focus());
+      await fixture.user.keyboard("{Enter}");
+      expect(layout.getAttribute("data-presentation")).toBe("closed");
+      expect(origin.hasAttribute("inert")).toBe(false);
+      expect(screen.getByRole("combobox", { name: "Message" })).toBe(mainInput);
+      expect(mainInput.value).toBe("Main draft");
+      expect(fixture.resolutions).not.toHaveBeenCalled();
+      expect(start).not.toHaveBeenCalled();
+      panel = await openSideChat();
+      expect(within(panel).getByRole("combobox")).toHaveProperty("value", "Side draft");
+      expect(sideChat.transcriptInteraction.transcriptScrollPosition).toEqual({ kind: "top" });
+      // Resolution remains a separate, explicit lifecycle action.
+      await fixture.user.click(within(panel).getByRole("button", { name: "Close and resolve" }));
+      expect(fixture.resolutions).toHaveBeenCalledTimes(1);
+    },
+  );
   it.each([false, true])(
     "creates a session-wide side chat (without model: %s) and opens it when the catalog arrives",
     async (withoutModel) => {

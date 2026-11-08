@@ -14,7 +14,6 @@ export function AccessoryPanelLayout({
   panel,
   onWidthChange,
   dataSlot = "accessory-panel-layout",
-  keepParentVisible = false,
 }: {
   open: boolean;
   width: number;
@@ -23,8 +22,6 @@ export function AccessoryPanelLayout({
   panel: ReactNode;
   onWidthChange(width: number): void;
   dataSlot?: string;
-  /** Conversations must remain paired even below the accessory replacement breakpoint. */
-  keepParentVisible?: boolean;
 }) {
   const layoutRef = useRef<HTMLDivElement>(null);
   const [availableWidth, setAvailableWidth] = useState(0);
@@ -39,7 +36,7 @@ export function AccessoryPanelLayout({
     return () => resizeObserver.disconnect();
   }, []);
 
-  const sideBySide = open && (keepParentVisible || availableWidth >= SIDE_BY_SIDE_MIN_WIDTH);
+  const sideBySide = open && availableWidth >= SIDE_BY_SIDE_MIN_WIDTH;
   const maximumWidth = Math.max(MIN_PANEL_WIDTH, availableWidth * 0.6);
   const panelWidth = Math.min(maximumWidth, Math.max(MIN_PANEL_WIDTH, width));
   const style: CSSProperties &
@@ -62,6 +59,7 @@ export function AccessoryPanelLayout({
       style={style}
     >
       <div
+        inert={open && !sideBySide}
         className={
           open && !sideBySide
             ? "invisible pointer-events-none col-start-1 row-start-1 h-full min-h-0 min-w-0 overflow-hidden"

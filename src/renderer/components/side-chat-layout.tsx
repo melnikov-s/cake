@@ -71,7 +71,7 @@ export const SideChatLayout = observer(function SideChatLayout({
     </div>
   );
   const composerHeader = dockActions && actions;
-  // Subagents retain their focused presentation; user side chats always keep their origin visible.
+  // Subagents retain their focused presentation; user side chats use the responsive accessory.
   if (focusConversation && target?.chatStore && target.key.startsWith("subagent:"))
     return (
       <SideChatContext.Provider value={store}>
@@ -90,7 +90,6 @@ export const SideChatLayout = observer(function SideChatLayout({
       <AccessoryPanelLayout
         dataSlot="side-chat-layout"
         open={Boolean(target)}
-        keepParentVisible={Boolean(target?.chatStore && !target.key.startsWith("subagent:"))}
         width={target?.changes?.width ?? store.width}
         resizeLabel={target?.changes ? "Resize changes" : "Resize side chat"}
         onWidthChange={(width) =>
@@ -104,9 +103,8 @@ export const SideChatLayout = observer(function SideChatLayout({
               title={title}
               compact={isSideChat}
               eyebrow={isSideChat ? undefined : target.eyebrow?.()}
-              closeLabel={target.resolve ? "Close and resolve side chat" : undefined}
-              closeDisabled={store.resolving || target.merge?.pending}
-              onClose={() => (target.resolve ? void store.closeAndResolve() : store.close())}
+              closeLabel={isSideChat ? "Close side chat" : undefined}
+              onClose={() => store.close()}
               headerActions={
                 target.changes ? (
                   <IconButton

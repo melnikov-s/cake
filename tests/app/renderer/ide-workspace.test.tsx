@@ -47,6 +47,16 @@ function discussion(view: "file" | "message"): DiscussionThread {
 }
 
 beforeEach(() => {
+  const measure = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      const rect = measure.call(this);
+      // Even a wide workspace only gives its chat companion a narrow local area.
+      if (this.getAttribute("data-slot") === "side-chat-layout") return { ...rect, width: 416 };
+      if (this.tagName === "MAIN") return { ...rect, width: 1440 };
+      return rect;
+    },
+  );
   vi.stubGlobal("PointerEvent", MouseEvent);
   vi.stubGlobal(
     "ResizeObserver",
@@ -65,6 +75,7 @@ afterEach(() => {
   cleanup();
   Reflect.deleteProperty(SVGElement.prototype, "getBBox");
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 // Start at the complete App with real Root/Reviews/Comments/Chat/Editor Stores.
@@ -111,33 +122,82 @@ describe("IDE conversation workflows", () => {
     expect(fixture.root.conversationNavigatorStore.tree(editorWorkingDirectory).total).toBe(1);
   });
 
-  it("keeps an opened selection side chat available when entering and leaving the IDE", async () => {
-    using fixture = renderEmbeddedEditor(
-      { vscode: { open: async () => editorLease("a") } },
-      {
-        threads: [discussion("message")],
-      },
-    );
-    // The same selection side chat remains available beside the real workspace.
-    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
-    await fixture.user.click(screen.getByRole("button", { name: /important detail/ }));
-    await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
-    await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
-    expect(screen.getAllByText("Editor conversation")).toHaveLength(2);
-    expect(screen.queryByLabelText("Open side chats")).toBeNull();
-    expect(await screen.findByText("Because it preserves state.")).toBeDefined();
-    expect(screen.getByRole("combobox", { name: "Reply to selection side chat" })).toBeDefined();
-    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
-    expect(screen.getByRole("separator", { name: "Resize side chat" })).toBeDefined();
-    await fixture.user.click(
-      within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByRole(
-        "button",
-        { name: "Editor conversation" },
-      ),
-    );
-    expect(screen.getByTitle("VS Code workspace")).toBeDefined();
-    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
-  });
+  it.each(["browser", "vscode"] as const)(
+    "replaces the main chat inside a narrow %s companion and dismisses without resolving",
+    async (mode) => {
+      const browserState = {
+        sessionId: editorSessionId,
+        url: "https://example.com",
+        title: "Example",
+        loading: false,
+        canGoBack: false,
+        canGoForward: false,
+        inspecting: false,
+      };
+      const setResolved = vi.fn<Client["discussionSessions"]["setResolved"]>();
+      using fixture = renderEmbeddedEditor(
+        {
+          vscode: { open: async () => editorLease("a") },
+          browser: { open: async () => browserState, updateBounds: async () => browserState },
+          discussionSessions: { setResolved },
+        },
+        {
+          threads: [discussion("message")],
+        },
+      );
+      await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "Main draft");
+      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+      await fixture.user.click(screen.getByRole("button", { name: /important detail/ }));
+      await fixture.user.click(
+        screen.getByRole("button", { name: mode === "browser" ? "Browser" : "VS Code" }),
+      );
+      const workspace =
+        mode === "browser"
+          ? await screen.findByLabelText("Browser viewport")
+          : await screen.findByTitle("VS Code workspace");
+      expect(screen.getAllByText("Editor conversation")).toHaveLength(2);
+      expect(screen.queryByLabelText("Open side chats")).toBeNull();
+      expect(await screen.findByText("Because it preserves state.")).toBeDefined();
+      expect(screen.getByRole("combobox", { name: "Reply to selection side chat" })).toBeDefined();
+      expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
+      const panel = screen.getByRole("complementary", { name: "Side chat" });
+      const layout = panel.closest('[data-slot="side-chat-layout"]')!;
+      expect(layout.getAttribute("data-presentation")).toBe("replacement");
+      expect(layout.firstElementChild!.hasAttribute("inert")).toBe(true);
+      expect(screen.queryByRole("separator", { name: "Resize side chat" })).toBeNull();
+      await fixture.user.click(within(panel).getByRole("button", { name: "Close side chat" }));
+      expect(layout.getAttribute("data-presentation")).toBe("closed");
+      expect(layout.firstElementChild!.hasAttribute("inert")).toBe(false);
+      expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty(
+        "value",
+        "Main draft",
+      );
+      expect(setResolved).not.toHaveBeenCalled();
+      expect(
+        mode === "browser"
+          ? screen.getByLabelText("Browser viewport")
+          : screen.getByTitle("VS Code workspace"),
+      ).toBe(workspace);
+      // Existing origin navigation still returns to the main chat without leaving the tool.
+      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+      await fixture.user.click(screen.getByRole("button", { name: /important detail/ }));
+      await fixture.user.click(
+        within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByRole(
+          "button",
+          { name: "Editor conversation" },
+        ),
+      );
+      expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty(
+        "value",
+        "Main draft",
+      );
+      expect(
+        mode === "browser"
+          ? screen.getByLabelText("Browser viewport")
+          : screen.getByTitle("VS Code workspace"),
+      ).toBeDefined();
+    },
+  );
 
   it("opens captured source context in VS Code and removes it from the next message", async () => {
     const reveal = vi.fn<Client["vscode"]["reveal"]>(async () => ({

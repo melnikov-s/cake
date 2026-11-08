@@ -75,6 +75,15 @@ const snapshot = (sessionId: string, parts: unknown[]) => ({
 });
 
 beforeEach(() => {
+  const measure = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      const rect = measure.call(this);
+      return this.getAttribute("data-slot") === "side-chat-layout"
+        ? { ...rect, width: 1200 }
+        : rect;
+    },
+  );
   // The opened thread highlights its passage, which measures the text range.
   const rect = { top: 80, right: 220, bottom: 100, left: 120, width: 100, height: 20 } as DOMRect;
   Object.defineProperty(Range.prototype, "getBoundingClientRect", {
@@ -86,7 +95,10 @@ beforeEach(() => {
     value: () => [rect],
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function mergeFixture(
   merge: (input: DiscussionSessionTarget) => Promise<{ importedMessages: number }>,
@@ -220,9 +232,7 @@ it("merges an idle side chat explicitly, keeps it usable, and reports repeated i
   expect(actionRow).not.toBeNull();
   const header = panel.querySelector<HTMLElement>(":scope > header");
   expect(header).not.toBeNull();
-  expect(
-    within(header!).getByRole("button", { name: "Close and resolve side chat" }),
-  ).toBeDefined();
+  expect(within(header!).getByRole("button", { name: "Close side chat" })).toBeDefined();
   const close = within(actionRow!).getByRole<HTMLButtonElement>("button", {
     name: "Close and resolve",
   });
