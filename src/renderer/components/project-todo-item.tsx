@@ -1,9 +1,11 @@
+import { useId } from "react";
 import { observer } from "r-state-tree/react";
 import {
   projectTodoAssociationKey,
   projectTodoCategory,
 } from "../../contracts/projects/project-todos";
 import { NavItem } from "@/components/ui/nav-item";
+import { HoverCard } from "@/components/ui/hover-card";
 import { ContextMenu, type ContextMenuItem } from "@/components/ui/context-menu";
 import { formatSnoozeDeadline, snoozeTimeZone } from "../lib/project-todo-snooze";
 import { ProjectTodoWorkLink } from "./project-todo-work-link";
@@ -25,6 +27,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
   item: ProjectTodo;
   store: ProjectTodosStore;
 }) {
+  const descriptionId = useId();
   const selected = store.isFocused(item.id);
   const inspected = store.visible && store.inspectedItemId === item.id;
   const attention = projectTodoCategory(item) === "attention";
@@ -96,105 +99,106 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
   return (
     <li data-todo-id={item.id} data-animated-list-key={item.id}>
       <ContextMenu label={`Actions for ${item.title}`} items={menuItems}>
-        <NavItem
-          wholeRowAction
-          selectableText
-          associated={selected || inspected}
-          viewFocused={selected}
-          aria-busy={store.busy}
-          actionProps={{
-            "aria-pressed": selected,
-            "aria-label": item.title,
-            "aria-disabled": false,
-          }}
-          onClick={() => store.toggleFocus(item)}
-          className={cn(
-            "grid items-start gap-x-2.5 gap-y-0 px-3 py-2.5 text-sm leading-5 [&>[data-slot=nav-action]]:col-start-2 [&>[data-slot=nav-action]]:row-start-1 [&>[data-slot=nav-action]>button:first-child]:items-start [@media(pointer:coarse)]:[&>[data-slot=nav-action]>button:first-child]:pt-3 [&>[data-slot=nav-trailing]]:col-start-1 [&>[data-slot=nav-trailing]]:row-start-1 [&_a>svg]:hidden",
-            "grid-cols-[auto_minmax(0,1fr)_auto]",
-          )}
-          label={
-            <span
-              className={cn(
-                "font-medium leading-5",
-                item.state === "done" ? "text-muted-foreground" : "text-foreground",
-              )}
-            >
-              {attention ? item.attentionReason : item.title}
-            </span>
-          }
-          labelAction={
-            <IconButton
-              className={cn("-my-1 size-7 [&>svg]:size-[9px]", hoverActionClassName)}
-              tooltip={`Attach to-do as context: ${item.title}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                store.reply(item);
-              }}
-            >
-              <PaperclipIcon />
-            </IconButton>
-          }
-          trailing={
-            <div className="flex items-start gap-2.5">
-              <IconButton
-                className="-ml-0.5 size-5"
-                disabled={store.busy}
-                tooltip={`${item.state === "done" ? "Reopen" : "Mark done"}: ${item.title}`}
-                onClick={() => void store.setDone(item)}
+        <HoverCard description={description} descriptionId={descriptionId}>
+          <NavItem
+            wholeRowAction
+            selectableText
+            associated={selected || inspected}
+            viewFocused={selected}
+            aria-busy={store.busy}
+            actionProps={{
+              "aria-pressed": selected,
+              "aria-label": item.title,
+              "aria-describedby": description ? descriptionId : undefined,
+              "aria-disabled": false,
+            }}
+            onClick={() => store.toggleFocus(item)}
+            className={cn(
+              "grid items-start gap-x-2.5 gap-y-0 px-3 py-2.5 text-sm leading-5 [&>button:first-child]:col-start-2 [&>button:first-child]:row-start-1 [&>button:first-child]:items-start [@media(pointer:coarse)]:[&>button:first-child]:pt-3 [&>[data-slot=nav-trailing]]:col-start-1 [&>[data-slot=nav-trailing]]:row-start-1 [&_a>svg]:hidden",
+              "grid-cols-[auto_minmax(0,1fr)_auto]",
+            )}
+            label={
+              <span
+                className={cn(
+                  "font-medium leading-5",
+                  item.state === "done" ? "text-muted-foreground" : "text-foreground",
+                )}
               >
-                {item.state === "done" ? <CheckIcon /> : <CircleIcon />}
-              </IconButton>
-            </div>
-          }
-        >
-          {(selected || attention) && (
-            <IconButton
-              className={cn("col-start-3 row-start-1 size-5", hoverActionClassName)}
-              tooltip={`${selected ? "Unfocus to-do" : "Dismiss attention"}: ${item.title}`}
-              disabled={!selected && store.busy}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (selected) store.unfocus(item);
-                else void store.dismissAttention(item);
-              }}
-            >
-              <CloseIcon />
-            </IconButton>
-          )}
-          {attention && (
-            <p className="col-span-full mt-1 min-w-0 break-words text-xs text-muted-foreground">
-              {item.title}
-            </p>
-          )}
-          {!attention && description && (
-            <p className="col-span-full mt-1 w-full whitespace-pre-wrap break-words text-xs font-normal leading-snug text-muted-foreground">
-              {description}
-            </p>
-          )}
-          {item.snoozedUntil && item.state === "open" && (
-            <p className="col-span-full mt-1 text-xs tabular-nums text-muted-foreground">
-              Snoozed until{" "}
-              <time dateTime={item.snoozedUntil} title={snoozeTimeZone()}>
-                {formatSnoozeDeadline(item.snoozedUntil)}
-              </time>
-            </p>
-          )}
-          {associations.length > 0 && (
-            <ul
-              aria-label={`Work for ${item.title}`}
-              className="col-span-full mt-2 flex w-full flex-wrap items-center gap-1.5"
-            >
-              {associations.map((association) => (
-                <li
-                  key={projectTodoAssociationKey(association)}
-                  className="flex max-w-full min-w-0 items-center"
+                {attention ? item.attentionReason : item.title}
+              </span>
+            }
+            trailing={
+              <div className="flex items-start gap-2.5">
+                <IconButton
+                  className="-ml-0.5 size-5"
+                  disabled={store.busy}
+                  tooltip={`${item.state === "done" ? "Reopen" : "Mark done"}: ${item.title}`}
+                  onClick={() => void store.setDone(item)}
                 >
-                  <ProjectTodoWorkLink association={association} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </NavItem>
+                  {item.state === "done" ? <CheckIcon /> : <CircleIcon />}
+                </IconButton>
+              </div>
+            }
+          >
+            <div
+              data-slot="todo-actions"
+              className="col-start-3 row-start-1 grid grid-cols-[1.75rem_1.25rem] items-start"
+            >
+              <IconButton
+                className={cn("-my-1 size-7 [&>svg]:size-[9px]", hoverActionClassName)}
+                tooltip={`Attach to-do as context: ${item.title}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  store.reply(item);
+                }}
+              >
+                <PaperclipIcon />
+              </IconButton>
+              {(selected || attention) && (
+                <IconButton
+                  className={cn("size-5", hoverActionClassName)}
+                  tooltip={`${selected ? "Unfocus to-do" : "Dismiss attention"}: ${item.title}`}
+                  disabled={!selected && store.busy}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (selected) store.unfocus(item);
+                    else void store.dismissAttention(item);
+                  }}
+                >
+                  <CloseIcon />
+                </IconButton>
+              )}
+            </div>
+            {attention && (
+              <p className="col-span-full mt-1 min-w-0 break-words text-xs text-muted-foreground">
+                {item.title}
+              </p>
+            )}
+            {item.snoozedUntil && item.state === "open" && (
+              <p className="col-span-full mt-1 text-xs tabular-nums text-muted-foreground">
+                Snoozed until{" "}
+                <time dateTime={item.snoozedUntil} title={snoozeTimeZone()}>
+                  {formatSnoozeDeadline(item.snoozedUntil)}
+                </time>
+              </p>
+            )}
+            {associations.length > 0 && (
+              <ul
+                aria-label={`Work for ${item.title}`}
+                className="col-span-full mt-2 flex w-full flex-wrap items-center gap-1.5"
+              >
+                {associations.map((association) => (
+                  <li
+                    key={projectTodoAssociationKey(association)}
+                    className="flex max-w-full min-w-0 items-center"
+                  >
+                    <ProjectTodoWorkLink association={association} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </NavItem>
+        </HoverCard>
       </ContextMenu>
     </li>
   );

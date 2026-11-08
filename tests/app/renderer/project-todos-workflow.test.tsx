@@ -320,7 +320,14 @@ function mergeRequest(
 it("keeps the rail free of global Auto-merge and hides project Activity and to-do controls on a live external transition", async () => {
   using fixture = renderTodos(false, {
     todos: emptyProjectTodos(),
-    sessions: [sessionSummary({ sessionId: "running", projectPath: "/cake", running: true })],
+    sessions: [
+      sessionSummary({
+        sessionId: "running",
+        projectPath: "/cake",
+        running: true,
+        cakeChatLaunch: { requesterSessionId: projectChat, launchedAt: "2026-01-01T00:00:00Z" },
+      }),
+    ],
     autoMergeEnabled: true,
   });
   expect(screen.getAllByRole("button", { name: "Auto-merge: on" }).length).toBeGreaterThan(0);
@@ -520,7 +527,7 @@ it("groups accepted structured declarations and retains them while auto-merge is
   expect(fixture.mutations).toEqual([]);
 });
 
-it("orders Ready to Merge between attention and Active, preserves collapse, and exposes the shared toggle when empty", async () => {
+it("orders Ready to Merge between attention and Active, preserves collapse, and omits Auto-merge even when empty", async () => {
   const ready = todo(211, undefined, ["ready"]);
   using fixture = renderTodos(false, {
     todos: {
@@ -544,27 +551,22 @@ it("orders Ready to Merge between attention and Active, preserves collapse, and 
     "Done",
   ]);
   const workspace = () => within(screen.getByRole("complementary", { name: "Workspace" }));
-  const toggle = () => workspace().getByRole("button", { name: /Auto-merge/ });
-  expect(toggle().getAttribute("aria-pressed")).toBe("false");
-  await fixture.user.click(toggle());
-  expect(fixture.autoMergeChanges).toEqual([true]);
-  expect(toggle().getAttribute("aria-pressed")).toBe("true");
+  const toggle = () => workspace().queryByRole("button", { name: /Auto-merge/ });
+  expect(toggle()).toBeNull();
   expect(
     within(screen.getByRole("navigation", { name: "Projects and global utilities" })).queryByRole(
       "button",
       { name: /Auto-merge/ },
     ),
   ).toBeNull();
-  await fixture.user.click(toggle());
-  expect(fixture.autoMergeChanges).toEqual([true, false]);
-  expect(toggle().getAttribute("aria-pressed")).toBe("false");
+  expect(fixture.autoMergeChanges).toEqual([]);
   await fixture.user.click(screen.getByRole("button", { name: "Ready to Merge (1)" }));
   expect(screen.queryByRole("list", { name: "Ready to Merge to-dos" })).toBeNull();
-  expect(toggle()).toBeDefined();
+  expect(toggle()).toBeNull();
   const search = screen.getByRole("searchbox", { name: "Search to-dos" });
   await fixture.user.type(search, "no matching task");
   expect(todoRegions()).toHaveLength(0);
-  expect(toggle()).toBeDefined();
+  expect(toggle()).toBeNull();
   await fixture.user.clear(search);
   expect(
     screen.getByRole("button", { name: "Ready to Merge (1)" }).getAttribute("aria-expanded"),
@@ -574,11 +576,11 @@ it("orders Ready to Merge between attention and Active, preserves collapse, and 
   await fixture.updateTodos(emptyProjectTodos());
   expect(todoRegions()).toHaveLength(0);
   expect(screen.getByRole("status").textContent).toBe("No to-dos.");
-  expect(toggle()).toBeDefined();
+  expect(toggle()).toBeNull();
   expect(fixture.mutations).toEqual([]);
 });
 
-it("Activity and Ready to Merge share auto-merge state without confirmation or changing ready work", async () => {
+it("Activity retains Auto-merge control without adding it to Ready to Merge or changing ready work", async () => {
   using fixture = renderTodos(false, {
     todos: { ...emptyProjectTodos(), items: [todo(219, undefined, ["ready"])] },
     sessions: [
@@ -598,7 +600,7 @@ it("Activity and Ready to Merge share auto-merge state without confirmation or c
   const activity = screen.getByRole("button", { name: "Activity · 1 running" });
   const bar = within(activity.parentElement!);
   const readyControl = () =>
-    within(screen.getByRole("complementary", { name: "Workspace" })).getByRole("button", {
+    within(screen.getByRole("complementary", { name: "Workspace" })).queryByRole("button", {
       name: /Auto-merge/,
     });
   expect(bar.queryByText("Auto-merge off")).toBeNull();
@@ -607,9 +609,9 @@ it("Activity and Ready to Merge share auto-merge state without confirmation or c
   await fixture.user.click(bar.getByRole("button", { name: "Auto-merge: off" }));
   expect(fixture.autoMergeChanges).toEqual([true]);
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(readyControl().getAttribute("aria-pressed")).toBe("true");
+  expect(readyControl()).toBeNull();
   expect(activity.getAttribute("aria-expanded")).toBe("true");
-  await fixture.user.click(readyControl());
+  await fixture.user.click(bar.getByRole("button", { name: "Auto-merge: on" }));
   expect(fixture.autoMergeChanges).toEqual([true, false]);
   expect(bar.getByRole("button", { name: "Auto-merge: off" }).getAttribute("aria-pressed")).toBe(
     "false",
@@ -1275,7 +1277,9 @@ it("keeps creation order and selection through description/status edits and link
     ),
   });
   expect(openOrder()).toEqual(expected);
-  expect(screen.getByText("New finding.")).toBeDefined();
+  expect(screen.queryByText("New finding.")).toBeNull();
+  await fixture.user.hover(screen.getByRole("button", { name: "Task 1" }));
+  expect(await screen.findByText("New finding.")).toBeDefined();
   expect(screen.getByRole("button", { name: "Task 1" }).getAttribute("aria-pressed")).toBe("true");
 });
 
@@ -1339,19 +1343,20 @@ it("keeps matching done items grouped and preserves disclosure and done/reopen a
   expect(screen.getByRole("list", { name: "Active to-dos" })).toBeDefined();
 });
 
-it("switches and toggles description focus, with independent done/reopen and explicit unfocus", async () => {
+it("switches and toggles title focus, with independent done/reopen and explicit unfocus", async () => {
   using fixture = renderTodos();
   const title = () => screen.getByRole("button", { name: "Investigate startup" });
   const followUp = () => screen.getByRole("button", { name: "Follow up" });
-  await fixture.user.click(screen.getByText("Find the startup bottleneck."));
+  expect(screen.queryByText("Find the startup bottleneck.")).toBeNull();
+  await fixture.user.click(title());
   expect(title().getAttribute("aria-pressed")).toBe("true");
-  await fixture.user.click(screen.getByText("Plan the next step."));
+  await fixture.user.click(followUp());
   expect(title().getAttribute("aria-pressed")).toBe("false");
   expect(followUp().getAttribute("aria-pressed")).toBe("true");
-  await fixture.user.click(screen.getByText("Plan the next step."));
+  await fixture.user.click(followUp());
   expect(followUp().getAttribute("aria-pressed")).toBe("false");
   expect(fixture.store.focusedItems).toEqual([]);
-  await fixture.user.click(screen.getByText("Find the startup bottleneck."));
+  await fixture.user.click(title());
   expect(title().getAttribute("aria-pressed")).toBe("true");
   await fixture.user.click(screen.getByRole("button", { name: "Mark done: Investigate startup" }));
   expect(title().getAttribute("aria-pressed")).toBe("true");

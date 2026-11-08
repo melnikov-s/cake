@@ -43,6 +43,7 @@ export interface NavItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "onCl
     | "aria-selected"
     | "aria-pressed"
     | "aria-label"
+    | "aria-describedby"
     | "aria-disabled"
     | "tabIndex"
     | "onMouseDown"

@@ -4,7 +4,6 @@ import { RootStore } from "../stores/RootStore";
 import { AnimatedList } from "@/components/ui/animated-list";
 import { Callout } from "@/components/ui/callout";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
-import { AutoMergeToggle } from "./auto-merge-toggle";
 import { cn } from "@/lib/utils";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
 import { ProjectTodoItem } from "./project-todo-item";
@@ -87,12 +86,6 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
           {store.error}
         </Callout>
       )}
-      {allowsCakeMerge && classified.ready.length === 0 && (
-        <div className="mb-3 flex items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
-          <span>Auto-merge</span>
-          <AutoMergeToggle projectPath={projectPath} />
-        </div>
-      )}
       <AnimatedList nested animateRemovals>
         {sections.map((section, index) => (
           <section
@@ -110,9 +103,6 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
                   open={section.open}
                   onClick={section.toggle}
                 />
-                {section.title === "Ready to Merge" && (
-                  <AutoMergeToggle projectPath={projectPath} />
-                )}
               </div>
             ) : (
               <h2 className="mb-3 px-3 text-xs font-semibold">

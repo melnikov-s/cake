@@ -43,6 +43,8 @@ See `AGENTS.md` for renderer implementation rules.
 
 `PopoverContent` accepts `initialFocusSelector` to prefer an input over toolbar controls once an opening is visible, without refocusing on content updates. `dismissOnEscapeCapture` lets an explicit-dismissal popup handle Escape before an input consumes it.
 
+[`HoverCard`](../../src/renderer/components/ui/hover-card.tsx) composes `Popover` for selectable supplementary descriptions on hover or focus, without moving rows or stealing focus. It prefers left placement, falls back above/below within the nearest Cake boundary, and constrains long prose to a scrollable bubble. Escape dismisses it; moving into the bubble keeps it open.
+
 [`ContextMenu`](../../src/renderer/components/ui/context-menu.tsx) composes `Popover` and `Button` for pointer/keyboard context actions, expandable submenus and in-place interactive panels.
 
 [`Calendar`](../../src/renderer/components/ui/calendar.tsx) wraps React DayPicker with Cake buttons and theme tokens, following shadcn’s calendar approach. [`DateTimePicker`](../../src/renderer/components/ui/date-time-picker.tsx) combines it with separate local date/time inputs; callers own validation and conversion to an instant.

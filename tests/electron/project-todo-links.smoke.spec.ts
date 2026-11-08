@@ -33,13 +33,13 @@ for (const theme of ["light", "dark"] as const) {
       const page = await app.firstWindow();
       await page.setViewportSize({ width: 1500, height: 900 });
       await scenario.prepare(page, "open");
-      const panel = page.getByRole("complementary", { name: "To-do", exact: true });
+      const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
       const startup = panel.getByRole("button", { name: "Startup investigation", exact: true });
       const navigation = panel.getByRole("button", {
         name: "Improve project navigation",
         exact: true,
       });
-      const startupCue = startup.locator("../..");
+      const startupCue = startup.locator("..");
       const startupSession = page.locator(
         '.session-item[data-session-id="visual-assistant-markdown-code"]',
       );

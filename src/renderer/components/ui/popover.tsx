@@ -18,7 +18,7 @@ import { IconButton, type IconButtonProps } from "./icon-button";
 import { NumberedIconButton, type NumberedIconButtonProps } from "./numbered-icon-button";
 import { cn } from "@/lib/utils";
 
-type PopoverSide = "top" | "right" | "bottom" | "left";
+type PopoverSide = "top" | "right" | "bottom" | "left" | "left-or-vertical";
 type PopoverAlign = "start" | "center" | "end";
 
 interface PopoverContextValue {
@@ -146,6 +146,8 @@ export interface PopoverContentProps extends HTMLAttributes<HTMLDivElement> {
   offset?: number;
   side?: PopoverSide;
   motion?: "none" | "bouncy";
+  /** Hover previews must not move keyboard focus when they appear. */
+  focusOnOpen?: boolean;
   /** Preferred focus target within the content, applied once after opening is visible. */
   initialFocusSelector?: string;
   /** Let explicit popup dismissal take precedence over an input consuming Escape. */
@@ -163,6 +165,7 @@ export function PopoverContent({
   side = "bottom",
   motion = "none",
   initialFocusSelector,
+  focusOnOpen = true,
   dismissOnEscapeCapture = false,
   style,
   ...props
@@ -209,7 +212,10 @@ export function PopoverContent({
             height: 0,
           }
         : anchor.getBoundingClientRect(),
-      { width: content.offsetWidth, height: content.offsetHeight },
+      {
+        width: content.offsetWidth,
+        height: side === "left-or-vertical" ? content.scrollHeight + 2 : content.offsetHeight,
+      },
       bounds,
       side,
       align,
@@ -228,7 +234,9 @@ export function PopoverContent({
       ),
       ready: true,
       maxWidth: boundaryElement ? Math.max(0, bounds.right - bounds.left - 16) : undefined,
-      maxHeight: boundaryElement ? Math.max(0, bounds.bottom - bounds.top - 16) : undefined,
+      maxHeight:
+        next.maxHeight ??
+        (boundaryElement ? Math.max(0, bounds.bottom - bounds.top - 16) : undefined),
     });
   }, [align, anchorPoint, boundary, effectiveAnchorRef, inheritedBoundaryRef, offset, side]);
 
@@ -286,7 +294,7 @@ export function PopoverContent({
     }
     // The first portal commit is hidden until its position is measured; hidden
     // descendants cannot receive DOM focus. Wait for that visible commit.
-    if (!position.ready) return;
+    if (!position.ready || !focusOnOpen) return;
     if (!prevOpenRef.current) {
       prevOpenRef.current = true;
       const content = contentRef.current;
@@ -301,7 +309,7 @@ export function PopoverContent({
         focusable?.focus();
       }
     }
-  }, [initialFocusSelector, open, position.ready]);
+  }, [focusOnOpen, initialFocusSelector, open, position.ready]);
 
   const updatePositionRef = useRef(updatePosition);
   updatePositionRef.current = updatePosition;
@@ -438,7 +446,27 @@ export function calculatePopoverPosition(
   const roomLeft = trigger.left - boundaryLeft;
   const roomRight = boundaryRight - trigger.right;
   let side = requestedSide;
-  if (side === "bottom" && content.height > roomBelow - offset && roomAbove > roomBelow)
+  let maxHeight: number | undefined;
+  if (side === "left-or-vertical") {
+    side =
+      content.width <= roomLeft - offset - margin
+        ? "left"
+        : content.height <= roomBelow - offset - margin || roomBelow >= roomAbove
+          ? "bottom"
+          : "top";
+    maxHeight = Math.max(
+      0,
+      side === "left"
+        ? boundaryBottom - boundaryTop - margin * 2
+        : (side === "bottom" ? roomBelow : roomAbove) - offset - margin,
+    );
+  }
+  if (
+    requestedSide !== "left-or-vertical" &&
+    side === "bottom" &&
+    content.height > roomBelow - offset &&
+    roomAbove > roomBelow
+  )
     side = "top";
   else if (side === "top" && content.height > roomAbove - offset && roomBelow > roomAbove)
     side = "bottom";
@@ -447,6 +475,7 @@ export function calculatePopoverPosition(
   else if (side === "left" && content.width > roomLeft - offset && roomRight > roomLeft)
     side = "right";
 
+  const height = Math.min(content.height, maxHeight ?? content.height);
   let left =
     side === "right"
       ? trigger.right + offset
@@ -457,17 +486,17 @@ export function calculatePopoverPosition(
     side === "bottom"
       ? trigger.bottom + offset
       : side === "top"
-        ? trigger.top - content.height - offset
-        : alignedCoordinate(trigger.top, trigger.height, content.height, align);
+        ? trigger.top - height - offset
+        : alignedCoordinate(trigger.top, trigger.height, height, align);
   left = Math.min(
     Math.max(boundaryLeft + margin, left),
     Math.max(boundaryLeft + margin, boundaryRight - content.width - margin),
   );
   top = Math.min(
     Math.max(boundaryTop + margin, top),
-    Math.max(boundaryTop + margin, boundaryBottom - content.height - margin),
+    Math.max(boundaryTop + margin, boundaryBottom - height - margin),
   );
-  return { left, top };
+  return maxHeight === undefined ? { left, top } : { left, top, maxHeight };
 }
 
 function alignedCoordinate(

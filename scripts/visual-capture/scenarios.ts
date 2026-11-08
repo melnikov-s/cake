@@ -2665,6 +2665,8 @@ const projectChatTodos: VisualCaptureScenario = {
     "snooze-menu",
     "snooze-custom",
     "snoozed",
+    "description-bubble",
+    "description-narrow",
   ],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
@@ -2809,8 +2811,11 @@ const projectChatTodos: VisualCaptureScenario = {
     const input = page.getByRole("combobox", { name: "Message Project Chat" });
     await expect(input).toBeVisible();
     await input.fill("Let’s revisit the startup investigation.");
-    await page.getByRole("button", { name: "To-do", exact: true }).click();
-    await expect(page.getByRole("complementary", { name: "To-do" })).toBeVisible();
+    const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+    if (!(await workspace.isVisible()))
+      await page.locator('[data-slot="shell-workspace-toggle"]').click();
+    await workspace.getByRole("button", { name: /^To-dos / }).click();
+    await expect(workspace).toBeVisible();
     // Focus is a window-local overlay. Establish it through the user action.
     const selected = page.getByRole("button", { name: "Startup investigation", exact: true });
     if ((await selected.getAttribute("aria-pressed")) !== "true") await selected.click();
@@ -2841,7 +2846,7 @@ const projectChatTodos: VisualCaptureScenario = {
         .getByRole("button", { name: "Unfocus to-do: Startup investigation", exact: true })
         .click();
     if (state === "empty") {
-      const panel = page.getByRole("complementary", { name: "To-do" });
+      const panel = workspace;
       await panel.getByRole("button", { name: "Mark done: Startup investigation" }).click();
       await panel.getByRole("button", { name: "Mark done: Improve project navigation" }).click();
     }
@@ -2857,7 +2862,7 @@ const projectChatTodos: VisualCaptureScenario = {
     if (state === "links-hover") await report.hover();
     if (state === "links-focus") {
       await page
-        .getByRole("button", { name: "Mark done: Startup investigation", exact: true })
+        .getByRole("button", { name: "Unfocus to-do: Startup investigation", exact: true })
         .focus();
       await page.keyboard.press("Tab");
       await expect(report).toBeFocused();
@@ -2888,6 +2893,20 @@ const projectChatTodos: VisualCaptureScenario = {
           requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
         );
       });
+    }
+    if (state === "description-bubble" || state === "description-narrow") {
+      if (state === "description-narrow") {
+        // The same boundary used by the native VS Code companion: no editor overlap.
+        await page
+          .getByRole("complementary", { name: "Workspace", exact: true })
+          .evaluate((element) => {
+            element.setAttribute("data-popover-boundary", "");
+          });
+      }
+      await selected.hover();
+      await expect(
+        page.getByRole("tooltip").filter({ hasText: "Find the startup bottleneck" }),
+      ).toBeVisible();
     }
     if (state === "hover") {
       const row = page.locator('[data-todo-id="00000000-0000-4000-8000-000000000012"]');

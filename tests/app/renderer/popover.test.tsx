@@ -181,6 +181,55 @@ describe("Cake Popover", () => {
     expect(position).toEqual({ left: 70, top: 62 });
   });
 
+  it("prefers left space but falls back vertically within the Cake pane", () => {
+    const trigger = { top: 240, right: 990, bottom: 280, left: 700, width: 290, height: 40 };
+    const content = { width: 300, height: 120 };
+    expect(
+      calculatePopoverPosition(
+        trigger,
+        content,
+        { width: 1000, height: 700 },
+        "left-or-vertical",
+        "start",
+        8,
+      ),
+    ).toEqual({ left: 392, top: 240, maxHeight: 684 });
+    expect(
+      calculatePopoverPosition(
+        trigger,
+        content,
+        { left: 680, top: 40, right: 1000, bottom: 700 },
+        "left-or-vertical",
+        "start",
+        8,
+      ),
+    ).toEqual({ left: 692, top: 288, maxHeight: 404 });
+    expect(
+      calculatePopoverPosition(
+        { ...trigger, top: 620, bottom: 660 },
+        content,
+        { left: 680, top: 40, right: 1000, bottom: 700 },
+        "left-or-vertical",
+        "start",
+        8,
+      ),
+    ).toEqual({ left: 692, top: 492, maxHeight: 564 });
+  });
+
+  it("caps long descriptions to the larger vertical space without overlapping the row", () => {
+    const trigger = { top: 240, right: 990, bottom: 280, left: 700, width: 290, height: 40 };
+    const position = calculatePopoverPosition(
+      trigger,
+      { width: 300, height: 1200 },
+      { left: 680, top: 40, right: 1000, bottom: 700 },
+      "left-or-vertical",
+      "start",
+      8,
+    );
+    expect(position).toEqual({ left: 692, top: 288, maxHeight: 404 });
+    expect(position.top + position.maxHeight!).toBe(692);
+  });
+
   it("keeps a surface inside an offset ancestor boundary", () => {
     const position = calculatePopoverPosition(
       { top: 140, right: 460, bottom: 180, left: 420, width: 40, height: 40 },

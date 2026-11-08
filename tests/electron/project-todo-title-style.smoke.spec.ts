@@ -71,13 +71,13 @@ for (const theme of ["light", "dark"] as const) {
       await page.setViewportSize({ width: 1500, height: 900 });
       await page.emulateMedia({ reducedMotion: "no-preference", colorScheme: theme });
       await scenario.prepare(page, "done", app);
-      const panel = page.getByRole("complementary", { name: "To-do", exact: true });
+      const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
       const associated = panel.getByRole("button", { name: "Startup investigation", exact: true });
       await expect(associated).toHaveAttribute("aria-pressed", "true");
-      await expect(associated.locator("../..")).toHaveAttribute("data-associated", "true");
+      await expect(associated.locator("..")).toHaveAttribute("data-associated", "true");
       // Association is an advisory cue, not actual navigation selection.
       await expect(associated).not.toHaveAttribute("aria-current");
-      await expect(associated.locator("../..")).toHaveClass(/outline-dashed/);
+      await expect(associated.locator("..")).toHaveClass(/outline-dashed/);
 
       for (const [name, done] of [
         ["Startup investigation", false],
@@ -86,7 +86,7 @@ for (const theme of ["light", "dark"] as const) {
       ] as const) {
         const action = panel.getByRole("button", { name, exact: true });
         const title = action.getByText(name, { exact: true });
-        const row = action.locator("../..");
+        const row = action.locator("..");
         await page.mouse.move(1, 1);
         const resting = await titleAppearance(title);
         expect(resting.fontWeight).toBe("500");
@@ -100,7 +100,9 @@ for (const theme of ["light", "dark"] as const) {
           const foreground = await row.evaluate((element) => getComputedStyle(element).color);
           expect.soft(resting.color).toBe(foreground);
         } else {
-          const status = row.getByText("Agree on the next milestone’s scope and priorities.");
+          const status = page
+            .getByRole("tooltip")
+            .getByText("Agree on the next milestone’s scope and priorities.");
           expect(resting.color).toBe(
             await status.evaluate((element) => getComputedStyle(element).color),
           );
@@ -131,7 +133,7 @@ for (const theme of ["light", "dark"] as const) {
         .getByRole("button", { name: "Unfocus to-do: Startup investigation", exact: true })
         .click();
       await expect(associated).toHaveAttribute("aria-pressed", "false");
-      await expect(associated.locator("../..")).not.toHaveAttribute("data-associated");
+      await expect(associated.locator("..")).not.toHaveAttribute("data-associated");
       await page.mouse.move(1, 1);
       // Unfocus returns the row from the Focus overlay to its underlying section.
       // Position changes, but typography and rendered text dimensions stay identical.
@@ -143,7 +145,7 @@ for (const theme of ["light", "dark"] as const) {
         selectedRects.map(({ width, height }) => ({ width, height })),
       );
 
-      // Completion precedes the title; attachment follows it inline at both pane widths.
+      // Completion precedes the title; attachment occupies the same right-hand slot at both widths.
       for (const width of [1500, 600]) {
         await page.setViewportSize({ width, height: 900 });
         for (const [name, done] of [
@@ -152,7 +154,7 @@ for (const theme of ["light", "dark"] as const) {
           ["Discuss the next milestone", true],
         ] as const) {
           const action = panel.getByRole("button", { name, exact: true });
-          const row = action.locator("../..");
+          const row = action.locator("..");
           const completion = row.getByRole("button", {
             name: `${done ? "Reopen" : "Mark done"}: ${name}`,
             exact: true,
@@ -174,11 +176,15 @@ for (const theme of ["light", "dark"] as const) {
             expect(completionBox.x + completionBox.width).toBeLessThan(titleBox.x);
             const gap = attachBox.x - (titleBox.x + titleBox.width);
             expect(gap).toBeGreaterThanOrEqual(0);
-            expect(gap).toBeLessThanOrEqual(4.1);
+            expect(gap).toBeLessThanOrEqual(10.1);
+            const rowBox = (await row.boundingBox())!;
+            expect(
+              Math.abs(rowBox.x + rowBox.width - attachBox.x - attachBox.width - 32),
+            ).toBeLessThan(0.1);
             expect(attachBox.width).toBeGreaterThanOrEqual(28);
             expect(attachBox.height).toBeGreaterThanOrEqual(28);
             const alignment = await action.evaluate((element) => {
-              const row = element.parentElement!.parentElement!;
+              const row = element.parentElement!;
               const style = getComputedStyle(element);
               const titleCenter =
                 element.getBoundingClientRect().top +
@@ -186,7 +192,7 @@ for (const theme of ["light", "dark"] as const) {
                 parseFloat(style.lineHeight) / 2;
               const icons = Array.from(
                 row.querySelectorAll(
-                  '[data-slot="nav-trailing"] svg, [data-slot="nav-action"] > button > svg',
+                  '[data-slot="nav-trailing"] svg, [data-slot="todo-actions"] svg',
                 ),
               );
               const rowStyle = getComputedStyle(row);
@@ -209,7 +215,7 @@ for (const theme of ["light", "dark"] as const) {
             expect(alignment.iconCenters).toHaveLength(2);
             for (const center of alignment.iconCenters)
               expect(Math.abs(center - alignment.titleCenter)).toBeLessThan(0.02);
-            expect(alignment.bodyLefts.length).toBeGreaterThan(0);
+            if (!done) expect(alignment.bodyLefts.length).toBeGreaterThan(0);
             for (const left of alignment.bodyLefts)
               expect(Math.abs(left - alignment.contentLeft)).toBeLessThan(0.02);
             if (name === navigationTitle && width === 1500)
