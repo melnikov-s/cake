@@ -15,6 +15,7 @@ import {
 } from "react";
 import { useOptionalStore } from "r-state-tree/react";
 import { DictationStore } from "../stores/DictationStore";
+import { useInputEditHistory } from "../hooks/use-input-edit-history";
 import { flushSync } from "react-dom";
 import type {
   FileSuggestion,
@@ -49,6 +50,8 @@ interface SlashCommandComboboxProps extends Omit<
   focusRequestIsExplicit?: boolean;
   focusRef?: Ref<ComposerFocusHandle>;
   value: string;
+  /** Changes only when the draft is consumed or replaced by another editing target. */
+  inputHistoryRevision?: number;
   suggestFiles?(prefix: string): Promise<ReadonlyArray<FileSuggestion>>;
   onValueChange(value: string): void;
   onSubmit(value?: string): void | Promise<void>;
@@ -156,6 +159,7 @@ export function SlashCommandCombobox({
   autoFocus = false,
   dictation: dictationEnabled = true,
   value,
+  inputHistoryRevision = 0,
   suggestFiles,
   onValueChange,
   onSubmit,
@@ -217,6 +221,7 @@ export function SlashCommandCombobox({
   const pendingCursor = useRef<number | undefined>(undefined);
   const listboxId = useId();
   const [inputValue, setInputValue] = useState(value);
+  useInputEditHistory(inputRef, inputValue, value, inputHistoryRevision);
   const [cursor, setCursor] = useState(value.length);
   const [activeIndex, setActiveIndex] = useState(0);
   const [dismissedValue, setDismissedValue] = useState<string>();

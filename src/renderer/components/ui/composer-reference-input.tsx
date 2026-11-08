@@ -18,6 +18,7 @@ import type { ComposerInputElement } from "../../lib/composer-input-element";
 import { modelReferenceChipClassName } from "./model-reference-chip";
 import { cn } from "../../lib/utils";
 import { useDictationInput } from "../../dictation/use-dictation-input";
+import { applyInputEdit } from "../../lib/input-edit";
 import { DictationIndicatorContext } from "../../dictation/dictation-indicator-context";
 import { DictationIndicator } from "./dictation-indicator";
 import { createPortal } from "react-dom";
@@ -205,9 +206,11 @@ export function ComposerReferenceInput({
     const root = element.current!;
     const [start, end] = selection(root);
     const current = nodeText(root);
-    render(root, current.slice(0, start) + text + current.slice(end));
-    setSelection(root, start + text.length, start + text.length);
-    publish();
+    applyInputEdit(root, {
+      value: current.slice(0, start) + text + current.slice(end),
+      start: start + text.length,
+      end: start + text.length,
+    });
   };
   const indicator = voice.store && (
     <DictationIndicator

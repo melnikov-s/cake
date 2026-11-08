@@ -20,6 +20,8 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
   @snapshot readonly attachments: Attachment[] = observable([]);
   @snapshot private readonly annotations: Annotation[] = observable([]);
   @snapshot editorContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
+  /** Runtime-only boundary: undo must never cross submission or draft restoration. */
+  inputHistoryRevision = 0;
   focusRequestRevision = 0;
   focusRequestIsExplicit = false;
   pendingImageImports = 0;
@@ -164,6 +166,7 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
 
   /** Consume the draft's editor context without changing the selection in VS Code. */
   clearForSubmit() {
+    this.inputHistoryRevision += 1;
     this.text = "";
     this.attachments.splice(0);
     this.annotationDraft.clear();
@@ -176,6 +179,7 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
   }
 
   restore(text: string, attachments: readonly Attachment[]) {
+    this.inputHistoryRevision += 1;
     this.text = text;
     this.attachments.splice(0);
     this.annotationDraft.clear();
@@ -184,7 +188,10 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
   }
 
   restoreAfterFailure(text: string, attachments: readonly Attachment[]) {
-    if (!this.text.trim()) this.text = text;
+    if (!this.text.trim()) {
+      this.inputHistoryRevision += 1;
+      this.text = text;
+    }
     for (const attachment of attachments) {
       if (attachment.kind === "annotation") this.annotationDraft.append(attachment.annotations);
       else if (!sameSourceAttachment(attachment, this.editorContextAttachment))

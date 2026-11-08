@@ -209,6 +209,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
         suggestFiles={store.canSuggestFiles ? (prefix) => store.suggestFiles(prefix) : undefined}
         placeholder={store.placeholder}
         value={store.draft}
+        inputHistoryRevision={store.inputHistoryRevision}
         onValueChange={(value) => store.setDraft(value)}
         sessionReferenceNames={sessionReferenceNames}
         onEditReference={

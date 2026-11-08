@@ -155,6 +155,7 @@ interface EnterContinuation {
 
 /** Common state and behavior contract for every Cake conversation surface. */
 export class ChatStore extends Store<ChatStoreProps> {
+  private localInputHistoryRevision = 0;
   private enterContinuation: EnterContinuation | undefined;
   private enterContinuationGeneration = 0;
   private advancingEnterContinuation = false;
@@ -525,6 +526,12 @@ export class ChatStore extends Store<ChatStoreProps> {
     return this.canSubmitValue(value);
   }
 
+  get inputHistoryRevision() {
+    return (
+      (this.props.composerDraft?.().inputHistoryRevision ?? 0) + this.localInputHistoryRevision
+    );
+  }
+
   setDraft(value: string) {
     if (this.draft !== value) {
       this.draftRevision += 1;
@@ -689,11 +696,14 @@ export class ChatStore extends Store<ChatStoreProps> {
       // Editing an earlier message rewrites history in place instead.
       if (!this.editingMessage) this.transcriptInteraction.noteSentMessage();
       const submittedRevision = this.draftRevision;
+      const inputHistoryRevision = this.inputHistoryRevision;
       const submitted = await this.props.submit(value, {
         renderUserMessageAsMarkdown:
           options?.renderUserMessageAsMarkdown ?? shouldRenderMarkdown(value),
       });
       accepted = submitted !== false;
+      if (accepted && this.inputHistoryRevision === inputHistoryRevision)
+        this.localInputHistoryRevision += 1;
       // End ownership before clearing the controlled draft can request an insertion restart.
       dictation?.completeSubmission(submission, accepted);
       if (submitted !== false && this.draft === value && this.draftRevision === submittedRevision)

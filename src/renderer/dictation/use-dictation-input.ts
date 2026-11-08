@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { useOptionalStore } from "r-state-tree/react";
 import type { ComposerInputElement } from "../lib/composer-input-element";
 import { DictationStore, type DictationTarget } from "../stores/DictationStore";
+import { applyInputEdit } from "../lib/input-edit";
 
 /** DOM-only adapter: the Store owns capture, focus generations, and inference policy. */
 export function useDictationInput(
@@ -19,6 +20,7 @@ export function useDictationInput(
   const submitRef = useRef(submit);
   submitRef.current = submit;
   const inserting = useRef(false);
+  const editGroup = useRef(Symbol("input edit"));
   const replaying = useRef(false);
   const insertion = useRef({
     before: "",
@@ -52,6 +54,7 @@ export function useDictationInput(
     begin() {
       const element = input.current;
       if (!enabledRef.current || !element) return;
+      editGroup.current = Symbol("input edit");
       insertion.current = {
         before: element.value.slice(0, element.selectionStart),
         after: element.value.slice(element.selectionEnd),
@@ -86,16 +89,8 @@ export function useDictationInput(
       const caret = discard ? range.selectionEnd : start;
       inserting.current = true;
       try {
-        // Invoke the native setter so React's value tracker sees the input event.
-        if (element instanceof HTMLTextAreaElement)
-          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(
-            element,
-            value,
-          );
-        else element.value = value;
-        element.setSelectionRange(start, caret);
         insertion.current = { ...range, value, start, caret };
-        flushSync(() => element.dispatchEvent(new Event("input", { bubbles: true })));
+        flushSync(() => applyInputEdit(element, { value, start, end: caret }, editGroup.current));
         // Programmatic value/selection updates do not reveal the tail like native typing.
         // Measure after React commits so content-sized inputs have their final height.
         element.scrollTop = element.scrollHeight;

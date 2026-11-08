@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -11,6 +11,26 @@ afterEach(cleanup);
 // journeys. This is the remaining in-place canonical PartUpdated regression,
 // not proof of native keyboard input or selection behavior.
 describe("Composer input projection workflow", () => {
+  it("never restores sent text and keeps undo/redo for the next draft", async () => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000001"),
+    );
+    using fixture = renderComposerInput({ sessionChats: { prompt } });
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
+    await fixture.user.type(input, "Already sent");
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    await waitFor(() => expect(input.value).toBe(""));
+    fireEvent.keyDown(input, { key: "z", metaKey: true });
+    expect(input.value).toBe("");
+    await fixture.user.type(input, "Next draft");
+    fireEvent.keyDown(input, { key: "z", metaKey: true });
+    expect(input.value).toBe("");
+    fireEvent.keyDown(input, { key: "z", metaKey: true, shiftKey: true });
+    expect(input.value).toBe("Next draft");
+    expect(prompt).toHaveBeenCalledOnce();
+  });
+
   it("sends prepared annotations once and leaves the next message free of captured context", async () => {
     const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
       TurnId.make("10000000-0000-4000-8000-000000000001"),
