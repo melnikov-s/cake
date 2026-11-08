@@ -145,7 +145,9 @@ for (const theme of ["dark", "light"] as const) {
         await expect(button.locator("svg")).toHaveCSS("width", "20px");
         await expect(button.locator("svg")).toHaveCSS("height", "20px");
       }
-      await expect(modeSelector).toHaveCSS("border-width", "0px");
+      await expect(modeSelector).toHaveCSS("border-width", "1px");
+      await expect(modeSelector).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      await expect(modeSelector.locator('button[aria-pressed="true"]')).toHaveCount(1);
       const tools = page.getByRole("group", { name: "Workspace tools", exact: true });
       await expect(tools).toHaveCSS("border-width", "0px");
       await expect(modeSelector.getByRole("button", { name: "Terminal", exact: true })).toHaveCount(
@@ -158,6 +160,14 @@ for (const theme of ["dark", "light"] as const) {
       await expect(terminal.locator("svg")).toHaveCSS("width", "16px");
       const main = modeSelector.getByRole("button", { name: "Main", exact: true });
       await expect(main).toHaveAttribute("aria-pressed", "true");
+      const selectedBackground = await main.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      );
+      const selectedColor = await main.evaluate((element) => getComputedStyle(element).color);
+      await expect(main).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      await expect(
+        modeSelector.getByRole("button", { name: "Browser", exact: true }),
+      ).not.toHaveCSS("background-color", selectedBackground);
       await modeSelector.getByRole("button", { name: "VS Code", exact: true }).focus();
       await page.keyboard.press("Shift+Tab");
       await expect(main).toBeFocused();
@@ -166,6 +176,7 @@ for (const theme of ["dark", "light"] as const) {
       await page.screenshot({ path: testInfo.outputPath(`main-toolbar-${theme}.png`) });
       await page.keyboard.press("Shift+Tab");
       await page.mouse.move(1, 200);
+      await modeSelector.screenshot({ path: testInfo.outputPath(`main-selector-${theme}.png`) });
       const paneToggle = page.locator('[data-slot="shell-workspace-toggle"]');
       const originalTogglePosition = await paneToggle.boundingBox();
       const originalPosition = await modeSelector.boundingBox();
@@ -187,6 +198,12 @@ for (const theme of ["dark", "light"] as const) {
         modeSelector.getByRole("button", { name: "Browser", exact: true }),
       ).toHaveAttribute("aria-pressed", "true");
       await expect(main).toHaveAttribute("aria-pressed", "false");
+      await expect(modeSelector.locator('button[aria-pressed="true"]')).toHaveCount(1);
+      const browserMode = modeSelector.getByRole("button", { name: "Browser", exact: true });
+      await page.mouse.move(1, 200);
+      await expect(browserMode).toHaveCSS("background-color", selectedBackground);
+      await expect(browserMode).toHaveCSS("color", selectedColor);
+      await expect(main).not.toHaveCSS("background-color", selectedBackground);
       await expectStableSelector();
       const strip = page.getByRole("group", { name: "Companion content", exact: true });
       const chat = strip.getByRole("button", { name: "Chat", exact: true });

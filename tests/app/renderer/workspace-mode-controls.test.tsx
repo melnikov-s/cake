@@ -304,7 +304,14 @@ describe("Workspace mode navigation", () => {
         expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
       }
       expect(tools.classList.contains("border")).toBe(false);
-      expect(modes.classList.contains("border")).toBe(false);
+      expect(modes.classList.contains("border")).toBe(true);
+      expect(modes.classList.contains("bg-muted/65")).toBe(true);
+      expect(modes.querySelectorAll('[aria-pressed="true"]')).toHaveLength(1);
+      for (const button of within(modes).getAllByRole("button")) {
+        expect(button.classList.contains("aria-pressed:bg-card")).toBe(true);
+        expect(button.classList.contains("aria-pressed:text-foreground")).toBe(true);
+        expect(button.classList.contains("aria-pressed:text-accent")).toBe(false);
+      }
       const header = tools.closest("header")!;
       const actions = header.querySelector('[data-slot="workspace-actions"]')!;
       const terminal = within(tools).getByRole("button", { name: "Terminal" });
