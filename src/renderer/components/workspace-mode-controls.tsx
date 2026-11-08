@@ -1,7 +1,7 @@
 import { observer } from "r-state-tree/react";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import { IconButton } from "./ui/icon-button";
-import { BrowserIcon, SidebarIcon, TerminalIcon, VsCodeIcon } from "./ui/icons";
+import { BrowserIcon, ChatIcon, TerminalIcon, VsCodeIcon } from "./ui/icons";
 
 export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   mode,
@@ -37,7 +37,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
           aria-pressed={mode === "normal"}
           onClick={onBackToAgent}
         >
-          <SidebarIcon />
+          <ChatIcon />
         </IconButton>
         {ideAvailable && (
           <IconButton
