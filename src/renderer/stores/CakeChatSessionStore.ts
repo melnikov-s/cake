@@ -254,32 +254,24 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   }
 
   private async createSideChat(prompt: string) {
-    const part = this.model.uiParts.findLast(
+    const hasCompletedReply = this.model.uiParts.some(
       (part) =>
         part.kind === "text" &&
         part.role === "assistant" &&
         part.status === "complete" &&
         Boolean(part.entryId),
     );
-    if (!part || part.kind !== "text")
-      throw new Error("Side chats require a completed assistant response");
-    const selection = {
-      messageId: part.id,
-      entryId: part.entryId,
-      selectedText: "",
-      startOffset: 0,
-      endOffset: 0,
-      contextBefore: "",
-      contextAfter: "",
-    };
+    if (!hasCompletedReply) throw new Error("Side chats require a completed assistant response");
+    // A command has no selection; let the native fork choose its latest settled context
+    // without presenting that reply as a user-selected source message.
     if (prompt) {
-      const threadId = await this.messageCommentsStore.createThread(selection, prompt, []);
+      const threadId = await this.messageCommentsStore.createThread(undefined, prompt, []);
       if (!threadId) throw new Error(this.sideChats.error ?? "Could not create side chat");
       this.pendingSideChatThreadId = threadId;
       this.openSideChat(threadId);
       return true;
     }
-    this.messageCommentsStore.prepareDraft(selection);
+    this.messageCommentsStore.prepareSessionDraft();
     this.conversationSessionStore.sideChatStore.open({
       key: "message-side-chat-draft",
       title: "Side chat",

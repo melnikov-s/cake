@@ -42,18 +42,14 @@ function renderChat(
     parentSessionId: sessionId,
     sidecarSessionId: "sidecar-1",
     anchor: {
-      path: `session:${sessionId}/message/assistant-1`,
-      view: "message",
+      path: `session:${sessionId}`,
+      view: "session",
       start: { diffLine: 0 },
       end: { diffLine: 0 },
       selectedText: "",
       contextBefore: "",
       contextAfter: "",
       diff: "",
-      startOffset: 0,
-      endOffset: 0,
-      messageId: "assistant-1",
-      entryId: "entry-1",
     },
     parts: [],
     status: "open",
@@ -143,6 +139,9 @@ function renderChat(
     tree: [],
   };
   applyConversationUpdate(chat.model, { _tag: "Snapshot", revision: 1, snapshot });
+  chat.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+    kind: "top",
+  });
   const view = render(
     <StoreProvider store={fixture.root}>
       <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
@@ -326,8 +325,8 @@ describe.each([
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Send" }).disabled).toBe(false);
     expect(fixture.prompt).not.toHaveBeenCalled();
   });
-  it("discovers the command and opens the existing draft, anchored to the latest completed reply while streaming", async () => {
-    using fixture = renderChat(sessionId);
+  it("opens a session-level draft without inventing a source selection while streaming", async () => {
+    using fixture = renderChat(sessionId, { originalHistory: true });
     const main = screen.getByRole<HTMLTextAreaElement>("combobox");
     await fixture.user.type(main, "/side");
     expect(
@@ -337,6 +336,10 @@ describe.each([
     const panel = await screen.findByRole("complementary", { name: "Side chat" });
     expect(main.value).toBe("");
     expect(fixture.startSideChat).not.toHaveBeenCalled();
+    expect(fixture.chat.messageCommentsStore.draftSelection).toBeUndefined();
+    expect(fixture.chat.messageCommentsStore.draftChatStore.parts).toEqual([]);
+    expect(within(panel).queryByText("Completed reply")).toBeNull();
+    expect(await screen.findByText("Completed reply")).toBeDefined();
     await fixture.user.type(within(panel).getByRole("combobox"), "Explain that reply");
     await fixture.user.click(within(panel).getByRole("button", { name: "Send" }));
     await waitFor(() => expect(fixture.startSideChat).toHaveBeenCalledTimes(1));
@@ -351,8 +354,15 @@ describe.each([
     // Catalog delivery switches the existing draft panel to the real side-chat conversation.
     act(() => fixture.publish());
     expect(
-      await within(panel).findByRole("combobox", { name: "Reply to selection side chat" }),
+      await within(panel).findByRole("combobox", { name: "Reply to side chat" }),
     ).toBeDefined();
+    expect(
+      fixture.chat.sideChats.chatStore(fixture.thread.id)?.parts.map((part) => part.id),
+    ).toEqual(["inherited-question", "inherited-answer", "side-question"]);
+    expect(within(panel).queryByText("Completed reply")).toBeNull();
+    expect(within(panel).getByText("A separate question")).toBeDefined();
+    await fixture.user.click(within(panel).getByRole("button", { name: "Original history" }));
+    expect(within(panel).getByText("The main answer")).toBeDefined();
     await fixture.user.click(within(panel).getByRole("button", { name: "Close and resolve" }));
     expect(screen.getByRole("combobox")).toBe(main);
     expect(fixture.prompt).not.toHaveBeenCalled();
@@ -369,6 +379,12 @@ describe.each([
       anchor: fixture.thread.anchor,
     });
     expect(screen.getByRole<HTMLTextAreaElement>("combobox").value).toBe("");
+    act(() => fixture.publish());
+    const panel = await screen.findByRole("complementary", { name: "Side chat" });
+    expect(within(panel).queryByText("Completed reply")).toBeNull();
+    expect(fixture.chat.sideChats.chatStore(fixture.thread.id)?.parts).toEqual([]);
+    expect(within(panel).getByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
+    expect(await screen.findByText("Completed reply")).toBeDefined();
     expect(fixture.prompt).not.toHaveBeenCalled();
     expect(fixture.start).not.toHaveBeenCalled();
   });

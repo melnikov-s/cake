@@ -562,6 +562,9 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
         contextBefore: "The ",
         contextAfter: " is larger.",
       });
+      chat.messageCommentsStore.draftChatStore.transcriptInteraction.setTranscriptScrollPosition({
+        kind: "top",
+      });
       chat.conversationSessionStore.sideChatStore.open({
         key: "selection-draft",
         title: "Side chat",
@@ -570,6 +573,8 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
       });
     });
     const draft = await screen.findByRole("combobox", { name: "Message about selected text" });
+    const panel = screen.getByRole("complementary", { name: "Side chat" });
+    expect(await within(panel).findByText("first task")).toBeDefined();
     await user.type(draft, "Why is it larger?{Enter}");
 
     await waitFor(() => expect(startSideChat).toHaveBeenCalledTimes(1));
@@ -599,6 +604,9 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
         fixture.models.discussionConversation("sidecar-1", "/home", parentSessionId),
         snapshot("sidecar-1", sidecarParts),
       );
+      chat.sideChats
+        .chatStore(thread.id)
+        ?.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
     });
     await waitFor(() =>
       expect(chat.conversationSessionStore.sideChatStore.target?.key).toBe("discussion:thread-1"),
@@ -609,6 +617,8 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
       "a",
     ]);
     expect(screen.getByRole("combobox", { name: "Reply to selection side chat" })).toBeDefined();
+    expect(await within(panel).findByText("first task")).toBeDefined();
+    expect(await within(panel).findByText("More steps.")).toBeDefined();
     const parentInputName =
       parentSessionId === CAKE_CHAT_SESSION_ID ? "Message Cake Chat" : "Message Project Chat";
     expect(screen.getByRole("combobox", { name: parentInputName })).toBeDefined();
