@@ -4,6 +4,7 @@ import {
   addReferenceNotifications,
   protectedResponseNotice,
   pendingReportPage,
+  pendingReportPresentation,
 } from "../../../src/contracts/conversations/reference-notification";
 import { appendMessageReferences } from "../../../src/contracts/conversations/message-reference-forwarding";
 import {
@@ -32,7 +33,97 @@ const metadata = {
   sender: { sessionId: "task", title: "Task", kind: "project-session" as const },
 };
 
+const correlatedReport = (id: string, resultMessageRef = ref): PendingReport => ({
+  id,
+  recipientSessionId: "project-chat:parent",
+  responseKey: `request-${id}`,
+  text: encodeCrossSessionMessage("Same authored result", {
+    ...metadata,
+    messageId: id,
+    threadId: id,
+    replyToMessageId: id,
+    sourceMessageRef: resultMessageRef,
+  }),
+});
+
 describe("passive reference notifications", () => {
+  it("presents one exact result across distinct correlations, preserving every handling obligation", () => {
+    const reports = [correlatedReport(metadata.messageId), correlatedReport(metadata.threadId)];
+    const presentation = pendingReportPresentation(reports);
+    expect(presentation.notices).toHaveLength(1);
+    expect(presentation.notices[0]?.crossSession).toMatchObject({ sourceMessageRef: ref });
+    const context = addReferenceNotifications("Review", reports);
+    for (const report of reports) expect(context).toContain(`Report ${report.id} · pending`);
+    expect(context).toContain("2 pending");
+    // Equivalent URL spelling still identifies the same original.
+    expect(
+      pendingReportPresentation([
+        ...reports,
+        correlatedReport("30000000-0000-4000-8000-000000000001", ref.replace("%3A", "%3a")),
+      ]).notices,
+    ).toHaveLength(1);
+  });
+
+  it("keeps distinct source messages and recipients, and never deduplicates titles or bodies", () => {
+    const first = correlatedReport(metadata.messageId);
+    const second = correlatedReport(metadata.threadId, "cake://session/task?message=revision-2");
+    expect(
+      pendingReportPresentation([first, second, { ...first, recipientSessionId: "other-chat" }])
+        .notices,
+    ).toHaveLength(3);
+    const withoutExact = [first, second].map((report, index) => ({
+      ...report,
+      text: encodeCrossSessionMessage("Identical title and body", {
+        ...metadata,
+        messageId: index ? metadata.threadId : metadata.messageId,
+      }),
+    }));
+    expect(pendingReportPresentation(withoutExact).notices).toHaveLength(2);
+  });
+
+  it("does not replay an admitted alias, including legacy duplicates across bounded pages", () => {
+    const admitted = { ...correlatedReport(metadata.messageId), admissions: 1 };
+    const duplicate = correlatedReport(metadata.threadId);
+    expect(pendingReportPresentation([duplicate, admitted]).notices).toHaveLength(0);
+    const reports = [
+      ...Array.from({ length: 6 }, () => correlatedReport(crypto.randomUUID())),
+      admitted,
+    ];
+    const page = pendingReportPage(reports);
+    expect(page).toHaveLength(5);
+    expect(page).not.toContain(admitted);
+    expect(pendingReportPresentation(page).notices).toHaveLength(0);
+    expect(reports[0]?.admissions).toBeUndefined(); // presentation does not mutate storage
+  });
+
+  it("deduplicates exact public worker results, but not handle-only refs or later worker messages", () => {
+    const worker: PendingReport = {
+      ...correlatedReport(metadata.messageId),
+      text: "Worker result",
+      source: {
+        kind: "subagent",
+        handleId: "10000000-0000-4000-8000-000000000001",
+        sessionId: "private-pi",
+        task: "Investigate",
+        status: "complete",
+        messageId: "answer-1",
+      },
+    };
+    const alias = { ...worker, id: "alias", responseKey: "request-alias" };
+    expect(pendingReportPresentation([worker, alias]).updates).toHaveLength(1);
+    expect(
+      pendingReportPresentation([
+        worker,
+        { ...alias, source: { ...worker.source!, messageId: "answer-2" } },
+      ]).updates,
+    ).toHaveLength(2);
+    expect(
+      pendingReportPresentation([
+        { ...worker, source: { ...worker.source!, messageId: undefined } },
+        { ...alias, source: { ...worker.source!, messageId: undefined } },
+      ]).updates,
+    ).toHaveLength(2);
+  });
   it("supplies public originating refs, not recipient reminders or private Pi navigation", () => {
     const report: PendingReport = {
       id: "report",

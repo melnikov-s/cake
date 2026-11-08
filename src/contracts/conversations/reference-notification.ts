@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { pendingReportRef, type PendingReport } from "./pending-report";
+import { pendingReportRef, reportPresentationKey, type PendingReport } from "./pending-report";
 import type { AgentUpdate } from "./agent-update";
 import type { PassiveNotice } from "./passive-notice";
 import { subagentTaskTitle } from "../subagents/subagent-presentation";
@@ -41,39 +41,62 @@ const header = "<system-reminder>\nCake reference notifications\n";
 const block =
   /^<system-reminder>\nCake reference notifications\n[\s\S]*?\n<\/system-reminder>(?:\n\n|$)/;
 
+const presentedReportKeys = (reports: readonly PendingReport[]) =>
+  new Set(
+    reports
+      .filter((report) => report.admissions)
+      .map((report) => reportPresentationKey(report.recipientSessionId, pendingReportRef(report)))
+      .filter((key) => key !== undefined),
+  );
+
 /** Fair bounded page: omitted reports remain discoverable without replaying full bodies forever. */
 export function pendingReportPage(reports: readonly PendingReport[]) {
-  return [...reports].sort((a, b) => (a.admissions ?? 0) - (b.admissions ?? 0)).slice(0, 5);
+  const presented = presentedReportKeys(reports);
+  return reports
+    .map((report) => {
+      const key = reportPresentationKey(report.recipientSessionId, pendingReportRef(report));
+      // Older persisted inboxes may have an admitted alias outside this bounded page.
+      return !report.admissions && key && presented.has(key)
+        ? { ...report, admissions: 1 }
+        : report;
+    })
+    .sort((a, b) => (a.admissions ?? 0) - (b.admissions ?? 0))
+    .slice(0, 5);
 }
 
 /** First admission presents sender-authored content once; subsequent reminders are model-only. */
 export function pendingReportPresentation(reports: readonly PendingReport[]) {
   const updates: AgentUpdate[] = [];
   const notices: PassiveNotice[] = [];
+  // Existing inboxes can contain multiple delivery correlations for one immutable result.
+  // An admitted alias suppresses presentation, not the other aliases' handling obligations.
+  const presented = presentedReportKeys(reports);
   for (const report of reports) {
-    if (report.admissions) continue;
+    const key = reportPresentationKey(report.recipientSessionId, pendingReportRef(report));
+    if (report.admissions || (key && presented.has(key))) continue;
     if (report.source) {
       const href = pendingReportRef(report);
-      if (href)
-        updates.push({
-          id: report.id,
-          text: report.text,
-          source: { title: subagentTaskTitle(report.source.task), href },
-        });
+      if (!href) continue;
+      updates.push({
+        id: report.id,
+        text: report.text,
+        source: { title: subagentTaskTitle(report.source.task), href },
+      });
     } else {
       const message = parseCrossSessionMessage(report.text);
-      if (message)
-        notices.push({
-          id: report.id,
-          text: message.text,
-          crossSession: {
-            ...message.metadata,
-            ...(report.resultMessageRef && Schema.is(MessageReference)(report.resultMessageRef)
-              ? { sourceMessageRef: report.resultMessageRef }
-              : null),
-          },
-        });
+      if (!message) continue;
+      notices.push({
+        id: report.id,
+        text: message.text,
+        crossSession: {
+          ...message.metadata,
+          ...(report.resultMessageRef && Schema.is(MessageReference)(report.resultMessageRef)
+            ? { sourceMessageRef: report.resultMessageRef }
+            : null),
+        },
+      });
     }
+    if (key) presented.add(key);
   }
   return { updates, notices };
 }

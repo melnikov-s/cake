@@ -4,6 +4,7 @@ import { ReadableMessageReference } from "../../contracts/conversations/message-
 import type { StoredPassiveNotice } from "../../contracts/conversations/passive-notice";
 import {
   pendingReportRef,
+  reportPresentationKey,
   samePendingResponse,
   type PendingReport,
   type ReportHandlingReceipt,
@@ -1004,8 +1005,27 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             const candidate = pendingReportRef(item);
             const ref =
               candidate && Schema.is(ReadableMessageReference)(candidate) ? candidate : undefined;
-            const retained = { ...item, ...(ref ? { resultMessageRef: ref } : null) };
             const notices = document.deferredReferences ?? [];
+            const key = reportPresentationKey(item.recipientSessionId, ref);
+            // Share presentation receipts across correlations, never merge their ACK obligations.
+            const alreadyPresented =
+              key &&
+              (notices.some(
+                (notice) =>
+                  notice.admissions &&
+                  reportPresentationKey(notice.recipientSessionId, pendingReportRef(notice)) ===
+                    key,
+              ) ||
+                document.handledReports?.some(
+                  (receipt) =>
+                    reportPresentationKey(receipt.recipientSessionId, receipt.resultMessageRef) ===
+                    key,
+                ));
+            const retained = {
+              ...item,
+              ...(ref ? { resultMessageRef: ref } : null),
+              ...(alreadyPresented ? { admissions: Math.max(1, item.admissions ?? 0) } : null),
+            };
             const existing = notices.find((notice) => samePendingResponse(notice, retained));
             return {
               ...turnIds.reduce(withoutNotice, document),
@@ -1024,6 +1044,9 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                               }
                             : null),
                           ...(retained.responseKey ? { responseKey: retained.responseKey } : null),
+                          ...(alreadyPresented
+                            ? { admissions: Math.max(1, notice.admissions ?? 0) }
+                            : null),
                         },
                   )
                 : [...notices, retained],
@@ -1048,12 +1071,26 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
       );
       const markReferenceAdmissions = Effect.fn("SessionFamilyStorage.markReferenceAdmissions")(
         (ids: ReadonlyArray<string>) =>
-          update((document) => ({
-            ...document,
-            deferredReferences: document.deferredReferences?.map((item) =>
-              ids.includes(item.id) ? { ...item, admissions: (item.admissions ?? 0) + 1 } : item,
-            ),
-          })),
+          update((document) => {
+            const selected = new Set(ids);
+            const presented = new Set(
+              document.deferredReferences
+                ?.filter((item) => selected.has(item.id))
+                .map((item) =>
+                  reportPresentationKey(item.recipientSessionId, pendingReportRef(item)),
+                )
+                .filter((key) => key !== undefined),
+            );
+            return {
+              ...document,
+              deferredReferences: document.deferredReferences?.map((item) => {
+                const key = reportPresentationKey(item.recipientSessionId, pendingReportRef(item));
+                return selected.has(item.id) || (key && presented.has(key))
+                  ? { ...item, admissions: (item.admissions ?? 0) + 1 }
+                  : item;
+              }),
+            };
+          }),
       );
       const acknowledgeReports = Effect.fn("SessionFamilyStorage.acknowledgeReports")(
         (receipts: ReadonlyArray<ReportHandlingReceipt>) =>
@@ -1076,9 +1113,13 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                         item.recipientSessionId === receipt.recipientSessionId &&
                         item.id === receipt.id,
                     );
+                    const ref = pending && pendingReportRef(pending);
                     return {
                       ...receipt,
                       ...(pending?.responseKey ? { responseKey: pending.responseKey } : null),
+                      ...(ref && Schema.is(ReadableMessageReference)(ref)
+                        ? { resultMessageRef: ref }
+                        : null),
                     };
                   })
                   .filter(

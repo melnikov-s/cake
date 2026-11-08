@@ -1,6 +1,6 @@
 import { Schema } from "effect";
-import { subagentLink } from "../subagents/subagent-reference";
-import { ReadableMessageReference } from "./message-reference";
+import { parseSubagentLink, subagentLink } from "../subagents/subagent-reference";
+import { messageReference, parseSessionLink, ReadableMessageReference } from "./message-reference";
 import { parseCrossSessionMessage } from "./cross-session-message";
 
 const id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
@@ -42,6 +42,24 @@ export function pendingReportRef(report: PendingReport): string | undefined {
     : undefined;
 }
 
+/** Exact source identity for presentation only; distinct delivery/ACK obligations remain distinct. */
+export function reportPresentationKey(recipientSessionId: string, ref: string | undefined) {
+  if (!ref || !Schema.is(ReadableMessageReference)(ref)) return undefined;
+  const session = parseSessionLink(ref);
+  if (session?.messageId)
+    return JSON.stringify([
+      recipientSessionId,
+      messageReference(session.sessionId, session.messageId),
+    ]);
+  const worker = parseSubagentLink(ref);
+  return worker?.messageId
+    ? JSON.stringify([
+        recipientSessionId,
+        subagentLink(worker.parentSessionId, worker.handleId, worker.messageId),
+      ])
+    : undefined;
+}
+
 /** Only persisted delivery/request identities establish equivalence. */
 export function samePendingResponse(a: PendingReport, b: PendingReport): boolean {
   return (
@@ -56,6 +74,8 @@ export const ReportHandlingReceipt = Schema.Struct({
   recipientSessionId: id,
   assistantPartId: id,
   responseKey: Schema.optionalKey(id),
+  /** Retain source identity after ACK so a new correlation cannot replay the same result card. */
+  resultMessageRef: Schema.optionalKey(ReadableMessageReference),
   disposition: Schema.Literals(["communicated", "dismissed"]),
 });
 export interface ReportHandlingReceipt extends Schema.Schema.Type<typeof ReportHandlingReceipt> {}
