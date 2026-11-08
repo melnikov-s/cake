@@ -293,7 +293,8 @@ describe("Workspace mode navigation", () => {
     // jsdom checks shared layout wiring, not pixel geometry (covered by Electron).
     const layout = () => {
       const tools = screen.getByRole("group", { name: "Workspace tools" });
-      const modes = within(tools).getByRole("group", { name: "Conversation workspace" });
+      const header = tools.closest("header")!;
+      const modes = within(header).getByRole("group", { name: "Conversation workspace" });
       expect(
         within(modes)
           .getAllByRole("button")
@@ -312,15 +313,26 @@ describe("Workspace mode navigation", () => {
         expect(button.classList.contains("aria-pressed:text-foreground")).toBe(true);
         expect(button.classList.contains("aria-pressed:text-accent")).toBe(false);
       }
-      const header = tools.closest("header")!;
+      expect(header.parentElement?.getAttribute("data-slot")).toBe("shell-header");
       const actions = header.querySelector('[data-slot="workspace-actions"]')!;
+      const center = header.querySelector('[data-slot="workspace-mode"]')!;
+      expect(center.contains(modes)).toBe(true);
+      expect(actions.contains(modes)).toBe(false);
+      const utilities = [...actions.querySelectorAll("button")];
+      expect(utilities.map((button) => button.getAttribute("aria-label"))).toEqual([
+        "0 artifacts",
+        "Review changes",
+        "Terminal",
+        "Work log display options",
+      ]);
       const terminal = within(tools).getByRole("button", { name: "Terminal" });
       expect(modes.contains(terminal)).toBe(false);
       const separator = terminal.previousElementSibling!;
       expect(separator.getAttribute("aria-hidden")).toBe("true");
       expect(separator.classList.contains("w-px")).toBe(true);
       expect(actions.classList.contains("overflow-x-auto")).toBe(true);
-      expect(actions.classList.contains("shrink-0")).toBe(true);
+      expect(actions.classList.contains("max-w-full")).toBe(true);
+      expect(actions.classList.contains("justify-self-end")).toBe(true);
       expect(header.classList.contains("h-title-bar")).toBe(true);
       expect(header.classList.contains("flex-col")).toBe(false);
       expect(header.classList.contains("border-b")).toBe(true);
@@ -336,6 +348,7 @@ describe("Workspace mode navigation", () => {
         actions: actions.className,
         tools: tools.className,
         slots: [...tools.children].map((child) => child.className),
+        center: center.className,
       };
     };
     expect(screen.getByRole("button", { name: "Main" }).getAttribute("aria-pressed")).toBe("true");

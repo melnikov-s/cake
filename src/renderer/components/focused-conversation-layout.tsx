@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { LoadingState } from "@/components/ui/loading-state";
-import { WorkspaceHeader } from "./ui/workspace-header";
+import { ShellHeaderContext, WorkspaceHeader } from "./ui/workspace-header";
 import type { SessionLayoutStore } from "../stores/SessionLayoutStore";
 import {
   FocusedConversationPane,
@@ -39,6 +39,7 @@ export const FocusedConversationLayout = observer(function FocusedConversationLa
   wrapPane,
   onInteract,
 }: FocusedConversationLayoutProps<T>) {
+  const shellHeader = useContext(ShellHeaderContext);
   const sessionId = store.focusedSessionId;
   if (!sessionId) return null;
   const session = findSession(sessionId);
@@ -47,7 +48,7 @@ export const FocusedConversationLayout = observer(function FocusedConversationLa
       data-slot="session-pane"
       data-session-id={sessionId}
       data-focused="true"
-      className="group/pane @container/session-pane relative grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background"
+      className={`group/pane @container/session-pane relative grid h-full min-h-0 min-w-0 overflow-hidden bg-background ${!compactHeader && shellHeader !== undefined ? "grid-rows-[minmax(0,1fr)]" : "grid-rows-[auto_minmax(0,1fr)]"}`}
       onWheelCapture={() => onInteract?.(sessionId)}
       onKeyDownCapture={() => onInteract?.(sessionId)}
       onPointerDownCapture={() => onInteract?.(sessionId)}

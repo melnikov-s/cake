@@ -107,6 +107,7 @@ for (const theme of ["dark", "light"] as const) {
         expect(header.height).toBe(45);
         for (const control of [
           ...(await modeSelector.getByRole("button").all()),
+          ...(await page.locator('[data-slot="workspace-actions"] button').all()),
           page.locator('[data-slot="shell-workspace-toggle"]'),
         ]) {
           const box = (await control.boundingBox())!;
@@ -114,16 +115,24 @@ for (const theme of ["dark", "light"] as const) {
           expect(box.y).toBeGreaterThanOrEqual(header.y);
           expect(box.y + box.height).toBeLessThanOrEqual(header.y + header.height - 1);
         }
+        const accessoryHeader = (await workspaceHeader.boundingBox())!;
         for (const tab of await workspaceTabs.getByRole("button").all()) {
           const box = (await tab.boundingBox())!;
           expect(box.height).toBeGreaterThanOrEqual(24);
-          expect(box.y).toBeGreaterThanOrEqual(header.y);
-          expect(box.y + box.height).toBeLessThanOrEqual(header.y + header.height - 1);
+          expect(box.y).toBeGreaterThanOrEqual(accessoryHeader.y);
+          expect(box.y + box.height).toBeLessThanOrEqual(
+            accessoryHeader.y + accessoryHeader.height - 1,
+          );
         }
-        expect(await workspaceHeader.boundingBox()).toMatchObject({
-          y: header.y,
-          height: header.height,
-        });
+        expect(accessoryHeader.y).toBe(header.y + header.height);
+        expect(accessoryHeader.height).toBe(header.height);
+        const modes = (await modeSelector.boundingBox())!;
+        expect(modes.x + modes.width / 2).toBeCloseTo(header.x + header.width / 2 + 1, 0);
+        const actions = (await page.locator('[data-slot="workspace-actions"]').boundingBox())!;
+        const toggle = (await page.locator('[data-slot="shell-workspace-toggle"]').boundingBox())!;
+        expect(actions.x).toBeGreaterThan(modes.x + modes.width);
+        expect(actions.x + actions.width).toBeLessThanOrEqual(toggle.x);
+        expect(toggle.x - (actions.x + actions.width)).toBeLessThanOrEqual(10);
       };
       await expectTopBarGeometry();
       await workspaceTabs.getByRole("button", { name: /^To-dos/ }).click();
@@ -366,6 +375,40 @@ for (const theme of ["dark", "light"] as const) {
       await expectStableNarrowSelector();
       await chat.click();
       await expect(input).toHaveValue("Keep this companion draft");
+      await page.getByRole("button", { name: "Main", exact: true }).click();
+      await application.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]!.setContentSize(640, 900),
+      );
+      const accessoryResize = page.getByRole("separator", {
+        name: "Resize Workspace",
+        exact: true,
+      });
+      await accessoryResize.press("End");
+      const headerBox = (await windowHeader.boundingBox())!;
+      expect((await accessoryResize.boundingBox())!.y).toBe(headerBox.y + headerBox.height);
+      for (const name of ["Browser", "VS Code", "Main"]) {
+        await modeSelector.getByRole("button", { name, exact: true }).click();
+        await expect(modeSelector.getByRole("button", { name, exact: true })).toHaveAttribute(
+          "aria-pressed",
+          "true",
+        );
+      }
+      const actions = page.locator('[data-slot="workspace-actions"]');
+      const actionBox = (await actions.boundingBox())!;
+      const modesBox = (await modeSelector.boundingBox())!;
+      const toggleBox = (await toggle.boundingBox())!;
+      expect(actionBox.x).toBeGreaterThan(modesBox.x + modesBox.width);
+      expect(actionBox.x + actionBox.width).toBeLessThanOrEqual(toggleBox.x);
+      // Keyboard focus scrolls every utility into view instead of clipping targets.
+      for (const button of await actions.getByRole("button").all()) {
+        await button.focus();
+        await expect(button).toBeInViewport({ ratio: 1 });
+        const box = (await button.boundingBox())!;
+        expect(box.x).toBeGreaterThanOrEqual(actionBox.x - 1);
+        expect(box.x + box.width).toBeLessThanOrEqual(actionBox.x + actionBox.width + 1);
+      }
+      await page.mouse.move(300, 700);
+      await page.screenshot({ path: testInfo.outputPath(`compact-header-${theme}.png`) });
     } finally {
       await application.close();
       await rm(root, { recursive: true, force: true });

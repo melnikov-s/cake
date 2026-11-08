@@ -93,9 +93,9 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
       return Promise.all(
         [
           tools,
-          tools.getByRole("button", { name: "Main", exact: true }),
-          tools.getByRole("button", { name: "VS Code", exact: true }),
-          tools.getByRole("button", { name: "Browser", exact: true }),
+          page.getByRole("button", { name: "Main", exact: true }),
+          page.getByRole("button", { name: "VS Code", exact: true }),
+          page.getByRole("button", { name: "Browser", exact: true }),
           tools.getByRole("button", { name: "Terminal", exact: true }),
         ].map(async (control) => {
           const box = await control.boundingBox();

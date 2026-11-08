@@ -200,7 +200,7 @@ for (const global of [false, true])
         await page.setViewportSize({ width, height: 1000 });
         await expect(clear).toBeVisible();
         await expect(async () => {
-          const header = (await pane.locator('[data-slot="workspace-header"]').boundingBox())!;
+          const header = (await page.locator('[data-slot="workspace-header"]').boundingBox())!;
           const bounds = (await bar.boundingBox())!;
           const x = (await clear.boundingBox())!;
           expect(Math.abs(bounds.y - header.y - header.height)).toBeLessThanOrEqual(1);
