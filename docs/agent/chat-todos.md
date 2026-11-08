@@ -3,7 +3,7 @@
 ## Track and close
 
 Track durable ongoing building, multi-step research and discussions/decisions to revisit. Reuse existing/session-created items. No new to-dos for routine one-shot actions (merge approved work, open websites, navigate, direct answers/lookups), even with multiple tools, delegation, verification or blockers. Update underlying tasks for blockers, not administrative umbrella items. Attribution may be null; never create just to attribute turns. Assistant-maintained, not user chores. Do not bulk-import history.
-Titles name tasks; descriptions give a short latest outcome, blockers and verification gaps. Keep provenance in links, not routine commit/test bookkeeping.
+Titles are short task names, at most 80 characters; put details in description. Create/update reject longer titles without truncation. Omit title when editing other fields on legacy long-title items. Descriptions give a short latest outcome, blockers and verification gaps. Keep provenance in links, not routine commit/test bookkeeping.
 Agents close session-linked items through session resolution, not manual done. Human Mark done resolves all required linked sessions through the backend first; blockers remain visible and the item stays open. Other items close when checked complete/user satisfied. Research stays open awaiting review; link exact findings. Restore never reopens items. Attention dismissal, hiding and snoozing never resolve work.
 Sources do not affect closure. Subagent-only items require explicit done; mixed items follow all required Project Sessions resolved.
 

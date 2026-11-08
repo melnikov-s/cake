@@ -12,6 +12,7 @@ import {
 import {
   PROJECT_TODO_AUTO_COMPLETION_RULE,
   CAKE_CHAT_TODO_SCOPE,
+  emptyProjectTodos,
   projectTodoBaseline,
   ProjectTodo,
   ProjectTodos,
@@ -154,8 +155,8 @@ it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
   },
 );
 
-function fixture() {
-  let persisted = JSON.stringify(defaultApplicationState());
+function fixture(initial = defaultApplicationState()) {
+  let persisted = JSON.stringify(initial);
   let fail = false;
   const storage = Layer.succeed(
     ApplicationStorage,
@@ -192,6 +193,102 @@ const create = () =>
     description: "Conversations report.",
     status: "Investigating",
   });
+
+describe("to-do title mutation limits", () => {
+  it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
+    "accepts 80 characters and rejects over-limit create, update and atomic batches in %s",
+    (scope) => {
+      const f = fixture();
+      return Effect.gen(function* () {
+        yield* upsertProject(project, "Project");
+        const title = "T".repeat(80);
+        const item = yield* todos.create(scope, { title, description: "Details belong here." });
+        expect(item.title).toBe(title);
+        const edited = yield* todos.update(scope, {
+          id: item.id,
+          expectedRevision: item.revision,
+          title: "U".repeat(80),
+        });
+        expect(edited.title).toBe("U".repeat(80));
+        const other = yield* todos.create(scope, { title: "Other task", description: "Details." });
+        const before = yield* todos.list(scope);
+        for (const tooLong of [title + "X", "T".repeat(513)]) {
+          const failures = [
+            yield* todos
+              .create(scope, { title: tooLong, description: "Details." })
+              .pipe(Effect.flip),
+            yield* todos
+              .update(scope, {
+                id: item.id,
+                expectedRevision: edited.revision,
+                title: tooLong,
+              })
+              .pipe(Effect.flip),
+            yield* todos
+              .updateMany(scope, [
+                { id: item.id, expectedRevision: edited.revision, status: "Must not commit" },
+                { id: other.id, expectedRevision: other.revision, title: tooLong },
+              ])
+              .pipe(Effect.flip),
+          ];
+          for (const failure of failures) {
+            expect(failure.message).toContain("at most 80 characters");
+            expect(failure.message).toContain("move details to description");
+          }
+          expect(yield* todos.list(scope)).toEqual(before);
+        }
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
+
+  it.effect(
+    "loads legacy long titles and permits edits that omit title without rewriting it",
+    () => {
+      const legacy: ProjectTodo = {
+        id: "00000000-0000-4000-8000-000000000001",
+        title: "L".repeat(512),
+        description: "Legacy task details.",
+        status: "",
+        state: "open",
+        revision: 0,
+        associations: [],
+      };
+      const f = fixture({
+        ...defaultApplicationState(),
+        cakeChatTodos: { ...emptyProjectTodos(), items: [legacy] },
+      });
+      return Effect.gen(function* () {
+        yield* (yield* ApplicationState).initialize();
+        expect(yield* todos.read(CAKE_CHAT_TODO_SCOPE, legacy.id)).toEqual(legacy);
+        const edited = yield* todos.update(CAKE_CHAT_TODO_SCOPE, {
+          id: legacy.id,
+          expectedRevision: 0,
+          description: "Latest outcome.",
+        });
+        expect(edited.title).toBe(legacy.title);
+        const [batched] = yield* todos.updateMany(CAKE_CHAT_TODO_SCOPE, [
+          { id: legacy.id, expectedRevision: 1, status: "Ready for review" },
+        ]);
+        expect(batched?.title).toBe(legacy.title);
+        expect(f.persisted().cakeChatTodos?.items[0]?.title).toBe(legacy.title);
+        const rejected = yield* todos
+          .update(CAKE_CHAT_TODO_SCOPE, {
+            id: legacy.id,
+            expectedRevision: 2,
+            title: legacy.title,
+          })
+          .pipe(Effect.flip);
+        expect(rejected.message).toContain("move details to description");
+        const renamed = yield* todos.update(CAKE_CHAT_TODO_SCOPE, {
+          id: legacy.id,
+          expectedRevision: 2,
+          title: "Short task name",
+        });
+        expect(renamed.title).toBe("Short task name");
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
+});
 
 describe("Project Chat to-do authority", () => {
   it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
@@ -582,7 +679,10 @@ it.effect(
         "Measure startup latency ".repeat(80) + "\n\nDetailed instructions.",
       );
       yield* todos.ensureSession(project, "session-empty", "Follow up", "  \n  ");
+      yield* todos.ensureSession(project, "session-unicode", "😀".repeat(80), initialPrompt);
       const items = (yield* todos.list(project)).items;
+      for (const item of items) expect(Schema.is(ProjectTodoCreate)(item)).toBe(true);
+      expect(items[3]?.title).toBe("New Project Session");
       expect(items[0]?.description).toBe("Continue work on Startup.");
       expect(Array.from(items[1]?.title ?? "")).toHaveLength(80);
       expect(items[1]?.description.length).toBeLessThanOrEqual(320);

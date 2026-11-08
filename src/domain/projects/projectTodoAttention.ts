@@ -6,7 +6,11 @@ import {
   pendingReportPresentation,
 } from "../../contracts/conversations/reference-notification";
 import { ProjectError } from "../../contracts/projects/project-error";
-import { isCakeChatTodoScope, projectTodoSessionIds } from "../../contracts/projects/project-todos";
+import {
+  isCakeChatTodoScope,
+  projectTodoSessionIds,
+  PROJECT_TODO_TITLE_LIMIT,
+} from "../../contracts/projects/project-todos";
 import { parseSubagentLink } from "../../contracts/subagents/subagent-reference";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
@@ -19,7 +23,6 @@ export const hold = Effect.fn("ProjectTodoAttention.hold")(function* (
   report: PendingReport,
   origin: {
     sessionId: string;
-    label: string;
     subagent?: { parentSessionId: string; handleId: string };
   },
   turnIds: readonly string[] = [],
@@ -53,13 +56,19 @@ export const hold = Effect.fn("ProjectTodoAttention.hold")(function* (
   );
   if (!item) return false;
   const text = yield* prepareCoordinatorNotice(report.recipientSessionId, report.text);
-  const label = text === report.text ? origin.label || item.title : item.title;
+  // Worker labels can be entire prompts. Name the linked task, never the launch instructions.
+  // Keep legacy long titles intact; use a generic action rather than truncating their text.
+  const prefix = "Open result: ";
+  const reason =
+    prefix.length + item.title.length <= PROJECT_TODO_TITLE_LIMIT
+      ? prefix + item.title
+      : "Open linked result";
   if (!item.needsAttention)
     yield* todos.update(scope, {
       id: item.id,
       expectedRevision: item.revision,
       needsAttention: true,
-      attentionReason: `Open result: ${label}`.slice(0, 512).trim(),
+      attentionReason: reason,
     });
   yield* storage.deferReferenceNotice({ ...report, text, attentionTodoId: item.id }, turnIds);
   return true;

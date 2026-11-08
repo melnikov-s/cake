@@ -183,7 +183,6 @@ export const deliverCompletion = Effect.fn("Subagents.deliverCompletion")(functi
           if (
             !(yield* projectTodoAttention.hold(report, {
               sessionId: handle.parentSessionId,
-              label: handle.task,
               subagent: { parentSessionId: handle.parentSessionId, handleId: handle.handleId },
             }))
           )

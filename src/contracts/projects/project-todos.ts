@@ -92,7 +92,7 @@ export const PROJECT_TODO_SUMMARY_GUIDANCE =
   "State outcomes, blockers/decisions and readiness gaps. Keep technical bookkeeping in linked reports.";
 
 /** Latest-update writing policy, shared by both chat baselines, mutation help and chat-todos.md. */
-export const PROJECT_TODO_DESCRIPTION_GUIDANCE = `Titles name tasks; descriptions give a short latest update. ${PROJECT_TODO_SUMMARY_GUIDANCE} Update on meaningful evidence; no status polling/wakes.`;
+export const PROJECT_TODO_DESCRIPTION_GUIDANCE = `Titles: short task names, max 80 characters; details in description. Descriptions give a short latest update. ${PROJECT_TODO_SUMMARY_GUIDANCE} Update on meaningful evidence; no status polling/wakes.`;
 
 /** Canonical detailed link policy, disclosed by to-do mutation help and chat-todos.md. */
 export const PROJECT_TODO_LINK_GUIDANCE =
@@ -216,8 +216,21 @@ export const emptyProjectTodos = (): ProjectTodos => ({
   pending: [],
 });
 
+export const PROJECT_TODO_TITLE_LIMIT = 80;
+
+/** Mutation-only constraint: persisted titles and read/event schemas retain legacy capacity. */
+const ProjectTodoInputTitle = Schema.String.check(
+  Schema.isTrimmed(),
+  Schema.isMinLength(1),
+  Schema.isMaxLength(PROJECT_TODO_TITLE_LIMIT, {
+    expected: "a short task title of at most 80 characters; move details to description",
+  }),
+).annotate({
+  description: "Short task name, at most 80 characters. Put details in description.",
+});
+
 export const ProjectTodoCreate = Schema.Struct({
-  title: ProjectTodo.fields.title,
+  title: ProjectTodoInputTitle,
   description: ProjectTodo.fields.description,
   status: Schema.optionalKey(ProjectTodo.fields.status),
   needsAttention: Schema.optionalKey(Schema.Boolean),
@@ -228,7 +241,7 @@ export interface ProjectTodoCreate extends Schema.Schema.Type<typeof ProjectTodo
 export const ProjectTodoUpdate = Schema.Struct({
   id: identity,
   expectedRevision: revision,
-  title: Schema.optionalKey(ProjectTodo.fields.title),
+  title: Schema.optionalKey(ProjectTodoInputTitle),
   description: Schema.optionalKey(ProjectTodo.fields.description),
   status: Schema.optionalKey(ProjectTodo.fields.status),
   state: Schema.optionalKey(ProjectTodo.fields.state),

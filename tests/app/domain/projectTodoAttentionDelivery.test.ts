@@ -53,12 +53,8 @@ it.effect.each([CAKE_CHAT_TODO_SCOPE, "/project"])(
         associations: [{ kind: "session", sessionId: "worker", title: "Worker" }],
       });
       const held = report(recipient);
-      expect(
-        yield* attention.hold(report(other), { sessionId: "worker", label: "Other chat" }),
-      ).toBe(false);
-      expect(yield* attention.hold(held, { sessionId: "worker", label: "Read the findings" })).toBe(
-        true,
-      );
+      expect(yield* attention.hold(report(other), { sessionId: "worker" })).toBe(false);
+      expect(yield* attention.hold(held, { sessionId: "worker" })).toBe(true);
       const flagged = yield* todos.read(scope, item.id);
       expect(flagged).toMatchObject({ needsAttention: true, state: "open", revision: 1 });
       expect((yield* reports.list(recipient, {})).total).toBe(0);
@@ -69,9 +65,7 @@ it.effect.each([CAKE_CHAT_TODO_SCOPE, "/project"])(
         expectedRevision: flagged.revision,
         needsAttention: false,
       });
-      expect(yield* attention.hold(held, { sessionId: "worker", label: "Read the findings" })).toBe(
-        true,
-      );
+      expect(yield* attention.hold(held, { sessionId: "worker" })).toBe(true);
       expect(yield* todos.read(scope, item.id)).toMatchObject({
         state: "open",
         needsAttention: false,
@@ -104,7 +98,9 @@ it.effect("holds public-worker reports by handle, not private Pi session identit
         kind: "subagent" as const,
         handleId: "00000000-0000-4000-8000-000000000099",
         sessionId: "private-pi-id",
-        task: "Research",
+        task: "Read-only contextual investigation. User just launched a human Side Chat. ".repeat(
+          20,
+        ),
         status: "complete",
         messageId: "final",
       },
@@ -112,13 +108,15 @@ it.effect("holds public-worker reports by handle, not private Pi session identit
     expect(
       yield* attention.hold(held, {
         sessionId: CAKE_CHAT_SESSION_ID,
-        label: "Research",
         subagent: {
           parentSessionId: CAKE_CHAT_SESSION_ID,
           handleId: "00000000-0000-4000-8000-000000000099",
         },
       }),
     ).toBe(true);
+    expect((yield* todos.read(CAKE_CHAT_TODO_SCOPE, item.id)).attentionReason).toBe(
+      "Open result: Research",
+    );
     expect(
       (yield* (yield* SessionFamilyStorage).state()).deferredReferences?.[0]?.attentionTodoId,
     ).toBe(item.id);
@@ -133,7 +131,7 @@ it.effect("a failed activation retains the pill and original; stale clicks canno
       associations: [{ kind: "session", sessionId: "worker", title: "Worker" }],
     });
     const held = report(CAKE_CHAT_SESSION_ID);
-    yield* attention.hold(held, { sessionId: "worker", label: "Read findings" });
+    yield* attention.hold(held, { sessionId: "worker" });
     expect((yield* Effect.result(attention.activate(CAKE_CHAT_TODO_SCOPE, item.id, 0)))._tag).toBe(
       "Failure",
     );

@@ -29,6 +29,7 @@ import {
   projectTodoReminder,
   projectTodoSessionIds,
   ProjectTodoCreate,
+  PROJECT_TODO_TITLE_LIMIT,
   projectTodoCompletionSummary,
   type ProjectTodoCompletion,
   type ProjectTodoUpdate,
@@ -526,7 +527,11 @@ export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
 ) {
   const hash = createHash("sha256").update(`cake:session-todo:${sessionId}`).digest("hex");
   const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
-  const name = normalizeSessionTitle(title) || "New Project Session";
+  const normalized = normalizeSessionTitle(title);
+  const name =
+    normalized && normalized.length <= PROJECT_TODO_TITLE_LIMIT
+      ? normalized
+      : "New Project Session";
   // Never copy launch instructions/bookkeeping into the visible task description.
   const description = `Continue work on ${name}.`;
   let created = false;

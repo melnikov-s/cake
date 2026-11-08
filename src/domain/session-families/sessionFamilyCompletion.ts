@@ -486,7 +486,7 @@ const deliverRequesterNotice = Effect.fn("SessionFamilies.deliverRequesterNotice
       ? yield* storage.withNoticeDelivery(
           projectTodoAttention.hold(
             { id: reportMessageId(turn.turnId), recipientSessionId: turn.senderSessionId, text },
-            { sessionId: turn.sessionId, label: digestSummary(turn, report) },
+            { sessionId: turn.sessionId },
             [turn.turnId],
           ),
         )

@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import { Schema } from "effect";
 import guide from "../../../docs/agent/chat-todos.md?raw";
 import {
   emptyProjectTodos,
@@ -65,6 +66,39 @@ it("shares exact link and attention rules in mutation help", () => {
     expect(registry.operationHelp(command)).toContain(PROJECT_TODO_DESCRIPTION_GUIDANCE);
   }
 });
+it("exposes and enforces actionable title limits on every title mutation tool", async () => {
+  const context = {
+    signal: new AbortController().signal,
+    toolCallId: "title-limit",
+    runtime: {} as never,
+  };
+  for (const operation of registry
+    .definitions()
+    .filter((item) =>
+      ["todos.create", "todos.update", "todos.update-many"].includes(item.command),
+    )) {
+    const help = registry.operationHelp(operation.command);
+    expect(help).toContain('"maxLength":80');
+    expect(help).toContain("Short task name, at most 80 characters. Put details in description.");
+    expect(help).toContain("Titles: short task names, max 80 characters; details in description.");
+    const input = (title: string) =>
+      operation.command === "todos.create"
+        ? { title, description: "Task details." }
+        : operation.command === "todos.update"
+          ? { id: "00000000-0000-4000-8000-000000000001", expectedRevision: 0, title }
+          : {
+              updates: [{ id: "00000000-0000-4000-8000-000000000001", expectedRevision: 0, title }],
+            };
+    expect(Schema.is(operation.inputSchema)(input("T".repeat(80)))).toBe(true);
+    for (const length of [81, 513])
+      await expect(operation.execute(input("T".repeat(length)), context)).rejects.toThrow(
+        "at most 80 characters; move details to description",
+      );
+  }
+  expect(guide).toContain("at most 80 characters");
+  expect(guide).toContain("Omit title when editing other fields on legacy long-title items");
+});
+
 it("preserves evidence, closure, association replacement and dismissed requests", () => {
   for (const rule of [
     "exact findings originals",

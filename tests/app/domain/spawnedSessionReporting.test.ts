@@ -2738,6 +2738,7 @@ describe("automatic spawned-session reporting", () => {
               assert.equal(state.coordinatorDigest?.length ?? 0, 0);
               const todo = (yield* projectTodos.list(CAKE_CHAT_TODO_SCOPE)).items[0]!;
               assert.equal(todo.needsAttention, true);
+              assert.equal(todo.attentionReason, "Open result: Research");
               assert.equal(todo.state, "open");
               assert.equal(state.deferredReferences?.[0]?.attentionTodoId, todo.id);
               assert.ok(
