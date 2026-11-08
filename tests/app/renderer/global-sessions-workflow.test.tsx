@@ -106,18 +106,50 @@ function renderSessions(projectPath?: string, many = false) {
 afterEach(cleanup);
 
 describe("Global Cake Sessions scope", () => {
-  it("lists every registered project's sessions, including projects without a home chat, with source identity and aggregate counts", () => {
+  it("shows project identity once under headings, retaining badges for ungrouped projects and aggregate counts", () => {
     using fixture = renderSessions();
     expect(screen.getByText("Cake Chat")).toBeTruthy();
     expect(screen.getByText("Alpha", { selector: "span.block" })).toBeTruthy();
-    expect(within(fixture.row("alpha-session")).getByTitle("Alpha")).toBeTruthy();
-    expect(within(fixture.row("beta-session")).getByTitle("Beta")).toBeTruthy();
+    expect(screen.getAllByText("Alpha", { exact: true })).toHaveLength(1);
+    expect(fixture.row(alphaChat).querySelector('[data-slot="avatar"]')).not.toBeNull();
+    for (const id of ["alpha-session", "child"]) {
+      expect(fixture.row(id).querySelector('[data-slot="session-source"]')).toBeNull();
+      expect(within(fixture.row(id)).queryByTitle("Alpha")).toBeNull();
+      const description = fixture.row(id).querySelector('[data-slot="session-description"]')!;
+      expect(description.textContent).not.toMatch(/·$/);
+    }
+    const betaSource = within(fixture.row("beta-session")).getByTitle("Beta");
+    expect(betaSource.querySelector('[data-slot="avatar"]')).not.toBeNull();
     expect(fixture.row("child").dataset.depth).toBe("2");
     expect(screen.queryByText("Unregistered project")).toBeNull();
     expect(screen.queryByText("Archived Alpha")).toBeNull();
     expect(screen.getByRole("button", { name: "Sessions · 1 running · 1 unread" }).title).toContain(
       "5 total in all projects",
     );
+  });
+
+  it("updates row identity when a containing project heading appears or disappears", () => {
+    using fixture = renderSessions();
+    expect(within(fixture.row("beta-session")).getByTitle("Beta")).toBeTruthy();
+    act(() =>
+      fixture.models.cakeChatCatalog.sessions.push(
+        CakeChatSummary.create({
+          sessionId: "project-chat:beta",
+          projectPath: beta,
+          title: "Beta / Project Chat",
+          createdAt: fixtureTimestamp,
+          modifiedAt: fixtureTimestamp,
+          messageCount: 1,
+        }),
+      ),
+    );
+    expect(screen.getAllByText("Beta", { exact: true })).toHaveLength(1);
+    expect(fixture.row("beta-session").querySelector('[data-slot="session-source"]')).toBeNull();
+    expect(fixture.row("beta-session").dataset.depth).toBe("1");
+    expect(within(fixture.row("beta-session")).getByRole("img", { name: "Running" })).toBeTruthy();
+    act(() => fixture.models.cakeChatCatalog.sessions.pop());
+    expect(within(fixture.row("beta-session")).getByTitle("Beta")).toBeTruthy();
+    expect(fixture.row("beta-session").dataset.depth).toBe("0");
   });
 
   it("keeps Project Chat panels project-scoped and omits redundant source metadata", () => {
@@ -128,9 +160,12 @@ describe("Global Cake Sessions scope", () => {
     expect(fixture.navigator.tree(alpha).byKey.has(conversationNavigationKey("beta-session"))).toBe(
       false,
     );
-    expect(within(fixture.row("alpha-session")).queryByTitle("Alpha")).toBeNull();
+    for (const id of ["alpha-session", "child"]) {
+      expect(fixture.row(id).querySelector('[data-slot="session-source"]')).toBeNull();
+    }
     act(() => fixture.root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded(alpha));
     expect(screen.getByText("Archived Alpha")).toBeTruthy();
+    expect(fixture.row("alpha-resolved").querySelector('[data-slot="session-source"]')).toBeNull();
     expect(screen.queryByText("Archived Beta")).toBeNull();
   });
 
@@ -143,6 +178,8 @@ describe("Global Cake Sessions scope", () => {
     expect(fixture.row("child")).toBeTruthy();
     expect(fixture.row("alpha-session")).toBeTruthy();
     expect(fixture.row(alphaChat)).toBeTruthy();
+    expect(screen.getAllByText("Alpha", { exact: true })).toHaveLength(1);
+    expect(fixture.row("child").querySelector('[data-slot="session-source"]')).toBeNull();
     expect(
       fixture.navigator
         .rows(undefined)
@@ -154,7 +191,14 @@ describe("Global Cake Sessions scope", () => {
     const resolved = within(screen.getByRole("region", { name: "Resolved sessions" }));
     expect(resolved.getByText("Archived Alpha")).toBeTruthy();
     expect(resolved.getByText("Archived Beta")).toBeTruthy();
-    expect(within(fixture.row("alpha-resolved")).getByTitle("Alpha")).toBeTruthy();
+    for (const [id, name] of [
+      ["alpha-resolved", "Alpha"],
+      ["beta-resolved", "Beta"],
+    ] as const) {
+      expect(
+        within(fixture.row(id)).getByTitle(name).querySelector('[data-slot="avatar"]'),
+      ).not.toBeNull();
+    }
     act(() => fixture.navigator.setQuery(undefined, "Archived Beta"));
     expect(resolved.queryByText("Archived Alpha")).toBeNull();
     expect(resolved.getByText("Archived Beta")).toBeTruthy();

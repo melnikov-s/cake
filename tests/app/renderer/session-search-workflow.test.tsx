@@ -77,6 +77,14 @@ describe("Session search workflow", () => {
     });
     await fixture.user.click(searchButton());
     expect(labels()).toHaveLength(3);
+    for (const [title, project] of [
+      ["Session search", "cake"],
+      ["Session search elsewhere", "other"],
+    ] as const) {
+      const option = dialog().getByTitle(title).closest<HTMLElement>('[role="option"]')!;
+      const source = within(option).getByTitle(project);
+      expect(source.querySelector('[data-slot="avatar"]')).not.toBeNull();
+    }
     expect(
       dialog().getByRole("switch", { name: "Include resolved" }).getAttribute("aria-checked"),
     ).toBe("false");

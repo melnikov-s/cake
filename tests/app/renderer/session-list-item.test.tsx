@@ -73,6 +73,40 @@ describe("session row metadata", () => {
     expect(screen.getByRole("img", { name: "1 commit, +0 −0" })).toBeDefined();
   });
 
+  it("removes the entire source and its separator without changing branch, stats or activity", () => {
+    const metadata: SessionListItemProps = {
+      ...props,
+      activity: "unread",
+      managedWorktree: {
+        branch: "agent/long-branch-for-narrow-pane",
+        baseBranch: "main",
+        state: "active",
+        commitStats: { commitCount: 3, additions: 120, deletions: 35 },
+      },
+    };
+    const { container, rerender } = render(
+      <SessionListItem
+        {...metadata}
+        source={{ kind: "project", name: "cake", avatarSeed: "cake", showAvatar: true }}
+      />,
+    );
+    const source = container.querySelector('[data-slot="session-source"]')!;
+    expect(source.textContent).toBe("cake");
+    expect(source.querySelector('[data-slot="avatar"]')).not.toBeNull();
+    rerender(<SessionListItem {...metadata} />);
+    const description = container.querySelector('[data-slot="session-description"]')!;
+    expect(container.querySelector('[data-slot="session-source"]')).toBeNull();
+    expect(
+      Array.from(description.children).filter((child) => child.textContent === "·"),
+    ).toHaveLength(2);
+    expect(description.textContent).toBe("1 day ago·3+120 −35·long-branch-for-narrow-pane");
+    expect(screen.getByTitle("long-branch-for-narrow-pane")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "3 commits, +120 −35" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Ready, unread" })).toBeTruthy();
+    rerender(<SessionListItem {...props} activityTime="" />);
+    expect(container.querySelector('[data-slot="session-description"]')).toBeNull();
+  });
+
   it.each([undefined, { commitCount: 0, additions: 0, deletions: 0 }])(
     "hides unavailable and empty committed stats (%j)",
     (commitStats) => {

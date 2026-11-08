@@ -19,12 +19,15 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
   depth,
   hideHomeRail = false,
   projectPath,
+  containingProjectPath = projectPath,
 }: {
   node: ConversationNavigationNode;
   depth: number;
   /** Hide only the Project Chat grouping rail, preserving indentation and family rails. */
   hideHomeRail?: boolean;
   projectPath: string | undefined;
+  /** Project identity already supplied by a containing heading or project-scoped layout. */
+  containingProjectPath?: string;
 }) {
   const root = useStore(RootStore);
   const store = root.conversationNavigatorStore;
@@ -122,7 +125,7 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
             charactersEnabled={root.settingsStore.appearance.sidebarCharactersEnabled}
             showIdleStatus
             source={
-              projectPath === undefined
+              containingProjectPath !== session.projectPath
                 ? {
                     kind: "project",
                     name: project?.name ?? session.projectName,

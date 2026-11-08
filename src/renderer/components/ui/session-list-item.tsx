@@ -324,7 +324,11 @@ export const SessionListItem = observer(function SessionListItem({
                 {source && (
                   <>
                     {(hasActivityTime || hasStats || branch) && <span aria-hidden="true">·</span>}
-                    <span className="flex min-w-0 items-center gap-1" title={source.name}>
+                    <span
+                      data-slot="session-source"
+                      className="flex min-w-0 items-center gap-1"
+                      title={source.name}
+                    >
                       {source.kind === "cake-chat" ? (
                         <CakeIcon />
                       ) : source.showAvatar ? (

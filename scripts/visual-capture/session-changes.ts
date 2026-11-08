@@ -12,6 +12,7 @@ export const sessionChangesScenario = {
     "open",
     "expanded",
     "sessions",
+    "grouped-global",
     "todos",
     "compare",
     "compare-hover",
@@ -29,22 +30,43 @@ export const sessionChangesScenario = {
     const search = page.getByRole("dialog", { name: "Search sessions", exact: true });
     await search.getByRole("combobox", { name: "Search session titles" }).fill("Review changes");
     await search.getByRole("option").filter({ hasText: "Review changes" }).click();
-    if (state === "sessions" || state === "todos") {
+    if (state === "sessions" || state === "grouped-global" || state === "todos") {
       await page
         .getByRole("button", { name: /^Open Project Chat for / })
         .first()
         .click();
+      if (state === "grouped-global")
+        await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
       const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
       if (!(await workspace.isVisible()))
         await page.getByRole("button", { name: "To-do", exact: true }).click();
       await workspace
-        .getByRole("button", { name: state === "sessions" ? /^Sessions / : /^To-dos / })
+        .getByRole("button", { name: state === "todos" ? /^To-dos / : /^Sessions / })
         .click();
       await expect(
         workspace.getByRole("img", { name: "3 commits, +4 −1", exact: true }),
       ).toBeVisible();
       await expect(workspace.getByText("Worktree commit history", { exact: true })).toHaveCount(0);
-      if (state === "sessions") {
+      if (state === "grouped-global") {
+        const resize = page.getByRole("separator", { name: "Resize Workspace", exact: true });
+        const handle = (await resize.boundingBox())!;
+        const width = (await workspace.boundingBox())!.width;
+        await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(
+          handle.x + handle.width / 2 + width - 300,
+          handle.y + handle.height / 2,
+        );
+        await page.mouse.up();
+        await expect.poll(async () => Math.round((await workspace.boundingBox())!.width)).toBe(300);
+        const heading = workspace.locator('[data-relationship="home"]').filter({
+          has: page.getByRole("button", { name: "Cake", exact: true }),
+        });
+        await expect(heading).toHaveCount(1);
+        await expect(heading.locator('[data-slot="avatar"]')).toHaveCount(1);
+        await expect(workspace.locator('[data-slot="session-source"]')).toHaveCount(0);
+      }
+      if (state === "sessions" || state === "grouped-global") {
         const line = workspace.locator(
           '[data-session-id="session-changes-review"] [data-slot="session-description"]',
         );
@@ -103,5 +125,7 @@ export const sessionChangesScenario = {
   region: (page: Page, state: string) =>
     state.startsWith("compare")
       ? page.getByRole("complementary", { name: "Changes", exact: true })
-      : page.locator("body"),
+      : state === "grouped-global"
+        ? page.getByRole("complementary", { name: "Workspace", exact: true })
+        : page.locator("body"),
 };

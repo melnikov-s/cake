@@ -21,6 +21,20 @@ export const ConversationNavigator = observer(function ConversationNavigator({
   const scope = projectPath ?? "cake-chat";
   const resolvedExpanded = list.isResolvedGroupExpanded(scope);
   const resolvedRows = resolvedExpanded ? store.rows(projectPath, true) : [];
+  // Flattened rows are parent-first. Only a visible project heading supplies identity
+  // to its descendants; ungrouped global rows (including resolved history) still need a badge.
+  const containingProjects = new Map<string, string>();
+  for (const { node } of rows) {
+    const path =
+      node.relationship === "home"
+        ? root.cakeChatCatalogModel.sessions.find(
+            (chat) => chat.sessionId === node.target.sessionId,
+          )?.projectPath
+        : node.parentKey
+          ? containingProjects.get(node.parentKey)
+          : undefined;
+    if (path !== undefined) containingProjects.set(node.key, path);
+  }
   const home = tree.roots.find((node) => node.relationship === "home");
   const activeHasMore = store.hasMoreSessions(projectPath);
   const resolvedHasMore = store.hasMoreSessions(projectPath, true);
@@ -51,6 +65,7 @@ export const ConversationNavigator = observer(function ConversationNavigator({
               node={node}
               depth={depth}
               hideHomeRail={home?.label === "Project Chat"}
+              containingProjectPath={containingProjects.get(node.key)}
               projectPath={projectPath}
             />
           ))}
