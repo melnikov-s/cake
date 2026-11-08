@@ -215,7 +215,7 @@ it("queues authoritative attention occurrences FIFO, not task creation or edit a
           ),
       ).toEqual(titles.map((title) => `Open attention: ${title}`));
       expect(session.todos.attentionItems.map((todo) => todo.title)).toEqual(titles);
-      expect(session.todos.filteredAttentionItems.map((todo) => todo.title)).toEqual(titles);
+      expect(session.todos.classifiedItems.attention.map((todo) => todo.title)).toEqual(titles);
       expect(value.selectedId).toBe(tasks.C!.id);
     };
     expectOrder(["A", "B", "C"]);
@@ -250,7 +250,7 @@ it("queues authoritative attention occurrences FIFO, not task creation or edit a
       session.todos.focusedItemIds = [tasks.C!.id];
     });
     expect(session.todos.attentionItems.map((todo) => todo.title)).toEqual(["B", "C", "A"]);
-    expect(session.todos.filteredAttentionItems.map((todo) => todo.title)).toEqual(["A"]);
+    expect(session.todos.classifiedItems.attention.map((todo) => todo.title)).toEqual(["A"]);
     view.unmount();
   } finally {
     await runtime.dispose();
@@ -285,7 +285,7 @@ it.each([undefined, "2026-01-01T00:00:00.000Z"])(
         .getAllByRole("button", { name: /^Open attention:/ })
         .map((button) => button.getAttribute("aria-label")),
     ).toEqual([1, 4, 2, 3].map((index) => `Open attention: Request ${index}`));
-    expect(session.todos.filteredAttentionItems.map((todo) => todo.title)).toEqual([
+    expect(session.todos.classifiedItems.attention.map((todo) => todo.title)).toEqual([
       "Request 1",
       "Request 4",
       "Request 2",

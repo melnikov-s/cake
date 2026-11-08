@@ -1,4 +1,5 @@
 import { computed, Store } from "r-state-tree";
+import type { AutoMergeRequest } from "../../contracts/worktrees/auto-merge";
 import { isActiveSessionActivity } from "../lib/session-activity";
 import type { SessionLabel } from "../../contracts/application/application-data";
 import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
@@ -110,9 +111,52 @@ export class SessionMetadataStore extends Store<{
     const projectPath =
       this.props.catalog.find(sessionId)?.projectPath ??
       (directory ? this.props.catalog.projectPathFor(directory) : undefined);
+    return this.effectiveMergeReadiness(
+      request,
+      Boolean(
+        projectPath &&
+        this.props.projects.find(projectPath)?.settings.worktreeLanding === "pull-request",
+      ),
+      this.isResolved(sessionId),
+    );
+  }
+
+  /** Temporary indexed join for one list calculation; no retained readiness cache. */
+  createMergeReadinessLookup() {
+    const latest = new Map<string, AutoMergeRequest>();
+    for (const request of this.props.worktreeOperations?.autoMergeRequests ?? [])
+      latest.set(request.sessionId, request);
+    const externalProjects = new Set(
+      this.props.projects.projects
+        .filter((project) => project.settings.worktreeLanding === "pull-request")
+        .map((project) => project.path),
+    );
+    const directories = new Map(
+      this.props.sessions.targets.map((target) => [target.sessionId, target.workspacePath]),
+    );
+    return (sessionId: string) => {
+      const request = latest.get(sessionId);
+      if (!request) return undefined;
+      const session = this.props.catalog.find(sessionId);
+      const directory = session?.workingDirectory ?? directories.get(sessionId);
+      const projectPath =
+        session?.projectPath ??
+        (directory ? this.props.catalog.projectPathFor(directory) : undefined);
+      return this.effectiveMergeReadiness(
+        request,
+        Boolean(projectPath && externalProjects.has(projectPath)),
+        session?.resolved === true,
+      );
+    };
+  }
+
+  private effectiveMergeReadiness(
+    request: AutoMergeRequest | undefined,
+    external: boolean,
+    resolved: boolean,
+  ) {
     if (
-      projectPath &&
-      this.props.projects.find(projectPath)?.settings.worktreeLanding === "pull-request" &&
+      external &&
       request?.state !== "failed" &&
       request?.state !== "landing" &&
       !request?.outcome?.merged
@@ -121,7 +165,7 @@ export class SessionMetadataStore extends Store<{
     // Keep actual landing failures/outcomes inspectable after a workflow change.
     // A partial family resolution can resolve this member while leaving landing follow-up.
     const resolutionFailed = request?.outcome?.merged && !request.outcome.resolutionSucceeded;
-    if (this.isResolved(sessionId) && !resolutionFailed) return undefined;
+    if (resolved && !resolutionFailed) return undefined;
     return request?.readyToMerge && request.state !== "landed" ? request : undefined;
   }
 

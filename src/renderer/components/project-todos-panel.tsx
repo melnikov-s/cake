@@ -47,30 +47,31 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
     }
   }, [request, store]);
   const searching = Boolean(store.query.trim());
+  const classified = store.classifiedItems;
   const sections = [
-    { title: "Focus", items: store.filteredFocusedItems, open: true },
-    { title: "Needs attention", items: store.filteredAttentionItems, open: true },
+    { title: "Focus", items: classified.focused, open: true },
+    { title: "Needs attention", items: classified.attention, open: true },
     {
       title: allowsCakeMerge ? "Ready to Merge" : "Ready",
-      items: store.filteredReadyItems,
+      items: classified.ready,
       open: store.readyExpanded,
       toggle: () => store.toggleReady(),
     },
     {
       title: "Active",
-      items: store.filteredActiveItems,
+      items: classified.active,
       open: store.activeExpanded,
       toggle: () => store.toggleActive(),
     },
     {
       title: "Snoozed",
-      items: store.filteredSnoozedItems,
+      items: classified.snoozed,
       open: store.snoozedExpanded,
       toggle: () => store.toggleSnoozed(),
     },
     {
       title: "Done",
-      items: store.filteredDoneItems,
+      items: classified.done,
       open: store.doneExpanded,
       toggle: () => store.toggleDone(),
     },
@@ -86,7 +87,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
           {store.error}
         </Callout>
       )}
-      {allowsCakeMerge && store.filteredReadyItems.length === 0 && (
+      {allowsCakeMerge && classified.ready.length === 0 && (
         <div className="mb-3 flex items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
           <span>Auto-merge</span>
           <AutoMergeToggle projectPath={projectPath} />

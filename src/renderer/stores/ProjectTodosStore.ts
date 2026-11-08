@@ -1,4 +1,6 @@
-import { Store } from "r-state-tree";
+import { computed, Store } from "r-state-tree";
+import type { AutoMergeRequest } from "../../contracts/worktrees/auto-merge";
+import { classifyProjectTodos } from "../lib/classify-project-todos";
 import {
   projectTodoCategory,
   type ProjectTodo,
@@ -90,36 +92,44 @@ export class ProjectTodosStore extends Store<{
   get value() {
     return this.source?.owner.todos;
   }
+  @computed
   get focusedItems() {
-    const items = new Map(this.value?.items.map((item) => [item.id, item]));
+    // Rows also observe the authority revision here: snapshot reconciliation can
+    // retain plain item identities while updating their content in place.
+    const value = this.value;
+    if (this.focusedItemIds.length === 0) return [];
+    const items = new Map(value?.items.map((item) => [item.id, item]));
     return this.focusedItemIds.flatMap((id) => items.get(id) ?? []);
   }
+  /** Narrowly derived membership for row reads, not a cache of list classification. */
+  @computed
+  private get focusedIds() {
+    return new Set(this.focusedItems.map((item) => item.id));
+  }
   isFocused(id: string) {
-    return this.focusedItems.some((item) => item.id === id);
+    return this.focusedIds.has(id);
   }
-  get filteredFocusedItems() {
-    const matching = new Set(this.filteredItems.map((item) => item.id));
-    return this.focusedItems.filter((item) => matching.has(item.id));
-  }
-  get unfocusedItems() {
-    return this.filteredItems.filter((item) => !this.isFocused(item.id));
+  get classifiedItems() {
+    // Construct the readiness join only if a matching unfocused active item needs it.
+    let readiness: ((sessionId: string) => AutoMergeRequest | undefined) | undefined;
+    return classifyProjectTodos(
+      this.value?.items ?? [],
+      this.focusedItemIds,
+      this.query,
+      (item) => {
+        const lookup = (readiness ??=
+          SessionMetadataContext.consume(this)!.createMergeReadinessLookup());
+        return item.associations.some(
+          (link) => link.kind === "session" && lookup(link.sessionId)?.readyToMerge === true,
+        );
+      },
+    );
   }
   get openItems() {
     return this.value?.items.filter((item) => item.state === "open" && !item.snoozedUntil) ?? [];
   }
   get doneItems() {
     return this.value?.items.filter((item) => item.state === "done") ?? [];
-  }
-  get filteredItems() {
-    const query = this.query.trim().toLowerCase();
-    return this.orderedItems.filter(
-      (item) =>
-        !query ||
-        item.title.toLowerCase().includes(query) ||
-        item.description.toLowerCase().includes(query) ||
-        (projectTodoCategory(item) === "attention" &&
-          Boolean(item.attentionReason?.toLowerCase().includes(query))),
-    );
   }
   /** Composer queue is independent of Workspace search and transcript view focus. */
   get attentionItems() {
@@ -130,10 +140,6 @@ export class ProjectTodosStore extends Store<{
         .sort((a, b) => (a.attentionSequence ?? 0) - (b.attentionSequence ?? 0))
     );
   }
-  get filteredAttentionItems() {
-    const matching = new Set(this.unfocusedItems.map((item) => item.id));
-    return this.attentionItems.filter((item) => matching.has(item.id));
-  }
   /** Readiness is a session authority fact, never authored to-do text or turn completion. */
   isReadyToMerge(item: ProjectTodo) {
     return item.associations.some(
@@ -142,34 +148,6 @@ export class ProjectTodosStore extends Store<{
         SessionMetadataContext.consume(this)!.sessionMergeReadiness(link.sessionId)
           ?.readyToMerge === true,
     );
-  }
-  get filteredReadyItems() {
-    return this.unfocusedItems.filter(
-      (item) => projectTodoCategory(item) === "active" && this.isReadyToMerge(item),
-    );
-  }
-  get filteredActiveItems() {
-    return this.unfocusedItems.filter(
-      (item) => projectTodoCategory(item) === "active" && !this.isReadyToMerge(item),
-    );
-  }
-  get filteredSnoozedItems() {
-    return this.unfocusedItems.filter((item) => item.state === "open" && item.snoozedUntil);
-  }
-  get filteredDoneItems() {
-    return this.unfocusedItems.filter((item) => item.state === "done");
-  }
-  get orderedItems() {
-    return (this.value?.items ?? [])
-      .map((item, index) => ({ item, index }))
-      .sort((a, b) => {
-        const byCreation = (b.item.createdAt ?? "").localeCompare(a.item.createdAt ?? "");
-        if (byCreation) return byCreation;
-        // Before creation timestamps, storage appended new items and edits kept their positions.
-        if (!a.item.createdAt && !b.item.createdAt) return b.index - a.index;
-        return a.item.id.localeCompare(b.item.id);
-      })
-      .map(({ item }) => item);
   }
   setQuery(query: string) {
     this.query = query;
