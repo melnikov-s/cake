@@ -3,6 +3,7 @@ import {
   uiPartSchema,
   type ConversationSnapshot,
 } from "../../contracts/conversations/session-contract";
+import * as projectTodoAttention from "../projects/projectTodoAttention";
 import * as projectTodoUpdates from "../projects/projectTodoUpdates";
 import { subagentFinalAnswerPart } from "../../contracts/subagents/subagent-report";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
@@ -155,27 +156,38 @@ export const deliverCompletion = Effect.fn("Subagents.deliverCompletion")(functi
 ) {
   const handle = yield* requireHandleById(handleId);
   if (!handle.result || handle.completionDisposition !== "notifying") return;
-  const original = subagentFinalAnswerPart(handle.result);
+  const result = handle.result;
+  const original = subagentFinalAnswerPart(result);
   const answer = original?.text;
   if (handle.recovery.continuation === "none") {
     const storage = yield* SessionFamilyStorage;
     yield* storage
       .withNoticeDelivery(
-        storage.deferReferenceNotice({
-          id: handle.recovery.completionId,
-          recipientSessionId: handle.parentSessionId,
-          source: {
-            kind: "subagent",
-            handleId: handle.handleId,
-            sessionId: handle.recovery.privateSessionId,
-            task: handle.task,
-            status: handle.result.status,
-            ...(original ? { messageId: original.entryId ?? original.id } : null),
-          },
-          text:
-            handle.result.status === "complete"
-              ? answer || "Subagent completed without a final report."
-              : `Subagent ${handle.result.status}: ${handle.result.error || answer || "No final report was produced."}`,
+        Effect.gen(function* () {
+          const report = {
+            id: handle.recovery.completionId,
+            recipientSessionId: handle.parentSessionId,
+            source: {
+              kind: "subagent" as const,
+              handleId: handle.handleId,
+              sessionId: handle.recovery.privateSessionId,
+              task: handle.task,
+              status: result.status,
+              ...(original ? { messageId: original.entryId ?? original.id } : null),
+            },
+            text:
+              result.status === "complete"
+                ? answer || "Subagent completed without a final report."
+                : `Subagent ${result.status}: ${result.error || answer || "No final report was produced."}`,
+          };
+          if (
+            !(yield* projectTodoAttention.hold(report, {
+              sessionId: handle.parentSessionId,
+              label: handle.task,
+              subagent: { parentSessionId: handle.parentSessionId, handleId: handle.handleId },
+            }))
+          )
+            yield* storage.deferReferenceNotice(report);
         }),
       )
       .pipe(asError("completion"));

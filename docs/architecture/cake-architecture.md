@@ -510,7 +510,13 @@ is a refactoring signal, not precedent.
   Needs attention shows expanded only when its filtered list is nonempty; when empty, its
   heading, count and section spacing/divider are omitted. The other sections collapse independently. It presents the human action first, with quieter task identity and clickable
   work/source links, no attention bell. Row selection focuses the transcript view, never outgoing context.
-  The model invoking todo mutations owns attention; background refresh stays description-only.
+  Explicit to-do mutations own human-request attention; background description refresh stays description-only.
+  Notification-mode completion reports linked to an open to-do in the recipient durable chat's own
+  list are held in the existing report inbox and flag that item. Composer pills sit beneath Activity,
+  above the input, independent of Workspace search or transcript focus. Opening a pill admits its held
+  originals through the normal chat runtime, then clears only attention. Its X only clears the flag;
+  held reports never ride on unrelated input or timed batches. Explicit reply delivery remains immediate.
+  No click completes the item, merges work, resolves sessions, or approves those actions.
   One-step Dismiss clears only the flag, retaining the hidden reason, selection and work state.
   An agent cannot reactivate an identical retained dismissed reason; genuinely new requests use
   changed reasons. Explicit user Restore bypasses suppression. Native context menus provide

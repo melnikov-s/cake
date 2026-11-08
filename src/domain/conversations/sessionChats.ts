@@ -156,7 +156,7 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
       !message.crossSession &&
       !(handle.profile === "ProjectSession" && /^[!/]/.test(message.text))
         ? ((yield* storage.state().pipe(asError("deliver"))).deferredReferences?.filter(
-            (item) => item.recipientSessionId === input.sessionId,
+            (item) => item.recipientSessionId === input.sessionId && !item.attentionTodoId,
           ) ?? [])
         : [];
     // A user message carries the quiet inbox without changing its requested delivery.

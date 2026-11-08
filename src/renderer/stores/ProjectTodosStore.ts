@@ -121,6 +121,10 @@ export class ProjectTodosStore extends Store<{
           Boolean(item.attentionReason?.toLowerCase().includes(query))),
     );
   }
+  /** Composer queue is independent of Workspace search and transcript view focus. */
+  get attentionItems() {
+    return this.orderedItems.filter((item) => projectTodoCategory(item) === "attention");
+  }
   get filteredAttentionItems() {
     return this.unfocusedItems.filter((item) => projectTodoCategory(item) === "attention");
   }
@@ -257,6 +261,22 @@ export class ProjectTodosStore extends Store<{
       needsAttention,
       ...(attentionReason !== undefined ? { attentionReason: attentionReason.trim() } : null),
     });
+  }
+  async activateAttention(item: ProjectTodo) {
+    const scope = this.source?.scope;
+    if (!scope || this.busy || this.signal.aborted) return;
+    this.busy = true;
+    this.error = undefined;
+    try {
+      await ClientContext.consume(this)!.projectTodos.activateAttention(
+        { scope, id: item.id, expectedRevision: item.revision },
+        { signal: this.signal },
+      );
+    } catch (error) {
+      if (!this.signal.aborted) this.error = describeError(error).message;
+    } finally {
+      if (!this.signal.aborted) this.busy = false;
+    }
   }
   dismissAttention(item: ProjectTodo) {
     return this.setAttention(item, false);

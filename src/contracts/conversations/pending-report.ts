@@ -8,6 +8,8 @@ export const PendingReport = Schema.Struct({
   id,
   recipientSessionId: id,
   text: Schema.String,
+  /** Held for an explicit click on this owning chat's to-do, never an automatic reminder. */
+  attentionTodoId: Schema.optionalKey(Schema.String),
   source: Schema.optionalKey(
     Schema.Struct({
       kind: Schema.Literal("subagent"),

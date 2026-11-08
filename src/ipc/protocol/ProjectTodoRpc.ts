@@ -4,6 +4,15 @@ import { ProjectTodoUserMutation, ProjectTodos } from "../../contracts/projects/
 import { ProjectError } from "../../contracts/projects/project-error";
 
 export const ProjectTodoRpc = RpcGroup.make(
+  Rpc.make("projectTodos.activateAttention", {
+    payload: Schema.Struct({
+      scope: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
+      id: Schema.String.check(Schema.isUUID(4)),
+      expectedRevision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    }),
+    success: ProjectTodos,
+    error: ProjectError,
+  }),
   Rpc.make("projectTodos.mutateUser", {
     payload: Schema.Struct({
       /** A registered Project path, or CAKE_CHAT_TODO_SCOPE for global Cake Chat's own list. */

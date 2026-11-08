@@ -285,6 +285,36 @@ describe("updateBatchDueAt", () => {
 
 describe("timed batch delivery", () => {
   it.effect(
+    "held attention results neither schedule batches nor ride on unrelated user input",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.provide(
+          f.storage.deferReferenceNotice({
+            id: "held-report",
+            recipientSessionId: "parent",
+            attentionTodoId: "todo",
+            text: "HELD_FINAL_RESULT",
+          }),
+        );
+        yield* f.pass();
+        yield* advance(10 * 60_000);
+        yield* f.pass();
+        assert.equal(yield* f.batch(), undefined);
+        assert.equal(f.admitted.length, 0);
+        yield* f.userMessage("Keep planning");
+        assert.equal(f.admitted.length, 1);
+        assert.ok(!f.admitted[0]?.text.includes("HELD_FINAL_RESULT"));
+        assert.equal((yield* f.state()).deferredReferences?.[0]?.admissions, undefined);
+        const reopened = yield* fixture({ familyFiles: f.familyFiles });
+        yield* reopened.pass();
+        assert.equal(yield* reopened.batch(), undefined);
+        assert.equal(reopened.admitted.length, 0);
+        assert.equal((yield* reopened.state()).deferredReferences?.[0]?.attentionTodoId, "todo");
+      }),
+  );
+
+  it.effect(
     "keeps backend auto-merge outcomes quiet until user input and deduplicates their receipts",
     () =>
       Effect.gen(function* () {

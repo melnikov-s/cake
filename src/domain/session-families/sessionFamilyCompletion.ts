@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { describeTurnStop, type TurnStop } from "../../contracts/conversations/turn-stop";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
+import * as projectTodoAttention from "../projects/projectTodoAttention";
 import * as completionInbox from "../conversations/completionInbox";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { inheritTaskInputProtection, prepareCoordinatorNotice } from "../conversations/taskInputs";
@@ -353,6 +354,7 @@ const queueTurnCompletion = Effect.fn("SessionFamilies.queueTurnCompletion")(fun
   spawn?: SpawnedSession,
   title?: string,
   isolated = false,
+  notify?: boolean,
 ) {
   const report = turn.report;
   const status = launchStatus(turn, report);
@@ -368,7 +370,7 @@ const queueTurnCompletion = Effect.fn("SessionFamilies.queueTurnCompletion")(fun
       `Session ${turn.sessionId}`
     ).slice(0, 500),
     summary: digestSummary(turn, report).slice(0, 500),
-    notify: turn.resultDelivery === "notification" && report?.outcome !== "blocked",
+    notify: notify ?? (turn.resultDelivery === "notification" && report?.outcome !== "blocked"),
     ...(report?.resultMessageRef ? { resultMessageRef: report.resultMessageRef } : null),
     ...(report && isReferenceNotification(report.text)
       ? { references: report.text.replace(/\s+/g, " ").slice(0, 6000) }
@@ -405,7 +407,57 @@ const deliverRequesterNotice = Effect.fn("SessionFamilies.deliverRequesterNotice
     summary: digestSummary(turn, report),
     reportedAt: DateTime.formatIso(yield* DateTime.now),
   };
-  yield* queueTurnCompletion(turn, spawn);
+  const text = encodeCrossSessionMessage(
+    report
+      ? formatCrossSessionReportText(
+          turn.sessionId,
+          report.outcome,
+          appendMessageReferences(
+            report.text,
+            report.resultMessageRef ? [report.resultMessageRef] : [],
+          ),
+        )
+      : formatCrossSessionNoticeText(
+          turn.sessionId,
+          turn.outcome === "aborted" && turn.stop
+            ? { kind: "stopped", stoppedBy: describeTurnStop(turn.stop, "agent") }
+            : {
+                kind:
+                  turn.outcome === "aborted"
+                    ? "canceled"
+                    : turn.outcome === "failed"
+                      ? "failed"
+                      : "no-result",
+              },
+        ),
+    {
+      version: 1,
+      messageId: reportMessageId(turn.turnId),
+      threadId: turn.threadId,
+      sequence: 1,
+      expectsResponse: false,
+      generatedNotice: !report,
+      ...(report?.resultMessageRef ? { sourceMessageRef: report.resultMessageRef } : null),
+      ...(report ? { replyToMessageId: turn.requestMessageId } : null),
+      sender: {
+        sessionId: turn.sessionId,
+        title: `Session ${turn.sessionId}`,
+        kind: isCakeChatSessionId(turn.sessionId) ? "cake-chat" : "project-session",
+        ...(spawn ? { workingDirectory: spawn.workingDirectory } : null),
+      },
+    },
+  );
+  const held =
+    turn.resultDelivery === "notification" && isCakeChatSessionId(turn.senderSessionId)
+      ? yield* storage.withNoticeDelivery(
+          projectTodoAttention.hold(
+            { id: reportMessageId(turn.turnId), recipientSessionId: turn.senderSessionId, text },
+            { sessionId: turn.sessionId, label: digestSummary(turn, report) },
+            [turn.turnId],
+          ),
+        )
+      : false;
+  yield* queueTurnCompletion(turn, spawn, undefined, false, held ? false : undefined);
   const publishLaunch = spawn
     ? catalogs.publish({
         _tag: "ProjectSessionChanged",
@@ -416,6 +468,11 @@ const deliverRequesterNotice = Effect.fn("SessionFamilies.deliverRequesterNotice
       })
     : Effect.void;
 
+  if (held) {
+    if (spawn) yield* storage.recordLaunchReport(spawn.sessionId, launchReport);
+    yield* publishLaunch;
+    return;
+  }
   if (turn.resultDelivery === "notification" && status !== "blocked") {
     const title = yield* sessionTitle(turn.sessionId, spawn?.workingDirectory).pipe(
       Effect.catch(() => Effect.succeed(undefined)),
@@ -459,46 +516,7 @@ const deliverRequesterNotice = Effect.fn("SessionFamilies.deliverRequesterNotice
           }),
         );
       });
-  const text = encodeCrossSessionMessage(
-    report
-      ? formatCrossSessionReportText(
-          turn.sessionId,
-          report.outcome,
-          appendMessageReferences(
-            report.text,
-            report.resultMessageRef ? [report.resultMessageRef] : [],
-          ),
-        )
-      : formatCrossSessionNoticeText(
-          turn.sessionId,
-          turn.outcome === "aborted" && turn.stop
-            ? { kind: "stopped", stoppedBy: describeTurnStop(turn.stop, "agent") }
-            : {
-                kind:
-                  turn.outcome === "aborted"
-                    ? "canceled"
-                    : turn.outcome === "failed"
-                      ? "failed"
-                      : "no-result",
-              },
-        ),
-    {
-      version: 1,
-      messageId: reportMessageId(turn.turnId),
-      threadId: turn.threadId,
-      sequence: 1,
-      expectsResponse: false,
-      generatedNotice: !report,
-      ...(report?.resultMessageRef ? { sourceMessageRef: report.resultMessageRef } : null),
-      ...(report ? { replyToMessageId: turn.requestMessageId } : null),
-      sender: {
-        sessionId: turn.sessionId,
-        title: `Session ${turn.sessionId}`,
-        kind: isCakeChatSessionId(turn.sessionId) ? "cake-chat" : "project-session",
-        ...(spawn ? { workingDirectory: spawn.workingDirectory } : null),
-      },
-    },
-  );
+
   if (spawn && !turn.deliveryTurnId)
     yield* storage.recordLaunchReport(spawn.sessionId, launchReport);
   yield* deliverOutcome(turn, sender, text);

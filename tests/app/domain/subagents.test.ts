@@ -152,6 +152,7 @@ interface Fixture {
     | SubagentCoordinator
     | SubagentEnvironment
     | SessionFamilyStorage
+    | TaskInputStorage
   >;
   readonly parentOptions: CakeSessionRuntimeAcquireOptions;
   readonly childStarted: Queue.Queue<string>;
@@ -420,6 +421,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
     changelog: () => Effect.succeed("# Changelog"),
   };
   const layer = Layer.mergeAll(
+    Layer.mock(TaskInputStorage, {}),
     applicationLayer,
     makeCakeSessionRuntimesLayer(adapter).pipe(
       Layer.provide(makeRuntimeRecoveryStorageTestLayer()),

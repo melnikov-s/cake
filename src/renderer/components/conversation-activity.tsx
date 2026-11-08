@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
@@ -14,12 +15,14 @@ export const ConversationActivity = observer(function ConversationActivity({
   sideChat,
   onOpen,
   placement = "header",
+  composerFooter,
 }: {
   sessionId: string;
   subagents: SubagentActivityStore;
   sideChat: SideChatStore;
   onOpen?(): void;
   placement?: "header" | "composer" | "strip";
+  composerFooter?: ReactNode;
 }) {
   const conversationActivity = useStore(RootStore).conversationActivityStore;
   const sessions = conversationActivity
@@ -27,7 +30,7 @@ export const ConversationActivity = observer(function ConversationActivity({
     .filter((session) => session.status === "running");
   const runs = subagents.activeRuns.filter((run) => run.status === "running");
   const running = sessions.length + runs.length;
-  if (running === 0) return null;
+  if (running === 0 && !composerFooter) return null;
   const activity = (
     <ActivityDisclosure
       presentation={placement === "header" ? "pill" : "strip"}
@@ -74,7 +77,10 @@ export const ConversationActivity = observer(function ConversationActivity({
     />
   );
   return placement === "composer" ? (
-    <ComposerCap className="pb-5">{activity}</ComposerCap>
+    <ComposerCap className={composerFooter ? undefined : "pb-5"}>
+      {running > 0 && activity}
+      {composerFooter}
+    </ComposerCap>
   ) : (
     activity
   );

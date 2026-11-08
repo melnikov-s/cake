@@ -519,6 +519,7 @@ const makeLayer = (
       closeUpdateBatch: () => Effect.void,
       discardUpdates: () => Effect.void,
       deferReferenceNotice: () => Effect.void,
+      releaseAttentionReports: () => Effect.void,
       markReferenceAdmissions: () => Effect.void,
       acknowledgeReports: () => Effect.void,
       withNoticeDelivery: (effect) => effect,

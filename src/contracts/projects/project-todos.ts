@@ -98,9 +98,9 @@ export const PROJECT_TODO_DESCRIPTION_GUIDANCE = `Titles name tasks; description
 export const PROJECT_TODO_LINK_GUIDANCE =
   "Link useful PRs, previews and exact findings originals; never invent refs or use ?message=last. Keep required session/subagent associations: updates replace the whole list. Use public worker handles, not private Pi IDs. Sources do not affect closure; subagent-only items close explicitly. No extra report wake-ups.";
 
-/** Attention is owned by the agent editing the to-do, never inferred by a background watcher. */
+/** Explicit human requests and held completion reports share the owning chat's attention queue. */
 export const PROJECT_TODO_ATTENTION_GUIDANCE =
-  "Set needsAttention with a short action-oriented attentionReason for a human request. Never revive/reword a dismissed request; only a new request reflags. Attention changes no lifecycle or delivery. Completion clears it; reopening starts Active.";
+  "Set needsAttention with a short action-oriented attentionReason for a human request. Never revive/reword a dismissed request; only a new request reflags. Linked notification results wait in the owning chat’s attention pills until opened; X clears attention without delivering them. Attention never approves merging or changes lifecycle. Completion clears it; reopening starts Active.";
 
 const ProjectTodoAttentionReason = Schema.String.check(
   Schema.isTrimmed(),

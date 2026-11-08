@@ -162,6 +162,10 @@ export class SessionFamilyStorage extends Context.Service<
       item: PendingReport,
       turnIds?: ReadonlyArray<string>,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly releaseAttentionReports: (
+      recipientSessionId: string,
+      todoId: string,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly markReferenceAdmissions: (
       ids: ReadonlyArray<string>,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
@@ -935,6 +939,18 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             };
           }),
       );
+      const releaseAttentionReports = Effect.fn("SessionFamilyStorage.releaseAttentionReports")(
+        (recipientSessionId: string, todoId: string) =>
+          update((document) => ({
+            ...document,
+            deferredReferences: document.deferredReferences?.map((item) => {
+              if (item.recipientSessionId !== recipientSessionId || item.attentionTodoId !== todoId)
+                return item;
+              const { attentionTodoId: _todoId, ...released } = item;
+              return released;
+            }),
+          })),
+      );
       const markReferenceAdmissions = Effect.fn("SessionFamilyStorage.markReferenceAdmissions")(
         (ids: ReadonlyArray<string>) =>
           update((document) => ({
@@ -1151,6 +1167,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         deferReferenceNotice,
         deferPassiveNotice,
         markPassiveNoticeAdmission,
+        releaseAttentionReports,
         markReferenceAdmissions,
         acknowledgeReports,
         recordLaunchReport,

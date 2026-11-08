@@ -43,7 +43,7 @@ function pendingUpdateRecipients(document: SessionFamilyDocument): ReadonlySet<s
   for (const notice of document.passiveNotices ?? [])
     if (!notice.delivered) recipients.add(notice.recipientSessionId);
   for (const report of document.deferredReferences ?? [])
-    if (!report.admissions) recipients.add(report.recipientSessionId);
+    if (!report.admissions && !report.attentionTodoId) recipients.add(report.recipientSessionId);
   for (const item of document.coordinatorDigest ?? [])
     if (!item.userInputOnly) recipients.add(item.coordinatorSessionId ?? CAKE_CHAT_SESSION_ID);
   return recipients;
@@ -183,7 +183,7 @@ const deliverBatch = Effect.fn("UpdateBatches.deliverBatch")(function* (
         return;
       const state = yield* storage.state();
       const references = (state.deferredReferences ?? []).filter(
-        (item) => item.recipientSessionId === recipientSessionId,
+        (item) => item.recipientSessionId === recipientSessionId && !item.attentionTodoId,
       );
       const reportPage = pendingReportPage(references);
       const passive = yield* takePassiveNotices(handle, recipientSessionId);

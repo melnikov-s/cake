@@ -23,6 +23,7 @@ export const list = Effect.fn("PendingReports.list")(function* (
     .filter(
       (item) =>
         item.recipientSessionId === sessionId &&
+        !item.attentionTodoId &&
         (!query ||
           `${item.id} ${item.source?.task ?? ""} ${item.source?.handleId ?? ""}`
             .toLowerCase()
@@ -46,7 +47,8 @@ export const read = Effect.fn("PendingReports.read")(function* (
   const state = yield* (yield* SessionFamilyStorage).state();
   const loadedAt = yield* Clock.currentTimeMillis;
   const item = (state.deferredReferences ?? []).find(
-    (item) => item.id === input.id && item.recipientSessionId === sessionId,
+    (item) =>
+      item.id === input.id && item.recipientSessionId === sessionId && !item.attentionTodoId,
   );
   if (!item)
     return yield* new SessionChatError({

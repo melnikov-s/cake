@@ -1,7 +1,7 @@
 import { isProjectChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { ErrorNotice } from "../components/error-notice";
 import { SessionPluginSlot } from "../components/session-plugin-slot";
-import { ConversationActivity } from "../components/conversation-activity";
+import { CakeChatComposerHeader } from "../components/cake-chat-composer-header";
 import { SessionAssistant } from "../components/session-assistant";
 import type { RootStore } from "../stores/RootStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
@@ -35,12 +35,7 @@ export function cakeChatPropsFor(root: RootStore, session: CakeChatSessionStore,
             root.sessionPluginOperations.invoke(session.sessionId, pluginId, command, input)
           }
         />
-        <ConversationActivity
-          placement="composer"
-          sessionId={session.sessionId}
-          subagents={session.subagentActivityStore}
-          sideChat={session.conversationSessionStore.sideChatStore}
-        />
+        <CakeChatComposerHeader session={session} />
       </>
     ),
     showContextUsage: !overlay,

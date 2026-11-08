@@ -17,6 +17,7 @@ import {
 
 import { createProjectSessionRuntime } from "../../src/layers/CakeOperations";
 import { makeCakeSessionRuntimesLayer } from "../../src/services/pi/CakeSessionRuntimes";
+import { TaskInputStorage } from "../../src/services/storage/TaskInputStorage";
 import { ApplicationState } from "../../src/services/storage/ApplicationState";
 import { SubagentCoordinatorLive } from "../../src/services/subagents/SubagentCoordinator";
 import { makeSubagentEnvironmentLayer } from "../../src/services/subagents/SubagentEnvironment";
@@ -183,6 +184,7 @@ async function setUp(work: (afterTool: boolean) => Reply) {
     }),
   );
   const layer = Layer.mergeAll(
+    Layer.mock(TaskInputStorage, {}),
     application,
     makeCakeSessionRuntimesLayer({
       sessionIds: () => Stream.empty,

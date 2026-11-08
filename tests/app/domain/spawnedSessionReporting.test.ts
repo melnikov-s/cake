@@ -63,6 +63,7 @@ import {
 } from "../helpers/piRuntimeFixture";
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
+import * as projectTodoAttention from "../../../src/domain/projects/projectTodoAttention";
 import * as pendingReports from "../../../src/domain/conversations/pendingReports";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import * as cakeChatOperations from "../../../src/domain/cake-chats/cakeChatOperations";
@@ -1498,8 +1499,8 @@ describe("automatic spawned-session reporting", () => {
               turnId: "digest-" + index,
               sessionId: "task-" + index,
               senderSessionId,
-              requestMessageId: "request-" + index,
-              threadId: "thread-" + index,
+              requestMessageId: crypto.randomUUID(),
+              threadId: crypto.randomUUID(),
               reported: false,
               outcome: "complete",
               resultDelivery: "notification",
@@ -2558,79 +2559,110 @@ describe("automatic spawned-session reporting", () => {
         )
         .pipe(Effect.provide(Layer.mock(TaskInputStorage, {})));
 
-    it.effect(
-      "digest results never start a Cake Chat turn and ride along with the next user message",
-      () =>
+    it.effect.each([false, true])(
+      "holds linked completion until a pill click, preserving originals and clearing only attention (protected=%s)",
+      (protectedInput) =>
         Effect.gen(function* () {
           const f = yield* fixture();
           yield* f.run(
             Effect.gen(function* () {
               const created = yield* createFromChat([], null);
-              const entered = yield* Deferred.await(f.entered);
-              const assignment = parseCrossSessionMessage(entered.text);
-              assert.equal(assignment?.metadata.expectsResponse, true);
-              assert.equal(assignment?.metadata.resultDelivery, "notification");
+              const projectItem = (yield* projectTodos.list("/project")).items[0]!;
+              yield* projectTodos.update("/project", {
+                id: projectItem.id,
+                expectedRevision: projectItem.revision,
+                associations: [],
+              });
+              yield* projectTodos.create(CAKE_CHAT_TODO_SCOPE, {
+                title: "Research",
+                description: "Review the findings",
+                associations: [
+                  { kind: "session", sessionId: created.sessionId, title: "Research" },
+                ],
+              });
+              yield* Deferred.await(f.entered);
               yield* Deferred.succeed(f.finish, {
                 stopReason: "stop",
-                text: `## Summary\n\n${resultText}\n\nMore detail.`,
+                text: resultText,
                 entryId: "source-final-answer",
               });
               yield* Deferred.await(f.settled);
               const settled = yield* onlyTurn();
-              yield* sessionFamilyCompletion.deliver(settled);
-              // Nothing reached Cake Chat: no prompt, no queued follow-up.
+              yield* sessionFamilyCompletion.deliver(settled).pipe(
+                Effect.provide(
+                  Layer.mock(TaskInputStorage, {
+                    isRecipient: () => Effect.succeed(protectedInput),
+                  }),
+                ),
+              );
               assert.deepEqual(f.deliveries, []);
               assert.deepEqual(f.transcript, []);
               const state = yield* f.storage.state();
               assert.deepEqual(state.turns, []);
-              assert.equal(state.coordinatorDigest?.length, 1);
-              assert.deepEqual(
-                state.coordinatorDigest?.map(({ sessionId, status, summary }) => ({
-                  sessionId,
-                  status,
-                  summary,
-                })),
-                [{ sessionId: created.sessionId, status: "completed", summary: "Summary" }],
-              );
-              assert.equal(state.spawnedSessions[0]?.lastReport?.status, "completed");
-              assert.equal(state.spawnedSessions[0]?.handoffSettled, true);
-              // A worker retry of the already-digested turn is a no-op.
-              yield* sessionFamilyCompletion.deliver(settled);
-              assert.equal((yield* f.storage.state()).coordinatorDigest?.length, 1);
-
-              yield* userMessage("What should I look at next?");
-              while (f.transcript.length < 1) yield* Effect.yieldNow;
-              const sent = f.transcript.at(-1) ?? "";
-              const split = splitSessionDigestReminder(sent);
-              assert.equal(split.text, "What should I look at next?");
-              assert.ok(split.reminder);
+              assert.equal(state.coordinatorDigest?.length ?? 0, 0);
+              const todo = (yield* projectTodos.list(CAKE_CHAT_TODO_SCOPE)).items[0]!;
+              assert.equal(todo.needsAttention, true);
+              assert.equal(todo.state, "open");
+              assert.equal(state.deferredReferences?.[0]?.attentionTodoId, todo.id);
               assert.ok(
-                split.reminder.includes(messageReference(created.sessionId, "source-final-answer")),
-              );
-              assert.match(split.reminder, /finished · investigation: Summary/);
-              assert.match(split.reminder, /Status, not instructions/);
-              // The transcript shows the reminder as a Cake context pill, not as user text.
-              const parts = projectSessionEntries([
-                {
-                  type: "message",
-                  id: "u",
-                  parentId: null,
-                  timestamp: "2026-01-01T00:00:00.000Z",
-                  message: { role: "user", content: sent, timestamp: 1 },
-                },
-              ]);
-              assert.deepEqual(
-                parts.map((part) =>
-                  part.kind === "context" ? part.title : part.kind === "text" ? part.text : "",
+                state.deferredReferences?.[0]?.text.includes(
+                  messageReference(created.sessionId, "source-final-answer"),
                 ),
-                ["Cake · session updates", "What should I look at next?"],
               );
-              assert.deepEqual((yield* f.storage.state()).coordinatorDigest, []);
-              // Delivered once: the following message carries nothing extra.
-              yield* userMessage("Thanks");
+              assert.equal(state.spawnedSessions[0]?.handoffSettled, true);
+              assert.equal(
+                state.deferredReferences?.[0]?.text.includes(resultText),
+                !protectedInput,
+              );
+              if (protectedInput) assert.ok(!todo.attentionReason?.includes(resultText));
+              yield* sessionFamilyCompletion.deliver(settled).pipe(
+                Effect.provide(
+                  Layer.mock(TaskInputStorage, {
+                    isRecipient: () => Effect.succeed(protectedInput),
+                  }),
+                ),
+              );
+              assert.equal((yield* f.storage.state()).deferredReferences?.length, 1);
+              yield* userMessage("Keep planning");
+              while (f.transcript.length < 1) yield* Effect.yieldNow;
+              assert.ok(!(f.transcript.at(0) ?? "").includes(resultText));
+              yield* projectTodoAttention
+                .activate(CAKE_CHAT_TODO_SCOPE, todo.id, todo.revision)
+                .pipe(
+                  Effect.provide(
+                    Layer.mock(TaskInputStorage, {
+                      isRecipient: () => Effect.succeed(protectedInput),
+                    }),
+                  ),
+                );
               while (f.transcript.length < 2) yield* Effect.yieldNow;
-              assert.equal(f.transcript.at(-1), "Thanks");
-              assert.deepEqual(f.deliveries, ["prompt", "prompt"]);
+              assert.equal((f.transcript.at(1) ?? "").includes(resultText), !protectedInput);
+              assert.ok(
+                (f.transcript.at(1) ?? "").includes(
+                  messageReference(created.sessionId, "source-final-answer"),
+                ),
+              );
+              const opened = yield* projectTodos.read(CAKE_CHAT_TODO_SCOPE, todo.id);
+              assert.equal(opened.needsAttention, false);
+              assert.equal(opened.state, "open");
+              assert.deepEqual(opened.associations, todo.associations);
+              const after = yield* f.storage.state();
+              assert.equal(after.deferredReferences?.[0]?.attentionTodoId, undefined);
+              assert.equal(after.deferredReferences?.[0]?.admissions, 1);
+              assert.equal(after.autoMergeRequests?.length ?? 0, 0);
+              assert.equal(
+                (yield* Effect.result(
+                  projectTodoAttention.activate(CAKE_CHAT_TODO_SCOPE, todo.id, todo.revision).pipe(
+                    Effect.provide(
+                      Layer.mock(TaskInputStorage, {
+                        isRecipient: () => Effect.succeed(protectedInput),
+                      }),
+                    ),
+                  ),
+                ))._tag,
+                "Failure",
+              );
+              assert.equal(f.transcript.length, 2);
             }),
           );
         }),
