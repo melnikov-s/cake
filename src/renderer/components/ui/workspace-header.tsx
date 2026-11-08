@@ -33,7 +33,7 @@ export function WorkspaceHeader({
           "relative box-content h-title-bar min-w-0 shrink-0 items-center gap-3 border-b border-border/65 [app-region:drag]",
           compact
             ? "flex overflow-hidden px-5"
-            : "grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] pl-[46px] pr-11",
+            : "grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] pl-[max(46px,calc(var(--window-controls-width,0px)-var(--project-rail-width,0px)))] pr-11",
         )}
       >
         {compact && titleLeading}

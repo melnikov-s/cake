@@ -14,6 +14,7 @@ import { FullscreenViewportContext } from "./fullscreen-viewport-context";
 import { SessionChatHomeButton } from "./session-chat-home-button";
 import { ShellHeaderContext } from "./ui/workspace-header";
 import { useHoverPointer } from "../lib/hover-pointer";
+import { isMacPlatform } from "../lib/platform";
 
 export const AppShellLayout = observer(function AppShellLayout({
   children,
@@ -33,6 +34,8 @@ export const AppShellLayout = observer(function AppShellLayout({
   const root = useStore(RootStore);
   const hoverPointer = useHoverPointer();
   const autoHideRail = workspaceMode === "vscode" && hoverPointer;
+  const nativeEditorTitlebar =
+    workspaceMode === "vscode" && isMacPlatform && !root.props.browserHost;
   const store = root.projectWorkbenchStore;
   const shell = root.appShellStore;
   const navigator = root.workspaceNavigatorStore;
@@ -63,6 +66,9 @@ export const AppShellLayout = observer(function AppShellLayout({
           applicationView &&
             "grid-cols-[0px_minmax(0,1fr)_0px_var(--command-width)] [--project-rail-width:0px] max-[700px]:grid-cols-[0px_minmax(0,1fr)_0px_0px] max-[700px]:[--project-rail-width:0px]",
           autoHideRail && "[--project-rail-width:0px] max-[700px]:[--project-rail-width:0px]",
+          // Match the existing native-control drag area, not the transient rail overlay.
+          nativeEditorTitlebar &&
+            "[--window-controls-width:100px] [@media(display-mode:fullscreen)]:[--window-controls-width:0px]",
           resizingPanel && "cursor-col-resize select-none",
         )}
         style={shellStyle}
@@ -70,7 +76,10 @@ export const AppShellLayout = observer(function AppShellLayout({
         <div
           aria-hidden="true"
           data-slot="window-controls-drag-region"
-          className="absolute left-0 top-0 z-40 h-title-bar w-[100px] [app-region:drag]"
+          className={cn(
+            "absolute left-0 top-0 z-40 h-title-bar [app-region:drag]",
+            nativeEditorTitlebar ? "w-[var(--window-controls-width)]" : "w-[100px]",
+          )}
         />
         {!applicationView && <ProjectRail autoHide={autoHideRail} />}
         <div
