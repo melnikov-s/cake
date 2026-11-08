@@ -129,11 +129,14 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
         ),
       submit: async (draft) => {
         if ((!this.draftSelection && !this.sessionDraft) || this.createdThreadId) return false;
+        const revision = this.draftFocusRequestRevision;
         const threadId = await this.createThread(
           this.draftSelection,
           draft,
           this.annotationDraft.annotations,
         );
+        if (this.signal.aborted || revision !== this.draftFocusRequestRevision)
+          return Boolean(threadId);
         this.createdThreadId = threadId;
         if (threadId) {
           this.annotationDraft.clear();

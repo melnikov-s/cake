@@ -40,6 +40,14 @@ export function applyDiscussionCatalogUpdate(
   });
 }
 
+/** Hydrates one explicitly requested thread without replacing newer sibling catalog rows. */
+export function applyDiscussionThread(model: DiscussionCatalog, thread: DiscussionThread) {
+  const snapshot = discussionSnapshot(thread);
+  const existing = model.threads.find((candidate) => candidate.id === thread.id);
+  if (existing) applySnapshot(existing, snapshot);
+  else model.threads.push(ReviewThread.create(snapshot));
+}
+
 function discussionSnapshot(thread: DiscussionThread): Snapshot<ReviewThread> {
   return {
     id: thread.id,

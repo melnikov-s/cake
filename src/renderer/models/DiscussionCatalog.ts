@@ -7,6 +7,7 @@ export class DiscussionCatalog extends Model {
   @id sessionId = "";
   @child(ReviewThread) threads: ReviewThread[] = observable([]);
   /** Ownership/labels for cold navigation; never a replacement sidecar transcript. */
+  observationError: string | undefined;
   metadataLoaded = false;
   metadata: DiscussionThreadMetadata[] = observable([]);
 }

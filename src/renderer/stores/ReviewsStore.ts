@@ -15,6 +15,7 @@ import { DiscussionSessionStore } from "./DiscussionSessionStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import { AnnotationDraftStore } from "./AnnotationDraftStore";
+import { applyDiscussionThread } from "../reducers/DiscussionReducer";
 
 export interface ReviewsStoreProps {
   sessionRegistry: SessionRegistryStore;
@@ -226,6 +227,8 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
         diff: "",
       },
       trimmedPrompt,
+      [],
+      true,
     );
   }
 
@@ -235,6 +238,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     anchor: DiscussionAnchor,
     body: string,
     annotations: readonly Annotation[] = [],
+    propagateError = false,
   ) {
     if (!body.trim() && annotations.length === 0) return undefined;
     this.clearError();
@@ -253,9 +257,24 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       });
     try {
       const accepted = await this.client.discussionSessions.start(input, { signal: this.signal });
-      return this.signal.aborted ? undefined : accepted.thread.id;
+      if (this.signal.aborted) return undefined;
+      const catalog = this.props.sessionRegistry.findSession(context.sessionId)?.props
+        .discussionCatalog;
+      // The start receipt is authoritative too; do not require its catalog event
+      // to arrive a second time before observing the newly linked conversation.
+      if (
+        catalog &&
+        !catalog.threads.some(
+          (thread) => thread.id === accepted.thread.id && thread.sidecarSessionId,
+        )
+      )
+        applyDiscussionThread(catalog, accepted.thread);
+      return accepted.thread.id;
     } catch (error) {
-      if (!this.signal.aborted) this.reportError(error);
+      if (!this.signal.aborted) {
+        this.reportError(error);
+        if (propagateError) throw error;
+      }
       return undefined;
     }
   }

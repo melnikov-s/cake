@@ -38,7 +38,9 @@ export const SideChatLayout = observer(function SideChatLayout({
   const showTabs = tabs.length > 1 && selectedTab !== undefined;
   const model = target?.model?.();
   const title = target?.currentTitle?.() ?? target?.title ?? "";
-  const isSideChat = Boolean(target?.chatStore && !target.key.startsWith("subagent:"));
+  const isSideChat = Boolean(
+    target && (target.pending || (target.chatStore && !target.key.startsWith("subagent:"))),
+  );
   const showExitActions = isSideChat && Boolean(target?.resolve);
   const dockActions = Boolean(
     target?.chatStore?.composerVisible && (target.merge || showExitActions),
@@ -159,7 +161,18 @@ export const SideChatLayout = observer(function SideChatLayout({
                   aria-labelledby={showTabs ? `${tabId}-${selectedTab}` : undefined}
                   className="min-h-0 min-w-0 flex-1"
                 >
-                  {target.changes ? (
+                  {target.pending ? (
+                    <div className="flex flex-col gap-3 p-3">
+                      <p role="status" className="text-xs text-muted-foreground">
+                        {target.pending.message()}
+                      </p>
+                      {target.pending.retry && (
+                        <Button variant="outline" size="sm" onClick={target.pending.retry}>
+                          Retry opening
+                        </Button>
+                      )}
+                    </div>
+                  ) : target.changes ? (
                     <SessionChangesPanel store={target.changes} />
                   ) : (
                     renderChat(target.chatStore, composerHeader)

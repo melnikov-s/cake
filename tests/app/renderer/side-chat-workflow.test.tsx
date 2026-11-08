@@ -73,6 +73,10 @@ function renderSideChats(
   start: Client["discussionSessions"]["start"],
   options: {
     threads?: DiscussionThread[];
+    metadata?: DiscussionThread[];
+    delaySidecars?: boolean;
+    list?: Client["discussionSessions"]["list"];
+    prompt?: Client["sessionChats"]["prompt"];
     selection?: MessageSelectionAnchor;
     withoutModel?: boolean;
     streaming?: boolean;
@@ -83,7 +87,10 @@ function renderSideChats(
   } = {},
 ) {
   const fixture = createRendererStoreFixture({
-    client: { discussionSessions: { start, setResolved } },
+    client: {
+      discussionSessions: { start, setResolved, list: options.list },
+      sessionChats: { prompt: options.prompt },
+    },
     projects: [projectRecord({ path: "/project", name: "Project" })],
     sessions: [
       sessionSummary({
@@ -120,8 +127,7 @@ function renderSideChats(
   function setResolved(...args: Parameters<Client["discussionSessions"]["setResolved"]>) {
     return resolutions(...args);
   }
-  function publish(threads: DiscussionThread[]) {
-    currentThreads = threads;
+  function publishSidecars(threads: DiscussionThread[]) {
     for (const item of threads) {
       if (!item.sidecarSessionId) continue;
       const model = fixture.models.discussionConversation(item.sidecarSessionId, "/project");
@@ -142,6 +148,10 @@ function renderSideChats(
         },
       });
     }
+  }
+  function publish(threads: DiscussionThread[]) {
+    currentThreads = threads;
+    if (!options.delaySidecars) publishSidecars(threads);
     applyDiscussionCatalogUpdate(fixture.models.discussionCatalog("parent-1"), "parent-1", {
       _tag: "Snapshot",
       revision: ++revision,
@@ -150,6 +160,23 @@ function renderSideChats(
     });
   }
   publish(options.threads ?? []);
+  if (options.metadata) {
+    const catalog = fixture.models.discussionCatalog("parent-1");
+    catalog.metadataLoaded = true;
+    catalog.metadata.push(
+      ...options.metadata.map((item) => ({
+        id: item.id,
+        title: item.title || "Side chat",
+        sidecarSessionId: item.sidecarSessionId,
+        parentSessionId: item.parentSessionId,
+        workingDirectory: item.workingDirectory,
+        status: item.status,
+        running: false,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      })),
+    );
+  }
   if (options.selection) {
     // Establish an already-open selection draft; native text-selection initiation is not covered here.
     session.messageCommentsStore.prepareDraft(options.selection);
@@ -196,6 +223,9 @@ function renderSideChats(
     publish(threads: DiscussionThread[]) {
       act(() => publish(threads));
     },
+    publishSidecars(threads: DiscussionThread[]) {
+      act(() => publishSidecars(threads));
+    },
     publishCommands(commands: ConversationSnapshot["commands"]) {
       act(() => applyConversationSnapshot(session.model, { ...snapshot, commands }));
     },
@@ -237,7 +267,243 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("Secondary conversation workflows", () => {
+  it("opens a metadata-only existing chat and accepts a reply while its parent stays streaming", async () => {
+    const existing = { ...thread("cold", "Question"), title: "Question" };
+    const listing = deferred<DiscussionThread[]>();
+    const list = vi.fn<Client["discussionSessions"]["list"]>(() => listing.promise);
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000002"),
+    );
+    using fixture = renderSideChats(vi.fn<Client["discussionSessions"]["start"]>(), {
+      metadata: [existing],
+      list,
+      prompt,
+      streaming: true,
+      delaySidecars: true,
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Question" }));
+    expect(screen.queryByLabelText("Open side chats")).toBeNull();
+    expect(
+      within(screen.getByRole("complementary", { name: "Side chat" })).getByRole("status")
+        .textContent,
+    ).toBe("Side chat exists. Opening…");
+    // The explicit read recovers a missing catalog; linking still precedes the live snapshot.
+    await act(async () => listing.resolve([existing]));
+    expect(screen.queryByRole("combobox", { name: "Reply to side chat" })).toBeNull();
+    fixture.publishSidecars([existing]);
+    const reply = await screen.findByRole("combobox", { name: "Reply to side chat" });
+    await fixture.user.type(reply, "Here is my response");
+    await fixture.user.click(
+      within(screen.getByRole("complementary", { name: "Question" })).getByRole("button", {
+        name: "Send",
+      }),
+    );
+    await waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+    expect(prompt.mock.calls[0]![0]).toMatchObject({
+      sessionId: existing.sidecarSessionId,
+      text: "Here is my response",
+    });
+    expect(fixture.session.isStreaming).toBe(true);
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for late sidecar linking and does not reopen a cancelled opening", async () => {
+    const linked = { ...thread("link", "Linked chat"), title: "Linked chat" };
+    const listing = deferred<DiscussionThread[]>();
+    const list = vi.fn<Client["discussionSessions"]["list"]>(() => listing.promise);
+    using fixture = renderSideChats(vi.fn<Client["discussionSessions"]["start"]>(), {
+      threads: [{ ...linked, sidecarSessionId: undefined }],
+      metadata: [linked],
+      list,
+      streaming: true,
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Linked chat" }));
+    expect(
+      within(screen.getByRole("complementary", { name: "Side chat" })).getByRole("status")
+        .textContent,
+    ).toBe("Side chat exists. Opening…");
+    await fixture.user.click(screen.getByRole("button", { name: "Close side chat" }));
+    fixture.publish([linked]);
+    await act(async () => listing.resolve([linked]));
+    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Linked chat" }));
+    expect(await screen.findByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
+  });
+
+  it("opens automatically when an unlinked catalog row gains its sidecar", async () => {
+    const linked = { ...thread("late", "Late link"), title: "Late link" };
+    const unlinked = { ...linked, sidecarSessionId: undefined };
+    const list = vi.fn<Client["discussionSessions"]["list"]>(async () => [unlinked]);
+    using fixture = renderSideChats(vi.fn<Client["discussionSessions"]["start"]>(), {
+      threads: [unlinked],
+      metadata: [linked],
+      list,
+      streaming: true,
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Late link" }));
+    expect(
+      within(screen.getByRole("complementary", { name: "Side chat" })).getByRole("status")
+        .textContent,
+    ).toBe("Side chat exists. Opening…");
+    fixture.publish([linked]);
+    expect(await screen.findByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
+  });
+
+  it("replaces prolonged opening feedback with a bounded retry message", async () => {
+    const existing = { ...thread("slow", "Slow chat"), title: "Slow chat" };
+    using fixture = renderSideChats(vi.fn<Client["discussionSessions"]["start"]>(), {
+      threads: [existing],
+      delaySidecars: true,
+    });
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Slow chat" }));
+    const deadline = timers.mock.calls.find((call) => call[1] === 10_000)?.[0];
+    expect(typeof deadline).toBe("function");
+    act(() => {
+      if (typeof deadline === "function") deadline();
+    });
+    expect(
+      within(screen.getByRole("complementary", { name: "Side chat" })).getByRole("status")
+        .textContent,
+    ).toBe("Side chat exists, but is not ready to open. Retry opening or close and try again.");
+    await fixture.user.click(screen.getByRole("button", { name: "Close side chat" }));
+    fixture.publishSidecars([existing]);
+    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
+  });
+
+  it("preserves an opening failure and retries without creating a chat", async () => {
+    const existing = { ...thread("retry", "Retry chat"), title: "Retry chat" };
+    const list = vi
+      .fn<Client["discussionSessions"]["list"]>()
+      .mockRejectedValueOnce(new Error("Cannot read sidecar: permission denied"))
+      .mockResolvedValueOnce([existing]);
+    const start = vi.fn<Client["discussionSessions"]["start"]>();
+    using fixture = renderSideChats(start, { metadata: [existing], list });
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Retry chat" }));
+    expect(await screen.findByText("Cannot read sidecar: permission denied")).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Retry opening" }));
+    fixture.publishSidecars([existing]);
+    expect(await screen.findByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it.each(["before", "after"] as const)(
+    "handles catalog delivery %s the start receipt",
+    async (order) => {
+      const created = thread("ordered", "Ordered chat");
+      const started = deferred<Awaited<ReturnType<Client["discussionSessions"]["start"]>>>();
+      const start = vi.fn<Client["discussionSessions"]["start"]>(() => started.promise);
+      using fixture = renderSideChats(start, { streaming: true });
+      const input = screen.getByRole("combobox", { name: "Message" });
+      await fixture.user.type(input, "/sidechat Ordered chat");
+      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+      expect(
+        within(screen.getByRole("complementary", { name: "Side chat" })).getByRole("status")
+          .textContent,
+      ).toBe("Creating side chat…");
+      if (order === "before") fixture.publish([created]);
+      await act(async () =>
+        started.resolve({
+          thread: created,
+          turnId: TurnId.make("10000000-0000-4000-8000-000000000001"),
+        }),
+      );
+      if (order === "after") fixture.publish([created]);
+      expect(await screen.findByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
+      expect(input).toHaveProperty("value", "");
+      expect(start).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("keeps exact creation errors and the command for retry", async () => {
+    const start = vi
+      .fn<Client["discussionSessions"]["start"]>()
+      .mockRejectedValue(new Error("Could not prepare sidecar: disk is full"));
+    using fixture = renderSideChats(start);
+    const input = screen.getByRole("combobox", { name: "Message" });
+    await fixture.user.type(input, "/sidechat Explain");
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Could not prepare sidecar: disk is full")).toBeDefined();
+    expect(input).toHaveProperty("value", "/sidechat Explain");
+    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
+  });
+
+  it("does not let an old draft submission take over a newly opened bare draft", async () => {
+    const created = thread("old-draft", "Old draft");
+    const started = deferred<Awaited<ReturnType<Client["discussionSessions"]["start"]>>>();
+    const start = vi.fn<Client["discussionSessions"]["start"]>(() => started.promise);
+    using fixture = renderSideChats(start);
+    const input = screen.getByRole("combobox", { name: "Message" });
+    const openBare = async () => {
+      await fixture.user.type(input, "/sidechat ");
+      await fixture.user.keyboard("{Escape}");
+      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+      return screen.getByRole("combobox", { name: "Message side chat" });
+    };
+    await fixture.user.type(await openBare(), "Original question");
+    await fixture.user.click(
+      within(screen.getByRole("complementary", { name: "Side chat" })).getByRole("button", {
+        name: "Send",
+      }),
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Close side chat" }));
+    const draft = await openBare();
+    await fixture.user.type(draft, "New question");
+    await act(async () =>
+      started.resolve({
+        thread: created,
+        turnId: TurnId.make("10000000-0000-4000-8000-000000000001"),
+      }),
+    );
+    fixture.publish([created]);
+    expect(screen.getByRole("combobox", { name: "Message side chat" })).toBe(draft);
+    expect(draft).toHaveProperty("value", "New question");
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a closed creation hijack a subsequent existing-chat opening", async () => {
+    const created = thread("cancelled", "Cancelled launch");
+    const existing = thread("existing", "Existing chat");
+    const started = deferred<Awaited<ReturnType<Client["discussionSessions"]["start"]>>>();
+    const start = vi.fn<Client["discussionSessions"]["start"]>(() => started.promise);
+    using fixture = renderSideChats(start, { threads: [existing] });
+    const input = screen.getByRole("combobox", { name: "Message" });
+    await fixture.user.type(input, "/sidechat Explain");
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Close side chat" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Existing chat" }));
+    const draft = await screen.findByRole("combobox", { name: "Reply to side chat" });
+    await fixture.user.type(draft, "New draft");
+    await act(async () =>
+      started.resolve({
+        thread: created,
+        turnId: TurnId.make("10000000-0000-4000-8000-000000000001"),
+      }),
+    );
+    fixture.publish([existing, created]);
+    expect(screen.getByRole("combobox", { name: "Reply to side chat" })).toBe(draft);
+    expect(draft).toHaveProperty("value", "New draft");
+    expect(start).toHaveBeenCalledTimes(1);
+  });
   it.each([416, 1200])(
     "switches side chat tabs without resolving or losing drafts/transcripts at %ipx",
     async (width) => {
@@ -432,7 +698,10 @@ describe("Secondary conversation workflows", () => {
         ),
       );
       expect(input.value).toBe("");
-      expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
+      expect(
+        within(screen.getByRole("complementary", { name: "Side chat" })).getByRole("status")
+          .textContent,
+      ).toBe("Side chat exists. Opening…");
       fixture.publish([created]);
       const panel = await screen.findByRole("complementary", { name: "Side chat" });
       expect(screen.getByRole("combobox", { name: "Message" })).toBe(input);

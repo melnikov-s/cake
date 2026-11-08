@@ -1,4 +1,7 @@
 import { Store, child, computed, createStore, snapshot } from "r-state-tree";
+import type { SideChatTarget } from "./SideChatStore";
+import { applyDiscussionThread } from "../reducers/DiscussionReducer";
+import { describeError } from "../lib/error-details";
 import {
   ConversationModeContext,
   conversationModeTarget,
@@ -71,22 +74,38 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   @snapshot workspaceChatSidebarWidth = 420;
   private readSettledTurnRevision = 0;
   private pendingSideChatThreadId: string | undefined;
+  private pendingSideChatTarget: SideChatTarget | undefined;
+  private sideChatOpeningSlow = false;
+  private sideChatOpeningError: string | undefined;
+  private creatingSideChat = false;
 
   constructor(props: ProjectSessionStore["props"]) {
     super(props);
-    // A new thread is listed before its sidecar conversation is live; the side
-    // chat opens once the thread's own conversation Store exists.
+    // Only the still-visible request may consume late catalog/sidecar delivery.
     this.reaction(
-      () =>
-        Boolean(
-          this.pendingSideChatThreadId &&
-          this.sideChatThreads.some((thread) => thread.id === this.pendingSideChatThreadId) &&
-          this.props.reviews().chatStore(this.pendingSideChatThreadId),
-        ),
-      (ready) => {
-        if (ready && this.pendingSideChatThreadId) this.openSideChat(this.pendingSideChatThreadId);
+      () => {
+        const threadId = this.pendingSideChatThreadId;
+        if (!threadId || !this.isSideChatOpening(this.pendingSideChatTarget)) return undefined;
+        const thread = this.sideChatThreads.find((candidate) => candidate.id === threadId);
+        const session = this.props.reviews().discussionSession(threadId);
+        return thread?.sidecarSessionId && session?.model.observedSnapshotRevision
+          ? threadId
+          : undefined;
+      },
+      (threadId) => {
+        if (threadId) this.showSideChat(threadId);
       },
     );
+    this.effect(() => {
+      const request = this.pendingSideChatTarget;
+      if (!request) return;
+      const target = this.conversationSessionStore.sideChatStore.target;
+      if (target !== request || !target.pending) return;
+      const timer = setTimeout(() => {
+        this.sideChatOpeningSlow = true;
+      }, 10_000);
+      return () => clearTimeout(timer);
+    });
     // A turn that settles while this session stays selected was seen. Selecting an
     // unread session changes nothing; leaving it (depart) reads it.
     this.reaction(
@@ -313,12 +332,88 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   openSideChat(threadId: string) {
-    // Cold Sessions are discoverable from metadata before their full thread projection arrives.
+    if (this.signal.aborted) return false;
+    if (this.showSideChat(threadId)) return true;
+    const target = this.beginSideChatOpening(threadId);
+    // Metadata navigation can precede (or outlive a failed) full catalog stream.
+    // An explicit click gets one authoritative read, not an indefinite silent retry.
+    if (!this.sideChatThreads.some((thread) => thread.id === threadId && thread.sidecarSessionId))
+      void this.hydrateSideChat(threadId, target);
+    return true;
+  }
+
+  private isSideChatOpening(target: SideChatTarget | undefined) {
+    return Boolean(
+      target &&
+      !this.signal.aborted &&
+      this.conversationSessionStore.sideChatStore.target === target,
+    );
+  }
+
+  private beginSideChatOpening(threadId?: string) {
     this.pendingSideChatThreadId = threadId;
+    this.sideChatOpeningSlow = false;
+    this.sideChatOpeningError = undefined;
+    const target: SideChatTarget = {
+      key: threadId ? `opening-discussion:${threadId}` : "creating-side-chat",
+      title: "Side chat",
+      pending: {
+        message: () => {
+          if (this.sideChatOpeningError) return this.sideChatOpeningError;
+          const session = threadId ? this.props.reviews().discussionSession(threadId) : undefined;
+          const error =
+            session?.model.observationError || this.props.discussionCatalog.observationError;
+          if (error) return `Could not open side chat: ${error}`;
+          if (!threadId)
+            return this.sideChatOpeningSlow
+              ? "Still creating side chat. Close to cancel opening; creation may still finish."
+              : "Creating side chat…";
+          return this.sideChatOpeningSlow
+            ? "Side chat exists, but is not ready to open. Retry opening or close and try again."
+            : "Side chat exists. Opening…";
+        },
+      },
+    };
+    if (threadId) target.pending.retry = () => this.openSideChat(threadId);
+    this.pendingSideChatTarget = target;
+    this.conversationSessionStore.sideChatStore.open(target);
+    return target;
+  }
+
+  private async hydrateSideChat(threadId: string, target: SideChatTarget) {
+    try {
+      const threads = await this.client.discussionSessions.list(
+        { parentSessionId: this.sessionId, workingDirectory: this.workspacePath },
+        { signal: this.signal },
+      );
+      if (!this.isSideChatOpening(target)) return;
+      const thread = threads.find((candidate) => candidate.id === threadId);
+      if (!thread) throw new Error("Side chat was not found. Refresh the Session and try again.");
+      // A live catalog update may already have delivered a newer linked row.
+      if (
+        !this.sideChatThreads.some(
+          (candidate) => candidate.id === threadId && candidate.sidecarSessionId,
+        )
+      )
+        applyDiscussionThread(this.props.discussionCatalog, thread);
+    } catch (error) {
+      if (this.isSideChatOpening(target)) this.sideChatOpeningError = describeError(error).message;
+    }
+  }
+
+  private showSideChat(threadId: string) {
     const thread = this.sideChatThreads.find((candidate) => candidate.id === threadId);
-    const chatStore = this.props.reviews().chatStore(threadId);
-    if (!thread || !chatStore || !thread.sidecarSessionId) return false;
+    const session = this.props.reviews().discussionSession(threadId);
+    const chatStore = session?.chatStore;
+    if (
+      !thread?.sidecarSessionId ||
+      !session ||
+      !chatStore ||
+      !session.model.observedSnapshotRevision
+    )
+      return false;
     this.pendingSideChatThreadId = undefined;
+    this.pendingSideChatTarget = undefined;
     this.conversationSessionStore.sideChatStore.open({
       key: `discussion:${thread.id}`,
       navigationTarget: {
@@ -346,13 +441,27 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       });
       return true;
     }
-    const threadId = await this.props
-      .reviews()
-      .createSideChat({ sessionId: this.sessionId, workingDirectory: this.workspacePath }, prompt);
-    if (!threadId) return false;
-    this.pendingSideChatThreadId = threadId;
-    this.openSideChat(threadId);
-    return true;
+    if (this.creatingSideChat)
+      throw new Error("Side chat creation is already in progress. Wait before trying again.");
+    this.creatingSideChat = true;
+    const target = this.beginSideChatOpening();
+    try {
+      const threadId = await this.props
+        .reviews()
+        .createSideChat(
+          { sessionId: this.sessionId, workingDirectory: this.workspacePath },
+          prompt,
+        );
+      if (!threadId) return false;
+      if (this.isSideChatOpening(target)) this.openSideChat(threadId);
+      // Accepted creation consumes the command even if the user closed its opening panel.
+      return true;
+    } catch (error) {
+      if (this.isSideChatOpening(target)) this.conversationSessionStore.sideChatStore.close();
+      throw error;
+    } finally {
+      this.creatingSideChat = false;
+    }
   }
 
   get conversationTarget(): ConversationModeTarget {
@@ -523,7 +632,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         // which carries the shared queue, stop, and reply behavior.
         const sideChat = this.conversationSessionStore.sideChatStore;
         if (sideChat.target?.chatStore !== this.messageCommentsStore.draftChatStore) return;
-        this.pendingSideChatThreadId = threadId;
         this.openSideChat(threadId);
       },
     });

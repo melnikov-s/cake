@@ -35,16 +35,25 @@ export type SideChatTarget = SidePanelTarget &
         readonly parentChatStore?: ChatStore;
         readonly artifact?: never;
         readonly changes?: never;
+        readonly pending?: never;
       }
     | {
         readonly chatStore?: never;
         readonly artifact: ArtifactMenuStore;
         readonly changes?: never;
+        readonly pending?: never;
       }
     | {
         readonly chatStore?: never;
         readonly artifact?: never;
         readonly changes: SessionChangesStore;
+        readonly pending?: never;
+      }
+    | {
+        readonly chatStore?: never;
+        readonly artifact?: never;
+        readonly changes?: never;
+        readonly pending: { message(): string; retry?(): void };
       }
   );
 

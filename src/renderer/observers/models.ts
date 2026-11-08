@@ -242,8 +242,15 @@ export const createModelObserver = (
             parentSessionId: target.sessionId,
             workingDirectory: target.workingDirectory ?? "",
           }),
-        (update: DiscussionCatalogUpdate) =>
-          applyDiscussionCatalogUpdate(model, target.sessionId, update),
+        (update: DiscussionCatalogUpdate) => {
+          model.observationError = undefined;
+          applyDiscussionCatalogUpdate(model, target.sessionId, update);
+        },
+        {
+          failed: (error) => {
+            model.observationError = error instanceof Error ? error.message : String(error);
+          },
+        },
       );
 
     const automations = input.automations;

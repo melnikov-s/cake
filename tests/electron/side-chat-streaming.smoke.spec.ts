@@ -33,7 +33,18 @@ test("discovers bare /sidechat and focuses its existing draft composer", () =>
 test("submits bare /sidechat with the slash menu dismissed without stealing draft focus", () =>
   verifySideChat(false, "submitted"));
 
-async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
+test("opens an existing human side chat and replies while the parent is held streaming", () =>
+  verifySideChat(false, undefined, true));
+for (const bare of ["menu", "submitted"] as const) {
+  test(`launches bare /sidechat (${bare}) before reopening it during parent streaming`, () =>
+    verifySideChat(false, bare, true));
+}
+
+async function verifySideChat(
+  selection: boolean,
+  bare?: "menu" | "submitted",
+  parentStreaming = false,
+) {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-side-chat-streaming-"));
   const userData = join(temporaryRoot, "user-data");
@@ -174,6 +185,15 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
   });
   try {
     const page = await application.firstWindow();
+    if (parentStreaming) {
+      // Current startup opens Cake Chat; select this fixture through the real UI
+      // rather than relying on legacy window-state active-selection restoration.
+      await page
+        .getByRole("button", { name: "Open Project Chat for project", exact: true })
+        .click();
+      await page.getByRole("button", { name: /^Sessions ·/ }).click();
+      await page.locator(`.session-item[data-session-id="${sessionId}"] .session-row`).click();
+    }
     await expect(page.getByText("The settings shape is explicit.")).toBeVisible({
       timeout: 20_000,
     });
@@ -230,7 +250,10 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
         await composer.press("Escape");
       }
       await composer.press("Enter");
-      await expect(composer).toHaveValue("");
+      // Replacement layout makes the retained parent composer inert/hidden.
+      await expect(
+        page.getByRole("combobox", { name: "Message", exact: true, includeHidden: true }),
+      ).toHaveValue("");
       const draft = page.getByRole("combobox", { name: "Message side chat", exact: true });
       await expect(draft).toBeFocused();
       await draft.pressSequentially("Explain the settings shape in detail");
@@ -257,6 +280,38 @@ async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
     const close = header.getByRole("button", { name: "Close side chat", exact: true });
     const actions = sideChat.getByRole("group", { name: "Side chat actions" });
     const actionClose = actions.getByRole("button", { name: "Close and resolve", exact: true });
+    if (parentStreaming) {
+      // First persist the independent human Side Chat, then hold its parent turn
+      // open while reopening it from the real existing-chat menu.
+      await expect.poll(() => responses.length).toBe(1);
+      sendText(responses[0]!, "The side chat is waiting for your reply.");
+      finish(responses[0]!);
+      await expect(sideChat.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+      await expect(sideChatInput).toBeVisible();
+      await close.click();
+      await composer.fill("Keep the parent working");
+      await composer.press("Enter");
+      await expect.poll(() => responses.length).toBe(2);
+      sendText(responses[1]!, "The parent is still working.");
+      await expect(page.getByText("The parent is still working.")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Side chats, 1 open", exact: true }).click();
+      await page.getByRole("dialog", { name: "Open side chats" }).getByRole("button").click();
+      await expect(sideChatInput).toBeVisible();
+      await sideChatInput.fill("My response while the parent runs");
+      await sideChatInput.press("Enter");
+      await expect.poll(() => responses.length).toBe(3);
+      sendText(responses[2]!, "I received your response before the parent finished.");
+      finish(responses[2]!);
+      await expect(
+        sideChat.getByText("I received your response before the parent finished."),
+      ).toBeVisible();
+      await expect(sideChat.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+      await close.click();
+      // No finish() was sent to the parent's SSE response.
+      await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+      return;
+    }
     const expectHeaderClose = async () => {
       await expect(close).toBeInViewport();
       await expect(actionClose).toBeInViewport();
