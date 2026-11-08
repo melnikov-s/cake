@@ -41,13 +41,16 @@ for (const { theme, count } of scenarios) {
             ? "Review these detailed findings and choose the next step. ".repeat(4).trim()
             : `Review additional finding ${index + 1}`,
       })),
-    ].map((item) => ({
+    ].map((item, index) => ({
       ...item,
       description: "Findings ready",
       status: "",
       revision: 0,
       state: "open",
       needsAttention: true,
+      attentionSequence: index + 1,
+      // Task age deliberately disagrees with attention arrival order.
+      createdAt: `2026-01-${String(count - index).padStart(2, "0")}T00:00:00.000Z`,
       associations: [],
     }));
     await mkdir(join(paths.cakeHome, "state"), { recursive: true });
@@ -98,6 +101,9 @@ for (const { theme, count } of scenarios) {
       await expect(queue.getByRole("button")).toHaveCount(count * 2);
       await expect(queue.getByRole("heading")).toHaveText(`Needs attention${count}`);
       const list = queue.getByRole("list", { name: "Needs attention items" });
+      await expect(list.getByRole("button", { name: /^Open attention:/ })).toHaveText(
+        items.map((item) => item.attentionReason),
+      );
       const metrics = () =>
         list.evaluate((element) => {
           const rows = Array.from(element.children);
@@ -142,7 +148,7 @@ for (const { theme, count } of scenarios) {
         await expect.poll(async () => (await metrics()).scrollTop).toBeGreaterThan(0);
         expect((await composer.boundingBox())!.y).toBeCloseTo(inputBefore!.y, 0);
         const lastClear = queue.getByRole("button", {
-          name: `Clear attention: ${items[0].title}`,
+          name: `Clear attention: ${items.at(-1)!.title}`,
         });
         await lastClear.focus();
         await expect(lastClear).toBeFocused();
@@ -154,7 +160,7 @@ for (const { theme, count } of scenarios) {
         );
         await lastClear.press("Shift+Tab");
         const lastOpen = queue.getByRole("button", {
-          name: `Open attention: ${items[0].title}`,
+          name: `Open attention: ${items.at(-1)!.title}`,
         });
         await expect(lastOpen).toBeFocused();
         await lastOpen.press("Tab");

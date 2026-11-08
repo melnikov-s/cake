@@ -123,10 +123,16 @@ export class ProjectTodosStore extends Store<{
   }
   /** Composer queue is independent of Workspace search and transcript view focus. */
   get attentionItems() {
-    return this.orderedItems.filter((item) => projectTodoCategory(item) === "attention");
+    return (
+      (this.value?.items ?? [])
+        .filter((item) => projectTodoCategory(item) === "attention")
+        // Stable sort preserves storage order for legacy requests and equal sequences.
+        .sort((a, b) => (a.attentionSequence ?? 0) - (b.attentionSequence ?? 0))
+    );
   }
   get filteredAttentionItems() {
-    return this.unfocusedItems.filter((item) => projectTodoCategory(item) === "attention");
+    const matching = new Set(this.unfocusedItems.map((item) => item.id));
+    return this.attentionItems.filter((item) => matching.has(item.id));
   }
   /** Readiness is a session authority fact, never authored to-do text or turn completion. */
   isReadyToMerge(item: ProjectTodo) {

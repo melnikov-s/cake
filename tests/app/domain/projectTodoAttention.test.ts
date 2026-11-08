@@ -96,6 +96,49 @@ it.effect.each([scope, CAKE_CHAT_TODO_SCOPE])(
     }).pipe(Effect.provide(projectTodoLayer())),
 );
 
+it.effect.each([scope, CAKE_CHAT_TODO_SCOPE])(
+  "sequences new actionable occurrences in %s even within one clock tick",
+  (owner) =>
+    Effect.gen(function* () {
+      let first = yield* create(owner);
+      const second = yield* create(owner);
+      expect(first.createdAt).toBe(second.createdAt);
+      expect([first.attentionSequence, second.attentionSequence]).toEqual([1, 2]);
+      first = yield* todos.update(owner, {
+        id: first.id,
+        expectedRevision: first.revision,
+        description: "Unrelated edit",
+        attentionReason: "Reword the current request",
+      });
+      expect(first.attentionSequence).toBe(1);
+      first = (yield* todos.mutateUser(owner, {
+        _tag: "SetAttention",
+        id: first.id,
+        expectedRevision: first.revision,
+        needsAttention: false,
+      })).items[0]!;
+      expect(first.attentionSequence).toBe(1);
+      first = yield* todos.update(owner, {
+        id: first.id,
+        expectedRevision: first.revision,
+        needsAttention: true,
+        attentionReason: "Genuinely new findings",
+      });
+      expect(first.attentionSequence).toBe(3);
+      expect(first.modifiedAt).toBe(second.modifiedAt);
+      first = yield* todos.update(owner, {
+        id: first.id,
+        expectedRevision: first.revision,
+        snoozedUntil: "1970-01-01T01:00:00.000Z",
+      });
+      expect(first.attentionSequence).toBe(3);
+      yield* TestClock.setTime(3_600_000);
+      yield* todos.expireOverdue();
+      expect((yield* todos.read(owner, first.id)).attentionSequence).toBe(4);
+      expect((yield* todos.read(owner, second.id)).attentionSequence).toBe(2);
+    }).pipe(Effect.provide(projectTodoLayer())),
+);
+
 it.effect.each(["", "   ", "x".repeat(513)])(
   "rejects invalid reason %s on create/update without committing",
   (attentionReason) =>

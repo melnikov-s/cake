@@ -850,6 +850,31 @@ it("renders only nonempty categories with separators between visible sections an
   expect(screen.getByRole("status").textContent).toBe("No to-dos.");
 });
 
+it("presents workspace attention in occurrence FIFO order, including filtered results", async () => {
+  const items = [3, 1, 4, 2].map((sequence, index) => ({
+    ...todo(200 + index, `2026-01-0${index + 1}T00:00:00.000Z`),
+    title: `Request ${sequence}`,
+    needsAttention: true,
+    attentionReason: `Review finding ${sequence}`,
+    attentionSequence: sequence,
+  }));
+  using fixture = renderTodos(false, { todos: { ...emptyProjectTodos(), items }, sessions: [] });
+  const titles = () =>
+    within(screen.getByRole("list", { name: "Needs attention to-dos" }))
+      .getAllByRole("listitem")
+      .map((row) => row.getAttribute("data-todo-id"));
+  expect(titles()).toEqual([items[1]!.id, items[3]!.id, items[0]!.id, items[2]!.id]);
+  await fixture.updateTodos({
+    ...fixture.todos(),
+    items: items.map((item, index) =>
+      index === 3 ? { ...item, modifiedAt: "2027-01-01T00:00:00.000Z", revision: 1 } : item,
+    ),
+  });
+  expect(titles()).toEqual([items[1]!.id, items[3]!.id, items[0]!.id, items[2]!.id]);
+  await fixture.user.type(screen.getByRole("searchbox", { name: "Search to-dos" }), "finding");
+  expect(titles()).toEqual([items[1]!.id, items[3]!.id, items[0]!.id, items[2]!.id]);
+});
+
 it("shows action-first requests, dismisses without selection/lifecycle effects, restores, and hides retained reasons from search", async () => {
   const item = {
     ...todo(100),
@@ -1116,7 +1141,7 @@ const openOrder = () =>
     (row) => row.getAttribute("data-todo-id"),
   );
 
-it("renders newest creation first within all four sections, including live additions and search", async () => {
+it("keeps attention FIFO and other sections newest-created first through additions and search", async () => {
   const categories = ["Needs attention", "Active", "Snoozed", "Done"];
   const inSection = (item: ProjectTodo, section: number): ProjectTodo =>
     section === 0
@@ -1140,25 +1165,27 @@ it("renders newest creation first within all four sections, including live addit
       screen.getByRole("list", { name: `${category} to-dos` }).querySelectorAll("[data-todo-id]"),
       (row) => row.getAttribute("data-todo-id"),
     );
-  const checkOrder = (days: number[]) => {
+  const checkOrder = (days: number[], attentionDays: number[]) => {
     expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual(categories);
     categories.forEach((category, section) =>
-      expect(sectionOrder(category)).toEqual(days.map((day) => todo(section * 10 + day).id)),
+      expect(sectionOrder(category)).toEqual(
+        (section === 0 ? attentionDays : days).map((day) => todo(section * 10 + day).id),
+      ),
     );
   };
-  checkOrder([3, 2, 1]);
+  checkOrder([3, 2, 1], [2, 1, 3]);
   const additions = categories.map((_, section) =>
     inSection(todo(section * 10 + 4, activityTime(4)), section),
   );
   await fixture.updateTodos({ ...fixture.todos(), items: [...items, ...additions] });
-  checkOrder([4, 3, 2, 1]);
+  checkOrder([4, 3, 2, 1], [2, 1, 3, 4]);
   expect(fixture.todos().items).toEqual([...items, ...additions]);
   // Search filters the sorted projection rather than falling back to storage order.
   await fixture.user.type(
     screen.getByRole("searchbox", { name: "Search to-dos" }),
     "Latest finding",
   );
-  checkOrder([4, 3, 2, 1]);
+  checkOrder([4, 3, 2, 1], [2, 1, 3, 4]);
 });
 
 it("breaks equal creation timestamps by ID independently of storage order", () => {

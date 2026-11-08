@@ -27,6 +27,7 @@ import {
   ProjectTodoUpdates,
   type ProjectTodo,
   projectTodoReminder,
+  projectTodoCategory,
   projectTodoSessionIds,
   ProjectTodoCreate,
   PROJECT_TODO_TITLE_LIMIT,
@@ -180,18 +181,28 @@ const change = Effect.fn("ProjectTodos.change")(function* (
         const updated = yield* transition(previous, current);
         yield* validateOwnership(current, scope, previous, updated);
         const modifiedAt = DateTime.formatIso(yield* DateTime.now);
-        const revisions = new Map(previous.items.map((item) => [item.id, item.revision]));
+        const priorItems = new Map(previous.items.map((item) => [item.id, item]));
+        let attentionSequence = Math.max(
+          0,
+          ...previous.items.map((item) => item.attentionSequence ?? 0),
+        );
         const todos = clearCompletedProjectTodoSelection({
           ...updated,
-          items: updated.items.map((item) =>
-            revisions.get(item.id) === item.revision
-              ? item
-              : {
-                  ...item,
-                  ...(!revisions.has(item.id) ? { createdAt: modifiedAt } : null),
-                  modifiedAt,
-                },
-          ),
+          items: updated.items.map((item) => {
+            const prior = priorItems.get(item.id);
+            if (prior?.revision === item.revision) return item;
+            return {
+              ...item,
+              ...(!prior ? { createdAt: modifiedAt } : null),
+              // Assign only when a request becomes actionable, never for content edits.
+              // The serialized authority also orders arrivals sharing the same clock tick.
+              ...(projectTodoCategory(item) === "attention" &&
+              (!prior || projectTodoCategory(prior) !== "attention")
+                ? { attentionSequence: ++attentionSequence }
+                : null),
+              modifiedAt,
+            };
+          }),
         });
         return global
           ? { ...current, cakeChatTodos: todos }

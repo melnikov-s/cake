@@ -78,6 +78,51 @@ it.effect.each([CAKE_CHAT_TODO_SCOPE, "/project"])(
     }).pipe(Effect.provide(layer())),
 );
 
+it.effect(
+  "orders held results by actionable arrival, not task creation, without replaying dismissed reports",
+  () =>
+    Effect.gen(function* () {
+      const scope = CAKE_CHAT_TODO_SCOPE;
+      const newer = yield* todos.create(scope, {
+        title: "Second result",
+        description: "Working",
+        associations: [{ kind: "session", sessionId: "second-worker", title: "Second" }],
+      });
+      const older = yield* todos.create(scope, {
+        title: "First result",
+        description: "Working",
+        associations: [{ kind: "session", sessionId: "first-worker", title: "First" }],
+      });
+      const firstReport = report(CAKE_CHAT_SESSION_ID);
+      const secondReport = report(CAKE_CHAT_SESSION_ID);
+      yield* attention.hold(firstReport, { sessionId: "first-worker", label: "First findings" });
+      yield* attention.hold(secondReport, { sessionId: "second-worker", label: "Second findings" });
+      const first = yield* todos.read(scope, older.id);
+      expect(first.attentionSequence).toBe(1);
+      expect((yield* todos.read(scope, newer.id)).attentionSequence).toBe(2);
+      yield* todos.mutateUser(scope, {
+        _tag: "SetAttention",
+        id: first.id,
+        expectedRevision: first.revision,
+        needsAttention: false,
+      });
+      yield* attention.hold(firstReport, { sessionId: "first-worker", label: "First findings" });
+      expect(yield* todos.read(scope, older.id)).toMatchObject({
+        needsAttention: false,
+        attentionSequence: 1,
+      });
+      yield* attention.hold(report(CAKE_CHAT_SESSION_ID), {
+        sessionId: "first-worker",
+        label: "New findings",
+      });
+      expect(yield* todos.read(scope, older.id)).toMatchObject({
+        needsAttention: true,
+        attentionSequence: 3,
+      });
+      expect((yield* todos.read(scope, newer.id)).attentionSequence).toBe(2);
+    }).pipe(Effect.provide(layer())),
+);
+
 it.effect("holds public-worker reports by handle, not private Pi session identity", () =>
   Effect.gen(function* () {
     const item = yield* todos.create(CAKE_CHAT_TODO_SCOPE, {

@@ -142,6 +142,9 @@ export const ProjectTodo = Schema.Struct({
   /** Absent on older saved items means false; no reason is invented for existing work. */
   needsAttention: Schema.optionalKey(Schema.Boolean),
   attentionReason: Schema.optionalKey(ProjectTodoAttentionReason),
+  /** Main-owned FIFO occurrence order within this list; retained when cleared.
+   * Older saved requests without a sequence keep storage order ahead of new arrivals. */
+  attentionSequence: Schema.optionalKey(revision),
   /** Snoozed takes visibility precedence over attention. Completion clears the deadline. */
   snoozedUntil: Schema.optionalKey(ProjectTodoSnoozeUntil),
   revision,
