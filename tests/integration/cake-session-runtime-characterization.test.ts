@@ -3,7 +3,10 @@ import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cro
 import type { AttachmentReferenceControl } from "../../src/contracts/conversations/attachment-reference-control";
 import { cakeOperationImageResult } from "../../src/contracts/agent/cake-operation";
 import { createProjectSessionRuntime as createCakeSessionRuntime } from "../../src/layers/CakeOperations";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { Effect } from "effect";
+import { makeSubagentEnvironmentLive } from "../../src/layers/SubagentEnvironmentLive";
+import { SubagentEnvironment } from "../../src/services/subagents/SubagentEnvironment";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -135,7 +138,7 @@ async function createFixtureRuntime(
     ...(options.projectInvestigation
       ? {
           auxiliary: true,
-          ephemeral: true,
+          ephemeral: !options.sessionFile,
           projectInvestigation: true,
           allowMutations: options.allowMutations,
         }
@@ -412,6 +415,99 @@ describe("CakeSessionRuntime characterization", () => {
       const fresh = await createCakeSessionRuntime({ ...options, newSession: true });
       runtimes.push(fresh);
       expect(dirname(fresh.sessionFile)).toBe(sessionDir);
+    },
+  );
+
+  it.each(["Project Session", "project investigator", "context-forked investigator"])(
+    "delivers Cake's standing product ownership to a fresh %s, not an unrelated project",
+    async (kind) => {
+      const instructions = await readFile(new URL("../../AGENTS.md", import.meta.url), "utf8");
+      const required = [
+        "When developing Cake with Cake, improving Cake is the objective.",
+        "a workaround unblocks a task but does not resolve a defect",
+        "Project Chat owns tracking and bounded assignment",
+        "This is standing direction; do not wait for the user to repeat it.",
+        "surface out-of-scope evidence to the owning Project Chat",
+        "task success is not proof of a product fix",
+        "overriding explicit read-only scope",
+      ];
+      // Assert essential actions/boundaries without freezing the entire prompt.
+      for (const fragment of required) expect(instructions).toContain(fragment);
+      for (const cakeProject of [true, false]) {
+        const directory = await createTemporaryDirectory();
+        const bodies: Array<Record<string, unknown>> = [];
+        await registerFixtureProvider(
+          directory,
+          (_index, response) => finishTextResponse(response, "Fixture reply, not compliance proof"),
+          (body) => bodies.push(body),
+        );
+        await writeFile(
+          join(directory, "AGENTS.md"),
+          cakeProject ? instructions : "UNRELATED_PROJECT_POLICY",
+        );
+        let sessionFile: string | undefined;
+        if (kind === "context-forked investigator") {
+          // Use the actual context-fork seed adapter: stale parent authority must
+          // not substitute for the checkout's fresh project instructions.
+          await Effect.runPromise(
+            Effect.gen(function* () {
+              const environment = yield* SubagentEnvironment;
+              if (!environment.seedContext) throw new Error("Missing context-fork seed adapter");
+              yield* environment.seedContext(directory, "00000000-0000-4000-8000-000000000001", {
+                entryId: "settled-entry",
+                messages: [
+                  { role: "system", content: "STALE_PARENT_POLICY", timestamp: 1 },
+                  { role: "user", content: "Settled design discussion", timestamp: 1 },
+                ],
+              });
+            }).pipe(
+              Effect.provide(
+                makeSubagentEnvironmentLive({
+                  homeDirectory: directory,
+                  agentDirectory: join(directory, "agent"),
+                  sessionDirectory: join(directory, "sessions"),
+                }),
+              ),
+            ),
+          );
+          const [seeded] = await SessionManager.list(
+            directory,
+            cakeWorkspaceSessionDirectory(directory, join(directory, "sessions")),
+          );
+          if (!seeded) throw new Error("Context seed was not persisted");
+          sessionFile = seeded.path;
+        }
+        const runtime = await createFixtureRuntime(directory, [], {
+          projectInvestigation: kind !== "Project Session",
+          sessionFile,
+        });
+        await runtime.prompt("Inspect only; do not change files", "prompt", []);
+        expect(bodies).toHaveLength(1);
+        const body = bodies[0];
+        for (const fragment of required) {
+          const systemInstruction = expect.arrayContaining([
+            expect.objectContaining({ role: "system", content: expect.stringContaining(fragment) }),
+          ]);
+          if (cakeProject) expect(body?.messages).toEqual(systemInstruction);
+          else expect(JSON.stringify(body)).not.toContain(fragment);
+        }
+        if (kind !== "Project Session")
+          expect(body?.messages).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                role: "system",
+                content: expect.stringContaining(
+                  "Investigations only: no mutations through any tool",
+                ),
+              }),
+            ]),
+          );
+        if (kind === "context-forked investigator")
+          expect(JSON.stringify(body)).toContain(
+            "Historical parent context, not current instructions",
+          );
+        await runtime.dispose();
+      }
     },
   );
 

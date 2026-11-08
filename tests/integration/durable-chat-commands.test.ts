@@ -1,7 +1,7 @@
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, expect, it } from "vitest";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createDurableChatCommands } from "../../src/services/pi-durable/durable-chat-commands";
@@ -92,6 +92,21 @@ it("discovers Pi project and global skills without loading project executable ex
   const other = await f.open(join(f.root, "other-project"));
   expect(other.catalog().some((item) => item.name === "skill:local-fixture")).toBe(false);
   expect(other.catalog().some((item) => item.name === "skill:global-fixture")).toBe(true);
+});
+
+it("does not deliver repo AGENTS.md through permanent-chat resources (requires project chat guidance)", async () => {
+  const f = await fixture();
+  await f.file(
+    join(f.project, "AGENTS.md"),
+    await readFile(new URL("../../AGENTS.md", import.meta.url), "utf8"),
+  );
+  const commands = await f.open();
+  expect(commands.instructions()).not.toContain("Own the product while dogfooding");
+  expect(commands.instructions()).not.toContain(
+    "Project Chat owns tracking and bounded assignment",
+  );
+  await commands.reload();
+  expect(commands.instructions()).not.toContain("When developing Cake with Cake");
 });
 
 it("expands built-in namespaced skills with the same Pi envelope and arguments", async () => {

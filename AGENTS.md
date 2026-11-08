@@ -4,6 +4,14 @@ Cake is Pi's desktop GUI. Pi owns execution/transcripts; Cake owns workflows/pre
 
 Current explicit user direction overrides Cake workflow defaults, including family channels/check-ins, not security boundaries or tool limits. No instruction-file edit or repeated approval needed. Name concrete limits; verify execution, not just posting. Poll only when requested; cancel check-ins on completion/stop.
 
+## Own the product while dogfooding
+
+When developing Cake with Cake, improving Cake is the objective. Encountered broken tools, UI or workflows are product work, not just obstacles; a workaround unblocks a task but does not resolve a defect.
+
+- Capture evidence and reuse/create an owned durable issue in Cake, not a repo task file. Project Chat owns tracking and bounded assignment: use fresh scoped Project Sessions to investigate and fix clearly understood in-project Cake defects with recurrence tests. This is standing direction; do not wait for the user to repeat it.
+- Workers fix defects within their assigned scope; surface out-of-scope evidence to the owning Project Chat, without abandoning the task or recursively delegating fixes. Continue original work where possible. Report workaround/task progress separately from defect status; task success is not proof of a product fix.
+- Preserve user priorities, concurrency and validation lanes. Ask for real product tradeoffs, safety/permission boundaries, destructive actions, external costs or substantial ambiguous expansion. This does not authorize unrelated bug sweeps, settings edits, live-app inspection/injection/restarts, access expansion, weakened tests, merge/resolve, or overriding explicit read-only scope.
+
 ## Implement
 
 - Keep conversation primary. Cut helper copy; fix confusing layouts.
@@ -15,14 +23,14 @@ Current explicit user direction overrides Cake workflow defaults, including fami
 
 ## Verify
 
-Choose acceptance checks up front by behavior/risk. New scope needs explicit cost discussion. Defer validation (tests, typechecks, lint, builds) until implementation is complete; run required checks together at the end, not after each edit.
+Choose acceptance checks up front by behavior/risk. Scope beyond the standing product-ownership direction needs explicit cost discussion. Defer validation (tests, typechecks, lint, builds) until implementation is complete; run required checks together at the end, not after each edit.
 
 - Use canonical `pnpm` validation scripts: they share one local lane across Cake worktrees. `pnpm validation:queue status|capacity <n>` inspects/tunes admission. Wrap raw tools with `pnpm validation:run -- <command> ...` (including focused Oxfmt); use `pnpm test:electron:run ...` for built E2E. Never acquire `electron:run` before a gated validator. See `docs/development/agent-verification.md#shared-local-validation-lane`.
 - Oxfmt changed files; `pnpm format:check`. Source: `pnpm lint:oxlint`, focused tests; prefer final `pnpm lint`.
 - Behavior/state/contract/config changes: choose relevant checks by changed behavior/risk; use `pnpm typecheck` and broader `pnpm test` when warranted, not as unconditional merge gates. Batch warranted broad checks once; rerun only if invalidated.
 - Copy/layout-only: focused checks, no full suite. Search tests for changed text and run matches. UI proof uses repository visual/Electron harnesses; focus/selection requires isolated Electron. Docs-only: formatting/links.
 - Ordinary builds: `pnpm build:slim`. Full/native builds only when required/requested. Never inspect/debug/inject into the user's running Cake; launch an isolated instance. Never focus test windows without permission.
-- Failures don't expand scope. Fix attributable regressions; report unrelated failures/timeouts separately, not as automatic readiness blockers. Triage unclassified failures enough to assess task relevance; don't presume baseline debt. Claim pre-existing only after reproducing on named base commit/test.
+- Failures don't silently expand a worker's assignment. Fix attributable regressions; route encountered Cake defects through product ownership above. Report unrelated failures/timeouts separately, not as automatic readiness blockers. Triage unclassified failures enough to assess task relevance; don't presume baseline debt. Claim pre-existing only after reproducing on named base commit/test.
 - After two failed hypotheses/repair cycles on one blocker, stop and report evidence plus smallest next experiment. Never weaken tests.
 
 Report implementation, scoped validation, unrelated validation debt and readiness separately. Scope complete + relevant checks passed = ready; `validationPassed` means task-scoped validation, not a globally green repository or completed full suite. Unfinished acceptance criteria, known relevant failures, or uncommitted/unvalidated task changes still block. Commit the validated work and bind readiness to that exact HEAD. Readiness grants no merge/resolve approval; explicit landing authorization or the user's actual Auto-merge opt-in and all managed-worktree/Git safety gates still apply.

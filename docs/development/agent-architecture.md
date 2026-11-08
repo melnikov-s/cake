@@ -93,6 +93,35 @@ construct its call from the prompt alone, while still knowing what requires help
 authorization, or outcome verification. Use the full preview for the broader
 workflow example; do not copy its entire reference into unrelated prompts.
 
+## Cake-development instruction delivery
+
+The root [`AGENTS.md`](../../AGENTS.md#own-the-product-while-dogfooding) is the
+versioned source of Cake's standing dogfooding/product-ownership direction.
+Regular Project Sessions load applicable instruction files from their checkout.
+Project investigators, including context-forked subagents, load them afresh;
+inherited conversation history is not current instruction authority. Existing
+worktrees need the updated file before newly loaded prompts can include it.
+
+Permanent Project Chat does **not** load `AGENTS.md`: its resource loader in
+`src/services/pi-durable/durable-chat-commands.ts` disables context files.
+`src/domain/cake-chats/cakeChatRuntime.ts` instead appends the registered project's
+**Project Chat instructions** setting on each message. Changing the repo file
+therefore does not update a live or future Project Chat prompt.
+
+To cover Cake's permanent Project Chat without changing other projects, a user
+must append the **Own the product while dogfooding** section from `AGENTS.md` to
+Cake's project settings → **Project Chat instructions**, preserving existing text.
+Do not put it in shared **Application → Cake Chat** instructions or other projects.
+That setting is a separate persisted copy, not an automatic file include. This
+repository change leaves settings untouched. Project-free researchers intentionally
+receive no project resources; no Cake-development authority belongs in their
+shared prompts.
+
+The instruction-loading integration tests verify outbound prompt delivery for
+fresh Project Sessions and investigators (including seeded contextual history),
+and absence in unrelated projects. They also cover the permanent-chat file-loading
+gap. Delivered instructions are not a guarantee of model compliance.
+
 ## Core ownership rules
 
 - Pi owns agent sessions, transcript history, model/provider state, and execution.
