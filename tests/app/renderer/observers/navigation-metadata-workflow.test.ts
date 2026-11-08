@@ -151,8 +151,15 @@ it("discovers cold scoped owners and nested metadata without opening conversatio
     await vi.waitFor(() =>
       expect(globalDiscussions).toHaveBeenCalledWith({ sessionId: CAKE_CHAT_SESSION_ID }),
     );
-    await vi.waitFor(() => expect(stopped).toContain("discussion:other"));
-    expect(fixture.root.conversationNavigatorStore.tree(undefined).total).toBe(1);
+    await vi.waitFor(() =>
+      expect(
+        fixture.root.conversationNavigatorStore
+          .metadataTargets(undefined)
+          .map((target) => target.sessionId),
+      ).toEqual(expect.arrayContaining([CAKE_CHAT_SESSION_ID, "cold", "other"])),
+    );
+    expect(stopped).not.toContain("discussion:other");
+    expect(fixture.root.conversationNavigatorStore.tree(undefined).total).toBe(3);
   } finally {
     observer.stop();
   }

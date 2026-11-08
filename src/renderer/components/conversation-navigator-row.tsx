@@ -31,9 +31,6 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
   const selected = store.selectedKey === node.key;
   const expanded = store.isExpanded(projectPath, node.key);
   const row = useRef<HTMLDivElement>(null);
-  const project = projectPath
-    ? root.projectCatalogModel.projects.find((project) => project.path === projectPath)
-    : undefined;
   useEffect(() => {
     if (selected) row.current?.scrollIntoView?.({ block: "nearest" });
   }, [selected]);
@@ -47,6 +44,14 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
     node.target.kind === "project-session"
       ? root.sessionCatalogStore.find(node.target.sessionId)
       : undefined;
+  const rowProjectPath =
+    projectPath ??
+    session?.projectPath ??
+    (node.target.kind === "cake-chat"
+      ? root.cakeChatCatalogModel.sessions.find((chat) => chat.sessionId === node.target.sessionId)
+          ?.projectPath
+      : undefined);
+  const project = rowProjectPath ? root.projectCatalogStore.find(rowProjectPath) : undefined;
   const ownActivity =
     node.target.kind === "cake-chat"
       ? root.cakeChatCollectionStore.ownActivityFor(node.target.sessionId)
@@ -116,6 +121,17 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
             avatarsEnabled={root.settingsStore.appearance.sessionAvatarsEnabled}
             charactersEnabled={root.settingsStore.appearance.sidebarCharactersEnabled}
             showIdleStatus
+            source={
+              projectPath === undefined
+                ? {
+                    kind: "project",
+                    name: project?.name ?? session.projectName,
+                    avatarSeed: project?.name ?? session.projectName,
+                    customIcon: project?.settings.icon,
+                    showAvatar: true,
+                  }
+                : undefined
+            }
             onOpen={() => void store.open(node)}
             onRename={(id, name) => void root.sidebarStore.renameSession(id, name)}
             onResolve={(id, resolved) => void root.sidebarStore.setSessionResolved(id, resolved)}

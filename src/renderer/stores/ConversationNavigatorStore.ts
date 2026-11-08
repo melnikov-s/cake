@@ -3,6 +3,7 @@ import { isActiveSessionActivity } from "../lib/session-activity";
 import type { RootProjection } from "../models/RootProjection";
 import { conversationOwnedNavigation } from "../lib/conversation-owned-navigation";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
+import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { SidebarSessionListStore } from "./SidebarSessionListStore";
 import type { ReviewThread } from "../models/ReviewThread";
 import type { DiscussionThreadMetadata } from "../../contracts/discussion-sessions/discussion-session-data";
@@ -50,7 +51,7 @@ export class ConversationNavigatorStore extends Store<{
     });
   }
 
-  tree(projectPath: string | undefined, resolved = false) {
+  tree(projectPath: string | undefined, resolved = false): ConversationNavigationTree {
     const key = `${resolved ? "resolved" : "active"}:${this.scopeKey(projectPath)}`;
     let tree = this.trees.get(key);
     if (!tree) {
@@ -60,9 +61,18 @@ export class ConversationNavigatorStore extends Store<{
     return tree.value;
   }
 
-  private buildTree(projectPath: string | undefined, resolved: boolean) {
+  private projectPaths(projectPath: string | undefined): readonly string[] {
+    return projectPath === undefined
+      ? ProjectCatalogContext.consume(this)!.orderedProjectPaths
+      : [projectPath];
+  }
+
+  private buildTree(
+    projectPath: string | undefined,
+    resolved: boolean,
+  ): ConversationNavigationTree {
     const model = this.props.projection;
-    return buildConversationNavigationTree({
+    const tree = buildConversationNavigationTree({
       projectPath,
       projectName: projectPath ? this.projectName(projectPath) : undefined,
       sessions: projectPath
@@ -76,6 +86,16 @@ export class ConversationNavigatorStore extends Store<{
         ...model.discussionConversations,
       ],
     });
+    if (projectPath !== undefined) return tree;
+    // Global Cake owns the all-project view; each Project keeps its existing tree and order.
+    const trees = [tree, ...this.projectPaths(undefined).map((path) => this.tree(path, resolved))];
+    return {
+      roots: trees.flatMap((tree) => tree.roots),
+      byKey: new Map(trees.flatMap((tree) => [...tree.byKey])),
+      total: trees.reduce((sum, tree) => sum + tree.total, 0),
+      running: trees.reduce((sum, tree) => sum + tree.running, 0),
+      unread: trees.reduce((sum, tree) => sum + tree.unread, 0),
+    };
   }
 
   /** The header menu reads only this conversation's direct ownership catalogs. */
@@ -132,23 +152,27 @@ export class ConversationNavigatorStore extends Store<{
   private buildMetadataTargets(projectPath: string | undefined, includeClosed: boolean) {
     const projection = this.props.projection;
     const targets = new Map<string, ConversationNavigationMetadataTarget>();
-    const homeId =
-      projectPath === undefined
-        ? CAKE_CHAT_SESSION_ID
-        : projection.cakeChatCatalog.sessions.find((session) => session.projectPath === projectPath)
-            ?.sessionId;
-    if (homeId)
-      targets.set(homeId, {
-        sessionId: homeId,
-        workingDirectory: projectPath ?? "",
+    if (projectPath === undefined)
+      targets.set(CAKE_CHAT_SESSION_ID, {
+        sessionId: CAKE_CHAT_SESSION_ID,
+        workingDirectory: "",
         kind: "cake-chat",
       });
-    if (projectPath)
-      for (const session of this.props.catalog.projectSessions(projectPath)) {
+    for (const path of this.projectPaths(projectPath)) {
+      const homeId = projection.cakeChatCatalog.sessions.find(
+        (session) => session.projectPath === path,
+      )?.sessionId;
+      if (homeId)
+        targets.set(homeId, {
+          sessionId: homeId,
+          workingDirectory: path,
+          kind: "cake-chat",
+        });
+      for (const session of this.props.catalog.projectSessions(path)) {
         if (
           includeClosed ||
           !session.resolved ||
-          this.props.sessionList.isResolvedGroupExpanded(projectPath)
+          this.props.sessionList.isResolvedGroupExpanded(this.scopeKey(projectPath))
         )
           targets.set(session.sessionId, {
             sessionId: session.sessionId,
@@ -156,6 +180,7 @@ export class ConversationNavigatorStore extends Store<{
             kind: "project-session",
           });
       }
+    }
     let discovered = true;
     while (discovered) {
       discovered = false;
@@ -395,6 +420,22 @@ export class ConversationNavigatorStore extends Store<{
       if (node.children.length) collapsed[node.key] = true;
   }
 
+  hasMoreSessions(projectPath: string | undefined, resolved = false) {
+    return this.projectPaths(projectPath).some((path) => {
+      const home = this.tree(path).roots.find((node) => node.relationship === "home");
+      if (!resolved && home && !this.isExpanded(projectPath, home.key)) return false;
+      return resolved
+        ? this.props.sessionList.hasMoreResolvedProjectSessions(path)
+        : this.props.sessionList.projectSessions(path).length >
+            this.props.sessionList.visibleProjectSessions(path).length;
+    });
+  }
+
+  showMoreSessions(projectPath: string | undefined, resolved = false) {
+    for (const path of this.projectPaths(projectPath))
+      this.props.sessionList.showMoreSessions(path, resolved);
+  }
+
   rows(
     projectPath: string | undefined,
     resolved = false,
@@ -402,14 +443,15 @@ export class ConversationNavigatorStore extends Store<{
     const tree = this.tree(projectPath, resolved);
     const query = this.query(projectPath);
     const matching = matchingConversationNavigationKeys(tree, query);
-    const visible =
-      projectPath && !query.trim()
-        ? new Set(
+    const visible = !query.trim()
+      ? new Set(
+          this.projectPaths(projectPath).flatMap((path) =>
             this.props.sessionList
-              .visibleProjectSessions(projectPath, resolved)
+              .visibleProjectSessions(path, resolved)
               .map((session) => conversationNavigationKey(session.sessionId)),
-          )
-        : undefined;
+          ),
+        )
+      : undefined;
     const rows: { node: ConversationNavigationNode; depth: number }[] = [];
     const visit = (node: ConversationNavigationNode, depth: number) => {
       if (!matching.has(node.key)) return;

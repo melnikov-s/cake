@@ -38,7 +38,7 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
             active={navigator.mode === "sessions"}
             onClick={() => navigator.show("sessions")}
             aria-label={`Sessions · ${sessions.running} running · ${sessions.unread} unread`}
-            title={`${sessions.running} running · ${sessions.unread} unread · ${sessions.total} total in ${navigator.projectPath ? "this project" : "Cake Chat"}`}
+            title={`${sessions.running} running · ${sessions.unread} unread · ${sessions.total} total in ${navigator.projectPath ? "this project" : "all projects"}`}
             className="h-8 min-w-0 flex-col gap-0 whitespace-nowrap px-1 @min-[260px]:h-6 @min-[260px]:flex-row @min-[260px]:gap-1"
             size="sm"
           >

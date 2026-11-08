@@ -148,8 +148,8 @@ describe("Workspace Sessions unread count", () => {
     });
     expectCounts(100, 100);
     act(() => fixture.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID));
-    expectCounts(0, 1);
-    expect(tab().getAttribute("title")).toContain("1 total in Cake Chat");
+    expectCounts(101, 102);
+    expect(tab().getAttribute("title")).toContain("107 total in all projects");
   });
 
   it("ignores child-only unread, including collapsed descendants, without losing inherited running status", () => {

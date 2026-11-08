@@ -167,10 +167,10 @@ describe("Workspace Sessions running count", () => {
     expectCount(1);
   });
 
-  it("uses Cake Chat scope rather than aggregating unrelated projects", () => {
+  it("aggregates registered projects in Global Cake Chat", () => {
     using fixture = renderWorkspace({ global: true });
     expectCount(1);
-    expect(sessionsTab().getAttribute("title")).toContain("3 total in Cake Chat");
+    expect(sessionsTab().getAttribute("title")).toContain("7 total in all projects");
   });
 
   it("caps large visible counts without losing the exact tooltip or accessible count", () => {

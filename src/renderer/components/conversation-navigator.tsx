@@ -22,13 +22,8 @@ export const ConversationNavigator = observer(function ConversationNavigator({
   const resolvedExpanded = list.isResolvedGroupExpanded(scope);
   const resolvedRows = resolvedExpanded ? store.rows(projectPath, true) : [];
   const home = tree.roots.find((node) => node.relationship === "home");
-  const activeExpanded = !home || store.isExpanded(projectPath, home.key);
-  const activeHasMore = projectPath
-    ? list.projectSessions(projectPath).length > list.visibleProjectSessions(projectPath).length
-    : false;
-  const resolvedHasMore = projectPath
-    ? list.hasMoreResolvedProjectSessions(projectPath)
-    : list.hasMoreResolvedCakeChatSessions;
+  const activeHasMore = store.hasMoreSessions(projectPath);
+  const resolvedHasMore = store.hasMoreSessions(projectPath, true);
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Sessions">
       <div className="mx-2 my-2 flex min-w-0 items-center gap-1">
@@ -64,12 +59,12 @@ export const ConversationNavigator = observer(function ConversationNavigator({
               {query.trim() ? "No matching conversations" : "No sessions"}
             </p>
           )}
-          {activeExpanded && activeHasMore && !query.trim() && (
+          {activeHasMore && !query.trim() && (
             <Button
               variant="ghost"
               size="sm"
               className="w-full text-muted-foreground"
-              onClick={() => list.showMoreSessions(scope)}
+              onClick={() => store.showMoreSessions(projectPath)}
             >
               Show more
             </Button>
@@ -102,7 +97,7 @@ export const ConversationNavigator = observer(function ConversationNavigator({
                 variant="ghost"
                 size="sm"
                 className="w-full text-muted-foreground"
-                onClick={() => list.showMoreSessions(scope, true)}
+                onClick={() => store.showMoreSessions(projectPath, true)}
               >
                 Show more
               </Button>
