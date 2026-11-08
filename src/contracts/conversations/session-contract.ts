@@ -749,6 +749,8 @@ export interface PiSessionPreview {
   readonly contextMetadata?: SessionContextMetadata;
 }
 export interface PiSessionSummary {
+  /** Request-local routing evidence from the catalog; not a public Session reference. */
+  readonly sessionFile?: string;
   readonly id: string;
   readonly title: string;
   readonly created: string;

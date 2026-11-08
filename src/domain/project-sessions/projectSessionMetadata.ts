@@ -549,14 +549,36 @@ export const listing = Effect.fn("ProjectSessions.listing")(function* (
     if (present) resolutions.set(routeKey, new Set([...resolved].filter((id) => present.has(id))));
   }
   const sessions: Array<ProjectSessionSummary & { readonly savedDraft?: SavedDraft }> = [];
+  const contexts = new Map<string, PiSessionSummary["contextMetadata"]>();
+  const sessionFiles = new Map<string, string>();
+  const resolvedSessionIds = new Set<string>();
   for (const [routeKey, { location, ids }] of groups) {
+    const eligibleIds = new Set<string>();
+    for (const sessionId of ids) {
+      const family = families.get(sessionId);
+      const resolution = resolutions.get(
+        key(family ? { ...location, workingDirectory: family.workingDirectory } : location),
+      );
+      if (!resolution) continue;
+      if (
+        resolution.has(family?.parentSessionId ?? sessionId) ||
+        (!family && discovery.archives.has(sessionId))
+      ) {
+        resolvedSessionIds.add(sessionId);
+        continue;
+      }
+      eligibleIds.add(sessionId);
+    }
+    if (eligibleIds.size === 0) continue;
     const knownLocation = knownLocations.get(routeKey);
     const knownIds = knownLocation && discovery.idsByLocation.get(knownLocation);
     const items = yield* Stream.runCollect(
       runtimes.catalog({
         workingDirectory: location.workingDirectory,
         sessionDirectory: location.sessionDirectory,
-        excludedSessionIds: knownIds ? [...knownIds].filter((id) => !ids.has(id)) : [],
+        excludedSessionIds: [...new Set([...(knownIds ?? []), ...ids])].filter(
+          (id) => !eligibleIds.has(id),
+        ),
       }),
     ).pipe(Effect.catch(() => Effect.succeed<PiSessionSummary[]>([])));
     const byId = new Map(items.map((item) => [item.id, item]));
@@ -566,7 +588,7 @@ export const listing = Effect.fn("ProjectSessions.listing")(function* (
       if (seen.has(item.id)) duplicates.add(item.id);
       seen.add(item.id);
     }
-    for (const sessionId of ids) {
+    for (const sessionId of eligibleIds) {
       const family = families.get(sessionId);
       const entry = discovery.archives.get(sessionId);
       let item = byId.get(sessionId);
@@ -585,6 +607,8 @@ export const listing = Effect.fn("ProjectSessions.listing")(function* (
       const resolution = resolutions.get(key(namespaceLocation));
       if (!resolution) continue;
       const resolved = resolution.has(family?.parentSessionId ?? sessionId);
+      if (item?.contextMetadata) contexts.set(sessionId, item.contextMetadata);
+      if (item?.sessionFile) sessionFiles.set(sessionId, item.sessionFile);
       if (entry) {
         sessions.push({
           ...archivedSummary(entry, item?.title ?? sessionId, unread, family),
@@ -615,7 +639,7 @@ export const listing = Effect.fn("ProjectSessions.listing")(function* (
   const found = new Set(sessions.map((session) => session.sessionId));
   for (const draft of fallbackDrafts) {
     const project = state.projects.find((project) => project.path === draft.projectPath);
-    if (found.has(draft.sessionId) || !project) continue;
+    if (found.has(draft.sessionId) || resolvedSessionIds.has(draft.sessionId) || !project) continue;
     sessions.push({
       sessionId: draft.sessionId,
       title: draft.title,
@@ -631,7 +655,7 @@ export const listing = Effect.fn("ProjectSessions.listing")(function* (
       savedDraft: draft,
     });
   }
-  return { sessions, routes };
+  return { sessions, routes, contexts, sessionFiles };
 });
 
 /** Keep the authoritative route with the summary for multi-step, request-local inspection. */

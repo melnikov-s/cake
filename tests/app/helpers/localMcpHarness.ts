@@ -131,6 +131,7 @@ export const localMcpFixture = Effect.fn("LocalMcpTest.fixture")(function* (
     }),
     Context.add(TaskInputStorage, {
       ...Context.get(initial, TaskInputStorage),
+      recipients: () => Effect.succeed(new Set(protectedSessions)),
       isRecipient: (id) => Effect.succeed(protectedSessions.includes(id)),
     }),
     Context.add(ManagedWorktrees, {

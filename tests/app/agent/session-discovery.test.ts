@@ -82,6 +82,42 @@ describe("loadWorkspacePiSessionPreview", () => {
     expect(open).toHaveBeenCalledTimes(1);
     expect(open.mock.calls[0]?.[0]).toBe(active.getSessionFile());
   });
+  it("enriches a catalog entry from its known file without rediscovering directories or display parts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-session-known-file-"));
+    temporaryDirectories.push(root);
+    const cwd = join(root, "project");
+    const sessionRoot = join(root, "sessions");
+    const manager = SessionManager.create(cwd, cakeWorkspaceSessionDirectory(cwd, sessionRoot));
+    manager.appendMessage({ role: "user", content: "Inspect project", timestamp: 1 });
+    const [entry] = await Effect.runPromise(
+      streamWorkspaceSessions(cwd, sessionRoot).pipe(Stream.runCollect),
+    );
+    expect(entry?.sessionFile).toBe(manager.getSessionFile());
+    const open = vi.spyOn(SessionManager, "open");
+    const preview = await loadWorkspacePiSessionPreview(
+      cwd,
+      manager.getSessionId(),
+      join(root, "not-a-session-root"),
+      false,
+      {
+        includeParts: false,
+        sessionFile: entry?.sessionFile,
+      },
+    );
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(preview?.contextMetadata?.estimatedTokens).toBeGreaterThan(0);
+    expect(preview?.parts).toEqual([]);
+    if (!entry?.sessionFile) throw new Error("Missing catalog file route");
+    await rm(entry.sessionFile);
+    expect(
+      await loadWorkspacePiSessionPreview(cwd, manager.getSessionId(), sessionRoot, false, {
+        includeParts: false,
+        sessionFile: entry.sessionFile,
+      }),
+    ).toBeUndefined();
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
   it("skips an unreadable transcript without hiding the directory's other sessions", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-session-unreadable-"));
     temporaryDirectories.push(root);

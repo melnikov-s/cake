@@ -9,6 +9,7 @@ import {
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import {
   catalog,
+  discover,
   project,
   resolve,
   resolveIn,
@@ -30,7 +31,7 @@ const parent = "01957936-0000-7000-8000-0000abcdefab";
 const draft = "01957936-0000-4000-8000-0000cccccccc";
 const timestamp = "2026-01-01T00:00:00.000Z";
 
-function fixture() {
+function fixture(includeOther = false) {
   // Pi filenames include both active and resolved-in-place sessions.
   let activeIds = [active, resolvedInPlace];
   let failure = false;
@@ -58,6 +59,9 @@ function fixture() {
         ...defaultApplicationState(),
         projects: [
           { path: "/project", name: "Project", addedAt: timestamp, lastOpenedAt: timestamp },
+          ...(includeOther
+            ? [{ path: "/other", name: "Other", addedAt: timestamp, lastOpenedAt: timestamp }]
+            : []),
         ],
       }),
     }),
@@ -77,6 +81,17 @@ function fixture() {
             createdAt: timestamp,
             state: "discarded" as const,
           },
+          ...(includeOther
+            ? [
+                {
+                  worktreePath: "/other-worktree",
+                  projectPath: "/other",
+                  branch: "agent/other",
+                  baseBranch: "main",
+                  createdAt: timestamp,
+                },
+              ]
+            : []),
         ]),
     }),
     Layer.mock(SessionFamilyStorage, {
@@ -216,6 +231,39 @@ it.effect("resolves and projects identities without title catalogs or runtime ac
     });
   }).pipe(Effect.provide(f.layer));
 });
+
+it.effect(
+  "scoped discovery keeps inactive project worktrees without scanning other projects",
+  () => {
+    const f = fixture(true);
+    return Effect.gen(function* () {
+      const discovery = yield* discover("/project");
+      expect(discovery.locations.map((location) => location.workingDirectory)).toEqual([
+        "/project",
+        "/inactive-worktree",
+      ]);
+      expect(discovery.roster.map((entry) => entry.sessionId)).toEqual(
+        expect.arrayContaining([active, inactive, retired, parent, draft]),
+      );
+      expect(f.sessionIds.mock.calls.map(([query]) => query.workingDirectory)).toEqual([
+        "/project",
+        "/inactive-worktree",
+      ]);
+      expect(f.resolvedProjects).toHaveBeenCalledTimes(1);
+      expect(f.resolvedProjects).toHaveBeenCalledWith("/project");
+      expect(discovery.roster.map((entry) => entry.sessionId)).not.toContain(
+        projectChatSessionId("/other"),
+      );
+      yield* discover();
+      expect(f.sessionIds.mock.calls.slice(2).map(([query]) => query.workingDirectory)).toEqual([
+        "/project",
+        "/other",
+        "/inactive-worktree",
+        "/other-worktree",
+      ]);
+    }).pipe(Effect.provide(f.layer));
+  },
+);
 
 it.effect(
   "uses fresh identity scans across removals and additions, retaining collision checks",

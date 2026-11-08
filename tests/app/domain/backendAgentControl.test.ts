@@ -207,7 +207,9 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     resolutions: [] as string[],
     drafts: 0,
     records: 0,
+    inspectionFiles: [] as Array<string | undefined>,
   };
+  const redactionReads = { inventories: 0, entries: 0 };
   const sessionsByDirectory = new Map<string, string[]>([["/project", [source, target, third]]]);
   const archivedEntries = new Map<string, ProjectSessionArchiveMetadata>();
   const worktreeRecords: WorktreeRecord[] = [];
@@ -259,7 +261,13 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
         (id) => !unavailable.has(id) && !query.excludedSessionIds?.includes(id),
       );
       listReads.titles.push(...ids);
-      return Stream.fromIterable(ids.map(summary));
+      return Stream.fromIterable(
+        ids.map((id) => ({
+          ...summary(id),
+          contextMetadata: contextBySession.get(id),
+          sessionFile: `/cake/sessions/${id}.jsonl`,
+        })),
+      );
     },
     catalogEntry: (_query, id) => {
       listReads.entries.push(id);
@@ -273,9 +281,10 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
               : undefined,
           );
     },
-    inspect: ({ sessionId }) =>
+    inspect: ({ sessionId }, options) =>
       Effect.sync(() => {
         inspections.push(sessionId);
+        listReads.inspectionFiles.push(options?.sessionFile);
         return {
           workspacePath: "/project",
           sessionId,
@@ -526,8 +535,16 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
         }),
     }),
     Layer.mock(TaskInputStorage, {
+      recipients: () =>
+        Effect.sync(() => {
+          redactionReads.inventories++;
+          return new Set([...protectedSessions, ...(protectedTarget ? [target] : [])]);
+        }),
       isRecipient: (id) =>
-        Effect.succeed((id === target && protectedTarget) || protectedSessions.has(id)),
+        Effect.sync(() => {
+          redactionReads.entries++;
+          return (id === target && protectedTarget) || protectedSessions.has(id);
+        }),
       protectRecipient: (id) =>
         Effect.sync(() => {
           protectedSessions.add(id);
@@ -626,6 +643,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     inspections,
     contextBySession,
     listReads,
+    redactionReads,
     sessionsByDirectory,
     archivedEntries,
     worktreeRecords,
@@ -2841,7 +2859,7 @@ it.effect(
       expect(yield* f.call("sessions.list", { limit: 1 })).toBe(
         "3 sessions; next=1\nid status lifecycle outcome tokens cache age ttl | project | title\n00000000-0000-4000-8000-000000000022 idle active - 120K expired? 1h -55m | /project | Same title",
       );
-      expect(f.inspections).toEqual([target]);
+      expect(f.inspections).toEqual([]);
       expect(f.runtimeCreates).toEqual([source]);
       expect(yield* Queue.size(f.prompts)).toBe(0);
       expect(yield* f.call("sessions.info", { sessionId: target })).toMatchObject({
@@ -2994,6 +3012,8 @@ it.effect("keeps task-input metadata redacted in session and report text catalog
     expect(yield* f.direct("sessions.list", { query: "Task" }, global)).toBe(
       "1 sessions\nid status lifecycle outcome tokens cache age ttl | project | title\n00000000-0000-4000-8000-000000000022 idle active - ? ? ? ? | /project | Task session",
     );
+    expect(f.redactionReads.inventories).toBe(1);
+    expect(f.redactionReads.entries).toBe(0);
     const invoke = yield* batchRegistry(f);
     const expected =
       "1 sessions\nid status lifecycle outcome tokens cache age ttl | project | title\n00000000-0000-4000-8000-000000000022 idle active - ? ? ? ? | /project | Task session";
@@ -3038,7 +3058,7 @@ it.effect("keeps task-input metadata redacted in session and report text catalog
   }),
 );
 
-it.effect("lists a 699-location roster with one snapshot and no per-session route probes", () =>
+it.effect("scopes a 699-location roster before directory scans and retains page file routes", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
     const project = f.state().projects[0];
@@ -3099,8 +3119,7 @@ it.effect("lists a 699-location roster with one snapshot and no per-session rout
       );
     const listing = yield* invoke({ query: "Same", offset: 3, limit: 2 });
     expect(listing).toContain("99 sessions; next=5");
-    expect(f.listReads.ids).toHaveLength(699);
-    expect(new Set(f.listReads.ids).size).toBe(699);
+    expect(f.listReads.ids).toEqual(["/project"]);
     expect(f.listReads.titles).toEqual(f.sessionsByDirectory.get("/project"));
     expect(f.listReads.entries).toEqual([]);
     expect(f.listReads.locate - before.locate).toBe(0);
@@ -3109,12 +3128,16 @@ it.effect("lists a 699-location roster with one snapshot and no per-session rout
     expect(f.listReads.resolutions).toEqual(["/project"]);
     expect(familyReads).toBe(1);
     expect(f.inspections).toHaveLength(2);
+    expect(f.listReads.inspectionFiles).toEqual(
+      f.inspections.map((id) => `/cake/sessions/${id}.jsonl`),
+    );
     // No retained roster: removing a transcript is visible on the very next invocation.
     f.sessionsByDirectory.set("/project", [source]);
     expect(yield* invoke({ query: "Same" })).toBe("0 sessions");
     expect(familyReads).toBe(2);
     expect(f.inspections).toHaveLength(2);
     f.listReads.titles.length = 0;
+    f.listReads.ids.length = 0;
     const narrowedGlobal = yield* invoke(
       { projectPath: "/other", query: "Same", limit: 1 },
       {
@@ -3128,6 +3151,8 @@ it.effect("lists a 699-location roster with one snapshot and no per-session rout
     expect(f.listReads.titles).not.toContain(source);
     expect(familyReads).toBe(3);
     expect(f.inspections).toHaveLength(3);
+    expect(f.listReads.ids).toHaveLength(698);
+    expect(f.listReads.ids).not.toContain("/project");
     expect(f.runtimeCreates).toEqual([source]);
   }),
 );
@@ -3151,6 +3176,8 @@ it.effect(
       });
       // Historical identities remain available through exact lookup, never the list.
       expect(yield* f.direct("sessions.list", {})).not.toContain(archived);
+      expect(f.listReads.titles).not.toContain(archived);
+      expect(f.listReads.entries).not.toContain(archived);
       expect(yield* f.direct("sessions.info", { sessionId: archived })).toMatchObject({
         session: { sessionId: archived, resolved: true },
       });
@@ -3190,6 +3217,7 @@ it.effect("uses family-root resolution in a listing snapshot", () =>
     f.resolve();
     // Storage can migrate a resolved root back into place after the ID discovery pass.
     f.sessionsByDirectory.set("/project", [source]);
+    f.listReads.titles.length = 0;
     const archive = Context.get(f.context, SessionArchiveStorage);
     const result = yield* agentControl.invoke("sessions.list", {}, caller).pipe(
       Effect.provideService(SessionArchiveStorage, {
@@ -3204,6 +3232,7 @@ it.effect("uses family-root resolution in a listing snapshot", () =>
     expect(result).toContain("1 sessions");
     expect(result).not.toContain(target);
     expect(result).not.toContain(third);
+    expect(f.listReads.titles).toEqual([source]);
     expect(f.listReads.locate).toBe(0);
   }),
 );
@@ -3282,6 +3311,7 @@ it.effect.each([
       expect(listing).toContain("2 sessions");
       expect(listing).toContain(`${third} ${status} ${status === "draft" ? "draft" : "active"}`);
       expect(listing).not.toContain(target);
+      expect(f.listReads.titles).not.toContain(target);
       expect(yield* call({ limit: 1 })).toContain("2 sessions; next=1");
       const last = yield* call({ limit: 1, offset: 1 });
       expect(last).toContain("2 sessions\n");
@@ -3291,6 +3321,32 @@ it.effect.each([
         status === "idle" ? "2 sessions; next=1" : "1 sessions\n",
       );
     }),
+);
+
+it.effect("does not revive a resolved transcript through an unresolved draft fallback", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    f.resolve();
+    f.drafts.push({
+      sessionId: target,
+      projectPath: "/project",
+      workingDirectory: "/project",
+      title: "Stale draft",
+      text: "Private request",
+      attachments: [],
+      labelIds: [],
+      resolved: false,
+      createdAt: "2026-01-01",
+      modifiedAt: "2026-01-04",
+      revision: 1,
+      status: "saved",
+    });
+    const result = yield* f.direct("sessions.list", {});
+    expect(result).toContain("2 sessions");
+    expect(result).not.toContain(target);
+    expect(result).not.toContain("Stale draft");
+    expect(f.listReads.titles).not.toContain(target);
+  }),
 );
 
 const historicalSessionListInputs: JsonObject[] = [

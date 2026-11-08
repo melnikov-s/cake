@@ -314,7 +314,7 @@ export interface CakeSessionRuntimesAdapter {
   ) => Effect.Effect<PiSessionSummary | undefined, unknown>;
   readonly inspect: (
     target: PiSessionTarget,
-    options?: { readonly includeParts?: boolean },
+    options?: { readonly includeParts?: boolean; readonly sessionFile?: string },
   ) => Effect.Effect<PiSessionPreview | undefined, unknown>;
   readonly createRuntime: (
     options: CakeSessionRuntimeSetup,
@@ -339,7 +339,7 @@ export class CakeSessionRuntimes extends Context.Service<
     ) => Effect.Effect<PiSessionSummary | undefined, PiSessionError>;
     readonly inspect: (
       target: PiSessionTarget,
-      options?: { readonly includeParts?: boolean },
+      options?: { readonly includeParts?: boolean; readonly sessionFile?: string },
     ) => Effect.Effect<PiSessionPreview, PiSessionError>;
     readonly acquire: (
       options: CakeSessionRuntimeAcquireOptions,
@@ -503,7 +503,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
 
       const inspect = Effect.fn("CakeSessionRuntimes.inspect")(function* (
         target: PiSessionTarget,
-        options?: { readonly includeParts?: boolean },
+        options?: { readonly includeParts?: boolean; readonly sessionFile?: string },
       ) {
         const decoded = yield* Schema.decodeUnknownEffect(PiSessionTarget)(target).pipe(
           sessionError("inspect"),

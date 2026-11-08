@@ -486,6 +486,15 @@ export const makeTaskInputStorageLive = (state: string) =>
             }),
           ),
       );
+      const recipientIds = Effect.fn("TaskInputStorage.recipients")(function* () {
+        const entries = yield* io("recipients", () => readdir(recipients));
+        return new Set(
+          entries
+            .filter((name) => name.endsWith(".json"))
+            .map((name) => name.slice(0, -5))
+            .filter((id) => Option.isSome(Schema.decodeUnknownOption(SessionKey)(id))),
+        );
+      });
       const isRecipient = Effect.fn("TaskInputStorage.isRecipient")(function* (sessionId: string) {
         if (Option.isNone(Schema.decodeUnknownOption(SessionKey)(sessionId))) return false;
         return yield* io("isRecipient", async () => {
@@ -511,6 +520,7 @@ export const makeTaskInputStorageLive = (state: string) =>
         grant,
         list,
         inspect,
+        recipients: recipientIds,
         isRecipient,
         protectRecipient,
       });

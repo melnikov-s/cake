@@ -491,7 +491,7 @@ export const invoke: (
           if (!global && !scope) return fail("The caller has no registered project scope.");
           const inScope = (projectPath: string) => !scope || projectPath === scope;
           const discovery = yield* sessionReferences
-            .discover()
+            .discover(scope)
             .pipe(Effect.withSpan("sessions.list.discovery"));
           const discoveredAt = yield* Clock.currentTimeMillis;
           const roster = discovery.roster;
@@ -539,16 +539,17 @@ export const invoke: (
                   contextMetadata: chat.contextMetadata,
                 }))
               : [];
-          const entries = yield* Effect.forEach([...projectEntries, ...chatEntries], (entry) =>
-            Effect.gen(function* () {
-              // Text rosters must retain the coordinator's task-input title redaction;
-              // the later JSON-only safeCoordinatorProjection cannot inspect these rows.
-              const protectedTitle =
-                caller?.kind === "cake-chat" &&
-                (yield* (yield* TaskInputStorage).isRecipient(entry.sessionId));
-              return protectedTitle ? { ...entry, title: "Task session" } : entry;
-            }),
-          ).pipe(Effect.withSpan("sessions.list.redaction"));
+          // Redact before query matching/counting, including text rosters. One request-local
+          // inventory replaces a serial file read per row without opening any task inputs.
+          const protectedSessions =
+            caller?.kind === "cake-chat"
+              ? yield* (yield* TaskInputStorage)
+                  .recipients()
+                  .pipe(Effect.withSpan("sessions.list.redaction"))
+              : new Set<string>();
+          const entries = [...projectEntries, ...chatEntries].map((entry) =>
+            protectedSessions.has(entry.sessionId) ? { ...entry, title: "Task session" } : entry,
+          );
           const selectingAt = yield* Clock.currentTimeMillis;
           const query = input.query?.toLowerCase();
           const selected = entries
@@ -572,20 +573,24 @@ export const invoke: (
                 ? item.contextMetadata
                 : item.status === "draft"
                   ? undefined
-                  : yield* Effect.gen(function* () {
-                      const location = listing.routes.get(item.sessionId);
-                      if (!location) return undefined;
-                      return yield* (yield* CakeSessionRuntimes)
-                        .inspect(
-                          { ...location, sessionId: item.sessionId },
-                          { includeParts: false },
-                        )
-                        .pipe(Effect.map((preview) => preview.contextMetadata));
-                    }).pipe(
-                      // Advisory inspection failure must not hide an otherwise discoverable session.
-                      Effect.catch(() => Effect.succeed(undefined)),
-                      Effect.withSpan("sessions.list.context"),
-                    );
+                  : listing.contexts.has(item.sessionId)
+                    ? listing.contexts.get(item.sessionId)
+                    : yield* Effect.gen(function* () {
+                        const location = listing.routes.get(item.sessionId);
+                        if (!location) return undefined;
+                        return yield* (yield* CakeSessionRuntimes)
+                          .inspect(
+                            { ...location, sessionId: item.sessionId },
+                            {
+                              includeParts: false,
+                              sessionFile: listing.sessionFiles.get(item.sessionId),
+                            },
+                          )
+                          .pipe(Effect.map((preview) => preview.contextMetadata));
+                      }).pipe(
+                        Effect.catch(() => Effect.succeed(undefined)),
+                        Effect.withSpan("sessions.list.context"),
+                      );
               return { ...item, contextMetadata };
             }),
           );

@@ -111,6 +111,7 @@ export async function loadWorkspacePiSessionSummary(
   return item
     ? {
         id: item.id,
+        sessionFile: item.path,
         title: sessionTitleFromFile(item.path, cwd),
         created: item.createdAt,
         modified: item.modifiedAt,
@@ -215,6 +216,7 @@ export function streamWorkspaceSessions(
         Effect.try({
           try: (): PiSessionSummary => ({
             id: item.id,
+            sessionFile: item.path,
             title: sessionTitleFromFile(item.path, cwd),
             created: item.createdAt,
             modified: item.modifiedAt,
@@ -254,10 +256,11 @@ export async function loadWorkspacePiSessionPreview(
   sessionId: string,
   sessionDir: string,
   direct = false,
-  options: { readonly includeParts?: boolean } = {},
+  options: { readonly includeParts?: boolean; readonly sessionFile?: string } = {},
 ): Promise<PiSessionPreview | undefined> {
-  const target = await findSessionFile(cwd, sessionId, sessionDir, direct);
-  if (!target) return undefined;
+  const target = options.sessionFile ?? (await findSessionFile(cwd, sessionId, sessionDir, direct));
+  // Pi opens a missing explicit path as a new session; stale catalog evidence is not creation.
+  if (!target || (options.sessionFile !== undefined && !existsSync(target))) return undefined;
   const manager = SessionManager.open(target, dirname(target), cwd);
   const branch = manager.getBranch();
   let model: { provider: string; modelId: string } | undefined;

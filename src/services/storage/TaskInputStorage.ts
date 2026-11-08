@@ -41,6 +41,8 @@ export class TaskInputStorage extends Context.Service<
       sessionId: string,
       input: AttachmentReadInput,
     ) => Effect.Effect<AttachmentContent, AttachmentUploadError>;
+    /** Request-local protection inventory; never opens task inputs or grants. */
+    readonly recipients: () => Effect.Effect<ReadonlySet<string>, AttachmentUploadError>;
     readonly isRecipient: (sessionId: string) => Effect.Effect<boolean, AttachmentUploadError>;
     readonly protectRecipient: (sessionId: string) => Effect.Effect<void, AttachmentUploadError>;
   }

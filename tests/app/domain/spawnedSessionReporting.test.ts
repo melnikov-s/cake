@@ -1596,6 +1596,7 @@ describe("automatic spawned-session reporting", () => {
               recipients.add(recipient);
               return [original];
             }),
+          recipients: () => Effect.succeed(new Set(recipients)),
           isRecipient: (id) => Effect.succeed(recipients.has(id)),
           protectRecipient: (id) =>
             Effect.sync(() => {

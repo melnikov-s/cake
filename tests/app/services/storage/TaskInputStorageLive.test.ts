@@ -51,6 +51,40 @@ const fixture = <A, E>(work: (root: string) => Effect.Effect<A, E, TaskInputStor
 
 describe("task-input isolation", () => {
   it.effect(
+    "inventories protection without reading markers or inputs and refreshes each request",
+    () =>
+      fixture((root) =>
+        Effect.gen(function* () {
+          const storage = yield* TaskInputStorage;
+          expect(yield* storage.recipients()).toEqual(new Set());
+          const chat = projectChatSessionId("/project");
+          yield* storage.protectRecipient(target);
+          yield* storage.protectRecipient(chat);
+          // Marker existence is protection: content is neither a grant nor an input payload.
+          yield* Effect.promise(() =>
+            writeFile(join(root, "task-inputs", "recipients", `${target}.json`), "not JSON"),
+          );
+          yield* Effect.promise(() =>
+            writeFile(join(root, "task-inputs", "recipients", `${other}.json.tmp`), "true"),
+          );
+          const first = yield* storage.recipients();
+          expect(first).toEqual(new Set([target, chat]));
+          yield* storage.protectRecipient(other);
+          expect(yield* storage.recipients()).toEqual(new Set([target, chat, other]));
+          expect(first.has(other)).toBe(false);
+          expect(
+            yield* storage.inspect(owner, { reference: target }).pipe(Effect.result),
+          ).toMatchObject({ _tag: "Failure" });
+          yield* Effect.promise(() =>
+            rm(join(root, "task-inputs", "recipients"), { recursive: true }),
+          );
+          expect(yield* storage.recipients().pipe(Effect.result)).toMatchObject({
+            _tag: "Failure",
+          });
+        }),
+      ),
+  );
+  it.effect(
     "keeps captures with the same short name in separate durable identities without overwriting pixels",
     () =>
       fixture((root) =>

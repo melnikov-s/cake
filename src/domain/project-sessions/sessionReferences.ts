@@ -70,24 +70,35 @@ export function labelIn(sessionId: string, roster: readonly SessionReferenceEntr
  * whose worktree no longer exists. Include inactive family bindings without acquiring runtimes.
  */
 export const discover = Effect.fn("SessionReferences.discover")(
-  function* () {
+  function* (projectPath?: string) {
     const sessions = yield* CakeSessionRuntimes;
     const archive = yield* SessionArchiveStorage;
     const families = yield* SessionFamilyStorage;
     const application = yield* ApplicationState;
-    const locations = yield* projectSessionLocations.locations({ includeInactive: true });
+    const locations = (yield* projectSessionLocations.locations({ includeInactive: true })).filter(
+      (location) => projectPath === undefined || location.projectPath === projectPath,
+    );
+    const projects = application
+      .snapshot()
+      .projects.filter((project) => projectPath === undefined || project.path === projectPath);
     const roster = new Map<string, SessionReferenceEntry>();
-    const familyState = yield* families.state();
+    const allFamilies = yield* families.state();
+    const familyState = {
+      ...allFamilies,
+      families: allFamilies.families.filter(
+        (family) => projectPath === undefined || family.projectPath === projectPath,
+      ),
+    };
     const archives = new Map<string, ProjectSessionArchiveMetadata>();
     const routes = new Map<string, ProjectSessionLocation[]>();
     const idsByLocation = new Map<ProjectSessionLocation, ReadonlySet<string>>();
-    for (const project of application.snapshot().projects) {
+    for (const project of projects) {
       const sessionId = projectChatSessionId(project.path);
       roster.set(sessionId, { sessionId, title: `${project.name} / Project Chat` });
     }
     for (const family of familyState.families)
       for (const sessionId of familyMemberIds(family)) roster.set(sessionId, { sessionId });
-    for (const project of application.snapshot().projects)
+    for (const project of projects)
       for (const entry of yield* Stream.runCollect(archive.resolvedProjects(project.path))) {
         roster.set(entry.sessionId, { sessionId: entry.sessionId });
         archives.set(entry.sessionId, entry);
@@ -108,7 +119,9 @@ export const discover = Effect.fn("SessionReferences.discover")(
       }
     }
     const storage = yield* Effect.serviceOption(SavedDraftStorage);
-    const drafts = Option.isSome(storage) ? yield* storage.value.list() : [];
+    const drafts = (Option.isSome(storage) ? yield* storage.value.list() : []).filter(
+      (draft) => projectPath === undefined || draft.projectPath === projectPath,
+    );
     for (const draft of drafts)
       roster.set(draft.sessionId, { sessionId: draft.sessionId, title: draft.title });
     return {
@@ -121,13 +134,16 @@ export const discover = Effect.fn("SessionReferences.discover")(
       drafts,
     };
   },
-  Effect.mapError(
-    (cause) =>
-      new ProjectSessionError({
-        operation: "sessionReferenceCatalog",
-        message: cause instanceof Error ? cause.message : String(cause),
-      }),
-  ),
+  (effect, _projectPath?: string) =>
+    effect.pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProjectSessionError({
+            operation: "sessionReferenceCatalog",
+            message: cause instanceof Error ? cause.message : String(cause),
+          }),
+      ),
+    ),
 );
 
 /** Identity-only consumers discard request-local routing evidence, never transcript content. */
